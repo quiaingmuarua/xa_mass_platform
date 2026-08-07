@@ -37,7 +37,7 @@ AndroidWorker worker = AndroidWorker.builder(
         ))
         .eventDefinitions(definitions)
         .requestTimeout(Duration.ofSeconds(10))
-        .reconnectInterval(Duration.ofMillis(250))
+        .retryPolicy(WorkerRetryPolicy.defaults())
         .build();
 
 worker.addListener(snapshot -> observe(snapshot));
@@ -65,16 +65,22 @@ start
   -> connect Core WebSocket Transport to the returned URI
 
 temporary disconnect
-  -> Android WebSocket Client reconnects to the current session URI
+  -> Android WebSocket Client reconnects to the current URI within its budget
   -> no Register or Bind
 
+reconnect exhausted
+  -> Core closes the exhausted Transport
+  -> reload Properties and run Register/Bind preparation again
+  -> create a new Transport from the returned URI
+
 stop
-  -> close the current session
+  -> close the current local run
   -> retain client key and Worker ID
 
 refreshProperties
   -> re-read the complete snapshot
   -> Bind only when changed
+  -> enter ERROR if Bind unexpectedly returns a different Endpoint URI
 ```
 
 `start`, `stop`, and `close` are idempotent at their lifecycle boundaries;
@@ -87,22 +93,19 @@ Closing the Android network Client marks it terminal and cancels the current
 socket before returning; HandlerThread cleanup is posted asynchronously, so a
 host lifecycle callback does not wait for a network timeout.
 
-Shared `WorkerLifecycle` observation states are:
+Shared `WorkerLifecycle` observation is split into three axes:
 
 ```text
-STOPPED
-STARTING
-REGISTERING
-BINDING
-CONNECTING
-TRANSPORT_CONNECTED
-ERROR
-CLOSED
+State             STOPPED / STARTING / RUNNING / ERROR / CLOSED
+PrepareOperation  NONE / REGISTERING / BINDING
+ConnectionState   DISCONNECTED / CONNECTING / CONNECTED
 ```
 
-`TRANSPORT_CONNECTED` means the WebSocket opened and Core handed the
+`RUNNING + CONNECTED` means the WebSocket opened and Core handed the
 workerId-only connection Bind to the network stack. It does not assert Adapter
-route verification, Kernel online truth, or assignment availability.
+route verification, Kernel online truth, or assignment availability. Android
+uses Core's default 10-attempt prepare budget and 20-attempt connection budget
+unless the Builder receives another immutable `WorkerRetryPolicy`.
 
 Applications must decide whether Android Backup may migrate Worker Identity.
 The repository demo excludes the Android Worker preference file from backup.

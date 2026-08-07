@@ -77,7 +77,13 @@ public final class MainActivity extends Activity {
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        statusValue.setText(snapshot.state().name());
+        statusValue.setText(
+                snapshot.state().name()
+                        + " / "
+                        + snapshot.prepareOperation().name()
+                        + " / "
+                        + snapshot.connectionState().name()
+        );
         workerIdValue.setText(orFallback(
                 snapshot.workerId(),
                 "Not registered"

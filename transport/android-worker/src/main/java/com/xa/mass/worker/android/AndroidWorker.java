@@ -7,6 +7,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 
 import java.net.URI;
 import java.time.Duration;
@@ -21,8 +22,6 @@ public final class AndroidWorker implements WorkerLifecycle {
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
             Duration.ofSeconds(10);
-    private static final Duration DEFAULT_RECONNECT_INTERVAL =
-            Duration.ofMillis(250);
     private static final Set<String> ACTIVE_COORDINATES =
             ConcurrentHashMap.newKeySet();
 
@@ -138,7 +137,7 @@ public final class AndroidWorker implements WorkerLifecycle {
         private AndroidWorkerProperties workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private Duration reconnectInterval = DEFAULT_RECONNECT_INTERVAL;
+        private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
 
         private Builder(
                 Context applicationContext,
@@ -190,11 +189,13 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder reconnectInterval(Duration value) {
-            reconnectInterval = requirePositive(
-                    value,
-                    "reconnectInterval"
-            );
+        public Builder retryPolicy(WorkerRetryPolicy value) {
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "retryPolicy must be present"
+                );
+            }
+            retryPolicy = value;
             return this;
         }
 
@@ -243,23 +244,21 @@ public final class AndroidWorker implements WorkerLifecycle {
                 return complete;
             };
             Duration resolvedRequestTimeout = requestTimeout;
-            Duration resolvedReconnectInterval = reconnectInterval;
+            WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
             TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                     workerGroupId,
                     WorkerTransportType.WEBSOCKET,
                     identityStore,
                     completeProperties,
                     definitions,
-                    () -> new AndroidOkHttpWorkerControlClient(
-                            runtimeApiBaseUrl
-                    ),
+                    new AndroidOkHttpWorkerControlClient(runtimeApiBaseUrl),
                     endpointUri -> new AndroidOkHttpTextWebSocketClient(
                             endpointUri,
                             resolvedRequestTimeout,
-                            resolvedReconnectInterval
+                            resolvedRetryPolicy.connectionPolicy()
                     ),
                     resolvedRequestTimeout,
-                    resolvedReconnectInterval
+                    resolvedRetryPolicy
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()

@@ -206,6 +206,81 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
+    void exhaustionWaitsForHandlerAndPendingCrossesTransportReplacement()
+            throws Exception {
+        TextMessageWorkerTransport.PendingResultSlot slot =
+                new TextMessageWorkerTransport.PendingResultSlot();
+        FakeTextMessageClient firstClient = new FakeTextMessageClient();
+        RecordingObserver firstObserver = new RecordingObserver();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        TextMessageWorkerTransport first =
+                new TextMessageWorkerTransport(
+                        firstClient,
+                        COMMAND_ID,
+                        encoded -> {
+                            entered.countDown();
+                            try {
+                                release.await(2, TimeUnit.SECONDS);
+                            } catch (InterruptedException error) {
+                                Thread.currentThread().interrupt();
+                                return Optional.empty();
+                            }
+                            return Optional.of(result());
+                        },
+                        slot,
+                        firstObserver
+                );
+        TextMessageWorkerTransport second = null;
+        try {
+            first.start();
+            firstClient.open();
+            firstClient.message(COMMAND);
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+
+            firstClient.exhaustReconnects();
+            assertEquals(0, firstObserver.exhausted.get());
+            release.countDown();
+            await(() -> firstObserver.exhausted.get() == 1);
+            assertTrue(slot.hasPendingResult());
+
+            first.close();
+            assertTrue(slot.hasPendingResult());
+            FakeTextMessageClient secondClient =
+                    new FakeTextMessageClient();
+            second = new TextMessageWorkerTransport(
+                    secondClient,
+                    COMMAND_ID,
+                    encoded -> Optional.empty(),
+                    slot,
+                    new RecordingObserver()
+            );
+            second.start();
+            secondClient.open();
+            await(() -> secondClient.sent.size() == 2);
+
+            assertEquals(
+                    bind(),
+                    codec.decodeWorkerConnectionBind(
+                            secondClient.sent.get(0)
+                    )
+            );
+            assertEquals(
+                    result(),
+                    codec.decodeWorkerResult(secondClient.sent.get(1))
+            );
+            assertFalse(slot.hasPendingResult());
+        } finally {
+            release.countDown();
+            first.close();
+            if (second != null) {
+                second.close();
+            }
+            slot.close();
+        }
+    }
+
+    @Test
     void closeOwnsNetworkClientAndIsIdempotent() {
         client.open();
 
@@ -309,6 +384,12 @@ class TextMessageWorkerTransportTest {
             connected = false;
             listener.onFailure(error);
         }
+
+        private void exhaustReconnects() {
+            connected = false;
+            listener.onDisconnected();
+            listener.onReconnectExhausted();
+        }
     }
 
     private static final class RecordingObserver
@@ -317,6 +398,7 @@ class TextMessageWorkerTransportTest {
         private final AtomicInteger ready = new AtomicInteger();
         private final AtomicInteger disconnected = new AtomicInteger();
         private final AtomicInteger failures = new AtomicInteger();
+        private final AtomicInteger exhausted = new AtomicInteger();
         private final AtomicReference<Throwable> lastFailure =
                 new AtomicReference<>();
 
@@ -334,6 +416,11 @@ class TextMessageWorkerTransportTest {
         public void onFailure(Throwable error) {
             failures.incrementAndGet();
             lastFailure.set(error);
+        }
+
+        @Override
+        public void onReconnectExhausted() {
+            exhausted.incrementAndGet();
         }
     }
 }

@@ -40,11 +40,12 @@ into that wire contract.
 `transport:worker-core` is not a generic transport framework. It contains the
 shared Worker execution and protocol state machines plus narrow network and
 control Client contracts. Java and Android long-lived hosts both delegate
-identity recovery, Register/Bind sequencing, Properties refresh, and session
-construction to Core's `TextMessageWorkerRuntime` and expose the same
+identity recovery, bounded Register/Bind preparation, Properties refresh, and
+Transport supervision to Core's `TextMessageWorkerRuntime` and expose the same
 `WorkerLifecycle` state, snapshot, and listener contract. Platform modules
-provide Identity storage and concrete network Clients; no Endpoint URI is
-persisted.
+provide Identity storage and concrete network Clients. Each Client owns
+bounded reconnect for one returned Endpoint; exhaustion returns control to the
+Core supervisor. No Endpoint URI is persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism
 exists.
 

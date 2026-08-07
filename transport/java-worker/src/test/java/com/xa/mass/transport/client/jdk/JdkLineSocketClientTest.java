@@ -1,6 +1,7 @@
 package com.xa.mass.transport.client.jdk;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,7 +53,7 @@ class JdkLineSocketClientTest {
                 },
                 URI.create("tcp://127.0.0.1:18084"),
                 Duration.ofSeconds(1),
-                Duration.ofMillis(50)
+                policy(20, 50)
         );
         reference.set(client);
 
@@ -87,7 +88,7 @@ class JdkLineSocketClientTest {
                 },
                 URI.create("tcp://127.0.0.1:18084"),
                 Duration.ofSeconds(1),
-                Duration.ofMillis(5)
+                policy(20, 5)
         );
 
         client.start(listener);
@@ -110,7 +111,7 @@ class JdkLineSocketClientTest {
                 ),
                 URI.create("tcp://127.0.0.1:18084"),
                 Duration.ofSeconds(1),
-                Duration.ofMillis(5)
+                policy(20, 5)
         );
 
         client.start(listener);
@@ -121,6 +122,72 @@ class JdkLineSocketClientTest {
         assertEquals(1, listener.disconnects.get());
         assertTrue(client.isConnected());
         client.close();
+    }
+
+    @Test
+    void exhaustsAfterBoundedConnectionFailures() throws Exception {
+        RecordingListener listener = new RecordingListener();
+        AtomicInteger connects = new AtomicInteger();
+        JdkLineSocketClient client = new JdkLineSocketClient(
+                (uri, timeout) -> {
+                    connects.incrementAndGet();
+                    throw new IOException("scripted connect failure");
+                },
+                URI.create("tcp://127.0.0.1:18084"),
+                Duration.ofSeconds(1),
+                policy(3, 5)
+        );
+
+        client.start(listener);
+        await(() -> listener.exhausted.get() == 1);
+        Thread.sleep(20);
+
+        assertEquals(3, connects.get());
+        assertEquals(3, listener.failures.get());
+        assertEquals(1, listener.exhausted.get());
+        client.close();
+    }
+
+    @Test
+    void stableConnectionResetsTheUnstableAttemptCount()
+            throws Exception {
+        AtomicInteger connects = new AtomicInteger();
+        RecordingListener listener = new RecordingListener();
+        JdkLineSocketClient client = new JdkLineSocketClient(
+                (uri, timeout) -> {
+                    int attempt = connects.getAndIncrement();
+                    if (attempt == 0 || attempt >= 2) {
+                        throw new IOException("scripted connect failure");
+                    }
+                    return new ScriptedSocket(
+                            new BlockingInput(),
+                            new ByteArrayOutputStream()
+                    );
+                },
+                URI.create("tcp://127.0.0.1:18084"),
+                Duration.ofSeconds(1),
+                policy(3, 5)
+        );
+
+        client.start(listener);
+        await(() -> listener.opens.get() == 1);
+        Thread.sleep(60);
+        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+        await(() -> listener.exhausted.get() == 1);
+
+        assertEquals(4, connects.get());
+        client.close();
+    }
+
+    private static TextMessageReconnectPolicy policy(
+            int maxAttempts,
+            long reconnectMillis
+    ) {
+        return TextMessageReconnectPolicy.of(
+                maxAttempts,
+                Duration.ofMillis(reconnectMillis),
+                Duration.ofMillis(40)
+        );
     }
 
     private static void await(Check check) throws Exception {
@@ -144,6 +211,7 @@ class JdkLineSocketClientTest {
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger failures = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
+        private final AtomicInteger exhausted = new AtomicInteger();
         private final List<String> lines = new CopyOnWriteArrayList<>();
 
         @Override
@@ -164,6 +232,11 @@ class JdkLineSocketClientTest {
         @Override
         public void onFailure(Throwable error) {
             failures.incrementAndGet();
+        }
+
+        @Override
+        public void onReconnectExhausted() {
+            exhausted.incrementAndGet();
         }
     }
 

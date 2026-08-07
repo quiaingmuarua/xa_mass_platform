@@ -5,6 +5,7 @@ import android.os.HandlerThread;
 import android.os.Looper;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 
 import java.net.URI;
 import java.time.Duration;
@@ -38,13 +39,14 @@ public final class AndroidOkHttpTextWebSocketClient
         CONNECTING,
         CONNECTED,
         RECONNECT_SCHEDULED,
+        EXHAUSTED,
         CLOSED
     }
 
     private final Object lifecycleLock = new Object();
     private final NetworkResources networkResources;
     private final URI socketUri;
-    private final Duration reconnectInterval;
+    private final TextMessageReconnectPolicy reconnectPolicy;
     private final AtomicReference<ActiveConnection> activeConnection =
             new AtomicReference<>();
 
@@ -58,17 +60,19 @@ public final class AndroidOkHttpTextWebSocketClient
     private Listener listener;
     private ConnectionAttempt currentAttempt;
     private long nextGeneration;
+    private int unstableAttempts;
+    private Runnable stableResetTask;
 
     public AndroidOkHttpTextWebSocketClient(
             URI socketUri,
             Duration requestTimeout,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
                 createNetworkResources(socketUri, requestTimeout),
                 socketUri,
                 requestTimeout,
-                reconnectInterval
+                reconnectPolicy
         );
     }
 
@@ -76,7 +80,7 @@ public final class AndroidOkHttpTextWebSocketClient
             NetworkResources networkResources,
             URI socketUri,
             Duration requestTimeout,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this.networkResources = Objects.requireNonNull(
                 networkResources,
@@ -87,9 +91,9 @@ public final class AndroidOkHttpTextWebSocketClient
                 requestTimeout,
                 "requestTimeout"
         );
-        this.reconnectInterval = requirePositive(
-                reconnectInterval,
-                "reconnectInterval"
+        this.reconnectPolicy = Objects.requireNonNull(
+                reconnectPolicy,
+                "reconnectPolicy"
         );
     }
 
@@ -204,12 +208,14 @@ public final class AndroidOkHttpTextWebSocketClient
             return;
         }
         this.listener = listener;
+        unstableAttempts = 0;
         connectOnHandlerThread();
     }
 
     private void connectOnHandlerThread() {
         if (closeRequested
                 || currentAttempt != null
+                || visibleState == State.EXHAUSTED
                 || visibleState == State.CLOSED) {
             return;
         }
@@ -251,6 +257,7 @@ public final class AndroidOkHttpTextWebSocketClient
         if (callback != null) {
             callback.onOpen();
         }
+        scheduleStableReset(generation);
     }
 
     private void textOnHandlerThread(
@@ -309,6 +316,7 @@ public final class AndroidOkHttpTextWebSocketClient
         if (attempt == null) {
             return;
         }
+        cancelStableReset();
         currentAttempt = null;
         ActiveConnection active = activeConnection.get();
         if (active != null && active.generation == generation) {
@@ -323,7 +331,42 @@ public final class AndroidOkHttpTextWebSocketClient
                 callback.onDisconnected();
             }
         }
-        scheduleReconnectOnHandlerThread();
+        unstableAttempts++;
+        if (unstableAttempts
+                >= reconnectPolicy.maxUnstableAttempts()) {
+            transitionTo(State.EXHAUSTED);
+            if (!closeRequested && callback != null) {
+                callback.onReconnectExhausted();
+            }
+        } else {
+            scheduleReconnectOnHandlerThread();
+        }
+    }
+
+    private void scheduleStableReset(long generation) {
+        Handler target = currentHandler();
+        if (target == null) {
+            return;
+        }
+        cancelStableReset();
+        stableResetTask = () -> {
+            if (isConnectedGeneration(generation)) {
+                unstableAttempts = 0;
+            }
+            stableResetTask = null;
+        };
+        target.postDelayed(
+                stableResetTask,
+                reconnectPolicy.stableConnectionDuration().toMillis()
+        );
+    }
+
+    private void cancelStableReset() {
+        Handler target = currentHandler();
+        if (target != null && stableResetTask != null) {
+            target.removeCallbacks(stableResetTask);
+        }
+        stableResetTask = null;
     }
 
     private void scheduleReconnectOnHandlerThread() {
@@ -335,7 +378,7 @@ public final class AndroidOkHttpTextWebSocketClient
         target.removeCallbacks(reconnectTask);
         target.postDelayed(
                 reconnectTask,
-                reconnectInterval.toMillis()
+                reconnectPolicy.reconnectInterval().toMillis()
         );
     }
 
@@ -353,8 +396,10 @@ public final class AndroidOkHttpTextWebSocketClient
             target.removeCallbacksAndMessages(null);
         }
         ConnectionAttempt attempt = currentAttempt;
+        cancelStableReset();
         currentAttempt = null;
         activeConnection.set(null);
+        stableResetTask = null;
         listener = null;
         transitionTo(State.CLOSED);
         if (attempt != null && attempt.socket != null) {

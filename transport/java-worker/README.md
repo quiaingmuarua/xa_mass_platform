@@ -15,13 +15,13 @@ OkHttpWorkerPointClient
   -> target Worker poll/result HTTP
 
 OkHttpTextWebSocketClient
-  -> text WebSocket connection and fixed reconnect
+  -> text WebSocket connection and bounded fixed reconnect
 
 OkHttpWorkerControlClient
   -> Worker Register and Endpoint Bind HTTP
 
 JdkLineSocketClient
-  -> line-oriented TCP connection and fixed reconnect
+  -> line-oriented TCP connection and bounded fixed reconnect
 ```
 
 Core still owns `PollingWorkerTransport` and `TextMessageWorkerTransport`.
@@ -44,7 +44,7 @@ JavaWorker worker = JavaWorker.builder(
         ))
         .eventDefinitions(eventDefinitions)
         .requestTimeout(Duration.ofSeconds(10))
-        .reconnectInterval(Duration.ofMillis(250))
+        .retryPolicy(WorkerRetryPolicy.defaults())
         .build();
 
 worker.start();
@@ -64,16 +64,20 @@ rejected because its request-response lifecycle is assembled separately.
 `JavaWorker` implements Core's `WorkerLifecycle` and delegates its mechanism to
 `TextMessageWorkerRuntime`: a missing Worker ID is registered and saved, every
 `start()` performs Endpoint Bind, and the returned URI is used for that
-session. Temporary disconnects are handled by the selected concrete Client
-against the same session URI and do not repeat Bind. `stop()` preserves
-identity; `refreshProperties()` rebinds only a changed complete snapshot.
+run. Temporary disconnects are handled by the selected concrete Client against
+the same URI and do not repeat Bind. When its bounded reconnect budget is
+exhausted, Core reloads Properties and performs a new bounded prepare round.
+`stop()` preserves identity; `refreshProperties()` rebinds only a changed
+complete snapshot and rejects an unexpected Endpoint URI change rather than
+continuing on a stale URI.
 
 ## Lower-level Composition
 
 Callers may still compose concrete Clients with Core transports directly for
 Polling, line Socket, or custom lifecycle policy. Concrete Clients expose only
 Core interfaces and JDK types. They own URL/request handling, sockets, stale
-callback suppression, fixed reconnect, and network resources. They do not
+callback suppression, stable-window accounting, bounded fixed reconnect, and
+network resources. They do not
 cache offline business messages, and successful `send` is not an application
 ACK.
 

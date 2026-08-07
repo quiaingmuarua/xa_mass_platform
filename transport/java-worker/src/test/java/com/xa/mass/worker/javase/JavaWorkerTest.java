@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 
 import org.junit.jupiter.api.AfterEach;
@@ -136,7 +138,7 @@ class JavaWorkerTest {
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
                 .requestTimeout(Duration.ofSeconds(2))
-                .reconnectInterval(Duration.ofMillis(20))
+                .retryPolicy(retryPolicy())
                 .build();
     }
 
@@ -176,7 +178,7 @@ class JavaWorkerTest {
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())
                     .requestTimeout(Duration.ofSeconds(2))
-                    .reconnectInterval(Duration.ofMillis(20))
+                    .retryPolicy(retryPolicy())
                     .build();
 
             worker.start();
@@ -210,6 +212,18 @@ class JavaWorkerTest {
                 WorkerEventParameterResolvers.jsonMap(),
                 parameters -> "null"
         ));
+    }
+
+    private static WorkerRetryPolicy retryPolicy() {
+        return WorkerRetryPolicy.of(
+                10,
+                Duration.ofMillis(20),
+                TextMessageReconnectPolicy.of(
+                        20,
+                        Duration.ofMillis(20),
+                        Duration.ofMillis(100)
+                )
+        );
     }
 
     private void enqueueSession(boolean registration) {

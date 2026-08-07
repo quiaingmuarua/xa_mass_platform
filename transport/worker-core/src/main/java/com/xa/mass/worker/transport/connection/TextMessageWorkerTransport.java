@@ -9,6 +9,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnecti
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import java.util.Collection;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -16,8 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Owns the Worker Delivery protocol over one reconnecting text-message client:
- * connection Bind, serial command execution, and one pending result.
+ * Owns Worker Delivery protocol handling over one reconnecting text client.
  */
 public final class TextMessageWorkerTransport
         implements AutoCloseable, TextMessageClient.Listener {
@@ -29,6 +29,49 @@ public final class TextMessageWorkerTransport
         void onDisconnected();
 
         void onFailure(Throwable error);
+
+        void onReconnectExhausted();
+    }
+
+    /**
+     * Opaque one-result slot shared by transports within one Worker start.
+     */
+    public static final class PendingResultSlot implements AutoCloseable {
+
+        private WorkerResult result;
+        private boolean closed;
+
+        public PendingResultSlot() {
+        }
+
+        private synchronized boolean offer(WorkerResult value) {
+            Objects.requireNonNull(value, "result");
+            if (closed || result != null) {
+                return false;
+            }
+            result = value;
+            return true;
+        }
+
+        private synchronized WorkerResult peek() {
+            return closed ? null : result;
+        }
+
+        private synchronized void clearIfSame(WorkerResult expected) {
+            if (!closed && result == expected) {
+                result = null;
+            }
+        }
+
+        public synchronized boolean hasPendingResult() {
+            return !closed && result != null;
+        }
+
+        @Override
+        public synchronized void close() {
+            closed = true;
+            result = null;
+        }
     }
 
     private static final Observer NOOP_OBSERVER = new Observer() {
@@ -43,12 +86,18 @@ public final class TextMessageWorkerTransport
         @Override
         public void onFailure(Throwable error) {
         }
+
+        @Override
+        public void onReconnectExhausted() {
+        }
     };
 
     private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
+    private final PendingResultSlot pendingResultSlot;
+    private final boolean ownsPendingResultSlot;
     private final Observer observer;
     private final ExecutorService execution;
     private final CountDownLatch stopped = new CountDownLatch(1);
@@ -57,7 +106,8 @@ public final class TextMessageWorkerTransport
     private boolean closed;
     private boolean bindSent;
     private boolean processing;
-    private WorkerResult pendingResult;
+    private boolean reconnectExhausted;
+    private boolean exhaustionNotified;
 
     public TextMessageWorkerTransport(
             TextMessageClient client,
@@ -68,21 +118,9 @@ public final class TextMessageWorkerTransport
                 client,
                 workerId,
                 new WorkerCommandDispatcher(definitions),
+                new PendingResultSlot(),
+                true,
                 NOOP_OBSERVER
-        );
-    }
-
-    public TextMessageWorkerTransport(
-            TextMessageClient client,
-            String workerId,
-            Collection<? extends WorkerEventDefinition<?>> definitions,
-            Observer observer
-    ) {
-        this(
-                client,
-                workerId,
-                new WorkerCommandDispatcher(definitions),
-                observer
         );
     }
 
@@ -91,7 +129,14 @@ public final class TextMessageWorkerTransport
             String workerId,
             WorkerCommandExecutor commandExecutor
     ) {
-        this(client, workerId, commandExecutor, NOOP_OBSERVER);
+        this(
+                client,
+                workerId,
+                commandExecutor,
+                new PendingResultSlot(),
+                true,
+                NOOP_OBSERVER
+        );
     }
 
     public TextMessageWorkerTransport(
@@ -100,25 +145,53 @@ public final class TextMessageWorkerTransport
             WorkerCommandExecutor commandExecutor,
             Observer observer
     ) {
-        if (client == null) {
-            throw new IllegalArgumentException(
-                    "client must be present"
-            );
-        }
-        if (commandExecutor == null) {
-            throw new IllegalArgumentException(
-                    "commandExecutor must be present"
-            );
-        }
-        if (observer == null) {
-            throw new IllegalArgumentException(
-                    "observer must be present"
-            );
-        }
-        this.client = client;
+        this(
+                client,
+                workerId,
+                commandExecutor,
+                new PendingResultSlot(),
+                true,
+                observer
+        );
+    }
+
+    public TextMessageWorkerTransport(
+            TextMessageClient client,
+            String workerId,
+            WorkerCommandExecutor commandExecutor,
+            PendingResultSlot pendingResultSlot,
+            Observer observer
+    ) {
+        this(
+                client,
+                workerId,
+                commandExecutor,
+                pendingResultSlot,
+                false,
+                observer
+        );
+    }
+
+    private TextMessageWorkerTransport(
+            TextMessageClient client,
+            String workerId,
+            WorkerCommandExecutor commandExecutor,
+            PendingResultSlot pendingResultSlot,
+            boolean ownsPendingResultSlot,
+            Observer observer
+    ) {
+        this.client = Objects.requireNonNull(client, "client");
         this.bind = new WorkerConnectionBind(workerId);
-        this.commandExecutor = commandExecutor;
-        this.observer = observer;
+        this.commandExecutor = Objects.requireNonNull(
+                commandExecutor,
+                "commandExecutor"
+        );
+        this.pendingResultSlot = Objects.requireNonNull(
+                pendingResultSlot,
+                "pendingResultSlot"
+        );
+        this.ownsPendingResultSlot = ownsPendingResultSlot;
+        this.observer = Objects.requireNonNull(observer, "observer");
         execution = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(
                     runnable,
@@ -133,7 +206,7 @@ public final class TextMessageWorkerTransport
         synchronized (this) {
             if (closed) {
                 throw new IllegalStateException(
-                    "TextMessageWorkerTransport is closed"
+                        "TextMessageWorkerTransport is closed"
                 );
             }
             if (running) {
@@ -160,7 +233,7 @@ public final class TextMessageWorkerTransport
     public void onOpen() {
         boolean ready;
         synchronized (this) {
-            if (!running || closed) {
+            if (!running || closed || reconnectExhausted) {
                 client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
                 return;
             }
@@ -178,9 +251,10 @@ public final class TextMessageWorkerTransport
         synchronized (this) {
             if (!running
                     || closed
+                    || reconnectExhausted
                     || !bindSent
                     || processing
-                    || pendingResult != null) {
+                    || pendingResultSlot.hasPendingResult()) {
                 closeProtocolError();
                 return;
             }
@@ -190,11 +264,16 @@ public final class TextMessageWorkerTransport
         try {
             execution.execute(() -> executeCommand(message));
         } catch (RejectedExecutionException error) {
+            boolean notifyExhausted;
             synchronized (this) {
                 processing = false;
-                if (running && !closed) {
+                if (running && !closed && !reconnectExhausted) {
                     closeProtocolError();
                 }
+                notifyExhausted = markExhaustionNotificationLocked();
+            }
+            if (notifyExhausted) {
+                notifyReconnectExhausted();
             }
         }
     }
@@ -216,6 +295,19 @@ public final class TextMessageWorkerTransport
     }
 
     @Override
+    public void onReconnectExhausted() {
+        boolean notify;
+        synchronized (this) {
+            bindSent = false;
+            reconnectExhausted = true;
+            notify = markExhaustionNotificationLocked();
+        }
+        if (notify) {
+            notifyReconnectExhausted();
+        }
+    }
+
+    @Override
     public void close() {
         synchronized (this) {
             if (closed) {
@@ -227,11 +319,14 @@ public final class TextMessageWorkerTransport
         }
         client.close();
         execution.shutdownNow();
+        if (ownsPendingResultSlot) {
+            pendingResultSlot.close();
+        }
         stopped.countDown();
     }
 
-    public synchronized boolean hasPendingResult() {
-        return pendingResult != null;
+    public boolean hasPendingResult() {
+        return pendingResultSlot.hasPendingResult();
     }
 
     public synchronized boolean isConnected() {
@@ -243,46 +338,51 @@ public final class TextMessageWorkerTransport
         try {
             result = commandExecutor.execute(encodedCommand);
         } catch (RuntimeException error) {
+            boolean notifyExhausted;
             synchronized (this) {
                 processing = false;
-                if (running && !closed) {
+                if (running && !closed && !reconnectExhausted) {
                     closeProtocolError();
                 }
+                notifyExhausted = markExhaustionNotificationLocked();
+            }
+            if (notifyExhausted) {
+                notifyReconnectExhausted();
             }
             return;
         }
 
+        boolean notifyExhausted;
         synchronized (this) {
             processing = false;
-            if (!running || closed) {
-                return;
-            }
-            if (result.isPresent()) {
-                pendingResult = result.get();
-                if (bindSent && client.isConnected()) {
+            if (running && !closed && result.isPresent()) {
+                if (!pendingResultSlot.offer(result.get())) {
+                    closeProtocolError();
+                } else if (bindSent && client.isConnected()) {
                     sendPending();
                 }
             }
+            notifyExhausted = markExhaustionNotificationLocked();
+        }
+        if (notifyExhausted) {
+            notifyReconnectExhausted();
         }
     }
 
     private void sendBind() {
-        boolean accepted = client.send(
-                codec.encodeWorkerConnectionBind(bind)
-        );
-        if (!accepted) {
+        if (!client.send(codec.encodeWorkerConnectionBind(bind))) {
             bindSent = false;
             client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             return;
         }
         bindSent = true;
-        if (pendingResult != null) {
+        if (pendingResultSlot.hasPendingResult()) {
             sendPending();
         }
     }
 
     private void sendPending() {
-        WorkerResult sending = pendingResult;
+        WorkerResult sending = pendingResultSlot.peek();
         if (sending == null || !bindSent) {
             return;
         }
@@ -291,14 +391,24 @@ public final class TextMessageWorkerTransport
             client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             return;
         }
-        if (pendingResult == sending) {
-            pendingResult = null;
-        }
+        pendingResultSlot.clearIfSame(sending);
     }
 
     private void closeProtocolError() {
         bindSent = false;
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    }
+
+    private boolean markExhaustionNotificationLocked() {
+        if (!running
+                || closed
+                || !reconnectExhausted
+                || processing
+                || exhaustionNotified) {
+            return false;
+        }
+        exhaustionNotified = true;
+        return true;
     }
 
     private void notifyReady() {
@@ -320,6 +430,14 @@ public final class TextMessageWorkerTransport
     private void notifyFailure(Throwable error) {
         try {
             observer.onFailure(error);
+        } catch (RuntimeException ignored) {
+            // Host observation cannot interrupt Worker protocol handling.
+        }
+    }
+
+    private void notifyReconnectExhausted() {
+        try {
+            observer.onReconnectExhausted();
         } catch (RuntimeException ignored) {
             // Host observation cannot interrupt Worker protocol handling.
         }

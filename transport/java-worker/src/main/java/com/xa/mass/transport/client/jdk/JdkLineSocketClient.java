@@ -1,6 +1,7 @@
 package com.xa.mass.transport.client.jdk;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -22,24 +23,27 @@ public final class JdkLineSocketClient implements TextMessageClient {
     private final SocketConnector connector;
     private final URI socketUri;
     private final Duration connectTimeout;
-    private final Duration reconnectInterval;
+    private final TextMessageReconnectPolicy reconnectPolicy;
     private final ExecutorService connectionExecutor;
+    private volatile Thread connectionThread;
 
     private Listener listener;
     private Connection current;
     private boolean running;
     private boolean closed;
+    private boolean reconnectExhausted;
+    private int unstableAttempts;
 
     public JdkLineSocketClient(
             URI socketUri,
             Duration connectTimeout,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
                 JdkLineSocketClient::connectSocket,
                 socketUri,
                 connectTimeout,
-                reconnectInterval
+                reconnectPolicy
         );
     }
 
@@ -47,7 +51,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
             SocketConnector connector,
             URI socketUri,
             Duration connectTimeout,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this.connector = Objects.requireNonNull(
                 connector,
@@ -58,9 +62,9 @@ public final class JdkLineSocketClient implements TextMessageClient {
                 connectTimeout,
                 "connectTimeout"
         );
-        this.reconnectInterval = requirePositive(
-                reconnectInterval,
-                "reconnectInterval"
+        this.reconnectPolicy = Objects.requireNonNull(
+                reconnectPolicy,
+                "reconnectPolicy"
         );
         connectionExecutor = Executors.newSingleThreadExecutor(
                 runnable -> {
@@ -69,6 +73,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
                             "worker-line-socket"
                     );
                     thread.setDaemon(true);
+                    connectionThread = thread;
                     return thread;
                 }
         );
@@ -88,6 +93,8 @@ public final class JdkLineSocketClient implements TextMessageClient {
             }
             this.listener = listener;
             running = true;
+            reconnectExhausted = false;
+            unstableAttempts = 0;
         }
         connectionExecutor.execute(this::runConnections);
     }
@@ -152,23 +159,27 @@ public final class JdkLineSocketClient implements TextMessageClient {
             closeQuietly(connection.socket);
         }
         connectionExecutor.shutdownNow();
-        try {
-            connectionExecutor.awaitTermination(
-                    connectTimeout.toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
+        if (Thread.currentThread() != connectionThread) {
+            try {
+                connectionExecutor.awaitTermination(
+                        connectTimeout.toMillis(),
+                        TimeUnit.MILLISECONDS
+                );
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
     private void runConnections() {
         while (isRunning()) {
+            Socket socket = null;
             Connection connection = null;
             boolean opened = false;
+            long openedAtNanos = 0L;
             Throwable failure = null;
             try {
-                Socket socket = connector.connect(
+                socket = connector.connect(
                         socketUri,
                         connectTimeout
                 );
@@ -190,6 +201,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
                     break;
                 }
                 opened = true;
+                openedAtNanos = System.nanoTime();
                 listener.onOpen();
                 String line;
                 while (isCurrent(connection)
@@ -205,6 +217,8 @@ public final class JdkLineSocketClient implements TextMessageClient {
                 if (connection != null) {
                     clear(connection);
                     closeQuietly(connection.socket);
+                } else if (socket != null) {
+                    closeQuietly(socket);
                 }
                 if (notify) {
                     if (failure != null && !requested) {
@@ -214,6 +228,11 @@ public final class JdkLineSocketClient implements TextMessageClient {
                     }
                 }
             }
+            if (isRunning()
+                    && recordUnstableTermination(openedAtNanos)) {
+                listener.onReconnectExhausted();
+                break;
+            }
             if (isRunning() && !sleepBeforeReconnect()) {
                 break;
             }
@@ -222,7 +241,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
 
     private boolean install(Connection connection) {
         synchronized (lock) {
-            if (!running || closed) {
+            if (!running || closed || reconnectExhausted) {
                 return false;
             }
             current = connection;
@@ -246,13 +265,34 @@ public final class JdkLineSocketClient implements TextMessageClient {
 
     private boolean isRunning() {
         synchronized (lock) {
-            return running && !closed;
+            return running && !closed && !reconnectExhausted;
+        }
+    }
+
+    private boolean recordUnstableTermination(long openedAtNanos) {
+        synchronized (lock) {
+            if (!running || closed || reconnectExhausted) {
+                return reconnectExhausted;
+            }
+            if (openedAtNanos != 0L
+                    && System.nanoTime() - openedAtNanos
+                    >= reconnectPolicy
+                    .stableConnectionDuration()
+                    .toNanos()) {
+                unstableAttempts = 0;
+            }
+            unstableAttempts++;
+            reconnectExhausted = unstableAttempts
+                    >= reconnectPolicy.maxUnstableAttempts();
+            return reconnectExhausted;
         }
     }
 
     private boolean sleepBeforeReconnect() {
         try {
-            Thread.sleep(reconnectInterval.toMillis());
+            Thread.sleep(
+                    reconnectPolicy.reconnectInterval().toMillis()
+            );
             return true;
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();

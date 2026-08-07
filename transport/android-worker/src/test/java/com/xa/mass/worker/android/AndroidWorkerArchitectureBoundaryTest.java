@@ -46,6 +46,10 @@ public class AndroidWorkerArchitectureBoundaryTest {
         ));
         assertTrue(networkClient.contains("private enum State"));
         assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
+        assertTrue(networkClient.contains("EXHAUSTED"));
+        assertTrue(networkClient.contains(
+                "TextMessageReconnectPolicy"
+        ));
         assertTrue(networkClient.contains("HandlerThread"));
         assertTrue(source.contains("public final class AndroidWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));

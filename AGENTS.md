@@ -129,14 +129,16 @@ tag.
   contract. It must compile with `--release 11` and must not import OkHttp,
   Android, Netty, Spring, Redis, Server, or Kernel implementations. Its shared
   text-message Runtime owns Properties snapshotting, Worker ID recovery,
-  Register/Bind sequencing, one start session, and local lifecycle state.
+  bounded Register/Bind preparation, per-start pending-result ownership,
+  exhausted-Transport replacement, and local lifecycle state.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
   but not on `transport/java-worker`. Its network Client serializes connection
-  state, generation filtering, callbacks, and fixed reconnect scheduling on a
+  state, generation filtering, callbacks, stable-window accounting, and
+  bounded fixed reconnect scheduling on a
   dedicated HandlerThread. `AndroidWorker` owns application-scoped Identity,
   concrete Android Client assembly, and Application Context adaptation; Core
   owns Register/Bind sequencing, Properties snapshot refresh, and unified

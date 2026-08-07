@@ -528,9 +528,10 @@ Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
 groups explicitly list 10 Workers. The `worker-001` entry in each group owns a
 local sandbox under `data/scenario-workers`; the other 18 Workers remain
-ephemeral. Omitted timeout fields use a 10 second
-request timeout, a 250 millisecond reconnect interval, and a 15 second
-initial-connect timeout. A sandbox Worker registers only when its local
+ephemeral. Omitted timeout and retry fields use a 10 second request timeout, a
+10-attempt prepare budget at one-second intervals, a 20-attempt connection
+budget at 500-millisecond intervals with a 10-second stable window, and a 15
+second initial-connect timeout. A sandbox Worker registers only when its local
 `identity.json` is absent. Later starts reuse the persisted Worker ID, load the
 complete snapshot from `worker-properties.json`, and Bind again. An ephemeral
 Worker continues to register on each start. Scenario then builds each
@@ -594,8 +595,9 @@ public Register, Endpoint Bind, and Worker connection flow; Server does not
 construct or manage that Worker.
 
 The demo App restores its long-lived Worker ID but performs Bind on every
-Worker start. The returned Endpoint URI is session-local and is reused only by
-the WebSocket Client's temporary reconnects; it is not persisted by Android.
+Worker start. The returned Endpoint URI is reused only by the WebSocket
+Client's bounded temporary reconnects. Exhaustion returns control to Core,
+which prepares and Binds again; the URI is not persisted by Android.
 
 The profile publishes a device-local URI because the documented real-device
 path uses `adb reverse` for ports `18082` and `18085`. This is a debug

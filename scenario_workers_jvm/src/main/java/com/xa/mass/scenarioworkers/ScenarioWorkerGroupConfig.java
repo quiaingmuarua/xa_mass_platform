@@ -1,5 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,7 +17,7 @@ record ScenarioWorkerGroupConfig(
         List<String> eventCodes,
         List<ScenarioWorkerConfig> workers,
         Duration requestTimeout,
-        Duration reconnectInterval,
+        WorkerRetryPolicy retryPolicy,
         Duration connectTimeout
 ) {
 
@@ -48,7 +50,7 @@ record ScenarioWorkerGroupConfig(
         }
         workers = List.copyOf(new ArrayList<>(workers));
         requirePositive(requestTimeout, "requestTimeout");
-        requirePositive(reconnectInterval, "reconnectInterval");
+        Objects.requireNonNull(retryPolicy, "retryPolicy");
         requirePositive(connectTimeout, "connectTimeout");
     }
 

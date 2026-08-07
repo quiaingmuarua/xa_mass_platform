@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 
 import org.junit.After;
 import org.junit.Before;
@@ -13,6 +14,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -47,7 +49,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
                 ),
                 URI.create("ws://127.0.0.1:18084/worker"),
                 Duration.ofSeconds(1),
-                Duration.ofMillis(10)
+                reconnectPolicy()
         );
     }
 
@@ -216,6 +218,10 @@ public class AndroidOkHttpTextWebSocketClientTest {
             @Override
             public void onFailure(Throwable error) {
             }
+
+            @Override
+            public void onReconnectExhausted() {
+            }
         });
         FakeConnection connection = awaitConnection(0);
         connection.open();
@@ -235,6 +241,53 @@ public class AndroidOkHttpTextWebSocketClientTest {
                 elapsedMillis < 500);
         assertTrue(connection.socket.cancelled);
         assertTrue(resourcesClosed.get());
+    }
+
+    @Test
+    public void exhaustsAfterBoundedUnstableAttempts()
+            throws Exception {
+        client.start(listener);
+        awaitConnection(0).failure(new IOException("one"));
+        advanceReconnectClock();
+        awaitConnection(1).failure(new IOException("two"));
+        advanceReconnectClock();
+        awaitConnection(2).failure(new IOException("three"));
+
+        await(() -> listener.exhausted.get() == 1);
+        advanceReconnectClock();
+        assertEquals(3, connector.connections.size());
+        assertEquals(1, listener.exhausted.get());
+    }
+
+    @Test
+    public void stableConnectionResetsTheUnstableAttemptCount()
+            throws Exception {
+        client.start(listener);
+        awaitConnection(0).failure(new IOException("one"));
+        advanceReconnectClock();
+        FakeConnection stable = awaitConnection(1);
+        stable.open();
+        await(client::isConnected);
+        Thread.sleep(120);
+        ShadowSystemClock.advanceBy(Duration.ofMillis(120));
+        Thread.sleep(20);
+        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+        advanceReconnectClock();
+
+        awaitConnection(2).failure(new IOException("three"));
+        advanceReconnectClock();
+        awaitConnection(3).failure(new IOException("four"));
+        await(() -> listener.exhausted.get() == 1);
+
+        assertEquals(4, connector.connections.size());
+    }
+
+    private static TextMessageReconnectPolicy reconnectPolicy() {
+        return TextMessageReconnectPolicy.of(
+                3,
+                Duration.ofMillis(10),
+                Duration.ofMillis(100)
+        );
     }
 
     private FakeConnection awaitConnection(int index) throws Exception {
@@ -269,6 +322,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
         private final AtomicInteger failures = new AtomicInteger();
+        private final AtomicInteger exhausted = new AtomicInteger();
         private final List<String> events =
                 new CopyOnWriteArrayList<>();
         private final List<String> callbackThreads =
@@ -295,6 +349,12 @@ public class AndroidOkHttpTextWebSocketClientTest {
         public void onFailure(Throwable error) {
             failures.incrementAndGet();
             record("failure");
+        }
+
+        @Override
+        public void onReconnectExhausted() {
+            exhausted.incrementAndGet();
+            record("exhausted");
         }
 
         private void record(String event) {

@@ -81,8 +81,10 @@ command is processing and no result is pending.
 Each Transport retains at most one pending result. Polling retains it until the
 point result submission succeeds. The text-message Transport retains it until the
 active Client accepts the encoded result; after reconnect it sends the Bind
-frame first and then resend it. Client acceptance is not an application ACK, and Worker Core
-does not add a pending/ack ledger.
+frame first and then resends it. A Runtime-owned single slot survives automatic
+Transport replacement within one `start()` generation. Explicit `stop()`,
+`close()`, or terminal `ERROR` clears it. Client acceptance is not an
+application ACK, and Worker Core does not add a pending/ack ledger.
 
 The Transport owns and closes its Client. Polling `close()`, and long-lived
 `start()`/`close()`, are idempotent at their lifecycle boundaries. A closed
@@ -118,8 +120,12 @@ result ownership remains in the corresponding Worker Transport.
 The text-message Client contract requires serialized listener callbacks, one
 terminal callback per connection generation, stale-connection isolation,
 thread-safe non-blocking `send`, idempotent lifecycle, and no callbacks after
-`close()` returns. WebSocket and line Socket implementations own framing and
-map `CloseReason` to their protocol-specific close operation.
+`close()` returns. `TextMessageReconnectPolicy` bounds consecutive unstable
+connections. Opening a connection does not reset the count; only remaining
+connected for the configured stable window does. Once the budget is exhausted,
+the Client stops reconnecting and emits exactly one `onReconnectExhausted()`.
+WebSocket and line Socket implementations own framing and map `CloseReason` to
+their protocol-specific close operation.
 
 ## Text-message Runtime
 
@@ -128,27 +134,62 @@ Platform Workers remain final composition facades and delegate that contract
 to `TextMessageWorkerRuntime`; they do not inherit a lifecycle template or
 copy the Core state model.
 
-`TextMessageWorkerRuntime` owns the common Java/Android host lifecycle:
+`TextMessageWorkerRuntime` owns a two-level Java/Android host lifecycle:
+
+The Runtime owns one `WorkerControlClient` for its full lifetime. Prepare
+retries, later starts, and Properties refresh are serialized through that
+Client; only terminal `close()` releases it.
 
 ```text
-load one complete Properties snapshot
--> load the long-lived workerId
--> Register and save it only when absent
--> Bind on every start
--> construct TextMessageWorkerTransport with the returned URI
+outer supervisor
+  -> load one complete Properties snapshot
+  -> load the long-lived workerId
+  -> Register and save it only when absent
+  -> retry Endpoint Bind within the prepare budget
+  -> construct TextMessageWorkerTransport with the returned URI
+
+inner Client
+  -> connect and reconnect within the connection budget
+  -> after reconnect exhaustion notify the supervisor
+  -> supervisor closes the old Transport and prepares again
 ```
 
-Temporary network reconnects remain inside the concrete Client and reuse the
-URI for the current start session; they do not call Register or Bind. `stop()`
-closes that session but retains the Worker ID, while a later `start()` always
-performs Bind again. `refreshProperties()` rebinds only when the canonical
-snapshot changes. A different URI is recorded as requiring an explicit
-`stop()`/`start()`; Properties refresh does not implement an implicit Endpoint
-migration or run two Transports concurrently. Control network errors and HTTP 5xx are retried at the configured fixed
-interval; contract rejection, malformed state, and Identity persistence
-failure enter `ERROR`. The Runtime fixes one `WorkerTransportType` at
-construction; `WEBSOCKET` and `SOCKET` are supported and `POLLING` remains a
-separate request-response lifecycle.
+Temporary reconnects reuse the current URI and do not call Register or Bind.
+Connection-budget exhaustion starts a new prepare round, reloads Properties,
+and Bind may return the same or a different URI. The prepare-attempt budget
+applies to one such round; it is not a lifetime limit on supervisor rounds. If
+each Bind succeeds while connections keep exhausting, the supervisor continues
+until `stop()` or `close()`. `stop()` retains the Worker ID, while a later
+explicit `start()` always performs Bind again.
+`refreshProperties()` rebinds only when the canonical snapshot changes and
+requires the returned URI to remain unchanged. A changed URI enters `ERROR` so
+the local connection cannot silently diverge from the latest Bind response.
+Control network errors and HTTP 5xx consume the fixed prepare budget; contract
+rejection, malformed state, and Identity persistence failure enter `ERROR`
+immediately. Exhausting one prepare round also enters `ERROR`, and only an
+explicit later `start()` begins again.
+
+`WorkerRetryPolicy.defaults()` fixes prepare at 10 attempts separated by one
+second, and connection recovery at 20 consecutive unstable terminations
+separated by 500 milliseconds with a 10 second stable window.
+
+Lifecycle observation has three independent axes:
+
+```text
+State             STOPPED / STARTING / RUNNING / ERROR / CLOSED
+PrepareOperation  NONE / REGISTERING / BINDING
+ConnectionState   DISCONNECTED / CONNECTING / CONNECTED
+```
+
+`ConnectionState` is derived from the currently owned Transport rather than
+stored as a second connection truth inside the Runtime.
+
+`RUNNING` only means prepare produced a local Transport. `CONNECTED` only
+means the network opened and the workerId-only connection Bind was handed to
+the network stack. Neither is Kernel online truth or scheduling availability.
+The Runtime fixes one `WorkerTransportType` at construction; `WEBSOCKET` and
+`SOCKET` are supported and `POLLING` remains a separate request-response
+lifecycle.
 
 ## Verification
 

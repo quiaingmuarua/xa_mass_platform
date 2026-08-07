@@ -23,6 +23,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private static final int WORKER_START_FAILED = 14004;
     private static final int WORKER_CONNECT_TIMEOUT = 14005;
     private static final int WORKER_INDEX_FAILED = 14010;
+    private static final Duration INDEX_RETRY_INTERVAL =
+            Duration.ofMillis(250);
 
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerIndexClient indexClient;
@@ -248,7 +250,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     && System.nanoTime() < deadline;
             if (retry) {
                 sleep(
-                        group.reconnectInterval(),
+                        INDEX_RETRY_INTERVAL,
                         "scenarioWorkers.retryIndex",
                         group.workerGroupId()
                 );
@@ -375,7 +377,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 .workerProperties(propertiesProvider)
                 .eventDefinitions(definitions)
                 .requestTimeout(config.requestTimeout())
-                .reconnectInterval(config.reconnectInterval())
+                .retryPolicy(config.retryPolicy())
                 .build();
         return new WorkerRuntimeHandle() {
             @Override

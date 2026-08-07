@@ -1,6 +1,7 @@
 package com.xa.mass.transport.client.okhttp;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
@@ -27,7 +28,7 @@ public final class OkHttpTextWebSocketClient
     private final WebSocketConnector connector;
     private final Runnable closeConnector;
     private final URI socketUri;
-    private final Duration reconnectInterval;
+    private final TextMessageReconnectPolicy reconnectPolicy;
     private final Duration closeTimeout;
     private final ScheduledExecutorService connectionExecutor;
     private volatile Thread connectionThread;
@@ -38,16 +39,18 @@ public final class OkHttpTextWebSocketClient
     private boolean closed;
     private boolean connected;
     private boolean reconnectScheduled;
+    private boolean reconnectExhausted;
+    private int unstableAttempts;
 
     public OkHttpTextWebSocketClient(
             URI socketUri,
             Duration requestTimeout,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
                 clientConnector(socketUri, requestTimeout),
                 socketUri,
-                reconnectInterval,
+                reconnectPolicy,
                 requestTimeout
         );
     }
@@ -55,12 +58,12 @@ public final class OkHttpTextWebSocketClient
     OkHttpTextWebSocketClient(
             ConnectorResources resources,
             URI socketUri,
-            Duration reconnectInterval
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
                 resources,
                 socketUri,
-                reconnectInterval,
+                reconnectPolicy,
                 Duration.ofSeconds(5)
         );
     }
@@ -68,7 +71,7 @@ public final class OkHttpTextWebSocketClient
     private OkHttpTextWebSocketClient(
             ConnectorResources resources,
             URI socketUri,
-            Duration reconnectInterval,
+            TextMessageReconnectPolicy reconnectPolicy,
             Duration closeTimeout
     ) {
         Objects.requireNonNull(resources, "resources");
@@ -81,9 +84,9 @@ public final class OkHttpTextWebSocketClient
                 "close"
         );
         this.socketUri = requireWebSocketUri(socketUri);
-        this.reconnectInterval = requirePositive(
-                reconnectInterval,
-                "reconnectInterval"
+        this.reconnectPolicy = Objects.requireNonNull(
+                reconnectPolicy,
+                "reconnectPolicy"
         );
         this.closeTimeout = requirePositive(closeTimeout, "closeTimeout");
         connectionExecutor = Executors
@@ -112,6 +115,8 @@ public final class OkHttpTextWebSocketClient
             }
             this.listener = listener;
             running = true;
+            reconnectExhausted = false;
+            unstableAttempts = 0;
         }
         execute(this::connect);
     }
@@ -164,6 +169,7 @@ public final class OkHttpTextWebSocketClient
             running = false;
             connected = false;
             reconnectScheduled = false;
+            reconnectExhausted = true;
             attempt = activeAttempt;
             activeAttempt = null;
             listener = null;
@@ -192,7 +198,10 @@ public final class OkHttpTextWebSocketClient
     private void connect() {
         ConnectionAttempt attempt;
         synchronized (lock) {
-            if (!running || closed || activeAttempt != null) {
+            if (!running
+                    || closed
+                    || reconnectExhausted
+                    || activeAttempt != null) {
                 return;
             }
             attempt = new ConnectionAttempt();
@@ -263,6 +272,7 @@ public final class OkHttpTextWebSocketClient
         if (callback != null) {
             callback.onOpen();
         }
+        scheduleStableReset(attempt);
     }
 
     private void message(ConnectionAttempt attempt, String text) {
@@ -292,6 +302,7 @@ public final class OkHttpTextWebSocketClient
             Throwable failure
     ) {
         Listener callback;
+        boolean exhausted;
         synchronized (lock) {
             if (activeAttempt != attempt) {
                 return;
@@ -299,6 +310,10 @@ public final class OkHttpTextWebSocketClient
             activeAttempt = null;
             connected = false;
             callback = listener;
+            unstableAttempts++;
+            exhausted = unstableAttempts
+                    >= reconnectPolicy.maxUnstableAttempts();
+            reconnectExhausted = exhausted;
         }
         if (callback != null) {
             if (failure == null) {
@@ -306,14 +321,41 @@ public final class OkHttpTextWebSocketClient
             } else {
                 callback.onFailure(failure);
             }
+            if (exhausted) {
+                callback.onReconnectExhausted();
+            }
         }
-        scheduleReconnect();
+        if (!exhausted) {
+            scheduleReconnect();
+        }
+    }
+
+    private void scheduleStableReset(ConnectionAttempt attempt) {
+        try {
+            connectionExecutor.schedule(
+                    () -> {
+                        synchronized (lock) {
+                            if (running
+                                    && !closed
+                                    && connected
+                                    && activeAttempt == attempt) {
+                                unstableAttempts = 0;
+                            }
+                        }
+                    },
+                    reconnectPolicy.stableConnectionDuration().toMillis(),
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RejectedExecutionException ignored) {
+            // Terminal close owns executor shutdown.
+        }
     }
 
     private void scheduleReconnect() {
         synchronized (lock) {
             if (!running
                     || closed
+                    || reconnectExhausted
                     || reconnectScheduled
                     || activeAttempt != null) {
                 return;
@@ -333,7 +375,7 @@ public final class OkHttpTextWebSocketClient
                         }
                         connect();
                     },
-                    reconnectInterval.toMillis(),
+                    reconnectPolicy.reconnectInterval().toMillis(),
                     TimeUnit.MILLISECONDS
             );
         } catch (RejectedExecutionException ignored) {

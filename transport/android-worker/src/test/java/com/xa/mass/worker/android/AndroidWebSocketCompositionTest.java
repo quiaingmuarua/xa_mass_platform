@@ -8,6 +8,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -95,7 +96,11 @@ public class AndroidWebSocketCompositionTest {
                     new AndroidOkHttpTextWebSocketClient(
                             socketUri,
                             Duration.ofSeconds(2),
-                            Duration.ofMillis(20)
+                            TextMessageReconnectPolicy.of(
+                                    20,
+                                    Duration.ofMillis(20),
+                                    Duration.ofMillis(100)
+                            )
                     );
             TextMessageWorkerTransport worker =
                     new TextMessageWorkerTransport(

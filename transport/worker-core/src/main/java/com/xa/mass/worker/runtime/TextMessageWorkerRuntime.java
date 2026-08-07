@@ -5,16 +5,16 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
+import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport.PendingResultSlot;
 
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -26,18 +26,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Coordinates identity recovery, Register/Bind, and one long-lived Worker
- * transport session. Network reconnect belongs to {@link TextMessageClient};
- * command execution and pending results belong to
- * {@link TextMessageWorkerTransport}.
+ * Supervises Worker preparation and one bounded-reconnecting text transport.
  */
 public final class TextMessageWorkerRuntime implements WorkerLifecycle {
-
-    @FunctionalInterface
-    public interface ControlClientFactory {
-
-        WorkerControlClient create();
-    }
 
     @FunctionalInterface
     public interface NetworkClientFactory {
@@ -50,25 +41,26 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
     private final WorkerTransportType transportType;
     private final WorkerIdentityStore identityStore;
     private final WorkerPropertiesProvider propertiesProvider;
-    private final List<WorkerEventDefinition<?>> definitions;
-    private final ControlClientFactory controlClientFactory;
+    private final WorkerCommandExecutor commandExecutor;
+    private final WorkerControlClient controlClient;
     private final NetworkClientFactory networkClientFactory;
     private final Duration requestTimeout;
-    private final Duration reconnectInterval;
+    private final WorkerRetryPolicy retryPolicy;
     private final ScheduledExecutorService lifecycleExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private volatile Thread lifecycleThread;
 
-    private boolean started;
-    private boolean closed;
     private long generation;
-    private long nextSessionId;
+    private long nextTransportId;
     private State state = State.STOPPED;
+    private PrepareOperation prepareOperation = PrepareOperation.NONE;
     private String workerId;
     private URI endpointUri;
     private String diagnosticMessage;
     private WorkerPropertiesSnapshot activeProperties;
-    private Session activeSession;
+    private TextMessageWorkerTransport activeTransport;
+    private long activeTransportId;
+    private PendingResultSlot pendingResultSlot;
 
     public TextMessageWorkerRuntime(
             String workerGroupId,
@@ -76,10 +68,10 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
             WorkerIdentityStore identityStore,
             WorkerPropertiesProvider propertiesProvider,
             Collection<? extends WorkerEventDefinition<?>> definitions,
-            ControlClientFactory controlClientFactory,
+            WorkerControlClient controlClient,
             NetworkClientFactory networkClientFactory,
             Duration requestTimeout,
-            Duration reconnectInterval
+            WorkerRetryPolicy retryPolicy
     ) {
         this.workerGroupId = requireNonBlank(
                 workerGroupId,
@@ -99,16 +91,10 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
                     "definitions must not be empty"
             );
         }
-        List<WorkerEventDefinition<?>> copied = new ArrayList<>(definitions);
-        if (copied.contains(null)) {
-            throw new IllegalArgumentException(
-                    "definitions must not contain null"
-            );
-        }
-        this.definitions = Collections.unmodifiableList(copied);
-        this.controlClientFactory = Objects.requireNonNull(
-                controlClientFactory,
-                "controlClientFactory"
+        this.commandExecutor = new WorkerCommandDispatcher(definitions);
+        this.controlClient = Objects.requireNonNull(
+                controlClient,
+                "controlClient"
         );
         this.networkClientFactory = Objects.requireNonNull(
                 networkClientFactory,
@@ -118,9 +104,9 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
                 requestTimeout,
                 "requestTimeout"
         );
-        this.reconnectInterval = requirePositive(
-                reconnectInterval,
-                "reconnectInterval"
+        this.retryPolicy = Objects.requireNonNull(
+                retryPolicy,
+                "retryPolicy"
         );
         lifecycleExecutor = Executors.newSingleThreadScheduledExecutor(
                 runnable -> {
@@ -139,19 +125,23 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
     public void start() {
         long currentGeneration;
         synchronized (lock) {
-            if (closed) {
+            if (state == State.CLOSED) {
                 throw new IllegalStateException(
                         "TextMessageWorkerRuntime is closed"
                 );
             }
-            if (started) {
+            if (state == State.STARTING || state == State.RUNNING) {
                 return;
             }
-            started = true;
             currentGeneration = ++generation;
             state = State.STARTING;
-            diagnosticMessage = null;
+            prepareOperation = PrepareOperation.NONE;
             endpointUri = null;
+            diagnosticMessage = null;
+            activeProperties = null;
+            activeTransport = null;
+            activeTransportId = 0L;
+            pendingResultSlot = new PendingResultSlot();
         }
         publish();
         execute(() -> beginStart(currentGeneration), currentGeneration);
@@ -159,43 +149,44 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
 
     @Override
     public void stop() {
-        Session session;
+        TextMessageWorkerTransport transport;
+        PendingResultSlot resultSlot;
         synchronized (lock) {
-            if (closed || (!started && state == State.STOPPED)) {
+            if (state == State.CLOSED || state == State.STOPPED) {
                 return;
             }
-            started = false;
             generation++;
-            session = activeSession;
-            activeSession = null;
-            activeProperties = null;
-            endpointUri = null;
+            transport = activeTransport;
+            resultSlot = pendingResultSlot;
+            clearRunResourcesLocked();
             state = State.STOPPED;
+            prepareOperation = PrepareOperation.NONE;
             diagnosticMessage = null;
         }
-        closeQuietly(session);
+        closeQuietly(transport);
+        closeQuietly(resultSlot);
         publish();
     }
 
     @Override
     public void refreshProperties() {
         long currentGeneration;
-        long sessionId;
+        long transportId;
         synchronized (lock) {
-            if (closed) {
+            if (state == State.CLOSED) {
                 throw new IllegalStateException(
                         "TextMessageWorkerRuntime is closed"
                 );
             }
-            if (!started || activeSession == null
-                    || activeSession.transport() == null) {
+            if (state != State.RUNNING
+                    || activeTransport == null) {
                 return;
             }
             currentGeneration = generation;
-            sessionId = activeSession.id();
+            transportId = activeTransportId;
         }
         execute(
-                () -> refreshProperties(currentGeneration, sessionId),
+                () -> refreshProperties(currentGeneration, transportId),
                 currentGeneration
         );
     }
@@ -204,7 +195,7 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
         synchronized (lock) {
-            if (closed) {
+            if (state == State.CLOSED) {
                 throw new IllegalStateException(
                         "TextMessageWorkerRuntime is closed"
                 );
@@ -226,6 +217,8 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
         synchronized (lock) {
             return new Snapshot(
                     state,
+                    prepareOperation,
+                    connectionStateLocked(),
                     workerId,
                     endpointUri,
                     diagnosticMessage
@@ -236,207 +229,247 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
     @Override
     public boolean isConnected() {
         synchronized (lock) {
-            return state == State.TRANSPORT_CONNECTED
-                    && activeSession != null
-                    && activeSession.transport() != null
-                    && activeSession.transport().isConnected();
+            return state == State.RUNNING
+                    && activeTransport != null
+                    && activeTransport.isConnected();
         }
     }
 
     @Override
     public void close() {
-        Session session;
+        TextMessageWorkerTransport transport;
+        PendingResultSlot resultSlot;
         synchronized (lock) {
-            if (closed) {
+            if (state == State.CLOSED) {
                 return;
             }
-            closed = true;
-            started = false;
             generation++;
-            session = activeSession;
-            activeSession = null;
-            activeProperties = null;
-            endpointUri = null;
+            transport = activeTransport;
+            resultSlot = pendingResultSlot;
+            clearRunResourcesLocked();
             state = State.CLOSED;
+            prepareOperation = PrepareOperation.NONE;
         }
-        closeQuietly(session);
+        closeQuietly(transport);
+        closeQuietly(resultSlot);
+        closeQuietly(controlClient);
         publishFinalAndShutdown();
     }
 
     private void beginStart(long currentGeneration) {
-        Session session = null;
         try {
             WorkerPropertiesSnapshot properties = loadProperties();
             Optional<String> cached = identityStore.loadWorkerId();
             String cachedWorkerId = cached.isPresent()
                     ? requireCanonicalWorkerId(cached.get())
                     : null;
-            WorkerControlClient control = controlClientFactory.create();
-            if (control == null) {
-                throw new IllegalStateException(
-                        "controlClientFactory returned null"
-                );
+            synchronized (lock) {
+                if (!isCurrentLocked(currentGeneration)) {
+                    return;
+                }
+                workerId = cachedWorkerId;
             }
-            session = new Session(nextSessionId(), control);
-            if (!installSession(
-                    currentGeneration,
-                    session,
-                    properties,
-                    cachedWorkerId
-            )) {
-                session.close();
-                return;
-            }
-            if (cachedWorkerId == null) {
-                transition(
-                        currentGeneration,
-                        session,
-                        State.REGISTERING,
-                        null
-                );
-                attemptRegister(currentGeneration, session);
-            } else {
-                attemptBind(currentGeneration, session);
-            }
+            attemptPrepare(currentGeneration, properties, 1);
         } catch (Exception error) {
-            closeQuietly(session);
             fail(currentGeneration, safeMessage(error));
         }
     }
 
-    private void attemptRegister(
-            long currentGeneration,
-            Session session
-    ) {
-        if (!isCurrent(currentGeneration, session)) {
-            return;
-        }
+    private void beginReprepare(long currentGeneration) {
         try {
-            String registeredWorkerId = requireCanonicalWorkerId(
-                    session.control().register(
-                            workerGroupId,
-                            session.properties().properties(),
-                            requestTimeout
-                    )
-            );
-            identityStore.saveWorkerId(registeredWorkerId);
+            WorkerPropertiesSnapshot properties = loadProperties();
             synchronized (lock) {
-                if (!isCurrentLocked(currentGeneration, session)) {
+                if (!isCurrentLocked(currentGeneration)) {
                     return;
                 }
-                workerId = registeredWorkerId;
-                session.workerId(registeredWorkerId);
+                if (workerId == null) {
+                    throw new IllegalStateException(
+                            "workerId is missing during endpoint rebind"
+                    );
+                }
             }
-            publish();
-            attemptBind(currentGeneration, session);
+            attemptPrepare(currentGeneration, properties, 1);
         } catch (Exception error) {
-            handleControlFailure(
-                    currentGeneration,
-                    session,
-                    State.REGISTERING,
-                    "Worker registration failed",
-                    error,
-                    () -> attemptRegister(currentGeneration, session)
-            );
+            fail(currentGeneration, safeMessage(error));
         }
     }
 
-    private void attemptBind(
+    private void attemptPrepare(
             long currentGeneration,
-            Session session
+            WorkerPropertiesSnapshot properties,
+            int attempt
     ) {
-        if (!transition(
-                currentGeneration,
-                session,
-                State.BINDING,
-                null
-        )) {
+        if (!isCurrent(currentGeneration)) {
             return;
         }
+        URI resolvedEndpoint;
+        String currentWorkerId;
         try {
-            URI resolvedEndpoint = session.control().bind(
+            synchronized (lock) {
+                if (!isCurrentLocked(currentGeneration)) {
+                    return;
+                }
+                currentWorkerId = workerId;
+            }
+            if (currentWorkerId == null) {
+                if (!transitionPrepare(
+                        currentGeneration,
+                        PrepareOperation.REGISTERING,
+                        null
+                )) {
+                    return;
+                }
+                currentWorkerId = requireCanonicalWorkerId(
+                        controlClient.register(
+                                workerGroupId,
+                                properties.properties(),
+                                requestTimeout
+                        )
+                );
+                try {
+                    identityStore.saveWorkerId(currentWorkerId);
+                } catch (IOException error) {
+                    throw new IllegalStateException(
+                            "Unable to persist workerId",
+                            error
+                    );
+                }
+                synchronized (lock) {
+                    if (!isCurrentLocked(currentGeneration)) {
+                        return;
+                    }
+                    workerId = currentWorkerId;
+                }
+                publish();
+            }
+
+            if (!transitionPrepare(
+                    currentGeneration,
+                    PrepareOperation.BINDING,
+                    null
+            )) {
+                return;
+            }
+            resolvedEndpoint = controlClient.bind(
                     workerGroupId,
-                    session.workerId(),
+                    currentWorkerId,
                     transportType,
-                    session.properties().properties(),
+                    properties.properties(),
                     requestTimeout
             );
+        } catch (Exception error) {
+            handlePrepareFailure(
+                    currentGeneration,
+                    properties,
+                    attempt,
+                    error
+            );
+            return;
+        }
+
+        try {
             installTransport(
                     currentGeneration,
-                    session,
+                    properties,
+                    currentWorkerId,
                     resolvedEndpoint
             );
         } catch (Exception error) {
-            handleControlFailure(
+            handlePrepareFailure(
                     currentGeneration,
-                    session,
-                    State.BINDING,
-                    "Worker endpoint binding failed",
-                    error,
-                    () -> attemptBind(currentGeneration, session)
+                    properties,
+                    attempt,
+                    error
             );
         }
     }
 
-    private void handleControlFailure(
+    private void handlePrepareFailure(
             long currentGeneration,
-            Session session,
-            State retryState,
-            String prefix,
-            Exception error,
-            Runnable retry
+            WorkerPropertiesSnapshot properties,
+            int attempt,
+            Exception error
     ) {
-        if (!isRetryableControlFailure(error)) {
-            fail(currentGeneration, prefix + ": " + safeMessage(error));
+        String message = "Worker preparation failed: " + safeMessage(error);
+        if (!isRetryableControlFailure(error)
+                || attempt >= retryPolicy.maxPrepareAttempts()) {
+            fail(currentGeneration, message);
             return;
         }
-        if (!transition(
+        if (!transitionPrepare(
                 currentGeneration,
-                session,
-                retryState,
-                prefix + ": " + safeMessage(error)
+                currentPrepareOperation(),
+                message
         )) {
             return;
         }
         try {
             lifecycleExecutor.schedule(
-                    retry,
-                    reconnectInterval.toMillis(),
+                    () -> attemptPrepare(
+                            currentGeneration,
+                            properties,
+                            attempt + 1
+                    ),
+                    retryPolicy.prepareRetryInterval().toMillis(),
                     TimeUnit.MILLISECONDS
             );
         } catch (RejectedExecutionException ignored) {
-            // stop/close owns cancellation of a pending retry.
+            // stop/close owns cancellation of stale prepare retries.
         }
     }
 
     private void installTransport(
             long currentGeneration,
-            Session session,
+            WorkerPropertiesSnapshot properties,
+            String currentWorkerId,
             URI resolvedEndpoint
     ) {
+        Objects.requireNonNull(resolvedEndpoint, "endpointUri");
         TextMessageClient rawClient = networkClientFactory.create(
-                Objects.requireNonNull(resolvedEndpoint, "endpointUri")
+                resolvedEndpoint
         );
         if (rawClient == null) {
             throw new IllegalStateException(
                     "networkClientFactory returned null"
             );
         }
-        TextMessageWorkerTransport replacement =
-                new TextMessageWorkerTransport(
-                        rawClient,
-                        session.workerId(),
-                        definitions,
-                        observer(currentGeneration, session.id())
-                );
+
+        long transportId;
+        PendingResultSlot resultSlot;
         synchronized (lock) {
-            if (!isCurrentLocked(currentGeneration, session)) {
+            if (!isCurrentLocked(currentGeneration)) {
+                closeQuietly(rawClient);
+                return;
+            }
+            transportId = ++nextTransportId;
+            resultSlot = pendingResultSlot;
+        }
+        TextMessageWorkerTransport replacement;
+        try {
+            replacement = new TextMessageWorkerTransport(
+                    rawClient,
+                    currentWorkerId,
+                    commandExecutor,
+                    resultSlot,
+                    observer(currentGeneration, transportId)
+            );
+        } catch (RuntimeException error) {
+            closeQuietly(rawClient);
+            throw error;
+        }
+
+        synchronized (lock) {
+            if (!isCurrentLocked(currentGeneration)
+                    || activeTransport != null) {
                 closeQuietly(replacement);
                 return;
             }
-            session.installTransport(resolvedEndpoint, replacement);
+            activeTransport = replacement;
+            activeTransportId = transportId;
+            activeProperties = properties;
             endpointUri = resolvedEndpoint;
-            state = State.CONNECTING;
+            state = State.RUNNING;
+            prepareOperation = PrepareOperation.NONE;
             diagnosticMessage = null;
         }
         publish();
@@ -444,9 +477,12 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
             replacement.start();
         } catch (RuntimeException error) {
             synchronized (lock) {
-                if (isCurrentLocked(currentGeneration, session)
-                        && session.transport() == replacement) {
-                    session.clearTransport(replacement);
+                if (isCurrentTransportLocked(
+                        currentGeneration,
+                        transportId
+                )) {
+                    activeTransport = null;
+                    activeTransportId = 0L;
                 }
             }
             closeQuietly(replacement);
@@ -456,7 +492,7 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
 
     private TextMessageWorkerTransport.Observer observer(
             long currentGeneration,
-            long sessionId
+            long transportId
     ) {
         return new TextMessageWorkerTransport.Observer() {
             @Override
@@ -464,7 +500,7 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
                 execute(
                         () -> transportReady(
                                 currentGeneration,
-                                sessionId
+                                transportId
                         ),
                         currentGeneration
                 );
@@ -475,7 +511,7 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
                 execute(
                         () -> transportDisconnected(
                                 currentGeneration,
-                                sessionId
+                                transportId
                         ),
                         currentGeneration
                 );
@@ -486,8 +522,19 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
                 execute(
                         () -> transportFailed(
                                 currentGeneration,
-                                sessionId,
+                                transportId,
                                 error
+                        ),
+                        currentGeneration
+                );
+            }
+
+            @Override
+            public void onReconnectExhausted() {
+                execute(
+                        () -> transportReconnectExhausted(
+                                currentGeneration,
+                                transportId
                         ),
                         currentGeneration
                 );
@@ -497,84 +544,87 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
 
     private void transportReady(
             long currentGeneration,
-            long sessionId
+            long transportId
     ) {
-        if (updateTransportState(
-                currentGeneration,
-                sessionId,
-                State.TRANSPORT_CONNECTED,
-                null
-        )) {
-            publish();
+        synchronized (lock) {
+            if (!isCurrentTransportLocked(currentGeneration, transportId)
+                    || !activeTransport.isConnected()) {
+                return;
+            }
+            diagnosticMessage = null;
         }
+        publish();
     }
 
     private void transportDisconnected(
             long currentGeneration,
-            long sessionId
+            long transportId
     ) {
-        if (updateTransportState(
-                currentGeneration,
-                sessionId,
-                State.CONNECTING,
-                null
-        )) {
-            publish();
+        synchronized (lock) {
+            if (!isCurrentTransportLocked(currentGeneration, transportId)) {
+                return;
+            }
         }
+        publish();
     }
 
     private void transportFailed(
             long currentGeneration,
-            long sessionId,
+            long transportId,
             Throwable error
     ) {
-        if (updateTransportState(
-                currentGeneration,
-                sessionId,
-                State.CONNECTING,
-                "Text-message transport failed: " + safeMessage(error)
-        )) {
-            publish();
+        synchronized (lock) {
+            if (!isCurrentTransportLocked(currentGeneration, transportId)) {
+                return;
+            }
+            diagnosticMessage = "Text-message connection failed: "
+                    + safeMessage(error);
         }
+        publish();
     }
 
-    private boolean updateTransportState(
+    private void transportReconnectExhausted(
             long currentGeneration,
-            long sessionId,
-            State next,
-            String message
+            long transportId
     ) {
+        TextMessageWorkerTransport exhausted;
         synchronized (lock) {
-            Session session = currentSessionLocked(
-                    currentGeneration,
-                    sessionId
-            );
-            if (session == null || session.transport() == null) {
-                return false;
+            if (!isCurrentTransportLocked(currentGeneration, transportId)) {
+                return;
             }
-            if (next == State.TRANSPORT_CONNECTED
-                    && !session.transport().isConnected()) {
-                return false;
-            }
-            state = next;
-            diagnosticMessage = message;
-            return true;
+            exhausted = activeTransport;
+            activeTransport = null;
+            activeTransportId = 0L;
+            activeProperties = null;
+            endpointUri = null;
+            state = State.STARTING;
+            prepareOperation = PrepareOperation.NONE;
+            diagnosticMessage = "Connection retry budget exhausted; "
+                    + "preparing Worker endpoint again";
         }
+        closeQuietly(exhausted);
+        publish();
+        beginReprepare(currentGeneration);
     }
 
     private void refreshProperties(
             long currentGeneration,
-            long sessionId
+            long transportId
     ) {
-        Session session;
         WorkerPropertiesSnapshot previous;
+        String currentWorkerId;
+        URI currentEndpoint;
         synchronized (lock) {
-            session = currentSessionLocked(currentGeneration, sessionId);
-            if (session == null || session.transport() == null) {
+            if (!isCurrentTransportLocked(currentGeneration, transportId)) {
                 return;
             }
             previous = activeProperties;
+            currentWorkerId = workerId;
+            currentEndpoint = endpointUri;
+            prepareOperation = PrepareOperation.BINDING;
+            diagnosticMessage = null;
         }
+        publish();
 
         try {
             WorkerPropertiesSnapshot refreshed = loadProperties();
@@ -588,69 +638,60 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
             if (previous.canonicalJson().equals(
                     refreshed.canonicalJson()
             )) {
+                finishRefresh(currentGeneration, transportId, null);
                 return;
             }
-            URI refreshedEndpoint = session.control().bind(
+            URI refreshedEndpoint;
+            refreshedEndpoint = controlClient.bind(
                     workerGroupId,
-                    session.workerId(),
+                    currentWorkerId,
                     transportType,
                     refreshed.properties(),
                     requestTimeout
             );
-            URI previousEndpoint;
-            synchronized (lock) {
-                Session current = currentSessionLocked(
+            if (!currentEndpoint.equals(refreshedEndpoint)) {
+                fail(
                         currentGeneration,
-                        sessionId
+                        "Worker endpoint changed during properties refresh; "
+                                + "restart is required"
                 );
-                if (current == null) {
-                    return;
-                }
-                previousEndpoint = current.endpointUri();
+                return;
             }
-            if (!previousEndpoint.equals(refreshedEndpoint)) {
-                synchronized (lock) {
-                    Session current = currentSessionLocked(
-                            currentGeneration,
-                            sessionId
-                    );
-                    if (current == null) {
-                        return;
-                    }
-                    current.properties(refreshed);
-                    activeProperties = refreshed;
-                    diagnosticMessage = "Worker endpoint changed; "
-                            + "stop and start to use the new endpoint";
-                }
-                publish();
-            } else {
-                synchronized (lock) {
-                    Session current = currentSessionLocked(
-                            currentGeneration,
-                            sessionId
-                    );
-                    if (current == null) {
-                        return;
-                    }
-                    current.properties(refreshed);
-                    activeProperties = refreshed;
-                    diagnosticMessage = null;
-                }
-                publish();
-            }
-        } catch (Exception error) {
             synchronized (lock) {
-                if (currentSessionLocked(
+                if (!isCurrentTransportLocked(
                         currentGeneration,
-                        sessionId
-                ) == null) {
+                        transportId
+                )) {
                     return;
                 }
-                diagnosticMessage = "Worker properties refresh failed: "
-                        + safeMessage(error);
+                activeProperties = refreshed;
+                prepareOperation = PrepareOperation.NONE;
+                diagnosticMessage = null;
             }
             publish();
+        } catch (Exception error) {
+            finishRefresh(
+                    currentGeneration,
+                    transportId,
+                    "Worker properties refresh failed: "
+                            + safeMessage(error)
+            );
         }
+    }
+
+    private void finishRefresh(
+            long currentGeneration,
+            long transportId,
+            String message
+    ) {
+        synchronized (lock) {
+            if (!isCurrentTransportLocked(currentGeneration, transportId)) {
+                return;
+            }
+            prepareOperation = PrepareOperation.NONE;
+            diagnosticMessage = message;
+        }
+        publish();
     }
 
     private WorkerPropertiesSnapshot loadProperties() throws Exception {
@@ -659,91 +700,83 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
         );
     }
 
-    private boolean installSession(
+    private boolean transitionPrepare(
             long currentGeneration,
-            Session session,
-            WorkerPropertiesSnapshot properties,
-            String cachedWorkerId
+            PrepareOperation operation,
+            String message
     ) {
         synchronized (lock) {
             if (!isCurrentLocked(currentGeneration)) {
                 return false;
             }
-            activeSession = session;
-            activeProperties = properties;
-            session.properties(properties);
-            session.workerId(cachedWorkerId);
-            workerId = cachedWorkerId;
-            return true;
-        }
-    }
-
-    private boolean transition(
-            long currentGeneration,
-            Session session,
-            State next,
-            String message
-    ) {
-        synchronized (lock) {
-            if (!isCurrentLocked(currentGeneration, session)) {
-                return false;
-            }
-            state = next;
+            state = State.STARTING;
+            prepareOperation = operation;
             diagnosticMessage = message;
         }
         publish();
         return true;
     }
 
+    private PrepareOperation currentPrepareOperation() {
+        synchronized (lock) {
+            return prepareOperation;
+        }
+    }
+
     private void fail(long currentGeneration, String message) {
-        Session session;
+        TextMessageWorkerTransport transport;
+        PendingResultSlot resultSlot;
         synchronized (lock) {
             if (!isCurrentLocked(currentGeneration)) {
                 return;
             }
-            started = false;
-            session = activeSession;
-            activeSession = null;
-            activeProperties = null;
-            endpointUri = null;
+            transport = activeTransport;
+            resultSlot = pendingResultSlot;
+            clearRunResourcesLocked();
             state = State.ERROR;
+            prepareOperation = PrepareOperation.NONE;
             diagnosticMessage = message;
         }
-        closeQuietly(session);
+        closeQuietly(transport);
+        closeQuietly(resultSlot);
         publish();
     }
 
-    private boolean isCurrent(
-            long currentGeneration,
-            Session session
-    ) {
-        synchronized (lock) {
-            return isCurrentLocked(currentGeneration, session);
-        }
+    private void clearRunResourcesLocked() {
+        activeTransport = null;
+        activeTransportId = 0L;
+        activeProperties = null;
+        endpointUri = null;
+        pendingResultSlot = null;
     }
 
-    private boolean isCurrentLocked(
-            long currentGeneration,
-            Session session
-    ) {
-        return isCurrentLocked(currentGeneration)
-                && activeSession == session;
+    private ConnectionState connectionStateLocked() {
+        if (activeTransport == null) {
+            return ConnectionState.DISCONNECTED;
+        }
+        return activeTransport.isConnected()
+                ? ConnectionState.CONNECTED
+                : ConnectionState.CONNECTING;
+    }
+
+    private boolean isCurrent(long currentGeneration) {
+        synchronized (lock) {
+            return isCurrentLocked(currentGeneration);
+        }
     }
 
     private boolean isCurrentLocked(long currentGeneration) {
-        return started && !closed && generation == currentGeneration;
+        return generation == currentGeneration
+                && (state == State.STARTING || state == State.RUNNING);
     }
 
-    private Session currentSessionLocked(
+    private boolean isCurrentTransportLocked(
             long currentGeneration,
-            long sessionId
+            long transportId
     ) {
-        if (!isCurrentLocked(currentGeneration)
-                || activeSession == null
-                || activeSession.id() != sessionId) {
-            return null;
-        }
-        return activeSession;
+        return isCurrentLocked(currentGeneration)
+                && activeTransport != null
+                && activeTransportId == transportId;
     }
 
     private void execute(Runnable runnable, long currentGeneration) {
@@ -813,12 +846,6 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
             listeners.clear();
         } finally {
             lifecycleExecutor.shutdown();
-        }
-    }
-
-    private long nextSessionId() {
-        synchronized (lock) {
-            return ++nextSessionId;
         }
     }
 
@@ -895,97 +922,6 @@ public final class TextMessageWorkerRuntime implements WorkerLifecycle {
             closeable.close();
         } catch (Exception ignored) {
             // Lifecycle teardown is best-effort at this local boundary.
-        }
-    }
-
-    private static final class Session implements AutoCloseable {
-
-        private final long id;
-        private final WorkerControlClient control;
-        private String workerId;
-        private WorkerPropertiesSnapshot properties;
-        private URI endpointUri;
-        private TextMessageWorkerTransport transport;
-        private boolean closed;
-
-        private Session(long id, WorkerControlClient control) {
-            this.id = id;
-            this.control = control;
-        }
-
-        long id() {
-            return id;
-        }
-
-        WorkerControlClient control() {
-            return control;
-        }
-
-        synchronized String workerId() {
-            return workerId;
-        }
-
-        synchronized void workerId(String value) {
-            workerId = value;
-        }
-
-        synchronized WorkerPropertiesSnapshot properties() {
-            return properties;
-        }
-
-        synchronized void properties(WorkerPropertiesSnapshot value) {
-            properties = value;
-        }
-
-        synchronized URI endpointUri() {
-            return endpointUri;
-        }
-
-        synchronized void installTransport(
-                URI value,
-                TextMessageWorkerTransport replacement
-        ) {
-            if (closed) {
-                replacement.close();
-                return;
-            }
-            if (transport != null) {
-                throw new IllegalStateException(
-                        "Session already owns a text-message transport"
-                );
-            }
-            endpointUri = value;
-            transport = replacement;
-        }
-
-        synchronized TextMessageWorkerTransport transport() {
-            return transport;
-        }
-
-        synchronized void clearTransport(
-                TextMessageWorkerTransport expected
-        ) {
-            if (transport == expected) {
-                transport = null;
-                endpointUri = null;
-            }
-        }
-
-        @Override
-        public synchronized void close() {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            try {
-                if (transport != null) {
-                    transport.close();
-                }
-            } finally {
-                transport = null;
-                endpointUri = null;
-                control.close();
-            }
         }
     }
 }

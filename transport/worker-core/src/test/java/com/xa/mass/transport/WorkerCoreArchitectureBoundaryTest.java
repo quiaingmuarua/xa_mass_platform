@@ -99,6 +99,10 @@ class WorkerCoreArchitectureBoundaryTest {
                 "closeCurrent",
                 TextMessageClient.CloseReason.class
         ));
+        assertTrue(hasMethod(
+                TextMessageClient.Listener.class,
+                "onReconnectExhausted"
+        ));
     }
 
     @Test
@@ -198,7 +202,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 TextMessageWorkerTransport.class,
                 TextMessageClient.class,
                 String.class,
-                Collection.class,
+                WorkerCommandExecutor.class,
+                TextMessageWorkerTransport.PendingResultSlot.class,
                 TextMessageWorkerTransport.Observer.class
         );
 

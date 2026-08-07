@@ -9,8 +9,6 @@ public final class AndroidWorkerDemoApplication extends Application {
 
     private static final String WORKER_GROUP_ID = "android-demo-workers";
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration RECONNECT_INTERVAL =
-            Duration.ofSeconds(1);
 
     private AndroidWorkerDemoHost workerHost;
 
@@ -32,7 +30,6 @@ public final class AndroidWorkerDemoApplication extends Application {
                 .workerProperties(deviceProperties)
                 .eventDefinitions(demoCapability.definitions())
                 .requestTimeout(REQUEST_TIMEOUT)
-                .reconnectInterval(RECONNECT_INTERVAL)
                 .build();
         workerHost = new AndroidWorkerDemoHost(
                 worker,

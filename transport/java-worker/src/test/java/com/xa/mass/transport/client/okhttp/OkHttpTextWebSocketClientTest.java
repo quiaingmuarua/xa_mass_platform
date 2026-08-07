@@ -1,6 +1,7 @@
 package com.xa.mass.transport.client.okhttp;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -38,7 +39,7 @@ class OkHttpTextWebSocketClientTest {
                         "ws://127.0.0.1:18083/api/v1/"
                                 + "worker-delivery/websocket"
                 ),
-                Duration.ofMillis(5)
+                reconnectPolicy()
         );
         client.start(listener);
         await(() -> connector.connections.size() == 1);
@@ -153,8 +154,49 @@ class OkHttpTextWebSocketClientTest {
                 () -> new OkHttpTextWebSocketClient(
                         URI.create("http://127.0.0.1:18083"),
                         Duration.ofSeconds(1),
-                        Duration.ofSeconds(1)
+                        reconnectPolicy()
                 )
+        );
+    }
+
+    @Test
+    void exhaustsAfterBoundedUnstableAttempts() throws Exception {
+        connector.connections.get(0).fail();
+        await(() -> connector.connections.size() == 2);
+        connector.connections.get(1).fail();
+        await(() -> connector.connections.size() == 3);
+        connector.connections.get(2).fail();
+
+        await(() -> listener.exhausted.get() == 1);
+        Thread.sleep(30);
+        assertEquals(3, connector.connections.size());
+        assertEquals(1, listener.exhausted.get());
+    }
+
+    @Test
+    void stableConnectionResetsTheUnstableAttemptCount()
+            throws Exception {
+        connector.connections.get(0).fail();
+        await(() -> connector.connections.size() == 2);
+        FakeConnection stable = connector.connections.get(1);
+        stable.open();
+        Thread.sleep(70);
+        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+        await(() -> connector.connections.size() == 3);
+
+        connector.connections.get(2).fail();
+        await(() -> connector.connections.size() == 4);
+        connector.connections.get(3).fail();
+
+        await(() -> listener.exhausted.get() == 1);
+        assertEquals(4, connector.connections.size());
+    }
+
+    private static TextMessageReconnectPolicy reconnectPolicy() {
+        return TextMessageReconnectPolicy.of(
+                3,
+                Duration.ofMillis(5),
+                Duration.ofMillis(40)
         );
     }
 
@@ -178,6 +220,7 @@ class OkHttpTextWebSocketClientTest {
 
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
+        private final AtomicInteger exhausted = new AtomicInteger();
         private final List<String> messages = new CopyOnWriteArrayList<>();
         private final List<String> callbackThreads =
                 new CopyOnWriteArrayList<>();
@@ -203,6 +246,12 @@ class OkHttpTextWebSocketClientTest {
         @Override
         public void onFailure(Throwable error) {
             callbackThreads.add(Thread.currentThread().getName());
+        }
+
+        @Override
+        public void onReconnectExhausted() {
+            callbackThreads.add(Thread.currentThread().getName());
+            exhausted.incrementAndGet();
         }
     }
 
@@ -251,6 +300,14 @@ class OkHttpTextWebSocketClientTest {
             listener.onMessage(
                     socket,
                     ByteString.of((byte) 1)
+            );
+        }
+
+        private void fail() {
+            listener.onFailure(
+                    socket,
+                    new IllegalStateException("connection failed"),
+                    null
             );
         }
     }

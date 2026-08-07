@@ -11,6 +11,7 @@ import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import java.net.URI;
 import java.net.ServerSocket;
@@ -443,7 +444,7 @@ class RuntimeApiPythonIntegrationTest {
                             new OkHttpTextWebSocketClient(
                                     serverUrl,
                                     Duration.ofSeconds(2),
-                                    Duration.ofMillis(20)
+                                    connectionPolicy()
                             ),
                             workerId,
                             definitions
@@ -454,7 +455,7 @@ class RuntimeApiPythonIntegrationTest {
                             new JdkLineSocketClient(
                                     serverUrl,
                                     Duration.ofSeconds(2),
-                                    Duration.ofMillis(20)
+                                    connectionPolicy()
                             ),
                             workerId,
                             definitions
@@ -471,6 +472,14 @@ class RuntimeApiPythonIntegrationTest {
                     )
             );
         };
+    }
+
+    private static TextMessageReconnectPolicy connectionPolicy() {
+        return TextMessageReconnectPolicy.of(
+                20,
+                Duration.ofMillis(20),
+                Duration.ofSeconds(1)
+        );
     }
 
     private BoundWorker registerAndBindWorker(

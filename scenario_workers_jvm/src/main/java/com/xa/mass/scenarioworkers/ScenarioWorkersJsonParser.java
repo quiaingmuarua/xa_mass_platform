@@ -1,5 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
 import java.nio.file.InvalidPathException;
@@ -17,9 +19,16 @@ final class ScenarioWorkersJsonParser {
     private static final Set<String> GROUP_FIELDS = Set.of(
             "eventCodes",
             "requestTimeoutMillis",
-            "reconnectIntervalMillis",
+            "retryPolicy",
             "connectTimeoutMillis",
             "workers"
+    );
+    private static final Set<String> RETRY_POLICY_FIELDS = Set.of(
+            "maxPrepareAttempts",
+            "prepareRetryIntervalMillis",
+            "maxReconnectAttempts",
+            "reconnectIntervalMillis",
+            "stableConnectionDurationMillis"
     );
     private static final Set<String> WORKER_FIELDS = Set.of(
             "clientWorkerKey",
@@ -64,11 +73,7 @@ final class ScenarioWorkersJsonParser {
                             "requestTimeoutMillis",
                             10_000L
                     )),
-                    Duration.ofMillis(optionalPositiveLong(
-                            group,
-                            "reconnectIntervalMillis",
-                            250L
-                    )),
+                    parseRetryPolicy(group),
                     Duration.ofMillis(optionalPositiveLong(
                             group,
                             "connectTimeoutMillis",
@@ -77,6 +82,70 @@ final class ScenarioWorkersJsonParser {
             ));
         });
         return List.copyOf(configs);
+    }
+
+    private static WorkerRetryPolicy parseRetryPolicy(
+            Map<String, Object> group
+    ) {
+        if (!group.containsKey("retryPolicy")) {
+            return WorkerRetryPolicy.defaults();
+        }
+        Map<String, Object> policy = requireObject(
+                group.get("retryPolicy"),
+                "retryPolicy"
+        );
+        requireExactFields(policy, RETRY_POLICY_FIELDS, "retryPolicy");
+        if (!policy.keySet().containsAll(RETRY_POLICY_FIELDS)) {
+            throw new IllegalArgumentException(
+                    "retryPolicy must contain all retry policy fields"
+            );
+        }
+        return WorkerRetryPolicy.of(
+                requirePositiveInt(policy, "maxPrepareAttempts"),
+                Duration.ofMillis(requirePositiveLong(
+                        policy,
+                        "prepareRetryIntervalMillis"
+                )),
+                TextMessageReconnectPolicy.of(
+                        requirePositiveInt(
+                                policy,
+                                "maxReconnectAttempts"
+                        ),
+                        Duration.ofMillis(requirePositiveLong(
+                                policy,
+                                "reconnectIntervalMillis"
+                        )),
+                        Duration.ofMillis(requirePositiveLong(
+                                policy,
+                                "stableConnectionDurationMillis"
+                        ))
+                )
+        );
+    }
+
+    private static int requirePositiveInt(
+            Map<String, Object> value,
+            String field
+    ) {
+        long parsed = requirePositiveLong(value, field);
+        if (parsed > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    field + " must fit in a positive integer"
+            );
+        }
+        return (int) parsed;
+    }
+
+    private static long requirePositiveLong(
+            Map<String, Object> value,
+            String field
+    ) {
+        if (!value.containsKey(field)) {
+            throw new IllegalArgumentException(
+                    field + " must be present"
+            );
+        }
+        return optionalPositiveLong(value, field, 0L);
     }
 
     private static List<ScenarioWorkerConfig> parseWorkers(

@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import java.net.URI;
+import java.util.Objects;
 
 /**
  * Common lifecycle and observation contract for assembled Worker instances.
@@ -10,12 +11,21 @@ public interface WorkerLifecycle extends AutoCloseable {
     enum State {
         STOPPED,
         STARTING,
-        REGISTERING,
-        BINDING,
-        CONNECTING,
-        TRANSPORT_CONNECTED,
+        RUNNING,
         ERROR,
         CLOSED
+    }
+
+    enum PrepareOperation {
+        NONE,
+        REGISTERING,
+        BINDING
+    }
+
+    enum ConnectionState {
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED
     }
 
     @FunctionalInterface
@@ -44,17 +54,29 @@ public interface WorkerLifecycle extends AutoCloseable {
     final class Snapshot {
 
         private final State state;
+        private final PrepareOperation prepareOperation;
+        private final ConnectionState connectionState;
         private final String workerId;
         private final URI endpointUri;
         private final String diagnosticMessage;
 
         public Snapshot(
                 State state,
+                PrepareOperation prepareOperation,
+                ConnectionState connectionState,
                 String workerId,
                 URI endpointUri,
                 String diagnosticMessage
         ) {
-            this.state = state;
+            this.state = Objects.requireNonNull(state, "state");
+            this.prepareOperation = Objects.requireNonNull(
+                    prepareOperation,
+                    "prepareOperation"
+            );
+            this.connectionState = Objects.requireNonNull(
+                    connectionState,
+                    "connectionState"
+            );
             this.workerId = workerId;
             this.endpointUri = endpointUri;
             this.diagnosticMessage = diagnosticMessage;
@@ -62,6 +84,14 @@ public interface WorkerLifecycle extends AutoCloseable {
 
         public State state() {
             return state;
+        }
+
+        public PrepareOperation prepareOperation() {
+            return prepareOperation;
+        }
+
+        public ConnectionState connectionState() {
+            return connectionState;
         }
 
         public String workerId() {

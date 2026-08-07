@@ -3,16 +3,21 @@ package com.xa.mass.worker.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -64,8 +69,7 @@ class TextMessageWorkerRuntimeTest {
         runtime.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
-        await(() -> runtime.snapshot().state()
-                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+        await(runtime::isConnected);
 
         assertEquals(1, control.registerCalls);
         assertEquals(1, control.bindCalls);
@@ -92,7 +96,7 @@ class TextMessageWorkerRuntimeTest {
         MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
         FakeControlClient control = new FakeControlClient();
         FakeNetworkFactory networks = new FakeNetworkFactory();
-        List<WorkerLifecycle.State> states =
+        List<WorkerLifecycle.Snapshot> snapshots =
                 new CopyOnWriteArrayList<>();
         runtime = runtime(
                 WorkerTransportType.SOCKET,
@@ -101,17 +105,20 @@ class TextMessageWorkerRuntimeTest {
                 control,
                 networks
         );
-        runtime.addListener(snapshot -> states.add(snapshot.state()));
+        runtime.addListener(snapshots::add);
 
         runtime.start();
         networks.awaitClient(0);
-        await(() -> states.contains(WorkerLifecycle.State.CONNECTING));
+        await(() -> snapshots.stream().anyMatch(snapshot ->
+                snapshot.connectionState()
+                        == WorkerLifecycle.ConnectionState.CONNECTING));
 
         assertEquals(WorkerTransportType.SOCKET, control.lastTransportType);
-        assertTrue(states.contains(WorkerLifecycle.State.STARTING));
-        assertFalse(states.contains(
-                WorkerLifecycle.State.REGISTERING
-        ));
+        assertTrue(snapshots.stream().anyMatch(snapshot ->
+                snapshot.state() == WorkerLifecycle.State.STARTING));
+        assertFalse(snapshots.stream().anyMatch(snapshot ->
+                snapshot.prepareOperation()
+                        == WorkerLifecycle.PrepareOperation.REGISTERING));
     }
 
     @Test
@@ -156,6 +163,9 @@ class TextMessageWorkerRuntimeTest {
         assertEquals(1, control.registerCalls);
         assertEquals(2, control.bindCalls);
         assertEquals(WORKER_ID, runtime.snapshot().workerId());
+        assertEquals(0, control.closeCalls);
+        runtime.close();
+        assertEquals(1, control.closeCalls);
     }
 
     @Test
@@ -226,14 +236,172 @@ class TextMessageWorkerRuntimeTest {
         client.open();
         await(runtime::isConnected);
         client.disconnect();
-        await(() -> runtime.snapshot().state()
-                == WorkerLifecycle.State.CONNECTING);
+        await(() -> runtime.snapshot().connectionState()
+                == WorkerLifecycle.ConnectionState.CONNECTING);
         client.open();
         await(runtime::isConnected);
 
         assertEquals(0, control.registerCalls);
         assertEquals(1, control.bindCalls);
         assertEquals(1, networks.clients.size());
+    }
+
+    @Test
+    void reconnectExhaustionRepreparesWithFreshPropertiesAndEndpoint()
+            throws Exception {
+        MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
+        FakeControlClient control = new FakeControlClient();
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        AtomicReference<Map<String, Object>> current =
+                new AtomicReference<>(properties());
+        runtime = runtime(identity, current::get, control, networks);
+
+        runtime.start();
+        FakeTextMessageClient first = networks.awaitClient(0);
+        first.open();
+        await(runtime::isConnected);
+
+        current.set(Map.of(
+                "clientWorkerKey", "installation-1",
+                "version", 2
+        ));
+        control.endpoint = ENDPOINT_TWO;
+        first.exhaustReconnects();
+        FakeTextMessageClient second = networks.awaitClient(1);
+        second.open();
+        await(runtime::isConnected);
+
+        assertEquals(0, control.registerCalls);
+        assertEquals(2, control.bindCalls);
+        assertTrue(first.closed);
+        assertEquals(List.of(ENDPOINT_ONE, ENDPOINT_TWO), networks.endpoints);
+        assertEquals(2, control.boundProperties.get("version"));
+        assertEquals(ENDPOINT_TWO, runtime.snapshot().endpointUri());
+        assertEquals(WorkerLifecycle.State.RUNNING,
+                runtime.snapshot().state());
+    }
+
+    @Test
+    void prepareBudgetExhaustionFailsAndExplicitStartRetriesAgain()
+            throws Exception {
+        MutableIdentityStore identity = new MutableIdentityStore();
+        FakeControlClient control = new FakeControlClient();
+        control.registerFailures = Integer.MAX_VALUE;
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        runtime = runtime(
+                WorkerTransportType.WEBSOCKET,
+                identity,
+                TextMessageWorkerRuntimeTest::properties,
+                control,
+                networks,
+                retryPolicy(3)
+        );
+
+        runtime.start();
+        await(() -> runtime.snapshot().state()
+                == WorkerLifecycle.State.ERROR);
+        assertEquals(3, control.registerCalls);
+        assertEquals(WorkerLifecycle.PrepareOperation.NONE,
+                runtime.snapshot().prepareOperation());
+        assertEquals(WorkerLifecycle.ConnectionState.DISCONNECTED,
+                runtime.snapshot().connectionState());
+
+        control.registerFailures = 0;
+        runtime.start();
+        networks.awaitClient(0).open();
+        await(runtime::isConnected);
+        assertEquals(4, control.registerCalls);
+    }
+
+    @Test
+    void rejectedControlResponseDoesNotConsumePrepareBudget()
+            throws Exception {
+        FakeControlClient control = new FakeControlClient();
+        control.nextBindFailure = new WorkerException(
+                WorkerErrorCode.WORKER_CONTROL_REJECTED,
+                "control.bind",
+                "rejected",
+                null
+        );
+        runtime = runtime(
+                WorkerTransportType.WEBSOCKET,
+                new MutableIdentityStore(WORKER_ID),
+                TextMessageWorkerRuntimeTest::properties,
+                control,
+                new FakeNetworkFactory(),
+                retryPolicy(3)
+        );
+
+        runtime.start();
+        await(() -> runtime.snapshot().state()
+                == WorkerLifecycle.State.ERROR);
+
+        assertEquals(1, control.bindCalls);
+    }
+
+    @Test
+    void workerIdPersistenceFailureDoesNotRetryRegistration()
+            throws Exception {
+        MutableIdentityStore identity = new MutableIdentityStore();
+        identity.saveFailure = new IOException("disk unavailable");
+        FakeControlClient control = new FakeControlClient();
+        runtime = runtime(
+                WorkerTransportType.WEBSOCKET,
+                identity,
+                TextMessageWorkerRuntimeTest::properties,
+                control,
+                new FakeNetworkFactory(),
+                retryPolicy(3)
+        );
+
+        runtime.start();
+        await(() -> runtime.snapshot().state()
+                == WorkerLifecycle.State.ERROR);
+
+        assertEquals(1, control.registerCalls);
+        assertTrue(runtime.snapshot().diagnosticMessage().contains(
+                "Unable to persist workerId"
+        ));
+    }
+
+    @Test
+    void explicitStopClearsPendingResultBeforeNextStart()
+            throws Exception {
+        FakeControlClient control = new FakeControlClient();
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        runtime = runtime(
+                new MutableIdentityStore(WORKER_ID),
+                TextMessageWorkerRuntimeTest::properties,
+                control,
+                networks
+        );
+        runtime.start();
+        FakeTextMessageClient first = networks.awaitClient(0);
+        first.open();
+        await(runtime::isConnected);
+
+        first.rejectNextSend = true;
+        first.message(new WorkerDeliveryCodec().encodeWorkerCommand(
+                new WorkerCommand(
+                        "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3",
+                        WorkerMessageEndpoint.TASK,
+                        WorkerMessageEndpoint.WORKER,
+                        "test.observe",
+                        System.currentTimeMillis() + 30_000,
+                        "{}",
+                        "context"
+                )
+        ));
+        await(() -> first.lastCloseReason
+                == TextMessageClient.CloseReason.SEND_FAILURE);
+
+        runtime.stop();
+        runtime.start();
+        FakeTextMessageClient second = networks.awaitClient(1);
+        second.open();
+        await(runtime::isConnected);
+
+        assertEquals(1, second.sent.size());
     }
 
     @Test
@@ -256,13 +424,17 @@ class TextMessageWorkerRuntimeTest {
 
         assertFalse(runtime.isConnected());
         assertEquals(
-                WorkerLifecycle.State.CONNECTING,
+                WorkerLifecycle.State.RUNNING,
                 runtime.snapshot().state()
+        );
+        assertEquals(
+                WorkerLifecycle.ConnectionState.CONNECTING,
+                runtime.snapshot().connectionState()
         );
     }
 
     @Test
-    void refreshRebindsPropertiesWithoutHotSwappingEndpoint()
+    void refreshRebindsPropertiesAndRejectsEndpointChange()
             throws Exception {
         MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
         FakeControlClient control = new FakeControlClient();
@@ -288,26 +460,6 @@ class TextMessageWorkerRuntimeTest {
         assertEquals(1, networks.clients.size());
         assertFalse(first.closed);
 
-        control.endpoint = ENDPOINT_TWO;
-        current.set(Map.of(
-                "clientWorkerKey", "installation-1",
-                "version", 3
-        ));
-        runtime.refreshProperties();
-        await(() -> control.bindCalls == 3);
-        await(() -> runtime.snapshot().diagnosticMessage() != null);
-        assertEquals(1, networks.clients.size());
-        assertFalse(first.closed);
-        assertTrue(runtime.isConnected());
-        assertEquals(ENDPOINT_ONE, runtime.snapshot().endpointUri());
-        assertTrue(runtime.snapshot().diagnosticMessage().contains(
-                "stop and start"
-        ));
-
-        runtime.refreshProperties();
-        Thread.sleep(30);
-        assertEquals(3, control.bindCalls);
-
         control.nextBindFailure = new WorkerException(
                 WorkerErrorCode.WORKER_CONTROL_REJECTED,
                 "control.bind",
@@ -316,15 +468,34 @@ class TextMessageWorkerRuntimeTest {
         );
         current.set(Map.of(
                 "clientWorkerKey", "installation-1",
-                "version", 4
+                "version", 3
         ));
         runtime.refreshProperties();
-        await(() -> runtime.snapshot().diagnosticMessage().contains(
+        await(() -> control.bindCalls == 3);
+        await(() -> runtime.snapshot().diagnosticMessage() != null
+                && runtime.snapshot().diagnosticMessage().contains(
                 "refresh failed"
         ));
         assertEquals(1, networks.clients.size());
         assertFalse(first.closed);
+        assertTrue(runtime.isConnected());
         assertEquals(ENDPOINT_ONE, runtime.snapshot().endpointUri());
+
+        control.endpoint = ENDPOINT_TWO;
+        current.set(Map.of(
+                "clientWorkerKey", "installation-1",
+                "version", 4
+        ));
+        runtime.refreshProperties();
+        await(() -> runtime.snapshot().state()
+                == WorkerLifecycle.State.ERROR);
+        assertEquals(4, control.bindCalls);
+        assertEquals(1, networks.clients.size());
+        assertTrue(first.closed);
+        assertNull(runtime.snapshot().endpointUri());
+        assertTrue(runtime.snapshot().diagnosticMessage().contains(
+                "restart is required"
+        ));
     }
 
     @Test
@@ -405,6 +576,24 @@ class TextMessageWorkerRuntimeTest {
             FakeControlClient control,
             FakeNetworkFactory networks
     ) {
+        return runtime(
+                transportType,
+                identity,
+                properties,
+                control,
+                networks,
+                retryPolicy(10)
+        );
+    }
+
+    private TextMessageWorkerRuntime runtime(
+            WorkerTransportType transportType,
+            WorkerIdentityStore identity,
+            WorkerPropertiesProvider properties,
+            FakeControlClient control,
+            FakeNetworkFactory networks,
+            WorkerRetryPolicy retryPolicy
+    ) {
         return new TextMessageWorkerRuntime(
                 "group-1",
                 transportType,
@@ -416,10 +605,22 @@ class TextMessageWorkerRuntimeTest {
                         WorkerEventParameterResolvers.jsonMap(),
                         parameters -> "null"
                 )),
-                () -> control,
+                control,
                 networks,
                 Duration.ofSeconds(1),
-                Duration.ofMillis(10)
+                retryPolicy
+        );
+    }
+
+    private static WorkerRetryPolicy retryPolicy(int maxPrepareAttempts) {
+        return WorkerRetryPolicy.of(
+                maxPrepareAttempts,
+                Duration.ofMillis(10),
+                TextMessageReconnectPolicy.of(
+                        20,
+                        Duration.ofMillis(10),
+                        Duration.ofMillis(100)
+                )
         );
     }
 
@@ -453,6 +654,7 @@ class TextMessageWorkerRuntimeTest {
             implements WorkerIdentityStore {
 
         private volatile String workerId;
+        private volatile IOException saveFailure;
 
         private MutableIdentityStore() {
         }
@@ -467,7 +669,10 @@ class TextMessageWorkerRuntimeTest {
         }
 
         @Override
-        public void saveWorkerId(String value) {
+        public void saveWorkerId(String value) throws IOException {
+            if (saveFailure != null) {
+                throw saveFailure;
+            }
             workerId = value;
         }
     }
@@ -477,10 +682,12 @@ class TextMessageWorkerRuntimeTest {
 
         private volatile int registerCalls;
         private volatile int bindCalls;
+        private volatile int closeCalls;
         private volatile int registerFailures;
         private volatile URI endpoint = ENDPOINT_ONE;
         private volatile RuntimeException nextBindFailure;
         private volatile Map<String, Object> registeredProperties;
+        private volatile Map<String, Object> boundProperties;
         private volatile WorkerTransportType lastTransportType;
 
         @Override
@@ -508,6 +715,7 @@ class TextMessageWorkerRuntimeTest {
         ) {
             bindCalls++;
             lastTransportType = transportType;
+            boundProperties = workerProperties;
             RuntimeException failure = nextBindFailure;
             nextBindFailure = null;
             if (failure != null) {
@@ -517,7 +725,8 @@ class TextMessageWorkerRuntimeTest {
         }
 
         @Override
-        public void close() {
+        public synchronized void close() {
+            closeCalls++;
         }
     }
 
@@ -525,6 +734,8 @@ class TextMessageWorkerRuntimeTest {
             implements TextMessageWorkerRuntime.NetworkClientFactory {
 
         private final List<FakeTextMessageClient> clients =
+                new CopyOnWriteArrayList<>();
+        private final List<URI> endpoints =
                 new CopyOnWriteArrayList<>();
         private volatile boolean nextSendAccepted = true;
 
@@ -535,6 +746,7 @@ class TextMessageWorkerRuntimeTest {
                             nextSendAccepted
                     );
             nextSendAccepted = true;
+            endpoints.add(endpointUri);
             clients.add(client);
             return client;
         }
@@ -553,6 +765,9 @@ class TextMessageWorkerRuntimeTest {
         private Listener listener;
         private volatile boolean connected;
         private volatile boolean closed;
+        private volatile boolean rejectNextSend;
+        private volatile CloseReason lastCloseReason;
+        private final List<String> sent = new CopyOnWriteArrayList<>();
 
         private FakeTextMessageClient(
                 boolean sendAccepted
@@ -567,11 +782,20 @@ class TextMessageWorkerRuntimeTest {
 
         @Override
         public boolean send(String message) {
-            return connected && !closed && sendAccepted;
+            if (!connected || closed || !sendAccepted) {
+                return false;
+            }
+            if (rejectNextSend) {
+                rejectNextSend = false;
+                return false;
+            }
+            sent.add(message);
+            return true;
         }
 
         @Override
         public void closeCurrent(CloseReason reason) {
+            lastCloseReason = reason;
             disconnect();
         }
 
@@ -596,6 +820,17 @@ class TextMessageWorkerRuntimeTest {
             connected = false;
             if (listener != null && !closed) {
                 listener.onDisconnected();
+            }
+        }
+
+        void message(String encodedCommand) {
+            listener.onMessage(encodedCommand);
+        }
+
+        void exhaustReconnects() {
+            disconnect();
+            if (listener != null && !closed) {
+                listener.onReconnectExhausted();
             }
         }
     }

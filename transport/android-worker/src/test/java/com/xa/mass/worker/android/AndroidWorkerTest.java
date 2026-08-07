@@ -12,6 +12,8 @@ import android.content.Context;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -114,8 +116,7 @@ public class AndroidWorkerTest {
         });
 
         worker.start();
-        await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+        await(worker::isConnected);
         assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
 
         RecordedRequest register = takeRequest();
@@ -168,8 +169,7 @@ public class AndroidWorkerTest {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+        await(worker::isConnected);
         RecordedRequest firstRegister = takeRequest();
         RecordedRequest firstBind = takeRequest();
         takeRequest();
@@ -185,8 +185,7 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
-        await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+        await(worker::isConnected);
 
         RecordedRequest secondBind = takeRequest();
         RecordedRequest secondSocket = takeRequest();
@@ -213,8 +212,7 @@ public class AndroidWorkerTest {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+        await(worker::isConnected);
         takeRequest();
         takeRequest();
         takeRequest();
@@ -236,8 +234,10 @@ public class AndroidWorkerTest {
                 "updated",
                 bindingProperties(refreshed).get("region")
         );
-        assertEquals(WorkerLifecycle.State.TRANSPORT_CONNECTED,
+        assertEquals(WorkerLifecycle.State.RUNNING,
                 worker.snapshot().state());
+        assertEquals(WorkerLifecycle.ConnectionState.CONNECTED,
+                worker.snapshot().connectionState());
     }
 
     @Test
@@ -268,8 +268,7 @@ public class AndroidWorkerTest {
         AndroidWorker duplicate = worker(context -> properties.get());
         try {
             worker.start();
-            await(() -> worker.snapshot().state()
-                    == WorkerLifecycle.State.TRANSPORT_CONNECTED);
+            await(worker::isConnected);
             assertThrows(IllegalStateException.class, duplicate::start);
         } finally {
             duplicate.close();
@@ -293,7 +292,15 @@ public class AndroidWorkerTest {
                         ))
                 )))
                 .requestTimeout(Duration.ofSeconds(2))
-                .reconnectInterval(Duration.ofMillis(20))
+                .retryPolicy(WorkerRetryPolicy.of(
+                        10,
+                        Duration.ofMillis(20),
+                        TextMessageReconnectPolicy.of(
+                                20,
+                                Duration.ofMillis(20),
+                                Duration.ofMillis(100)
+                        )
+                ))
                 .build();
     }
 

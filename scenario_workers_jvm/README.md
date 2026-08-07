@@ -33,6 +33,13 @@ The worker JSON is keyed by WorkerGroup ID:
       "phonenumber.country",
       "phonenumber.original-carrier"
     ],
+    "retryPolicy": {
+      "maxPrepareAttempts": 10,
+      "prepareRetryIntervalMillis": 1000,
+      "maxReconnectAttempts": 20,
+      "reconnectIntervalMillis": 500,
+      "stableConnectionDurationMillis": 10000
+    },
     "workers": [{
       "clientWorkerKey": "scenario-phone-number-worker-001",
       "sandboxDirectory":
@@ -43,6 +50,11 @@ The worker JSON is keyed by WorkerGroup ID:
   }
 }
 ```
+
+`retryPolicy` is optional as a whole and otherwise strict: all five fields are
+required and unknown fields are rejected. When omitted, Worker Core uses 10
+prepare attempts and 20 unstable connection attempts. The legacy top-level
+`reconnectIntervalMillis` field is rejected.
 
 `sandboxDirectory` is optional. Without it, the Worker remains ephemeral and
 uses `WorkerIdentityStore.noCache()`, so each process start repeats the
@@ -85,8 +97,8 @@ Definition selection; Scenario Workers never compare or update the two values.
 
 The module depends internally on Worker Core, `JavaWorker`, and the transport
 wire contract. `JavaWorker` injects each configured client key into the final
-Properties and delegates Register/Bind/session behavior to the shared Core
-runtime; Index update uses a private HTTP client. It has no dependency
+Properties and delegates bounded prepare plus connection supervision to the
+shared Core runtime; Index update uses a private HTTP client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
 Redis, scores, or Pacers. The Worker does not configure or know an
 `endpointManagerId`; Bind returns the selected public WebSocket URI.

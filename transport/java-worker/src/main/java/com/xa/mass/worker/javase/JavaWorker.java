@@ -1,6 +1,7 @@
 package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
@@ -10,6 +11,7 @@ import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 
 import java.net.URI;
 import java.time.Duration;
@@ -22,9 +24,6 @@ public final class JavaWorker implements WorkerLifecycle {
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
             Duration.ofSeconds(10);
-    private static final Duration DEFAULT_RECONNECT_INTERVAL =
-            Duration.ofMillis(250);
-
     private final TextMessageWorkerRuntime runtime;
 
     private JavaWorker(TextMessageWorkerRuntime runtime) {
@@ -95,7 +94,7 @@ public final class JavaWorker implements WorkerLifecycle {
         private WorkerPropertiesProvider workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private Duration reconnectInterval = DEFAULT_RECONNECT_INTERVAL;
+        private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
 
         private Builder(
                 URI runtimeApiBaseUrl,
@@ -156,11 +155,13 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder reconnectInterval(Duration value) {
-            reconnectInterval = requirePositive(
-                    value,
-                    "reconnectInterval"
-            );
+        public Builder retryPolicy(WorkerRetryPolicy value) {
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "retryPolicy must be present"
+                );
+            }
+            retryPolicy = value;
             return this;
         }
 
@@ -200,24 +201,23 @@ public final class JavaWorker implements WorkerLifecycle {
                 return complete;
             };
             Duration resolvedRequestTimeout = requestTimeout;
-            Duration resolvedReconnectInterval = reconnectInterval;
+            WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
             TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                     workerGroupId,
                     transportType,
                     identityStore,
                     completeProperties,
                     definitions,
-                    () -> new OkHttpWorkerControlClient(
-                            runtimeApiBaseUrl
-                    ),
+                    new OkHttpWorkerControlClient(runtimeApiBaseUrl),
                     endpointUri -> createNetworkClient(
                             transportType,
                             endpointUri,
                             resolvedRequestTimeout,
-                            resolvedReconnectInterval
+                            resolvedRetryPolicy
+                                    .connectionPolicy()
                     ),
                     resolvedRequestTimeout,
-                    resolvedReconnectInterval
+                    resolvedRetryPolicy
             );
             return new JavaWorker(runtime);
         }
@@ -226,19 +226,19 @@ public final class JavaWorker implements WorkerLifecycle {
                 WorkerTransportType transportType,
                 URI endpointUri,
                 Duration requestTimeout,
-                Duration reconnectInterval
+                TextMessageReconnectPolicy reconnectPolicy
         ) {
             if (transportType == WorkerTransportType.WEBSOCKET) {
                 return new OkHttpTextWebSocketClient(
                         endpointUri,
                         requestTimeout,
-                        reconnectInterval
+                        reconnectPolicy
                 );
             }
             return new JdkLineSocketClient(
                     endpointUri,
                     requestTimeout,
-                    reconnectInterval
+                    reconnectPolicy
             );
         }
     }

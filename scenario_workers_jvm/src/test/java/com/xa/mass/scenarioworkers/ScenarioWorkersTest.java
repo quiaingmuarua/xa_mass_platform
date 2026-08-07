@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -420,7 +422,15 @@ class ScenarioWorkersTest {
                         config(eventCode, count)
                 ).get(0).workers(),
                 Duration.ofSeconds(10),
-                Duration.ofMillis(10),
+                WorkerRetryPolicy.of(
+                        3,
+                        Duration.ofMillis(10),
+                        TextMessageReconnectPolicy.of(
+                                3,
+                                Duration.ofMillis(10),
+                                Duration.ofMillis(50)
+                        )
+                ),
                 connectTimeout
         );
     }

@@ -44,5 +44,11 @@ public interface TextMessageClient extends AutoCloseable {
         void onDisconnected();
 
         void onFailure(Throwable error);
+
+        /**
+         * The current endpoint exhausted its consecutive unstable-connection
+         * budget and will not reconnect again.
+         */
+        void onReconnectExhausted();
     }
 }
