@@ -88,7 +88,7 @@ class OkHttpTextWebSocketClientTest {
         await(() -> listener.messages.size() == 1);
         assertEquals(List.of("current"), listener.messages);
         assertEquals(2, listener.opens.get());
-        assertEquals(1, listener.disconnects.get());
+        assertEquals(0, listener.terminations.get());
         assertTrue(client.isConnected());
         assertEquals(1007, first.socket.closeCode);
     }
@@ -106,7 +106,7 @@ class OkHttpTextWebSocketClientTest {
         await(() -> connector.connections.size() == 2);
 
         assertEquals(1011, first.socket.closeCode);
-        assertEquals(1, listener.disconnects.get());
+        assertEquals(0, listener.terminations.get());
     }
 
     @Test
@@ -145,6 +145,7 @@ class OkHttpTextWebSocketClientTest {
         assertFalse(client.isConnected());
         assertTrue(first.socket.cancelled);
         assertTrue(connector.closed);
+        assertEquals(0, listener.terminations.get());
     }
 
     @Test
@@ -160,17 +161,22 @@ class OkHttpTextWebSocketClientTest {
     }
 
     @Test
-    void exhaustsAfterBoundedUnstableAttempts() throws Exception {
+    void terminatesEndpointAfterBoundedUnstableAttempts() throws Exception {
         connector.connections.get(0).fail();
         await(() -> connector.connections.size() == 2);
         connector.connections.get(1).fail();
         await(() -> connector.connections.size() == 3);
         connector.connections.get(2).fail();
 
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
+        connector.connections.get(2).open();
+        connector.connections.get(2).text("late");
         Thread.sleep(30);
         assertEquals(3, connector.connections.size());
-        assertEquals(1, listener.exhausted.get());
+        assertEquals(1, listener.terminations.get());
+        assertEquals(0, listener.opens.get());
+        assertTrue(listener.messages.isEmpty());
+        assertFalse(client.isConnected());
     }
 
     @Test
@@ -188,7 +194,7 @@ class OkHttpTextWebSocketClientTest {
         await(() -> connector.connections.size() == 4);
         connector.connections.get(3).fail();
 
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
         assertEquals(4, connector.connections.size());
     }
 
@@ -219,8 +225,7 @@ class OkHttpTextWebSocketClientTest {
             implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
-        private final AtomicInteger disconnects = new AtomicInteger();
-        private final AtomicInteger exhausted = new AtomicInteger();
+        private final AtomicInteger terminations = new AtomicInteger();
         private final List<String> messages = new CopyOnWriteArrayList<>();
         private final List<String> callbackThreads =
                 new CopyOnWriteArrayList<>();
@@ -238,20 +243,9 @@ class OkHttpTextWebSocketClientTest {
         }
 
         @Override
-        public void onDisconnected() {
+        public void onEndpointTerminated() {
             callbackThreads.add(Thread.currentThread().getName());
-            disconnects.incrementAndGet();
-        }
-
-        @Override
-        public void onFailure(Throwable error) {
-            callbackThreads.add(Thread.currentThread().getName());
-        }
-
-        @Override
-        public void onReconnectExhausted() {
-            callbackThreads.add(Thread.currentThread().getName());
-            exhausted.incrementAndGet();
+            terminations.incrementAndGet();
         }
     }
 

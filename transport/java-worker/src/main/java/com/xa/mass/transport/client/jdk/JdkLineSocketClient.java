@@ -31,7 +31,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
     private Connection current;
     private boolean running;
     private boolean closed;
-    private boolean reconnectExhausted;
+    private boolean endpointTerminated;
     private int unstableAttempts;
 
     public JdkLineSocketClient(
@@ -93,7 +93,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
             }
             this.listener = listener;
             running = true;
-            reconnectExhausted = false;
+            endpointTerminated = false;
             unstableAttempts = 0;
         }
         connectionExecutor.execute(this::runConnections);
@@ -131,7 +131,6 @@ public final class JdkLineSocketClient implements TextMessageClient {
             if (!running || closed || connection == null) {
                 return;
             }
-            connection.closeRequested = true;
         }
         closeQuietly(connection.socket);
     }
@@ -152,6 +151,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
             }
             closed = true;
             running = false;
+            endpointTerminated = true;
             connection = current;
             current = null;
         }
@@ -175,9 +175,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
         while (isRunning()) {
             Socket socket = null;
             Connection connection = null;
-            boolean opened = false;
             long openedAtNanos = 0L;
-            Throwable failure = null;
             try {
                 socket = connector.connect(
                         socketUri,
@@ -200,7 +198,6 @@ public final class JdkLineSocketClient implements TextMessageClient {
                     closeQuietly(socket);
                     break;
                 }
-                opened = true;
                 openedAtNanos = System.nanoTime();
                 listener.onOpen();
                 String line;
@@ -208,29 +205,19 @@ public final class JdkLineSocketClient implements TextMessageClient {
                         && (line = reader.readLine()) != null) {
                     listener.onMessage(line);
                 }
-            } catch (IOException | RuntimeException error) {
-                failure = error;
+            } catch (IOException | RuntimeException ignored) {
+                // Transient connection failures stay inside the Client.
             } finally {
-                boolean notify = isRunning();
-                boolean requested = connection != null
-                        && connection.closeRequested;
                 if (connection != null) {
                     clear(connection);
                     closeQuietly(connection.socket);
                 } else if (socket != null) {
                     closeQuietly(socket);
                 }
-                if (notify) {
-                    if (failure != null && !requested) {
-                        listener.onFailure(failure);
-                    } else if (opened) {
-                        listener.onDisconnected();
-                    }
-                }
             }
             if (isRunning()
                     && recordUnstableTermination(openedAtNanos)) {
-                listener.onReconnectExhausted();
+                listener.onEndpointTerminated();
                 break;
             }
             if (isRunning() && !sleepBeforeReconnect()) {
@@ -241,7 +228,7 @@ public final class JdkLineSocketClient implements TextMessageClient {
 
     private boolean install(Connection connection) {
         synchronized (lock) {
-            if (!running || closed || reconnectExhausted) {
+            if (!running || closed || endpointTerminated) {
                 return false;
             }
             current = connection;
@@ -265,14 +252,14 @@ public final class JdkLineSocketClient implements TextMessageClient {
 
     private boolean isRunning() {
         synchronized (lock) {
-            return running && !closed && !reconnectExhausted;
+            return running && !closed && !endpointTerminated;
         }
     }
 
     private boolean recordUnstableTermination(long openedAtNanos) {
         synchronized (lock) {
-            if (!running || closed || reconnectExhausted) {
-                return reconnectExhausted;
+            if (!running || closed || endpointTerminated) {
+                return endpointTerminated;
             }
             if (openedAtNanos != 0L
                     && System.nanoTime() - openedAtNanos
@@ -282,9 +269,9 @@ public final class JdkLineSocketClient implements TextMessageClient {
                 unstableAttempts = 0;
             }
             unstableAttempts++;
-            reconnectExhausted = unstableAttempts
+            endpointTerminated = unstableAttempts
                     >= reconnectPolicy.maxUnstableAttempts();
-            return reconnectExhausted;
+            return endpointTerminated;
         }
     }
 
@@ -312,8 +299,6 @@ public final class JdkLineSocketClient implements TextMessageClient {
         private final Socket socket;
         private final BufferedReader reader;
         private final BufferedWriter writer;
-        private volatile boolean closeRequested;
-
         private Connection(
                 Socket socket,
                 BufferedReader reader,

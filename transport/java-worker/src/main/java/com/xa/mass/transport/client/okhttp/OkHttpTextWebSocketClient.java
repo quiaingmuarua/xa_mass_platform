@@ -39,7 +39,7 @@ public final class OkHttpTextWebSocketClient
     private boolean closed;
     private boolean connected;
     private boolean reconnectScheduled;
-    private boolean reconnectExhausted;
+    private boolean endpointTerminated;
     private int unstableAttempts;
 
     public OkHttpTextWebSocketClient(
@@ -115,7 +115,7 @@ public final class OkHttpTextWebSocketClient
             }
             this.listener = listener;
             running = true;
-            reconnectExhausted = false;
+            endpointTerminated = false;
             unstableAttempts = 0;
         }
         execute(this::connect);
@@ -169,7 +169,7 @@ public final class OkHttpTextWebSocketClient
             running = false;
             connected = false;
             reconnectScheduled = false;
-            reconnectExhausted = true;
+            endpointTerminated = true;
             attempt = activeAttempt;
             activeAttempt = null;
             listener = null;
@@ -200,7 +200,7 @@ public final class OkHttpTextWebSocketClient
         synchronized (lock) {
             if (!running
                     || closed
-                    || reconnectExhausted
+                    || endpointTerminated
                     || activeAttempt != null) {
                 return;
             }
@@ -218,7 +218,7 @@ public final class OkHttpTextWebSocketClient
                 }
             }
         } catch (RuntimeException error) {
-            disconnect(attempt, error);
+            disconnect(attempt);
         }
     }
 
@@ -254,7 +254,7 @@ public final class OkHttpTextWebSocketClient
                 socket.cancel();
             }
         }
-        disconnect(attempt, null);
+        disconnect(attempt);
     }
 
     private void opened(ConnectionAttempt attempt, WebSocket socket) {
@@ -297,12 +297,9 @@ public final class OkHttpTextWebSocketClient
         closeSocket(attempt, UNSUPPORTED_DATA, "Text messages only");
     }
 
-    private void disconnect(
-            ConnectionAttempt attempt,
-            Throwable failure
-    ) {
+    private void disconnect(ConnectionAttempt attempt) {
         Listener callback;
-        boolean exhausted;
+        boolean terminated;
         synchronized (lock) {
             if (activeAttempt != attempt) {
                 return;
@@ -311,21 +308,14 @@ public final class OkHttpTextWebSocketClient
             connected = false;
             callback = listener;
             unstableAttempts++;
-            exhausted = unstableAttempts
+            terminated = unstableAttempts
                     >= reconnectPolicy.maxUnstableAttempts();
-            reconnectExhausted = exhausted;
+            endpointTerminated = terminated;
         }
-        if (callback != null) {
-            if (failure == null) {
-                callback.onDisconnected();
-            } else {
-                callback.onFailure(failure);
-            }
-            if (exhausted) {
-                callback.onReconnectExhausted();
-            }
+        if (terminated && callback != null) {
+            callback.onEndpointTerminated();
         }
-        if (!exhausted) {
+        if (!terminated) {
             scheduleReconnect();
         }
     }
@@ -355,7 +345,7 @@ public final class OkHttpTextWebSocketClient
         synchronized (lock) {
             if (!running
                     || closed
-                    || reconnectExhausted
+                    || endpointTerminated
                     || reconnectScheduled
                     || activeAttempt != null) {
                 return;
@@ -420,7 +410,7 @@ public final class OkHttpTextWebSocketClient
                 try {
                     webSocket.close(code, reason);
                 } finally {
-                    execute(() -> disconnect(ConnectionAttempt.this, null));
+                    execute(() -> disconnect(ConnectionAttempt.this));
                 }
             }
 
@@ -430,7 +420,7 @@ public final class OkHttpTextWebSocketClient
                     int code,
                     String reason
             ) {
-                execute(() -> disconnect(ConnectionAttempt.this, null));
+                execute(() -> disconnect(ConnectionAttempt.this));
             }
 
             @Override
@@ -439,7 +429,7 @@ public final class OkHttpTextWebSocketClient
                     Throwable error,
                     Response response
             ) {
-                execute(() -> disconnect(ConnectionAttempt.this, error));
+                execute(() -> disconnect(ConnectionAttempt.this));
             }
         };
 

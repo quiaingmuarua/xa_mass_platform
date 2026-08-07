@@ -22,7 +22,7 @@ Every command reaches the same DTO entry:
 ```text
 encoded network input
   -> strict WorkerCommand decode at the transport boundary
-  -> TextMessageWorkerRuntime.send(WorkerCommand)
+  -> TextMessageWorkerRuntime final inbound-command admission
   -> WorkerCommandDispatcher
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
   -> WorkerResult
@@ -79,26 +79,28 @@ prepared workerId + endpoint Client
   -> decode inbound WorkerCommand
   -> final command admission and serial execution
   -> retain/send the resulting WorkerResult
-  -> report reconnect exhaustion once
+  -> report endpoint termination once
 ```
 
 It receives only the prepared endpoint, a `WorkerCommandExecutor`, and the
 shared result slot. It has no Identity Store, Properties provider, Control
 Client, definitions, dispatcher construction, or preparation retry logic.
-Ordinary reconnects stay inside the current `TextMessageClient` and reuse the
-prepared endpoint. Only reconnect budget exhaustion exits the runtime and
-returns control to `WorkerLoop`.
+Ordinary disconnects, failures, and reconnects stay inside the current
+`TextMessageClient` and reuse the prepared endpoint. Only endpoint termination
+exits the runtime and returns control to `WorkerLoop`. The current concrete
+Clients terminate an endpoint when its reconnect budget is exhausted.
 
 ## Command And Result Ownership
 
-Adapter commands and local `SYSTEM` or `ADAPTER` commands use the same
-`WorkerLifecycle.send(WorkerCommand)` entry. `WorkerLoop` performs only a
-current `RUNNING` check and delegates to the current runtime. The runtime is
-the final admission owner: it accepts only while connected, with no command
-executing and no pending result. Rejected commands are not queued and callers
-decide whether to retry.
+`TASK`, `SYSTEM`, and `ADAPTER` commands all enter through the active
+connection's inbound text callback. `WorkerLifecycle` exposes no local command
+injection or message-send operation, and `WorkerLoop` never accepts or routes a
+`WorkerCommand`. The one-round runtime decodes the inbound frame and is the
+final admission owner: it accepts only while connected, with no command
+executing and no pending result. A malformed or inadmissible inbound frame
+closes the current connection and is never queued.
 
-If reconnect exhaustion occurs during handler execution, that runtime waits
+If endpoint termination occurs during handler execution, that runtime waits
 for the handler and places its result in the shared single slot before issuing
 its exact-once exit callback. `WorkerLoop` then starts the next preparation
 round without consulting command state. The next connection sends Bind before
@@ -116,7 +118,6 @@ pending result before polling another command.
 
 ```text
 start / stop / close
-send(WorkerCommand)
 snapshot / isConnected
 addListener / removeListener
 ```
@@ -131,10 +132,13 @@ ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
 `RUNNING` means a prepared one-round runtime is installed. `CONNECTED` means
 the network opened and the workerId-only connection Bind was accepted by the
 Client. Neither is Kernel online truth or scheduling availability.
+`snapshot()` and `isConnected()` are current queries; lifecycle listeners do
+not promise a callback for each transient network disconnect.
 
-There is intentionally no direct Properties-refresh lifecycle method.
-Platform or Adapter initiated behavior is expressed through statically
-installed `WorkerEventDefinition` commands and the same `send` path.
+There is intentionally no direct Properties-refresh or local-command lifecycle
+method. Platform or Adapter initiated Worker behavior is expressed through
+statically installed `WorkerEventDefinition` commands delivered over the
+Worker's inbound connection.
 
 ## Client Boundary
 
@@ -143,9 +147,14 @@ JDK-type-only `WorkerControlClient`. Concrete Clients own networking,
 framing, reconnect scheduling, stale callback isolation, and resource
 teardown. They do not cache Worker commands or results.
 
+`TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and the
+exact-once `onEndpointTerminated`. Transient disconnect and failure evidence
+does not cross into the Worker Runtime.
+
 `TextMessageReconnectPolicy` bounds consecutive unstable connections. A
 connection must survive its stable window before the count resets. Exhaustion
-stops reconnecting and emits one `onReconnectExhausted()` callback.
+stops reconnecting and emits one `onEndpointTerminated()` callback. This ends
+the current Client/runtime round; it does not stop the assembled Worker.
 
 `WorkerRetryPolicy.defaults()` uses 10 preparation attempts one second apart,
 plus 20 unstable connection attempts 500 milliseconds apart with a 10 second

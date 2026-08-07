@@ -67,8 +67,9 @@ rejected because its request-response lifecycle is assembled separately.
 Worker ID is registered and saved, every explicit `start()` performs Endpoint
 Bind, and the returned URI starts one runtime round. Temporary disconnects are
 handled by the selected concrete Client against the same URI and do not repeat
-Bind. When its bounded reconnect budget is exhausted, the runtime exits and
-the loop reloads Properties and performs a new bounded preparation round.
+Bind. When the Client terminates its endpoint after exhausting the bounded
+reconnect budget, the runtime exits and the loop reloads Properties and
+performs a new bounded preparation round.
 `stop()` preserves identity. Properties are re-read by preparation rather than
 through a separate refresh lifecycle API.
 

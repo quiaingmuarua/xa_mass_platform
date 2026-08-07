@@ -39,7 +39,7 @@ public final class AndroidOkHttpTextWebSocketClient
         CONNECTING,
         CONNECTED,
         RECONNECT_SCHEDULED,
-        EXHAUSTED,
+        TERMINATED,
         CLOSED
     }
 
@@ -215,7 +215,7 @@ public final class AndroidOkHttpTextWebSocketClient
     private void connectOnHandlerThread() {
         if (closeRequested
                 || currentAttempt != null
-                || visibleState == State.EXHAUSTED
+                || visibleState == State.TERMINATED
                 || visibleState == State.CLOSED) {
             return;
         }
@@ -235,7 +235,7 @@ public final class AndroidOkHttpTextWebSocketClient
                 socket.cancel();
             }
         } catch (RuntimeException error) {
-            disconnectOnHandlerThread(attempt.generation, error);
+            disconnectOnHandlerThread(attempt.generation);
         }
     }
 
@@ -305,13 +305,10 @@ public final class AndroidOkHttpTextWebSocketClient
                 socket.cancel();
             }
         }
-        disconnectOnHandlerThread(generation, null);
+        disconnectOnHandlerThread(generation);
     }
 
-    private void disconnectOnHandlerThread(
-            long generation,
-            Throwable failure
-    ) {
+    private void disconnectOnHandlerThread(long generation) {
         ConnectionAttempt attempt = requireCurrent(generation);
         if (attempt == null) {
             return;
@@ -324,19 +321,12 @@ public final class AndroidOkHttpTextWebSocketClient
         }
 
         Listener callback = listener;
-        if (!closeRequested && callback != null) {
-            if (failure != null) {
-                callback.onFailure(failure);
-            } else {
-                callback.onDisconnected();
-            }
-        }
         unstableAttempts++;
         if (unstableAttempts
                 >= reconnectPolicy.maxUnstableAttempts()) {
-            transitionTo(State.EXHAUSTED);
+            transitionTo(State.TERMINATED);
             if (!closeRequested && callback != null) {
-                callback.onReconnectExhausted();
+                callback.onEndpointTerminated();
             }
         } else {
             scheduleReconnectOnHandlerThread();
@@ -421,13 +411,10 @@ public final class AndroidOkHttpTextWebSocketClient
         visibleState = State.CLOSED;
     }
 
-    private void postDisconnect(long generation, Throwable failure) {
+    private void postDisconnect(long generation) {
         Handler target = currentHandler();
         if (target != null) {
-            target.post(() -> disconnectOnHandlerThread(
-                    generation,
-                    failure
-            ));
+            target.post(() -> disconnectOnHandlerThread(generation));
         }
     }
 
@@ -513,7 +500,7 @@ public final class AndroidOkHttpTextWebSocketClient
             try {
                 webSocket.close(code, reason);
             } finally {
-                postDisconnect(generation, null);
+                postDisconnect(generation);
             }
         }
 
@@ -523,7 +510,7 @@ public final class AndroidOkHttpTextWebSocketClient
                 int code,
                 String reason
         ) {
-            postDisconnect(generation, null);
+            postDisconnect(generation);
         }
 
         @Override
@@ -532,7 +519,7 @@ public final class AndroidOkHttpTextWebSocketClient
                 Throwable error,
                 Response response
         ) {
-            postDisconnect(generation, error);
+            postDisconnect(generation);
         }
     }
 

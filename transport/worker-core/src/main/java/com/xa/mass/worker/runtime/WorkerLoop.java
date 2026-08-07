@@ -4,8 +4,6 @@ import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
@@ -123,24 +121,6 @@ public final class WorkerLoop implements WorkerLifecycle {
         closeQuietly(runtime);
         closeQuietly(resultSlot);
         publish();
-    }
-
-    @Override
-    public boolean send(WorkerCommand command) {
-        Objects.requireNonNull(command, "command");
-        TextMessageWorkerRuntime runtime;
-        synchronized (lock) {
-            if (state != State.RUNNING) {
-                return false;
-            }
-            runtime = activeRuntime;
-            if (runtime == null) {
-                throw new IllegalStateException(
-                        "RUNNING Worker has no active runtime"
-                );
-            }
-        }
-        return runtime.send(command);
     }
 
     @Override
@@ -376,7 +356,7 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             preparedWorker = null;
             state = State.PREPARING;
-            diagnosticMessage = "Connection retry budget exhausted; "
+            diagnosticMessage = "Endpoint terminated; "
                     + "preparing Worker again";
         }
         closeQuietly(runtime);

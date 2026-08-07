@@ -98,7 +98,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         await(client::isConnected);
 
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
-        await(() -> listener.disconnects.get() == 1);
+        await(() -> !client.isConnected());
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
         second.open();
@@ -110,7 +110,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         assertFalse(listener.events.contains("message:stale"));
         assertEquals(2, listener.opens.get());
-        assertEquals(1, listener.disconnects.get());
+        assertEquals(0, listener.terminations.get());
     }
 
     @Test
@@ -124,7 +124,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         assertFalse(client.send("result"));
         client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
-        await(() -> listener.disconnects.get() == 1);
+        await(() -> !client.isConnected());
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
         assertFalse(client.send("result"));
@@ -145,7 +145,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         await(client::isConnected);
 
         first.binary();
-        await(() -> listener.disconnects.get() == 1);
+        await(() -> !client.isConnected());
         advanceReconnectClock();
         awaitConnection(1);
 
@@ -154,7 +154,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    public void failureTransitionsOnceAndReconnects()
+    public void failureReconnectsWithoutRuntimeCallback()
             throws Exception {
         client.start(listener);
         FakeConnection first = awaitConnection(0);
@@ -164,12 +164,12 @@ public class AndroidOkHttpTextWebSocketClientTest {
         first.failure(new IllegalStateException("scripted"));
         first.closed();
 
-        await(() -> listener.failures.get() == 1);
+        await(() -> !client.isConnected());
         advanceReconnectClock();
         awaitConnection(1);
 
-        assertEquals(1, listener.failures.get());
-        assertEquals(0, listener.disconnects.get());
+        assertEquals(0, listener.terminations.get());
+        assertEquals(List.of("open"), listener.events);
     }
 
     @Test
@@ -190,6 +190,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertEquals(eventCount, listener.events.size());
         assertTrue(connection.socket.cancelled);
         assertTrue(resourcesClosed.get());
+        assertEquals(0, listener.terminations.get());
     }
 
     @Test
@@ -212,15 +213,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
             }
 
             @Override
-            public void onDisconnected() {
-            }
-
-            @Override
-            public void onFailure(Throwable error) {
-            }
-
-            @Override
-            public void onReconnectExhausted() {
+            public void onEndpointTerminated() {
             }
         });
         FakeConnection connection = awaitConnection(0);
@@ -244,7 +237,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    public void exhaustsAfterBoundedUnstableAttempts()
+    public void terminatesEndpointAfterBoundedUnstableAttempts()
             throws Exception {
         client.start(listener);
         awaitConnection(0).failure(new IOException("one"));
@@ -253,10 +246,16 @@ public class AndroidOkHttpTextWebSocketClientTest {
         advanceReconnectClock();
         awaitConnection(2).failure(new IOException("three"));
 
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
+        FakeConnection terminated = awaitConnection(2);
+        terminated.open();
+        terminated.text("late");
         advanceReconnectClock();
         assertEquals(3, connector.connections.size());
-        assertEquals(1, listener.exhausted.get());
+        assertEquals(1, listener.terminations.get());
+        assertEquals(0, listener.opens.get());
+        assertFalse(listener.events.contains("message:late"));
+        assertFalse(client.isConnected());
     }
 
     @Test
@@ -277,7 +276,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         awaitConnection(2).failure(new IOException("three"));
         advanceReconnectClock();
         awaitConnection(3).failure(new IOException("four"));
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
 
         assertEquals(4, connector.connections.size());
     }
@@ -320,9 +319,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
             implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
-        private final AtomicInteger disconnects = new AtomicInteger();
-        private final AtomicInteger failures = new AtomicInteger();
-        private final AtomicInteger exhausted = new AtomicInteger();
+        private final AtomicInteger terminations = new AtomicInteger();
         private final List<String> events =
                 new CopyOnWriteArrayList<>();
         private final List<String> callbackThreads =
@@ -340,21 +337,9 @@ public class AndroidOkHttpTextWebSocketClientTest {
         }
 
         @Override
-        public void onDisconnected() {
-            disconnects.incrementAndGet();
-            record("disconnected");
-        }
-
-        @Override
-        public void onFailure(Throwable error) {
-            failures.incrementAndGet();
-            record("failure");
-        }
-
-        @Override
-        public void onReconnectExhausted() {
-            exhausted.incrementAndGet();
-            record("exhausted");
+        public void onEndpointTerminated() {
+            terminations.incrementAndGet();
+            record("terminated");
         }
 
         private void record(String event) {

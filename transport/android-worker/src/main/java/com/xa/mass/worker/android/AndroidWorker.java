@@ -10,8 +10,6 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
@@ -82,11 +80,6 @@ public final class AndroidWorker implements WorkerLifecycle {
     public void stop() {
         worker.stop();
         releaseProcessLease();
-    }
-
-    @Override
-    public boolean send(WorkerCommand command) {
-        return worker.send(command);
     }
 
     @Override

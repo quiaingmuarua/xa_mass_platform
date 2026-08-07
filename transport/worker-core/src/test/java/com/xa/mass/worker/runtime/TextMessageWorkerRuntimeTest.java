@@ -68,7 +68,7 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void inboundJsonIsDecodedBeforeTheUnifiedCommandReceiver()
+    void inboundJsonIsDecodedBeforeCommandExecution()
             throws Exception {
         FakeTextMessageClient client = new FakeTextMessageClient();
         AtomicReference<WorkerCommand> received = new AtomicReference<>();
@@ -148,7 +148,7 @@ class TextMessageWorkerRuntimeTest {
         client.open();
         client.acceptSend = false;
 
-        assertTrue(runtime.send(command()));
+        client.message(CODEC.encodeWorkerCommand(command()));
         await(() -> slot.hasResult() && !client.closeReasons.isEmpty());
 
         assertTrue(slot.hasResult());
@@ -159,7 +159,7 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void reconnectExhaustionNotifiesExitExactlyOnce() {
+    void endpointTerminationNotifiesExitExactlyOnce() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         RecordingListener listener = new RecordingListener();
         TextMessageWorkerRuntime runtime = runtime(
@@ -170,8 +170,8 @@ class TextMessageWorkerRuntimeTest {
         );
         runtime.start();
 
-        client.exhaust();
-        client.exhaust();
+        client.terminate();
+        client.terminate();
 
         assertEquals(1, listener.exits.get());
         assertSame(runtime, listener.lastRuntime.get());
@@ -179,7 +179,7 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void reconnectExhaustionWaitsForCommandAndPreservesResult()
+    void endpointTerminationWaitsForCommandAndPreservesResult()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -199,9 +199,9 @@ class TextMessageWorkerRuntimeTest {
         runtime.start();
         client.open();
 
-        assertTrue(runtime.send(command()));
+        client.message(CODEC.encodeWorkerCommand(command()));
         assertTrue(entered.await(5, TimeUnit.SECONDS));
-        client.exhaust();
+        client.terminate();
         assertEquals(0, listener.exits.get());
 
         release.countDown();
@@ -348,9 +348,9 @@ class TextMessageWorkerRuntimeTest {
             listener.onMessage(message);
         }
 
-        private void exhaust() {
+        private void terminate() {
             connected = false;
-            listener.onReconnectExhausted();
+            listener.onEndpointTerminated();
         }
     }
 }

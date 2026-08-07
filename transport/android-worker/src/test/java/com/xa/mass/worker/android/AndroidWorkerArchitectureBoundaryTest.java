@@ -46,7 +46,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         ));
         assertTrue(networkClient.contains("private enum State"));
         assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
-        assertTrue(networkClient.contains("EXHAUSTED"));
+        assertTrue(networkClient.contains("TERMINATED"));
         assertTrue(networkClient.contains(
                 "TextMessageReconnectPolicy"
         ));

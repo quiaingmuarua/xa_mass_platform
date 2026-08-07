@@ -69,7 +69,7 @@ temporary disconnect
   -> Android WebSocket Client reconnects to the current URI within its budget
   -> no Register or Bind
 
-reconnect exhausted
+endpoint terminated after reconnect exhaustion
   -> the current runtime reports one exit callback
   -> reload Properties and run Register/Bind preparation again
   -> install a new runtime from the returned URI

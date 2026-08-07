@@ -130,10 +130,15 @@ tag.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerLoop` owns bounded preparation retry,
   runtime replacement, the cross-round result-slot lifetime, and local
-  lifecycle state. It only performs a current-state gate before delegating
-  `send`. The one-round runtime owns final command admission, serialized
-  execution, connection Bind, pending-result access and send, and exact-once
-  exit notification.
+  lifecycle state. It does not accept or route Worker commands. The one-round
+  runtime owns inbound WorkerCommand decoding and final admission, serialized
+  execution, connection Bind, pending-result access and WorkerResult send, and
+  exact-once exit notification. `TextMessageClient` alone owns transient
+  disconnect/failure handling and reconnect scheduling; its Runtime listener
+  exposes only open, inbound message, and exact-once endpoint termination.
+  Endpoint termination starts a new preparation round and never means that an
+  Adapter owns the assembled Worker lifetime. `WorkerLifecycle`, `JavaWorker`,
+  and `AndroidWorker` must not expose a local WorkerCommand injection method.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,

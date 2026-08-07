@@ -121,35 +121,13 @@ final class TextMessageWorkerRuntime
             closeProtocolError();
             return;
         }
-        if (command == null || !send(command)) {
+        if (command == null || !tryAcceptInboundCommand(command)) {
             closeProtocolError();
         }
     }
 
     @Override
-    public void onDisconnected() {
-        synchronized (this) {
-            bindSent = false;
-            if (closed || exitNotified) {
-                return;
-            }
-        }
-        notifyStateChanged(null);
-    }
-
-    @Override
-    public void onFailure(Throwable error) {
-        synchronized (this) {
-            bindSent = false;
-            if (closed || exitNotified) {
-                return;
-            }
-        }
-        notifyStateChanged(error);
-    }
-
-    @Override
-    public void onReconnectExhausted() {
+    public void onEndpointTerminated() {
         boolean notify = false;
         synchronized (this) {
             bindSent = false;
@@ -167,7 +145,7 @@ final class TextMessageWorkerRuntime
         }
     }
 
-    boolean send(WorkerCommand command) {
+    private boolean tryAcceptInboundCommand(WorkerCommand command) {
         Objects.requireNonNull(command, "command");
         synchronized (this) {
             if (!isConnected()

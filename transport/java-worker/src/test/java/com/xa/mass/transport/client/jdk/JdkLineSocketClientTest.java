@@ -96,7 +96,7 @@ class JdkLineSocketClientTest {
 
         assertTrue(client.isConnected());
         assertTrue(connects.get() >= 2);
-        assertEquals(1, listener.failures.get());
+        assertEquals(0, listener.terminations.get());
         client.close();
     }
 
@@ -119,13 +119,15 @@ class JdkLineSocketClientTest {
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
         await(() -> listener.opens.get() == 2);
 
-        assertEquals(1, listener.disconnects.get());
+        assertEquals(0, listener.terminations.get());
         assertTrue(client.isConnected());
         client.close();
+        assertEquals(0, listener.terminations.get());
     }
 
     @Test
-    void exhaustsAfterBoundedConnectionFailures() throws Exception {
+    void terminatesEndpointAfterBoundedConnectionFailures()
+            throws Exception {
         RecordingListener listener = new RecordingListener();
         AtomicInteger connects = new AtomicInteger();
         JdkLineSocketClient client = new JdkLineSocketClient(
@@ -139,12 +141,12 @@ class JdkLineSocketClientTest {
         );
 
         client.start(listener);
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
         Thread.sleep(20);
 
         assertEquals(3, connects.get());
-        assertEquals(3, listener.failures.get());
-        assertEquals(1, listener.exhausted.get());
+        assertEquals(1, listener.terminations.get());
+        assertFalse(client.isConnected());
         client.close();
     }
 
@@ -173,7 +175,7 @@ class JdkLineSocketClientTest {
         await(() -> listener.opens.get() == 1);
         Thread.sleep(60);
         client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
-        await(() -> listener.exhausted.get() == 1);
+        await(() -> listener.terminations.get() == 1);
 
         assertEquals(4, connects.get());
         client.close();
@@ -209,9 +211,7 @@ class JdkLineSocketClientTest {
             implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
-        private final AtomicInteger failures = new AtomicInteger();
-        private final AtomicInteger disconnects = new AtomicInteger();
-        private final AtomicInteger exhausted = new AtomicInteger();
+        private final AtomicInteger terminations = new AtomicInteger();
         private final List<String> lines = new CopyOnWriteArrayList<>();
 
         @Override
@@ -225,18 +225,8 @@ class JdkLineSocketClientTest {
         }
 
         @Override
-        public void onDisconnected() {
-            disconnects.incrementAndGet();
-        }
-
-        @Override
-        public void onFailure(Throwable error) {
-            failures.incrementAndGet();
-        }
-
-        @Override
-        public void onReconnectExhausted() {
-            exhausted.incrementAndGet();
+        public void onEndpointTerminated() {
+            terminations.incrementAndGet();
         }
     }
 

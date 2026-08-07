@@ -78,7 +78,8 @@ class WorkerLoopTest {
     }
 
     @Test
-    void localAndRemoteCommandsUseTheSameDispatcherEntry() throws Exception {
+    void systemAndTaskCommandsEnterThroughTheInboundConnection()
+            throws Exception {
         AtomicInteger executions = new AtomicInteger();
         FakePreparation preparation = new FakePreparation(0);
         FakeNetworkFactory networks = new FakeNetworkFactory();
@@ -95,13 +96,10 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
-        assertFalse(loop.send(command(
-                "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
-        )));
         client.open();
         await(loop::isConnected);
 
-        assertTrue(loop.send(systemCommand(
+        client.message(CODEC.encodeWorkerCommand(systemCommand(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
         )));
         await(() -> client.sent.size() == 2);
@@ -126,14 +124,16 @@ class WorkerLoopTest {
     }
 
     @Test
-    void busyWorkerRejectsAnotherCommandWithoutQueueingIt()
+    void busyInboundCommandClosesConnectionWithoutQueueingIt()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger executions = new AtomicInteger();
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerLoop loop = loop(
                 new FakePreparation(0),
                 payload -> {
+                    executions.incrementAndGet();
                     entered.countDown();
                     assertTrue(release.await(5, TimeUnit.SECONDS));
                     return payload;
@@ -146,19 +146,22 @@ class WorkerLoopTest {
         client.open();
         await(loop::isConnected);
 
-        assertTrue(loop.send(command(
+        client.message(CODEC.encodeWorkerCommand(command(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
         )));
         assertTrue(entered.await(5, TimeUnit.SECONDS));
-        assertFalse(loop.send(command(
+        client.message(CODEC.encodeWorkerCommand(command(
                 "6cae656c-2f1c-495d-abce-07a945c69b3d"
         )));
+        assertFalse(loop.isConnected());
         release.countDown();
-        await(() -> client.sent.size() == 2);
+        client.open();
+        await(() -> client.sent.size() == 3);
 
+        assertEquals(1, executions.get());
         assertEquals(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402",
-                CODEC.decodeWorkerResult(client.sent.get(1)).messageId()
+                CODEC.decodeWorkerResult(client.sent.get(2)).messageId()
         );
     }
 
@@ -183,12 +186,12 @@ class WorkerLoopTest {
         FakeTextMessageClient first = networks.awaitClient(0);
         first.open();
         await(loop::isConnected);
-        assertTrue(loop.send(command(
+        first.message(CODEC.encodeWorkerCommand(command(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
         )));
         assertTrue(entered.await(5, TimeUnit.SECONDS));
 
-        first.exhaust();
+        first.terminateEndpoint();
         assertEquals(
                 WorkerLifecycle.State.RUNNING,
                 loop.snapshot().state()
@@ -212,7 +215,7 @@ class WorkerLoopTest {
     }
 
     @Test
-    void reconnectExhaustionTriggersExactlyOneNewPreparation()
+    void endpointTerminationTriggersExactlyOneNewPreparation()
             throws Exception {
         FakePreparation preparation = new FakePreparation(0);
         FakeNetworkFactory networks = new FakeNetworkFactory();
@@ -225,8 +228,8 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient first = networks.awaitClient(0);
 
-        first.exhaust();
-        first.exhaust();
+        first.terminateEndpoint();
+        first.terminateEndpoint();
         networks.awaitClient(1);
         Thread.sleep(50);
 
@@ -357,7 +360,7 @@ class WorkerLoopTest {
         await(loop::isConnected);
 
         loop.stop();
-        client.exhaust();
+        client.terminateEndpoint();
         Thread.sleep(50);
 
         assertEquals(1, preparation.calls.get());
@@ -572,12 +575,11 @@ class WorkerLoopTest {
 
         private void disconnect() {
             connected = false;
-            listener.onDisconnected();
         }
 
-        private void exhaust() {
+        private void terminateEndpoint() {
             connected = false;
-            listener.onReconnectExhausted();
+            listener.onEndpointTerminated();
         }
     }
 }

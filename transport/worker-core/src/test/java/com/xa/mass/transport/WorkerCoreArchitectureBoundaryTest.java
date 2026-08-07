@@ -1,6 +1,7 @@
 package com.xa.mass.transport;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
@@ -14,8 +15,6 @@ import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -102,9 +101,24 @@ class WorkerCoreArchitectureBoundaryTest {
                 "closeCurrent",
                 TextMessageClient.CloseReason.class
         ));
+        assertEquals(
+                3,
+                TextMessageClient.Listener.class
+                        .getDeclaredMethods()
+                        .length
+        );
         assertTrue(hasMethod(
                 TextMessageClient.Listener.class,
-                "onReconnectExhausted"
+                "onOpen"
+        ));
+        assertTrue(hasMethod(
+                TextMessageClient.Listener.class,
+                "onMessage",
+                String.class
+        ));
+        assertTrue(hasMethod(
+                TextMessageClient.Listener.class,
+                "onEndpointTerminated"
         ));
     }
 
@@ -156,11 +170,12 @@ class WorkerCoreArchitectureBoundaryTest {
         ));
         assertTrue(hasMethod(WorkerLifecycle.class, "start"));
         assertTrue(hasMethod(WorkerLifecycle.class, "stop"));
-        assertTrue(hasMethod(
-                WorkerLifecycle.class,
-                "send",
-                WorkerCommand.class
-        ));
+        for (Method method : WorkerLifecycle.class.getDeclaredMethods()) {
+            String signature = method.toGenericString();
+            assertFalse("send".equals(method.getName()), signature);
+            assertFalse(signature.contains("WorkerCommand"), signature);
+            assertFalse(signature.contains("WorkerResult"), signature);
+        }
         assertFalse(hasMethod(WorkerLifecycle.class, "refreshProperties"));
         assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
         assertTrue(hasMethod(WorkerLifecycle.class, "isConnected"));

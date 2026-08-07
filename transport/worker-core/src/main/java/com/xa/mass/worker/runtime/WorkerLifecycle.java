@@ -1,7 +1,5 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-
 import java.net.URI;
 import java.util.Objects;
 
@@ -33,8 +31,6 @@ public interface WorkerLifecycle extends AutoCloseable {
     void start();
 
     void stop();
-
-    boolean send(WorkerCommand command);
 
     Snapshot snapshot();
 
