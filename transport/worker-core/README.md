@@ -35,6 +35,13 @@ prepare/Handler task handles and scheduled retry; it does not affect another
 Worker using the same bundle. Prepare and Handler execution remain separate so
 a blocked business Handler cannot consume the control path.
 
+For Java hosts, `JavaWorkerHostResources` is the process-scoped owner for one
+bounded bundle. A `JavaWorkerManager` borrows that bundle and runs the fixed
+replica set of exactly one WorkerGroup. Multiple Group Managers may share the
+same resources; Managers close their Workers, and the process closes the
+resource owner last. This does not move resource ownership or group desired
+state into Core.
+
 ## Execution
 
 Every command reaches the same DTO entry:

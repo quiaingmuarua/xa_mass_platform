@@ -69,17 +69,20 @@ Endpoint URI, Binding, Index values, Channels, or pending Results.
 validates every configured sandbox before network activity, then performs:
 
 ```text
-load the persisted workerId, or Register when it is absent
+build one fixed JavaWorkerManager replica set per configured WorkerGroup
+-> start every Group Manager
+-> load the persisted workerId, or Register when it is absent
 -> always Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
 -> receive the configured Adapter public URI
--> create JavaWorker with WEBSOCKET and start the shared text-message Transport
+-> start each JavaWorker's shared text-message Transport
 -> return without waiting for first WebSocket Bind
 -> for configured indexes only, wait for workerId within connectTimeoutMillis
 -> submit explicit Property Index updates as best effort
 ```
 
-The aggregate creates one Host-owned execution bundle shared by all of its
-Java Workers. The control pool is
+The aggregate creates one `JavaWorkerHostResources` bundle and shares it across
+one `JavaWorkerManager` per configured WorkerGroup. Each Manager owns only its
+group's fixed Worker replicas. The control pool is
 `max(1, min(workerCount, 4))`, the Handler pool is
 `max(1, min(workerCount, max(2, availableProcessors)))`, and preparation
 retry uses one scheduler thread. These daemon threads are aggregate-scoped;
@@ -100,10 +103,13 @@ the Channel. Scenario has no connection query and does not expose a first-Bind
 startup barrier. For a configured Index update it waits for `workerId`, then
 may retry `NOT_FOUND`, within the existing `connectTimeoutMillis` budget. A
 missing identity or remaining Index failure is logged as `14010` and skipped.
-`close()` first closes Workers, then releases sandbox locks, then shuts down
-the aggregate execution resources. Startup failure performs the same cleanup;
-it preserves sandbox files and does not mutate WorkerGroup, Worker metadata,
-score, identity, Binding, or Property Index truth.
+`close()` closes Group Managers in reverse group order, releases sandbox locks,
+and closes the process execution resources last. Startup failure performs the
+same cleanup; it preserves sandbox files and does not mutate WorkerGroup,
+Worker metadata, score, identity, Binding, or Property Index truth. Scenario
+does not expose Manager reconciliation; terminal Workers are not restarted
+automatically. Replica topology is configuration-time state: changing the
+number of Workers requires updating the manifest and restarting the process.
 
 WorkerGroup directory metadata is initialized separately by the Server profile.
 The profile's catalog `eventCodes` may intentionally lag this module's local

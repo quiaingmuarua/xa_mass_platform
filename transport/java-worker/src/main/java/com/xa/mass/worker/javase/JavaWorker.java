@@ -169,6 +169,17 @@ public final class JavaWorker implements WorkerLifecycle {
         }
 
         public JavaWorker build() {
+            if (executionResources == null) {
+                throw new IllegalStateException(
+                        "executionResources must be configured"
+                );
+            }
+            return buildWithResources(executionResources);
+        }
+
+        private JavaWorker buildWithResources(
+                WorkerExecutionResources resolvedExecutionResources
+        ) {
             if (identityStore == null) {
                 throw new IllegalStateException(
                         "identityStore must be configured"
@@ -182,11 +193,6 @@ public final class JavaWorker implements WorkerLifecycle {
             if (definitions == null || definitions.isEmpty()) {
                 throw new IllegalStateException(
                         "eventDefinitions must not be empty"
-                );
-            }
-            if (executionResources == null) {
-                throw new IllegalStateException(
-                        "executionResources must be configured"
                 );
             }
             WorkerPropertiesProvider completeProperties = () -> {
@@ -230,7 +236,7 @@ public final class JavaWorker implements WorkerLifecycle {
                                     .connectionPolicy()
                     ),
                     resolvedRetryPolicy,
-                    executionResources
+                    resolvedExecutionResources
             );
             return new JavaWorker(worker);
         }

@@ -7,6 +7,7 @@ import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
+import com.xa.mass.worker.javase.JavaWorkerManager;
 
 import org.junit.jupiter.api.Test;
 
@@ -111,6 +112,45 @@ class ConcreteWorkerClientArchitectureTest {
         assertTrue(clients.contains(
                 "package com.xa.mass.transport.client.jdk;"
         ));
+    }
+
+    @Test
+    void javaManagerOwnsOnlyOneFixedGroupAndDesiredState()
+            throws IOException {
+        Path project = Path.of("").toAbsolutePath();
+        String manager = Files.readString(project.resolve(
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaWorkerManager.java"
+        ));
+        String resources = Files.readString(project.resolve(
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaWorkerHostResources.java"
+        ));
+
+        assertTrue(AutoCloseable.class.isAssignableFrom(
+                JavaWorkerManager.class
+        ));
+        assertFalse(com.xa.mass.worker.runtime.WorkerLifecycle.class
+                .isAssignableFrom(JavaWorkerManager.class));
+        assertFalse(manager.contains("Executors.new"));
+        assertFalse(manager.contains("new Thread"));
+        assertFalse(manager.contains("shutdown"));
+        assertTrue(resources.contains("Executors.newFixedThreadPool"));
+        assertTrue(resources.contains(
+                "Executors.newSingleThreadScheduledExecutor"
+        ));
+        assertTrue(manager.contains("JavaWorker.Builder"));
+        assertTrue(manager.contains("desiredRunning"));
+        assertFalse(manager.contains("class WorkerKey"));
+        assertFalse(manager.contains("ManagedWorkerSnapshot"));
+        assertFalse(manager.contains(" register("));
+        assertFalse(manager.contains(" scale"));
+        assertFalse(manager.contains("addListener("));
+        assertFalse(manager.contains("onSnapshot("));
+        assertFalse(manager.contains("isConnected("));
+        assertFalse(manager.contains(".schedule("));
+        assertFalse(manager.contains("generation"));
+        assertFalse(manager.contains("runId"));
     }
 
     private static void assertNarrow(String signature) {

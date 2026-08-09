@@ -47,10 +47,15 @@ Status: current repository handoff.
   owns Bind/Command/Result protocol, and `WorkerLoop` owns only the
   `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
   or Scheduler and contains no concrete network or platform implementation.
-- `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
-  default Java OkHttp point/WebSocket/control and JDK line-socket Client
-  implementations. It is not a second Worker state-machine owner, CLI,
-  application, Android wrapper, or business handler collection.
+- `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly,
+  the fixed-WorkerGroup `JavaWorkerManager`, the process-scoped
+  `JavaWorkerHostResources`, plus the default Java OkHttp
+  point/WebSocket/control and JDK line-socket Client implementations. One
+  Manager runs a configuration-fixed replica set for exactly one WorkerGroup;
+  multiple Managers borrow one Host resource bundle and reconcile only when
+  explicitly invoked. Neither is a second Worker state-machine owner, CLI,
+  application, Android wrapper, automatic restart scheduler, or business
+  handler collection.
 - `transport/android-worker/` is an internal Android Library containing the
   HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
   long-lived Identity storage, and the complete `AndroidWorker` assembly. It
@@ -157,8 +162,15 @@ tag.
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
-  `JavaWorker.Builder` requires Host-owned `WorkerExecutionResources`; closing
-  a JavaWorker must not shut shared resources down.
+  Standalone `JavaWorker.Builder.build()` requires Host-owned
+  `WorkerExecutionResources`; closing a JavaWorker must not shut shared
+  resources down. `JavaWorkerManager.Builder` binds one WorkerGroup's shared
+  capacity and a fixed, non-empty set of unique `clientWorkerKey` replicas at
+  construction; it provides no runtime registration, keyed lifecycle, or
+  dynamic scale API. Managers borrow process-owned resources and never expose
+  managed JavaWorkers. One private group desired state is separate from each
+  Worker's actual state; endpoint terminal never triggers restart until the
+  Host explicitly invokes `reconcile()` or `start()`.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
   but not on `transport/java-worker`. Its network Client serializes connection
   state, generation filtering, callbacks, stable-window accounting, and
@@ -199,12 +211,15 @@ tag.
   `transport:java-worker`; it must not depend on `kernel_jvm`, Spring,
   `server_jvm`, `transport:netty-adapter`, Redis, scores, Pacers, HTTP
   controller types, reflection, `ServiceLoader`, or configurable class names.
-  The aggregate owns one bounded daemon control pool, one CPU/Worker-bounded
-  Handler pool, and one retry scheduler shared by all assembled JavaWorkers;
-  it closes Workers and sandboxes before those resources. Aggregate `start()`
-  never waits for first Bind. A configured Property Index update may wait for
-  the Worker ID within the existing connection-timeout budget, then logs
-  `14010` and skips when identity is still unavailable.
+  The aggregate creates one `JavaWorkerManager` per configured WorkerGroup and
+  one bounded daemon `JavaWorkerHostResources` bundle shared by all Managers.
+  Scenario retains Sandbox and Property Index ownership; it closes Managers,
+  then sandboxes, then the shared resources. Aggregate `start()` never waits
+  for first Bind and does not expose Manager reconciliation. A configured
+  Property Index update may wait for the Worker ID within the existing
+  connection-timeout budget, then logs `14010` and skips when identity is
+  still unavailable. Changing replica count requires configuration change and
+  process restart.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
@@ -264,7 +279,8 @@ scenario_workers_jvm
   -> WorkerConnectionBind(workerId) frame through the returned Adapter URI
   -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
-  -> JavaWorker + shared Worker Core runtime
+  -> one JavaWorkerManager per WorkerGroup -> fixed JavaWorker replicas
+  -> one process JavaWorkerHostResources -> shared Worker Core execution
 
 transport/netty-adapter
   -> Adapter batch HTTP client

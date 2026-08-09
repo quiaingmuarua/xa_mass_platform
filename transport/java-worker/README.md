@@ -11,6 +11,13 @@ JavaWorker
   -> RegisteredWorkerPreparation + WorkerLoop
   -> explicit WEBSOCKET or SOCKET selection
 
+JavaWorkerManager
+  -> one fixed WorkerGroup replica set
+  -> explicit group desired-state reconciliation
+
+JavaWorkerHostResources
+  -> process-scoped shared control/Handler/retry resource bundle
+
 OkHttpWorkerPointClient
   -> target Worker poll/result HTTP
 
@@ -52,12 +59,11 @@ JavaWorker worker = JavaWorker.builder(
 worker.start();
 ```
 
-`executionResources` is required and contains Host-owned shared control,
-Handler, and retry executors. A process should normally create one bundle for
-its Worker owner and reuse it across Workers. `JavaWorker.close()` never shuts
-the bundle down: the Host closes all Workers first, then shuts down the three
-underlying executors. There is no per-Worker fallback pool or hidden static
-executor.
+For standalone construction, `executionResources` is required and contains
+Host-owned shared control, Handler, and retry executors. `JavaWorker.close()`
+never shuts the bundle down: the Host closes all Workers first, then shuts down
+the three underlying executors. There is no per-Worker fallback pool or hidden
+static executor.
 
 The fixed client key is injected as the reserved
 `workerProperties.clientWorkerKey`; the caller Properties provider may not
@@ -81,6 +87,61 @@ preserves identity and discards any result produced while its in-flight Handler
 finishes. `JavaWorker` exposes no connection-state query: reconnect remains a
 private Client mechanism, while its public snapshot reports only the Worker run
 state and prepared identity/Endpoint metadata.
+
+## Managed Java Host
+
+`JavaWorkerManager` runs a fixed replica set for exactly one WorkerGroup.
+Capacity, transport, request timeout, retry policy, and Definition/Handler
+instances are group-wide; Identity, Properties, and `clientWorkerKey` remain
+replica-specific:
+
+```java
+JavaWorkerHostResources hostResources =
+        JavaWorkerHostResources.create(
+        totalReplicaCount,
+        "xa-java-worker",
+        false
+);
+
+JavaWorkerManager manager = JavaWorkerManager.builder(
+                runtimeApiBaseUrl,
+                "phone-workers",
+                WorkerTransportType.WEBSOCKET
+        )
+        .executionResources(hostResources.executionResources())
+        .eventDefinitions(eventDefinitions)
+        .replica("installation-1", identityStore1, properties1)
+        .replica("installation-2", identityStore2, properties2)
+        .build();
+
+manager.start();
+manager.reconcile();
+manager.stop();
+manager.close();
+hostResources.close();
+```
+
+The Builder requires at least one replica and rejects duplicate
+`clientWorkerKey` values. Building freezes the topology; there is no runtime
+register, unregister, keyed start/stop, or dynamic scaling API. Adding or
+removing capacity requires rebuilding from configuration and restarting the
+Host process.
+
+One Java process creates one `JavaWorkerHostResources` using its total replica
+count and shares the returned bundle across all of its Group Managers. Control
+concurrency is bounded at four, Handler concurrency is bounded by total replica
+count and available processors, and preparation retry uses one scheduler. A
+Manager closes its Workers in reverse replica order but never closes the
+borrowed resources; the process closes all Managers first and the Host
+resources last.
+
+`start` and `stop` update one private group-level desired state and reconcile
+every replica immediately. `reconcile()` later compares that intent with each
+Worker's actual `STOPPED/RUNNING` snapshot. A terminal replica remains
+`STOPPED` until the Host explicitly invokes `reconcile()` or `start()` again.
+The Manager has no timer, Worker listener, connection query, reconnect policy,
+aggregate Worker state, or per-replica lifecycle controls. `snapshot(key)` and
+`snapshots()` expose only the underlying Worker lifecycle snapshots.
 
 ## Lower-level Composition
 
