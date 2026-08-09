@@ -62,6 +62,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(assembly.contains(
                 "public Builder executionResources("
         ));
+        assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
         assertFalse(source.contains("public enum State"));

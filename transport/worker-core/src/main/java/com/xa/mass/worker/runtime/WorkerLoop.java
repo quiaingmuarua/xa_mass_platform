@@ -45,8 +45,6 @@ public final class WorkerLoop implements WorkerLifecycle {
     private TextMessageWorkerRuntime activeRuntime;
     private PreparationAttempt activePreparation;
     private PreparationRetry preparationRetry;
-    private boolean runtimeExitPending;
-    private String runtimeExitDiagnostic;
     private String diagnosticMessage;
 
     private boolean notificationDraining;
@@ -98,8 +96,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             activePreparation = null;
             preparationRetry = null;
-            runtimeExitPending = false;
-            runtimeExitDiagnostic = null;
             diagnosticMessage = null;
 
             PreparationAttempt attempt = new PreparationAttempt(1);
@@ -165,7 +161,6 @@ public final class WorkerLoop implements WorkerLifecycle {
         synchronized (lock) {
             return new Snapshot(
                     state,
-                    connectionStateLocked(),
                     preparedWorker == null
                             ? null
                             : preparedWorker.workerId(),
@@ -174,17 +169,6 @@ public final class WorkerLoop implements WorkerLifecycle {
                             : preparedWorker.endpointUri(),
                     diagnosticMessage
             );
-        }
-    }
-
-    @Override
-    public boolean isConnected() {
-        synchronized (lock) {
-            return state == State.RUNNING
-                    && !stopRequested
-                    && !runtimeExitPending
-                    && activeRuntime != null
-                    && activeRuntime.isConnected();
         }
     }
 
@@ -227,8 +211,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             retryFuture = retry == null ? null : retry.future;
             preparationRetry = null;
             preparedWorker = null;
-            runtimeExitPending = false;
-            runtimeExitDiagnostic = null;
             state = State.STOPPED;
             diagnosticMessage = null;
         }
@@ -301,6 +283,7 @@ public final class WorkerLoop implements WorkerLifecycle {
             installed = isCurrentPreparationLocked(attempt)
                     && !stopRequested;
             if (installed) {
+                activePreparation = null;
                 activeRuntime = runtime;
                 preparedWorker = prepared;
             }
@@ -328,37 +311,25 @@ public final class WorkerLoop implements WorkerLifecycle {
         try {
             runtime.start();
         } catch (RuntimeException error) {
-            runtimeStartFailed(attempt, runtime, error);
+            runtimeStartFailed(runtime, error);
             return;
         }
-        runtimeInstalled(attempt, runtime);
+        runtimeStarted(runtime);
     }
 
-    private void runtimeInstalled(
-            PreparationAttempt attempt,
-            TextMessageWorkerRuntime runtime
-    ) {
-        boolean finishExit = false;
+    private void runtimeStarted(TextMessageWorkerRuntime runtime) {
+        boolean current;
         boolean requestStop = false;
         synchronized (lock) {
-            if (activePreparation != attempt) {
-                return;
-            }
-            activePreparation = null;
-            if (closed || activeRuntime != runtime) {
-                return;
-            }
-            if (runtimeExitPending) {
-                finishExit = true;
-            } else {
+            current = isCurrentRuntimeLocked(runtime);
+            if (current) {
                 requestStop = stopRequested;
                 if (!requestStop) {
                     diagnosticMessage = null;
                 }
             }
         }
-        if (finishExit) {
-            completeRuntimeExit(runtime);
+        if (!current) {
             return;
         }
         publish();
@@ -368,48 +339,17 @@ public final class WorkerLoop implements WorkerLifecycle {
     }
 
     private TextMessageWorkerRuntime.Listener runtimeListener() {
-        return new TextMessageWorkerRuntime.Listener() {
-            @Override
-            public void onStateChanged(
-                    TextMessageWorkerRuntime runtime,
-                    Throwable failure
-            ) {
-                runtimeStateChanged(runtime, failure);
-            }
-
-            @Override
-            public void onExit(TextMessageWorkerRuntime runtime) {
-                runtimeExited(runtime);
-            }
-        };
+        return this::runtimeTerminated;
     }
 
     private void runtimeStartFailed(
-            PreparationAttempt attempt,
             TextMessageWorkerRuntime runtime,
             RuntimeException error
     ) {
-        boolean finish = false;
-        synchronized (lock) {
-            if (activePreparation == attempt) {
-                activePreparation = null;
-            }
-            if (!closed && activeRuntime == runtime) {
-                runtimeExitPending = true;
-                runtimeExitDiagnostic = stopRequested
-                        ? null
-                        : safeMessage(error);
-                finish = true;
-            }
-        }
-        if (finish) {
-            completeRuntimeExit(runtime);
-        } else {
-            closeQuietly(runtime);
-        }
+        runtimeTerminated(runtime, error);
     }
 
-    private void runtimeStateChanged(
+    private void runtimeTerminated(
             TextMessageWorkerRuntime runtime,
             Throwable failure
     ) {
@@ -417,61 +357,23 @@ public final class WorkerLoop implements WorkerLifecycle {
             if (!isCurrentRuntimeLocked(runtime)) {
                 return;
             }
-            if (failure != null) {
-                diagnosticMessage = "Worker runtime reported failure: "
-                        + safeMessage(failure);
-            } else if (runtime.isConnected()) {
-                diagnosticMessage = null;
-            }
         }
-        publish();
-    }
 
-    private void runtimeExited(TextMessageWorkerRuntime runtime) {
-        boolean finish;
+        closeQuietly(runtime);
         synchronized (lock) {
             if (!isCurrentRuntimeLocked(runtime)) {
                 return;
             }
-            if (runtimeExitPending) {
-                return;
-            }
-            runtimeExitPending = true;
-            runtimeExitDiagnostic = stopRequested
+            String message = stopRequested
                     ? null
-                    : "Endpoint terminated";
-            if (activePreparation != null) {
-                finish = false;
-            } else {
-                finish = true;
-            }
+                    : failure == null
+                            ? "Endpoint terminated"
+                            : "Worker runtime failed: "
+                                    + safeFailureType(failure);
+            activeRuntime = null;
+            transitionStoppedLocked(message);
         }
-        if (finish) {
-            completeRuntimeExit(runtime);
-        } else {
-            publish();
-        }
-    }
-
-    private void completeRuntimeExit(TextMessageWorkerRuntime runtime) {
-        closeQuietly(runtime);
-        boolean completed = false;
-        synchronized (lock) {
-            if (!closed
-                    && state == State.RUNNING
-                    && activeRuntime == runtime
-                    && runtimeExitPending) {
-                String message = stopRequested
-                        ? null
-                        : runtimeExitDiagnostic;
-                activeRuntime = null;
-                transitionStoppedLocked(message);
-                completed = true;
-            }
-        }
-        if (completed) {
-            publish();
-        }
+        publish();
     }
 
     private void handlePreparationFailure(
@@ -608,21 +510,7 @@ public final class WorkerLoop implements WorkerLifecycle {
         state = State.STOPPED;
         stopRequested = false;
         preparedWorker = null;
-        runtimeExitPending = false;
-        runtimeExitDiagnostic = null;
         diagnosticMessage = message;
-    }
-
-    private ConnectionState connectionStateLocked() {
-        if (activeRuntime == null
-                || stopRequested
-                || runtimeExitPending
-                || activeRuntime.isExiting()) {
-            return ConnectionState.DISCONNECTED;
-        }
-        return activeRuntime.isConnected()
-                ? ConnectionState.CONNECTED
-                : ConnectionState.CONNECTING;
     }
 
     private void publish() {
@@ -717,6 +605,13 @@ public final class WorkerLoop implements WorkerLifecycle {
         return message == null || message.trim().isEmpty()
                 ? error.getClass().getSimpleName()
                 : message;
+    }
+
+    private static String safeFailureType(Throwable error) {
+        String name = error == null
+                ? null
+                : error.getClass().getSimpleName();
+        return name == null || name.isEmpty() ? "RuntimeException" : name;
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

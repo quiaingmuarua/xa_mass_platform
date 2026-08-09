@@ -27,7 +27,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             ScenarioWorkers.class.getName()
     );
     private static final int WORKER_START_FAILED = 14004;
-    private static final int WORKER_CONNECT_TIMEOUT = 14005;
     private static final int WORKER_INDEX_FAILED = 14010;
     private static final Duration INDEX_RETRY_INTERVAL =
             Duration.ofMillis(250);
@@ -137,7 +136,6 @@ public final class ScenarioWorkers implements AutoCloseable {
         try {
             List<PreparedWorker> preparedWorkers = prepareWorkers();
             createAndStartWorkers(preparedWorkers);
-            awaitConnections();
             updateIndexes();
             started = true;
         } catch (RuntimeException failure) {
@@ -223,43 +221,6 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
     }
 
-    private void awaitConnections() {
-        for (GroupAssembly group : groups) {
-            long deadline = System.nanoTime()
-                    + group.config().connectTimeout().toNanos();
-            List<WorkerHandle> groupWorkers = workers.stream()
-                    .filter(worker -> worker.groupConfig() == group.config())
-                    .toList();
-            while (System.nanoTime() < deadline) {
-                if (groupWorkers.stream().allMatch(
-                        worker -> worker.runtime().isConnected()
-                )) {
-                    break;
-                }
-                sleep(
-                        Duration.ofMillis(50),
-                        "scenarioWorkers.awaitConnections",
-                        group.config().workerGroupId()
-                );
-            }
-            long connected = groupWorkers.stream()
-                    .filter(worker -> worker.runtime().isConnected())
-                    .count();
-            if (connected != groupWorkers.size()) {
-                throw new ScenarioWorkerAssemblyException(
-                        WORKER_CONNECT_TIMEOUT,
-                        "scenarioWorkers.awaitConnections",
-                        "Only "
-                                + connected
-                                + " of "
-                                + groupWorkers.size()
-                                + " Workers connected for WorkerGroup "
-                                + group.config().workerGroupId()
-                );
-            }
-        }
-    }
-
     private void updateIndexes() {
         for (WorkerHandle handle : workers) {
             updateIndexes(handle);
@@ -274,28 +235,41 @@ public final class ScenarioWorkers implements AutoCloseable {
         ScenarioWorkerGroupConfig group = handle.groupConfig();
         long deadline = System.nanoTime()
                 + group.connectTimeout().toNanos();
+        String workerId = handle.workerId();
+        while (workerId == null && sleepBeforeDeadline(
+                    INDEX_RETRY_INTERVAL,
+                    deadline,
+                    "scenarioWorkers.awaitWorkerIdentity",
+                    group.workerGroupId()
+            )) {
+            workerId = handle.workerId();
+        }
+        if (workerId == null) {
+            logIndexFailure(group, null, null, null);
+            return;
+        }
+        String resolvedWorkerId = workerId;
         while (true) {
             Map<String, ScenarioWorkerIndexResult> results;
             try {
                 results = indexClient.updateIndexedProperties(
                         group.workerGroupId(),
-                        handle.workerId(),
+                        resolvedWorkerId,
                         worker.indexedPropertyUpdates(),
                         group.requestTimeout()
                 );
             } catch (RuntimeException error) {
-                logIndexFailure(group, handle.workerId(), null, error);
+                logIndexFailure(group, resolvedWorkerId, null, error);
                 return;
             }
-            boolean retry = results.values().stream()
-                    .anyMatch(ScenarioWorkerIndexResult::notFound)
-                    && System.nanoTime() < deadline;
-            if (retry) {
-                sleep(
+            boolean notFound = results.values().stream()
+                    .anyMatch(ScenarioWorkerIndexResult::notFound);
+            if (notFound && sleepBeforeDeadline(
                         INDEX_RETRY_INTERVAL,
+                        deadline,
                         "scenarioWorkers.retryIndex",
                         group.workerGroupId()
-                );
+                )) {
                 continue;
             }
             worker.indexedPropertyUpdates().keySet().forEach(field -> {
@@ -303,7 +277,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 if (result == null || !result.accepted()) {
                     logIndexFailure(
                             group,
-                            handle.workerId(),
+                            resolvedWorkerId,
                             field,
                             null
                     );
@@ -350,6 +324,27 @@ public final class ScenarioWorkers implements AutoCloseable {
                     error
             );
         }
+    }
+
+    private static boolean sleepBeforeDeadline(
+            Duration maximumDuration,
+            long deadline,
+            String operation,
+            String workerGroupId
+    ) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            return false;
+        }
+        sleep(
+                Duration.ofNanos(Math.min(
+                        maximumDuration.toNanos(),
+                        remaining
+                )),
+                operation,
+                workerGroupId
+        );
+        return true;
     }
 
     private RuntimeException closeWorkers() {
@@ -445,11 +440,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             @Override
             public void start() {
                 worker.start();
-            }
-
-            @Override
-            public boolean isConnected() {
-                return worker.isConnected();
             }
 
             @Override
@@ -675,8 +665,6 @@ public final class ScenarioWorkers implements AutoCloseable {
 
         void start();
 
-        boolean isConnected();
-
         String workerId();
 
         @Override
@@ -696,15 +684,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     ) {
 
         String workerId() {
-            String value = runtime.workerId();
-            if (value == null) {
-                throw new ScenarioWorkerAssemblyException(
-                        WORKER_START_FAILED,
-                        "scenarioWorkers.workerId",
-                        "Connected Scenario Worker has no workerId"
-                );
-            }
-            return value;
+            return runtime.workerId();
         }
     }
 

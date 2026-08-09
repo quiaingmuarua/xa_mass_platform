@@ -924,18 +924,6 @@ class RuntimeApiPythonIntegrationTest {
             this.executionResources = executionResources;
             try {
                 transport.start();
-                long deadline = System.nanoTime()
-                        + Duration.ofSeconds(2).toNanos();
-                while (!transport.isConnected()
-                        && System.nanoTime() < deadline) {
-                    Thread.sleep(10);
-                }
-                if (transport.isConnected()) {
-                    return;
-                }
-                throw new AssertionError(
-                        "Text-message Worker did not connect to its Adapter"
-                );
             } catch (Exception | Error failure) {
                 transport.close();
                 executionResources.close();

@@ -78,7 +78,9 @@ disconnects reuse the same URI and do not repeat HTTP Bind. Exhausting the
 Client reconnect budget ends the run in `STOPPED`; only a later explicit
 `start()` reloads Properties and performs bounded preparation again. `stop()`
 preserves identity and discards any result produced while its in-flight Handler
-finishes.
+finishes. `JavaWorker` exposes no connection-state query: reconnect remains a
+private Client mechanism, while its public snapshot reports only the Worker run
+state and prepared identity/Endpoint metadata.
 
 ## Lower-level Composition
 
@@ -88,7 +90,8 @@ only Core interfaces and JDK types. They own URL/request handling, sockets,
 stale callback suppression, stable-window accounting, bounded fixed reconnect,
 and their existing connection execution lanes. They do not
 cache offline business messages, and successful `send` is not an application
-ACK.
+ACK. They expose open/message/endpoint-terminal callbacks to Runtime, but no
+reconnect event or physical connection query.
 
 ```text
 ./gradlew :transport:java-worker:test

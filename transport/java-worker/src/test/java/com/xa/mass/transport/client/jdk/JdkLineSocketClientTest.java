@@ -66,7 +66,7 @@ class JdkLineSocketClientTest {
                 output.toString(StandardCharsets.UTF_8.name())
         );
         client.close();
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
     }
 
     @Test
@@ -94,7 +94,7 @@ class JdkLineSocketClientTest {
         client.start(listener);
         await(() -> listener.opens.get() == 1);
 
-        assertTrue(client.isConnected());
+        assertTrue(client.send("result"));
         assertTrue(connects.get() >= 2);
         assertEquals(0, listener.terminations.get());
         client.close();
@@ -120,7 +120,7 @@ class JdkLineSocketClientTest {
         await(() -> listener.opens.get() == 2);
 
         assertEquals(0, listener.terminations.get());
-        assertTrue(client.isConnected());
+        assertTrue(client.send("result"));
         client.close();
         assertEquals(0, listener.terminations.get());
     }
@@ -146,7 +146,7 @@ class JdkLineSocketClientTest {
 
         assertEquals(3, connects.get());
         assertEquals(1, listener.terminations.get());
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
         client.close();
     }
 

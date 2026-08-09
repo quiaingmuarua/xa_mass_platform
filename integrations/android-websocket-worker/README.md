@@ -57,9 +57,10 @@ to its process-level Worker owner. Core creates no background thread of its
 own; the Android WebSocket Client's existing connection `HandlerThread` is
 independent.
 
-The UI reports Worker state and connection state. `RUNNING + CONNECTED` means that
-the WebSocket is connected and the Worker Connection Bind frame was accepted
-by the client network stack. It is not Kernel Worker-online truth.
+The UI reports only the Worker run state, `RUNNING` or `STOPPED`. WebSocket
+connection and reconnect state remain private to the Android Client and are not
+treated as Worker lifecycle or Kernel Worker-online truth. A real command/result
+round trip is the end-to-end connection proof.
 
 The example-specific counter belongs to `AndroidDemoStateCapability`, together
 with its Definition, Handler, processed count, and last-event observation. It
@@ -115,8 +116,7 @@ adb shell am start -n `
   com.xa.mass.integration.androidworker/.MainActivity
 ```
 
-Wait for `RUNNING + CONNECTED`, copy the displayed Worker ID, and run one real
-Task RPC:
+Wait for `RUNNING` and a displayed Worker ID, then run one real Task RPC:
 
 ```powershell
 .\gradlew.bat :integrations:android-websocket-worker:runDemoRpc `

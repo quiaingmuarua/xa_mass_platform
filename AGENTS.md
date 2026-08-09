@@ -22,10 +22,11 @@ Status: current repository handoff.
   individual Worker resource lifecycle.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
-  strict Worker JSON parsing, real WebSocket Worker construction, initial
-  connection wait, public-HTTP identity registration, explicit Property Index
-  updates, and aggregate failure cleanup. It is not a Kernel owner, Server profile,
-  Adapter, plugin SPI, or independently deployed application.
+  strict Worker JSON parsing, real WebSocket Worker construction, public-HTTP
+  identity registration, explicit best-effort Property Index updates, and
+  aggregate resource cleanup. Its aggregate start does not wait for an initial
+  WebSocket connection. It is not a Kernel owner, Server profile, Adapter,
+  plugin SPI, or independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   WorkerConnectionBind/WorkerCommand/WorkerResult contract shared by Server,
   Adapter, and Worker. Long-lived transports send workerId-only Bind first and
@@ -42,8 +43,10 @@ Status: current repository handoff.
   text-message runtime, Host-injected `WorkerExecutionResources`, and network
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
   Properties provider, and platform-neutral Register/Bind control contracts.
-  It creates and closes no thread, Executor, or Scheduler and
-  contains no concrete network or platform implementation.
+  The Client owns concrete networking and transparent reconnect, the Runtime
+  owns Bind/Command/Result protocol, and `WorkerLoop` owns only the
+  `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
+  or Scheduler and contains no concrete network or platform implementation.
 - `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
   default Java OkHttp point/WebSocket/control and JDK line-socket Client
   implementations. It is not a second Worker state-machine owner, CLI,
@@ -138,14 +141,18 @@ tag.
   route Worker commands. The single-run runtime owns inbound WorkerCommand
   decoding and final admission, per-Worker serialized execution on the shared
   Handler pool, connection Bind, one-shot WorkerResult send, and exact-once
-  exit notification.
+  terminal notification to `WorkerLoop`. It exposes no Bind, busy, reconnect,
+  Handler, or exit-in-progress state to the lifecycle layer.
   `TextMessageClient` alone owns transient
   disconnect/failure handling and reconnect scheduling; its Runtime listener
   exposes only open, inbound message, and exact-once endpoint termination.
+  It exposes no physical connection query or reconnect event; `send()` is the
+  Runtime's only evidence that the current frame was accepted for sending.
   Endpoint termination ends the current Worker run; only a later explicit
   `start()` may prepare another run. `WorkerLifecycle`, `JavaWorker`, and
-  `AndroidWorker` must not expose a local WorkerCommand injection method or
-  cache Worker business messages.
+  `AndroidWorker` expose only the two-state lifecycle snapshot and must not
+  expose connection state, a local WorkerCommand injection method, or cached
+  Worker business messages.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
@@ -194,7 +201,10 @@ tag.
   controller types, reflection, `ServiceLoader`, or configurable class names.
   The aggregate owns one bounded daemon control pool, one CPU/Worker-bounded
   Handler pool, and one retry scheduler shared by all assembled JavaWorkers;
-  it closes Workers and sandboxes before those resources.
+  it closes Workers and sandboxes before those resources. Aggregate `start()`
+  never waits for first Bind. A configured Property Index update may wait for
+  the Worker ID within the existing connection-timeout budget, then logs
+  `14010` and skips when identity is still unavailable.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.

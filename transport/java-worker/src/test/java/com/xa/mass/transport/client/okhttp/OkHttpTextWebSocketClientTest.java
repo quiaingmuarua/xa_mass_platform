@@ -54,11 +54,10 @@ class OkHttpTextWebSocketClientTest {
     void forwardsOnlyTextMessagesAndSendsText() throws Exception {
         FakeConnection first = connector.connections.get(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
         first.text("command");
         await(() -> listener.messages.size() == 1);
 
-        assertTrue(client.isConnected());
         assertTrue(client.send("result"));
         assertEquals(List.of("result"), first.socket.sent);
         assertEquals(1, listener.opens.get());
@@ -89,7 +88,7 @@ class OkHttpTextWebSocketClientTest {
         assertEquals(List.of("current"), listener.messages);
         assertEquals(2, listener.opens.get());
         assertEquals(0, listener.terminations.get());
-        assertTrue(client.isConnected());
+        assertTrue(client.send("result"));
         assertEquals(1007, first.socket.closeCode);
     }
 
@@ -98,7 +97,7 @@ class OkHttpTextWebSocketClientTest {
             throws Exception {
         FakeConnection first = connector.connections.get(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
         first.socket.rejectNextSend = true;
 
         assertFalse(client.send("result"));
@@ -114,7 +113,7 @@ class OkHttpTextWebSocketClientTest {
             throws Exception {
         FakeConnection first = connector.connections.get(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
 
         first.binary();
         await(() -> connector.connections.size() == 2);
@@ -142,7 +141,7 @@ class OkHttpTextWebSocketClientTest {
         client.close();
         client.close();
 
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
         assertTrue(first.socket.cancelled);
         assertTrue(connector.closed);
         assertEquals(0, listener.terminations.get());
@@ -176,7 +175,7 @@ class OkHttpTextWebSocketClientTest {
         assertEquals(1, listener.terminations.get());
         assertEquals(0, listener.opens.get());
         assertTrue(listener.messages.isEmpty());
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
     }
 
     @Test

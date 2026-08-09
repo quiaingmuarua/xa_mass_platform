@@ -14,19 +14,18 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Runs Worker Delivery over one prepared, reconnecting text endpoint.
+ * Runs Worker Delivery protocol over one prepared, reconnecting text endpoint.
  */
 final class TextMessageWorkerRuntime
         implements AutoCloseable, TextMessageClient.Listener {
 
+    @FunctionalInterface
     interface Listener {
 
-        void onStateChanged(
+        void onTerminated(
                 TextMessageWorkerRuntime runtime,
                 Throwable failure
         );
-
-        void onExit(TextMessageWorkerRuntime runtime);
     }
 
     private final TextMessageClient client;
@@ -36,11 +35,12 @@ final class TextMessageWorkerRuntime
     private final ExecutorService handlerExecutor;
     private final Listener listener;
 
-    private boolean started;
+    private boolean startRequested;
     private boolean closed;
-    private boolean bindSent;
-    private boolean exitNotified;
-    private boolean exitRequested;
+    private boolean bound;
+    private boolean terminationRequested;
+    private boolean terminationNotified;
+    private Throwable terminationFailure;
     private CommandExecution activeCommand;
 
     TextMessageWorkerRuntime(
@@ -65,21 +65,19 @@ final class TextMessageWorkerRuntime
 
     void start() {
         synchronized (this) {
-            if (closed) {
-                throw new IllegalStateException(
-                        "TextMessageWorkerRuntime is closed"
-                );
-            }
-            if (started) {
+            if (closed || terminationRequested || startRequested) {
                 return;
             }
-            started = true;
+            startRequested = true;
         }
         try {
             client.start(this);
         } catch (RuntimeException error) {
             synchronized (this) {
-                started = false;
+                if (closed || terminationRequested) {
+                    return;
+                }
+                startRequested = false;
             }
             throw error;
         }
@@ -87,24 +85,50 @@ final class TextMessageWorkerRuntime
 
     @Override
     public void onOpen() {
-        boolean changed = false;
+        boolean reject;
         synchronized (this) {
-            if (!started || closed || exitRequested || exitNotified) {
-                client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
-                return;
-            }
-            bindSent = false;
-            if (sendBindLocked()) {
-                changed = true;
+            reject = !startRequested || closed || terminationRequested;
+            bound = false;
+        }
+        if (reject) {
+            client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+            return;
+        }
+
+        boolean accepted;
+        try {
+            accepted = client.send(
+                    codec.encodeWorkerConnectionBind(bind)
+            );
+        } catch (RuntimeException error) {
+            terminateWithFailure(error);
+            return;
+        }
+        if (!accepted) {
+            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+            return;
+        }
+
+        boolean closeCurrent;
+        synchronized (this) {
+            closeCurrent = closed || terminationRequested;
+            if (!closeCurrent) {
+                bound = true;
             }
         }
-        if (changed) {
-            notifyStateChanged(null);
+        if (closeCurrent) {
+            client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
         }
     }
 
     @Override
     public void onMessage(String message) {
+        synchronized (this) {
+            if (closed || terminationRequested) {
+                return;
+            }
+        }
+
         WorkerCommand command;
         try {
             command = codec.decodeWorkerCommand(message);
@@ -112,78 +136,42 @@ final class TextMessageWorkerRuntime
             closeProtocolError();
             return;
         }
-        if (command == null || !tryAcceptInboundCommand(command)) {
+        if (command == null) {
             closeProtocolError();
+            return;
+        }
+
+        CommandExecution execution;
+        synchronized (this) {
+            if (closed || terminationRequested) {
+                return;
+            }
+            if (!bound || activeCommand != null) {
+                execution = null;
+            } else {
+                execution = new CommandExecution(command);
+                activeCommand = execution;
+            }
+        }
+        if (execution == null) {
+            closeProtocolError();
+            return;
+        }
+
+        try {
+            handlerExecutor.execute(execution.task);
+        } catch (RejectedExecutionException error) {
+            failCommandExecution(execution, error);
         }
     }
 
     @Override
     public void onEndpointTerminated() {
-        boolean notify = false;
-        synchronized (this) {
-            bindSent = false;
-            if (closed || exitNotified) {
-                return;
-            }
-            exitRequested = true;
-            if (activeCommand == null) {
-                notify = markExitLocked();
-            }
-        }
-        notifyStateChanged(null);
-        if (notify) {
-            notifyExit();
-        }
+        requestTermination(null, false);
     }
 
     void requestStop() {
-        boolean notify;
-        synchronized (this) {
-            if (closed || exitRequested || exitNotified) {
-                return;
-            }
-            exitRequested = true;
-            bindSent = false;
-            notify = activeCommand == null && markExitLocked();
-        }
-        client.close();
-        notifyStateChanged(null);
-        if (notify) {
-            notifyExit();
-        }
-    }
-
-    private boolean tryAcceptInboundCommand(WorkerCommand command) {
-        Objects.requireNonNull(command, "command");
-        synchronized (this) {
-            if (!isConnected()
-                    || activeCommand != null
-                    || exitRequested) {
-                return false;
-            }
-            CommandExecution execution = new CommandExecution(command);
-            activeCommand = execution;
-            try {
-                handlerExecutor.execute(execution.task);
-                return true;
-            } catch (RejectedExecutionException error) {
-                activeCommand = null;
-                return false;
-            }
-        }
-    }
-
-    synchronized boolean isConnected() {
-        return started
-                && !closed
-                && !exitRequested
-                && !exitNotified
-                && bindSent
-                && client.isConnected();
-    }
-
-    synchronized boolean isExiting() {
-        return exitRequested || exitNotified;
+        requestTermination(null, true);
     }
 
     @Override
@@ -194,109 +182,178 @@ final class TextMessageWorkerRuntime
                 return;
             }
             closed = true;
-            started = false;
-            bindSent = false;
-            exitRequested = true;
+            bound = false;
+            terminationRequested = true;
             command = activeCommand;
             activeCommand = null;
         }
-        client.close();
         if (command != null) {
             command.task.cancel(true);
         }
+        closeClientQuietly();
     }
 
     private void executeCommand(CommandExecution execution) {
         Optional<WorkerResult> result;
-        RuntimeException failure = null;
         try {
-            result = commandExecutor.execute(execution.command);
+            result = Objects.requireNonNull(
+                    commandExecutor.execute(execution.command),
+                    "commandExecutor returned null"
+            );
         } catch (RuntimeException error) {
-            result = Optional.empty();
-            failure = error;
+            failCommandExecution(execution, error);
+            return;
         }
-        finishCommand(execution, result, failure);
+
+        WorkerResult sending = null;
+        boolean completeWithoutSend = false;
+        synchronized (this) {
+            if (activeCommand != execution) {
+                return;
+            }
+            if (closed || terminationRequested || !bound
+                    || !result.isPresent()) {
+                completeWithoutSend = true;
+            } else {
+                sending = result.get();
+            }
+        }
+        if (completeWithoutSend) {
+            completeCommand(execution, false);
+            return;
+        }
+
+        boolean sent;
+        try {
+            sent = client.send(codec.encodeWorkerResult(sending));
+        } catch (RuntimeException ignored) {
+            sent = false;
+        }
+        completeCommand(execution, !sent);
+        if (!sent) {
+            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+        }
     }
 
-    private void finishCommand(
+    private void completeCommand(
             CommandExecution execution,
-            Optional<WorkerResult> result,
-            RuntimeException failure
+            boolean sendFailed
     ) {
-        boolean notifyExit = false;
-        RuntimeException reportedFailure = failure;
+        boolean notify = false;
+        Throwable failure = null;
         synchronized (this) {
             if (activeCommand != execution) {
                 return;
             }
             activeCommand = null;
-            if (closed) {
+            if (sendFailed) {
+                bound = false;
+            }
+            if (terminationReadyLocked()) {
+                terminationNotified = true;
+                notify = true;
+                failure = terminationFailure;
+            }
+        }
+        if (notify) {
+            notifyTerminated(failure);
+        }
+    }
+
+    private void failCommandExecution(
+            CommandExecution execution,
+            RuntimeException error
+    ) {
+        boolean notify = false;
+        Throwable failure = null;
+        synchronized (this) {
+            if (activeCommand != execution) {
                 return;
             }
-            if (exitRequested) {
-                notifyExit = markExitLocked();
-            } else if (reportedFailure == null
-                    && result.isPresent()
-                    && isConnected()) {
-                sendResultLocked(result.get());
+            activeCommand = null;
+            requestTerminationLocked(error);
+            if (terminationReadyLocked()) {
+                terminationNotified = true;
+                notify = true;
+                failure = terminationFailure;
             }
         }
-        if (reportedFailure != null) {
-            notifyStateChanged(reportedFailure);
-        }
-        if (notifyExit) {
-            notifyExit();
+        closeClientQuietly();
+        if (notify) {
+            notifyTerminated(failure);
         }
     }
 
-    private boolean sendBindLocked() {
-        if (!client.send(codec.encodeWorkerConnectionBind(bind))) {
-            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
-            return false;
+    private void terminateWithFailure(RuntimeException error) {
+        requestTermination(error, true);
+    }
+
+    private void requestTermination(
+            Throwable failure,
+            boolean closeClient
+    ) {
+        boolean notify = false;
+        Throwable reportedFailure = null;
+        synchronized (this) {
+            if (closed || terminationNotified) {
+                return;
+            }
+            requestTerminationLocked(failure);
+            if (terminationReadyLocked()) {
+                terminationNotified = true;
+                notify = true;
+                reportedFailure = terminationFailure;
+            }
         }
-        bindSent = true;
-        return bindSent && client.isConnected();
-    }
-
-    private void sendResultLocked(WorkerResult result) {
-        if (!client.send(codec.encodeWorkerResult(result))) {
-            bindSent = false;
-            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+        if (closeClient) {
+            closeClientQuietly();
+        }
+        if (notify) {
+            notifyTerminated(reportedFailure);
         }
     }
 
-    private void closeProtocolErrorLocked() {
-        bindSent = false;
-        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    private void requestTerminationLocked(Throwable failure) {
+        if (!terminationRequested) {
+            terminationRequested = true;
+            terminationFailure = failure;
+        }
+        bound = false;
     }
 
-    private synchronized void closeProtocolError() {
-        if (!closed && !exitRequested && !exitNotified) {
-            closeProtocolErrorLocked();
+    private boolean terminationReadyLocked() {
+        return !closed
+                && terminationRequested
+                && !terminationNotified
+                && activeCommand == null;
+    }
+
+    private void closeProtocolError() {
+        boolean closeCurrent;
+        synchronized (this) {
+            closeCurrent = !closed && !terminationRequested;
+            if (closeCurrent) {
+                bound = false;
+            }
+        }
+        if (closeCurrent) {
+            client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
         }
     }
 
-    private boolean markExitLocked() {
-        if (closed || exitNotified) {
-            return false;
-        }
-        exitNotified = true;
-        return true;
-    }
-
-    private void notifyStateChanged(Throwable failure) {
+    private void notifyTerminated(Throwable failure) {
         try {
-            listener.onStateChanged(this, failure);
-        } catch (RuntimeException ignored) {
-            // Observation cannot interrupt the network state machine.
-        }
-    }
-
-    private void notifyExit() {
-        try {
-            listener.onExit(this);
+            listener.onTerminated(this, failure);
         } catch (RuntimeException ignored) {
             // WorkerLoop owns current-runtime callback suppression.
+        }
+    }
+
+    private void closeClientQuietly() {
+        try {
+            client.close();
+        } catch (RuntimeException ignored) {
+            // Terminal notification and Handler cleanup must still complete.
         }
     }
 

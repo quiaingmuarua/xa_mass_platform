@@ -155,13 +155,6 @@ public final class AndroidOkHttpTextWebSocketClient
     }
 
     @Override
-    public boolean isConnected() {
-        return !closeRequested
-                && visibleState == State.CONNECTED
-                && activeConnection.get() != null;
-    }
-
-    @Override
     public void close() {
         Handler target;
         HandlerThread thread;

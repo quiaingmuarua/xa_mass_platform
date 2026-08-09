@@ -103,20 +103,20 @@ Closing the Android network Client marks it terminal and cancels the current
 socket before returning; HandlerThread cleanup is posted asynchronously, so a
 host lifecycle callback does not wait for a network timeout.
 
-Shared `WorkerLifecycle` observation is split into two axes:
+Shared `WorkerLifecycle` observation has one two-state axis:
 
 ```text
-State            STOPPED / RUNNING
-ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
+State  STOPPED / RUNNING
 ```
 
 `RUNNING` includes preparation, Client reconnect, command execution, and
 graceful stop. Failures return to `STOPPED` with a diagnostic message.
-`RUNNING + CONNECTED` means the WebSocket opened and Core handed the
-workerId-only connection Bind to the network stack. It does not assert Adapter
-route verification, Kernel online truth, or assignment availability. Android
-uses Core's default 10-attempt prepare budget and 20-attempt connection budget
-unless the Builder receives another immutable `WorkerRetryPolicy`.
+Physical WebSocket state and reconnect attempts are private to the Client and
+produce neither lifecycle events nor a connection query. `RUNNING` therefore
+does not assert Adapter route verification, Kernel online truth, or assignment
+availability. Android uses Core's default 10-attempt prepare budget and
+20-attempt connection budget unless the Builder receives another immutable
+`WorkerRetryPolicy`.
 
 Applications must decide whether Android Backup may migrate Worker Identity.
 The repository demo excludes the Android Worker preference file from backup.

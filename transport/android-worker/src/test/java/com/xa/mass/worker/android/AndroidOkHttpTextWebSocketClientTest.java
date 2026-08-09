@@ -86,7 +86,6 @@ public class AndroidOkHttpTextWebSocketClientTest {
         );
         assertTrue(client.send("result"));
         assertEquals(List.of("result"), connection.socket.sent);
-        assertTrue(client.isConnected());
     }
 
     @Test
@@ -95,14 +94,14 @@ public class AndroidOkHttpTextWebSocketClientTest {
         client.start(listener);
         FakeConnection first = awaitConnection(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
 
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
-        await(() -> !client.isConnected());
+        await(() -> first.socket.closeCode == 1007);
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
         second.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 2);
 
         first.text("stale");
         second.text("current");
@@ -119,17 +118,17 @@ public class AndroidOkHttpTextWebSocketClientTest {
         client.start(listener);
         FakeConnection first = awaitConnection(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
         first.socket.rejectNextSend = true;
 
         assertFalse(client.send("result"));
         client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
-        await(() -> !client.isConnected());
+        await(() -> first.socket.closeCode == 1011);
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
         assertFalse(client.send("result"));
         second.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 2);
 
         assertTrue(first.socket.sent.isEmpty());
         assertTrue(second.socket.sent.isEmpty());
@@ -142,10 +141,10 @@ public class AndroidOkHttpTextWebSocketClientTest {
         client.start(listener);
         FakeConnection first = awaitConnection(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
 
         first.binary();
-        await(() -> !client.isConnected());
+        await(() -> first.socket.closeCode == 1003);
         advanceReconnectClock();
         awaitConnection(1);
 
@@ -159,12 +158,12 @@ public class AndroidOkHttpTextWebSocketClientTest {
         client.start(listener);
         FakeConnection first = awaitConnection(0);
         first.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
 
         first.failure(new IllegalStateException("scripted"));
         first.closed();
 
-        await(() -> !client.isConnected());
+        await(() -> !client.send("probe"));
         advanceReconnectClock();
         awaitConnection(1);
 
@@ -178,7 +177,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         client.start(listener);
         FakeConnection connection = awaitConnection(0);
         connection.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
 
         client.close();
         int eventCount = listener.events.size();
@@ -186,7 +185,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         Thread.sleep(30);
         client.close();
 
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
         assertEquals(eventCount, listener.events.size());
         assertTrue(connection.socket.cancelled);
         assertTrue(resourcesClosed.get());
@@ -255,7 +254,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertEquals(1, listener.terminations.get());
         assertEquals(0, listener.opens.get());
         assertFalse(listener.events.contains("message:late"));
-        assertFalse(client.isConnected());
+        assertFalse(client.send("late"));
     }
 
     @Test
@@ -266,7 +265,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         advanceReconnectClock();
         FakeConnection stable = awaitConnection(1);
         stable.open();
-        await(client::isConnected);
+        await(() -> listener.opens.get() == 1);
         Thread.sleep(120);
         ShadowSystemClock.advanceBy(Duration.ofMillis(120));
         Thread.sleep(20);

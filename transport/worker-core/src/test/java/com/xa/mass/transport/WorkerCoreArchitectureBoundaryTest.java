@@ -2,6 +2,7 @@ package com.xa.mass.transport;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
@@ -106,6 +107,11 @@ class WorkerCoreArchitectureBoundaryTest {
                 "closeCurrent",
                 TextMessageClient.CloseReason.class
         ));
+        assertFalse(hasMethod(TextMessageClient.class, "isConnected"));
+        assertFalse(hasMethod(
+                TextMessageClient.Listener.class,
+                "onReconnecting"
+        ));
         assertEquals(
                 3,
                 TextMessageClient.Listener.class
@@ -190,7 +196,18 @@ class WorkerCoreArchitectureBoundaryTest {
         }
         assertFalse(hasMethod(WorkerLifecycle.class, "refreshProperties"));
         assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
-        assertTrue(hasMethod(WorkerLifecycle.class, "isConnected"));
+        assertFalse(hasMethod(WorkerLifecycle.class, "isConnected"));
+        assertFalse(hasMethod(
+                WorkerLifecycle.Snapshot.class,
+                "connectionState"
+        ));
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        WorkerLifecycle.class.getName()
+                                + "$ConnectionState"
+                )
+        );
         assertTrue(hasMethod(
                 WorkerLifecycle.class,
                 "addListener",
@@ -282,6 +299,9 @@ class WorkerCoreArchitectureBoundaryTest {
                 "WorkerCommandDispatcher",
                 "WorkerRetryPolicy",
                 "commandThread",
+                "isConnected",
+                "isExiting",
+                "onStateChanged",
                 "Executors.new",
                 "shutdown"
         }) {
@@ -307,6 +327,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 "pendingResult",
                 "generation",
                 "supervisor",
+                "isConnected",
+                "ConnectionState",
                 "Executors.new",
                 "new Thread("
         }) {

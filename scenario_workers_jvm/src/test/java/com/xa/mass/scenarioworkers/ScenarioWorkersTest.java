@@ -71,7 +71,6 @@ class ScenarioWorkersTest {
                     }
                     return handle(
                             ordinal == 1 ? WORKER_ID_1 : WORKER_ID_2,
-                            true,
                             lifecycle,
                             "worker-" + ordinal
                     );
@@ -113,7 +112,6 @@ class ScenarioWorkersTest {
                     }
                     return handle(
                             WORKER_ID_1,
-                            true,
                             lifecycle,
                             "worker-1"
                     );
@@ -146,7 +144,6 @@ class ScenarioWorkersTest {
                 (group, worker, identity, properties, definitions) ->
                         handle(
                                 WORKER_ID_1,
-                                true,
                                 lifecycle,
                                 "worker"
                         ),
@@ -187,7 +184,7 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void connectionTimeoutPreventsIndexUpdate() {
+    void missingIdentitySkipsIndexUpdateWithoutFailingStartup() {
         AtomicInteger indexCalls = new AtomicInteger();
         ScenarioWorkerGroupConfig group = groupConfig(
                 StringUtilityWorkerEvents.MD5_EVENT_CODE,
@@ -202,13 +199,12 @@ class ScenarioWorkersTest {
                     return Map.of();
                 },
                 (ignoredGroup, worker, identity, properties, definitions) ->
-                        handle(WORKER_ID_1, false, new ArrayList<>(), "worker")
+                        handle(null, new ArrayList<>(), "worker")
         );
 
-        assertThatThrownBy(workers::start)
-                .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .hasMessageContaining("0 of 1 Workers connected");
+        workers.start();
         assertThat(indexCalls).hasValue(0);
+        workers.close();
     }
 
     @Test
@@ -216,7 +212,7 @@ class ScenarioWorkersTest {
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 1),
                 (group, worker, identity, properties, definitions) ->
-                        handle(WORKER_ID_1, true, new ArrayList<>(), "worker"),
+                        handle(WORKER_ID_1, new ArrayList<>(), "worker"),
                 (group, workerId, updates, timeout) -> {
                     throw new IllegalStateException("index unavailable");
                 }
@@ -295,7 +291,7 @@ class ScenarioWorkersTest {
                 config,
                 (group, worker, identity, properties, definitions) -> {
                     created.incrementAndGet();
-                    return handle(WORKER_ID_1, true, new ArrayList<>(), "worker");
+                    return handle(WORKER_ID_1, new ArrayList<>(), "worker");
                 },
                 acceptedIndexes()
         );
@@ -350,11 +346,6 @@ class ScenarioWorkersTest {
                     }
 
                     @Override
-                    public boolean isConnected() {
-                        return true;
-                    }
-
-                    @Override
                     public String workerId() {
                         return workerId;
                     }
@@ -367,7 +358,6 @@ class ScenarioWorkersTest {
 
     private static ScenarioWorkers.WorkerRuntimeHandle handle(
             String workerId,
-            boolean connected,
             List<String> lifecycle,
             String name
     ) {
@@ -375,11 +365,6 @@ class ScenarioWorkersTest {
             @Override
             public void start() {
                 lifecycle.add("start:" + name);
-            }
-
-            @Override
-            public boolean isConnected() {
-                return connected;
             }
 
             @Override

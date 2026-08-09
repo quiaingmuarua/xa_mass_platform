@@ -73,7 +73,8 @@ load the persisted workerId, or Register when it is absent
 -> always Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
 -> receive the configured Adapter public URI
 -> create JavaWorker with WEBSOCKET and start the shared text-message Transport
--> wait for every configured group to connect
+-> return without waiting for first WebSocket Bind
+-> for configured indexes only, wait for workerId within connectTimeoutMillis
 -> submit explicit Property Index updates as best effort
 ```
 
@@ -84,16 +85,21 @@ Java Workers. The control pool is
 retry uses one scheduler thread. These daemon threads are aggregate-scoped;
 there is no Core or per-Worker control/Handler thread.
 
-Identity mismatch, malformed Properties, duplicate sandbox use, Register, or
-Bind failure closes all local transports, releases sandbox locks, and fails
-startup. A persisted identity is never silently replaced; an operator must
-clear the sandbox explicitly when the Server Identity registry has been reset.
+Malformed local assembly, duplicate sandbox use, or synchronous Worker
+construction/start submission failure closes all local transports, releases
+sandbox locks, and fails aggregate startup. Register, Bind, initial connection,
+and reconnect failure occur asynchronously inside each Worker run; they lead
+that Worker to `STOPPED` and do not close the aggregate. A persisted identity
+is never silently replaced; an operator must clear the sandbox explicitly when
+the Server Identity registry has been reset.
 Editing `worker-properties.json` takes effect on the next Scenario start; there
 is no file watcher. Each
 long-lived Worker sends only `WorkerConnectionBind(workerId)` to its returned
 Adapter URI; the Adapter verifies the persisted endpoint route before exposing
-the Channel. Index update may briefly observe `NOT_FOUND`, so Scenario retries
-it within the connection timeout; remaining Index failure is diagnostic only.
+the Channel. Scenario has no connection query and does not expose a first-Bind
+startup barrier. For a configured Index update it waits for `workerId`, then
+may retry `NOT_FOUND`, within the existing `connectTimeoutMillis` budget. A
+missing identity or remaining Index failure is logged as `14010` and skipped.
 `close()` first closes Workers, then releases sandbox locks, then shuts down
 the aggregate execution resources. Startup failure performs the same cleanup;
 it preserves sandbox files and does not mutate WorkerGroup, Worker metadata,
@@ -106,7 +112,8 @@ Definition selection; Scenario Workers never compare or update the two values.
 The module depends internally on Worker Core, `JavaWorker`, and the transport
 wire contract. `JavaWorker` injects each configured client key into the final
 Properties and delegates bounded prepare plus connection supervision to the
-shared Core runtime; Index update uses a private HTTP client. It has no dependency
+shared Core runtime; transparent reconnect remains inside the concrete Client
+and Index update uses a private HTTP client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
 Redis, scores, or Pacers. The Worker does not configure or know an
 `endpointManagerId`; Bind returns the selected public WebSocket URI.

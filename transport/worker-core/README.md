@@ -72,7 +72,7 @@ RUNNING
   -> WorkerPreparation with bounded retry
   -> PreparedWorker(workerId, endpointUri)
   -> one reconnecting TextMessageWorkerRuntime
-  -> exact-once runtime exit callback
+  -> exact-once runtime terminal callback
   -> STOPPED
 ```
 
@@ -108,9 +108,12 @@ It receives only the prepared endpoint and a `WorkerCommandExecutor`. It has
 no Identity Store, Properties provider, Control Client, definitions,
 dispatcher construction, preparation retry logic, or business-message cache.
 Ordinary disconnects, failures, and reconnects stay inside the current
-`TextMessageClient` and reuse the prepared endpoint. Only endpoint termination
-exits the runtime and ends the Worker run. The current concrete Clients
-terminate an endpoint when their reconnect budget is exhausted.
+`TextMessageClient` and reuse the prepared endpoint. The Runtime sends
+`WorkerLoop` only one terminal fact; Bind admission, command busy state,
+Handler progress, and reconnect activity never cross that owner boundary.
+Endpoint termination, explicit stop, or a local Runtime infrastructure failure
+ends the run after Handler cleanup. The current concrete Clients terminate an
+endpoint when their reconnect budget is exhausted.
 
 ## Command And Result Ownership
 
@@ -118,9 +121,10 @@ terminate an endpoint when their reconnect budget is exhausted.
 connection's inbound text callback. `WorkerLifecycle` exposes no local command
 injection or message-send operation, and `WorkerLoop` never accepts or routes a
 `WorkerCommand`. The runtime decodes the inbound frame and is the final
-admission owner: it accepts only while connected with no command executing. A
-malformed or inadmissible inbound frame closes the current connection and is
-never queued.
+admission owner: it accepts only after the current open's Bind send was
+accepted and while no command is executing. A malformed or inadmissible
+inbound frame closes the current connection and is never queued. A frame that
+arrives after terminal admission has closed is ignored.
 
 A produced `WorkerResult` is sent once only when the current connection is
 still bound. If the Handler finishes while disconnected, send is rejected, or
@@ -139,32 +143,31 @@ pending result before polling another command.
 
 ```text
 start / stop / close
-snapshot / isConnected
+snapshot
 addListener / removeListener
 ```
 
-Observation has two independent axes:
+The lifecycle has one observable axis:
 
 ```text
-State            STOPPED / RUNNING
-ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
+State  STOPPED / RUNNING
 ```
 
 `RUNNING` begins when `start()` is accepted and includes preparation retry,
 Client connection/reconnect, command execution, and graceful stop while an
-in-flight Handler finishes. `CONNECTED` means the network opened and the
-workerId-only connection Bind was accepted by the Client. Failures return to
-`STOPPED` and remain available through `diagnosticMessage`; `close()` is an
-internal terminal object condition rather than a third Worker state. Neither
-axis is Kernel online truth or scheduling availability.
-`snapshot()` and `isConnected()` are current queries; lifecycle listeners do
-not promise a callback for each transient network disconnect. Listener calls
-are synchronous, lightweight, and outside the lifecycle state lock. They may
-run on the lifecycle caller, Host control/Handler executor, or Client callback
-thread. A no-thread coalescing drain rereads the latest snapshot, preventing a
-slow callback from holding the state lock or delivering queued stale
-snapshots. Hosts must move UI or blocking observation work onto their own
-appropriate executor.
+in-flight Handler finishes. Failures return to `STOPPED` and remain available
+through `diagnosticMessage`; `close()` is an internal terminal object
+condition rather than a third Worker state. The snapshot also carries the
+current run's Worker ID and Endpoint URI metadata when preparation has
+completed. It deliberately exposes no physical connection state or connection
+query: Client reconnect is transparent and Worker lifecycle is not Kernel
+online truth or scheduling availability. Listener calls are synchronous,
+lightweight, and outside the lifecycle state lock. They may run on the
+lifecycle caller, Host control/Handler executor, or Client callback thread. A
+no-thread coalescing drain rereads the latest snapshot, preventing a slow
+callback from holding the state lock or delivering queued stale snapshots.
+Hosts must move UI or blocking observation work onto their own appropriate
+executor.
 
 There is intentionally no direct Properties-refresh or local-command lifecycle
 method. Platform or Adapter initiated Worker behavior is expressed through
@@ -180,7 +183,9 @@ teardown. They do not cache Worker commands or results.
 
 `TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and the
 exact-once `onEndpointTerminated`. Transient disconnect and failure evidence
-does not cross into the Worker Runtime.
+does not cross into the Worker Runtime. The Client exposes no `isConnected`
+or reconnect callback; `send()` acceptance is the Runtime's only per-frame
+network evidence.
 
 `TextMessageReconnectPolicy` bounds consecutive unstable connections. A
 connection must survive its stable window before the count resets. Exhaustion

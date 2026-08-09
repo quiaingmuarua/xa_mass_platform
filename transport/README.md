@@ -38,16 +38,19 @@ the protocol source shared by Kernel, Server, Adapter, and Worker. Do not move
 connection management, handler execution, lifecycle, or network-library code
 into that wire contract.
 
-`transport:worker-core` is not a generic transport framework. It contains the
-shared Worker execution and protocol state machines plus narrow network and
-control Client contracts. Java and Android hosts both compose
+`transport:worker-core` is not a generic transport framework. Its long-lived
+path has three owners: a concrete Client owns networking and transparent
+reconnect, the package-private Runtime owns Bind/Command/Result protocol, and
+`WorkerLoop` owns only the two-state Worker run. Java and Android hosts compose
 `RegisteredWorkerPreparation` with one `WorkerLoop` and expose the same
 `WorkerLifecycle` contract. One accepted `start()` covers bounded preparation
 and one reconnecting endpoint Client. Platform modules provide Identity
 storage, concrete network Clients, and explicitly owned shared execution
 resources. Worker Core creates and closes no thread, executor, or scheduler.
 Client reconnect exhaustion ends that run; only another explicit `start()`
-prepares again. No Endpoint URI or Worker business message is persisted.
+prepares again. Reconnect and physical connection state are not Worker
+lifecycle events or queries. No Endpoint URI or Worker business message is
+persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism
 exists.
 

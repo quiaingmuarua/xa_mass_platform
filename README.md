@@ -31,11 +31,12 @@ The repository contains seven active areas:
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.
 - [`transport/`](transport/): concrete Worker Delivery implementations. It
-  contains the Java 11 Worker Core execution/state-machine mechanism, the
-  Netty Adapter runtime, concrete JVM network clients, and the Android
-  HandlerThread WebSocket client. JVM and Android hosts explicitly compose
-  Worker Core with a concrete client without changing the distinct delivery,
-  execution, and network boundaries.
+  contains the Java 11 Worker Core execution mechanism, the Netty Adapter
+  runtime, concrete JVM network clients, and the Android HandlerThread
+  WebSocket client. Its long-lived Worker path has three explicit owners:
+  Client networking and reconnect, Runtime Bind/Command/Result protocol, and
+  WorkerLoop `RUNNING/STOPPED` lifecycle. JVM and Android hosts compose those
+  layers without exposing physical connection state through Worker lifecycle.
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns

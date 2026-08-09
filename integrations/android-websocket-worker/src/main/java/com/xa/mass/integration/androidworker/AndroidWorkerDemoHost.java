@@ -105,7 +105,6 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
                 demoCapability.snapshot();
         return new Snapshot(
                 workerSnapshot.state(),
-                workerSnapshot.connectionState(),
                 workerSnapshot.workerId(),
                 workerSnapshot.endpointUri(),
                 demo.counter(),
@@ -171,7 +170,6 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     static final class Snapshot {
 
         private final WorkerLifecycle.State state;
-        private final WorkerLifecycle.ConnectionState connectionState;
         private final String workerId;
         private final URI endpointUri;
         private final int counter;
@@ -181,7 +179,6 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
         private Snapshot(
                 WorkerLifecycle.State state,
-                WorkerLifecycle.ConnectionState connectionState,
                 String workerId,
                 URI endpointUri,
                 int counter,
@@ -190,7 +187,6 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
                 String errorMessage
         ) {
             this.state = state;
-            this.connectionState = connectionState;
             this.workerId = workerId;
             this.endpointUri = endpointUri;
             this.counter = counter;
@@ -201,10 +197,6 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
         WorkerLifecycle.State state() {
             return state;
-        }
-
-        WorkerLifecycle.ConnectionState connectionState() {
-            return connectionState;
         }
 
         String workerId() {

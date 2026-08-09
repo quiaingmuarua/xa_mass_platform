@@ -152,13 +152,6 @@ public final class OkHttpTextWebSocketClient
     }
 
     @Override
-    public boolean isConnected() {
-        synchronized (lock) {
-            return running && !closed && connected;
-        }
-    }
-
-    @Override
     public void close() {
         ConnectionAttempt attempt;
         synchronized (lock) {

@@ -86,7 +86,6 @@ class JavaWorkerTest {
         worker = worker(identity, Map.of("runtime", "java"));
 
         worker.start();
-        await(worker::isConnected);
         RecordedRequest register = takeRequest();
         RecordedRequest firstBind = takeRequest();
         takeRequest();
@@ -107,7 +106,6 @@ class JavaWorkerTest {
                 == WorkerLifecycle.State.STOPPED);
         enqueueSession(false);
         worker.start();
-        await(worker::isConnected);
         RecordedRequest secondBind = takeRequest();
         takeRequest();
         assertTrue(secondBind.getTarget().endsWith(
@@ -242,7 +240,6 @@ class JavaWorkerTest {
                         reader.readLine()
                 );
                 assertEquals(WORKER_ID, connectionBind.get("workerId"));
-                await(worker::isConnected);
             }
         }
     }

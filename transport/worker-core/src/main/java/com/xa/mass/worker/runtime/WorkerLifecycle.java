@@ -13,12 +13,6 @@ public interface WorkerLifecycle extends AutoCloseable {
         RUNNING
     }
 
-    enum ConnectionState {
-        DISCONNECTED,
-        CONNECTING,
-        CONNECTED
-    }
-
     @FunctionalInterface
     interface Listener {
 
@@ -31,8 +25,6 @@ public interface WorkerLifecycle extends AutoCloseable {
 
     Snapshot snapshot();
 
-    boolean isConnected();
-
     void addListener(Listener listener);
 
     void removeListener(Listener listener);
@@ -43,23 +35,17 @@ public interface WorkerLifecycle extends AutoCloseable {
     final class Snapshot {
 
         private final State state;
-        private final ConnectionState connectionState;
         private final String workerId;
         private final URI endpointUri;
         private final String diagnosticMessage;
 
         public Snapshot(
                 State state,
-                ConnectionState connectionState,
                 String workerId,
                 URI endpointUri,
                 String diagnosticMessage
         ) {
             this.state = Objects.requireNonNull(state, "state");
-            this.connectionState = Objects.requireNonNull(
-                    connectionState,
-                    "connectionState"
-            );
             this.workerId = workerId;
             this.endpointUri = endpointUri;
             this.diagnosticMessage = diagnosticMessage;
@@ -67,10 +53,6 @@ public interface WorkerLifecycle extends AutoCloseable {
 
         public State state() {
             return state;
-        }
-
-        public ConnectionState connectionState() {
-            return connectionState;
         }
 
         public String workerId() {

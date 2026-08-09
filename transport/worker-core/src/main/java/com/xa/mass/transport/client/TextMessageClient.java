@@ -31,8 +31,6 @@ public interface TextMessageClient extends AutoCloseable {
      */
     void closeCurrent(CloseReason reason);
 
-    boolean isConnected();
-
     @Override
     void close();
 

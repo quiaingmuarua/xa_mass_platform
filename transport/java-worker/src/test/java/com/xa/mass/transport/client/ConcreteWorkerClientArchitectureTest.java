@@ -65,6 +65,7 @@ class ConcreteWorkerClientArchitectureTest {
         assertTrue(assembly.contains(
                 "public Builder executionResources("
         ));
+        assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));

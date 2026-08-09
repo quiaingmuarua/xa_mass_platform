@@ -136,13 +136,6 @@ public final class JdkLineSocketClient implements TextMessageClient {
     }
 
     @Override
-    public boolean isConnected() {
-        synchronized (lock) {
-            return running && !closed && current != null;
-        }
-    }
-
-    @Override
     public void close() {
         Connection connection;
         synchronized (lock) {

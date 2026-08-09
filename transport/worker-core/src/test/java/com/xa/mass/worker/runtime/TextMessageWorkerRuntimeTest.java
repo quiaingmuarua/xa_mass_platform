@@ -22,6 +22,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,7 +65,6 @@ class TextMessageWorkerRuntimeTest {
                 CODEC.decodeWorkerConnectionBind(client.sent.get(0))
                         .workerId()
         );
-        assertTrue(runtime.isConnected());
     }
 
     @Test
@@ -87,6 +88,29 @@ class TextMessageWorkerRuntimeTest {
 
         await(() -> command.equals(received.get()));
         assertTrue(client.closeReasons.isEmpty());
+    }
+
+    @Test
+    void commandBeforeBindIsRejectedWithoutExecution() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        AtomicInteger executions = new AtomicInteger();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.empty();
+                },
+                new RecordingListener()
+        );
+
+        runtime.start();
+        client.message(CODEC.encodeWorkerCommand(command()));
+
+        assertEquals(0, executions.get());
+        assertEquals(
+                List.of(TextMessageClient.CloseReason.PROTOCOL_ERROR),
+                client.closeReasons
+        );
     }
 
     @Test
@@ -208,7 +232,6 @@ class TextMessageWorkerRuntimeTest {
 
         assertEquals(1, listener.exits.get());
         assertSame(runtime, listener.lastRuntime.get());
-        assertFalse(runtime.isConnected());
     }
 
     @Test
@@ -239,7 +262,6 @@ class TextMessageWorkerRuntimeTest {
         await(() -> listener.exits.get() == 1);
 
         assertEquals(1, client.sent.size());
-        assertFalse(runtime.isConnected());
     }
 
     @Test
@@ -270,7 +292,111 @@ class TextMessageWorkerRuntimeTest {
         await(() -> listener.exits.get() == 1);
 
         assertEquals(1, client.sent.size());
-        assertFalse(runtime.isConnected());
+    }
+
+    @Test
+    void terminalRuntimeIgnoresLateMessages() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        AtomicInteger executions = new AtomicInteger();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.empty();
+                },
+                listener
+        );
+        runtime.start();
+        client.open();
+
+        runtime.requestStop();
+        client.message("{}");
+        client.message(CODEC.encodeWorkerCommand(command()));
+
+        assertEquals(1, listener.exits.get());
+        assertEquals(0, executions.get());
+        assertTrue(client.closeReasons.isEmpty());
+    }
+
+    @Test
+    void handlerExecutorRejectionTerminatesWithFailure()
+            throws Exception {
+        ExecutorService rejectingExecutor =
+                Executors.newSingleThreadExecutor();
+        rejectingExecutor.shutdown();
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> Optional.empty(),
+                listener,
+                rejectingExecutor
+        );
+        runtime.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(command()));
+
+        await(() -> listener.exits.get() == 1);
+        assertTrue(listener.lastFailure.get()
+                instanceof RejectedExecutionException);
+        assertEquals(1, client.closeCalls.get());
+    }
+
+    @Test
+    void uncaughtCommandExecutorFailureTerminatesRuntime()
+            throws Exception {
+        IllegalStateException failure = new IllegalStateException("boom");
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    throw failure;
+                },
+                listener
+        );
+        runtime.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(command()));
+
+        await(() -> listener.exits.get() == 1);
+        assertSame(failure, listener.lastFailure.get());
+        assertEquals(1, client.closeCalls.get());
+    }
+
+    @Test
+    void blockingResultSendDoesNotHoldRuntimeStateLock()
+            throws Exception {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        client.blockedSendCall = 2;
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> Optional.of(result()),
+                listener
+        );
+        ExecutorService stopCaller = Executors.newSingleThreadExecutor();
+
+        try {
+            runtime.start();
+            client.open();
+            client.message(CODEC.encodeWorkerCommand(command()));
+            assertTrue(client.sendEntered.await(5, TimeUnit.SECONDS));
+
+            Future<?> stop = stopCaller.submit(runtime::requestStop);
+            stop.get(5, TimeUnit.SECONDS);
+            assertEquals(0, listener.exits.get());
+
+            client.sendRelease.countDown();
+            await(() -> listener.exits.get() == 1);
+            assertEquals(1, client.sent.size());
+        } finally {
+            client.sendRelease.countDown();
+            stopCaller.shutdownNow();
+        }
     }
 
     @Test
@@ -493,18 +619,16 @@ class TextMessageWorkerRuntimeTest {
         private final AtomicInteger exits = new AtomicInteger();
         private final AtomicReference<TextMessageWorkerRuntime> lastRuntime =
                 new AtomicReference<>();
+        private final AtomicReference<Throwable> lastFailure =
+                new AtomicReference<>();
 
         @Override
-        public void onStateChanged(
+        public void onTerminated(
                 TextMessageWorkerRuntime runtime,
                 Throwable failure
         ) {
             lastRuntime.set(runtime);
-        }
-
-        @Override
-        public void onExit(TextMessageWorkerRuntime runtime) {
-            lastRuntime.set(runtime);
+            lastFailure.set(failure);
             exits.incrementAndGet();
         }
     }
@@ -515,8 +639,12 @@ class TextMessageWorkerRuntimeTest {
         private volatile Listener listener;
         private volatile boolean connected;
         private volatile boolean acceptSend = true;
+        private volatile int blockedSendCall = -1;
         private final CountDownLatch disconnectedObserved =
                 new CountDownLatch(1);
+        private final CountDownLatch sendEntered = new CountDownLatch(1);
+        private final CountDownLatch sendRelease = new CountDownLatch(1);
+        private final AtomicInteger sendCalls = new AtomicInteger();
         private final AtomicInteger closeCalls = new AtomicInteger();
         private final List<String> sent = new CopyOnWriteArrayList<>();
         private final List<CloseReason> closeReasons =
@@ -529,6 +657,11 @@ class TextMessageWorkerRuntimeTest {
 
         @Override
         public boolean send(String message) {
+            int sendCall = sendCalls.incrementAndGet();
+            if (sendCall == blockedSendCall) {
+                sendEntered.countDown();
+                awaitLatch(sendRelease);
+            }
             if (!connected || !acceptSend) {
                 return false;
             }
@@ -540,14 +673,6 @@ class TextMessageWorkerRuntimeTest {
         public void closeCurrent(CloseReason reason) {
             closeReasons.add(reason);
             connected = false;
-        }
-
-        @Override
-        public boolean isConnected() {
-            if (!connected) {
-                disconnectedObserved.countDown();
-            }
-            return connected;
         }
 
         @Override
@@ -567,6 +692,7 @@ class TextMessageWorkerRuntimeTest {
 
         private void disconnect() {
             connected = false;
+            disconnectedObserved.countDown();
         }
 
         private void terminate() {

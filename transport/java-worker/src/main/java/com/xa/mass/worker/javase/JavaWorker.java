@@ -62,11 +62,6 @@ public final class JavaWorker implements WorkerLifecycle {
     }
 
     @Override
-    public boolean isConnected() {
-        return worker.isConnected();
-    }
-
-    @Override
     public void addListener(Listener listener) {
         worker.addListener(listener);
     }

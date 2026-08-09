@@ -69,10 +69,6 @@ class WorkerLoopTest {
 
         loop.start();
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
-        assertEquals(
-                WorkerLifecycle.ConnectionState.DISCONNECTED,
-                loop.snapshot().connectionState()
-        );
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
 
         loop.start();
@@ -104,14 +100,95 @@ class WorkerLoopTest {
         loop.start();
         assertTrue(startEntered.await(5, TimeUnit.SECONDS));
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
-        assertEquals(
-                WorkerLifecycle.ConnectionState.CONNECTING,
-                loop.snapshot().connectionState()
-        );
 
         loop.start();
         startRelease.countDown();
         await(() -> client.listener != null);
+    }
+
+    @Test
+    void stopDuringRuntimeStartCannotInstallTheStoppedRuntime()
+            throws Exception {
+        CountDownLatch startEntered = new CountDownLatch(1);
+        CountDownLatch startRelease = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient(
+                startEntered,
+                startRelease
+        );
+        FakePreparation preparation = new FakePreparation(0);
+        WorkerLoop loop = new WorkerLoop(
+                preparation,
+                command -> Optional.empty(),
+                endpoint -> client,
+                policy(1),
+                executions.resources()
+        );
+        loops.add(loop);
+
+        try {
+            loop.start();
+            assertTrue(startEntered.await(5, TimeUnit.SECONDS));
+
+            loop.stop();
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    loop.snapshot().state()
+            );
+
+            startRelease.countDown();
+            assertTrue(client.startReturned.await(5, TimeUnit.SECONDS));
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    loop.snapshot().state()
+            );
+            assertEquals(1, preparation.calls.get());
+        } finally {
+            startRelease.countDown();
+        }
+    }
+
+    @Test
+    void synchronousEndpointTerminationDuringRuntimeStartStopsOnce()
+            throws Exception {
+        AtomicInteger closeCalls = new AtomicInteger();
+        TextMessageClient terminalOnStart = new TextMessageClient() {
+            @Override
+            public void start(Listener listener) {
+                listener.onEndpointTerminated();
+            }
+
+            @Override
+            public boolean send(String message) {
+                return false;
+            }
+
+            @Override
+            public void closeCurrent(CloseReason reason) {
+            }
+
+            @Override
+            public void close() {
+                closeCalls.incrementAndGet();
+            }
+        };
+        FakePreparation preparation = new FakePreparation(0);
+        WorkerLoop loop = new WorkerLoop(
+                preparation,
+                command -> Optional.empty(),
+                endpoint -> terminalOnStart,
+                policy(1),
+                executions.resources()
+        );
+        loops.add(loop);
+
+        loop.start();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+
+        assertEquals("Endpoint terminated",
+                loop.snapshot().diagnosticMessage());
+        assertEquals(1, preparation.calls.get());
+        assertEquals(1, closeCalls.get());
     }
 
     @Test
@@ -133,7 +210,7 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
-        await(loop::isConnected);
+        await(() -> client.sent.size() == 1);
 
         client.message(CODEC.encodeWorkerCommand(systemCommand(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
@@ -160,6 +237,40 @@ class WorkerLoopTest {
     }
 
     @Test
+    void runtimeInfrastructureFailureStopsWithSafeDiagnostic()
+            throws Exception {
+        FakePreparation preparation = new FakePreparation(0);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = new WorkerLoop(
+                preparation,
+                command -> {
+                    throw new IllegalStateException(
+                            "opaque command details"
+                    );
+                },
+                networks,
+                policy(1),
+                executions.resources()
+        );
+        loops.add(loop);
+        loop.start();
+        FakeTextMessageClient client = networks.awaitClient(0);
+        client.open();
+        await(() -> client.sent.size() == 1);
+
+        client.message(CODEC.encodeWorkerCommand(command(
+                "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
+        )));
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+
+        assertEquals(
+                "Worker runtime failed: IllegalStateException",
+                loop.snapshot().diagnosticMessage()
+        );
+    }
+
+    @Test
     void busyInboundCommandClosesConnectionWithoutQueueingIt()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
@@ -180,7 +291,7 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
-        await(loop::isConnected);
+        await(() -> client.sent.size() == 1);
 
         client.message(CODEC.encodeWorkerCommand(command(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
@@ -190,7 +301,10 @@ class WorkerLoopTest {
                 "6cae656c-2f1c-495d-abce-07a945c69b3d"
         )));
 
-        assertFalse(loop.isConnected());
+        assertEquals(
+                List.of(TextMessageClient.CloseReason.PROTOCOL_ERROR),
+                client.closeReasons
+        );
         release.countDown();
         await(() -> executions.get() == 1);
         assertEquals(1, executions.get());
@@ -216,7 +330,7 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
-        await(loop::isConnected);
+        await(() -> client.sent.size() == 1);
         client.message(CODEC.encodeWorkerCommand(command(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
         )));
@@ -224,10 +338,6 @@ class WorkerLoopTest {
 
         client.terminateEndpoint();
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
-        assertEquals(
-                WorkerLifecycle.ConnectionState.DISCONNECTED,
-                loop.snapshot().connectionState()
-        );
         loop.start();
         assertEquals(1, preparation.calls.get());
 
@@ -332,12 +442,12 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
-        await(loop::isConnected);
+        await(() -> client.sent.size() == 1);
 
         client.disconnect();
-        await(() -> !loop.isConnected());
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         client.open();
-        await(loop::isConnected);
+        await(() -> client.sent.size() == 2);
 
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         assertEquals(1, preparation.calls.get());
@@ -694,7 +804,7 @@ class WorkerLoopTest {
         loop.start();
         FakeTextMessageClient first = networks.awaitClient(0);
         first.open();
-        await(loop::isConnected);
+        await(() -> first.sent.size() == 1);
         first.message(CODEC.encodeWorkerCommand(command(
                 "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
         )));
@@ -714,7 +824,7 @@ class WorkerLoopTest {
         FakeTextMessageClient second = networks.awaitClient(1);
         first.terminateEndpoint();
         second.open();
-        await(loop::isConnected);
+        await(() -> second.sent.size() == 1);
 
         assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         assertEquals(2, preparation.calls.get());
@@ -881,9 +991,12 @@ class WorkerLoopTest {
         private final CountDownLatch startRelease;
         private final CountDownLatch closeEntered;
         private final CountDownLatch closeRelease;
+        private final CountDownLatch startReturned = new CountDownLatch(1);
         private volatile Listener listener;
         private volatile boolean connected;
         private final List<String> sent = new CopyOnWriteArrayList<>();
+        private final List<CloseReason> closeReasons =
+                new CopyOnWriteArrayList<>();
 
         private FakeTextMessageClient() {
             this(null, null, null, null);
@@ -912,6 +1025,7 @@ class WorkerLoopTest {
         public void start(Listener listener) {
             this.listener = listener;
             if (startEntered == null) {
+                startReturned.countDown();
                 return;
             }
             startEntered.countDown();
@@ -927,6 +1041,8 @@ class WorkerLoopTest {
                         "Interrupted while starting client",
                         error
                 );
+            } finally {
+                startReturned.countDown();
             }
         }
 
@@ -941,12 +1057,8 @@ class WorkerLoopTest {
 
         @Override
         public void closeCurrent(CloseReason reason) {
+            closeReasons.add(reason);
             connected = false;
-        }
-
-        @Override
-        public boolean isConnected() {
-            return connected;
         }
 
         @Override

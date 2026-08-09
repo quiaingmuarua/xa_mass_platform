@@ -138,7 +138,6 @@ public class AndroidWorkerTest {
         });
 
         worker.start();
-        await(worker::isConnected);
         assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
 
         RecordedRequest register = takeRequest();
@@ -191,7 +190,6 @@ public class AndroidWorkerTest {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        await(worker::isConnected);
         RecordedRequest firstRegister = takeRequest();
         RecordedRequest firstBind = takeRequest();
         takeRequest();
@@ -207,7 +205,6 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
-        await(worker::isConnected);
 
         RecordedRequest secondBind = takeRequest();
         RecordedRequest secondSocket = takeRequest();
@@ -234,7 +231,6 @@ public class AndroidWorkerTest {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        await(worker::isConnected);
         takeRequest();
         takeRequest();
         takeRequest();
@@ -252,7 +248,6 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
-        await(worker::isConnected);
         RecordedRequest refreshed = takeRequest();
         takeRequest();
 
@@ -265,8 +260,6 @@ public class AndroidWorkerTest {
         );
         assertEquals(WorkerLifecycle.State.RUNNING,
                 worker.snapshot().state());
-        assertEquals(WorkerLifecycle.ConnectionState.CONNECTED,
-                worker.snapshot().connectionState());
     }
 
     @Test
@@ -318,7 +311,6 @@ public class AndroidWorkerTest {
         AndroidWorker duplicate = worker(context -> properties.get());
         try {
             worker.start();
-            await(worker::isConnected);
             assertThrows(IllegalStateException.class, duplicate::start);
         } finally {
             duplicate.close();
@@ -374,7 +366,10 @@ public class AndroidWorkerTest {
             server.enqueue(webSocketSession(new WebSocketListener() {
             }));
             await(() -> startWhenLeaseIsAvailable(duplicate));
-            await(duplicate::isConnected);
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    duplicate.snapshot().state()
+            );
         } finally {
             release.countDown();
             duplicate.close();
