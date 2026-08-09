@@ -19,6 +19,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
     private final AndroidWorker worker;
     private final AndroidDemoStateCapability demoCapability;
+    private final AndroidWorkerExecutionResources executionResources;
     private final Handler mainHandler;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private final WorkerLifecycle.Listener workerListener =
@@ -30,11 +31,13 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
     AndroidWorkerDemoHost(
             AndroidWorker worker,
-            AndroidDemoStateCapability demoCapability
+            AndroidDemoStateCapability demoCapability,
+            AndroidWorkerExecutionResources executionResources
     ) {
         this(
                 worker,
                 demoCapability,
+                executionResources,
                 new Handler(Looper.getMainLooper())
         );
     }
@@ -42,10 +45,12 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     AndroidWorkerDemoHost(
             AndroidWorker worker,
             AndroidDemoStateCapability demoCapability,
+            AndroidWorkerExecutionResources executionResources,
             Handler mainHandler
     ) {
         if (worker == null
                 || demoCapability == null
+                || executionResources == null
                 || mainHandler == null) {
             throw new IllegalArgumentException(
                     "Demo host dependencies must be present"
@@ -53,6 +58,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         }
         this.worker = worker;
         this.demoCapability = demoCapability;
+        this.executionResources = executionResources;
         this.mainHandler = mainHandler;
         worker.addListener(workerListener);
         demoCapability.addListener(capabilityListener);
@@ -115,11 +121,15 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
             return;
         }
         closed = true;
-        worker.close();
-        worker.removeListener(workerListener);
-        demoCapability.removeListener(capabilityListener);
-        publish();
-        listeners.clear();
+        try {
+            worker.close();
+        } finally {
+            worker.removeListener(workerListener);
+            demoCapability.removeListener(capabilityListener);
+            executionResources.close();
+            publish();
+            listeners.clear();
+        }
     }
 
     private void requireOpen() {

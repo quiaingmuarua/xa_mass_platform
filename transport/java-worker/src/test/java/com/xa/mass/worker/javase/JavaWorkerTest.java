@@ -10,6 +10,7 @@ import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -28,6 +29,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import mockwebserver3.MockResponse;
@@ -42,9 +46,21 @@ class JavaWorkerTest {
 
     private MockWebServer server;
     private JavaWorker worker;
+    private ExecutorService controlExecutor;
+    private ExecutorService handlerExecutor;
+    private ScheduledExecutorService retryScheduler;
+    private WorkerExecutionResources executionResources;
 
     @BeforeEach
     void setUp() throws IOException {
+        controlExecutor = Executors.newSingleThreadExecutor();
+        handlerExecutor = Executors.newSingleThreadExecutor();
+        retryScheduler = Executors.newSingleThreadScheduledExecutor();
+        executionResources = WorkerExecutionResources.of(
+                controlExecutor,
+                handlerExecutor,
+                retryScheduler
+        );
         server = new MockWebServer();
         server.start();
     }
@@ -54,7 +70,12 @@ class JavaWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        server.close();
+        retryScheduler.shutdownNow();
+        handlerExecutor.shutdownNow();
+        controlExecutor.shutdownNow();
+        if (server != null) {
+            server.close();
+        }
     }
 
     @Test
@@ -103,6 +124,22 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
+                .executionResources(executionResources)
+                .workerProperties(Map::of)
+                .eventDefinitions(definitions());
+
+        assertThrows(IllegalStateException.class, builder::build);
+    }
+
+    @Test
+    void builderRequiresExplicitExecutionResources() {
+        JavaWorker.Builder builder = JavaWorker.builder(
+                        URI.create(server.url("/").toString()),
+                        "group-1",
+                        "fixed-installation",
+                        WorkerTransportType.WEBSOCKET
+                )
+                .identityStore(WorkerIdentityStore.noCache())
                 .workerProperties(Map::of)
                 .eventDefinitions(definitions());
 
@@ -137,6 +174,7 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
+                .executionResources(executionResources)
                 .identityStore(identity)
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
@@ -177,6 +215,7 @@ class JavaWorkerTest {
                             "fixed-installation",
                             WorkerTransportType.SOCKET
                     )
+                    .executionResources(executionResources)
                     .identityStore(identity)
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())

@@ -39,9 +39,10 @@ Status: current repository handoff.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
   Polling, `WorkerPreparation`, the two-state `WorkerLoop`, single-run
-  text-message runtime, and network Client contracts. It also owns the shared
-  `WorkerLifecycle`, Identity store, Properties provider, and platform-neutral
-  Register/Bind control contracts. It
+  text-message runtime, Host-injected `WorkerExecutionResources`, and network
+  Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
+  Properties provider, and platform-neutral Register/Bind control contracts.
+  It creates and closes no thread, Executor, or Scheduler and
   contains no concrete network or platform implementation.
 - `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
   default Java OkHttp point/WebSocket/control and JDK line-socket Client
@@ -129,10 +130,15 @@ tag.
   Android, Netty, Spring, Redis, Server, or Kernel implementations.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerLoop` owns one two-state run, bounded
-  preparation retry, the current runtime, and local lifecycle observation. It
-  does not accept or route Worker commands. The single-run runtime owns inbound
-  WorkerCommand decoding and final admission, serialized execution, connection
-  Bind, one-shot WorkerResult send, and exact-once exit notification.
+  preparation retry, the current runtime, cancellable task handles, and local
+  lifecycle observation. Host code must inject shared control, Handler, and
+  retry execution resources; Core must not create or shut down execution
+  resources. Lifecycle listeners are synchronous, lightweight, coalesced, and
+  invoked outside the lifecycle state lock. `WorkerLoop` does not accept or
+  route Worker commands. The single-run runtime owns inbound WorkerCommand
+  decoding and final admission, per-Worker serialized execution on the shared
+  Handler pool, connection Bind, one-shot WorkerResult send, and exact-once
+  exit notification.
   `TextMessageClient` alone owns transient
   disconnect/failure handling and reconnect scheduling; its Runtime listener
   exposes only open, inbound message, and exact-once endpoint termination.
@@ -144,6 +150,8 @@ tag.
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
+  `JavaWorker.Builder` requires Host-owned `WorkerExecutionResources`; closing
+  a JavaWorker must not shut shared resources down.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
   but not on `transport/java-worker`. Its network Client serializes connection
   state, generation filtering, callbacks, stable-window accounting, and
@@ -154,8 +162,10 @@ tag.
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.
-  Android hosts own process lifetime, permissions beyond INTERNET, static
-  handler assembly, and backup policy.
+  `AndroidWorker.Builder` requires Host-owned `WorkerExecutionResources`;
+  closing an AndroidWorker must not shut shared resources down. Android hosts
+  own process lifetime, shared control/Handler/retry resource lifetime,
+  permissions beyond INTERNET, static handler assembly, and backup policy.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
@@ -182,6 +192,9 @@ tag.
   `transport:java-worker`; it must not depend on `kernel_jvm`, Spring,
   `server_jvm`, `transport:netty-adapter`, Redis, scores, Pacers, HTTP
   controller types, reflection, `ServiceLoader`, or configurable class names.
+  The aggregate owns one bounded daemon control pool, one CPU/Worker-bounded
+  Handler pool, and one retry scheduler shared by all assembled JavaWorkers;
+  it closes Workers and sandboxes before those resources.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.

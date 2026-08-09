@@ -24,6 +24,9 @@ class ConcreteWorkerClientArchitectureTest {
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(project.resolve("src/main/java"));
+        String assembly = Files.readString(project.resolve(
+                "src/main/java/com/xa/mass/worker/javase/JavaWorker.java"
+        ));
         String build = Files.readString(project.resolve("build.gradle"));
 
         assertTrue(build.contains("id 'java-library'"));
@@ -58,6 +61,12 @@ class ConcreteWorkerClientArchitectureTest {
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
         assertTrue(source.contains("new WorkerLoop("));
+        assertTrue(assembly.contains("WorkerExecutionResources"));
+        assertTrue(assembly.contains(
+                "public Builder executionResources("
+        ));
+        assertFalse(assembly.contains("Executors.new"));
+        assertFalse(assembly.contains("shutdownNow("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("new JdkLineSocketClient("));
     }

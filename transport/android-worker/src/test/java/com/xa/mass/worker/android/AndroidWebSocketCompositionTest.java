@@ -11,6 +11,7 @@ import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerLoop;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -24,6 +25,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import mockwebserver3.MockResponse;
@@ -112,6 +116,12 @@ public class AndroidWebSocketCompositionTest {
                             Duration.ofMillis(20),
                             Duration.ofMillis(100)
                     );
+            ExecutorService controlExecutor =
+                    Executors.newSingleThreadExecutor();
+            ExecutorService handlerExecutor =
+                    Executors.newSingleThreadExecutor();
+            ScheduledExecutorService retryScheduler =
+                    Executors.newSingleThreadScheduledExecutor();
             WorkerLoop worker = new WorkerLoop(
                             preparation,
                             new WorkerCommandDispatcher(List.of(
@@ -136,6 +146,11 @@ public class AndroidWebSocketCompositionTest {
                                     1,
                                     Duration.ofMillis(20),
                                     connectionPolicy
+                            ),
+                            WorkerExecutionResources.of(
+                                    controlExecutor,
+                                    handlerExecutor,
+                                    retryScheduler
                             )
                     );
             try {
@@ -146,6 +161,9 @@ public class AndroidWebSocketCompositionTest {
                 ));
             } finally {
                 worker.close();
+                retryScheduler.shutdownNow();
+                handlerExecutor.shutdownNow();
+                controlExecutor.shutdownNow();
             }
         }
 

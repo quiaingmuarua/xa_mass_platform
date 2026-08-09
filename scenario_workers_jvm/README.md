@@ -77,6 +77,13 @@ load the persisted workerId, or Register when it is absent
 -> submit explicit Property Index updates as best effort
 ```
 
+The aggregate creates one Host-owned execution bundle shared by all of its
+Java Workers. The control pool is
+`max(1, min(workerCount, 4))`, the Handler pool is
+`max(1, min(workerCount, max(2, availableProcessors)))`, and preparation
+retry uses one scheduler thread. These daemon threads are aggregate-scoped;
+there is no Core or per-Worker control/Handler thread.
+
 Identity mismatch, malformed Properties, duplicate sandbox use, Register, or
 Bind failure closes all local transports, releases sandbox locks, and fails
 startup. A persisted identity is never silently replaced; an operator must
@@ -87,7 +94,8 @@ long-lived Worker sends only `WorkerConnectionBind(workerId)` to its returned
 Adapter URI; the Adapter verifies the persisted endpoint route before exposing
 the Channel. Index update may briefly observe `NOT_FOUND`, so Scenario retries
 it within the connection timeout; remaining Index failure is diagnostic only.
-`close()` releases local network, thread, and lock resources in reverse order;
+`close()` first closes Workers, then releases sandbox locks, then shuts down
+the aggregate execution resources. Startup failure performs the same cleanup;
 it preserves sandbox files and does not mutate WorkerGroup, Worker metadata,
 score, identity, Binding, or Property Index truth.
 

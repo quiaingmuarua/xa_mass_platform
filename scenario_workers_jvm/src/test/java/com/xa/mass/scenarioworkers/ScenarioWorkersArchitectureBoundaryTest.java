@@ -58,6 +58,11 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("definitionsByEventCode")
                 .contains("JavaWorker.builder")
                 .contains("WorkerIdentityStore")
+                .contains("WorkerExecutionResources")
+                .contains("xa-scenario-worker-control")
+                .contains("xa-scenario-worker-handler")
+                .contains("xa-scenario-worker-retry")
+                .contains(".executionResources(")
                 .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
         assertThat(sources)

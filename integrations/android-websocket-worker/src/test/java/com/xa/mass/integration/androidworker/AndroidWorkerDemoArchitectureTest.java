@@ -95,7 +95,12 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "new AndroidDemoStateCapability"
         ));
-        assertTrue(application.contains("workerHost.start();"));
+        assertTrue(application.contains(
+                "new AndroidWorkerExecutionResources"
+        ));
+        assertTrue(application.contains(".executionResources("));
+        assertTrue(host.contains("executionResources.close()"));
+        assertTrue(application.contains("host.start();"));
         assertTrue(activity.contains("workerHost.addListener"));
         assertTrue(activity.contains("workerHost.removeListener"));
         assertFalse(activity.contains("AndroidWorker.builder"));

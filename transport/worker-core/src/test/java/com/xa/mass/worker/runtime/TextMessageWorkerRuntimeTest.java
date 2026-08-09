@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,12 +34,15 @@ class TextMessageWorkerRuntimeTest {
             new WorkerDeliveryCodec();
     private final List<TextMessageWorkerRuntime> runtimes =
             new ArrayList<>();
+    private final TestWorkerExecutionResources executions =
+            new TestWorkerExecutionResources();
 
     @AfterEach
     void tearDown() {
         for (TextMessageWorkerRuntime runtime : runtimes) {
             runtime.close();
         }
+        executions.close();
     }
 
     @Test
@@ -268,15 +273,165 @@ class TextMessageWorkerRuntimeTest {
         assertFalse(runtime.isConnected());
     }
 
+    @Test
+    void sharedHandlerPoolQueuesAcrossWorkersAndStopWaitsForQueuedCommand()
+            throws Exception {
+        ExecutorService sharedHandler =
+                Executors.newSingleThreadExecutor();
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondExecuted = new CountDownLatch(1);
+        FakeTextMessageClient firstClient = new FakeTextMessageClient();
+        FakeTextMessageClient secondClient = new FakeTextMessageClient();
+        RecordingListener secondListener = new RecordingListener();
+        TextMessageWorkerRuntime first = runtime(
+                firstClient,
+                command -> {
+                    firstEntered.countDown();
+                    awaitLatch(releaseFirst);
+                    return Optional.empty();
+                },
+                new RecordingListener(),
+                sharedHandler
+        );
+        TextMessageWorkerRuntime second = runtime(
+                secondClient,
+                command -> {
+                    secondExecuted.countDown();
+                    return Optional.of(result());
+                },
+                secondListener,
+                sharedHandler
+        );
+
+        try {
+            first.start();
+            second.start();
+            firstClient.open();
+            secondClient.open();
+            firstClient.message(CODEC.encodeWorkerCommand(command()));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            secondClient.message(CODEC.encodeWorkerCommand(command()));
+            assertFalse(secondExecuted.await(100, TimeUnit.MILLISECONDS));
+
+            second.requestStop();
+            assertEquals(0, secondListener.exits.get());
+            releaseFirst.countDown();
+            assertTrue(secondExecuted.await(5, TimeUnit.SECONDS));
+            await(() -> secondListener.exits.get() == 1);
+
+            assertEquals(1, secondClient.sent.size());
+        } finally {
+            releaseFirst.countDown();
+            sharedHandler.shutdownNow();
+        }
+    }
+
+    @Test
+    void closeCancelsCommandQueuedInSharedHandlerPool()
+            throws Exception {
+        ExecutorService sharedHandler =
+                Executors.newSingleThreadExecutor();
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        AtomicInteger secondExecutions = new AtomicInteger();
+        FakeTextMessageClient firstClient = new FakeTextMessageClient();
+        FakeTextMessageClient secondClient = new FakeTextMessageClient();
+        TextMessageWorkerRuntime first = runtime(
+                firstClient,
+                command -> {
+                    firstEntered.countDown();
+                    awaitLatch(releaseFirst);
+                    return Optional.empty();
+                },
+                new RecordingListener(),
+                sharedHandler
+        );
+        TextMessageWorkerRuntime second = runtime(
+                secondClient,
+                command -> {
+                    secondExecutions.incrementAndGet();
+                    return Optional.empty();
+                },
+                new RecordingListener(),
+                sharedHandler
+        );
+
+        try {
+            first.start();
+            second.start();
+            firstClient.open();
+            secondClient.open();
+            firstClient.message(CODEC.encodeWorkerCommand(command()));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            secondClient.message(CODEC.encodeWorkerCommand(command()));
+
+            second.close();
+            releaseFirst.countDown();
+            Thread.sleep(100);
+
+            assertEquals(0, secondExecutions.get());
+        } finally {
+            releaseFirst.countDown();
+            sharedHandler.shutdownNow();
+        }
+    }
+
+    @Test
+    void closeInterruptsRunningHandlerWithoutClosingSharedPool()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    entered.countDown();
+                    try {
+                        new CountDownLatch(1).await();
+                    } catch (InterruptedException error) {
+                        interrupted.countDown();
+                        Thread.currentThread().interrupt();
+                    }
+                    return Optional.empty();
+                },
+                new RecordingListener()
+        );
+        runtime.start();
+        client.open();
+        client.message(CODEC.encodeWorkerCommand(command()));
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+        runtime.close();
+
+        assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+        assertFalse(executions.handlerExecutor().isShutdown());
+    }
+
     private TextMessageWorkerRuntime runtime(
             FakeTextMessageClient client,
             WorkerCommandExecutor commandExecutor,
             RecordingListener listener
     ) {
+        return runtime(
+                client,
+                commandExecutor,
+                listener,
+                executions.handlerExecutor()
+        );
+    }
+
+    private TextMessageWorkerRuntime runtime(
+            FakeTextMessageClient client,
+            WorkerCommandExecutor commandExecutor,
+            RecordingListener listener,
+            ExecutorService handlerExecutor
+    ) {
         TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                 client,
                 WORKER_ID,
                 commandExecutor,
+                handlerExecutor,
                 listener
         );
         runtimes.add(runtime);

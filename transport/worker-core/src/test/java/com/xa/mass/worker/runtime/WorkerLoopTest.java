@@ -2,6 +2,8 @@ package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
@@ -25,8 +27,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 class WorkerLoopTest {
 
@@ -39,12 +45,15 @@ class WorkerLoopTest {
             new WorkerDeliveryCodec();
 
     private final List<WorkerLoop> loops = new ArrayList<>();
+    private final TestWorkerExecutionResources executions =
+            new TestWorkerExecutionResources();
 
     @AfterEach
     void tearDown() {
         for (WorkerLoop loop : loops) {
             loop.close();
         }
+        executions.close();
     }
 
     @Test
@@ -87,7 +96,8 @@ class WorkerLoopTest {
                 new FakePreparation(0),
                 command -> Optional.empty(),
                 endpoint -> client,
-                policy(1)
+                policy(1),
+                executions.resources()
         );
         loops.add(loop);
 
@@ -262,6 +272,54 @@ class WorkerLoopTest {
     }
 
     @Test
+    void endpointCleanupRemainsRunningUntilOldRuntimeIsClosed()
+            throws Exception {
+        CountDownLatch closeEntered = new CountDownLatch(1);
+        CountDownLatch releaseClose = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient(
+                null,
+                null,
+                closeEntered,
+                releaseClose
+        );
+        FakePreparation preparation = new FakePreparation(0);
+        WorkerLoop loop = new WorkerLoop(
+                preparation,
+                command -> Optional.empty(),
+                endpoint -> client,
+                policy(1),
+                executions.resources()
+        );
+        loops.add(loop);
+        ExecutorService callbackCaller =
+                Executors.newSingleThreadExecutor();
+
+        try {
+            loop.start();
+            await(() -> client.listener != null);
+            Future<?> termination = callbackCaller.submit(
+                    client::terminateEndpoint
+            );
+            assertTrue(closeEntered.await(5, TimeUnit.SECONDS));
+
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    loop.snapshot().state()
+            );
+            loop.start();
+            assertEquals(1, preparation.calls.get());
+
+            releaseClose.countDown();
+            termination.get(5, TimeUnit.SECONDS);
+            await(() -> loop.snapshot().state()
+                    == WorkerLifecycle.State.STOPPED);
+        } finally {
+            releaseClose.countDown();
+            callbackCaller.shutdownNow();
+        }
+    }
+
+    @Test
     void ordinaryReconnectStaysInsideCurrentRun() throws Exception {
         FakePreparation preparation = new FakePreparation(0);
         FakeNetworkFactory networks = new FakeNetworkFactory();
@@ -376,6 +434,177 @@ class WorkerLoopTest {
     }
 
     @Test
+    void stopCancelsPreparationQueuedInSharedControlPool()
+            throws Exception {
+        CountDownLatch controlsEntered = new CountDownLatch(2);
+        CountDownLatch releaseControls = new CountDownLatch(1);
+        for (int index = 0; index < 2; index++) {
+            executions.controlExecutor().execute(() -> {
+                controlsEntered.countDown();
+                try {
+                    releaseControls.await();
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        }
+        assertTrue(controlsEntered.await(5, TimeUnit.SECONDS));
+        FakePreparation preparation = new FakePreparation(0);
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                new FakeNetworkFactory(),
+                policy(1)
+        );
+
+        try {
+            loop.start();
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    loop.snapshot().state()
+            );
+
+            loop.stop();
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    loop.snapshot().state()
+            );
+        } finally {
+            releaseControls.countDown();
+        }
+        Thread.sleep(50);
+
+        assertEquals(0, preparation.calls.get());
+    }
+
+    @Test
+    void closingOneWorkerDoesNotCloseSharedExecutionResources()
+            throws Exception {
+        FakeNetworkFactory firstNetworks = new FakeNetworkFactory();
+        WorkerLoop first = loop(
+                new FakePreparation(0),
+                payload -> payload,
+                firstNetworks,
+                policy(1)
+        );
+        FakeNetworkFactory secondNetworks = new FakeNetworkFactory();
+        WorkerLoop second = loop(
+                new FakePreparation(0),
+                payload -> payload,
+                secondNetworks,
+                policy(1)
+        );
+
+        first.start();
+        firstNetworks.awaitClient(0);
+        first.close();
+
+        assertFalse(executions.controlExecutor().isShutdown());
+        assertFalse(executions.handlerExecutor().isShutdown());
+        assertFalse(executions.retryScheduler().isShutdown());
+        second.start();
+        secondNetworks.awaitClient(0);
+        assertEquals(
+                WorkerLifecycle.State.RUNNING,
+                second.snapshot().state()
+        );
+    }
+
+    @Test
+    void rejectedControlSubmissionRestoresStoppedAndFailsStart() {
+        ExecutorService rejectedControl =
+                Executors.newSingleThreadExecutor();
+        rejectedControl.shutdownNow();
+        FakePreparation preparation = new FakePreparation(0);
+        WorkerLoop loop = new WorkerLoop(
+                preparation,
+                command -> Optional.empty(),
+                new FakeNetworkFactory(),
+                policy(1),
+                WorkerExecutionResources.of(
+                        rejectedControl,
+                        executions.handlerExecutor(),
+                        executions.retryScheduler()
+                )
+        );
+        loops.add(loop);
+
+        assertThrows(IllegalStateException.class, loop::start);
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                loop.snapshot().state()
+        );
+        assertEquals(
+                "Worker control executor is unavailable",
+                loop.snapshot().diagnosticMessage()
+        );
+        assertEquals(0, preparation.calls.get());
+    }
+
+    @Test
+    void slowListenerRunsSynchronouslyOutsideStateLockAndCoalesces()
+            throws Exception {
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                new FakePreparation(0),
+                payload -> payload,
+                networks,
+                policy(1)
+        );
+        CountDownLatch listenerEntered = new CountDownLatch(1);
+        CountDownLatch releaseListener = new CountDownLatch(1);
+        AtomicInteger callbacks = new AtomicInteger();
+        AtomicReference<Thread> callbackThread = new AtomicReference<>();
+        List<WorkerLifecycle.Snapshot> snapshots =
+                new CopyOnWriteArrayList<>();
+        ExecutorService listenerCaller =
+                Executors.newSingleThreadExecutor();
+
+        try {
+            Future<?> registration = listenerCaller.submit(() -> {
+                Thread registrationThread = Thread.currentThread();
+                loop.addListener(snapshot -> {
+                    callbackThread.compareAndSet(null, Thread.currentThread());
+                    snapshots.add(snapshot);
+                    if (callbacks.getAndIncrement() == 0) {
+                        listenerEntered.countDown();
+                        try {
+                            releaseListener.await();
+                        } catch (InterruptedException error) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                });
+                assertSame(registrationThread, callbackThread.get());
+            });
+            assertTrue(listenerEntered.await(5, TimeUnit.SECONDS));
+
+            loop.start();
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    loop.snapshot().state()
+            );
+            networks.awaitClient(0);
+            assertFalse(registration.isDone());
+
+            releaseListener.countDown();
+            registration.get(5, TimeUnit.SECONDS);
+            assertEquals(2, snapshots.size());
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    snapshots.get(0).state()
+            );
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    snapshots.get(1).state()
+            );
+        } finally {
+            releaseListener.countDown();
+            listenerCaller.shutdownNow();
+        }
+    }
+
+    @Test
     void stopDuringPreparationPreventsRuntimeInstallation()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
@@ -402,6 +631,47 @@ class WorkerLoopTest {
         loop.start();
         networks.awaitClient(0);
         assertEquals(2, preparation.calls.get());
+    }
+
+    @Test
+    void closeInterruptsRunningPreparationWithoutClosingSharedPool()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        WorkerPreparation preparation = new WorkerPreparation() {
+            @Override
+            public PreparedWorker prepare() throws Exception {
+                entered.countDown();
+                try {
+                    new CountDownLatch(1).await();
+                } catch (InterruptedException error) {
+                    interrupted.countDown();
+                    throw error;
+                }
+                throw new AssertionError("unreachable");
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                new FakeNetworkFactory(),
+                policy(1)
+        );
+
+        loop.start();
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        loop.close();
+
+        assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                loop.snapshot().state()
+        );
+        assertFalse(executions.controlExecutor().isShutdown());
     }
 
     @Test
@@ -476,7 +746,8 @@ class WorkerLoopTest {
                         List.of(taskDefinition, systemDefinition)
                 ),
                 networks,
-                retryPolicy
+                retryPolicy,
+                executions.resources()
         );
         loops.add(loop);
         return loop;
@@ -608,20 +879,33 @@ class WorkerLoopTest {
 
         private final CountDownLatch startEntered;
         private final CountDownLatch startRelease;
+        private final CountDownLatch closeEntered;
+        private final CountDownLatch closeRelease;
         private volatile Listener listener;
         private volatile boolean connected;
         private final List<String> sent = new CopyOnWriteArrayList<>();
 
         private FakeTextMessageClient() {
-            this(null, null);
+            this(null, null, null, null);
         }
 
         private FakeTextMessageClient(
                 CountDownLatch startEntered,
                 CountDownLatch startRelease
         ) {
+            this(startEntered, startRelease, null, null);
+        }
+
+        private FakeTextMessageClient(
+                CountDownLatch startEntered,
+                CountDownLatch startRelease,
+                CountDownLatch closeEntered,
+                CountDownLatch closeRelease
+        ) {
             this.startEntered = startEntered;
             this.startRelease = startRelease;
+            this.closeEntered = closeEntered;
+            this.closeRelease = closeRelease;
         }
 
         @Override
@@ -668,6 +952,23 @@ class WorkerLoopTest {
         @Override
         public void close() {
             connected = false;
+            if (closeEntered == null) {
+                return;
+            }
+            closeEntered.countDown();
+            try {
+                if (!closeRelease.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException(
+                            "Timed out waiting to close client"
+                    );
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                        "Interrupted while closing client",
+                        error
+                );
+            }
         }
 
         private void open() {

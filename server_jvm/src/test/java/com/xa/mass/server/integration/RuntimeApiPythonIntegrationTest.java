@@ -9,6 +9,7 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerLoop;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
@@ -28,6 +29,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Assumptions;
@@ -443,28 +447,24 @@ class RuntimeApiPythonIntegrationTest {
                         )
                 );
         return switch (transportProfile) {
-            case WEBSOCKET -> new TextMessageWorkerHandle(
-                    new WorkerLoop(
-                            fixedPreparation(workerId, serverUrl),
-                            new WorkerCommandDispatcher(definitions),
-                            endpoint -> new OkHttpTextWebSocketClient(
-                                    endpoint,
-                                    Duration.ofSeconds(2),
-                                    connectionPolicy()
-                            ),
-                            workerRetryPolicy()
+            case WEBSOCKET -> startTextMessageWorker(
+                    workerId,
+                    serverUrl,
+                    definitions,
+                    endpoint -> new OkHttpTextWebSocketClient(
+                            endpoint,
+                            Duration.ofSeconds(2),
+                            connectionPolicy()
                     )
             );
-            case SOCKET -> new TextMessageWorkerHandle(
-                    new WorkerLoop(
-                            fixedPreparation(workerId, serverUrl),
-                            new WorkerCommandDispatcher(definitions),
-                            endpoint -> new JdkLineSocketClient(
-                                    endpoint,
-                                    Duration.ofSeconds(2),
-                                    connectionPolicy()
-                            ),
-                            workerRetryPolicy()
+            case SOCKET -> startTextMessageWorker(
+                    workerId,
+                    serverUrl,
+                    definitions,
+                    endpoint -> new JdkLineSocketClient(
+                            endpoint,
+                            Duration.ofSeconds(2),
+                            connectionPolicy()
                     )
             );
             case POLLING -> new PollingWorkerHandle(
@@ -478,6 +478,24 @@ class RuntimeApiPythonIntegrationTest {
                     )
             );
         };
+    }
+
+    private RunningWorker startTextMessageWorker(
+            String workerId,
+            URI endpointUri,
+            List<WorkerEventDefinition<?>> definitions,
+            WorkerLoop.NetworkClientFactory clientFactory
+    ) throws Exception {
+        TestWorkerExecutionResources resources =
+                new TestWorkerExecutionResources();
+        WorkerLoop worker = new WorkerLoop(
+                fixedPreparation(workerId, endpointUri),
+                new WorkerCommandDispatcher(definitions),
+                clientFactory,
+                workerRetryPolicy(),
+                resources.resources()
+        );
+        return new TextMessageWorkerHandle(worker, resources);
     }
 
     private static TextMessageReconnectPolicy connectionPolicy() {
@@ -896,29 +914,70 @@ class RuntimeApiPythonIntegrationTest {
             implements RunningWorker {
 
         private final WorkerLoop transport;
+        private final TestWorkerExecutionResources executionResources;
 
         private TextMessageWorkerHandle(
-                WorkerLoop transport
+                WorkerLoop transport,
+                TestWorkerExecutionResources executionResources
         ) throws Exception {
             this.transport = transport;
-            transport.start();
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(2).toNanos();
-            while (!transport.isConnected()
-                    && System.nanoTime() < deadline) {
-                Thread.sleep(10);
-            }
-            if (!transport.isConnected()) {
-                transport.close();
+            this.executionResources = executionResources;
+            try {
+                transport.start();
+                long deadline = System.nanoTime()
+                        + Duration.ofSeconds(2).toNanos();
+                while (!transport.isConnected()
+                        && System.nanoTime() < deadline) {
+                    Thread.sleep(10);
+                }
+                if (transport.isConnected()) {
+                    return;
+                }
                 throw new AssertionError(
                         "Text-message Worker did not connect to its Adapter"
                 );
+            } catch (Exception | Error failure) {
+                transport.close();
+                executionResources.close();
+                throw failure;
             }
         }
 
         @Override
         public void close() {
-            transport.close();
+            try {
+                transport.close();
+            } finally {
+                executionResources.close();
+            }
+        }
+    }
+
+    private static final class TestWorkerExecutionResources
+            implements AutoCloseable {
+
+        private final ExecutorService controlExecutor =
+                Executors.newSingleThreadExecutor();
+        private final ExecutorService handlerExecutor =
+                Executors.newSingleThreadExecutor();
+        private final ScheduledExecutorService retryScheduler =
+                Executors.newSingleThreadScheduledExecutor();
+        private final WorkerExecutionResources resources =
+                WorkerExecutionResources.of(
+                        controlExecutor,
+                        handlerExecutor,
+                        retryScheduler
+                );
+
+        private WorkerExecutionResources resources() {
+            return resources;
+        }
+
+        @Override
+        public void close() {
+            retryScheduler.shutdownNow();
+            handlerExecutor.shutdownNow();
+            controlExecutor.shutdownNow();
         }
     }
 }

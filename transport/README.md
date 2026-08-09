@@ -14,6 +14,7 @@ Status: repository-local transport contracts and implementations.
 :transport:worker-core
   -> Java 11 Worker execution mechanism
   -> WorkerPreparation + two-state WorkerLoop + single-run text runtime
+  -> Host-injected shared control/Handler/retry execution resources
   -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
@@ -43,9 +44,10 @@ control Client contracts. Java and Android hosts both compose
 `RegisteredWorkerPreparation` with one `WorkerLoop` and expose the same
 `WorkerLifecycle` contract. One accepted `start()` covers bounded preparation
 and one reconnecting endpoint Client. Platform modules provide Identity
-storage and concrete network Clients. Client reconnect exhaustion ends that
-run; only another explicit `start()` prepares again. No Endpoint URI or Worker
-business message is persisted.
+storage, concrete network Clients, and explicitly owned shared execution
+resources. Worker Core creates and closes no thread, executor, or scheduler.
+Client reconnect exhaustion ends that run; only another explicit `start()`
+prepares again. No Endpoint URI or Worker business message is persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism
 exists.
 

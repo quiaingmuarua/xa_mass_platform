@@ -10,6 +10,7 @@ import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPreparation;
@@ -46,6 +47,10 @@ class WorkerCoreArchitectureBoundaryTest {
         assertFalse(build.contains("foundation_jvm"));
         assertFalse(source.contains("com.xa.mass.foundation"));
         assertFalse(source.contains("ObservedText" + "MessageClient"));
+        assertFalse(source.contains("new Thread("));
+        assertFalse(source.contains("Executors.new"));
+        assertFalse(source.contains(".shutdown("));
+        assertFalse(source.contains("shutdownNow("));
 
         for (String forbidden : new String[]{
                 "okhttp3",
@@ -201,6 +206,16 @@ class WorkerCoreArchitectureBoundaryTest {
     @Test
     void workerTransportStateMachinesOnlyAcceptCoreSeams()
             throws Exception {
+        assertFalse(AutoCloseable.class.isAssignableFrom(
+                WorkerExecutionResources.class
+        ));
+        assertTrue(hasMethod(
+                WorkerExecutionResources.class,
+                "of",
+                java.util.concurrent.ExecutorService.class,
+                java.util.concurrent.ExecutorService.class,
+                java.util.concurrent.ScheduledExecutorService.class
+        ));
         assertConstructor(
                 PollingWorkerTransport.class,
                 WorkerPointClient.class,
@@ -218,7 +233,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerPreparation.class,
                 WorkerCommandExecutor.class,
                 WorkerLoop.NetworkClientFactory.class,
-                WorkerRetryPolicy.class
+                WorkerRetryPolicy.class,
+                WorkerExecutionResources.class
         );
 
         for (Class<?> transport : new Class<?>[]{
@@ -264,7 +280,10 @@ class WorkerCoreArchitectureBoundaryTest {
                 "WorkerControlClient",
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
-                "WorkerRetryPolicy"
+                "WorkerRetryPolicy",
+                "commandThread",
+                "Executors.new",
+                "shutdown"
         }) {
             assertFalse(runtime.contains(forbidden), forbidden);
         }
@@ -286,7 +305,10 @@ class WorkerCoreArchitectureBoundaryTest {
                 "commandInFlight",
                 "prepareAfterCommand",
                 "pendingResult",
-                "generation"
+                "generation",
+                "supervisor",
+                "Executors.new",
+                "new Thread("
         }) {
             assertFalse(loop.contains(forbidden), forbidden);
         }

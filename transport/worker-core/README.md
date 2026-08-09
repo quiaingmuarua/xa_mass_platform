@@ -9,11 +9,31 @@ It owns:
   mapping.
 - `WorkerPreparation` and the default Register/Bind implementation.
 - `WorkerLoop`, the two-state guard for one Worker run.
+- `WorkerExecutionResources`, the non-owning Host injection contract for
+  shared control, Handler, and retry execution.
 - The package-private one-endpoint text-message runtime.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
 It does not own concrete network libraries, Android storage, host process
-lifecycle, Adapter behavior, Redis, or Kernel scheduling.
+lifecycle, threads, executors, schedulers, Adapter behavior, Redis, or Kernel
+scheduling.
+
+## Execution Resources
+
+Every `WorkerLoop` receives a required `WorkerExecutionResources` bundle:
+
+```text
+control ExecutorService          -> preparation and preparation resubmission
+handler ExecutorService          -> admitted WorkerEvent Handler execution
+retry ScheduledExecutorService   -> bounded preparation retry timers
+```
+
+The Host creates these resources, may share one bundle across many Workers,
+and closes them only after every consuming Worker is closed. Core never creates
+or shuts down an executor. Closing one `WorkerLoop` cancels only its current
+prepare/Handler task handles and scheduled retry; it does not affect another
+Worker using the same bundle. Prepare and Handler execution remain separate so
+a blocked business Handler cannot consume the control path.
 
 ## Execution
 
@@ -68,10 +88,10 @@ network connection or execute commands.
 Java and Android assemblies construct one immutable
 `WorkerCommandDispatcher` from their static definitions and inject it as a
 `WorkerCommandExecutor`. `WorkerLoop` owns preparation retry, the current
-runtime reference, and two-state lifecycle observation. It never inspects
-command-busy state or routes commands. Preparation network failures consume
-the bounded prepare budget. Exhaustion or a contract failure ends the run in
-`STOPPED` with diagnostic evidence.
+runtime reference, cancellable task handles, and two-state lifecycle
+observation. It never inspects command-busy state or routes commands.
+Preparation network failures consume the bounded prepare budget. Exhaustion or
+a contract failure ends the run in `STOPPED` with diagnostic evidence.
 
 The single-run runtime owns only:
 
@@ -138,7 +158,13 @@ workerId-only connection Bind was accepted by the Client. Failures return to
 internal terminal object condition rather than a third Worker state. Neither
 axis is Kernel online truth or scheduling availability.
 `snapshot()` and `isConnected()` are current queries; lifecycle listeners do
-not promise a callback for each transient network disconnect.
+not promise a callback for each transient network disconnect. Listener calls
+are synchronous, lightweight, and outside the lifecycle state lock. They may
+run on the lifecycle caller, Host control/Handler executor, or Client callback
+thread. A no-thread coalescing drain rereads the latest snapshot, preventing a
+slow callback from holding the state lock or delivering queued stale
+snapshots. Hosts must move UI or blocking observation work onto their own
+appropriate executor.
 
 There is intentionally no direct Properties-refresh or local-command lifecycle
 method. Platform or Adapter initiated Worker behavior is expressed through

@@ -32,6 +32,7 @@ AndroidWorker worker = AndroidWorker.builder(
                 URI.create("http://127.0.0.1:18082"),
                 "android-demo-workers"
         )
+        .executionResources(executionResources)
         .workerProperties(context -> Map.of(
                 "runtime", "android",
                 "packageName", context.getPackageName()
@@ -44,6 +45,13 @@ AndroidWorker worker = AndroidWorker.builder(
 worker.addListener(snapshot -> observe(snapshot));
 worker.start();
 ```
+
+`executionResources` is required. The Android process owner creates and
+shares its control executor, Handler executor, and retry scheduler for the
+same lifetime as the process-level Worker owner. `AndroidWorker.close()` does
+not shut shared resources down; the Host closes all Workers before shutting
+them down. The WebSocket Client's dedicated Android `HandlerThread` remains a
+separate connection lane owned and closed by that Client.
 
 The first start generates and synchronously persists a canonical UUID
 `clientWorkerKey`. Android injects it as the reserved
@@ -83,10 +91,13 @@ stop
 ```
 
 `start`, `stop`, and `close` are idempotent at their lifecycle boundaries;
-`close` is terminal. Listener callbacks run on Core's serialized Worker
-lifecycle thread, not the main Looper. The module installs no Activity,
-Service, WorkManager, or process survival policy. An `Application`, `Service`,
-or another host owner decides when to invoke the lifecycle.
+`close` is terminal. Core Listener callbacks are synchronous, lightweight, and
+outside its state lock. They may run on a lifecycle caller, a Host control or
+Handler executor, or the Android Client callback `HandlerThread`; they are not
+main-Looper callbacks. A UI Host must post them to the main Looper. The module
+installs no Activity, Service, WorkManager, or process survival policy. An
+`Application`, `Service`, or another host owner decides when to invoke the
+lifecycle.
 
 Closing the Android network Client marks it terminal and cancels the current
 socket before returning; HandlerThread cleanup is posted asynchronously, so a

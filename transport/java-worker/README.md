@@ -38,6 +38,7 @@ JavaWorker worker = JavaWorker.builder(
                 "stable-installation-key",
                 WorkerTransportType.WEBSOCKET
         )
+        .executionResources(executionResources)
         .identityStore(identityStore)
         .workerProperties(() -> Map.of(
                 "runtime", "java",
@@ -50,6 +51,13 @@ JavaWorker worker = JavaWorker.builder(
 
 worker.start();
 ```
+
+`executionResources` is required and contains Host-owned shared control,
+Handler, and retry executors. A process should normally create one bundle for
+its Worker owner and reuse it across Workers. `JavaWorker.close()` never shuts
+the bundle down: the Host closes all Workers first, then shuts down the three
+underlying executors. There is no per-Worker fallback pool or hidden static
+executor.
 
 The fixed client key is injected as the reserved
 `workerProperties.clientWorkerKey`; the caller Properties provider may not
@@ -75,10 +83,10 @@ finishes.
 ## Lower-level Composition
 
 Callers may still compose concrete Clients with `WorkerLoop` or
-`PollingWorkerTransport` for custom lifecycle policy. Concrete Clients expose only
-Core interfaces and JDK types. They own URL/request handling, sockets, stale
-callback suppression, stable-window accounting, bounded fixed reconnect, and
-network resources. They do not
+`PollingWorkerTransport` for custom lifecycle policy. Concrete Clients expose
+only Core interfaces and JDK types. They own URL/request handling, sockets,
+stale callback suppression, stable-window accounting, bounded fixed reconnect,
+and their existing connection execution lanes. They do not
 cache offline business messages, and successful `send` is not an application
 ACK.
 

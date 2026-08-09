@@ -22,20 +22,42 @@ public final class AndroidWorkerDemoApplication extends Application {
         URI runtimeApiBaseUrl = URI.create(
                 getString(R.string.runtime_api_base_url)
         );
-        AndroidWorker worker = AndroidWorker.builder(
-                        this,
-                        runtimeApiBaseUrl,
-                        WORKER_GROUP_ID
-                )
-                .workerProperties(deviceProperties)
-                .eventDefinitions(demoCapability.definitions())
-                .requestTimeout(REQUEST_TIMEOUT)
-                .build();
-        workerHost = new AndroidWorkerDemoHost(
-                worker,
-                demoCapability
-        );
-        workerHost.start();
+        AndroidWorkerExecutionResources executionResources =
+                new AndroidWorkerExecutionResources();
+        AndroidWorker worker;
+        try {
+            worker = AndroidWorker.builder(
+                            this,
+                            runtimeApiBaseUrl,
+                            WORKER_GROUP_ID
+                    )
+                    .workerProperties(deviceProperties)
+                    .eventDefinitions(demoCapability.definitions())
+                    .executionResources(executionResources.resources())
+                    .requestTimeout(REQUEST_TIMEOUT)
+                    .build();
+        } catch (RuntimeException error) {
+            executionResources.close();
+            throw error;
+        }
+        AndroidWorkerDemoHost host = null;
+        try {
+            host = new AndroidWorkerDemoHost(
+                    worker,
+                    demoCapability,
+                    executionResources
+            );
+            host.start();
+            workerHost = host;
+        } catch (RuntimeException error) {
+            if (host == null) {
+                worker.close();
+                executionResources.close();
+            } else {
+                host.close();
+            }
+            throw error;
+        }
     }
 
     AndroidWorkerDemoHost workerHost() {

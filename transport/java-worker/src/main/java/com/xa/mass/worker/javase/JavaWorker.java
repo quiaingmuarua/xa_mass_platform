@@ -9,6 +9,7 @@ import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerLoop;
@@ -89,6 +90,7 @@ public final class JavaWorker implements WorkerLifecycle {
         private WorkerIdentityStore identityStore;
         private WorkerPropertiesProvider workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
+        private WorkerExecutionResources executionResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
 
@@ -146,6 +148,16 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
+        public Builder executionResources(WorkerExecutionResources value) {
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "executionResources must be present"
+                );
+            }
+            executionResources = value;
+            return this;
+        }
+
         public Builder requestTimeout(Duration value) {
             requestTimeout = requirePositive(value, "requestTimeout");
             return this;
@@ -175,6 +187,11 @@ public final class JavaWorker implements WorkerLifecycle {
             if (definitions == null || definitions.isEmpty()) {
                 throw new IllegalStateException(
                         "eventDefinitions must not be empty"
+                );
+            }
+            if (executionResources == null) {
+                throw new IllegalStateException(
+                        "executionResources must be configured"
                 );
             }
             WorkerPropertiesProvider completeProperties = () -> {
@@ -217,7 +234,8 @@ public final class JavaWorker implements WorkerLifecycle {
                             resolvedRetryPolicy
                                     .connectionPolicy()
                     ),
-                    resolvedRetryPolicy
+                    resolvedRetryPolicy,
+                    executionResources
             );
             return new JavaWorker(worker);
         }

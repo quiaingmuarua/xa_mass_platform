@@ -50,11 +50,14 @@ public class AndroidWorkerDemoHostTest {
                         application,
                         deviceProperties
                 );
+        AndroidWorkerExecutionResources executionResources =
+                new AndroidWorkerExecutionResources();
         AndroidWorker worker = AndroidWorker.builder(
                         application,
                         URI.create("http://127.0.0.1:18082"),
                         "android-demo-workers"
                 )
+                .executionResources(executionResources.resources())
                 .workerProperties(ignored -> Map.of(
                         "runtime",
                         "android"
@@ -64,6 +67,7 @@ public class AndroidWorkerDemoHostTest {
         host = new AndroidWorkerDemoHost(
                 worker,
                 capability,
+                executionResources,
                 new Handler(Looper.getMainLooper())
         );
     }

@@ -3,6 +3,7 @@ package com.xa.mass.scenarioworkers;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
@@ -14,6 +15,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class ScenarioWorkers implements AutoCloseable {
 
@@ -29,6 +35,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerIndexClient indexClient;
     private final WorkerFactory workerFactory;
+    private final AutoCloseable executionResourcesOwner;
     private final List<WorkerHandle> workers = new ArrayList<>();
     private final List<ScenarioWorkerSandbox> sandboxes =
             new ArrayList<>();
@@ -40,6 +47,23 @@ public final class ScenarioWorkers implements AutoCloseable {
             Map<String, WorkerEventDefinition<?>> definitionsByEventCode,
             ScenarioWorkerIndexClient indexClient,
             WorkerFactory workerFactory
+    ) {
+        this(
+                configs,
+                definitionsByEventCode,
+                indexClient,
+                workerFactory,
+                () -> {
+                }
+        );
+    }
+
+    ScenarioWorkers(
+            List<ScenarioWorkerGroupConfig> configs,
+            Map<String, WorkerEventDefinition<?>> definitionsByEventCode,
+            ScenarioWorkerIndexClient indexClient,
+            WorkerFactory workerFactory,
+            AutoCloseable executionResourcesOwner
     ) {
         groups = resolveGroups(
                 configs,
@@ -53,15 +77,26 @@ public final class ScenarioWorkers implements AutoCloseable {
                 workerFactory,
                 "workerFactory"
         );
+        this.executionResourcesOwner = Objects.requireNonNull(
+                executionResourcesOwner,
+                "executionResourcesOwner"
+        );
     }
 
     public static ScenarioWorkers fromJson(
             String workerConfigJson,
             URI runtimeApiBaseUrl
     ) {
+        ScenarioWorkerExecutionResources executionResources = null;
         try {
+            List<ScenarioWorkerGroupConfig> configs =
+                    ScenarioWorkersJsonParser.parse(workerConfigJson);
+            executionResources = ScenarioWorkerExecutionResources.create(
+                    workerCount(configs)
+            );
+            ScenarioWorkerExecutionResources shared = executionResources;
             return new ScenarioWorkers(
-                    ScenarioWorkersJsonParser.parse(workerConfigJson),
+                    configs,
                     builtInDefinitions(),
                     new HttpScenarioWorkerIndexClient(runtimeApiBaseUrl),
                     (group, worker, identityStore, properties,
@@ -71,10 +106,13 @@ public final class ScenarioWorkers implements AutoCloseable {
                             worker,
                             identityStore,
                             properties,
-                            definitions
-                    )
+                            definitions,
+                            shared.resources()
+                    ),
+                    shared
             );
         } catch (IllegalArgumentException error) {
+            closeOnAssemblyFailure(executionResources, error);
             throw new ScenarioWorkerAssemblyException(
                     14012,
                     "scenarioWorkers.parseConfig",
@@ -82,6 +120,9 @@ public final class ScenarioWorkers implements AutoCloseable {
                             + error.getMessage(),
                     error
             );
+        } catch (RuntimeException error) {
+            closeOnAssemblyFailure(executionResources, error);
+            throw error;
         }
     }
 
@@ -122,6 +163,7 @@ public final class ScenarioWorkers implements AutoCloseable {
         closed = true;
         RuntimeException failure = closeWorkers();
         failure = closeSandboxes(failure);
+        failure = closeExecutionResources(failure);
         if (failure != null) {
             throw failure;
         }
@@ -328,6 +370,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private void closeResourcesAndSuppress(RuntimeException failure) {
         RuntimeException closeFailure = closeWorkers();
         closeFailure = closeSandboxes(closeFailure);
+        closeFailure = closeExecutionResources(closeFailure);
         if (closeFailure != null) {
             failure.addSuppressed(closeFailure);
         }
@@ -344,6 +387,23 @@ public final class ScenarioWorkers implements AutoCloseable {
             } catch (RuntimeException error) {
                 failure = accumulate(failure, error);
             }
+        }
+        return failure;
+    }
+
+    private RuntimeException closeExecutionResources(
+            RuntimeException failure
+    ) {
+        try {
+            executionResourcesOwner.close();
+        } catch (Exception error) {
+            RuntimeException runtimeError = error instanceof RuntimeException
+                    ? (RuntimeException) error
+                    : new IllegalStateException(
+                            "Could not close Scenario Worker execution resources",
+                            error
+                    );
+            failure = accumulate(failure, runtimeError);
         }
         return failure;
     }
@@ -365,7 +425,8 @@ public final class ScenarioWorkers implements AutoCloseable {
             ScenarioWorkerConfig workerConfig,
             WorkerIdentityStore identityStore,
             WorkerPropertiesProvider propertiesProvider,
-            List<WorkerEventDefinition<?>> definitions
+            List<WorkerEventDefinition<?>> definitions,
+            WorkerExecutionResources executionResources
     ) {
         JavaWorker worker = JavaWorker.builder(
                         runtimeApiBaseUrl,
@@ -376,6 +437,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 .identityStore(identityStore)
                 .workerProperties(propertiesProvider)
                 .eventDefinitions(definitions)
+                .executionResources(executionResources)
                 .requestTimeout(config.requestTimeout())
                 .retryPolicy(config.retryPolicy())
                 .build();
@@ -399,6 +461,112 @@ public final class ScenarioWorkers implements AutoCloseable {
             public void close() {
                 worker.close();
             }
+        };
+    }
+
+    private static int workerCount(
+            List<ScenarioWorkerGroupConfig> configs
+    ) {
+        int count = 0;
+        for (ScenarioWorkerGroupConfig config : configs) {
+            count += config.workers().size();
+        }
+        return count;
+    }
+
+    private static void closeOnAssemblyFailure(
+            AutoCloseable resource,
+            RuntimeException failure
+    ) {
+        if (resource == null) {
+            return;
+        }
+        try {
+            resource.close();
+        } catch (Exception closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
+    }
+
+    private static final class ScenarioWorkerExecutionResources
+            implements AutoCloseable {
+
+        private final ExecutorService controlExecutor;
+        private final ExecutorService handlerExecutor;
+        private final ScheduledExecutorService retryScheduler;
+        private final WorkerExecutionResources resources;
+        private boolean closed;
+
+        private ScenarioWorkerExecutionResources(
+                ExecutorService controlExecutor,
+                ExecutorService handlerExecutor,
+                ScheduledExecutorService retryScheduler
+        ) {
+            this.controlExecutor = controlExecutor;
+            this.handlerExecutor = handlerExecutor;
+            this.retryScheduler = retryScheduler;
+            resources = WorkerExecutionResources.of(
+                    controlExecutor,
+                    handlerExecutor,
+                    retryScheduler
+            );
+        }
+
+        private static ScenarioWorkerExecutionResources create(
+                int workerCount
+        ) {
+            int workers = Math.max(1, workerCount);
+            int controlThreads = Math.max(1, Math.min(workers, 4));
+            int handlerThreads = Math.max(
+                    1,
+                    Math.min(
+                            workers,
+                            Math.max(
+                                    2,
+                                    Runtime.getRuntime().availableProcessors()
+                            )
+                    )
+            );
+            return new ScenarioWorkerExecutionResources(
+                    Executors.newFixedThreadPool(
+                            controlThreads,
+                            daemonThreadFactory("xa-scenario-worker-control")
+                    ),
+                    Executors.newFixedThreadPool(
+                            handlerThreads,
+                            daemonThreadFactory("xa-scenario-worker-handler")
+                    ),
+                    Executors.newSingleThreadScheduledExecutor(
+                            daemonThreadFactory("xa-scenario-worker-retry")
+                    )
+            );
+        }
+
+        private WorkerExecutionResources resources() {
+            return resources;
+        }
+
+        @Override
+        public synchronized void close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            retryScheduler.shutdownNow();
+            handlerExecutor.shutdownNow();
+            controlExecutor.shutdownNow();
+        }
+    }
+
+    private static ThreadFactory daemonThreadFactory(String prefix) {
+        AtomicInteger sequence = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(
+                    runnable,
+                    prefix + "-" + sequence.incrementAndGet()
+            );
+            thread.setDaemon(true);
+            return thread;
         };
     }
 

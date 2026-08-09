@@ -134,6 +134,59 @@ class ScenarioWorkersTest {
     }
 
     @Test
+    void closesWorkersBeforeAggregateExecutionResources() {
+        List<String> lifecycle = new ArrayList<>();
+        ScenarioWorkers workers = new ScenarioWorkers(
+                ScenarioWorkersJsonParser.parse(config(
+                        StringUtilityWorkerEvents.MD5_EVENT_CODE,
+                        1
+                )),
+                definitions(),
+                acceptedIndexes(),
+                (group, worker, identity, properties, definitions) ->
+                        handle(
+                                WORKER_ID_1,
+                                true,
+                                lifecycle,
+                                "worker"
+                        ),
+                () -> lifecycle.add("close:execution-resources")
+        );
+
+        workers.start();
+        workers.close();
+
+        assertThat(lifecycle).containsExactly(
+                "start:worker",
+                "close:worker",
+                "close:execution-resources"
+        );
+    }
+
+    @Test
+    void startupFailureAlsoClosesAggregateExecutionResources() {
+        AtomicInteger resourceCloses = new AtomicInteger();
+        ScenarioWorkers workers = new ScenarioWorkers(
+                ScenarioWorkersJsonParser.parse(config(
+                        StringUtilityWorkerEvents.MD5_EVENT_CODE,
+                        1
+                )),
+                definitions(),
+                acceptedIndexes(),
+                (group, worker, identity, properties, definitions) -> {
+                    throw new IllegalStateException("factory failed");
+                },
+                resourceCloses::incrementAndGet
+        );
+
+        assertThatThrownBy(workers::start)
+                .isInstanceOf(ScenarioWorkerAssemblyException.class);
+        assertThat(resourceCloses).hasValue(1);
+        workers.close();
+        assertThat(resourceCloses).hasValue(1);
+    }
+
+    @Test
     void connectionTimeoutPreventsIndexUpdate() {
         AtomicInteger indexCalls = new AtomicInteger();
         ScenarioWorkerGroupConfig group = groupConfig(

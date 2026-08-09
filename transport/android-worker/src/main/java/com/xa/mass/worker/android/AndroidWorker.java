@@ -6,6 +6,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -147,6 +148,7 @@ public final class AndroidWorker implements WorkerLifecycle {
         private final String workerGroupId;
         private AndroidWorkerProperties workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
+        private WorkerExecutionResources executionResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
 
@@ -195,6 +197,16 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
+        public Builder executionResources(WorkerExecutionResources value) {
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "executionResources must be present"
+                );
+            }
+            executionResources = value;
+            return this;
+        }
+
         public Builder requestTimeout(Duration value) {
             requestTimeout = requirePositive(value, "requestTimeout");
             return this;
@@ -219,6 +231,11 @@ public final class AndroidWorker implements WorkerLifecycle {
             if (definitions == null || definitions.isEmpty()) {
                 throw new IllegalStateException(
                         "eventDefinitions must not be empty"
+                );
+            }
+            if (executionResources == null) {
+                throw new IllegalStateException(
+                        "executionResources must be configured"
                 );
             }
             AndroidClientWorkerKeyStore clientKeyStore =
@@ -273,7 +290,8 @@ public final class AndroidWorker implements WorkerLifecycle {
                             resolvedRequestTimeout,
                             resolvedRetryPolicy.connectionPolicy()
                     ),
-                    resolvedRetryPolicy
+                    resolvedRetryPolicy,
+                    executionResources
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()

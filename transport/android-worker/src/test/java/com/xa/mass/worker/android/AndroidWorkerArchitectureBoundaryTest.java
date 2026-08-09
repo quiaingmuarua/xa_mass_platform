@@ -21,6 +21,9 @@ public class AndroidWorkerArchitectureBoundaryTest {
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(project.resolve("src/main/java"));
+        String assembly = read(project.resolve(
+                "src/main/java/com/xa/mass/worker/android/AndroidWorker.java"
+        ));
         String build = read(project.resolve("build.gradle"));
         String manifest = read(
                 project.resolve("src/main/AndroidManifest.xml")
@@ -55,6 +58,12 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
         assertTrue(source.contains("new WorkerLoop("));
+        assertTrue(assembly.contains("WorkerExecutionResources"));
+        assertTrue(assembly.contains(
+                "public Builder executionResources("
+        ));
+        assertFalse(assembly.contains("Executors.new"));
+        assertFalse(assembly.contains("shutdownNow("));
         assertFalse(source.contains("public enum State"));
         assertFalse(source.contains("public static final class Snapshot"));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));

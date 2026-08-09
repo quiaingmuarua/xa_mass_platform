@@ -13,6 +13,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -36,6 +37,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -58,9 +62,21 @@ public class AndroidWorkerTest {
     private MockWebServer server;
     private AndroidWorker worker;
     private AtomicReference<Map<String, Object>> properties;
+    private ExecutorService controlExecutor;
+    private ExecutorService handlerExecutor;
+    private ScheduledExecutorService retryScheduler;
+    private WorkerExecutionResources executionResources;
 
     @Before
     public void setUp() throws Exception {
+        controlExecutor = Executors.newSingleThreadExecutor();
+        handlerExecutor = Executors.newSingleThreadExecutor();
+        retryScheduler = Executors.newSingleThreadScheduledExecutor();
+        executionResources = WorkerExecutionResources.of(
+                controlExecutor,
+                handlerExecutor,
+                retryScheduler
+        );
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
                 AndroidWorkerIdentityStore.PREFERENCES,
@@ -81,7 +97,12 @@ public class AndroidWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        server.close();
+        retryScheduler.shutdownNow();
+        handlerExecutor.shutdownNow();
+        controlExecutor.shutdownNow();
+        if (server != null) {
+            server.close();
+        }
     }
 
     @Test
@@ -268,6 +289,26 @@ public class AndroidWorkerTest {
     }
 
     @Test
+    public void builderRequiresExplicitExecutionResources() {
+        assertThrows(
+                IllegalStateException.class,
+                () -> AndroidWorker.builder(
+                                application,
+                                URI.create(server.url("/").toString()),
+                                WORKER_GROUP_ID
+                        )
+                        .workerProperties(context -> properties.get())
+                        .eventDefinitions(List.of(WorkerEventDefinition.of(
+                                "TASK",
+                                EVENT_CODE,
+                                WorkerEventParameterResolvers.jsonMap(),
+                                parameters -> "null"
+                        )))
+                        .build()
+        );
+    }
+
+    @Test
     public void onlyOneActiveWorkerPerApplicationAndGroup() throws Exception {
         enqueueRegister();
         enqueueBind();
@@ -359,6 +400,7 @@ public class AndroidWorkerTest {
                         URI.create(server.url("/").toString()),
                         WORKER_GROUP_ID
                 )
+                .executionResources(executionResources)
                 .workerProperties(provider)
                 .eventDefinitions(List.of(WorkerEventDefinition.of(
                         "TASK",
