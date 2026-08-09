@@ -102,13 +102,9 @@ public final class MainActivity extends Activity {
                 ? View.GONE
                 : View.VISIBLE);
         boolean restartable = snapshot.state()
-                == WorkerLifecycle.State.STOPPED
-                || snapshot.state()
-                == WorkerLifecycle.State.ERROR;
+                == WorkerLifecycle.State.STOPPED;
         connectButton.setEnabled(restartable);
-        disconnectButton.setEnabled(!restartable
-                && snapshot.state()
-                != WorkerLifecycle.State.CLOSED);
+        disconnectButton.setEnabled(!restartable);
     }
 
     private void copyWorkerId() {

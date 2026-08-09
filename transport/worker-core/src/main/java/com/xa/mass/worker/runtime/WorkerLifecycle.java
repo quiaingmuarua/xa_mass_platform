@@ -10,10 +10,7 @@ public interface WorkerLifecycle extends AutoCloseable {
 
     enum State {
         STOPPED,
-        PREPARING,
-        RUNNING,
-        ERROR,
-        CLOSED
+        RUNNING
     }
 
     enum ConnectionState {

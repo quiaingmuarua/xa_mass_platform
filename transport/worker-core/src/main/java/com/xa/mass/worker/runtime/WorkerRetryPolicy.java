@@ -6,9 +6,9 @@ import java.time.Duration;
 import java.util.Objects;
 
 /**
- * Retry budgets for one Worker preparation round and one bound text-message
- * endpoint. A supervisor may start another preparation round after a
- * connection budget is exhausted; this policy is not a Worker lifetime limit.
+ * Retry budgets inside one Worker run. Preparation attempts precede one bound,
+ * reconnecting text-message endpoint. Exhausting either applicable budget ends
+ * the run; a host may explicitly start the Worker again.
  */
 public final class WorkerRetryPolicy {
 

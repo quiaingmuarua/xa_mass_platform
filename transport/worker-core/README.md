@@ -8,7 +8,7 @@ It owns:
 - Worker event definitions, parameter resolution, dispatch, and outcome
   mapping.
 - `WorkerPreparation` and the default Register/Bind implementation.
-- `WorkerLoop`, the long-lived lifecycle for one Worker identity.
+- `WorkerLoop`, the two-state guard for one Worker run.
 - The package-private one-endpoint text-message runtime.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
@@ -43,17 +43,21 @@ resolver and handler, and copies `messageId`, source, message type, and
 Expired commands are dropped before handler invocation. A deadline is not
 rechecked after execution starts.
 
-## Three Stages
+## One Worker Run
 
-One `WorkerLoop` represents one long-lived Worker identity:
+One accepted `WorkerLoop.start()` represents one complete Worker run:
 
 ```text
-WorkerPreparation
+RUNNING
+  -> WorkerPreparation with bounded retry
   -> PreparedWorker(workerId, endpointUri)
-  -> one TextMessageWorkerRuntime round
+  -> one reconnecting TextMessageWorkerRuntime
   -> exact-once runtime exit callback
-  -> WorkerPreparation again
+  -> STOPPED
 ```
+
+Endpoint termination never starts another preparation automatically. A host
+may observe `STOPPED` and explicitly call `start()` for a new run.
 
 `RegisteredWorkerPreparation` owns `WorkerIdentityStore`,
 `WorkerPropertiesProvider`, and `WorkerControlClient`. Each call reads one
@@ -63,50 +67,47 @@ network connection or execute commands.
 
 Java and Android assemblies construct one immutable
 `WorkerCommandDispatcher` from their static definitions and inject it as a
-`WorkerCommandExecutor`. `WorkerLoop` owns only preparation retry, the current
-runtime reference, the result slot carried between automatic runtime rounds,
-and lifecycle state. It never inspects command-busy or pending-result state.
-Preparation network failures consume the bounded prepare budget. Exhaustion
-or a contract failure enters `ERROR`; another round begins only after an
-explicit `start()`.
+`WorkerCommandExecutor`. `WorkerLoop` owns preparation retry, the current
+runtime reference, and two-state lifecycle observation. It never inspects
+command-busy state or routes commands. Preparation network failures consume
+the bounded prepare budget. Exhaustion or a contract failure ends the run in
+`STOPPED` with diagnostic evidence.
 
-The one-round runtime owns only:
+The single-run runtime owns only:
 
 ```text
 prepared workerId + endpoint Client
   -> onOpen: send WorkerConnectionBind
-  -> send pending WorkerResult if present
   -> decode inbound WorkerCommand
   -> final command admission and serial execution
-  -> retain/send the resulting WorkerResult
+  -> send the resulting WorkerResult at most once
   -> report endpoint termination once
 ```
 
-It receives only the prepared endpoint, a `WorkerCommandExecutor`, and the
-shared result slot. It has no Identity Store, Properties provider, Control
-Client, definitions, dispatcher construction, or preparation retry logic.
+It receives only the prepared endpoint and a `WorkerCommandExecutor`. It has
+no Identity Store, Properties provider, Control Client, definitions,
+dispatcher construction, preparation retry logic, or business-message cache.
 Ordinary disconnects, failures, and reconnects stay inside the current
 `TextMessageClient` and reuse the prepared endpoint. Only endpoint termination
-exits the runtime and returns control to `WorkerLoop`. The current concrete
-Clients terminate an endpoint when its reconnect budget is exhausted.
+exits the runtime and ends the Worker run. The current concrete Clients
+terminate an endpoint when their reconnect budget is exhausted.
 
 ## Command And Result Ownership
 
 `TASK`, `SYSTEM`, and `ADAPTER` commands all enter through the active
 connection's inbound text callback. `WorkerLifecycle` exposes no local command
 injection or message-send operation, and `WorkerLoop` never accepts or routes a
-`WorkerCommand`. The one-round runtime decodes the inbound frame and is the
-final admission owner: it accepts only while connected, with no command
-executing and no pending result. A malformed or inadmissible inbound frame
-closes the current connection and is never queued.
+`WorkerCommand`. The runtime decodes the inbound frame and is the final
+admission owner: it accepts only while connected with no command executing. A
+malformed or inadmissible inbound frame closes the current connection and is
+never queued.
 
-If endpoint termination occurs during handler execution, that runtime waits
-for the handler and places its result in the shared single slot before issuing
-its exact-once exit callback. `WorkerLoop` then starts the next preparation
-round without consulting command state. The next connection sends Bind before
-the pending result. Network-stack acceptance clears the slot; this is not an
-application ACK. Explicit `stop()`, terminal `ERROR`, and `close()` clear the
-slot.
+A produced `WorkerResult` is sent once only when the current connection is
+still bound. If the Handler finishes while disconnected, send is rejected, or
+the runtime is stopping, the result is dropped. It is never replayed after
+Client reconnect or a later `start()`. Endpoint termination and graceful
+`stop()` wait for an in-flight Handler only to prevent overlapping Worker
+runs; they discard its result before issuing the exact-once exit callback.
 
 `PollingWorkerTransport` remains a separate request-response mechanism. It
 decodes the point response before calling the same DTO executor and submits a
@@ -125,13 +126,17 @@ addListener / removeListener
 Observation has two independent axes:
 
 ```text
-State            STOPPED / PREPARING / RUNNING / ERROR / CLOSED
+State            STOPPED / RUNNING
 ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
 ```
 
-`RUNNING` means a prepared one-round runtime is installed. `CONNECTED` means
-the network opened and the workerId-only connection Bind was accepted by the
-Client. Neither is Kernel online truth or scheduling availability.
+`RUNNING` begins when `start()` is accepted and includes preparation retry,
+Client connection/reconnect, command execution, and graceful stop while an
+in-flight Handler finishes. `CONNECTED` means the network opened and the
+workerId-only connection Bind was accepted by the Client. Failures return to
+`STOPPED` and remain available through `diagnosticMessage`; `close()` is an
+internal terminal object condition rather than a third Worker state. Neither
+axis is Kernel online truth or scheduling availability.
 `snapshot()` and `isConnected()` are current queries; lifecycle listeners do
 not promise a callback for each transient network disconnect.
 
@@ -153,8 +158,8 @@ does not cross into the Worker Runtime.
 
 `TextMessageReconnectPolicy` bounds consecutive unstable connections. A
 connection must survive its stable window before the count resets. Exhaustion
-stops reconnecting and emits one `onEndpointTerminated()` callback. This ends
-the current Client/runtime round; it does not stop the assembled Worker.
+stops reconnecting and emits one `onEndpointTerminated()` callback, which ends
+the current Worker run. A host must explicitly call `start()` to run again.
 
 `WorkerRetryPolicy.defaults()` uses 10 preparation attempts one second apart,
 plus 20 unstable connection attempts 500 milliseconds apart with a 10 second

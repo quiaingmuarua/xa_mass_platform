@@ -34,7 +34,6 @@ final class TextMessageWorkerRuntime
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
     private final ExecutorService commandThread;
-    private final WorkerResultSlot pendingResult;
     private final Listener listener;
 
     private boolean started;
@@ -48,7 +47,6 @@ final class TextMessageWorkerRuntime
             TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandExecutor,
-            WorkerResultSlot pendingResult,
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");
@@ -56,10 +54,6 @@ final class TextMessageWorkerRuntime
         this.commandExecutor = Objects.requireNonNull(
                 commandExecutor,
                 "commandExecutor"
-        );
-        this.pendingResult = Objects.requireNonNull(
-                pendingResult,
-                "pendingResult"
         );
         this.listener = Objects.requireNonNull(listener, "listener");
         commandThread = Executors.newSingleThreadExecutor(runnable -> {
@@ -98,7 +92,7 @@ final class TextMessageWorkerRuntime
     public void onOpen() {
         boolean changed = false;
         synchronized (this) {
-            if (!started || closed || exitNotified) {
+            if (!started || closed || exitRequested || exitNotified) {
                 client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
                 return;
             }
@@ -134,12 +128,29 @@ final class TextMessageWorkerRuntime
             if (closed || exitNotified) {
                 return;
             }
-            if (commandInFlight) {
-                exitRequested = true;
-            } else {
+            exitRequested = true;
+            if (!commandInFlight) {
                 notify = markExitLocked();
             }
         }
+        notifyStateChanged(null);
+        if (notify) {
+            notifyExit();
+        }
+    }
+
+    void requestStop() {
+        boolean notify;
+        synchronized (this) {
+            if (closed || exitRequested || exitNotified) {
+                return;
+            }
+            exitRequested = true;
+            bindSent = false;
+            notify = !commandInFlight && markExitLocked();
+        }
+        client.close();
+        notifyStateChanged(null);
         if (notify) {
             notifyExit();
         }
@@ -150,7 +161,7 @@ final class TextMessageWorkerRuntime
         synchronized (this) {
             if (!isConnected()
                     || commandInFlight
-                    || pendingResult.hasResult()) {
+                    || exitRequested) {
                 return false;
             }
             commandInFlight = true;
@@ -169,9 +180,14 @@ final class TextMessageWorkerRuntime
     synchronized boolean isConnected() {
         return started
                 && !closed
+                && !exitRequested
                 && !exitNotified
                 && bindSent
                 && client.isConnected();
+    }
+
+    synchronized boolean isExiting() {
+        return exitRequested || exitNotified;
     }
 
     @Override
@@ -183,6 +199,7 @@ final class TextMessageWorkerRuntime
             closed = true;
             started = false;
             bindSent = false;
+            exitRequested = true;
         }
         client.close();
         commandThread.shutdownNow();
@@ -211,17 +228,12 @@ final class TextMessageWorkerRuntime
             if (closed) {
                 return;
             }
-            if (reportedFailure == null
-                    && result.isPresent()
-                    && !pendingResult.offer(result.get())) {
-                reportedFailure = new IllegalStateException(
-                        "Worker result slot is occupied"
-                );
-            }
             if (exitRequested) {
                 notifyExit = markExitLocked();
-            } else if (isConnected()) {
-                sendPendingLocked();
+            } else if (reportedFailure == null
+                    && result.isPresent()
+                    && isConnected()) {
+                sendResultLocked(result.get());
             }
         }
         if (reportedFailure != null) {
@@ -238,21 +250,14 @@ final class TextMessageWorkerRuntime
             return false;
         }
         bindSent = true;
-        sendPendingLocked();
         return bindSent && client.isConnected();
     }
 
-    private void sendPendingLocked() {
-        WorkerResult sending = pendingResult.peek();
-        if (sending == null || !bindSent) {
-            return;
-        }
-        if (!client.send(codec.encodeWorkerResult(sending))) {
+    private void sendResultLocked(WorkerResult result) {
+        if (!client.send(codec.encodeWorkerResult(result))) {
             bindSent = false;
             client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
-            return;
         }
-        pendingResult.clearIfSame(sending);
     }
 
     private void closeProtocolErrorLocked() {
@@ -261,7 +266,7 @@ final class TextMessageWorkerRuntime
     }
 
     private synchronized void closeProtocolError() {
-        if (!closed && !exitNotified) {
+        if (!closed && !exitRequested && !exitNotified) {
             closeProtocolErrorLocked();
         }
     }
@@ -286,7 +291,7 @@ final class TextMessageWorkerRuntime
         try {
             listener.onExit(this);
         } catch (RuntimeException ignored) {
-            // The Worker Loop owns stale callback suppression.
+            // WorkerLoop owns current-runtime callback suppression.
         }
     }
 }

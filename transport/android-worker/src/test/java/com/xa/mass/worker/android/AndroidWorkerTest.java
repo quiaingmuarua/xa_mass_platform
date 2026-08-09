@@ -10,6 +10,7 @@ import android.app.Application;
 import android.content.Context;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
@@ -257,7 +258,8 @@ public class AndroidWorkerTest {
 
         worker.start();
         await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.ERROR);
+                == WorkerLifecycle.State.STOPPED
+                && worker.snapshot().diagnosticMessage() != null);
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
@@ -282,7 +284,76 @@ public class AndroidWorkerTest {
         }
     }
 
+    @Test
+    public void processLeaseIsReleasedOnlyAfterStoppingHandlerFinishes()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        enqueueRegister();
+        enqueueBind();
+        server.enqueue(webSocketSession(new WebSocketListener() {
+            @Override
+            public void onMessage(WebSocket socket, String text) {
+                if (codec.decodeWorkerConnectionBind(text) != null) {
+                    socket.send(codec.encodeWorkerCommand(
+                            command("blocked")
+                    ));
+                }
+            }
+        }));
+        worker = worker(
+                context -> properties.get(),
+                parameters -> {
+                    entered.countDown();
+                    assertTrue(release.await(5, TimeUnit.SECONDS));
+                    return Jsons.toJson(Map.of(
+                            "observed",
+                            parameters.get("value")
+                    ));
+                }
+        );
+        AndroidWorker duplicate = worker(context -> properties.get());
+        try {
+            worker.start();
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+            worker.stop();
+            assertEquals(
+                    WorkerLifecycle.State.RUNNING,
+                    worker.snapshot().state()
+            );
+            assertThrows(IllegalStateException.class, duplicate::start);
+
+            release.countDown();
+            await(() -> worker.snapshot().state()
+                    == WorkerLifecycle.State.STOPPED);
+
+            enqueueBind();
+            server.enqueue(webSocketSession(new WebSocketListener() {
+            }));
+            await(() -> startWhenLeaseIsAvailable(duplicate));
+            await(duplicate::isConnected);
+        } finally {
+            release.countDown();
+            duplicate.close();
+        }
+    }
+
     private AndroidWorker worker(AndroidWorkerProperties provider) {
+        return worker(
+                provider,
+                parameters -> Jsons.toJson(Map.of(
+                        "observed",
+                        parameters.get("value")
+                ))
+        );
+    }
+
+    private AndroidWorker worker(
+            AndroidWorkerProperties provider,
+            WorkerEventHandler<Map<String, Object>> handler
+    ) {
         return AndroidWorker.builder(
                         application,
                         URI.create(server.url("/").toString()),
@@ -293,10 +364,7 @@ public class AndroidWorkerTest {
                         "TASK",
                         EVENT_CODE,
                         WorkerEventParameterResolvers.jsonMap(),
-                        parameters -> Jsons.toJson(Map.of(
-                                "observed",
-                                parameters.get("value")
-                        ))
+                        handler
                 )))
                 .requestTimeout(Duration.ofSeconds(2))
                 .retryPolicy(WorkerRetryPolicy.of(
@@ -309,6 +377,15 @@ public class AndroidWorkerTest {
                         )
                 ))
                 .build();
+    }
+
+    private static boolean startWhenLeaseIsAvailable(AndroidWorker worker) {
+        try {
+            worker.start();
+            return true;
+        } catch (IllegalStateException unavailable) {
+            return false;
+        }
     }
 
     private void enqueueRegister() {

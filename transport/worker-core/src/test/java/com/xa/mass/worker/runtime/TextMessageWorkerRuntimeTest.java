@@ -41,29 +41,23 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void openSendsConnectionBindBeforePendingResult() {
+    void openSendsOnlyConnectionBind() {
         FakeTextMessageClient client = new FakeTextMessageClient();
-        WorkerResultSlot slot = new WorkerResultSlot();
-        WorkerResult result = result();
-        assertTrue(slot.offer(result));
         TextMessageWorkerRuntime runtime = runtime(
                 client,
                 command -> Optional.empty(),
-                slot,
                 new RecordingListener()
         );
 
         runtime.start();
         client.open();
 
-        assertEquals(2, client.sent.size());
+        assertEquals(1, client.sent.size());
         assertEquals(
                 WORKER_ID,
                 CODEC.decodeWorkerConnectionBind(client.sent.get(0))
                         .workerId()
         );
-        assertEquals(result, CODEC.decodeWorkerResult(client.sent.get(1)));
-        assertFalse(slot.hasResult());
         assertTrue(runtime.isConnected());
     }
 
@@ -78,7 +72,6 @@ class TextMessageWorkerRuntimeTest {
                     received.set(command);
                     return Optional.empty();
                 },
-                new WorkerResultSlot(),
                 new RecordingListener()
         );
         WorkerCommand command = command();
@@ -103,7 +96,6 @@ class TextMessageWorkerRuntimeTest {
                     awaitLatch(release);
                     return Optional.empty();
                 },
-                new WorkerResultSlot(),
                 new RecordingListener()
         );
         rejected.start();
@@ -117,7 +109,6 @@ class TextMessageWorkerRuntimeTest {
         TextMessageWorkerRuntime malformed = runtime(
                 malformedClient,
                 command -> Optional.empty(),
-                new WorkerResultSlot(),
                 new RecordingListener()
         );
         malformed.start();
@@ -135,13 +126,11 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void resultSendFailureKeepsSlotForTheNextConnection() throws Exception {
+    void resultSendFailureDropsResultBeforeReconnect() throws Exception {
         FakeTextMessageClient client = new FakeTextMessageClient();
-        WorkerResultSlot slot = new WorkerResultSlot();
         TextMessageWorkerRuntime runtime = runtime(
                 client,
                 command -> Optional.of(result()),
-                slot,
                 new RecordingListener()
         );
         runtime.start();
@@ -149,12 +138,52 @@ class TextMessageWorkerRuntimeTest {
         client.acceptSend = false;
 
         client.message(CODEC.encodeWorkerCommand(command()));
-        await(() -> slot.hasResult() && !client.closeReasons.isEmpty());
+        await(() -> !client.closeReasons.isEmpty());
+        client.acceptSend = true;
+        client.open();
 
-        assertTrue(slot.hasResult());
         assertEquals(
                 TextMessageClient.CloseReason.SEND_FAILURE,
                 client.closeReasons.get(0)
+        );
+        assertEquals(2, client.sent.size());
+        assertEquals(
+                WORKER_ID,
+                CODEC.decodeWorkerConnectionBind(client.sent.get(1))
+                        .workerId()
+        );
+    }
+
+    @Test
+    void resultCompletingWhileDisconnectedIsNotReplayed()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    entered.countDown();
+                    awaitLatch(release);
+                    return Optional.of(result());
+                },
+                new RecordingListener()
+        );
+        runtime.start();
+        client.open();
+        client.message(CODEC.encodeWorkerCommand(command()));
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+        client.disconnect();
+        release.countDown();
+        assertTrue(client.disconnectedObserved.await(5, TimeUnit.SECONDS));
+        client.open();
+
+        assertEquals(2, client.sent.size());
+        assertEquals(
+                WORKER_ID,
+                CODEC.decodeWorkerConnectionBind(client.sent.get(1))
+                        .workerId()
         );
     }
 
@@ -165,7 +194,6 @@ class TextMessageWorkerRuntimeTest {
         TextMessageWorkerRuntime runtime = runtime(
                 client,
                 command -> Optional.empty(),
-                new WorkerResultSlot(),
                 listener
         );
         runtime.start();
@@ -179,12 +207,11 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void endpointTerminationWaitsForCommandAndPreservesResult()
+    void endpointTerminationWaitsForCommandAndDropsResult()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         FakeTextMessageClient client = new FakeTextMessageClient();
-        WorkerResultSlot slot = new WorkerResultSlot();
         RecordingListener listener = new RecordingListener();
         TextMessageWorkerRuntime runtime = runtime(
                 client,
@@ -193,7 +220,6 @@ class TextMessageWorkerRuntimeTest {
                     awaitLatch(release);
                     return Optional.of(result());
                 },
-                slot,
                 listener
         );
         runtime.start();
@@ -207,21 +233,50 @@ class TextMessageWorkerRuntimeTest {
         release.countDown();
         await(() -> listener.exits.get() == 1);
 
-        assertTrue(slot.hasResult());
+        assertEquals(1, client.sent.size());
+        assertFalse(runtime.isConnected());
+    }
+
+    @Test
+    void stopWaitsForCommandAndDropsResult() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    entered.countDown();
+                    awaitLatch(release);
+                    return Optional.of(result());
+                },
+                listener
+        );
+        runtime.start();
+        client.open();
+        client.message(CODEC.encodeWorkerCommand(command()));
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+        runtime.requestStop();
+        assertEquals(0, listener.exits.get());
+        assertEquals(1, client.closeCalls.get());
+
+        release.countDown();
+        await(() -> listener.exits.get() == 1);
+
+        assertEquals(1, client.sent.size());
         assertFalse(runtime.isConnected());
     }
 
     private TextMessageWorkerRuntime runtime(
             FakeTextMessageClient client,
             WorkerCommandExecutor commandExecutor,
-            WorkerResultSlot slot,
             RecordingListener listener
     ) {
         TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                 client,
                 WORKER_ID,
                 commandExecutor,
-                slot,
                 listener
         );
         runtimes.add(runtime);
@@ -305,6 +360,9 @@ class TextMessageWorkerRuntimeTest {
         private volatile Listener listener;
         private volatile boolean connected;
         private volatile boolean acceptSend = true;
+        private final CountDownLatch disconnectedObserved =
+                new CountDownLatch(1);
+        private final AtomicInteger closeCalls = new AtomicInteger();
         private final List<String> sent = new CopyOnWriteArrayList<>();
         private final List<CloseReason> closeReasons =
                 new CopyOnWriteArrayList<>();
@@ -331,12 +389,16 @@ class TextMessageWorkerRuntimeTest {
 
         @Override
         public boolean isConnected() {
+            if (!connected) {
+                disconnectedObserved.countDown();
+            }
             return connected;
         }
 
         @Override
         public void close() {
             connected = false;
+            closeCalls.incrementAndGet();
         }
 
         private void open() {
@@ -346,6 +408,10 @@ class TextMessageWorkerRuntimeTest {
 
         private void message(String message) {
             listener.onMessage(message);
+        }
+
+        private void disconnect() {
+            connected = false;
         }
 
         private void terminate() {

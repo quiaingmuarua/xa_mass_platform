@@ -82,6 +82,8 @@ class JavaWorkerTest {
         );
 
         worker.stop();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
         enqueueSession(false);
         worker.start();
         await(worker::isConnected);
@@ -116,7 +118,8 @@ class JavaWorkerTest {
 
         worker.start();
         await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.ERROR);
+                == WorkerLifecycle.State.STOPPED
+                && worker.snapshot().diagnosticMessage() != null);
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(

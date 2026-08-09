@@ -23,7 +23,7 @@ __pycache__/
 *.log
 *.log.*
 *.sqlite
-
+local.properties
 data/
 integrations/**/results/
 logs/

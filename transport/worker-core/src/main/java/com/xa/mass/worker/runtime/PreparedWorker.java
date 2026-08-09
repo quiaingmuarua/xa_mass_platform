@@ -6,7 +6,7 @@ import java.net.URI;
 import java.util.Objects;
 
 /**
- * Immutable result of one successful Worker preparation round.
+ * Immutable result of one successful Worker preparation.
  */
 public final class PreparedWorker {
 

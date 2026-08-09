@@ -30,8 +30,9 @@ Every App Worker `start()` loads a complete device Properties snapshot and
 performs Endpoint Bind, even when the long-lived Worker ID already exists. The
 returned URI belongs only to that local run and is not persisted. Temporary
 WebSocket disconnects reconnect to the same bound URI without another Register
-or Bind. If the bounded reconnect budget is exhausted, Core prepares and Binds
-again before replacing the Transport. A later process start restores the same
+or Bind. If the bounded reconnect budget is exhausted, Core creates no
+replacement Transport: the Worker enters `STOPPED` and waits for the host to
+call `start()` again. A later explicit or process start restores the same
 Worker ID, skips Register, and performs Bind again before connecting.
 
 `AndroidWorker` has no Activity, Service, Application subclass, UI, or demo
@@ -48,7 +49,7 @@ leaving the Activity does not implicitly stop the Worker. Android can still
 kill the process in the background because this demo installs no Service or
 WorkManager and makes no background-lifetime guarantee.
 
-The UI reports the three Core lifecycle axes. `RUNNING + CONNECTED` means that
+The UI reports Worker state and connection state. `RUNNING + CONNECTED` means that
 the WebSocket is connected and the Worker Connection Bind frame was accepted
 by the client network stack. It is not Kernel Worker-online truth.
 

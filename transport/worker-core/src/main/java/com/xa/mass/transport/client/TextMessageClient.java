@@ -43,8 +43,8 @@ public interface TextMessageClient extends AutoCloseable {
         void onMessage(String message);
 
         /**
-         * The current endpoint will not reconnect again. This is terminal for
-         * this Client instance, not for the assembled Worker lifecycle.
+         * The current endpoint will not reconnect again. This terminates the
+         * current Worker run; a host may explicitly start the Worker again.
          */
         void onEndpointTerminated();
     }

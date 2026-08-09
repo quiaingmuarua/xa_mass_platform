@@ -168,6 +168,13 @@ class WorkerCoreArchitectureBoundaryTest {
         assertTrue(WorkerLifecycle.class.isAssignableFrom(
                 WorkerLoop.class
         ));
+        assertTrue(Arrays.equals(
+                WorkerLifecycle.State.values(),
+                new WorkerLifecycle.State[]{
+                        WorkerLifecycle.State.STOPPED,
+                        WorkerLifecycle.State.RUNNING
+                }
+        ));
         assertTrue(hasMethod(WorkerLifecycle.class, "start"));
         assertTrue(hasMethod(WorkerLifecycle.class, "stop"));
         for (Method method : WorkerLifecycle.class.getDeclaredMethods()) {
@@ -265,6 +272,9 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/transport/connection/"
                         + "TextMessageWorker" + "Transport.java"
         )));
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/WorkerResultSlot.java"
+        )));
 
         Path loopFile = sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/WorkerLoop.java"
@@ -275,7 +285,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 "WorkerCommandDispatcher",
                 "commandInFlight",
                 "prepareAfterCommand",
-                "pendingResult.hasResult()"
+                "pendingResult",
+                "generation"
         }) {
             assertFalse(loop.contains(forbidden), forbidden);
         }

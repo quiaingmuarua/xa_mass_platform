@@ -2,7 +2,6 @@ package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
@@ -14,7 +13,6 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +48,35 @@ class WorkerLoopTest {
     }
 
     @Test
-    void runningIsPublishedOnlyAfterRuntimeStartReturns() throws Exception {
+    void acceptedStartIsRunningThroughoutPreparation() throws Exception {
+        BlockingPreparation preparation = new BlockingPreparation();
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                policy(1)
+        );
+
+        loop.start();
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+        assertEquals(
+                WorkerLifecycle.ConnectionState.DISCONNECTED,
+                loop.snapshot().connectionState()
+        );
+        assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
+
+        loop.start();
+        assertEquals(1, preparation.calls.get());
+
+        preparation.release.countDown();
+        networks.awaitClient(0);
+        assertEquals(1, preparation.calls.get());
+        assertEquals(1, networks.clients.size());
+    }
+
+    @Test
+    void runningIncludesRuntimeStart() throws Exception {
         CountDownLatch startEntered = new CountDownLatch(1);
         CountDownLatch startRelease = new CountDownLatch(1);
         FakeTextMessageClient client = new FakeTextMessageClient(
@@ -67,14 +93,15 @@ class WorkerLoopTest {
 
         loop.start();
         assertTrue(startEntered.await(5, TimeUnit.SECONDS));
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         assertEquals(
-                WorkerLifecycle.State.PREPARING,
-                loop.snapshot().state()
+                WorkerLifecycle.ConnectionState.CONNECTING,
+                loop.snapshot().connectionState()
         );
 
+        loop.start();
         startRelease.countDown();
-        await(() -> loop.snapshot().state()
-                == WorkerLifecycle.State.RUNNING);
+        await(() -> client.listener != null);
     }
 
     @Test
@@ -95,7 +122,6 @@ class WorkerLoopTest {
 
         loop.start();
         FakeTextMessageClient client = networks.awaitClient(0);
-        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         client.open();
         await(loop::isConnected);
 
@@ -153,20 +179,233 @@ class WorkerLoopTest {
         client.message(CODEC.encodeWorkerCommand(command(
                 "6cae656c-2f1c-495d-abce-07a945c69b3d"
         )));
+
         assertFalse(loop.isConnected());
         release.countDown();
-        client.open();
-        await(() -> client.sent.size() == 3);
-
+        await(() -> executions.get() == 1);
         assertEquals(1, executions.get());
-        assertEquals(
-                "95992d31-9a9b-44b0-bd0a-1cfa18bb4402",
-                CODEC.decodeWorkerResult(client.sent.get(2)).messageId()
-        );
     }
 
     @Test
-    void runtimeWaitsForCommandBeforeExitAndPendingResultCrossesRuntime()
+    void endpointTerminationWaitsForCommandThenStopsAndDropsResult()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        FakePreparation preparation = new FakePreparation(0);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> {
+                    entered.countDown();
+                    assertTrue(release.await(5, TimeUnit.SECONDS));
+                    return payload;
+                },
+                networks,
+                policy(1)
+        );
+        loop.start();
+        FakeTextMessageClient client = networks.awaitClient(0);
+        client.open();
+        await(loop::isConnected);
+        client.message(CODEC.encodeWorkerCommand(command(
+                "95992d31-9a9b-44b0-bd0a-1cfa18bb4402"
+        )));
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+
+        client.terminateEndpoint();
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+        assertEquals(
+                WorkerLifecycle.ConnectionState.DISCONNECTED,
+                loop.snapshot().connectionState()
+        );
+        loop.start();
+        assertEquals(1, preparation.calls.get());
+
+        release.countDown();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+
+        assertEquals(1, preparation.calls.get());
+        assertEquals(1, networks.clients.size());
+        assertEquals(1, client.sent.size());
+    }
+
+    @Test
+    void endpointTerminationStopsUntilTheNextExplicitStart()
+            throws Exception {
+        FakePreparation preparation = new FakePreparation(0);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                policy(1)
+        );
+        loop.start();
+        FakeTextMessageClient first = networks.awaitClient(0);
+
+        first.terminateEndpoint();
+        first.terminateEndpoint();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        Thread.sleep(50);
+
+        assertEquals(1, preparation.calls.get());
+        assertEquals(1, networks.clients.size());
+        assertEquals("Endpoint terminated",
+                loop.snapshot().diagnosticMessage());
+
+        loop.start();
+        networks.awaitClient(1);
+        assertEquals(2, preparation.calls.get());
+        assertEquals(2, networks.clients.size());
+    }
+
+    @Test
+    void ordinaryReconnectStaysInsideCurrentRun() throws Exception {
+        FakePreparation preparation = new FakePreparation(0);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                policy(1)
+        );
+        loop.start();
+        FakeTextMessageClient client = networks.awaitClient(0);
+        client.open();
+        await(loop::isConnected);
+
+        client.disconnect();
+        await(() -> !loop.isConnected());
+        client.open();
+        await(loop::isConnected);
+
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+        assertEquals(1, preparation.calls.get());
+        assertEquals(1, networks.clients.size());
+    }
+
+    @Test
+    void preparationRetriesAreBoundedAndFailureNeedsExplicitRestart()
+            throws Exception {
+        FakePreparation preparation = new FakePreparation(2);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                policy(2)
+        );
+
+        loop.start();
+        await(() -> preparation.calls.get() == 2
+                && loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        assertEquals(0, networks.clients.size());
+        assertTrue(loop.snapshot().diagnosticMessage().contains(
+                "control unavailable"
+        ));
+
+        loop.start();
+        networks.awaitClient(0);
+        assertEquals(3, preparation.calls.get());
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+    }
+
+    @Test
+    void nonRetryablePreparationFailureStopsImmediately()
+            throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        WorkerPreparation preparation = new WorkerPreparation() {
+            @Override
+            public PreparedWorker prepare() {
+                calls.incrementAndGet();
+                throw new IllegalArgumentException("invalid identity");
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                new FakeNetworkFactory(),
+                policy(10)
+        );
+
+        loop.start();
+        await(() -> calls.get() == 1
+                && loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+
+        assertTrue(loop.snapshot().diagnosticMessage().contains(
+                "invalid identity"
+        ));
+    }
+
+    @Test
+    void stopCancelsScheduledPreparationRetry() throws Exception {
+        FakePreparation preparation = new FakePreparation(100);
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                WorkerRetryPolicy.of(
+                        100,
+                        Duration.ofMillis(200),
+                        TextMessageReconnectPolicy.of(
+                                1,
+                                Duration.ofMillis(1),
+                                Duration.ofMillis(1)
+                        )
+                )
+        );
+
+        loop.start();
+        await(() -> preparation.calls.get() == 1);
+        loop.stop();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        Thread.sleep(250);
+
+        assertEquals(1, preparation.calls.get());
+        assertEquals(0, networks.clients.size());
+    }
+
+    @Test
+    void stopDuringPreparationPreventsRuntimeInstallation()
+            throws Exception {
+        BlockingPreparation preparation = new BlockingPreparation();
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerLoop loop = loop(
+                preparation,
+                payload -> payload,
+                networks,
+                policy(1)
+        );
+
+        loop.start();
+        assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
+        loop.stop();
+        loop.start();
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+
+        preparation.release.countDown();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        assertEquals(1, preparation.calls.get());
+        assertEquals(0, networks.clients.size());
+
+        loop.start();
+        networks.awaitClient(0);
+        assertEquals(2, preparation.calls.get());
+    }
+
+    @Test
+    void stopWaitsForCommandAndOldExitCannotStopTheNextRun()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -191,180 +430,24 @@ class WorkerLoopTest {
         )));
         assertTrue(entered.await(5, TimeUnit.SECONDS));
 
-        first.terminateEndpoint();
-        assertEquals(
-                WorkerLifecycle.State.RUNNING,
-                loop.snapshot().state()
-        );
-        assertFalse(loop.isConnected());
+        loop.stop();
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
+        loop.start();
         assertEquals(1, preparation.calls.get());
 
         release.countDown();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        assertEquals(1, first.sent.size());
+
+        loop.start();
         FakeTextMessageClient second = networks.awaitClient(1);
-        assertEquals(2, preparation.calls.get());
+        first.terminateEndpoint();
         second.open();
-        await(() -> second.sent.size() == 2);
+        await(loop::isConnected);
 
-        assertNotNull(CODEC.decodeWorkerConnectionBind(second.sent.get(0)));
-        WorkerResult result = CODEC.decodeWorkerResult(second.sent.get(1));
-        assertNotNull(result);
-        assertEquals(
-                "95992d31-9a9b-44b0-bd0a-1cfa18bb4402",
-                result.messageId()
-        );
-    }
-
-    @Test
-    void endpointTerminationTriggersExactlyOneNewPreparation()
-            throws Exception {
-        FakePreparation preparation = new FakePreparation(0);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                networks,
-                policy(1)
-        );
-        loop.start();
-        FakeTextMessageClient first = networks.awaitClient(0);
-
-        first.terminateEndpoint();
-        first.terminateEndpoint();
-        networks.awaitClient(1);
-        Thread.sleep(50);
-
+        assertEquals(WorkerLifecycle.State.RUNNING, loop.snapshot().state());
         assertEquals(2, preparation.calls.get());
-        assertEquals(2, networks.clients.size());
-    }
-
-    @Test
-    void ordinaryReconnectStaysInsideCurrentRuntime() throws Exception {
-        FakePreparation preparation = new FakePreparation(0);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                networks,
-                policy(1)
-        );
-        loop.start();
-        FakeTextMessageClient client = networks.awaitClient(0);
-        client.open();
-        await(loop::isConnected);
-
-        client.disconnect();
-        await(() -> !loop.isConnected());
-        client.open();
-        await(loop::isConnected);
-
-        assertEquals(1, preparation.calls.get());
-        assertEquals(1, networks.clients.size());
-    }
-
-    @Test
-    void preparationRetriesAreBoundedAndErrorNeedsExplicitRestart()
-            throws Exception {
-        FakePreparation preparation = new FakePreparation(2);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                networks,
-                policy(2)
-        );
-
-        loop.start();
-        await(() -> loop.snapshot().state()
-                == WorkerLifecycle.State.ERROR);
-        assertEquals(2, preparation.calls.get());
-        assertEquals(0, networks.clients.size());
-
-        loop.start();
-        networks.awaitClient(0);
-        await(() -> loop.snapshot().state()
-                == WorkerLifecycle.State.RUNNING);
-        assertEquals(3, preparation.calls.get());
-    }
-
-    @Test
-    void nonRetryablePreparationFailureEntersErrorImmediately()
-            throws Exception {
-        AtomicInteger calls = new AtomicInteger();
-        WorkerPreparation preparation = new WorkerPreparation() {
-            @Override
-            public PreparedWorker prepare() {
-                calls.incrementAndGet();
-                throw new IllegalArgumentException("invalid identity");
-            }
-
-            @Override
-            public void close() {
-            }
-        };
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                new FakeNetworkFactory(),
-                policy(10)
-        );
-
-        loop.start();
-        await(() -> loop.snapshot().state()
-                == WorkerLifecycle.State.ERROR);
-
-        assertEquals(1, calls.get());
-    }
-
-    @Test
-    void stopInvalidatesScheduledPreparationRetry() throws Exception {
-        FakePreparation preparation = new FakePreparation(100);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                networks,
-                WorkerRetryPolicy.of(
-                        100,
-                        Duration.ofMillis(200),
-                        TextMessageReconnectPolicy.of(
-                                1,
-                                Duration.ofMillis(1),
-                                Duration.ofMillis(1)
-                        )
-                )
-        );
-
-        loop.start();
-        await(() -> preparation.calls.get() == 1);
-        loop.stop();
-        Thread.sleep(250);
-
-        assertEquals(1, preparation.calls.get());
-        assertEquals(WorkerLifecycle.State.STOPPED, loop.snapshot().state());
-    }
-
-    @Test
-    void stopPreventsLateRuntimeExitFromRestartingPreparation()
-            throws Exception {
-        FakePreparation preparation = new FakePreparation(0);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerLoop loop = loop(
-                preparation,
-                payload -> payload,
-                networks,
-                policy(1)
-        );
-        loop.start();
-        FakeTextMessageClient client = networks.awaitClient(0);
-        client.open();
-        await(loop::isConnected);
-
-        loop.stop();
-        client.terminateEndpoint();
-        Thread.sleep(50);
-
-        assertEquals(1, preparation.calls.get());
-        assertEquals(WorkerLifecycle.State.STOPPED, loop.snapshot().state());
     }
 
     private WorkerLoop loop(
@@ -375,11 +458,11 @@ class WorkerLoopTest {
     ) {
         WorkerEventDefinition<String> taskDefinition =
                 WorkerEventDefinition.of(
-                "TASK",
-                "test.echo",
-                WorkerEventParameterResolvers.string(),
-                handler
-        );
+                        "TASK",
+                        "test.echo",
+                        WorkerEventParameterResolvers.string(),
+                        handler
+                );
         WorkerEventDefinition<String> systemDefinition =
                 WorkerEventDefinition.of(
                         "SYSTEM",
@@ -472,6 +555,29 @@ class WorkerLoopTest {
 
         @Override
         public void close() {
+        }
+    }
+
+    private static final class BlockingPreparation
+            implements WorkerPreparation {
+
+        private final AtomicInteger calls = new AtomicInteger();
+        private final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        @Override
+        public PreparedWorker prepare() throws Exception {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
+                entered.countDown();
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+            }
+            return new PreparedWorker(WORKER_ID, ENDPOINT);
+        }
+
+        @Override
+        public void close() {
+            release.countDown();
         }
     }
 

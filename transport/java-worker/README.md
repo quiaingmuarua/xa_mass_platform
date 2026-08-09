@@ -24,12 +24,12 @@ JdkLineSocketClient
   -> line-oriented TCP connection and bounded fixed reconnect
 ```
 
-Core still owns `PollingWorkerTransport`, the long-lived Worker loop, and the
-one-endpoint text-message runtime.
+Core still owns `PollingWorkerTransport`, the two-state Worker run guard, and
+the one-endpoint text-message runtime.
 This module does not decode commands, construct
-Worker results, or introduce a second pending-result state machine.
+Worker results, or introduce a Worker business-message cache.
 
-## Long-lived Assembly
+## Worker Assembly
 
 ```java
 JavaWorker worker = JavaWorker.builder(
@@ -63,15 +63,14 @@ key.
 rejected because its request-response lifecycle is assembled separately.
 
 `JavaWorker` implements Core's `WorkerLifecycle`. Its builder composes
-`RegisteredWorkerPreparation` with one long-lived `WorkerLoop`: a missing
-Worker ID is registered and saved, every explicit `start()` performs Endpoint
-Bind, and the returned URI starts one runtime round. Temporary disconnects are
-handled by the selected concrete Client against the same URI and do not repeat
-Bind. When the Client terminates its endpoint after exhausting the bounded
-reconnect budget, the runtime exits and the loop reloads Properties and
-performs a new bounded preparation round.
-`stop()` preserves identity. Properties are re-read by preparation rather than
-through a separate refresh lifecycle API.
+`RegisteredWorkerPreparation` with one `WorkerLoop`: an accepted `start()`
+enters `RUNNING`, a missing Worker ID is registered and saved, Endpoint Bind is
+performed, and the returned URI starts one reconnecting Client. Temporary
+disconnects reuse the same URI and do not repeat HTTP Bind. Exhausting the
+Client reconnect budget ends the run in `STOPPED`; only a later explicit
+`start()` reloads Properties and performs bounded preparation again. `stop()`
+preserves identity and discards any result produced while its in-flight Handler
+finishes.
 
 ## Lower-level Composition
 

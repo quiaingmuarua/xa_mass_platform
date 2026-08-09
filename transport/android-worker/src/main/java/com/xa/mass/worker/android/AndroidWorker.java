@@ -29,6 +29,7 @@ public final class AndroidWorker implements WorkerLifecycle {
     private final Object lock = new Object();
     private final String processCoordinate;
     private final WorkerLoop worker;
+    private final WorkerLifecycle.Listener lifecycleListener;
     private boolean processLeaseHeld;
     private boolean closed;
 
@@ -38,6 +39,8 @@ public final class AndroidWorker implements WorkerLifecycle {
     ) {
         this.processCoordinate = processCoordinate;
         this.worker = worker;
+        lifecycleListener = this::releaseProcessLeaseWhenStopped;
+        worker.addListener(lifecycleListener);
     }
 
     public static Builder builder(
@@ -67,19 +70,18 @@ public final class AndroidWorker implements WorkerLifecycle {
                 }
                 processLeaseHeld = true;
             }
-        }
-        try {
-            worker.start();
-        } catch (RuntimeException error) {
-            releaseProcessLease();
-            throw error;
+            try {
+                worker.start();
+            } catch (RuntimeException error) {
+                releaseProcessLeaseLocked();
+                throw error;
+            }
         }
     }
 
     @Override
     public void stop() {
         worker.stop();
-        releaseProcessLease();
     }
 
     @Override
@@ -111,16 +113,29 @@ public final class AndroidWorker implements WorkerLifecycle {
             closed = true;
         }
         worker.close();
+        worker.removeListener(lifecycleListener);
         releaseProcessLease();
     }
 
-    private void releaseProcessLease() {
-        boolean release;
+    private void releaseProcessLeaseWhenStopped(Snapshot snapshot) {
         synchronized (lock) {
-            release = processLeaseHeld;
-            processLeaseHeld = false;
+            if (snapshot.state() != State.STOPPED
+                    || worker.snapshot().state() != State.STOPPED) {
+                return;
+            }
+            releaseProcessLeaseLocked();
         }
-        if (release) {
+    }
+
+    private void releaseProcessLease() {
+        synchronized (lock) {
+            releaseProcessLeaseLocked();
+        }
+    }
+
+    private void releaseProcessLeaseLocked() {
+        if (processLeaseHeld) {
+            processLeaseHeld = false;
             ACTIVE_COORDINATES.remove(processCoordinate);
         }
     }

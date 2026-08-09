@@ -12,10 +12,11 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Long-lived Worker identity loop: prepare, run, and prepare again on exit.
+ * Guards one Worker run from preparation through endpoint termination.
  */
 public final class WorkerLoop implements WorkerLifecycle {
 
@@ -34,11 +35,12 @@ public final class WorkerLoop implements WorkerLifecycle {
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private volatile Thread supervisorThread;
 
-    private long generation;
     private State state = State.STOPPED;
+    private boolean closed;
+    private boolean stopRequested;
     private PreparedWorker preparedWorker;
     private TextMessageWorkerRuntime activeRuntime;
-    private WorkerResultSlot pendingResult;
+    private ScheduledFuture<?> preparationRetry;
     private String diagnosticMessage;
 
     public WorkerLoop(
@@ -76,51 +78,40 @@ public final class WorkerLoop implements WorkerLifecycle {
 
     @Override
     public void start() {
-        long currentGeneration;
-        WorkerResultSlot oldSlot;
         synchronized (lock) {
-            if (state == State.CLOSED) {
+            if (closed) {
                 throw new IllegalStateException("WorkerLoop is closed");
             }
-            if (state == State.PREPARING || state == State.RUNNING) {
+            if (state == State.RUNNING) {
                 return;
             }
-            currentGeneration = ++generation;
-            state = State.PREPARING;
+            state = State.RUNNING;
+            stopRequested = false;
             preparedWorker = null;
-            diagnosticMessage = null;
             activeRuntime = null;
-            oldSlot = pendingResult;
-            pendingResult = new WorkerResultSlot();
+            diagnosticMessage = null;
+            try {
+                supervisor.execute(this::beginRun);
+            } catch (RejectedExecutionException error) {
+                state = State.STOPPED;
+                diagnosticMessage = "Worker supervisor is unavailable";
+                throw new IllegalStateException(
+                        "Worker supervisor is unavailable",
+                        error
+                );
+            }
         }
-        closeQuietly(oldSlot);
-        publish();
-        executeSupervisor(
-                () -> attemptPreparation(currentGeneration, 1),
-                currentGeneration
-        );
     }
 
     @Override
     public void stop() {
-        TextMessageWorkerRuntime runtime;
-        WorkerResultSlot resultSlot;
         synchronized (lock) {
-            if (state == State.CLOSED || state == State.STOPPED) {
+            if (closed || state == State.STOPPED || stopRequested) {
                 return;
             }
-            generation++;
-            runtime = activeRuntime;
-            resultSlot = pendingResult;
-            activeRuntime = null;
-            pendingResult = null;
-            preparedWorker = null;
-            state = State.STOPPED;
-            diagnosticMessage = null;
+            stopRequested = true;
+            executeSupervisor(this::stopOnSupervisor);
         }
-        closeQuietly(runtime);
-        closeQuietly(resultSlot);
-        publish();
     }
 
     @Override
@@ -144,6 +135,7 @@ public final class WorkerLoop implements WorkerLifecycle {
     public boolean isConnected() {
         synchronized (lock) {
             return state == State.RUNNING
+                    && !stopRequested
                     && activeRuntime != null
                     && activeRuntime.isConnected();
         }
@@ -153,7 +145,7 @@ public final class WorkerLoop implements WorkerLifecycle {
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
         synchronized (lock) {
-            if (state == State.CLOSED) {
+            if (closed) {
                 throw new IllegalStateException("WorkerLoop is closed");
             }
             listeners.add(listener);
@@ -171,44 +163,79 @@ public final class WorkerLoop implements WorkerLifecycle {
     @Override
     public void close() {
         TextMessageWorkerRuntime runtime;
-        WorkerResultSlot resultSlot;
+        ScheduledFuture<?> retry;
         synchronized (lock) {
-            if (state == State.CLOSED) {
+            if (closed) {
                 return;
             }
-            generation++;
+            closed = true;
+            stopRequested = true;
             runtime = activeRuntime;
-            resultSlot = pendingResult;
+            retry = preparationRetry;
             activeRuntime = null;
-            pendingResult = null;
+            preparationRetry = null;
             preparedWorker = null;
-            state = State.CLOSED;
+            state = State.STOPPED;
             diagnosticMessage = null;
         }
+        cancelRetry(retry);
         closeQuietly(runtime);
-        closeQuietly(resultSlot);
         closeQuietly(preparation);
         publishFinalAndShutdown();
     }
 
-    private void attemptPreparation(long currentGeneration, int attempt) {
-        if (!isPreparing(currentGeneration)) {
+    private void beginRun() {
+        publish();
+        if (stopWasRequested()) {
+            finishRun(null);
+            return;
+        }
+        attemptPreparation(1);
+    }
+
+    private void stopOnSupervisor() {
+        TextMessageWorkerRuntime runtime;
+        ScheduledFuture<?> retry;
+        synchronized (lock) {
+            if (closed || state == State.STOPPED) {
+                return;
+            }
+            retry = preparationRetry;
+            preparationRetry = null;
+            runtime = activeRuntime;
+        }
+        cancelRetry(retry);
+        if (runtime == null) {
+            finishRun(null);
+            return;
+        }
+        runtime.requestStop();
+    }
+
+    private void attemptPreparation(int attempt) {
+        if (!canPrepare()) {
+            finishStoppedRunIfRequested();
             return;
         }
         PreparedWorker prepared;
         try {
             prepared = preparation.prepare();
         } catch (Exception error) {
-            handlePreparationFailure(currentGeneration, attempt, error);
+            if (stopWasRequested()) {
+                finishRun(null);
+            } else {
+                handlePreparationFailure(attempt, error);
+            }
             return;
         }
-        installRuntime(currentGeneration, prepared);
+        if (!canPrepare()) {
+            finishStoppedRunIfRequested();
+            return;
+        }
+        installRuntime(prepared);
     }
 
-    private void installRuntime(
-            long currentGeneration,
-            PreparedWorker prepared
-    ) {
+    private void installRuntime(PreparedWorker prepared) {
         TextMessageClient client;
         try {
             client = networkClientFactory.create(prepared.endpointUri());
@@ -218,30 +245,22 @@ public final class WorkerLoop implements WorkerLifecycle {
                 );
             }
         } catch (Exception error) {
-            fail(currentGeneration, safeMessage(error));
+            finishRun(stopWasRequested() ? null : safeMessage(error));
             return;
         }
 
-        WorkerResultSlot resultSlot;
-        synchronized (lock) {
-            if (!isPreparingLocked(currentGeneration)) {
-                closeQuietly(client);
-                return;
-            }
-            resultSlot = pendingResult;
-        }
         TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                 client,
                 prepared.workerId(),
                 commandExecutor,
-                resultSlot,
-                runtimeListener(currentGeneration)
+                runtimeListener()
         );
-
         synchronized (lock) {
-            if (!isPreparingLocked(currentGeneration)
-                    || activeRuntime != null) {
+            if (!canPrepareLocked()) {
                 closeQuietly(runtime);
+                if (stopRequested && !closed) {
+                    executeSupervisor(() -> finishRun(null));
+                }
                 return;
             }
             activeRuntime = runtime;
@@ -250,30 +269,28 @@ public final class WorkerLoop implements WorkerLifecycle {
         try {
             runtime.start();
         } catch (RuntimeException error) {
-            runtimeStartFailed(
-                    currentGeneration,
-                    runtime,
-                    error
-            );
+            runtimeStartFailed(runtime, error);
             return;
         }
+
+        boolean requestStop;
         synchronized (lock) {
-            if (!isInstallingRuntimeLocked(
-                    currentGeneration,
-                    runtime
-            )) {
+            if (!isCurrentRuntimeLocked(runtime)) {
                 closeQuietly(runtime);
                 return;
             }
-            state = State.RUNNING;
-            diagnosticMessage = null;
+            requestStop = stopRequested;
+            if (!requestStop) {
+                diagnosticMessage = null;
+            }
         }
         publish();
+        if (requestStop) {
+            runtime.requestStop();
+        }
     }
 
-    private TextMessageWorkerRuntime.Listener runtimeListener(
-            long currentGeneration
-    ) {
+    private TextMessageWorkerRuntime.Listener runtimeListener() {
         return new TextMessageWorkerRuntime.Listener() {
             @Override
             public void onStateChanged(
@@ -281,55 +298,36 @@ public final class WorkerLoop implements WorkerLifecycle {
                     Throwable failure
             ) {
                 executeSupervisor(
-                        () -> runtimeStateChanged(
-                                currentGeneration,
-                                runtime,
-                                failure
-                        ),
-                        currentGeneration
+                        () -> runtimeStateChanged(runtime, failure)
                 );
             }
 
             @Override
             public void onExit(TextMessageWorkerRuntime runtime) {
-                executeSupervisor(
-                        () -> runtimeExited(
-                                currentGeneration,
-                                runtime
-                        ),
-                        currentGeneration
-                );
+                executeSupervisor(() -> runtimeExited(runtime));
             }
         };
     }
 
     private void runtimeStartFailed(
-            long currentGeneration,
             TextMessageWorkerRuntime runtime,
             RuntimeException error
     ) {
         synchronized (lock) {
-            if (!isInstallingRuntimeLocked(
-                    currentGeneration,
-                    runtime
-            )) {
+            if (!isCurrentRuntimeLocked(runtime)) {
                 closeQuietly(runtime);
                 return;
             }
         }
-        fail(currentGeneration, safeMessage(error));
+        finishRun(stopWasRequested() ? null : safeMessage(error));
     }
 
     private void runtimeStateChanged(
-            long currentGeneration,
             TextMessageWorkerRuntime runtime,
             Throwable failure
     ) {
         synchronized (lock) {
-            if (!isCurrentRuntimeLocked(
-                    currentGeneration,
-                    runtime
-            )) {
+            if (!isCurrentRuntimeLocked(runtime)) {
                 return;
             }
             if (failure != null) {
@@ -342,114 +340,109 @@ public final class WorkerLoop implements WorkerLifecycle {
         publish();
     }
 
-    private void runtimeExited(
-            long currentGeneration,
-            TextMessageWorkerRuntime runtime
-    ) {
+    private void runtimeExited(TextMessageWorkerRuntime runtime) {
         synchronized (lock) {
-            if (!isCurrentRuntimeLocked(
-                    currentGeneration,
-                    runtime
-            )) {
+            if (!isCurrentRuntimeLocked(runtime)) {
                 return;
             }
-            activeRuntime = null;
-            preparedWorker = null;
-            state = State.PREPARING;
-            diagnosticMessage = "Endpoint terminated; "
-                    + "preparing Worker again";
         }
-        closeQuietly(runtime);
-        publish();
-        attemptPreparation(currentGeneration, 1);
+        finishRun(stopWasRequested() ? null : "Endpoint terminated");
     }
 
-    private void handlePreparationFailure(
-            long currentGeneration,
-            int attempt,
-            Exception error
-    ) {
+    private void handlePreparationFailure(int attempt, Exception error) {
         String message = "Worker preparation failed: " + safeMessage(error);
         if (!isRetryablePreparationFailure(error)
                 || attempt >= retryPolicy.maxPrepareAttempts()) {
-            fail(currentGeneration, message);
+            finishRun(message);
             return;
         }
         synchronized (lock) {
-            if (!isPreparingLocked(currentGeneration)) {
+            if (!canPrepareLocked()) {
+                if (stopRequested && !closed) {
+                    executeSupervisor(() -> finishRun(null));
+                }
                 return;
             }
             diagnosticMessage = message;
+            try {
+                preparationRetry = supervisor.schedule(
+                        () -> {
+                            synchronized (lock) {
+                                preparationRetry = null;
+                            }
+                            attemptPreparation(attempt + 1);
+                        },
+                        retryPolicy.prepareRetryInterval().toMillis(),
+                        TimeUnit.MILLISECONDS
+                );
+            } catch (RejectedExecutionException ignored) {
+                finishRun("Worker supervisor is unavailable");
+                return;
+            }
         }
         publish();
-        try {
-            supervisor.schedule(
-                    () -> attemptPreparation(
-                            currentGeneration,
-                            attempt + 1
-                    ),
-                    retryPolicy.prepareRetryInterval().toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (RejectedExecutionException ignored) {
-            // close owns cancellation of stale preparation retries.
+    }
+
+    private void finishStoppedRunIfRequested() {
+        if (stopWasRequested()) {
+            finishRun(null);
         }
     }
 
-    private void fail(long currentGeneration, String message) {
+    private void finishRun(String message) {
         TextMessageWorkerRuntime runtime;
-        WorkerResultSlot resultSlot;
+        ScheduledFuture<?> retry;
         synchronized (lock) {
-            if (generation != currentGeneration
-                    || (state != State.PREPARING
-                            && state != State.RUNNING)) {
+            if (closed || state == State.STOPPED) {
                 return;
             }
             runtime = activeRuntime;
-            resultSlot = pendingResult;
+            retry = preparationRetry;
             activeRuntime = null;
-            pendingResult = null;
+            preparationRetry = null;
             preparedWorker = null;
-            state = State.ERROR;
+            state = State.STOPPED;
+            stopRequested = false;
             diagnosticMessage = message;
         }
+        cancelRetry(retry);
         closeQuietly(runtime);
-        closeQuietly(resultSlot);
         publish();
     }
 
-    private boolean isPreparing(long currentGeneration) {
+    private boolean canPrepare() {
         synchronized (lock) {
-            return isPreparingLocked(currentGeneration);
+            return canPrepareLocked();
         }
     }
 
-    private boolean isPreparingLocked(long currentGeneration) {
-        return generation == currentGeneration
-                && state == State.PREPARING
+    private boolean canPrepareLocked() {
+        return !closed
+                && state == State.RUNNING
+                && !stopRequested
                 && activeRuntime == null;
     }
 
+    private boolean stopWasRequested() {
+        synchronized (lock) {
+            return !closed
+                    && state == State.RUNNING
+                    && stopRequested;
+        }
+    }
+
     private boolean isCurrentRuntimeLocked(
-            long currentGeneration,
             TextMessageWorkerRuntime runtime
     ) {
-        return generation == currentGeneration
+        return !closed
                 && state == State.RUNNING
                 && activeRuntime == runtime;
     }
 
-    private boolean isInstallingRuntimeLocked(
-            long currentGeneration,
-            TextMessageWorkerRuntime runtime
-    ) {
-        return generation == currentGeneration
-                && state == State.PREPARING
-                && activeRuntime == runtime;
-    }
-
     private ConnectionState connectionStateLocked() {
-        if (activeRuntime == null) {
+        if (activeRuntime == null
+                || stopRequested
+                || activeRuntime.isExiting()) {
             return ConnectionState.DISCONNECTED;
         }
         return activeRuntime.isConnected()
@@ -457,14 +450,11 @@ public final class WorkerLoop implements WorkerLifecycle {
                 : ConnectionState.CONNECTING;
     }
 
-    private void executeSupervisor(
-            Runnable runnable,
-            long currentGeneration
-    ) {
+    private void executeSupervisor(Runnable runnable) {
         try {
             supervisor.execute(runnable);
-        } catch (RejectedExecutionException error) {
-            fail(currentGeneration, "Worker supervisor is unavailable");
+        } catch (RejectedExecutionException ignored) {
+            // Terminal close owns cancellation of queued lifecycle work.
         }
     }
 
@@ -527,6 +517,12 @@ public final class WorkerLoop implements WorkerLifecycle {
             listeners.clear();
         } finally {
             supervisor.shutdown();
+        }
+    }
+
+    private static void cancelRetry(ScheduledFuture<?> retry) {
+        if (retry != null) {
+            retry.cancel(false);
         }
     }
 

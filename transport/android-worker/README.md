@@ -14,9 +14,9 @@ It owns:
 
 Core owns `RegisteredWorkerPreparation`, `WorkerLoop`, command dispatch, event
 definitions, and the one-endpoint runtime. The runtime is the final command
-admission and pending-result Owner; the loop only supervises preparation and
-runtime replacement. Android does not implement a second Worker lifecycle or
-persist Endpoint URIs.
+admission and performs at most one send for each produced result; the loop
+guards one two-state run. Android does not implement a second Worker lifecycle,
+persist Endpoint URIs, or cache Worker business messages.
 
 `AndroidWorker` implements Core's `WorkerLifecycle`. Its state, snapshot, and
 listener types are the shared Core contract rather than Android mirrors. The
@@ -60,10 +60,11 @@ Identity is scoped by application package and WorkerGroup, and only one active
 
 ```text
 start
+  -> enter RUNNING immediately
   -> load one complete Properties snapshot with Application Context
   -> restore Worker ID, or Register and persist it
   -> always Bind
-  -> install one Core runtime round for the returned URI
+  -> install one Core runtime for the returned URI
 
 temporary disconnect
   -> Android WebSocket Client reconnects to the current URI within its budget
@@ -71,11 +72,13 @@ temporary disconnect
 
 endpoint terminated after reconnect exhaustion
   -> the current runtime reports one exit callback
-  -> reload Properties and run Register/Bind preparation again
-  -> install a new runtime from the returned URI
+  -> finish any in-flight Handler and discard its result
+  -> enter STOPPED and wait for an explicit start
 
 stop
-  -> close the current local run
+  -> close the Client and reject new commands
+  -> wait for any in-flight Handler, discarding its result
+  -> enter STOPPED
   -> retain client key and Worker ID
 ```
 
@@ -92,10 +95,12 @@ host lifecycle callback does not wait for a network timeout.
 Shared `WorkerLifecycle` observation is split into two axes:
 
 ```text
-State            STOPPED / PREPARING / RUNNING / ERROR / CLOSED
+State            STOPPED / RUNNING
 ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
 ```
 
+`RUNNING` includes preparation, Client reconnect, command execution, and
+graceful stop. Failures return to `STOPPED` with a diagnostic message.
 `RUNNING + CONNECTED` means the WebSocket opened and Core handed the
 workerId-only connection Bind to the network stack. It does not assert Adapter
 route verification, Kernel online truth, or assignment availability. Android
