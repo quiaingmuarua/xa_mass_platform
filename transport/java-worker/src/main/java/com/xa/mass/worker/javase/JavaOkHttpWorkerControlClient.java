@@ -1,4 +1,4 @@
-package com.xa.mass.transport.client.okhttp;
+package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.HttpUrl;
@@ -21,7 +22,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-public final class OkHttpWorkerControlClient
+final class JavaOkHttpWorkerControlClient
         implements WorkerControlClient {
 
     private static final MediaType JSON =
@@ -29,11 +30,15 @@ public final class OkHttpWorkerControlClient
 
     private final OkHttpClient http;
     private final HttpUrl runtimeApiBaseUrl;
+    private final Set<Call> activeCalls = ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
-    public OkHttpWorkerControlClient(URI runtimeApiBaseUrl) {
+    JavaOkHttpWorkerControlClient(
+            OkHttpClient http,
+            URI runtimeApiBaseUrl
+    ) {
         this.runtimeApiBaseUrl = requireHttpUrl(runtimeApiBaseUrl);
-        http = new OkHttpClient();
+        this.http = java.util.Objects.requireNonNull(http, "http");
     }
 
     public String register(
@@ -127,9 +132,9 @@ public final class OkHttpWorkerControlClient
             return;
         }
         closed = true;
-        http.dispatcher().cancelAll();
-        http.connectionPool().evictAll();
-        http.dispatcher().executorService().shutdownNow();
+        for (Call call : activeCalls) {
+            call.cancel();
+        }
     }
 
     private Map<String, Object> executeObject(
@@ -143,6 +148,14 @@ public final class OkHttpWorkerControlClient
                 .post(RequestBody.create(Jsons.toJson(body), JSON))
                 .build();
         Call call = http.newCall(request);
+        activeCalls.add(call);
+        if (closed) {
+            activeCalls.remove(call);
+            call.cancel();
+            throw new IllegalStateException(
+                    "JavaOkHttpWorkerControlClient is closed"
+            );
+        }
         call.timeout().timeout(
                 requirePositive(requestTimeout).toMillis(),
                 TimeUnit.MILLISECONDS
@@ -184,6 +197,8 @@ public final class OkHttpWorkerControlClient
                         error
                 );
             }
+        } finally {
+            activeCalls.remove(call);
         }
     }
 
@@ -199,7 +214,7 @@ public final class OkHttpWorkerControlClient
     private void requireOpen() {
         if (closed) {
             throw new IllegalStateException(
-                    "OkHttpWorkerControlClient is closed"
+                    "JavaOkHttpWorkerControlClient is closed"
             );
         }
     }

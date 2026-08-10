@@ -47,13 +47,18 @@ public class AndroidWorkerArchitectureBoundaryTest {
                 "src/main/java/com/xa/mass/worker/android/"
                         + "AndroidOkHttpTextWebSocketClient.java"
         ));
-        assertTrue(networkClient.contains("private enum State"));
-        assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
-        assertTrue(networkClient.contains("TERMINATED"));
         assertTrue(networkClient.contains(
-                "TextMessageReconnectPolicy"
+                "TextMessageReconnectState"
         ));
-        assertTrue(networkClient.contains("HandlerThread"));
+        assertFalse(networkClient.contains("HandlerThread"));
+        assertFalse(networkClient.contains("new OkHttpClient"));
+        assertFalse(networkClient.contains("Executors.new"));
+        String resources = read(project.resolve(
+                "src/main/java/com/xa/mass/worker/android/"
+                        + "AndroidWorkerHostResources.java"
+        ));
+        assertTrue(resources.contains("new HandlerThread("));
+        assertTrue(resources.contains("new SynchronousQueue<>()"));
         assertTrue(source.contains("public final class AndroidWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
@@ -62,7 +67,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
         assertTrue(assembly.contains(
-                "public Builder handlerExecutor("
+                "public Builder hostResources("
         ));
         assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));

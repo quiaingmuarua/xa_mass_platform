@@ -75,6 +75,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     indexClient,
                     replicaCount -> JavaWorkerHostResources.create(
                             replicaCount,
+                            8,
                             "xa-scenario-worker",
                             true
                     ),

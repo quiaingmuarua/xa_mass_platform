@@ -1,10 +1,9 @@
-package com.xa.mass.transport.client.okhttp;
+package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
@@ -12,6 +11,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Request;
@@ -22,19 +23,19 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class OkHttpTextWebSocketClientTest {
+class JavaOkHttpTextWebSocketClientTest {
 
     private final FakeConnector connector = new FakeConnector();
     private final RecordingListener listener = new RecordingListener();
-    private OkHttpTextWebSocketClient client;
+    private ScheduledExecutorService networkExecutor;
+    private JavaOkHttpTextWebSocketClient client;
 
     @BeforeEach
     void setUp() throws Exception {
-        client = new OkHttpTextWebSocketClient(
-                new OkHttpTextWebSocketClient.ConnectorResources(
-                        connector,
-                        () -> connector.closed = true
-                ),
+        networkExecutor = Executors.newSingleThreadScheduledExecutor();
+        client = new JavaOkHttpTextWebSocketClient(
+                connector,
+                networkExecutor,
                 URI.create(
                         "ws://127.0.0.1:18083/api/v1/"
                                 + "worker-delivery/websocket"
@@ -48,6 +49,7 @@ class OkHttpTextWebSocketClientTest {
     @AfterEach
     void tearDown() {
         client.close();
+        networkExecutor.shutdownNow();
     }
 
     @Test
@@ -134,7 +136,7 @@ class OkHttpTextWebSocketClientTest {
     }
 
     @Test
-    void closeIsIdempotentAndClosesOwnedResources() {
+    void closeIsIdempotentAndDoesNotCloseBorrowedResources() {
         FakeConnection first = connector.connections.get(0);
         first.open();
 
@@ -143,20 +145,8 @@ class OkHttpTextWebSocketClientTest {
 
         assertFalse(client.send("late"));
         assertTrue(first.socket.cancelled);
-        assertTrue(connector.closed);
+        assertFalse(networkExecutor.isShutdown());
         assertEquals(0, listener.terminations.get());
-    }
-
-    @Test
-    void publicConstructorRequiresFinalWebSocketUri() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new OkHttpTextWebSocketClient(
-                        URI.create("http://127.0.0.1:18083"),
-                        Duration.ofSeconds(1),
-                        reconnectPolicy()
-                )
-        );
     }
 
     @Test
@@ -249,11 +239,10 @@ class OkHttpTextWebSocketClientTest {
     }
 
     private static final class FakeConnector
-            implements OkHttpTextWebSocketClient.WebSocketConnector {
+            implements JavaOkHttpTextWebSocketClient.WebSocketConnector {
 
         private final List<FakeConnection> connections =
                 new CopyOnWriteArrayList<>();
-        private boolean closed;
 
         @Override
         public WebSocket connect(

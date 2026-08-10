@@ -13,19 +13,19 @@ Status: repository-local transport contracts and implementations.
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
-  -> WorkerPreparation + two-state WorkerRunController + single-run runtime
+  -> WorkerPreparation + two-state WorkerRunController + single-run Transport
   -> synchronous single Preparation on the Host calling thread
-  -> Host-injected Handler Executor
+  -> synchronous WorkerCommandExecutor and TextMessageClientFactory ports
   -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
 
 :transport:java-worker
   -> JavaWorker WebSocket/line-Socket assembly
-  -> OkHttp point/WebSocket and JDK line-socket Client implementations
+  -> shared Java network, Control, Socket, and Command resources
 
 :transport:android-worker
-  -> Android HandlerThread/Looper WebSocket Client
+  -> shared Android OkHttp, HandlerThread, Control, and Command resources
   -> Android Identity persistence and complete Worker assembly
 ```
 
@@ -41,14 +41,15 @@ into that wire contract.
 
 `transport:worker-core` is not a generic transport framework. Its long-lived
 path has three owners: a concrete Client owns networking and transparent
-reconnect, the package-private Runtime owns Bind/Command/Result protocol, and
+reconnect, the package-private Transport owns Bind/Command/Result protocol, and
 `WorkerRunController` owns only the two-state Worker run. Java and Android
 hosts compose `RegisteredWorkerPreparation` with one Controller and expose the
 same `WorkerLifecycle` contract. One accepted `start()` performs exactly one
 Preparation synchronously and, if successful, starts one reconnecting endpoint
 Client. Platform modules provide Identity storage, concrete network Clients,
-the Handler Executor, and any asynchronous Host scheduling. Worker Core creates
-and closes no thread, executor, or scheduler.
+shared network resources, zero-buffer Command execution, and any asynchronous
+Host scheduling. Worker Core creates and closes no thread, executor, or
+scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
 lifecycle events or queries. No Endpoint URI or Worker business message is

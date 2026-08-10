@@ -10,139 +10,118 @@ It owns:
 - `WorkerPreparation` and the default Register/Bind implementation.
 - `WorkerRunController`, the two-state coordinator for one explicit Worker
   run.
-- The package-private one-endpoint text-message runtime.
+- The package-private one-endpoint `TextMessageWorkerTransport`.
+- Synchronous Command dispatch, Host Executor handoff, and the text Client
+  factory port.
+- The threadless reconnect generation and stability state used by concrete
+  Clients.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
-It does not own concrete network libraries, Android storage, host process
-lifecycle, threads, executors, schedulers, Adapter behavior, Redis, or Kernel
-scheduling.
+It does not own concrete network libraries, Android storage, Host process
+lifecycle, threads, executors, schedulers, connection registries, Adapter
+behavior, Redis, or Kernel scheduling.
 
-## Execution Threads
-
-`WorkerRunController.start()` runs one `WorkerPreparation.prepare()`
-synchronously on its caller's thread. Core does not select that thread or
-submit a control task. A Host that needs non-blocking startup must schedule the
-call itself.
+## Owners
 
 ```text
-Host start caller                -> Properties, Identity, Register, Bind
-Host-injected Executor           -> admitted WorkerEvent Handler execution
+WorkerRunController
+  -> one synchronous Preparation
+  -> one current TextMessageWorkerTransport
+  -> STOPPED/RUNNING observation
+
+TextMessageWorkerTransport
+  -> Connection Bind
+  -> strict WorkerCommand decode and admission
+  -> correlated WorkerResult send
+  -> exact-once endpoint termination
+
+TextMessageClient
+  -> protocol connection and framing
+  -> reconnect within one prepared Endpoint
+  -> stale connection generation filtering
+
+WorkerCommandDispatcher
+  -> synchronous Definition resolution and Handler execution
+
+Host Command Executor
+  -> thread handoff and execution-capacity admission
 ```
 
-The Handler `Executor` is required and non-owning. A Host may share it across
-many Workers and closes it only after every consuming Worker is closed. Core
-never creates or shuts down an executor. Closing one Controller does not affect
-another Worker using the same executor.
-
-For Java hosts, `JavaWorkerHostResources` is the process-scoped owner for one
-bounded Control pool and one bounded Handler pool. A `JavaWorkerManager` uses
-the Control pool to schedule synchronous Worker starts and passes the Handler
-pool to each Worker. Multiple Group Managers may share the same resources;
-Managers close their Workers, and the process closes the resource owner last.
-This does not move resource ownership or group desired state into Core.
+Core creates and closes no execution resources. The Transport submits one
+`Runnable` to a Host-provided `Executor`, then calls the synchronous
+`WorkerCommandExecutor` inside that Runnable. Java and Android Host Resources
+use fixed pools with `SynchronousQueue`; `RejectedExecutionException` means the
+Command obtained no execution capacity and will never run later. There is no
+separate asynchronous business execution contract.
 
 ## Execution
 
-Every command reaches the same DTO entry:
+Every text Command follows one path:
 
 ```text
-encoded network input
-  -> strict WorkerCommand decode at the transport boundary
-  -> TextMessageWorkerRuntime final inbound-command admission
-  -> WorkerCommandDispatcher
+raw text
+  -> TextMessageWorkerTransport strict decode
+  -> reject duplicate in-flight messageId
+  -> Host Command Executor.execute
+  -> WorkerCommandDispatcher.execute synchronously
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
-  -> WorkerResult
+  -> optional WorkerResult
+  -> one send attempt on the current bound connection
 ```
 
-`WorkerCommandDispatcher` does not parse transport data. It checks the
-deadline, resolves the static `(src, messageType)` definition, invokes its
-resolver and handler, and copies `messageId`, source, message type, and
-`forward` into the result.
+`WorkerCommandDispatcher` is synchronous and immutable. It checks the
+deadline, resolves the static `(src, messageType)` definition, invokes the
+resolver and handler, and preserves the Command correlation fields in the
+Result. Distinct message IDs may execute concurrently, so Definitions and
+Handlers must be thread-safe whenever the Host configures concurrency above
+one.
 
 | Outcome | Meaning |
 | --- | --- |
 | `200` | Handler returned a non-empty result payload |
 | `1400` | Resolver or handler rejected event input |
 | `1404` | No definition exists for `(src, messageType)` |
-| `1500` | Handler failed or returned an empty payload |
+| `1500` | Handler failed, returned invalid output, or no execution slot was available |
 
-Expired commands are dropped before handler invocation. A deadline is not
+Expired Commands are dropped before Handler invocation. A deadline is not
 rechecked after execution starts.
+
+The Transport has no Command queue and no Result cache. A malformed frame or
+duplicate in-flight message ID closes the current connection. Capacity
+rejection sends an immediate correlated `1500` without closing the connection.
+Results may be returned out of order. If a Result cannot be sent on the
+current connection, it is dropped and the current connection is closed for a
+send failure; reconnect never replays it.
 
 ## One Worker Run
 
-One accepted `WorkerRunController.start()` represents one complete Worker run:
+One accepted `WorkerRunController.start()` represents one complete run:
 
 ```text
 RUNNING
   -> exactly one synchronous WorkerPreparation.prepare()
   -> PreparedWorker(workerId, endpointUri)
-  -> one reconnecting TextMessageWorkerRuntime
-  -> exact-once runtime terminal callback
+  -> create and start one TextMessageWorkerTransport
+  -> Client reconnects within that Endpoint budget
+  -> exact-once Transport terminal callback
   -> STOPPED
 ```
 
-Endpoint termination never starts another preparation automatically. A host
-may observe `STOPPED` and explicitly call `start()` for a new run.
-
 `RegisteredWorkerPreparation` owns `WorkerIdentityStore`,
-`WorkerPropertiesProvider`, and `WorkerControlClient`. Each call reads one
-complete immutable Properties snapshot, restores or registers the Worker ID,
-persists a newly issued ID, and performs Endpoint Bind. It does not start a
-network connection or execute commands.
+`WorkerPropertiesProvider`, and `WorkerControlClient`. Each call loads one
+immutable Properties snapshot, restores or registers the Worker ID, persists
+a newly issued ID, and performs Endpoint Bind. It does not start networking or
+execute Commands.
 
-Java and Android assemblies construct one immutable
-`WorkerCommandDispatcher` from their static definitions and inject it as a
-`WorkerCommandExecutor`. `WorkerRunController` owns the synchronous startup
-transition, current runtime reference, cooperative stop marker, and two-state
-lifecycle observation. It never owns a Control Executor, inspects command-busy
-state, or routes commands. Any Preparation failure ends that run in `STOPPED`
-with safe diagnostic evidence before `start()` returns. Only a later Host call
-to `start()` tries again.
+Preparation failure or Endpoint termination ends the current run. Core does
+not retry Preparation, schedule restart, or persist the Endpoint URI. A Host
+may explicitly call `start()` again. Temporary disconnects remain inside the
+current `TextMessageClient` and reuse the current URI.
 
-The single-run runtime owns only:
-
-```text
-prepared workerId + endpoint Client
-  -> onOpen: send WorkerConnectionBind
-  -> decode inbound WorkerCommand
-  -> final command admission and serial execution
-  -> send the resulting WorkerResult at most once
-  -> report endpoint termination once
-```
-
-It receives only the prepared endpoint and a `WorkerCommandExecutor`. It has
-no Identity Store, Properties provider, Control Client, definitions,
-dispatcher construction, preparation retry logic, or business-message cache.
-Ordinary disconnects, failures, and reconnects stay inside the current
-`TextMessageClient` and reuse the prepared endpoint. The Runtime sends
-`WorkerRunController` only one terminal fact; Bind admission, command busy state,
-Handler progress, and reconnect activity never cross that owner boundary.
-Endpoint termination, explicit stop, or a local Runtime infrastructure failure
-ends the run after Handler cleanup. The current concrete Clients terminate an
-endpoint when their reconnect budget is exhausted.
-
-## Command And Result Ownership
-
-`TASK`, `SYSTEM`, and `ADAPTER` commands all enter through the active
-connection's inbound text callback. `WorkerLifecycle` exposes no local command
-injection or message-send operation, and `WorkerRunController` never accepts or routes a
-`WorkerCommand`. The runtime decodes the inbound frame and is the final
-admission owner: it accepts only after the current open's Bind send was
-accepted and while no command is executing. A malformed or inadmissible
-inbound frame closes the current connection and is never queued. A frame that
-arrives after terminal admission has closed is ignored.
-
-A produced `WorkerResult` is sent once only when the current connection is
-still bound. If the Handler finishes while disconnected, send is rejected, or
-the runtime is stopping, the result is dropped. It is never replayed after
-Client reconnect or a later `start()`. Endpoint termination and graceful
-`stop()` wait for an in-flight Handler only to prevent overlapping Worker
-runs; they discard its result before issuing the exact-once exit callback.
-
-`PollingWorkerTransport` remains a separate request-response mechanism. It
-decodes the point response before calling the same DTO executor and submits a
-pending result before polling another command.
+Graceful `stop()` and Endpoint termination stop admitting new Commands, wait
+for already accepted executions to complete, discard their late Results, and
+then finish the run. Immediate `close()` tears down the current Client without
+waiting for or cancelling tasks in the shared Host executor.
 
 ## Lifecycle
 
@@ -154,53 +133,43 @@ snapshot
 addListener / removeListener
 ```
 
-The lifecycle has one observable axis:
+Its observable state is only `STOPPED / RUNNING`. `RUNNING` includes
+Preparation, Client connection and reconnect, Command execution, and graceful
+stop. It does not assert physical connectivity, Adapter route verification,
+Kernel online truth, or scheduling availability. Snapshot identity and
+Endpoint fields describe only the current prepared run.
 
-```text
-State  STOPPED / RUNNING
-```
+Listener calls are synchronous, lightweight level observations outside the
+lifecycle state lock. Notifications may repeat and may occur on the lifecycle
+caller, a Client callback lane, or a Command execution lane. `snapshot()` is
+the authoritative current value; Hosts must move UI or blocking observation
+work to the appropriate platform executor.
 
-`RUNNING` begins when `start()` is accepted and includes its one Preparation,
-Client connection/reconnect, command execution, and graceful stop while an
-in-flight Handler finishes. Failures return to `STOPPED` and remain available
-through `diagnosticMessage`; `close()` is an internal terminal object
-condition rather than a third Worker state. The snapshot also carries the
-current run's Worker ID and Endpoint URI metadata when preparation has
-completed. It deliberately exposes no physical connection state or connection
-query: Client reconnect is transparent and Worker lifecycle is not Kernel
-online truth or scheduling availability. Listener calls are synchronous,
-lightweight, and outside the lifecycle state lock. They may run on the
-lifecycle caller, Handler executor, or Client callback thread.
-Notifications are level observations and may repeat; `snapshot()` is the
-authoritative current value rather than an ordered transition stream. Hosts
-must move UI or blocking observation work onto their own appropriate executor.
-
-There is intentionally no direct Properties-refresh or local-command lifecycle
-method. Platform or Adapter initiated Worker behavior is expressed through
-statically installed `WorkerEventDefinition` commands delivered over the
-Worker's inbound connection.
+There is no local Command injection or Properties-refresh lifecycle method.
+Platform and Adapter capabilities continue to use statically assembled
+`WorkerEventDefinition` values delivered through ordinary `WorkerCommand`
+messages.
 
 ## Client Boundary
 
-Core exposes string-only `WorkerPointClient` and `TextMessageClient`, plus the
-JDK-type-only `WorkerControlClient`. Concrete Clients own networking,
-framing, reconnect scheduling, stale callback isolation, and resource
-teardown. They do not cache Worker commands or results.
+Core exposes string-only `WorkerPointClient`, `TextMessageClient`, and
+`TextMessageClientFactory`, plus the JDK-type-only `WorkerControlClient`.
+Concrete Clients own I/O, framing, reconnect scheduling, and stale callback
+suppression. Their expensive infrastructure is borrowed from platform Host
+Resources; closing one Client closes only that connection. A Client never
+decodes Worker DTOs or caches business messages.
 
-`TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and the
-exact-once `onEndpointTerminated`. Transient disconnect and failure evidence
-does not cross into the Worker Runtime. The Client exposes no `isConnected`
-or reconnect callback; `send()` acceptance is the Runtime's only per-frame
-network evidence.
+`TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and exact-once
+`onEndpointTerminated`. The Client exposes no physical connection query or
+transient reconnect event. `send()` reports only whether the current network
+stack accepted that frame.
 
-`TextMessageReconnectPolicy` bounds consecutive unstable connections. A
-connection must survive its stable window before the count resets. Exhaustion
-stops reconnecting and emits one `onEndpointTerminated()` callback, which ends
-the current Worker run. A host must explicitly call `start()` to run again.
+`TextMessageReconnectState` is a synchronized, threadless generation and
+stability state machine shared by the concrete Clients. The default policy is
+20 unstable attempts, a 500 millisecond reconnect interval, and a 10 second
+stable window. Concrete platform Clients still own every timer and I/O action.
 
-`TextMessageReconnectPolicy.defaults()` uses 20 unstable connection attempts
-500 milliseconds apart with a 10 second stable window. Core has no Preparation
-retry policy or retry scheduler.
+`PollingWorkerTransport` remains a separate request-response mechanism.
 
 ## Verification
 

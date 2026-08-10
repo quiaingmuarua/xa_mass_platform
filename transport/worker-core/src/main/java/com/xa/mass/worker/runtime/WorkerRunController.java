@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageClientFactory;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 
 import java.net.URI;
@@ -15,7 +16,8 @@ import java.util.concurrent.Executor;
  * Coordinates one explicitly requested Worker run.
  *
  * <p>Each accepted start performs one preparation and installs at most one
- * runtime. Endpoint termination ends the run; only the host can start another.
+ * Transport. Endpoint termination ends the run; only the host can start
+ * another.
  */
 public final class WorkerRunController implements WorkerLifecycle {
 
@@ -27,45 +29,39 @@ public final class WorkerRunController implements WorkerLifecycle {
         CLOSED
     }
 
-    @FunctionalInterface
-    public interface NetworkClientFactory {
-
-        TextMessageClient create(URI endpointUri);
-    }
-
     private final Object lock = new Object();
     private final WorkerPreparation preparation;
-    private final WorkerCommandExecutor commandExecutor;
-    private final NetworkClientFactory networkClientFactory;
-    private final Executor handlerExecutor;
+    private final TextMessageClientFactory clientFactory;
+    private final WorkerCommandExecutor commandDispatcher;
+    private final Executor commandExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private Phase phase = Phase.STOPPED;
     private PreparedWorker preparedWorker;
-    private TextMessageWorkerRuntime activeRuntime;
+    private TextMessageWorkerTransport activeTransport;
     private String diagnosticMessage;
 
     public WorkerRunController(
             WorkerPreparation preparation,
-            WorkerCommandExecutor commandExecutor,
-            NetworkClientFactory networkClientFactory,
-            Executor handlerExecutor
+            TextMessageClientFactory clientFactory,
+            WorkerCommandExecutor commandDispatcher,
+            Executor commandExecutor
     ) {
         this.preparation = Objects.requireNonNull(
                 preparation,
                 "preparation"
         );
+        this.clientFactory = Objects.requireNonNull(
+                clientFactory,
+                "clientFactory"
+        );
+        this.commandDispatcher = Objects.requireNonNull(
+                commandDispatcher,
+                "commandDispatcher"
+        );
         this.commandExecutor = Objects.requireNonNull(
                 commandExecutor,
                 "commandExecutor"
-        );
-        this.networkClientFactory = Objects.requireNonNull(
-                networkClientFactory,
-                "networkClientFactory"
-        );
-        this.handlerExecutor = Objects.requireNonNull(
-                handlerExecutor,
-                "handlerExecutor"
         );
     }
 
@@ -82,7 +78,7 @@ public final class WorkerRunController implements WorkerLifecycle {
             }
             phase = Phase.STARTING;
             preparedWorker = null;
-            activeRuntime = null;
+            activeTransport = null;
             diagnosticMessage = null;
         }
         runStart();
@@ -90,7 +86,7 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     @Override
     public void stop() {
-        TextMessageWorkerRuntime runtime;
+        TextMessageWorkerTransport transport;
         synchronized (lock) {
             if (phase == Phase.STOPPED
                     || phase == Phase.STOPPING
@@ -98,10 +94,10 @@ public final class WorkerRunController implements WorkerLifecycle {
                 return;
             }
             phase = Phase.STOPPING;
-            runtime = activeRuntime;
+            transport = activeTransport;
         }
-        if (runtime != null) {
-            runtime.requestStop();
+        if (transport != null) {
+            transport.requestStop();
         }
     }
 
@@ -144,19 +140,19 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     @Override
     public void close() {
-        TextMessageWorkerRuntime runtime;
+        TextMessageWorkerTransport transport;
         synchronized (lock) {
             if (phase == Phase.CLOSED) {
                 return;
             }
             phase = Phase.CLOSED;
-            runtime = activeRuntime;
-            activeRuntime = null;
+            transport = activeTransport;
+            activeTransport = null;
             preparedWorker = null;
             diagnosticMessage = null;
         }
 
-        closeQuietly(runtime);
+        closeQuietly(transport);
         closeQuietly(preparation);
         Snapshot closingSnapshot = snapshot();
         List<Listener> closingListeners = new ArrayList<>(listeners);
@@ -166,7 +162,7 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private void runStart() {
         TextMessageClient client = null;
-        TextMessageWorkerRuntime runtime = null;
+        TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
             publish();
@@ -183,28 +179,28 @@ public final class WorkerRunController implements WorkerLifecycle {
             }
 
             client = Objects.requireNonNull(
-                    networkClientFactory.create(prepared.endpointUri()),
-                    "networkClientFactory returned null"
+                    clientFactory.create(prepared.endpointUri()),
+                    "clientFactory returned null"
             );
-            runtime = new TextMessageWorkerRuntime(
+            transport = new TextMessageWorkerTransport(
                     client,
                     prepared.workerId(),
+                    commandDispatcher,
                     commandExecutor,
-                    handlerExecutor,
-                    this::runtimeTerminated
+                    this::transportTerminated
             );
             client = null;
 
-            installed = installRuntime(prepared, runtime);
+            installed = installTransport(prepared, transport);
             if (!installed) {
                 return;
             }
 
-            runtime.start();
+            transport.start();
             publish();
         } catch (Throwable error) {
             if (installed) {
-                runtimeTerminated(runtime, error);
+                transportTerminated(transport, error);
             } else {
                 failStart(error);
             }
@@ -213,19 +209,19 @@ public final class WorkerRunController implements WorkerLifecycle {
         } finally {
             closeQuietly(client);
             if (!installed) {
-                closeQuietly(runtime);
+                closeQuietly(transport);
             }
         }
     }
 
-    private boolean installRuntime(
+    private boolean installTransport(
             PreparedWorker prepared,
-            TextMessageWorkerRuntime runtime
+            TextMessageWorkerTransport transport
     ) {
         boolean stopped = false;
         synchronized (lock) {
             if (phase == Phase.STARTING) {
-                activeRuntime = runtime;
+                activeTransport = transport;
                 preparedWorker = prepared;
                 phase = Phase.ACTIVE;
                 return true;
@@ -276,30 +272,30 @@ public final class WorkerRunController implements WorkerLifecycle {
         return true;
     }
 
-    private void runtimeTerminated(
-            TextMessageWorkerRuntime runtime,
+    private void transportTerminated(
+            TextMessageWorkerTransport transport,
             Throwable failure
     ) {
         boolean current;
         synchronized (lock) {
-            current = activeRuntime == runtime
+            current = activeTransport == transport
                     && (phase == Phase.ACTIVE
                     || phase == Phase.STOPPING);
             if (current) {
                 boolean requestedStop = phase == Phase.STOPPING;
-                activeRuntime = null;
+                activeTransport = null;
                 transitionStoppedLocked(
                         requestedStop
                                 ? null
                                 : failure == null
                                         ? "Endpoint terminated"
-                                        : "Worker runtime failed: "
+                                        : "Worker transport failed: "
                                                 + safeFailureType(failure)
                 );
             }
         }
         if (current) {
-            closeQuietly(runtime);
+            closeQuietly(transport);
             publish();
         }
     }

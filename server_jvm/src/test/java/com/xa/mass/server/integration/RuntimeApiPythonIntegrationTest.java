@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.javase.JavaWorkerHostResources;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
-import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
@@ -27,8 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Assumptions;
@@ -448,21 +444,13 @@ class RuntimeApiPythonIntegrationTest {
                     workerId,
                     serverUrl,
                     definitions,
-                    endpoint -> new OkHttpTextWebSocketClient(
-                            endpoint,
-                            Duration.ofSeconds(2),
-                            connectionPolicy()
-                    )
+                    WorkerTransportType.WEBSOCKET
             );
             case SOCKET -> startTextMessageWorker(
                     workerId,
                     serverUrl,
                     definitions,
-                    endpoint -> new JdkLineSocketClient(
-                            endpoint,
-                            Duration.ofSeconds(2),
-                            connectionPolicy()
-                    )
+                    WorkerTransportType.SOCKET
             );
             case POLLING -> new PollingWorkerHandle(
                     new PollingWorkerTransport(
@@ -481,14 +469,26 @@ class RuntimeApiPythonIntegrationTest {
             String workerId,
             URI endpointUri,
             List<WorkerEventDefinition<?>> definitions,
-            WorkerRunController.NetworkClientFactory clientFactory
+            WorkerTransportType transportType
     ) throws Exception {
-        TestHandlerResources resources = new TestHandlerResources();
+        JavaWorkerHostResources resources =
+                JavaWorkerHostResources.create(
+                        1,
+                        4,
+                        "xa-runtime-integration-worker",
+                        true
+                );
+        WorkerCommandDispatcher dispatcher =
+                new WorkerCommandDispatcher(definitions);
         WorkerRunController worker = new WorkerRunController(
                 fixedPreparation(workerId, endpointUri),
-                new WorkerCommandDispatcher(definitions),
-                clientFactory,
-                resources.handlerExecutor()
+                resources.textClientFactory(
+                        transportType,
+                        Duration.ofSeconds(2),
+                        connectionPolicy()
+                ),
+                dispatcher,
+                resources.commandExecutor()
         );
         return new TextMessageWorkerHandle(worker, resources);
     }
@@ -523,33 +523,42 @@ class RuntimeApiPythonIntegrationTest {
             TransportProfile profile,
             Map<String, Object> workerProperties
     ) throws Exception {
-        try (var client = new OkHttpWorkerControlClient(
-                URI.create("http://127.0.0.1:" + port)
-        )) {
-            Map<String, Object> completeProperties =
-                    new LinkedHashMap<>(workerProperties);
-            completeProperties.put(
-                    "clientWorkerKey",
-                    clientWorkerKey
-            );
-            String workerId = client.register(
-                    workerGroupId,
-                    completeProperties,
-                    Duration.ofSeconds(2)
-            );
-            URI endpointUri = client.bind(
-                    workerGroupId,
-                    workerId,
-                    switch (profile) {
-                        case POLLING -> WorkerTransportType.POLLING;
-                        case WEBSOCKET -> WorkerTransportType.WEBSOCKET;
-                        case SOCKET -> WorkerTransportType.SOCKET;
-                    },
-                    completeProperties,
-                    Duration.ofSeconds(2)
-            );
-            return new BoundWorker(workerId, endpointUri);
-        }
+        Map<String, Object> completeProperties =
+                new LinkedHashMap<>(workerProperties);
+        completeProperties.put("clientWorkerKey", clientWorkerKey);
+        String propertiesJson = JSON.writeValueAsString(
+                completeProperties
+        );
+        HttpResponse<String> registerResponse = send(
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId
+                        + "/workers:register",
+                "{\"workerProperties\":" + propertiesJson + "}"
+        );
+        assertThat(registerResponse.statusCode()).isEqualTo(200);
+        String workerId = JSON.readTree(registerResponse.body())
+                .get("workerId")
+                .asText();
+        String transportType = switch (profile) {
+            case POLLING -> "POLLING";
+            case WEBSOCKET -> "WEBSOCKET";
+            case SOCKET -> "SOCKET";
+        };
+        HttpResponse<String> bindResponse = send(
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId
+                        + "/workers/" + workerId + ":bind",
+                "{\"transportType\":\"" + transportType
+                        + "\",\"workerProperties\":"
+                        + propertiesJson + "}"
+        );
+        assertThat(bindResponse.statusCode()).isEqualTo(200);
+        URI endpointUri = URI.create(
+                JSON.readTree(bindResponse.body())
+                        .get("endpointUri")
+                        .asText()
+        );
+        return new BoundWorker(workerId, endpointUri);
     }
 
     private void awaitWorkerRegistered(
@@ -901,19 +910,19 @@ class RuntimeApiPythonIntegrationTest {
             implements RunningWorker {
 
         private final WorkerRunController transport;
-        private final TestHandlerResources executionResources;
+        private final JavaWorkerHostResources hostResources;
 
         private TextMessageWorkerHandle(
                 WorkerRunController transport,
-                TestHandlerResources executionResources
+                JavaWorkerHostResources hostResources
         ) throws Exception {
             this.transport = transport;
-            this.executionResources = executionResources;
+            this.hostResources = hostResources;
             try {
                 transport.start();
             } catch (Exception | Error failure) {
                 transport.close();
-                executionResources.close();
+                hostResources.close();
                 throw failure;
             }
         }
@@ -923,24 +932,8 @@ class RuntimeApiPythonIntegrationTest {
             try {
                 transport.close();
             } finally {
-                executionResources.close();
+                hostResources.close();
             }
-        }
-    }
-
-    private static final class TestHandlerResources
-            implements AutoCloseable {
-
-        private final ExecutorService handlerExecutor =
-                Executors.newSingleThreadExecutor();
-
-        private ExecutorService handlerExecutor() {
-            return handlerExecutor;
-        }
-
-        @Override
-        public void close() {
-            handlerExecutor.shutdownNow();
         }
     }
 }

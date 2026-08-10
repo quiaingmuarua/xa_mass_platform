@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.HttpUrl;
@@ -27,11 +28,16 @@ final class AndroidOkHttpWorkerControlClient
     private static final MediaType JSON =
             MediaType.get("application/json; charset=utf-8");
 
-    private final OkHttpClient http = new OkHttpClient();
+    private final OkHttpClient http;
     private final HttpUrl runtimeApiBaseUrl;
+    private final Set<Call> activeCalls = ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
-    AndroidOkHttpWorkerControlClient(URI runtimeApiBaseUrl) {
+    AndroidOkHttpWorkerControlClient(
+            OkHttpClient http,
+            URI runtimeApiBaseUrl
+    ) {
+        this.http = java.util.Objects.requireNonNull(http, "http");
         this.runtimeApiBaseUrl = requireHttpUrl(runtimeApiBaseUrl);
     }
 
@@ -124,9 +130,9 @@ final class AndroidOkHttpWorkerControlClient
             return;
         }
         closed = true;
-        http.dispatcher().cancelAll();
-        http.connectionPool().evictAll();
-        http.dispatcher().executorService().shutdownNow();
+        for (Call call : activeCalls) {
+            call.cancel();
+        }
     }
 
     private Map<String, Object> executeObject(
@@ -140,6 +146,14 @@ final class AndroidOkHttpWorkerControlClient
                 .post(RequestBody.create(Jsons.toJson(body), JSON))
                 .build();
         Call call = http.newCall(request);
+        activeCalls.add(call);
+        if (closed) {
+            activeCalls.remove(call);
+            call.cancel();
+            throw new IllegalStateException(
+                    "Android Worker control client is closed"
+            );
+        }
         call.timeout().timeout(
                 requirePositive(timeout).toMillis(),
                 TimeUnit.MILLISECONDS
@@ -181,6 +195,8 @@ final class AndroidOkHttpWorkerControlClient
                         error
                 );
             }
+        } finally {
+            activeCalls.remove(call);
         }
     }
 

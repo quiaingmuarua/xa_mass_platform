@@ -3,7 +3,7 @@ package com.xa.mass.worker.runtime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-final class TestHandlerExecutor implements AutoCloseable {
+final class TestCommandExecutor implements AutoCloseable {
 
     private final ExecutorService executor =
             Executors.newFixedThreadPool(2);

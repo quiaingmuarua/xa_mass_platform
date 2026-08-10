@@ -7,32 +7,34 @@ depends on `transport:worker-core` and OkHttp, but not on
 It owns:
 
 - `AndroidWorker`, the public Android composition facade.
+- `AndroidWorkerHostResources`, the Application-scoped network and execution
+  resource owner.
 - Android `SharedPreferences` storage for a generated client key and the
   platform-issued long-lived Worker ID.
-- Android OkHttp Register/Bind Client and HandlerThread WebSocket Client.
+- Android OkHttp Register/Bind and WebSocket implementations.
 - Application-Context-specific Worker Properties loading.
 
-Core owns `RegisteredWorkerPreparation`, `WorkerRunController`, command dispatch, event
-definitions, and the one-endpoint runtime. The runtime is the final command
-admission and performs at most one send for each produced result; the loop
-guards one two-state run. Android does not implement a second Worker lifecycle,
-persist Endpoint URIs, or cache Worker business messages.
-
-`AndroidWorker` implements Core's `WorkerLifecycle`. Its state, snapshot, and
-listener types are the shared Core contract rather than Android mirrors. The
-Android facade remains final and owns only Android composition concerns such
-as Application Context, SharedPreferences Identity, and the process-local
-single-instance guard.
+Core owns Register/Bind preparation, the two-state run controller, text Worker
+protocol, command dispatch, event definitions, and reconnect attempt state.
+Android does not implement a second Worker lifecycle, persist Endpoint URIs,
+or cache Worker Commands or Results.
 
 ## Assembly
 
 ```java
+AndroidWorkerHostResources resources =
+        AndroidWorkerHostResources.create(
+                1,
+                4,
+                "xa-android-worker"
+        );
+
 AndroidWorker worker = AndroidWorker.builder(
                 applicationContext,
                 URI.create("http://127.0.0.1:18082"),
                 "android-demo-workers"
         )
-        .handlerExecutor(handlerExecutor)
+        .hostResources(resources)
         .workerProperties(context -> Map.of(
                 "runtime", "android",
                 "packageName", context.getPackageName()
@@ -46,84 +48,77 @@ worker.addListener(snapshot -> observe(snapshot));
 worker.start();
 ```
 
-`handlerExecutor` is required and Host-owned. `AndroidWorker.close()` does not
-shut it down; the Host closes all Workers before shutting down the Executor.
-The WebSocket Client's dedicated Android `HandlerThread` remains a separate
-connection lane owned and closed by that Client.
+The Builder performs no file or network access. It accepts no Worker ID,
+Endpoint URI, endpoint manager ID, or caller-supplied client key. Android
+generates a canonical UUID client key and stores it with the platform-issued
+Worker ID under the application package and WorkerGroup coordinate. A valid
+stored Worker ID skips Register on later starts. The Properties function may
+not override the reserved `clientWorkerKey` field.
 
-The first start generates and synchronously persists a canonical UUID
-`clientWorkerKey`. Android injects it as the reserved
-`workerProperties.clientWorkerKey`; the Properties function may not override
-it. Register returns the platform Worker ID, which is stored separately. A
-valid stored Worker ID skips Register on later starts.
+Only one active `AndroidWorker` for a package and WorkerGroup is allowed in one
+process. `AndroidWorker` is independent of Activity lifecycle; an
+`Application`, Service, or another Host owner decides when to invoke it.
 
-The Builder never accepts `workerId`, `endpointManagerId`, an Endpoint URI, or
-a caller-supplied client key. `build()` performs no file or network access.
-Identity is scoped by application package and WorkerGroup, and only one active
-`AndroidWorker` for that coordinate is allowed in one process.
+## Host Resources
+
+`AndroidWorkerHostResources.create(workerCapacity,
+maxConcurrentCommands, threadNamePrefix)` creates one process-level bundle:
+
+- one shared OkHttp Dispatcher and ConnectionPool;
+- one shared network `HandlerThread` and Looper;
+- one bounded Control executor;
+- one fixed, zero-buffer Command executor.
+
+Each WebSocket Client owns a separate `Handler` bound to the shared network
+Looper. That Handler serializes connection state, generation filtering, and
+reconnect timers. OkHttp callbacks only post network events there. Business
+Handlers run only in the Command pool, so a slow capability does not block
+WebSocket callbacks or reconnect.
+
+The Command pool uses `SynchronousQueue`. If all
+`maxConcurrentCommands` slots are occupied, the new Command immediately gets
+a correlated `1500` and is never queued. Definitions and Handlers must be
+thread-safe when concurrency is greater than one.
+
+Closing one Worker or Client does not quit the shared Looper, close shared
+OkHttp infrastructure, or affect another Worker. The Host must close every
+Worker before closing `AndroidWorkerHostResources`.
 
 ## Lifecycle
 
 ```text
-start
-  -> enter RUNNING on the calling thread
-  -> load one complete Properties snapshot with Application Context
-  -> restore Worker ID, or Register and persist it
+start on a Host-selected background thread
+  -> load one complete Properties snapshot
+  -> recover Worker ID, or Register and persist it
   -> always Bind
-  -> install one Core runtime for the returned URI
-  -> return while the Client connects asynchronously
+  -> install one Core TextMessageWorkerTransport
+  -> return while WebSocket connection proceeds asynchronously
 
 temporary disconnect
-  -> Android WebSocket Client reconnects to the current URI within its budget
+  -> reconnect to the current URI within the Client budget
   -> no Register or Bind
 
-endpoint terminated after reconnect exhaustion
-  -> the current runtime reports one exit callback
-  -> finish any in-flight Handler and discard its result
-  -> enter STOPPED and wait for an explicit start
-
-Register or Bind failure
-  -> enter STOPPED after that single Preparation attempt
-  -> wait for an explicit start
-
-stop
-  -> close the Client and reject new commands
-  -> wait for any in-flight Handler, discarding its result
+endpoint retry exhausted
+  -> stop accepting Commands
+  -> wait for accepted Handlers and discard late Results
   -> enter STOPPED
-  -> retain client key and Worker ID
+  -> wait for an explicit Host start
 ```
 
-`start`, `stop`, and `close` are idempotent at their lifecycle boundaries;
-`close` is terminal. Core Listener callbacks are synchronous, lightweight, and
-outside its state lock. They may run on a lifecycle caller, a Host control or
-Handler executor, or the Android Client callback `HandlerThread`; they are not
-main-Looper callbacks. A UI Host must post them to the main Looper. The module
-installs no Activity, Service, WorkManager, or process survival policy. An
-`Application`, `Service`, or another host owner decides when to invoke the
-lifecycle. Because `start()` may block for one Control request timeout, an
-Android Host must invoke it away from the Main Looper.
+Register or Bind failure ends that single start attempt. `start()` is
+synchronous through Preparation and must not run on the Main Looper. UI Hosts
+normally submit it to `resources.controlExecutor()`. Core does not install a
+retry or restart scheduler.
 
-Closing the Android network Client marks it terminal and cancels the current
-socket before returning; HandlerThread cleanup is posted asynchronously, so a
-host lifecycle callback does not wait for a network timeout.
-
-Shared `WorkerLifecycle` observation has one two-state axis:
-
-```text
-State  STOPPED / RUNNING
-```
-
-`RUNNING` includes preparation, Client reconnect, command execution, and
-graceful stop. Failures return to `STOPPED` with a diagnostic message.
-Physical WebSocket state and reconnect attempts are private to the Client and
-produce neither lifecycle events nor a connection query. `RUNNING` therefore
-does not assert Adapter route verification, Kernel online truth, or assignment
-availability. Android uses the default 20-attempt connection budget unless the
-Builder receives another immutable `TextMessageReconnectPolicy`. Core does not
-retry Register or Bind.
+`WorkerLifecycle` exposes only `STOPPED / RUNNING`. Physical WebSocket state
+and reconnect attempts are private Client state, not Adapter, Kernel, or
+scheduling truth. Listener calls are synchronous level observations and are
+not moved to the Main Looper automatically.
 
 Applications must decide whether Android Backup may migrate Worker Identity.
 The repository demo excludes the Android Worker preference file from backup.
+
+## Verification
 
 ```text
 ./gradlew :transport:android-worker:testDebugUnitTest

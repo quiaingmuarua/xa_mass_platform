@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageClientFactory;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class WorkerRunControllerTest {
 
     private final List<WorkerRunController> controllers =
             new ArrayList<>();
-    private final TestHandlerExecutor handler = new TestHandlerExecutor();
+    private final TestCommandExecutor commands = new TestCommandExecutor();
     private final ExecutorService startExecutor =
             Executors.newCachedThreadPool();
 
@@ -43,7 +44,7 @@ class WorkerRunControllerTest {
             controller.close();
         }
         startExecutor.shutdownNow();
-        handler.close();
+        commands.close();
     }
 
     @Test
@@ -54,7 +55,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                handler.executor()
+                commands.executor()
         );
         CountDownLatch runningObserved = new CountDownLatch(1);
         controller.addListener(snapshot -> {
@@ -91,7 +92,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                handler.executor()
+                commands.executor()
         );
 
         controller.start();
@@ -120,7 +121,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                handler.executor()
+                commands.executor()
         );
 
         controller.start();
@@ -143,7 +144,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                handler.executor()
+                commands.executor()
         );
 
         Future<?> starting = startExecutor.submit(controller::start);
@@ -169,7 +170,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                handler.executor()
+                commands.executor()
         );
 
         Future<?> starting = startExecutor.submit(controller::start);
@@ -188,7 +189,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks,
-                handler.executor()
+                commands.executor()
         );
 
         controller.start();
@@ -209,7 +210,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 endpointUri -> client,
-                handler.executor()
+                commands.executor()
         );
 
         controller.start();
@@ -234,7 +235,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 new FakeNetworkFactory(),
-                handler.executor()
+                commands.executor()
         );
 
         assertThrows(AssertionError.class, controller::start);
@@ -251,7 +252,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks,
-                handler.executor()
+                commands.executor()
         );
         AtomicInteger runningNotifications = new AtomicInteger();
         controller.addListener(snapshot -> {
@@ -277,7 +278,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks,
-                handler.executor()
+                commands.executor()
         );
         AtomicBoolean failOnStopped = new AtomicBoolean();
         WorkerLifecycle.Listener listener = snapshot -> {
@@ -300,28 +301,28 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void closeDoesNotShutHostHandlerExecutorDown() {
+    void closeDoesNotShutHostCommandExecutorDown() {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 new FakeNetworkFactory(),
-                handler.executor()
+                commands.executor()
         );
         controller.close();
 
-        assertFalse(handler.executor().isShutdown());
+        assertFalse(commands.executor().isShutdown());
         assertThrows(IllegalStateException.class, controller::start);
     }
 
     private WorkerRunController controller(
             WorkerPreparation preparation,
-            WorkerRunController.NetworkClientFactory networks,
-            Executor handlerExecutor
+            TextMessageClientFactory networks,
+            Executor commandExecutor
     ) {
         WorkerRunController controller = new WorkerRunController(
                 preparation,
-                command -> java.util.Optional.empty(),
                 networks,
-                handlerExecutor
+                command -> java.util.Optional.empty(),
+                commandExecutor
         );
         controllers.add(controller);
         return controller;
@@ -412,7 +413,7 @@ class WorkerRunControllerTest {
     }
 
     private static final class FakeNetworkFactory
-            implements WorkerRunController.NetworkClientFactory {
+            implements TextMessageClientFactory {
 
         private final List<FakeTextMessageClient> clients =
                 new java.util.concurrent.CopyOnWriteArrayList<>();

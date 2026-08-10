@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
 
 public final class AndroidWorker implements WorkerLifecycle {
 
@@ -151,7 +150,7 @@ public final class AndroidWorker implements WorkerLifecycle {
         private final String workerGroupId;
         private AndroidWorkerProperties workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private Executor handlerExecutor;
+        private AndroidWorkerHostResources hostResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -201,13 +200,13 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder handlerExecutor(Executor value) {
+        public Builder hostResources(AndroidWorkerHostResources value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "handlerExecutor must be present"
+                        "hostResources must be present"
                 );
             }
-            handlerExecutor = value;
+            hostResources = value;
             return this;
         }
 
@@ -237,9 +236,9 @@ public final class AndroidWorker implements WorkerLifecycle {
                         "eventDefinitions must not be empty"
                 );
             }
-            if (handlerExecutor == null) {
+            if (hostResources == null) {
                 throw new IllegalStateException(
-                        "handlerExecutor must be configured"
+                        "hostResources must be configured"
                 );
             }
             AndroidClientWorkerKeyStore clientKeyStore =
@@ -278,24 +277,24 @@ public final class AndroidWorker implements WorkerLifecycle {
             Duration resolvedRequestTimeout = requestTimeout;
             TextMessageReconnectPolicy resolvedReconnectPolicy =
                     reconnectPolicy;
+            WorkerCommandDispatcher dispatcher =
+                    new WorkerCommandDispatcher(definitions);
             WorkerRunController worker = new WorkerRunController(
                     new RegisteredWorkerPreparation(
                             workerGroupId,
                             WorkerTransportType.WEBSOCKET,
                             identityStore,
                             completeProperties,
-                            new AndroidOkHttpWorkerControlClient(
-                                    runtimeApiBaseUrl
-                            ),
+                            hostResources.controlClient(runtimeApiBaseUrl),
                             resolvedRequestTimeout
                     ),
-                    new WorkerCommandDispatcher(definitions),
-                    endpointUri -> new AndroidOkHttpTextWebSocketClient(
+                    endpointUri -> hostResources.textClient(
                             endpointUri,
                             resolvedRequestTimeout,
                             resolvedReconnectPolicy
                     ),
-                    handlerExecutor
+                    dispatcher,
+                    hostResources.commandExecutor()
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()

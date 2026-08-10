@@ -1,4 +1,4 @@
-package com.xa.mass.transport.client.okhttp;
+package com.xa.mass.worker.javase;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -17,23 +17,27 @@ import java.util.concurrent.TimeUnit;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
+import okhttp3.OkHttpClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class OkHttpWorkerControlClientTest {
+class JavaOkHttpWorkerControlClientTest {
 
     private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
     private MockWebServer server;
-    private OkHttpWorkerControlClient client;
+    private OkHttpClient http;
+    private JavaOkHttpWorkerControlClient client;
 
     @BeforeEach
     void setUp() throws IOException {
         server = new MockWebServer();
         server.start();
-        client = new OkHttpWorkerControlClient(
+        http = new OkHttpClient();
+        client = new JavaOkHttpWorkerControlClient(
+                http,
                 URI.create(server.url("/").toString())
         );
     }
@@ -41,6 +45,9 @@ class OkHttpWorkerControlClientTest {
     @AfterEach
     void tearDown() throws IOException {
         client.close();
+        http.dispatcher().cancelAll();
+        http.connectionPool().evictAll();
+        http.dispatcher().executorService().shutdownNow();
         server.close();
     }
 

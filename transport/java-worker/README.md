@@ -1,51 +1,51 @@
 # XA Mass Java Worker
 
-`transport:java-worker` is the Java 11 Worker assembly and concrete Java
-network implementation module for
-[`transport:worker-core`](../worker-core/README.md).
+`transport:java-worker` is the Java 11 Worker assembly and Java networking
+implementation for [`transport:worker-core`](../worker-core/README.md).
 
 It provides:
 
 ```text
 JavaWorker
-  -> RegisteredWorkerPreparation + WorkerRunController
-  -> explicit WEBSOCKET or SOCKET selection
+  -> RegisteredWorkerPreparation
+  -> WorkerCommandDispatcher
+  -> WorkerRunController
 
 JavaWorkerManager
   -> one fixed WorkerGroup replica set
-  -> explicit group desired-state reconciliation
+  -> explicit desired-state reconciliation
 
 JavaWorkerHostResources
-  -> process-scoped shared control/Handler resource bundle
-
-OkHttpWorkerPointClient
-  -> target Worker poll/result HTTP
-
-OkHttpTextWebSocketClient
-  -> text WebSocket connection and bounded fixed reconnect
-
-OkHttpWorkerControlClient
-  -> Worker Register and Endpoint Bind HTTP
-
-JdkLineSocketClient
-  -> line-oriented TCP connection and bounded fixed reconnect
+  -> shared OkHttp infrastructure
+  -> shared WebSocket reconnect scheduler
+  -> bounded line-Socket execution pool
+  -> bounded Control pool
+  -> fixed zero-buffer Command pool
 ```
 
-Core still owns `PollingWorkerTransport`, the two-state Worker run guard, and
-the one-endpoint text-message runtime.
-This module does not decode commands, construct
-Worker results, or introduce a Worker business-message cache.
+The concrete WebSocket, Control, and line-Socket Clients are internal platform
+implementations. Cross-module callers use `JavaWorker`, or the Core-level
+`TextMessageClientFactory` exposed by Host Resources for low-level composition.
+`OkHttpWorkerPointClient` remains the public Polling client.
 
 ## Worker Assembly
 
 ```java
+JavaWorkerHostResources resources =
+        JavaWorkerHostResources.create(
+                20,
+                8,
+                "xa-java-worker",
+                false
+        );
+
 JavaWorker worker = JavaWorker.builder(
                 URI.create("http://127.0.0.1:18082"),
                 "phone-workers",
                 "stable-installation-key",
                 WorkerTransportType.WEBSOCKET
         )
-        .handlerExecutor(handlerExecutor)
+        .hostResources(resources)
         .identityStore(identityStore)
         .workerProperties(() -> Map.of(
                 "runtime", "java",
@@ -57,60 +57,74 @@ JavaWorker worker = JavaWorker.builder(
         .build();
 
 worker.start();
+worker.close();
+resources.close();
 ```
 
-For standalone construction, `handlerExecutor` is required and Host-owned.
-`JavaWorker.start()` performs one Preparation synchronously on its calling
-thread, while admitted Handlers run on that injected Executor.
-`JavaWorker.close()` never shuts the Executor down. There is no per-Worker
-fallback pool or hidden static executor.
-
 The fixed client key is injected as the reserved
-`workerProperties.clientWorkerKey`; the caller Properties provider may not
-override it. `WorkerIdentityStore` is explicit. Long-lived hosts provide a
-persistent implementation, while finite tests may deliberately use
-`WorkerIdentityStore.noCache()` and rely on Register idempotency for the fixed
-key.
+`workerProperties.clientWorkerKey`; caller Properties may not override it.
+Long-lived Hosts supply a persistent `WorkerIdentityStore`. Finite tests may
+explicitly use `WorkerIdentityStore.noCache()` and rely on Register
+idempotency for the fixed key.
 
-`WorkerTransportType.WEBSOCKET` selects `OkHttpTextWebSocketClient`, while
-`WorkerTransportType.SOCKET` selects `JdkLineSocketClient`. `POLLING` is
-rejected because its request-response lifecycle is assembled separately.
+`WEBSOCKET` selects the internal OkHttp text Client and `SOCKET` selects the
+internal UTF-8 line Client. `POLLING` is rejected because Polling remains a
+separate request-response assembly.
 
-`JavaWorker` implements Core's `WorkerLifecycle`. Its builder composes
-`RegisteredWorkerPreparation` with one `WorkerRunController`: an accepted
-`start()` synchronously enters `RUNNING`, registers and saves a missing Worker
-ID, performs Endpoint Bind, starts one reconnecting Client, and returns.
-Temporary
-disconnects reuse the same URI and do not repeat HTTP Bind. Exhausting the
-Client reconnect budget ends the run in `STOPPED`; only a later explicit
-`start()` reloads Properties and performs one Preparation again. A failed
-Register or Bind also ends that attempt without a Core retry. `stop()`
-preserves identity and discards any result produced while its in-flight Handler
-finishes. `JavaWorker` exposes no connection-state query: reconnect remains a
-private Client mechanism, while its public snapshot reports only the Worker run
-state and prepared identity/Endpoint metadata.
+`start()` synchronously performs one Preparation on its caller's thread:
+
+```text
+load Properties
+-> recover or Register workerId
+-> Endpoint Bind
+-> install TextMessageWorkerTransport
+-> return while the concrete Client connects asynchronously
+```
+
+Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns the
+Worker to `STOPPED`; only an explicit later `start()` performs another Bind.
+Register or Bind failure also ends that single attempt. The Worker does not
+cache Endpoint URIs, Commands, or Results.
+
+## Host Resources
+
+One Java process should create one `JavaWorkerHostResources` for its total
+Worker capacity and share it across Workers and Group Managers. The arguments
+are:
+
+```text
+workerCapacity
+maxConcurrentCommands
+threadNamePrefix
+daemonThreads
+```
+
+`workerCapacity` sizes the blocking line-Socket pool and bounds the input to
+the Control pool, whose concurrency is capped at four. WebSocket connection
+state and reconnect timers share one scheduler. All WebSocket and Control
+clients borrow one OkHttp Dispatcher and ConnectionPool.
+
+The Command pool has exactly `maxConcurrentCommands` threads and a
+`SynchronousQueue`. When all slots are occupied, a new Command is rejected
+immediately and its Transport returns a correlated `1500`; it is never queued.
+With concurrency above one, shared Definitions and Handlers must be
+thread-safe.
+
+Closing a Worker closes only its current Client and Preparation. It does not
+close shared Host resources or interrupt other Workers. The Host must close
+all Workers and Managers before closing `JavaWorkerHostResources`.
 
 ## Managed Java Host
 
-`JavaWorkerManager` runs a fixed replica set for exactly one WorkerGroup.
-Capacity, transport, request timeout, reconnect policy, and Definition/Handler
-instances are group-wide; Identity, Properties, and `clientWorkerKey` remain
-replica-specific:
+`JavaWorkerManager` runs a fixed replica set for exactly one WorkerGroup:
 
 ```java
-JavaWorkerHostResources hostResources =
-        JavaWorkerHostResources.create(
-        totalReplicaCount,
-        "xa-java-worker",
-        false
-);
-
 JavaWorkerManager manager = JavaWorkerManager.builder(
                 runtimeApiBaseUrl,
                 "phone-workers",
                 WorkerTransportType.WEBSOCKET
         )
-        .hostResources(hostResources)
+        .hostResources(resources)
         .eventDefinitions(eventDefinitions)
         .replica("installation-1", identityStore1, properties1)
         .replica("installation-2", identityStore2, properties2)
@@ -120,44 +134,16 @@ manager.start();
 manager.reconcile();
 manager.stop();
 manager.close();
-hostResources.close();
 ```
 
-The Builder requires at least one replica and rejects duplicate
-`clientWorkerKey` values. Building freezes the topology; there is no runtime
-register, unregister, keyed start/stop, or dynamic scaling API. Adding or
-removing capacity requires rebuilding from configuration and restarting the
-Host process.
+The Builder requires a non-empty replica set and unique client keys. Topology
+is immutable after build. `start()` and `reconcile()` submit at most one
+synchronous Worker start per stopped replica to the shared Control pool.
+Endpoint termination does not schedule restart; a later explicit
+`reconcile()` or `start()` is required. Managers never close the borrowed Host
+resources.
 
-One Java process creates one `JavaWorkerHostResources` using its total replica
-count and shares it across all of its Group Managers. Managers schedule the
-synchronous Worker starts on its Control pool; Workers borrow its Handler
-executor. Control concurrency is bounded at four, and Handler concurrency is
-bounded by total replica count and available processors. A
-Manager closes its Workers in reverse replica order but never closes the
-borrowed resources; the process closes all Managers first and the Host
-resources last.
-
-`start` and `reconcile` update one private group-level desired state and submit
-at most one Control task for each stopped replica, so Manager startup remains
-non-blocking. `stop` prevents queued starts and stops active replicas.
-`reconcile()` later compares intent with each Worker's actual
-`STOPPED/RUNNING` snapshot. A terminal replica remains
-`STOPPED` until the Host explicitly invokes `reconcile()` or `start()` again.
-The Manager has no timer, Worker listener, connection query, aggregate Worker
-state, or per-replica lifecycle controls. `snapshot(key)` and
-`snapshots()` expose only the underlying Worker lifecycle snapshots.
-
-## Lower-level Composition
-
-Callers may still compose concrete Clients with `WorkerRunController` or
-`PollingWorkerTransport` for custom lifecycle policy. Concrete Clients expose
-only Core interfaces and JDK types. They own URL/request handling, sockets,
-stale callback suppression, stable-window accounting, bounded fixed reconnect,
-and their existing connection execution lanes. They do not
-cache offline business messages, and successful `send` is not an application
-ACK. They expose open/message/endpoint-terminal callbacks to Runtime, but no
-reconnect event or physical connection query.
+## Verification
 
 ```text
 ./gradlew :transport:java-worker:test

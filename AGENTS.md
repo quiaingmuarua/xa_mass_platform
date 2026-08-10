@@ -40,10 +40,11 @@ Status: current repository handoff.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
   Polling, `WorkerPreparation`, the two-state `WorkerRunController`, single-run
-  text-message runtime, Host-injected Handler execution, and network
+  text-message Transport, synchronous Command dispatch, and network
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
-  Properties provider, and platform-neutral Register/Bind control contracts.
-  The Client owns concrete networking and transparent reconnect, the Runtime
+  Properties provider, platform-neutral Register/Bind control contracts,
+  Client factory, and threadless reconnect state.
+  The Client owns concrete networking and transparent reconnect, the Transport
   owns Bind/Command/Result protocol, and `WorkerRunController` owns only the
   `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
   or Scheduler and contains no concrete network or platform implementation.
@@ -139,23 +140,26 @@ tag.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerRunController` owns one two-state run,
   one synchronous Preparation call on the Host's calling thread, the current
-  runtime, cooperative stop, and local lifecycle observation. Host code must
-  inject Handler execution; Core must not create or shut down threads,
+  Transport, cooperative stop, and local lifecycle observation. Host code must
+  inject a non-owning Command `Executor`; Core must not create or shut down threads,
   Executors, or Schedulers. Lifecycle listeners are synchronous, lightweight level
   observations invoked outside the lifecycle state lock; `snapshot()` is
   authoritative and notifications may repeat. `WorkerRunController` does not
-  accept or route Worker commands. The single-run runtime owns inbound WorkerCommand
-  decoding and final admission, per-Worker serialized execution on the shared
-  Handler pool, connection Bind, one-shot WorkerResult send, and exact-once
-  terminal notification to `WorkerRunController`. A terminal Runtime drops a
-  queued command; a Handler already running may finish but its result is
-  discarded. It exposes no Bind, busy, reconnect,
-  Handler, or exit-in-progress state to the lifecycle layer.
+  accept or route Worker commands. The single-run Transport owns inbound
+  WorkerCommand decoding, in-flight message-ID admission, connection Bind,
+  one-shot WorkerResult send, and exact-once terminal notification to
+  `WorkerRunController`. It submits distinct Commands to a Host-provided
+  zero-buffer `Executor`, then invokes the synchronous `WorkerCommandExecutor`
+  on that execution thread. Capacity rejection returns an
+  immediate `1500`, with no local Command queue or Result cache. A terminal
+  Transport waits for accepted executions, discards their late Results, and
+  exposes no Bind, execution, reconnect, or exit-in-progress state to the
+  lifecycle layer.
   `TextMessageClient` alone owns transient
-  disconnect/failure handling and reconnect scheduling; its Runtime listener
+  disconnect/failure handling and reconnect scheduling; its Transport listener
   exposes only open, inbound message, and exact-once endpoint termination.
   It exposes no physical connection query or reconnect event; `send()` is the
-  Runtime's only evidence that the current frame was accepted for sending.
+  Transport's only evidence that the current frame was accepted for sending.
   Preparation failure or endpoint termination ends the current Worker run;
   Core neither retries Preparation nor schedules another start. Only a later
   explicit Host `start()` may prepare another run. `WorkerLifecycle`, `JavaWorker`, and
@@ -166,9 +170,11 @@ tag.
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
-  Standalone `JavaWorker.Builder.build()` requires Host-owned
-  Handler `Executor`; `start()` performs Preparation synchronously and closing
-  a JavaWorker must not shut the Executor down. `JavaWorkerManager.Builder`
+  Standalone `JavaWorker.Builder.build()` requires process-owned
+  `JavaWorkerHostResources`; `start()` performs Preparation synchronously and
+  closing a JavaWorker must not shut shared resources down. Host Resources own
+  one OkHttp base client, one WebSocket scheduler, bounded Socket and Control
+  pools, and a fixed zero-buffer Command pool. `JavaWorkerManager.Builder`
   binds one WorkerGroup's shared
   capacity and a fixed, non-empty set of unique `clientWorkerKey` replicas at
   construction; it provides no runtime registration, keyed lifecycle, or
@@ -179,18 +185,21 @@ tag.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
   but not on `transport/java-worker`. Its network Client serializes connection
   state, generation filtering, callbacks, stable-window accounting, and
-  bounded fixed reconnect scheduling on a
-  dedicated HandlerThread. `AndroidWorker` owns application-scoped Identity,
+  bounded fixed reconnect scheduling through a per-Client Handler on a shared
+  Host-owned HandlerThread. `AndroidWorker` owns application-scoped Identity,
   concrete Android Client assembly, and Application Context adaptation; Core
   owns Register/Bind preparation and the unified Worker Run Controller. Android Worker
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.
-  `AndroidWorker.Builder` requires a Host-owned Handler `Executor`; its
-  synchronous `start()` must not run on the Main Looper, and closing an
-  AndroidWorker must not shut the Executor down. Android hosts own process
-  lifetime, asynchronous Control scheduling, Handler resource lifetime,
-  permissions beyond INTERNET, static handler assembly, and backup policy.
+  `AndroidWorker.Builder` requires Host-owned
+  `AndroidWorkerHostResources`; its synchronous `start()` must not run on the
+  Main Looper, and closing an AndroidWorker must not shut shared resources
+  down. Android Host Resources own shared OkHttp, one network HandlerThread,
+  bounded Control execution, and a fixed zero-buffer Command pool. Android
+  hosts own process lifetime, asynchronous Control scheduling, resource
+  lifetime, permissions beyond INTERNET, static handler assembly, and backup
+  policy.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may

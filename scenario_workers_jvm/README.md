@@ -80,10 +80,12 @@ build one fixed JavaWorkerManager replica set per configured WorkerGroup
 
 The aggregate creates one `JavaWorkerHostResources` bundle and shares it across
 one `JavaWorkerManager` per configured WorkerGroup. Each Manager owns only its
-group's fixed Worker replicas. The control pool is
-`max(1, min(workerCount, 4))`, the Handler pool is
-`max(1, min(workerCount, max(2, availableProcessors)))`. These daemon threads are aggregate-scoped;
-there is no Core or per-Worker control/Handler thread.
+group's fixed Worker replicas. The Control pool is capped at four threads, all
+WebSocket Clients share one network scheduler and OkHttp infrastructure, and
+the zero-buffer Command pool has eight execution slots. Blocking Socket
+capacity is sized for all 20 Workers although Scenario selects WebSocket.
+These daemon resources are aggregate-scoped; there is no Core or per-Worker
+Control, network, or Command thread.
 
 Malformed local assembly, duplicate sandbox use, or synchronous Worker
 construction/start submission failure closes all local transports, releases
@@ -115,8 +117,8 @@ Definition selection; Scenario Workers never compare or update the two values.
 
 The module depends internally on Worker Core, `JavaWorker`, and the transport
 wire contract. `JavaWorker` injects each configured client key into the final
-Properties and delegates one Preparation plus connection supervision to the
-shared Core runtime; transparent reconnect remains inside the concrete Client
+Properties and delegates one Preparation plus text protocol handling to the
+shared Core Transport; transparent reconnect remains inside the concrete Client
 and Index update uses a private HTTP client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
 Redis, scores, or Pacers. The Worker does not configure or know an

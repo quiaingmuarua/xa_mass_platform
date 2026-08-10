@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.transport.client.TextMessageClientFactory;
+import com.xa.mass.transport.client.TextMessageReconnectState;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -20,10 +22,12 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.concurrent.Executor;
 import java.util.stream.Stream;
 
 class WorkerCoreArchitectureBoundaryTest {
@@ -70,11 +74,13 @@ class WorkerCoreArchitectureBoundaryTest {
     }
 
     @Test
-    void networkClientContractsDoNotExposeProtocolOrPlatformTypes() {
+    void networkClientContractsDoNotExposeProtocolOrPlatformTypes()
+            throws Exception {
         for (Class<?> type : new Class<?>[]{
                 WorkerPointClient.class,
                 TextMessageClient.class,
-                TextMessageClient.Listener.class
+                TextMessageClient.Listener.class,
+                TextMessageClientFactory.class
         }) {
             for (Method method : type.getDeclaredMethods()) {
                 String signature = method.toGenericString();
@@ -128,6 +134,26 @@ class WorkerCoreArchitectureBoundaryTest {
         assertTrue(hasMethod(
                 TextMessageClient.Listener.class,
                 "onEndpointTerminated"
+        ));
+        assertTrue(Modifier.isInterface(
+                TextMessageClientFactory.class.getModifiers()
+        ));
+    }
+
+    @Test
+    void coreOwnsNoConnectionRegistryOrNetworkExecutionResources()
+            throws Exception {
+        Path sourceRoot = Path.of("").toAbsolutePath()
+                .resolve("src/main/java");
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/transport/client/"
+                        + "TextMessageClientManager.java"
+        )));
+        assertTrue(Modifier.isFinal(
+                TextMessageReconnectState.class.getModifiers()
+        ));
+        assertFalse(AutoCloseable.class.isAssignableFrom(
+                TextMessageReconnectState.class
         ));
     }
 
@@ -243,9 +269,9 @@ class WorkerCoreArchitectureBoundaryTest {
         assertConstructor(
                 WorkerRunController.class,
                 WorkerPreparation.class,
+                TextMessageClientFactory.class,
                 WorkerCommandExecutor.class,
-                WorkerRunController.NetworkClientFactory.class,
-                java.util.concurrent.Executor.class
+                Executor.class
         );
 
         for (Class<?> transport : new Class<?>[]{
@@ -281,16 +307,22 @@ class WorkerCoreArchitectureBoundaryTest {
 
         Path sourceRoot = Path.of("").toAbsolutePath()
                 .resolve("src/main/java");
-        Path runtimeFile = sourceRoot.resolve(
-                "com/xa/mass/worker/runtime/TextMessageWorkerRuntime.java"
+        Path transportFile = sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/TextMessageWorkerTransport.java"
         );
-        String runtime = Files.readString(runtimeFile);
+        String transport = Files.readString(transportFile);
         for (String forbidden : new String[]{
                 "WorkerIdentityStore",
                 "WorkerPropertiesProvider",
                 "WorkerControlClient",
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
+                "ExecutorService",
+                "ThreadPoolExecutor",
+                "ScheduledExecutor",
+                "SynchronousQueue",
+                "BlockingQueue",
+                "Future",
                 "WorkerRetryPolicy",
                 "FutureTask",
                 "commandThread",
@@ -300,14 +332,21 @@ class WorkerCoreArchitectureBoundaryTest {
                 "Executors.new",
                 "shutdown"
         }) {
-            assertFalse(runtime.contains(forbidden), forbidden);
+            assertFalse(transport.contains(forbidden), forbidden);
         }
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/TextMessageWorkerRuntime.java"
+        )));
         assertFalse(Files.exists(sourceRoot.resolve(
                 "com/xa/mass/worker/transport/connection/"
                         + "TextMessageWorker" + "Transport.java"
         )));
         assertFalse(Files.exists(sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/WorkerResultSlot.java"
+        )));
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/execution/"
+                        + "AsyncWorkerCommandExecutor.java"
         )));
 
         Path controllerFile = sourceRoot.resolve(

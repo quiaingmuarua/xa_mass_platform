@@ -1,24 +1,21 @@
-package com.xa.mass.transport.client;
+package com.xa.mass.worker.javase;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
-import com.xa.mass.worker.javase.JavaWorkerManager;
 
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
 
-class ConcreteWorkerClientArchitectureTest {
+class JavaWorkerArchitectureTest {
 
     @Test
     void moduleContainsJavaAssemblyAndJavaElevenNetworkImplementations()
@@ -47,7 +44,6 @@ class ConcreteWorkerClientArchitectureTest {
                 "class PollingWorkerTransport",
                 "WorkerResult",
                 "WorkerConnectionHello",
-                "WorkerCommandExecutor",
                 "android.",
                 "androidx.",
                 "server_jvm",
@@ -65,25 +61,18 @@ class ConcreteWorkerClientArchitectureTest {
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
-        assertTrue(assembly.contains(
-                "public Builder handlerExecutor("
-        ));
+        assertTrue(assembly.contains("public Builder hostResources("));
         assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
-        assertTrue(source.contains("new JdkLineSocketClient("));
+        assertTrue(source.contains("new JavaLineSocketClient("));
     }
 
     @Test
     void publicNetworkClientApiDoesNotExposeLibraries() {
-        for (Class<?> type : new Class<?>[]{
-                OkHttpWorkerPointClient.class,
-                OkHttpTextWebSocketClient.class,
-                OkHttpWorkerControlClient.class,
-                JdkLineSocketClient.class
-        }) {
+        for (Class<?> type : new Class<?>[]{OkHttpWorkerPointClient.class}) {
             for (Constructor<?> constructor : type.getConstructors()) {
                 assertNarrow(constructor.toGenericString());
             }
@@ -93,27 +82,43 @@ class ConcreteWorkerClientArchitectureTest {
                 }
             }
         }
+        for (Method method : JavaWorkerHostResources.class.getMethods()) {
+            if (method.getDeclaringClass() != Object.class) {
+                String signature = method.toGenericString();
+                assertFalse(signature.contains("okhttp3"), signature);
+                assertFalse(signature.contains("java.net.Socket"), signature);
+            }
+        }
+        assertFalse(Modifier.isPublic(
+                JavaOkHttpTextWebSocketClient.class.getModifiers()
+        ));
+        assertFalse(Modifier.isPublic(
+                JavaOkHttpWorkerControlClient.class.getModifiers()
+        ));
+        assertFalse(Modifier.isPublic(
+                JavaLineSocketClient.class.getModifiers()
+        ));
     }
 
     @Test
-    void clientsLiveUnderConcreteNetworkPackages()
+    void longConnectionClientsAreInternalToJavaAssembly()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String clients = readFiles(
                 project,
                 "src/main/java/com/xa/mass/transport/client/okhttp/"
                         + "OkHttpWorkerPointClient.java",
-                "src/main/java/com/xa/mass/transport/client/okhttp/"
-                        + "OkHttpTextWebSocketClient.java",
-                "src/main/java/com/xa/mass/transport/client/jdk/"
-                        + "JdkLineSocketClient.java"
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaOkHttpTextWebSocketClient.java",
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaLineSocketClient.java"
         );
 
         assertTrue(clients.contains(
                 "package com.xa.mass.transport.client.okhttp;"
         ));
         assertTrue(clients.contains(
-                "package com.xa.mass.transport.client.jdk;"
+                "package com.xa.mass.worker.javase;"
         ));
     }
 
@@ -139,8 +144,10 @@ class ConcreteWorkerClientArchitectureTest {
         assertFalse(manager.contains("new Thread"));
         assertFalse(manager.contains("shutdown"));
         assertTrue(resources.contains("Executors.newFixedThreadPool"));
-        assertFalse(resources.contains("ScheduledExecutorService"));
+        assertTrue(resources.contains("ScheduledExecutorService"));
+        assertTrue(resources.contains("new SynchronousQueue<>()"));
         assertFalse(resources.contains("retryScheduler"));
+        assertFalse(resources.contains("ConcurrentHashMap"));
         assertTrue(manager.contains("JavaWorker.Builder"));
         assertTrue(manager.contains("desiredRunning"));
         assertFalse(manager.contains("class WorkerKey"));

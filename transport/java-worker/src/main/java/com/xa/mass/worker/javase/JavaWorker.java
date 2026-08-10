@@ -1,11 +1,7 @@
 package com.xa.mass.worker.javase;
 
-import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
-import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
@@ -18,7 +14,6 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.Executor;
 
 public final class JavaWorker implements WorkerLifecycle {
 
@@ -84,7 +79,7 @@ public final class JavaWorker implements WorkerLifecycle {
         private WorkerIdentityStore identityStore;
         private WorkerPropertiesProvider workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private Executor handlerExecutor;
+        private JavaWorkerHostResources hostResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -143,13 +138,13 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder handlerExecutor(Executor value) {
+        public Builder hostResources(JavaWorkerHostResources value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "handlerExecutor must be present"
+                        "hostResources must be present"
                 );
             }
-            handlerExecutor = value;
+            hostResources = value;
             return this;
         }
 
@@ -169,9 +164,9 @@ public final class JavaWorker implements WorkerLifecycle {
         }
 
         public JavaWorker build() {
-            if (handlerExecutor == null) {
+            if (hostResources == null) {
                 throw new IllegalStateException(
-                        "handlerExecutor must be configured"
+                        "hostResources must be configured"
                 );
             }
             if (identityStore == null) {
@@ -211,48 +206,28 @@ public final class JavaWorker implements WorkerLifecycle {
             Duration resolvedRequestTimeout = requestTimeout;
             TextMessageReconnectPolicy resolvedReconnectPolicy =
                     reconnectPolicy;
+            WorkerCommandDispatcher dispatcher =
+                    new WorkerCommandDispatcher(definitions);
             WorkerRunController worker = new WorkerRunController(
                     new RegisteredWorkerPreparation(
                             workerGroupId,
                             transportType,
                             identityStore,
                             completeProperties,
-                            new OkHttpWorkerControlClient(
-                                    runtimeApiBaseUrl
-                            ),
+                            hostResources.controlClient(runtimeApiBaseUrl),
                             resolvedRequestTimeout
                     ),
-                    new WorkerCommandDispatcher(definitions),
-                    endpointUri -> createNetworkClient(
+                    hostResources.textClientFactory(
                             transportType,
-                            endpointUri,
                             resolvedRequestTimeout,
                             resolvedReconnectPolicy
                     ),
-                    handlerExecutor
+                    dispatcher,
+                    hostResources.commandExecutor()
             );
             return new JavaWorker(worker);
         }
 
-        private static TextMessageClient createNetworkClient(
-                WorkerTransportType transportType,
-                URI endpointUri,
-                Duration requestTimeout,
-                TextMessageReconnectPolicy reconnectPolicy
-        ) {
-            if (transportType == WorkerTransportType.WEBSOCKET) {
-                return new OkHttpTextWebSocketClient(
-                        endpointUri,
-                        requestTimeout,
-                        reconnectPolicy
-                );
-            }
-            return new JdkLineSocketClient(
-                    endpointUri,
-                    requestTimeout,
-                    reconnectPolicy
-            );
-        }
     }
 
     private static URI requireRuntimeApiBaseUrl(URI value) {

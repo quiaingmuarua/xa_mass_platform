@@ -35,8 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -59,11 +57,15 @@ public class AndroidWorkerTest {
     private MockWebServer server;
     private AndroidWorker worker;
     private AtomicReference<Map<String, Object>> properties;
-    private ExecutorService handlerExecutor;
+    private AndroidWorkerHostResources resources;
 
     @Before
     public void setUp() throws Exception {
-        handlerExecutor = Executors.newSingleThreadExecutor();
+        resources = AndroidWorkerHostResources.create(
+                2,
+                4,
+                "android-worker-test"
+        );
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
                 AndroidWorkerIdentityStore.PREFERENCES,
@@ -84,7 +86,7 @@ public class AndroidWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        handlerExecutor.shutdownNow();
+        resources.close();
         if (server != null) {
             server.close();
         }
@@ -267,7 +269,7 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void builderRequiresExplicitExecutionResources() {
+    public void builderRequiresExplicitHostResources() {
         assertThrows(
                 IllegalStateException.class,
                 () -> AndroidWorker.builder(
@@ -380,7 +382,7 @@ public class AndroidWorkerTest {
                         URI.create(server.url("/").toString()),
                         WORKER_GROUP_ID
                 )
-                .handlerExecutor(handlerExecutor)
+                .hostResources(resources)
                 .workerProperties(provider)
                 .eventDefinitions(List.of(WorkerEventDefinition.of(
                         "TASK",

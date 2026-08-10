@@ -27,8 +27,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import mockwebserver3.MockResponse;
@@ -43,11 +41,16 @@ class JavaWorkerTest {
 
     private MockWebServer server;
     private JavaWorker worker;
-    private ExecutorService handlerExecutor;
+    private JavaWorkerHostResources resources;
 
     @BeforeEach
     void setUp() throws IOException {
-        handlerExecutor = Executors.newSingleThreadExecutor();
+        resources = JavaWorkerHostResources.create(
+                1,
+                4,
+                "java-worker-test",
+                true
+        );
         server = new MockWebServer();
         server.start();
     }
@@ -57,7 +60,7 @@ class JavaWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        handlerExecutor.shutdownNow();
+        resources.close();
         if (server != null) {
             server.close();
         }
@@ -107,7 +110,7 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .handlerExecutor(handlerExecutor)
+                .hostResources(resources)
                 .workerProperties(Map::of)
                 .eventDefinitions(definitions());
 
@@ -115,7 +118,7 @@ class JavaWorkerTest {
     }
 
     @Test
-    void builderRequiresExplicitHandlerExecutor() {
+    void builderRequiresExplicitHostResources() {
         JavaWorker.Builder builder = JavaWorker.builder(
                         URI.create(server.url("/").toString()),
                         "group-1",
@@ -153,7 +156,7 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .handlerExecutor(handlerExecutor)
+                .hostResources(resources)
                 .identityStore(identity)
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
@@ -194,7 +197,7 @@ class JavaWorkerTest {
                             "fixed-installation",
                             WorkerTransportType.SOCKET
                     )
-                    .handlerExecutor(handlerExecutor)
+                    .hostResources(resources)
                     .identityStore(identity)
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())

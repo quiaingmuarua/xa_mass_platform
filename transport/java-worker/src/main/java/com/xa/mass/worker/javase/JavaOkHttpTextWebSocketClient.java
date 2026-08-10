@@ -1,14 +1,15 @@
-package com.xa.mass.transport.client.okhttp;
+package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.transport.client.TextMessageReconnectState;
+
 import java.net.URI;
-import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -16,7 +17,7 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okio.ByteString;
 
-public final class OkHttpTextWebSocketClient
+final class JavaOkHttpTextWebSocketClient
         implements TextMessageClient {
 
     private static final int NORMAL_CLOSE = 1000;
@@ -26,12 +27,10 @@ public final class OkHttpTextWebSocketClient
 
     private final Object lock = new Object();
     private final WebSocketConnector connector;
-    private final Runnable closeConnector;
+    private final ScheduledExecutorService networkExecutor;
     private final URI socketUri;
     private final TextMessageReconnectPolicy reconnectPolicy;
-    private final Duration closeTimeout;
-    private final ScheduledExecutorService connectionExecutor;
-    private volatile Thread connectionThread;
+    private final TextMessageReconnectState reconnectState;
 
     private Listener listener;
     private ConnectionAttempt activeAttempt;
@@ -39,66 +38,47 @@ public final class OkHttpTextWebSocketClient
     private boolean closed;
     private boolean connected;
     private boolean reconnectScheduled;
-    private boolean endpointTerminated;
-    private int unstableAttempts;
+    private boolean endpointNotified;
 
-    public OkHttpTextWebSocketClient(
-            URI socketUri,
-            Duration requestTimeout,
-            TextMessageReconnectPolicy reconnectPolicy
-    ) {
-        this(
-                clientConnector(socketUri, requestTimeout),
-                socketUri,
-                reconnectPolicy,
-                requestTimeout
-        );
-    }
-
-    OkHttpTextWebSocketClient(
-            ConnectorResources resources,
+    JavaOkHttpTextWebSocketClient(
+            OkHttpClient httpClient,
+            ScheduledExecutorService networkExecutor,
             URI socketUri,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
-                resources,
+                (uri, listener) -> Objects.requireNonNull(
+                        httpClient,
+                        "httpClient"
+                ).newWebSocket(
+                        new Request.Builder()
+                                .url(uri.toString())
+                                .build(),
+                        listener
+                ),
+                networkExecutor,
                 socketUri,
-                reconnectPolicy,
-                Duration.ofSeconds(5)
+                reconnectPolicy
         );
     }
 
-    private OkHttpTextWebSocketClient(
-            ConnectorResources resources,
+    JavaOkHttpTextWebSocketClient(
+            WebSocketConnector connector,
+            ScheduledExecutorService networkExecutor,
             URI socketUri,
-            TextMessageReconnectPolicy reconnectPolicy,
-            Duration closeTimeout
+            TextMessageReconnectPolicy reconnectPolicy
     ) {
-        Objects.requireNonNull(resources, "resources");
-        connector = Objects.requireNonNull(
-                resources.connector,
-                "connector"
-        );
-        closeConnector = Objects.requireNonNull(
-                resources.close,
-                "close"
+        this.connector = Objects.requireNonNull(connector, "connector");
+        this.networkExecutor = Objects.requireNonNull(
+                networkExecutor,
+                "networkExecutor"
         );
         this.socketUri = requireWebSocketUri(socketUri);
         this.reconnectPolicy = Objects.requireNonNull(
                 reconnectPolicy,
                 "reconnectPolicy"
         );
-        this.closeTimeout = requirePositive(closeTimeout, "closeTimeout");
-        connectionExecutor = Executors
-                .newSingleThreadScheduledExecutor(runnable -> {
-                    Thread thread = new Thread(
-                            runnable,
-                            "worker-websocket-connection"
-                    );
-                    thread.setDaemon(true);
-                    connectionThread = thread;
-                    return thread;
-                });
+        reconnectState = new TextMessageReconnectState(reconnectPolicy);
     }
 
     @Override
@@ -107,7 +87,7 @@ public final class OkHttpTextWebSocketClient
         synchronized (lock) {
             if (closed) {
                 throw new IllegalStateException(
-                        "OkHttpTextWebSocketClient is closed"
+                        "JavaOkHttpTextWebSocketClient is closed"
                 );
             }
             if (running) {
@@ -115,8 +95,6 @@ public final class OkHttpTextWebSocketClient
             }
             this.listener = listener;
             running = true;
-            endpointTerminated = false;
-            unstableAttempts = 0;
         }
         execute(this::connect);
     }
@@ -124,20 +102,17 @@ public final class OkHttpTextWebSocketClient
     @Override
     public boolean send(String message) {
         Objects.requireNonNull(message, "message");
-        ConnectionAttempt attempt;
         WebSocket socket;
         synchronized (lock) {
-            attempt = activeAttempt;
             if (!running
                     || closed
                     || !connected
-                    || attempt == null
-                    || attempt.socket == null) {
+                    || activeAttempt == null
+                    || activeAttempt.socket == null) {
                 return false;
             }
-            socket = attempt.socket;
+            socket = activeAttempt.socket;
         }
-
         try {
             return socket.send(message);
         } catch (RuntimeException error) {
@@ -148,7 +123,7 @@ public final class OkHttpTextWebSocketClient
     @Override
     public void closeCurrent(CloseReason reason) {
         Objects.requireNonNull(reason, "reason");
-        execute(() -> closeCurrentOnConnectionThread(reason));
+        execute(() -> closeCurrentOnNetworkThread(reason));
     }
 
     @Override
@@ -162,10 +137,10 @@ public final class OkHttpTextWebSocketClient
             running = false;
             connected = false;
             reconnectScheduled = false;
-            endpointTerminated = true;
             attempt = activeAttempt;
             activeAttempt = null;
             listener = null;
+            reconnectState.close();
         }
         if (attempt != null && attempt.socket != null) {
             try {
@@ -174,35 +149,24 @@ public final class OkHttpTextWebSocketClient
                 attempt.socket.cancel();
             }
         }
-        connectionExecutor.shutdownNow();
-        if (Thread.currentThread() != connectionThread) {
-            try {
-                connectionExecutor.awaitTermination(
-                        closeTimeout.toMillis(),
-                        TimeUnit.MILLISECONDS
-                );
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        closeConnector.run();
     }
 
     private void connect() {
         ConnectionAttempt attempt;
         synchronized (lock) {
-            if (!running
-                    || closed
-                    || endpointTerminated
-                    || activeAttempt != null) {
+            if (!running || closed || activeAttempt != null) {
                 return;
             }
-            attempt = new ConnectionAttempt();
+            long generation = reconnectState.beginAttempt();
+            attempt = new ConnectionAttempt(generation);
             activeAttempt = attempt;
+            reconnectScheduled = false;
         }
-
         try {
-            WebSocket socket = connector.connect(socketUri, attempt.listener);
+            WebSocket socket = connector.connect(
+                    socketUri,
+                    attempt.listener
+            );
             synchronized (lock) {
                 if (activeAttempt == attempt && attempt.socket == null) {
                     attempt.socket = socket;
@@ -215,7 +179,7 @@ public final class OkHttpTextWebSocketClient
         }
     }
 
-    private void closeCurrentOnConnectionThread(CloseReason reason) {
+    private void closeCurrentOnNetworkThread(CloseReason reason) {
         ConnectionAttempt attempt;
         synchronized (lock) {
             attempt = activeAttempt;
@@ -223,23 +187,14 @@ public final class OkHttpTextWebSocketClient
                 return;
             }
         }
-        closeSocket(
-                attempt,
-                closeCode(reason),
-                closeMessage(reason)
-        );
-    }
-
-    private void closeSocket(
-            ConnectionAttempt attempt,
-            int code,
-            String reason
-    ) {
         WebSocket socket = attempt.socket;
         if (socket != null) {
             boolean accepted;
             try {
-                accepted = socket.close(code, reason);
+                accepted = socket.close(
+                        closeCode(reason),
+                        closeMessage(reason)
+                );
             } catch (RuntimeException error) {
                 accepted = false;
             }
@@ -253,19 +208,21 @@ public final class OkHttpTextWebSocketClient
     private void opened(ConnectionAttempt attempt, WebSocket socket) {
         Listener callback;
         synchronized (lock) {
-            if (activeAttempt != attempt || !running || closed) {
+            if (activeAttempt != attempt
+                    || !running
+                    || closed
+                    || !reconnectState.opened(attempt.generation)) {
                 socket.cancel();
                 return;
             }
             attempt.socket = socket;
             connected = true;
-            reconnectScheduled = false;
             callback = listener;
         }
         if (callback != null) {
             callback.onOpen();
         }
-        scheduleStableReset(attempt);
+        scheduleStable(attempt);
     }
 
     private void message(ConnectionAttempt attempt, String text) {
@@ -287,97 +244,101 @@ public final class OkHttpTextWebSocketClient
                 return;
             }
         }
-        closeSocket(attempt, UNSUPPORTED_DATA, "Text messages only");
+        WebSocket socket = attempt.socket;
+        if (socket != null) {
+            boolean accepted = socket.close(
+                    UNSUPPORTED_DATA,
+                    "Text messages only"
+            );
+            if (!accepted) {
+                socket.cancel();
+            }
+        }
+        disconnect(attempt);
     }
 
     private void disconnect(ConnectionAttempt attempt) {
         Listener callback;
-        boolean terminated;
+        TextMessageReconnectState.DisconnectAction action;
         synchronized (lock) {
             if (activeAttempt != attempt) {
                 return;
             }
             activeAttempt = null;
             connected = false;
+            action = reconnectState.disconnected(attempt.generation);
             callback = listener;
-            unstableAttempts++;
-            terminated = unstableAttempts
-                    >= reconnectPolicy.maxUnstableAttempts();
-            endpointTerminated = terminated;
+            if (action
+                    == TextMessageReconnectState.DisconnectAction.TERMINATE) {
+                endpointNotified = true;
+            }
         }
-        if (terminated && callback != null) {
-            callback.onEndpointTerminated();
-        }
-        if (!terminated) {
+        if (action
+                == TextMessageReconnectState.DisconnectAction.TERMINATE) {
+            if (callback != null) {
+                callback.onEndpointTerminated();
+            }
+        } else if (action
+                == TextMessageReconnectState.DisconnectAction.RECONNECT) {
             scheduleReconnect();
         }
     }
 
-    private void scheduleStableReset(ConnectionAttempt attempt) {
-        try {
-            connectionExecutor.schedule(
-                    () -> {
-                        synchronized (lock) {
-                            if (running
-                                    && !closed
-                                    && connected
-                                    && activeAttempt == attempt) {
-                                unstableAttempts = 0;
-                            }
-                        }
-                    },
-                    reconnectPolicy.stableConnectionDuration().toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (RejectedExecutionException ignored) {
-            // Terminal close owns executor shutdown.
-        }
+    private void scheduleStable(ConnectionAttempt attempt) {
+        schedule(
+                () -> reconnectState.becameStable(attempt.generation),
+                reconnectPolicy.stableConnectionDuration().toMillis()
+        );
     }
 
     private void scheduleReconnect() {
         synchronized (lock) {
             if (!running
                     || closed
-                    || endpointTerminated
+                    || endpointNotified
                     || reconnectScheduled
                     || activeAttempt != null) {
                 return;
             }
             reconnectScheduled = true;
         }
-        try {
-            connectionExecutor.schedule(
-                    () -> {
-                        synchronized (lock) {
-                            reconnectScheduled = false;
-                            if (!running
-                                    || closed
-                                    || activeAttempt != null) {
-                                return;
-                            }
+        schedule(
+                () -> {
+                    synchronized (lock) {
+                        reconnectScheduled = false;
+                        if (!running || closed || activeAttempt != null) {
+                            return;
                         }
-                        connect();
-                    },
-                    reconnectPolicy.reconnectInterval().toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (RejectedExecutionException ignored) {
-            synchronized (lock) {
-                reconnectScheduled = false;
-            }
-        }
+                    }
+                    connect();
+                },
+                reconnectPolicy.reconnectInterval().toMillis()
+        );
     }
 
     private void execute(Runnable action) {
         try {
-            connectionExecutor.execute(action);
+            networkExecutor.execute(action);
         } catch (RejectedExecutionException ignored) {
-            // Terminal close owns executor shutdown.
+            // Host resource shutdown is terminal for borrowed clients.
+        }
+    }
+
+    private void schedule(Runnable action, long delayMillis) {
+        try {
+            networkExecutor.schedule(
+                    action,
+                    delayMillis,
+                    TimeUnit.MILLISECONDS
+            );
+        } catch (RejectedExecutionException ignored) {
+            // Host resource shutdown is terminal for borrowed clients.
         }
     }
 
     private final class ConnectionAttempt {
 
+        private final long generation;
         private final WebSocketListener listener = new WebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
@@ -427,48 +388,16 @@ public final class OkHttpTextWebSocketClient
         };
 
         private WebSocket socket;
+
+        private ConnectionAttempt(long generation) {
+            this.generation = generation;
+        }
     }
 
     @FunctionalInterface
     interface WebSocketConnector {
 
         WebSocket connect(URI uri, WebSocketListener listener);
-    }
-
-    static final class ConnectorResources {
-
-        private final WebSocketConnector connector;
-        private final Runnable close;
-
-        ConnectorResources(WebSocketConnector connector, Runnable close) {
-            this.connector = connector;
-            this.close = close;
-        }
-    }
-
-    private static ConnectorResources clientConnector(
-            URI socketUri,
-            Duration timeout
-    ) {
-        requireWebSocketUri(socketUri);
-        long millis = requirePositive(timeout, "requestTimeout").toMillis();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(millis, TimeUnit.MILLISECONDS)
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .writeTimeout(millis, TimeUnit.MILLISECONDS)
-                .callTimeout(0, TimeUnit.MILLISECONDS)
-                .build();
-        return new ConnectorResources(
-                (uri, listener) -> client.newWebSocket(
-                        new Request.Builder().url(uri.toString()).build(),
-                        listener
-                ),
-                () -> {
-                    client.dispatcher().cancelAll();
-                    client.connectionPool().evictAll();
-                    client.dispatcher().executorService().shutdownNow();
-                }
-        );
     }
 
     private static int closeCode(CloseReason reason) {
@@ -505,16 +434,6 @@ public final class OkHttpTextWebSocketClient
             throw new IllegalArgumentException(
                     "socketUri must be an absolute WS or WSS URI"
             );
-        }
-        return value;
-    }
-
-    private static Duration requirePositive(Duration value, String name) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
     }

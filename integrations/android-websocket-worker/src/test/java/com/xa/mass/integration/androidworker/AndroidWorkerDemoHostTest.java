@@ -26,8 +26,6 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -53,20 +51,13 @@ public class AndroidWorkerDemoHostTest {
                 new AndroidDemoStateCapability(
                         application,
                         deviceProperties
-                );
+        );
         controlExecutor = new ManualExecutorService();
-        ExecutorService handlerExecutor =
-                Executors.newSingleThreadExecutor();
-        AndroidWorkerDemoResources resources =
-                new AndroidWorkerDemoResources(
-                        controlExecutor,
-                        handlerExecutor
-                );
         worker = new FakeWorker();
         host = new AndroidWorkerDemoHost(
                 worker,
                 capability,
-                resources,
+                controlExecutor,
                 new Handler(Looper.getMainLooper())
         );
     }

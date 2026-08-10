@@ -1,4 +1,4 @@
-package com.xa.mass.transport.client.jdk;
+package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
@@ -17,12 +17,28 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class JdkLineSocketClientTest {
+class JavaLineSocketClientTest {
+
+    private ExecutorService socketExecutor;
+
+    @BeforeEach
+    void setUp() {
+        socketExecutor = Executors.newCachedThreadPool();
+    }
+
+    @AfterEach
+    void tearDown() {
+        socketExecutor.shutdownNow();
+    }
 
     @Test
     void readsLfAndCrLfAndWritesOneLfTerminatedLine()
@@ -35,7 +51,7 @@ class JdkLineSocketClientTest {
                 output
         );
         AtomicInteger connects = new AtomicInteger();
-        AtomicReference<JdkLineSocketClient> reference =
+        AtomicReference<JavaLineSocketClient> reference =
                 new AtomicReference<>();
         RecordingListener listener = new RecordingListener() {
             @Override
@@ -44,7 +60,8 @@ class JdkLineSocketClientTest {
                 assertTrue(reference.get().send("result"));
             }
         };
-        JdkLineSocketClient client = new JdkLineSocketClient(
+        JavaLineSocketClient client = new JavaLineSocketClient(
+                socketExecutor,
                 (uri, timeout) -> {
                     if (connects.getAndIncrement() == 0) {
                         return socket;
@@ -79,7 +96,8 @@ class JdkLineSocketClientTest {
         );
         AtomicInteger connects = new AtomicInteger();
         RecordingListener listener = new RecordingListener();
-        JdkLineSocketClient client = new JdkLineSocketClient(
+        JavaLineSocketClient client = new JavaLineSocketClient(
+                socketExecutor,
                 (uri, timeout) -> {
                     if (connects.getAndIncrement() == 0) {
                         throw new IOException("scripted connect failure");
@@ -104,7 +122,8 @@ class JdkLineSocketClientTest {
     void closeCurrentClosesOnlyTheActiveSocketAndReconnects()
             throws Exception {
         RecordingListener listener = new RecordingListener();
-        JdkLineSocketClient client = new JdkLineSocketClient(
+        JavaLineSocketClient client = new JavaLineSocketClient(
+                socketExecutor,
                 (uri, timeout) -> new ScriptedSocket(
                         new BlockingInput(),
                         new ByteArrayOutputStream()
@@ -130,7 +149,8 @@ class JdkLineSocketClientTest {
             throws Exception {
         RecordingListener listener = new RecordingListener();
         AtomicInteger connects = new AtomicInteger();
-        JdkLineSocketClient client = new JdkLineSocketClient(
+        JavaLineSocketClient client = new JavaLineSocketClient(
+                socketExecutor,
                 (uri, timeout) -> {
                     connects.incrementAndGet();
                     throw new IOException("scripted connect failure");
@@ -155,7 +175,8 @@ class JdkLineSocketClientTest {
             throws Exception {
         AtomicInteger connects = new AtomicInteger();
         RecordingListener listener = new RecordingListener();
-        JdkLineSocketClient client = new JdkLineSocketClient(
+        JavaLineSocketClient client = new JavaLineSocketClient(
+                socketExecutor,
                 (uri, timeout) -> {
                     int attempt = connects.getAndIncrement();
                     if (attempt == 0 || attempt >= 2) {

@@ -23,8 +23,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import mockwebserver3.MockResponse;
@@ -113,29 +111,34 @@ public class AndroidWebSocketCompositionTest {
                             Duration.ofMillis(20),
                             Duration.ofMillis(100)
                     );
-            ExecutorService handlerExecutor =
-                    Executors.newSingleThreadExecutor();
+            AndroidWorkerHostResources resources =
+                    AndroidWorkerHostResources.create(
+                            1,
+                            2,
+                            "android-composition-test"
+                    );
+            WorkerCommandDispatcher dispatcher =
+                    new WorkerCommandDispatcher(List.of(
+                            WorkerEventDefinition.of(
+                                    "TASK",
+                                    "test.observe",
+                                    WorkerEventParameterResolvers
+                                            .jsonMap(),
+                                    parameters -> Jsons.toJson(Map.of(
+                                            "observed",
+                                            parameters.get("value")
+                                    ))
+                            )
+                    ));
             WorkerRunController worker = new WorkerRunController(
                             preparation,
-                            new WorkerCommandDispatcher(List.of(
-                                    WorkerEventDefinition.of(
-                                            "TASK",
-                                            "test.observe",
-                                            WorkerEventParameterResolvers
-                                                    .jsonMap(),
-                                            parameters -> Jsons.toJson(Map.of(
-                                                    "observed",
-                                                    parameters.get("value")
-                                            ))
-                                    )
-                            )),
-                            endpoint ->
-                                    new AndroidOkHttpTextWebSocketClient(
-                                            endpoint,
-                                            Duration.ofSeconds(2),
-                                            connectionPolicy
-                                    ),
-                            handlerExecutor
+                             endpoint -> resources.textClient(
+                                    endpoint,
+                                    Duration.ofSeconds(2),
+                                     connectionPolicy
+                             ),
+                            dispatcher,
+                            resources.commandExecutor()
                     );
             try {
                 worker.start();
@@ -145,7 +148,7 @@ public class AndroidWebSocketCompositionTest {
                 ));
             } finally {
                 worker.close();
-                handlerExecutor.shutdownNow();
+                resources.close();
             }
         }
 

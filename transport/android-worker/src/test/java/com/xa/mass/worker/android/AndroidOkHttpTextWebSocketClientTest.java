@@ -1,5 +1,7 @@
 package com.xa.mass.worker.android;
 
+import android.os.HandlerThread;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -22,7 +24,6 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -36,19 +37,17 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
     private final FakeConnector connector = new FakeConnector();
     private final RecordingListener listener = new RecordingListener();
-    private final AtomicBoolean resourcesClosed =
-            new AtomicBoolean();
+    private HandlerThread networkThread;
     private AndroidOkHttpTextWebSocketClient client;
 
     @Before
     public void setUp() {
+        networkThread = new HandlerThread("android-worker-test-network");
+        networkThread.start();
         client = new AndroidOkHttpTextWebSocketClient(
-                new AndroidOkHttpTextWebSocketClient.NetworkResources(
-                        connector,
-                        () -> resourcesClosed.set(true)
-                ),
+                connector,
+                networkThread.getLooper(),
                 URI.create("ws://127.0.0.1:18084/worker"),
-                Duration.ofSeconds(1),
                 reconnectPolicy()
         );
     }
@@ -56,6 +55,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
     @After
     public void tearDown() {
         client.close();
+        networkThread.quitSafely();
     }
 
     @Test
@@ -78,7 +78,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertEquals(1, callbackThreads.size());
         assertTrue(
                 callbackThreads.iterator().next()
-                        .contains("xa-worker-websocket-client")
+                        .contains("android-worker-test-network")
         );
         assertEquals(
                 URI.create("ws://127.0.0.1:18084/worker"),
@@ -188,7 +188,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertFalse(client.send("late"));
         assertEquals(eventCount, listener.events.size());
         assertTrue(connection.socket.cancelled);
-        assertTrue(resourcesClosed.get());
+        assertTrue(networkThread.isAlive());
         assertEquals(0, listener.terminations.get());
     }
 
@@ -232,7 +232,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertTrue("close blocked for " + elapsedMillis + " ms",
                 elapsedMillis < 500);
         assertTrue(connection.socket.cancelled);
-        assertTrue(resourcesClosed.get());
+        assertTrue(networkThread.isAlive());
     }
 
     @Test

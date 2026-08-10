@@ -2,6 +2,7 @@ package com.xa.mass.integration.androidworker;
 
 import android.app.Application;
 import com.xa.mass.worker.android.AndroidWorker;
+import com.xa.mass.worker.android.AndroidWorkerHostResources;
 import java.net.URI;
 import java.time.Duration;
 
@@ -11,6 +12,7 @@ public final class AndroidWorkerDemoApplication extends Application {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
     private AndroidWorkerDemoHost workerHost;
+    private AndroidWorkerHostResources workerResources;
 
     @Override
     public void onCreate() {
@@ -22,8 +24,12 @@ public final class AndroidWorkerDemoApplication extends Application {
         URI runtimeApiBaseUrl = URI.create(
                 getString(R.string.runtime_api_base_url)
         );
-        AndroidWorkerDemoResources resources =
-                new AndroidWorkerDemoResources();
+        AndroidWorkerHostResources resources =
+                AndroidWorkerHostResources.create(
+                        1,
+                        4,
+                        "xa-android-worker-demo"
+                );
         AndroidWorker worker;
         try {
             worker = AndroidWorker.builder(
@@ -33,7 +39,7 @@ public final class AndroidWorkerDemoApplication extends Application {
                     )
                     .workerProperties(deviceProperties)
                     .eventDefinitions(demoCapability.definitions())
-                    .handlerExecutor(resources.handlerExecutor())
+                    .hostResources(resources)
                     .requestTimeout(REQUEST_TIMEOUT)
                     .build();
         } catch (RuntimeException | Error error) {
@@ -45,16 +51,20 @@ public final class AndroidWorkerDemoApplication extends Application {
             host = new AndroidWorkerDemoHost(
                     worker,
                     demoCapability,
-                    resources
+                    resources.controlExecutor()
             );
             host.start();
+            workerResources = resources;
             workerHost = host;
         } catch (RuntimeException | Error error) {
-            if (host == null) {
-                worker.close();
+            try {
+                if (host == null) {
+                    worker.close();
+                } else {
+                    host.close();
+                }
+            } finally {
                 resources.close();
-            } else {
-                host.close();
             }
             throw error;
         }
@@ -71,8 +81,14 @@ public final class AndroidWorkerDemoApplication extends Application {
 
     @Override
     public void onTerminate() {
-        if (workerHost != null) {
-            workerHost.close();
+        try {
+            if (workerHost != null) {
+                workerHost.close();
+            }
+        } finally {
+            if (workerResources != null) {
+                workerResources.close();
+            }
         }
         super.onTerminate();
     }

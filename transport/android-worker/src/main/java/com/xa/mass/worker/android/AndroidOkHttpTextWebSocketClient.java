@@ -1,16 +1,14 @@
 package com.xa.mass.worker.android;
 
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.Looper;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.transport.client.TextMessageReconnectState;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.OkHttpClient;
@@ -21,86 +19,79 @@ import okhttp3.WebSocketListener;
 import okio.ByteString;
 
 /**
- * Android WebSocket connection whose state and callbacks are serialized on a
- * dedicated HandlerThread.
+ * Android WebSocket client using a Host-owned network Looper.
  */
-public final class AndroidOkHttpTextWebSocketClient
+final class AndroidOkHttpTextWebSocketClient
         implements TextMessageClient {
 
-    private static final String THREAD_NAME =
-            "xa-worker-websocket-client";
     private static final int NORMAL_CLOSE = 1000;
     private static final int UNSUPPORTED_DATA = 1003;
     private static final int INVALID_DATA = 1007;
     private static final int INTERNAL_FAILURE = 1011;
 
-    private enum State {
-        NEW,
-        CONNECTING,
-        CONNECTED,
-        RECONNECT_SCHEDULED,
-        TERMINATED,
-        CLOSED
-    }
-
     private final Object lifecycleLock = new Object();
-    private final NetworkResources networkResources;
+    private final WebSocketConnector connector;
+    private final Handler handler;
     private final URI socketUri;
     private final TextMessageReconnectPolicy reconnectPolicy;
+    private final TextMessageReconnectState reconnectState;
     private final AtomicReference<ActiveConnection> activeConnection =
             new AtomicReference<>();
 
     private volatile boolean closeRequested;
-    private volatile State visibleState = State.NEW;
-    private HandlerThread handlerThread;
-    private Handler handler;
     private boolean started;
 
-    // HandlerThread-owned state.
+    // Host network Looper-owned state.
     private Listener listener;
     private ConnectionAttempt currentAttempt;
-    private long nextGeneration;
-    private int unstableAttempts;
-    private Runnable stableResetTask;
+    private boolean reconnectScheduled;
+    private boolean endpointNotified;
+    private Runnable stableTask;
 
-    public AndroidOkHttpTextWebSocketClient(
+    AndroidOkHttpTextWebSocketClient(
+            OkHttpClient httpClient,
+            Looper networkLooper,
             URI socketUri,
-            Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
         this(
-                createNetworkResources(socketUri, requestTimeout),
+                (uri, listener) -> Objects.requireNonNull(
+                        httpClient,
+                        "httpClient"
+                ).newWebSocket(
+                        new Request.Builder()
+                                .url(uri.toString())
+                                .build(),
+                        listener
+                ),
+                networkLooper,
                 socketUri,
-                requestTimeout,
                 reconnectPolicy
         );
     }
 
     AndroidOkHttpTextWebSocketClient(
-            NetworkResources networkResources,
+            WebSocketConnector connector,
+            Looper networkLooper,
             URI socketUri,
-            Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
-        this.networkResources = Objects.requireNonNull(
-                networkResources,
-                "networkResources"
-        );
+        this.connector = Objects.requireNonNull(connector, "connector");
+        handler = new Handler(Objects.requireNonNull(
+                networkLooper,
+                "networkLooper"
+        ));
         this.socketUri = requireWebSocketUri(socketUri);
-        requirePositive(
-                requestTimeout,
-                "requestTimeout"
-        );
         this.reconnectPolicy = Objects.requireNonNull(
                 reconnectPolicy,
                 "reconnectPolicy"
         );
+        reconnectState = new TextMessageReconnectState(reconnectPolicy);
     }
 
     @Override
     public void start(Listener listener) {
         Objects.requireNonNull(listener, "listener");
-        Handler target;
         synchronized (lifecycleLock) {
             if (closeRequested) {
                 throw new IllegalStateException(
@@ -111,12 +102,8 @@ public final class AndroidOkHttpTextWebSocketClient
                 return;
             }
             started = true;
-            handlerThread = new HandlerThread(THREAD_NAME);
-            handlerThread.start();
-            handler = new Handler(handlerThread.getLooper());
-            target = handler;
         }
-        if (!target.post(() -> startOnHandlerThread(listener))) {
+        if (!handler.post(() -> startOnNetworkThread(listener))) {
             close();
             throw new IllegalStateException(
                     "Unable to start Android WebSocket client"
@@ -131,7 +118,6 @@ public final class AndroidOkHttpTextWebSocketClient
         if (closeRequested || active == null) {
             return false;
         }
-
         try {
             return active.socket.send(message);
         } catch (RuntimeException error) {
@@ -143,11 +129,10 @@ public final class AndroidOkHttpTextWebSocketClient
     public void closeCurrent(CloseReason reason) {
         Objects.requireNonNull(reason, "reason");
         ActiveConnection active = activeConnection.get();
-        Handler target = currentHandler();
-        if (active == null || target == null) {
+        if (active == null || closeRequested) {
             return;
         }
-        target.post(() -> closeCurrentOnHandlerThread(
+        handler.post(() -> closeCurrentOnNetworkThread(
                 active.generation,
                 closeCode(reason),
                 closeMessage(reason)
@@ -156,88 +141,70 @@ public final class AndroidOkHttpTextWebSocketClient
 
     @Override
     public void close() {
-        Handler target;
-        HandlerThread thread;
         synchronized (lifecycleLock) {
             if (closeRequested) {
                 return;
             }
             closeRequested = true;
-            target = handler;
-            thread = handlerThread;
-            handler = null;
-            handlerThread = null;
         }
-
-        visibleState = State.CLOSED;
         ActiveConnection active = activeConnection.getAndSet(null);
         if (active != null) {
             active.socket.cancel();
         }
-        networkResources.close.run();
-
-        if (target == null || thread == null) {
-            return;
-        }
-
-        target.removeCallbacksAndMessages(null);
-        if (Looper.myLooper() == thread.getLooper()) {
-            closeOnHandlerThread();
-            thread.quitSafely();
+        handler.removeCallbacksAndMessages(null);
+        if (Looper.myLooper() == handler.getLooper()) {
+            closeOnNetworkThread();
         } else {
-            boolean posted = target.post(() -> {
-                closeOnHandlerThread();
-                thread.quitSafely();
-            });
-            if (!posted) {
-                forceCloseOutsideHandlerThread();
-                thread.quitSafely();
-            }
+            handler.postAtFrontOfQueue(this::closeOnNetworkThread);
         }
     }
 
-    private void startOnHandlerThread(Listener listener) {
+    private void startOnNetworkThread(Listener listener) {
         if (closeRequested) {
             return;
         }
         this.listener = listener;
-        unstableAttempts = 0;
-        connectOnHandlerThread();
+        connectOnNetworkThread();
     }
 
-    private void connectOnHandlerThread() {
+    private void connectOnNetworkThread() {
         if (closeRequested
                 || currentAttempt != null
-                || visibleState == State.TERMINATED
-                || visibleState == State.CLOSED) {
+                || endpointNotified) {
             return;
         }
-        handler.removeCallbacks(reconnectTask);
-        ConnectionAttempt attempt =
-                new ConnectionAttempt(++nextGeneration);
-        currentAttempt = attempt;
-        transitionTo(State.CONNECTING);
+        reconnectScheduled = false;
+        long generation;
         try {
-            WebSocket socket = networkResources.connector.connect(
+            generation = reconnectState.beginAttempt();
+        } catch (IllegalStateException terminal) {
+            return;
+        }
+        ConnectionAttempt attempt = new ConnectionAttempt(generation);
+        currentAttempt = attempt;
+        try {
+            WebSocket socket = connector.connect(
                     socketUri,
-                    new ConnectionListener(attempt.generation)
+                    new ConnectionListener(generation)
             );
-            if (isCurrent(attempt.generation)) {
+            if (isCurrent(generation)) {
                 attempt.socket = socket;
             } else {
                 socket.cancel();
             }
         } catch (RuntimeException error) {
-            disconnectOnHandlerThread(attempt.generation);
+            disconnectOnNetworkThread(generation);
         }
     }
 
-    private void openOnHandlerThread(
+    private void openOnNetworkThread(
             long generation,
             WebSocket socket
     ) {
         ConnectionAttempt attempt = requireCurrent(generation);
-        if (attempt == null || closeRequested) {
+        if (attempt == null
+                || closeRequested
+                || !reconnectState.opened(generation)) {
             socket.cancel();
             return;
         }
@@ -245,18 +212,14 @@ public final class AndroidOkHttpTextWebSocketClient
         activeConnection.set(
                 new ActiveConnection(generation, socket)
         );
-        transitionTo(State.CONNECTED);
         Listener callback = listener;
         if (callback != null) {
             callback.onOpen();
         }
-        scheduleStableReset(generation);
+        scheduleStable(generation);
     }
 
-    private void textOnHandlerThread(
-            long generation,
-            String message
-    ) {
+    private void textOnNetworkThread(long generation, String message) {
         if (!isConnectedGeneration(generation)) {
             return;
         }
@@ -266,18 +229,18 @@ public final class AndroidOkHttpTextWebSocketClient
         }
     }
 
-    private void binaryOnHandlerThread(long generation) {
+    private void binaryOnNetworkThread(long generation) {
         if (!isConnectedGeneration(generation)) {
             return;
         }
-        closeCurrentOnHandlerThread(
+        closeCurrentOnNetworkThread(
                 generation,
                 UNSUPPORTED_DATA,
                 "Text messages only"
         );
     }
 
-    private void closeCurrentOnHandlerThread(
+    private void closeCurrentOnNetworkThread(
             long generation,
             int code,
             String reason
@@ -298,116 +261,80 @@ public final class AndroidOkHttpTextWebSocketClient
                 socket.cancel();
             }
         }
-        disconnectOnHandlerThread(generation);
+        disconnectOnNetworkThread(generation);
     }
 
-    private void disconnectOnHandlerThread(long generation) {
+    private void disconnectOnNetworkThread(long generation) {
         ConnectionAttempt attempt = requireCurrent(generation);
         if (attempt == null) {
             return;
         }
-        cancelStableReset();
+        cancelStable();
         currentAttempt = null;
         ActiveConnection active = activeConnection.get();
         if (active != null && active.generation == generation) {
             activeConnection.compareAndSet(active, null);
         }
 
-        Listener callback = listener;
-        unstableAttempts++;
-        if (unstableAttempts
-                >= reconnectPolicy.maxUnstableAttempts()) {
-            transitionTo(State.TERMINATED);
+        TextMessageReconnectState.DisconnectAction action =
+                reconnectState.disconnected(generation);
+        if (action
+                == TextMessageReconnectState.DisconnectAction.TERMINATE) {
+            endpointNotified = true;
+            Listener callback = listener;
             if (!closeRequested && callback != null) {
                 callback.onEndpointTerminated();
             }
-        } else {
-            scheduleReconnectOnHandlerThread();
+        } else if (action
+                == TextMessageReconnectState.DisconnectAction.RECONNECT) {
+            scheduleReconnect();
         }
     }
 
-    private void scheduleStableReset(long generation) {
-        Handler target = currentHandler();
-        if (target == null) {
-            return;
-        }
-        cancelStableReset();
-        stableResetTask = () -> {
-            if (isConnectedGeneration(generation)) {
-                unstableAttempts = 0;
-            }
-            stableResetTask = null;
+    private void scheduleStable(long generation) {
+        cancelStable();
+        stableTask = () -> {
+            reconnectState.becameStable(generation);
+            stableTask = null;
         };
-        target.postDelayed(
-                stableResetTask,
+        handler.postDelayed(
+                stableTask,
                 reconnectPolicy.stableConnectionDuration().toMillis()
         );
     }
 
-    private void cancelStableReset() {
-        Handler target = currentHandler();
-        if (target != null && stableResetTask != null) {
-            target.removeCallbacks(stableResetTask);
+    private void cancelStable() {
+        if (stableTask != null) {
+            handler.removeCallbacks(stableTask);
+            stableTask = null;
         }
-        stableResetTask = null;
     }
 
-    private void scheduleReconnectOnHandlerThread() {
-        Handler target = currentHandler();
-        if (target == null || closeRequested) {
+    private void scheduleReconnect() {
+        if (closeRequested || reconnectScheduled) {
             return;
         }
-        transitionTo(State.RECONNECT_SCHEDULED);
-        target.removeCallbacks(reconnectTask);
-        target.postDelayed(
-                reconnectTask,
+        reconnectScheduled = true;
+        handler.postDelayed(
+                this::connectOnNetworkThread,
                 reconnectPolicy.reconnectInterval().toMillis()
         );
     }
 
-    private final Runnable reconnectTask = () -> {
-        if (!closeRequested
-                && currentAttempt == null
-                && visibleState == State.RECONNECT_SCHEDULED) {
-            connectOnHandlerThread();
-        }
-    };
-
-    private void closeOnHandlerThread() {
-        Handler target = handler;
-        if (target != null) {
-            target.removeCallbacksAndMessages(null);
-        }
+    private void closeOnNetworkThread() {
+        cancelStable();
+        reconnectState.close();
         ConnectionAttempt attempt = currentAttempt;
-        cancelStableReset();
         currentAttempt = null;
         activeConnection.set(null);
-        stableResetTask = null;
         listener = null;
-        transitionTo(State.CLOSED);
+        reconnectScheduled = false;
         if (attempt != null && attempt.socket != null) {
             try {
-                attempt.socket.close(1000, "Client closed");
+                attempt.socket.close(NORMAL_CLOSE, "Client closed");
             } finally {
                 attempt.socket.cancel();
             }
-        }
-    }
-
-    private void forceCloseOutsideHandlerThread() {
-        ActiveConnection active = activeConnection.getAndSet(null);
-        if (active != null) {
-            active.socket.cancel();
-        }
-        currentAttempt = null;
-        listener = null;
-        visibleState = State.CLOSED;
-    }
-
-    private void postDisconnect(long generation) {
-        Handler target = currentHandler();
-        if (target != null) {
-            target.post(() -> disconnectOnHandlerThread(generation));
         }
     }
 
@@ -415,19 +342,12 @@ public final class AndroidOkHttpTextWebSocketClient
             long generation,
             Runnable callback
     ) {
-        Handler target = currentHandler();
-        if (target != null) {
-            target.post(() -> {
-                if (isCurrent(generation) && !closeRequested) {
+        if (!closeRequested) {
+            handler.post(() -> {
+                if (!closeRequested && isCurrent(generation)) {
                     callback.run();
                 }
             });
-        }
-    }
-
-    private Handler currentHandler() {
-        synchronized (lifecycleLock) {
-            return closeRequested ? null : handler;
         }
     }
 
@@ -441,12 +361,10 @@ public final class AndroidOkHttpTextWebSocketClient
     }
 
     private boolean isConnectedGeneration(long generation) {
+        ActiveConnection active = activeConnection.get();
         return isCurrent(generation)
-                && visibleState == State.CONNECTED;
-    }
-
-    private void transitionTo(State state) {
-        visibleState = state;
+                && active != null
+                && active.generation == generation;
     }
 
     private final class ConnectionListener extends WebSocketListener {
@@ -461,7 +379,7 @@ public final class AndroidOkHttpTextWebSocketClient
         public void onOpen(WebSocket webSocket, Response response) {
             postConnectionCallback(
                     generation,
-                    () -> openOnHandlerThread(generation, webSocket)
+                    () -> openOnNetworkThread(generation, webSocket)
             );
         }
 
@@ -469,18 +387,15 @@ public final class AndroidOkHttpTextWebSocketClient
         public void onMessage(WebSocket webSocket, String text) {
             postConnectionCallback(
                     generation,
-                    () -> textOnHandlerThread(generation, text)
+                    () -> textOnNetworkThread(generation, text)
             );
         }
 
         @Override
-        public void onMessage(
-                WebSocket webSocket,
-                ByteString bytes
-        ) {
+        public void onMessage(WebSocket webSocket, ByteString bytes) {
             postConnectionCallback(
                     generation,
-                    () -> binaryOnHandlerThread(generation)
+                    () -> binaryOnNetworkThread(generation)
             );
         }
 
@@ -493,7 +408,10 @@ public final class AndroidOkHttpTextWebSocketClient
             try {
                 webSocket.close(code, reason);
             } finally {
-                postDisconnect(generation);
+                postConnectionCallback(
+                        generation,
+                        () -> disconnectOnNetworkThread(generation)
+                );
             }
         }
 
@@ -503,7 +421,10 @@ public final class AndroidOkHttpTextWebSocketClient
                 int code,
                 String reason
         ) {
-            postDisconnect(generation);
+            postConnectionCallback(
+                    generation,
+                    () -> disconnectOnNetworkThread(generation)
+            );
         }
 
         @Override
@@ -512,8 +433,17 @@ public final class AndroidOkHttpTextWebSocketClient
                 Throwable error,
                 Response response
         ) {
-            postDisconnect(generation);
+            postConnectionCallback(
+                    generation,
+                    () -> disconnectOnNetworkThread(generation)
+            );
         }
+    }
+
+    @FunctionalInterface
+    interface WebSocketConnector {
+
+        WebSocket connect(URI uri, WebSocketListener listener);
     }
 
     private static final class ConnectionAttempt {
@@ -537,64 +467,6 @@ public final class AndroidOkHttpTextWebSocketClient
         }
     }
 
-    @FunctionalInterface
-    interface WebSocketConnector {
-
-        WebSocket connect(
-                URI uri,
-                WebSocketListener listener
-        );
-    }
-
-    static final class NetworkResources {
-
-        private final WebSocketConnector connector;
-        private final Runnable close;
-
-        NetworkResources(
-                WebSocketConnector connector,
-                Runnable close
-        ) {
-            this.connector = Objects.requireNonNull(
-                    connector,
-                    "connector"
-            );
-            this.close = Objects.requireNonNull(close, "close");
-        }
-    }
-
-    private static NetworkResources createNetworkResources(
-            URI socketUri,
-            Duration timeout
-    ) {
-        requireWebSocketUri(socketUri);
-        long timeoutMillis = requirePositive(
-                timeout,
-                "requestTimeout"
-        ).toMillis();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
-                .callTimeout(0, TimeUnit.MILLISECONDS)
-                .build();
-        return new NetworkResources(
-                (uri, listener) -> client.newWebSocket(
-                        new Request.Builder()
-                                .url(uri.toString())
-                                .build(),
-                        listener
-                ),
-                () -> {
-                    client.dispatcher().cancelAll();
-                    client.connectionPool().evictAll();
-                    client.dispatcher()
-                            .executorService()
-                            .shutdownNow();
-                }
-        );
-    }
-
     private static URI requireWebSocketUri(URI value) {
         if (value == null
                 || value.getHost() == null
@@ -602,21 +474,6 @@ public final class AndroidOkHttpTextWebSocketClient
                 && !"wss".equalsIgnoreCase(value.getScheme()))) {
             throw new IllegalArgumentException(
                     "socketUri must be an absolute WS or WSS URI"
-            );
-        }
-        return value;
-    }
-
-    private static Duration requirePositive(
-            Duration value,
-            String name
-    ) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(
-                    name + " must be positive"
             );
         }
         return value;
@@ -647,5 +504,4 @@ public final class AndroidOkHttpTextWebSocketClient
                 throw new IllegalArgumentException("Unknown close reason");
         }
     }
-
 }

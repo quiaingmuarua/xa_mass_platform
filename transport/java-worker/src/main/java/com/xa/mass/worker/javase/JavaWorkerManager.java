@@ -347,9 +347,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     replica.clientWorkerKey,
                                     transportType
                             )
-                            .handlerExecutor(
-                                    hostResources.handlerExecutor()
-                            )
+                            .hostResources(hostResources)
                             .identityStore(replica.identityStore)
                             .workerProperties(replica.workerProperties)
                             .eventDefinitions(definitions)
