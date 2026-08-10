@@ -50,17 +50,19 @@ kill the process in the background because this demo installs no Service or
 WorkManager and makes no background-lifetime guarantee.
 
 The Application owns one `AndroidWorkerHostResources` configured for one
-Worker and four concurrent Commands. It contains shared OkHttp infrastructure,
-one network `HandlerThread`, a Control executor, and a zero-buffer Command
-pool. The Demo Host borrows only the Control `Executor` to keep Application and
-UI calls non-blocking; `AndroidWorker` borrows the complete resource bundle.
-The Application closes the Worker first and Host Resources last. Core creates
-no background thread of its own.
+Worker and one Command slot. Its application-owned budget is one network
+`HandlerThread`, one Control thread, and at most one Command thread, plus
+OkHttp's shared internal network resources. Each Client owns a `Handler` bound
+to the shared network Looper; that Handler is not another thread. The Demo Host
+borrows only the Control `Executor` to keep Application and UI calls
+non-blocking; `AndroidWorker` borrows the complete resource bundle. The
+Application closes the Worker first and Host Resources last. Core creates no
+background thread of its own.
 
-The Demo capability may execute concurrently up to the configured capacity.
-Its state updates are thread-safe. When all four execution slots are occupied,
-the Worker returns an immediate `1500` for the additional Command rather than
-queueing it.
+The Demo capability executes Commands serially. If its single execution slot
+is occupied, the Worker returns an immediate `1500` for the additional Command
+rather than queueing it. Hosts that require concurrent thread-safe Definitions
+may configure a larger shared Command capacity.
 
 The UI reports only the Worker run state, `RUNNING` or `STOPPED`. WebSocket
 connection and reconnect state remain private to the Android Client and are not

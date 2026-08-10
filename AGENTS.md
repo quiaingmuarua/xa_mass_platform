@@ -43,7 +43,8 @@ Status: current repository handoff.
   text-message Transport, synchronous Command dispatch, and network
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
   Properties provider, platform-neutral Register/Bind control contracts,
-  Client factory, and threadless reconnect state.
+  Client factory, immutable reconnect policy, and the threadless reconnect
+  helper still consumed by Java clients.
   The Client owns concrete networking and transparent reconnect, the Transport
   owns Bind/Command/Result protocol, and `WorkerRunController` owns only the
   `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
@@ -58,8 +59,8 @@ Status: current repository handoff.
   application, Android wrapper, automatic restart scheduler, or business
   handler collection.
 - `transport/android-worker/` is an internal Android Library containing the
-  HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
-  long-lived Identity storage, and the complete `AndroidWorker` assembly. It
+  Host-Looper OkHttp WebSocket Client, Android Register/Bind Client, long-lived
+  Identity storage, and the complete `AndroidWorker` assembly. It
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
   Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
@@ -184,11 +185,13 @@ tag.
   Host explicitly invokes `reconcile()` or `start()`.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
   but not on `transport/java-worker`. Its network Client serializes connection
-  state, generation filtering, callbacks, stable-window accounting, and
-  bounded fixed reconnect scheduling through a per-Client Handler on a shared
-  Host-owned HandlerThread. `AndroidWorker` owns application-scoped Identity,
-  concrete Android Client assembly, and Application Context adaptation; Core
-  owns Register/Bind preparation and the unified Worker Run Controller. Android Worker
+  state, current-attempt identity filtering, callbacks, stable-window
+  accounting, and bounded fixed reconnect scheduling through a per-Client
+  Handler on a shared Host-owned HandlerThread. The Android Client does not
+  delegate its mutable reconnect state to Core. `AndroidWorker` owns
+  application-scoped Identity, concrete Android Client assembly, and
+  Application Context adaptation; Core owns Register/Bind preparation and the
+  unified Worker Run Controller. Android Worker
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.

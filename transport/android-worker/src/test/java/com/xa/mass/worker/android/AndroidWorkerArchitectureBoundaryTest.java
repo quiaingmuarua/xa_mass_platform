@@ -47,9 +47,12 @@ public class AndroidWorkerArchitectureBoundaryTest {
                 "src/main/java/com/xa/mass/worker/android/"
                         + "AndroidOkHttpTextWebSocketClient.java"
         ));
-        assertTrue(networkClient.contains(
+        assertFalse(networkClient.contains(
                 "TextMessageReconnectState"
         ));
+        assertFalse(networkClient.contains("generation"));
+        assertFalse(networkClient.contains("Map<"));
+        assertFalse(networkClient.contains("ConcurrentHashMap"));
         assertFalse(networkClient.contains("HandlerThread"));
         assertFalse(networkClient.contains("new OkHttpClient"));
         assertFalse(networkClient.contains("Executors.new"));

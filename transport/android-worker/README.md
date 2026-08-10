@@ -15,9 +15,11 @@ It owns:
 - Application-Context-specific Worker Properties loading.
 
 Core owns Register/Bind preparation, the two-state run controller, text Worker
-protocol, command dispatch, event definitions, and reconnect attempt state.
-Android does not implement a second Worker lifecycle, persist Endpoint URIs,
-or cache Worker Commands or Results.
+protocol, command dispatch, event definitions, and the immutable reconnect
+policy. The Android WebSocket Client owns its current connection attempt,
+stable-window accounting, and bounded reconnect state. Android does not
+implement a second Worker lifecycle, persist Endpoint URIs, or cache Worker
+Commands or Results.
 
 ## Assembly
 
@@ -25,7 +27,7 @@ or cache Worker Commands or Results.
 AndroidWorkerHostResources resources =
         AndroidWorkerHostResources.create(
                 1,
-                4,
+                1,
                 "xa-android-worker"
         );
 
@@ -69,11 +71,18 @@ maxConcurrentCommands, threadNamePrefix)` creates one process-level bundle:
 - one bounded Control executor;
 - one fixed, zero-buffer Command executor.
 
+The single-Worker example uses one Command slot, so its application-owned
+budget is one network thread, one Control thread, and at most one Command
+thread, plus OkHttp's shared internal network resources. A per-Client
+`Handler` borrows the shared network Looper and is not another thread.
+
 Each WebSocket Client owns a separate `Handler` bound to the shared network
-Looper. That Handler serializes connection state, generation filtering, and
-reconnect timers. OkHttp callbacks only post network events there. Business
-Handlers run only in the Command pool, so a slow capability does not block
-WebSocket callbacks or reconnect.
+Looper. That Handler serializes connection state, current-attempt filtering,
+stable-window accounting, and reconnect timers. A superseded physical
+connection is rejected by `ConnectionAttempt` object identity even when it
+used the same Endpoint URI. OkHttp callbacks only post network events there.
+Business Handlers run only in the Command pool, so a slow capability does not
+block WebSocket callbacks or reconnect.
 
 The Command pool uses `SynchronousQueue`. If all
 `maxConcurrentCommands` slots are occupied, the new Command immediately gets

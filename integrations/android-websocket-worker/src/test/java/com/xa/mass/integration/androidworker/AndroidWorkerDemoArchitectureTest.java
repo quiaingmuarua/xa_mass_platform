@@ -98,6 +98,10 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "AndroidWorkerHostResources.create("
         ));
+        assertTrue(application.replaceAll("\\s+", "").contains(
+                "AndroidWorkerHostResources.create("
+                        + "1,1,\"xa-android-worker-demo\")"
+        ));
         assertTrue(application.contains(".hostResources(resources)"));
         assertTrue(host.contains("controlExecutor.execute("));
         assertTrue(application.contains("workerResources.close()"));

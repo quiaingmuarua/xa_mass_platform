@@ -1,5 +1,6 @@
 package com.xa.mass.worker.android;
 
+import android.os.Handler;
 import android.os.HandlerThread;
 
 import static org.junit.Assert.assertEquals;
@@ -104,11 +105,39 @@ public class AndroidOkHttpTextWebSocketClientTest {
         await(() -> listener.opens.get() == 2);
 
         first.text("stale");
+        first.closed();
+        first.failure(new IOException("late"));
         second.text("current");
         await(() -> listener.events.contains("message:current"));
+        advanceReconnectClock();
 
         assertFalse(listener.events.contains("message:stale"));
         assertEquals(2, listener.opens.get());
+        assertEquals(0, listener.terminations.get());
+        assertEquals(2, connector.connections.size());
+    }
+
+    @Test
+    public void closingWaitsForTerminalCallbackBeforeReconnect()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(() -> listener.opens.get() == 1);
+
+        first.closing();
+        await(() -> first.socket.closeCode == 1000);
+        advanceReconnectClock();
+        assertEquals(1, connector.connections.size());
+
+        first.closed();
+        advanceReconnectClock();
+        awaitConnection(1);
+        first.closed();
+        first.failure(new IOException("duplicate terminal callback"));
+        advanceReconnectClock();
+
+        assertEquals(2, connector.connections.size());
         assertEquals(0, listener.terminations.get());
     }
 
@@ -232,6 +261,35 @@ public class AndroidOkHttpTextWebSocketClientTest {
         assertTrue("close blocked for " + elapsedMillis + " ms",
                 elapsedMillis < 500);
         assertTrue(connection.socket.cancelled);
+        assertTrue(networkThread.isAlive());
+    }
+
+    @Test
+    public void closeBeforeQueuedStartSuppressesConnection()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Handler blocker = new Handler(networkThread.getLooper());
+        blocker.post(() -> {
+            entered.countDown();
+            try {
+                release.await(3, TimeUnit.SECONDS);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+        try {
+            client.start(listener);
+            client.close();
+        } finally {
+            release.countDown();
+        }
+        Thread.sleep(30);
+
+        assertEquals(0, connector.connections.size());
+        assertFalse(client.send("late"));
         assertTrue(networkThread.isAlive());
     }
 
@@ -394,6 +452,10 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         private void failure(Throwable error) {
             listener.onFailure(socket, error, null);
+        }
+
+        private void closing() {
+            listener.onClosing(socket, 1000, "closing");
         }
 
         private void closed() {
