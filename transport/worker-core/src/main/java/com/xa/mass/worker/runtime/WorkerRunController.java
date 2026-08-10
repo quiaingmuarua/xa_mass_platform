@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.Executor;
 
 /**
  * Coordinates one explicitly requested Worker run.
@@ -36,7 +37,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     private final WorkerPreparation preparation;
     private final WorkerCommandExecutor commandExecutor;
     private final NetworkClientFactory networkClientFactory;
-    private final WorkerExecutionResources executionResources;
+    private final Executor handlerExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private Phase phase = Phase.STOPPED;
@@ -48,7 +49,7 @@ public final class WorkerRunController implements WorkerLifecycle {
             WorkerPreparation preparation,
             WorkerCommandExecutor commandExecutor,
             NetworkClientFactory networkClientFactory,
-            WorkerExecutionResources executionResources
+            Executor handlerExecutor
     ) {
         this.preparation = Objects.requireNonNull(
                 preparation,
@@ -62,15 +63,14 @@ public final class WorkerRunController implements WorkerLifecycle {
                 networkClientFactory,
                 "networkClientFactory"
         );
-        this.executionResources = Objects.requireNonNull(
-                executionResources,
-                "executionResources"
+        this.handlerExecutor = Objects.requireNonNull(
+                handlerExecutor,
+                "handlerExecutor"
         );
     }
 
     @Override
     public void start() {
-        Throwable submissionFailure = null;
         synchronized (lock) {
             if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
@@ -84,25 +84,8 @@ public final class WorkerRunController implements WorkerLifecycle {
             preparedWorker = null;
             activeRuntime = null;
             diagnosticMessage = null;
-            try {
-                executionResources.controlExecutor().execute(
-                        this::runStartTask
-                );
-            } catch (Throwable error) {
-                transitionStoppedLocked(
-                        "Worker control executor is unavailable"
-                );
-                submissionFailure = error;
-            }
         }
-        publish();
-        if (submissionFailure != null) {
-            rethrowError(submissionFailure);
-            throw new IllegalStateException(
-                    "Worker control executor is unavailable",
-                    submissionFailure
-            );
-        }
+        runStart();
     }
 
     @Override
@@ -181,11 +164,12 @@ public final class WorkerRunController implements WorkerLifecycle {
         publish(closingListeners, closingSnapshot);
     }
 
-    private void runStartTask() {
+    private void runStart() {
         TextMessageClient client = null;
         TextMessageWorkerRuntime runtime = null;
         boolean installed = false;
         try {
+            publish();
             if (abortStartIfRequested()) {
                 return;
             }
@@ -206,7 +190,7 @@ public final class WorkerRunController implements WorkerLifecycle {
                     client,
                     prepared.workerId(),
                     commandExecutor,
-                    executionResources.handlerExecutor(),
+                    handlerExecutor,
                     this::runtimeTerminated
             );
             client = null;
@@ -217,6 +201,7 @@ public final class WorkerRunController implements WorkerLifecycle {
             }
 
             runtime.start();
+            publish();
         } catch (Throwable error) {
             if (installed) {
                 runtimeTerminated(runtime, error);
@@ -231,8 +216,6 @@ public final class WorkerRunController implements WorkerLifecycle {
                 closeQuietly(runtime);
             }
         }
-
-        publish();
     }
 
     private boolean installRuntime(

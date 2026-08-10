@@ -9,7 +9,6 @@ import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -19,6 +18,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 public final class JavaWorker implements WorkerLifecycle {
 
@@ -84,7 +84,7 @@ public final class JavaWorker implements WorkerLifecycle {
         private WorkerIdentityStore identityStore;
         private WorkerPropertiesProvider workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private WorkerExecutionResources executionResources;
+        private Executor handlerExecutor;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -143,13 +143,13 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder executionResources(WorkerExecutionResources value) {
+        public Builder handlerExecutor(Executor value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "executionResources must be present"
+                        "handlerExecutor must be present"
                 );
             }
-            executionResources = value;
+            handlerExecutor = value;
             return this;
         }
 
@@ -169,17 +169,11 @@ public final class JavaWorker implements WorkerLifecycle {
         }
 
         public JavaWorker build() {
-            if (executionResources == null) {
+            if (handlerExecutor == null) {
                 throw new IllegalStateException(
-                        "executionResources must be configured"
+                        "handlerExecutor must be configured"
                 );
             }
-            return buildWithResources(executionResources);
-        }
-
-        private JavaWorker buildWithResources(
-                WorkerExecutionResources resolvedExecutionResources
-        ) {
             if (identityStore == null) {
                 throw new IllegalStateException(
                         "identityStore must be configured"
@@ -235,7 +229,7 @@ public final class JavaWorker implements WorkerLifecycle {
                             resolvedRequestTimeout,
                             resolvedReconnectPolicy
                     ),
-                    resolvedExecutionResources
+                    handlerExecutor
             );
             return new JavaWorker(worker);
         }

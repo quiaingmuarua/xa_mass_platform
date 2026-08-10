@@ -10,7 +10,6 @@ import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 
@@ -44,18 +43,11 @@ class JavaWorkerTest {
 
     private MockWebServer server;
     private JavaWorker worker;
-    private ExecutorService controlExecutor;
     private ExecutorService handlerExecutor;
-    private WorkerExecutionResources executionResources;
 
     @BeforeEach
     void setUp() throws IOException {
-        controlExecutor = Executors.newSingleThreadExecutor();
         handlerExecutor = Executors.newSingleThreadExecutor();
-        executionResources = WorkerExecutionResources.of(
-                controlExecutor,
-                handlerExecutor
-        );
         server = new MockWebServer();
         server.start();
     }
@@ -66,7 +58,6 @@ class JavaWorkerTest {
             worker.close();
         }
         handlerExecutor.shutdownNow();
-        controlExecutor.shutdownNow();
         if (server != null) {
             server.close();
         }
@@ -116,7 +107,7 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .executionResources(executionResources)
+                .handlerExecutor(handlerExecutor)
                 .workerProperties(Map::of)
                 .eventDefinitions(definitions());
 
@@ -124,7 +115,7 @@ class JavaWorkerTest {
     }
 
     @Test
-    void builderRequiresExplicitExecutionResources() {
+    void builderRequiresExplicitHandlerExecutor() {
         JavaWorker.Builder builder = JavaWorker.builder(
                         URI.create(server.url("/").toString()),
                         "group-1",
@@ -146,10 +137,6 @@ class JavaWorkerTest {
         );
 
         worker.start();
-        await(() -> worker.snapshot().state()
-                == WorkerLifecycle.State.STOPPED
-                && worker.snapshot().diagnosticMessage() != null);
-
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
                 "IllegalArgumentException"
@@ -166,7 +153,7 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .executionResources(executionResources)
+                .handlerExecutor(handlerExecutor)
                 .identityStore(identity)
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
@@ -207,7 +194,7 @@ class JavaWorkerTest {
                             "fixed-installation",
                             WorkerTransportType.SOCKET
                     )
-                    .executionResources(executionResources)
+                    .handlerExecutor(handlerExecutor)
                     .identityStore(identity)
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())

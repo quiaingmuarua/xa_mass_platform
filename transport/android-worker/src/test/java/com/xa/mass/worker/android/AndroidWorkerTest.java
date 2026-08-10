@@ -13,7 +13,6 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -60,18 +59,11 @@ public class AndroidWorkerTest {
     private MockWebServer server;
     private AndroidWorker worker;
     private AtomicReference<Map<String, Object>> properties;
-    private ExecutorService controlExecutor;
     private ExecutorService handlerExecutor;
-    private WorkerExecutionResources executionResources;
 
     @Before
     public void setUp() throws Exception {
-        controlExecutor = Executors.newSingleThreadExecutor();
         handlerExecutor = Executors.newSingleThreadExecutor();
-        executionResources = WorkerExecutionResources.of(
-                controlExecutor,
-                handlerExecutor
-        );
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
                 AndroidWorkerIdentityStore.PREFERENCES,
@@ -93,7 +85,6 @@ public class AndroidWorkerTest {
             worker.close();
         }
         handlerExecutor.shutdownNow();
-        controlExecutor.shutdownNow();
         if (server != null) {
             server.close();
         }
@@ -389,7 +380,7 @@ public class AndroidWorkerTest {
                         URI.create(server.url("/").toString()),
                         WORKER_GROUP_ID
                 )
-                .executionResources(executionResources)
+                .handlerExecutor(handlerExecutor)
                 .workerProperties(provider)
                 .eventDefinitions(List.of(WorkerEventDefinition.of(
                         "TASK",

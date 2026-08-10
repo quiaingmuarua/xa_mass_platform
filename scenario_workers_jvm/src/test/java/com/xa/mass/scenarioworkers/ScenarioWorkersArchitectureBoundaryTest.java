@@ -59,7 +59,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("JavaWorkerManager.builder")
                 .contains("JavaWorkerHostResources.create")
                 .contains(".replica(")
-                .contains("hostResources.executionResources()")
+                .contains(".hostResources(hostResources)")
                 .contains("WorkerIdentityStore")
                 .contains("xa-scenario-worker")
                 .contains("java.net.http.HttpClient")

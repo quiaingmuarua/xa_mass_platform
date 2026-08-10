@@ -87,9 +87,10 @@ there is no Core or per-Worker control/Handler thread.
 
 Malformed local assembly, duplicate sandbox use, or synchronous Worker
 construction/start submission failure closes all local transports, releases
-sandbox locks, and fails aggregate startup. Register, Bind, initial connection,
-and reconnect failure occur asynchronously inside each Worker run; they lead
-that Worker to `STOPPED` and do not close the aggregate. A persisted identity
+sandbox locks, and fails aggregate startup. Group Managers submit each
+Worker's synchronous Register/Bind Preparation to the aggregate Control pool;
+the initial connection remains asynchronous. Preparation or reconnect failure
+leads that Worker to `STOPPED` and does not close the aggregate. A persisted identity
 is never silently replaced; an operator must clear the sandbox explicitly when
 the Server Identity registry has been reset.
 Editing `worker-properties.json` takes effect on the next Scenario start; there

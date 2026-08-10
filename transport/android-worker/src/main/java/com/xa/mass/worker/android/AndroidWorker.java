@@ -7,7 +7,6 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
@@ -18,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 public final class AndroidWorker implements WorkerLifecycle {
 
@@ -58,6 +58,7 @@ public final class AndroidWorker implements WorkerLifecycle {
 
     @Override
     public void start() {
+        boolean leaseAcquired = false;
         synchronized (lock) {
             if (closed) {
                 throw new IllegalStateException("AndroidWorker is closed");
@@ -70,12 +71,19 @@ public final class AndroidWorker implements WorkerLifecycle {
                     );
                 }
                 processLeaseHeld = true;
+                leaseAcquired = true;
             }
-            try {
-                worker.start();
-            } catch (RuntimeException error) {
-                releaseProcessLeaseLocked();
-                throw error;
+        }
+        try {
+            worker.start();
+        } catch (RuntimeException | Error error) {
+            if (leaseAcquired) {
+                releaseProcessLease();
+            }
+            throw error;
+        } finally {
+            if (worker.snapshot().state() == State.STOPPED) {
+                releaseProcessLease();
             }
         }
     }
@@ -143,7 +151,7 @@ public final class AndroidWorker implements WorkerLifecycle {
         private final String workerGroupId;
         private AndroidWorkerProperties workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private WorkerExecutionResources executionResources;
+        private Executor handlerExecutor;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -193,13 +201,13 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder executionResources(WorkerExecutionResources value) {
+        public Builder handlerExecutor(Executor value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "executionResources must be present"
+                        "handlerExecutor must be present"
                 );
             }
-            executionResources = value;
+            handlerExecutor = value;
             return this;
         }
 
@@ -229,9 +237,9 @@ public final class AndroidWorker implements WorkerLifecycle {
                         "eventDefinitions must not be empty"
                 );
             }
-            if (executionResources == null) {
+            if (handlerExecutor == null) {
                 throw new IllegalStateException(
-                        "executionResources must be configured"
+                        "handlerExecutor must be configured"
                 );
             }
             AndroidClientWorkerKeyStore clientKeyStore =
@@ -287,7 +295,7 @@ public final class AndroidWorker implements WorkerLifecycle {
                             resolvedRequestTimeout,
                             resolvedReconnectPolicy
                     ),
-                    executionResources
+                    handlerExecutor
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()

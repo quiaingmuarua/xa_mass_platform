@@ -3,7 +3,6 @@ package com.xa.mass.worker.javase;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -13,10 +12,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Runs one fixed set of replicas for one Java WorkerGroup.
@@ -29,14 +30,21 @@ import java.util.Objects;
 public final class JavaWorkerManager implements AutoCloseable {
 
     private final LinkedHashMap<String, WorkerLifecycle> replicas;
+    private final JavaWorkerHostResources hostResources;
+    private final Set<String> scheduledStarts = new HashSet<>();
 
     private boolean desiredRunning;
     private boolean closed;
 
     private JavaWorkerManager(
-            LinkedHashMap<String, WorkerLifecycle> replicas
+            LinkedHashMap<String, WorkerLifecycle> replicas,
+            JavaWorkerHostResources hostResources
     ) {
         this.replicas = new LinkedHashMap<>(replicas);
+        this.hostResources = Objects.requireNonNull(
+                hostResources,
+                "hostResources"
+        );
     }
 
     public static Builder builder(
@@ -108,12 +116,16 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     private RuntimeException reconcileLocked() {
         RuntimeException failure = null;
-        for (WorkerLifecycle worker : replicas.values()) {
+        for (Map.Entry<String, WorkerLifecycle> replica
+                : replicas.entrySet()) {
+            String clientWorkerKey = replica.getKey();
+            WorkerLifecycle worker = replica.getValue();
             try {
                 WorkerLifecycle.State actual = worker.snapshot().state();
                 if (desiredRunning
-                        && actual == WorkerLifecycle.State.STOPPED) {
-                    worker.start();
+                        && actual == WorkerLifecycle.State.STOPPED
+                        && scheduledStarts.add(clientWorkerKey)) {
+                    submitStart(clientWorkerKey, worker);
                 } else if (!desiredRunning
                         && actual == WorkerLifecycle.State.RUNNING) {
                     worker.stop();
@@ -123,6 +135,47 @@ public final class JavaWorkerManager implements AutoCloseable {
             }
         }
         return failure;
+    }
+
+    private void submitStart(
+            String clientWorkerKey,
+            WorkerLifecycle worker
+    ) {
+        try {
+            hostResources.controlExecutor().execute(
+                    () -> runStart(clientWorkerKey, worker)
+            );
+        } catch (RuntimeException | Error failure) {
+            scheduledStarts.remove(clientWorkerKey);
+            throw failure;
+        }
+    }
+
+    private void runStart(
+            String clientWorkerKey,
+            WorkerLifecycle worker
+    ) {
+        try {
+            synchronized (this) {
+                if (closed || !desiredRunning) {
+                    return;
+                }
+            }
+
+            worker.start();
+
+            boolean stopAfterStart;
+            synchronized (this) {
+                stopAfterStart = closed || !desiredRunning;
+            }
+            if (stopAfterStart) {
+                worker.stop();
+            }
+        } finally {
+            synchronized (this) {
+                scheduledStarts.remove(clientWorkerKey);
+            }
+        }
     }
 
     private WorkerLifecycle requireReplica(String clientWorkerKey) {
@@ -178,7 +231,7 @@ public final class JavaWorkerManager implements AutoCloseable {
         private final LinkedHashMap<String, ReplicaSpec> replicas =
                 new LinkedHashMap<>();
 
-        private WorkerExecutionResources executionResources;
+        private JavaWorkerHostResources hostResources;
         private List<WorkerEventDefinition<?>> definitions;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
@@ -202,12 +255,12 @@ public final class JavaWorkerManager implements AutoCloseable {
             );
         }
 
-        public Builder executionResources(
-                WorkerExecutionResources value
+        public Builder hostResources(
+                JavaWorkerHostResources value
         ) {
-            executionResources = Objects.requireNonNull(
+            hostResources = Objects.requireNonNull(
                     value,
-                    "executionResources"
+                    "hostResources"
             );
             return this;
         }
@@ -268,9 +321,9 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
 
         public JavaWorkerManager build() {
-            if (executionResources == null) {
+            if (hostResources == null) {
                 throw new IllegalStateException(
-                        "executionResources must be configured"
+                        "hostResources must be configured"
                 );
             }
             if (definitions == null || definitions.isEmpty()) {
@@ -294,7 +347,9 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     replica.clientWorkerKey,
                                     transportType
                             )
-                            .executionResources(executionResources)
+                            .handlerExecutor(
+                                    hostResources.handlerExecutor()
+                            )
                             .identityStore(replica.identityStore)
                             .workerProperties(replica.workerProperties)
                             .eventDefinitions(definitions)
@@ -310,7 +365,10 @@ public final class JavaWorkerManager implements AutoCloseable {
                     }
                     assembled.put(replica.clientWorkerKey, worker);
                 }
-                return new JavaWorkerManager(assembled);
+                return new JavaWorkerManager(
+                        assembled,
+                        hostResources
+                );
             } catch (RuntimeException | Error failure) {
                 closeAssembledAndSuppress(assembled, failure);
                 throw failure;

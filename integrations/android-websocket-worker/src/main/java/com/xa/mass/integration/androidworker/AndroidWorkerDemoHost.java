@@ -3,7 +3,6 @@ package com.xa.mass.integration.androidworker;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.xa.mass.worker.android.AndroidWorker;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 import java.net.URI;
@@ -17,9 +16,9 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         void onSnapshot(Snapshot snapshot);
     }
 
-    private final AndroidWorker worker;
+    private final WorkerLifecycle worker;
     private final AndroidDemoStateCapability demoCapability;
-    private final AndroidWorkerExecutionResources executionResources;
+    private final AndroidWorkerDemoResources resources;
     private final Handler mainHandler;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private final WorkerLifecycle.Listener workerListener =
@@ -27,30 +26,33 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     private final AndroidDemoStateCapability.Listener capabilityListener =
             this::publish;
 
+    private final Object lock = new Object();
+    private boolean desiredRunning;
+    private boolean startScheduled;
     private boolean closed;
 
     AndroidWorkerDemoHost(
-            AndroidWorker worker,
+            WorkerLifecycle worker,
             AndroidDemoStateCapability demoCapability,
-            AndroidWorkerExecutionResources executionResources
+            AndroidWorkerDemoResources resources
     ) {
         this(
                 worker,
                 demoCapability,
-                executionResources,
+                resources,
                 new Handler(Looper.getMainLooper())
         );
     }
 
     AndroidWorkerDemoHost(
-            AndroidWorker worker,
+            WorkerLifecycle worker,
             AndroidDemoStateCapability demoCapability,
-            AndroidWorkerExecutionResources executionResources,
+            AndroidWorkerDemoResources resources,
             Handler mainHandler
     ) {
         if (worker == null
                 || demoCapability == null
-                || executionResources == null
+                || resources == null
                 || mainHandler == null) {
             throw new IllegalArgumentException(
                     "Demo host dependencies must be present"
@@ -58,21 +60,41 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         }
         this.worker = worker;
         this.demoCapability = demoCapability;
-        this.executionResources = executionResources;
+        this.resources = resources;
         this.mainHandler = mainHandler;
         worker.addListener(workerListener);
         demoCapability.addListener(capabilityListener);
     }
 
     void start() {
-        requireOpen();
-        worker.start();
+        synchronized (lock) {
+            requireOpenLocked();
+            desiredRunning = true;
+            if (startScheduled
+                    || worker.snapshot().state()
+                    == WorkerLifecycle.State.RUNNING) {
+                return;
+            }
+            startScheduled = true;
+            try {
+                resources.controlExecutor().execute(
+                        this::runStart
+                );
+            } catch (RuntimeException | Error failure) {
+                startScheduled = false;
+                throw failure;
+            }
+        }
     }
 
     void stop() {
-        if (!closed) {
-            worker.stop();
+        synchronized (lock) {
+            if (closed) {
+                return;
+            }
+            desiredRunning = false;
         }
+        worker.stop();
     }
 
     int incrementCounter() {
@@ -116,26 +138,59 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
     @Override
     public void close() {
-        if (closed) {
-            return;
+        synchronized (lock) {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            desiredRunning = false;
         }
-        closed = true;
         try {
             worker.close();
         } finally {
             worker.removeListener(workerListener);
             demoCapability.removeListener(capabilityListener);
-            executionResources.close();
+            resources.close();
             publish();
             listeners.clear();
         }
     }
 
     private void requireOpen() {
+        synchronized (lock) {
+            requireOpenLocked();
+        }
+    }
+
+    private void requireOpenLocked() {
         if (closed) {
             throw new IllegalStateException(
                     "AndroidWorkerDemoHost is closed"
             );
+        }
+    }
+
+    private void runStart() {
+        try {
+            synchronized (lock) {
+                if (closed || !desiredRunning) {
+                    return;
+                }
+            }
+
+            worker.start();
+
+            boolean stopAfterStart;
+            synchronized (lock) {
+                stopAfterStart = closed || !desiredRunning;
+            }
+            if (stopAfterStart) {
+                worker.stop();
+            }
+        } finally {
+            synchronized (lock) {
+                startScheduled = false;
+            }
         }
     }
 

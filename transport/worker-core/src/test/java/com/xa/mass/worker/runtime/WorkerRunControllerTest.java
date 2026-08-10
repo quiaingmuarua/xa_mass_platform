@@ -12,15 +12,13 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,39 +33,50 @@ class WorkerRunControllerTest {
 
     private final List<WorkerRunController> controllers =
             new ArrayList<>();
-    private final TestWorkerExecutionResources executions =
-            new TestWorkerExecutionResources();
+    private final TestHandlerExecutor handler = new TestHandlerExecutor();
+    private final ExecutorService startExecutor =
+            Executors.newCachedThreadPool();
 
     @AfterEach
     void tearDown() {
         for (WorkerRunController controller : controllers) {
             controller.close();
         }
-        executions.close();
+        startExecutor.shutdownNow();
+        handler.close();
     }
 
     @Test
-    void startSubmitsOnePreparationAndDuplicateStartIsIdempotent()
+    void startRunsOnePreparationSynchronouslyAndDuplicateIsIdempotent()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                executions.resources()
+                handler.executor()
         );
+        CountDownLatch runningObserved = new CountDownLatch(1);
+        controller.addListener(snapshot -> {
+            if (snapshot.state() == WorkerLifecycle.State.RUNNING) {
+                runningObserved.countDown();
+            }
+        });
 
-        controller.start();
+        Future<?> starting = startExecutor.submit(controller::start);
+        assertTrue(runningObserved.await(5, TimeUnit.SECONDS));
+        assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
+        assertFalse(starting.isDone());
         assertEquals(
                 WorkerLifecycle.State.RUNNING,
                 controller.snapshot().state()
         );
-        assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
 
         controller.start();
         assertEquals(1, preparation.calls.get());
 
         preparation.release.countDown();
+        starting.get(5, TimeUnit.SECONDS);
         networks.awaitClient(0);
         assertEquals(1, preparation.calls.get());
         assertEquals(WORKER_ID, controller.snapshot().workerId());
@@ -82,11 +91,10 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                executions.resources()
+                handler.executor()
         );
 
         controller.start();
-        awaitStopped(controller);
         assertEquals(1, preparation.calls.get());
         assertTrue(networks.clients.isEmpty());
         assertTrue(controller.snapshot().diagnosticMessage()
@@ -112,7 +120,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                executions.resources()
+                handler.executor()
         );
 
         controller.start();
@@ -128,46 +136,6 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void stopWhilePreparationIsQueuedDropsTheStartAtItsBoundary()
-            throws Exception {
-        ExecutorService control = Executors.newSingleThreadExecutor();
-        ExecutorService handler = Executors.newSingleThreadExecutor();
-        CountDownLatch blockerEntered = new CountDownLatch(1);
-        CountDownLatch blockerRelease = new CountDownLatch(1);
-        control.execute(() -> {
-            blockerEntered.countDown();
-            awaitLatch(blockerRelease);
-        });
-        assertTrue(blockerEntered.await(5, TimeUnit.SECONDS));
-
-        ScriptedPreparation preparation = new ScriptedPreparation(0);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        WorkerRunController controller = controller(
-                preparation,
-                networks,
-                WorkerExecutionResources.of(control, handler)
-        );
-        try {
-            controller.start();
-            controller.stop();
-            assertEquals(
-                    WorkerLifecycle.State.RUNNING,
-                    controller.snapshot().state()
-            );
-
-            blockerRelease.countDown();
-            awaitStopped(controller);
-            assertEquals(0, preparation.calls.get());
-            assertTrue(networks.clients.isEmpty());
-        } finally {
-            blockerRelease.countDown();
-            controller.close();
-            handler.shutdownNow();
-            control.shutdownNow();
-        }
-    }
-
-    @Test
     void stopDuringPreparationDiscardsItsResultWithoutInterruption()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
@@ -175,10 +143,10 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                executions.resources()
+                handler.executor()
         );
 
-        controller.start();
+        Future<?> starting = startExecutor.submit(controller::start);
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
         controller.stop();
         assertEquals(
@@ -187,6 +155,7 @@ class WorkerRunControllerTest {
         );
 
         preparation.release.countDown();
+        starting.get(5, TimeUnit.SECONDS);
         awaitStopped(controller);
         assertTrue(networks.clients.isEmpty());
         assertEquals(1, preparation.calls.get());
@@ -200,12 +169,13 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 networks,
-                executions.resources()
+                handler.executor()
         );
 
-        controller.start();
+        Future<?> starting = startExecutor.submit(controller::start);
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
         controller.close();
+        starting.get(5, TimeUnit.SECONDS);
         awaitStopped(controller);
 
         assertTrue(networks.clients.isEmpty());
@@ -218,7 +188,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks,
-                executions.resources()
+                handler.executor()
         );
 
         controller.start();
@@ -231,28 +201,6 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void rejectedControlSubmissionRestoresStoppedState() {
-        ExecutorService control = Executors.newSingleThreadExecutor();
-        ExecutorService handler = Executors.newSingleThreadExecutor();
-        control.shutdownNow();
-        WorkerRunController controller = controller(
-                new ScriptedPreparation(0),
-                new FakeNetworkFactory(),
-                WorkerExecutionResources.of(control, handler)
-        );
-        try {
-            assertThrows(IllegalStateException.class, controller::start);
-            assertEquals(
-                    WorkerLifecycle.State.STOPPED,
-                    controller.snapshot().state()
-            );
-        } finally {
-            controller.close();
-            handler.shutdownNow();
-        }
-    }
-
-    @Test
     void runtimeStartFailureStopsAndClosesInstalledRuntime()
             throws Exception {
         FakeTextMessageClient client = new FakeTextMessageClient(
@@ -261,11 +209,10 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 endpointUri -> client,
-                executions.resources()
+                handler.executor()
         );
 
         controller.start();
-        awaitStopped(controller);
 
         assertEquals(1, client.closeCalls.get());
         assertTrue(controller.snapshot().diagnosticMessage()
@@ -273,9 +220,7 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void preparationErrorCleansStateBeforeItEscapesExecutor() {
-        ManualExecutorService control = new ManualExecutorService();
-        ExecutorService handler = Executors.newSingleThreadExecutor();
+    void preparationErrorCleansStateBeforeItEscapesStart() {
         WorkerPreparation preparation = new WorkerPreparation() {
             @Override
             public PreparedWorker prepare() {
@@ -289,20 +234,40 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 preparation,
                 new FakeNetworkFactory(),
-                WorkerExecutionResources.of(control, handler)
+                handler.executor()
         );
-        try {
-            controller.start();
-            assertThrows(AssertionError.class, control::runNext);
-            assertEquals(
-                    WorkerLifecycle.State.STOPPED,
-                    controller.snapshot().state()
-            );
-        } finally {
-            controller.close();
-            handler.shutdownNow();
-            control.shutdownNow();
-        }
+
+        assertThrows(AssertionError.class, controller::start);
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                controller.snapshot().state()
+        );
+    }
+
+    @Test
+    void listenerErrorAfterRuntimeInstallCleansStateBeforeItEscapes()
+            throws Exception {
+        FakeNetworkFactory networks = new FakeNetworkFactory();
+        WorkerRunController controller = controller(
+                new ScriptedPreparation(0),
+                networks,
+                handler.executor()
+        );
+        AtomicInteger runningNotifications = new AtomicInteger();
+        controller.addListener(snapshot -> {
+            if (snapshot.state() == WorkerLifecycle.State.RUNNING
+                    && runningNotifications.incrementAndGet() == 2) {
+                throw new AssertionError("fatal listener");
+            }
+        });
+
+        assertThrows(AssertionError.class, controller::start);
+
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                controller.snapshot().state()
+        );
+        assertEquals(1, networks.clients.get(0).closeCalls.get());
     }
 
     @Test
@@ -312,7 +277,7 @@ class WorkerRunControllerTest {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks,
-                executions.resources()
+                handler.executor()
         );
         AtomicBoolean failOnStopped = new AtomicBoolean();
         WorkerLifecycle.Listener listener = snapshot -> {
@@ -335,29 +300,28 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void closeDoesNotShutHostExecutorsDown() throws Exception {
+    void closeDoesNotShutHostHandlerExecutorDown() {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 new FakeNetworkFactory(),
-                executions.resources()
+                handler.executor()
         );
         controller.close();
 
-        assertFalse(executions.controlExecutor().isShutdown());
-        assertFalse(executions.handlerExecutor().isShutdown());
+        assertFalse(handler.executor().isShutdown());
         assertThrows(IllegalStateException.class, controller::start);
     }
 
     private WorkerRunController controller(
             WorkerPreparation preparation,
             WorkerRunController.NetworkClientFactory networks,
-            WorkerExecutionResources resources
+            Executor handlerExecutor
     ) {
         WorkerRunController controller = new WorkerRunController(
                 preparation,
                 command -> java.util.Optional.empty(),
                 networks,
-                resources
+                handlerExecutor
         );
         controllers.add(controller);
         return controller;
@@ -510,54 +474,4 @@ class WorkerRunControllerTest {
         }
     }
 
-    private static final class ManualExecutorService
-            extends AbstractExecutorService {
-
-        private final Queue<Runnable> tasks = new ArrayDeque<>();
-        private boolean shutdown;
-
-        @Override
-        public synchronized void shutdown() {
-            shutdown = true;
-        }
-
-        @Override
-        public synchronized List<Runnable> shutdownNow() {
-            shutdown = true;
-            List<Runnable> queued = new ArrayList<>(tasks);
-            tasks.clear();
-            return queued;
-        }
-
-        @Override
-        public synchronized boolean isShutdown() {
-            return shutdown;
-        }
-
-        @Override
-        public synchronized boolean isTerminated() {
-            return shutdown && tasks.isEmpty();
-        }
-
-        @Override
-        public boolean awaitTermination(long timeout, TimeUnit unit) {
-            return isTerminated();
-        }
-
-        @Override
-        public synchronized void execute(Runnable command) {
-            if (shutdown) {
-                throw new RejectedExecutionException();
-            }
-            tasks.add(command);
-        }
-
-        private void runNext() {
-            Runnable task;
-            synchronized (this) {
-                task = tasks.remove();
-            }
-            task.run();
-        }
-    }
 }

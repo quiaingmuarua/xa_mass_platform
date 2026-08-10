@@ -1,7 +1,7 @@
 package com.xa.mass.worker.javase;
 
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
-
+import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -14,19 +14,19 @@ public final class JavaWorkerHostResources implements AutoCloseable {
 
     private final ExecutorService controlExecutor;
     private final ExecutorService handlerExecutor;
-    private final WorkerExecutionResources executionResources;
-
     private boolean closed;
 
-    private JavaWorkerHostResources(
+    JavaWorkerHostResources(
             ExecutorService controlExecutor,
             ExecutorService handlerExecutor
     ) {
-        this.controlExecutor = controlExecutor;
-        this.handlerExecutor = handlerExecutor;
-        executionResources = WorkerExecutionResources.of(
+        this.controlExecutor = Objects.requireNonNull(
                 controlExecutor,
-                handlerExecutor
+                "controlExecutor"
+        );
+        this.handlerExecutor = Objects.requireNonNull(
+                handlerExecutor,
+                "handlerExecutor"
         );
     }
 
@@ -87,8 +87,12 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         }
     }
 
-    public WorkerExecutionResources executionResources() {
-        return executionResources;
+    public Executor controlExecutor() {
+        return controlExecutor;
+    }
+
+    public Executor handlerExecutor() {
+        return handlerExecutor;
     }
 
     @Override

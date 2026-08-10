@@ -40,7 +40,7 @@ Status: current repository handoff.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
   Polling, `WorkerPreparation`, the two-state `WorkerRunController`, single-run
-  text-message runtime, Host-injected `WorkerExecutionResources`, and network
+  text-message runtime, Host-injected Handler execution, and network
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
   Properties provider, and platform-neutral Register/Bind control contracts.
   The Client owns concrete networking and transparent reconnect, the Runtime
@@ -138,10 +138,10 @@ tag.
   Android, Netty, Spring, Redis, Server, or Kernel implementations.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerRunController` owns one two-state run,
-  one asynchronous Preparation call, the current runtime, cooperative stop,
-  and local lifecycle observation. Host code must inject shared control and
-  Handler execution resources; Core must not create or shut down execution
-  resources. Lifecycle listeners are synchronous, lightweight level
+  one synchronous Preparation call on the Host's calling thread, the current
+  runtime, cooperative stop, and local lifecycle observation. Host code must
+  inject Handler execution; Core must not create or shut down threads,
+  Executors, or Schedulers. Lifecycle listeners are synchronous, lightweight level
   observations invoked outside the lifecycle state lock; `snapshot()` is
   authoritative and notifications may repeat. `WorkerRunController` does not
   accept or route Worker commands. The single-run runtime owns inbound WorkerCommand
@@ -167,8 +167,9 @@ tag.
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
   Standalone `JavaWorker.Builder.build()` requires Host-owned
-  `WorkerExecutionResources`; closing a JavaWorker must not shut shared
-  resources down. `JavaWorkerManager.Builder` binds one WorkerGroup's shared
+  Handler `Executor`; `start()` performs Preparation synchronously and closing
+  a JavaWorker must not shut the Executor down. `JavaWorkerManager.Builder`
+  binds one WorkerGroup's shared
   capacity and a fixed, non-empty set of unique `clientWorkerKey` replicas at
   construction; it provides no runtime registration, keyed lifecycle, or
   dynamic scale API. Managers borrow process-owned resources and never expose
@@ -185,9 +186,10 @@ tag.
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.
-  `AndroidWorker.Builder` requires Host-owned `WorkerExecutionResources`;
-  closing an AndroidWorker must not shut shared resources down. Android hosts
-  own process lifetime, shared control/Handler resource lifetime,
+  `AndroidWorker.Builder` requires a Host-owned Handler `Executor`; its
+  synchronous `start()` must not run on the Main Looper, and closing an
+  AndroidWorker must not shut the Executor down. Android hosts own process
+  lifetime, asynchronous Control scheduling, Handler resource lifetime,
   permissions beyond INTERNET, static handler assembly, and backup policy.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /

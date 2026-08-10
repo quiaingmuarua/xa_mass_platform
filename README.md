@@ -36,9 +36,10 @@ The repository contains seven active areas:
   WebSocket client. Its long-lived Worker path has three explicit owners:
   Client networking and reconnect, Runtime Bind/Command/Result protocol, and
   `WorkerRunController` `RUNNING/STOPPED` lifecycle. Each Host `start()` makes
-  one asynchronous Preparation attempt; failed preparation or endpoint
-  termination remains stopped until the Host starts it again. JVM and Android
-  hosts compose those layers without exposing physical connection state.
+  one synchronous Preparation attempt on the calling thread; failed
+  preparation or endpoint termination remains stopped until the Host starts
+  it again. JVM and Android hosts choose their own scheduling threads and
+  compose those layers without exposing physical connection state.
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns

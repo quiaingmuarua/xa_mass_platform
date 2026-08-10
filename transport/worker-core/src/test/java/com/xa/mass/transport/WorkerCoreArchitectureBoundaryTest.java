@@ -11,7 +11,6 @@ import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.runtime.PreparedWorker;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
@@ -222,15 +221,13 @@ class WorkerCoreArchitectureBoundaryTest {
     @Test
     void workerTransportStateMachinesOnlyAcceptCoreSeams()
             throws Exception {
-        assertFalse(AutoCloseable.class.isAssignableFrom(
-                WorkerExecutionResources.class
-        ));
-        assertTrue(hasMethod(
-                WorkerExecutionResources.class,
-                "of",
-                java.util.concurrent.ExecutorService.class,
-                java.util.concurrent.ExecutorService.class
-        ));
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        "com.xa.mass.worker.runtime."
+                                + "WorkerExecutionResources"
+                )
+        );
         assertConstructor(
                 PollingWorkerTransport.class,
                 WorkerPointClient.class,
@@ -248,7 +245,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerPreparation.class,
                 WorkerCommandExecutor.class,
                 WorkerRunController.NetworkClientFactory.class,
-                WorkerExecutionResources.class
+                java.util.concurrent.Executor.class
         );
 
         for (Class<?> transport : new Class<?>[]{
@@ -336,6 +333,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 "PreparationRetry",
                 "maxPrepareAttempts",
                 "retryScheduler",
+                "controlExecutor",
+                "WorkerExecutionResources",
                 "private State state",
                 "private boolean closed",
                 "private boolean stopRequested",

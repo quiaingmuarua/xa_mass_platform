@@ -10,7 +10,6 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.runtime.PreparedWorker;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -114,8 +113,6 @@ public class AndroidWebSocketCompositionTest {
                             Duration.ofMillis(20),
                             Duration.ofMillis(100)
                     );
-            ExecutorService controlExecutor =
-                    Executors.newSingleThreadExecutor();
             ExecutorService handlerExecutor =
                     Executors.newSingleThreadExecutor();
             WorkerRunController worker = new WorkerRunController(
@@ -138,10 +135,7 @@ public class AndroidWebSocketCompositionTest {
                                             Duration.ofSeconds(2),
                                             connectionPolicy
                                     ),
-                            WorkerExecutionResources.of(
-                                    controlExecutor,
-                                    handlerExecutor
-                            )
+                            handlerExecutor
                     );
             try {
                 worker.start();
@@ -152,7 +146,6 @@ public class AndroidWebSocketCompositionTest {
             } finally {
                 worker.close();
                 handlerExecutor.shutdownNow();
-                controlExecutor.shutdownNow();
             }
         }
 

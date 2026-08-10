@@ -49,13 +49,14 @@ leaving the Activity does not implicitly stop the Worker. Android can still
 kill the process in the background because this demo installs no Service or
 WorkManager and makes no background-lifetime guarantee.
 
-The Application also owns one control executor and one Handler executor,
-passes their shared `WorkerExecutionResources` bundle to `AndroidWorker`, and
-closes them only after the Worker is finally closed. A
-production Android Host should keep the same ordering and scope the resources
-to its process-level Worker owner. Core creates no background thread of its
-own; the Android WebSocket Client's existing connection `HandlerThread` is
-independent.
+The Application also owns one Control executor and one Handler executor. Its
+Demo Host submits synchronous `AndroidWorker.start()` calls to the Control
+executor so Application and UI calls remain non-blocking; the Worker borrows
+only the Handler executor. Both executors are closed after the Worker is
+finally closed. A production Android Host should keep the same ordering and
+scope the resources to its process-level Worker owner. Core creates no
+background thread of its own; the Android WebSocket Client's existing
+connection `HandlerThread` is independent.
 
 The UI reports only the Worker run state, `RUNNING` or `STOPPED`. WebSocket
 connection and reconnect state remain private to the Android Client and are not

@@ -36,15 +36,15 @@ class TextMessageWorkerRuntimeTest {
             new WorkerDeliveryCodec();
     private final List<TextMessageWorkerRuntime> runtimes =
             new ArrayList<>();
-    private final TestWorkerExecutionResources executions =
-            new TestWorkerExecutionResources();
+    private final TestHandlerExecutor handler =
+            new TestHandlerExecutor();
 
     @AfterEach
     void tearDown() {
         for (TextMessageWorkerRuntime runtime : runtimes) {
             runtime.close();
         }
-        executions.close();
+        handler.close();
     }
 
     @Test
@@ -575,7 +575,7 @@ class TextMessageWorkerRuntimeTest {
         assertFalse(interrupted.await(100, TimeUnit.MILLISECONDS));
         release.countDown();
         assertTrue(completed.await(5, TimeUnit.SECONDS));
-        assertFalse(executions.handlerExecutor().isShutdown());
+        assertFalse(handler.executor().isShutdown());
     }
 
     private TextMessageWorkerRuntime runtime(
@@ -587,7 +587,7 @@ class TextMessageWorkerRuntimeTest {
                 client,
                 commandExecutor,
                 listener,
-                executions.handlerExecutor()
+                handler.executor()
         );
     }
 

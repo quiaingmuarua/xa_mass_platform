@@ -9,7 +9,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 
 /**
  * Runs Worker Delivery protocol over one prepared, reconnecting text endpoint.
@@ -30,7 +30,7 @@ final class TextMessageWorkerRuntime
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
-    private final ExecutorService handlerExecutor;
+    private final Executor handlerExecutor;
     private final Listener listener;
 
     private boolean startRequested;
@@ -46,7 +46,7 @@ final class TextMessageWorkerRuntime
             TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandExecutor,
-            ExecutorService handlerExecutor,
+            Executor handlerExecutor,
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");

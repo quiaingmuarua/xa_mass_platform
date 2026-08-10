@@ -280,7 +280,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                         config.workerGroupId(),
                         WorkerTransportType.WEBSOCKET
                 )
-                .executionResources(hostResources.executionResources())
+                .hostResources(hostResources)
                 .eventDefinitions(group.definitions())
                 .requestTimeout(config.requestTimeout())
                 .reconnectPolicy(config.reconnectPolicy());

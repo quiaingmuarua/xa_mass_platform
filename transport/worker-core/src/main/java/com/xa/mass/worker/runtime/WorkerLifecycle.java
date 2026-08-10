@@ -19,6 +19,10 @@ public interface WorkerLifecycle extends AutoCloseable {
         void onSnapshot(Snapshot snapshot);
     }
 
+    /**
+     * Performs one startup attempt synchronously on the calling thread.
+     * Ordinary startup failures are reported through {@link #snapshot()}.
+     */
     void start();
 
     void stop();

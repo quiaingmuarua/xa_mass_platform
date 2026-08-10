@@ -14,7 +14,8 @@ Status: repository-local transport contracts and implementations.
 :transport:worker-core
   -> Java 11 Worker execution mechanism
   -> WorkerPreparation + two-state WorkerRunController + single-run runtime
-  -> Host-injected shared control/Handler execution resources
+  -> synchronous single Preparation on the Host calling thread
+  -> Host-injected Handler Executor
   -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
@@ -43,11 +44,11 @@ path has three owners: a concrete Client owns networking and transparent
 reconnect, the package-private Runtime owns Bind/Command/Result protocol, and
 `WorkerRunController` owns only the two-state Worker run. Java and Android
 hosts compose `RegisteredWorkerPreparation` with one Controller and expose the
-same `WorkerLifecycle` contract. One accepted `start()` submits exactly one
-Preparation and, if successful, one reconnecting endpoint Client. Platform
-modules provide Identity
-storage, concrete network Clients, and explicitly owned shared execution
-resources. Worker Core creates and closes no thread, executor, or scheduler.
+same `WorkerLifecycle` contract. One accepted `start()` performs exactly one
+Preparation synchronously and, if successful, starts one reconnecting endpoint
+Client. Platform modules provide Identity storage, concrete network Clients,
+the Handler Executor, and any asynchronous Host scheduling. Worker Core creates
+and closes no thread, executor, or scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
 lifecycle events or queries. No Endpoint URI or Worker business message is

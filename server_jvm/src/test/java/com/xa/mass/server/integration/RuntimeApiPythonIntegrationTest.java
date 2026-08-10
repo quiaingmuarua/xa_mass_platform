@@ -8,7 +8,6 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.PreparedWorker;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
@@ -484,13 +483,12 @@ class RuntimeApiPythonIntegrationTest {
             List<WorkerEventDefinition<?>> definitions,
             WorkerRunController.NetworkClientFactory clientFactory
     ) throws Exception {
-        TestWorkerExecutionResources resources =
-                new TestWorkerExecutionResources();
+        TestHandlerResources resources = new TestHandlerResources();
         WorkerRunController worker = new WorkerRunController(
                 fixedPreparation(workerId, endpointUri),
                 new WorkerCommandDispatcher(definitions),
                 clientFactory,
-                resources.resources()
+                resources.handlerExecutor()
         );
         return new TextMessageWorkerHandle(worker, resources);
     }
@@ -903,11 +901,11 @@ class RuntimeApiPythonIntegrationTest {
             implements RunningWorker {
 
         private final WorkerRunController transport;
-        private final TestWorkerExecutionResources executionResources;
+        private final TestHandlerResources executionResources;
 
         private TextMessageWorkerHandle(
                 WorkerRunController transport,
-                TestWorkerExecutionResources executionResources
+                TestHandlerResources executionResources
         ) throws Exception {
             this.transport = transport;
             this.executionResources = executionResources;
@@ -930,27 +928,19 @@ class RuntimeApiPythonIntegrationTest {
         }
     }
 
-    private static final class TestWorkerExecutionResources
+    private static final class TestHandlerResources
             implements AutoCloseable {
 
-        private final ExecutorService controlExecutor =
-                Executors.newSingleThreadExecutor();
         private final ExecutorService handlerExecutor =
                 Executors.newSingleThreadExecutor();
-        private final WorkerExecutionResources resources =
-                WorkerExecutionResources.of(
-                        controlExecutor,
-                        handlerExecutor
-                );
 
-        private WorkerExecutionResources resources() {
-            return resources;
+        private ExecutorService handlerExecutor() {
+            return handlerExecutor;
         }
 
         @Override
         public void close() {
             handlerExecutor.shutdownNow();
-            controlExecutor.shutdownNow();
         }
     }
 }

@@ -64,10 +64,11 @@ class ConcreteWorkerClientArchitectureTest {
         assertTrue(source.contains("new WorkerRunController("));
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
-        assertTrue(assembly.contains("WorkerExecutionResources"));
+        assertFalse(source.contains("WorkerExecutionResources"));
         assertTrue(assembly.contains(
-                "public Builder executionResources("
+                "public Builder handlerExecutor("
         ));
+        assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));

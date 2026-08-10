@@ -10,8 +10,6 @@ It owns:
 - `WorkerPreparation` and the default Register/Bind implementation.
 - `WorkerRunController`, the two-state coordinator for one explicit Worker
   run.
-- `WorkerExecutionResources`, the non-owning Host injection contract for
-  shared control and Handler execution.
 - The package-private one-endpoint text-message runtime.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
@@ -19,28 +17,29 @@ It does not own concrete network libraries, Android storage, host process
 lifecycle, threads, executors, schedulers, Adapter behavior, Redis, or Kernel
 scheduling.
 
-## Execution Resources
+## Execution Threads
 
-Every `WorkerRunController` receives a required
-`WorkerExecutionResources` bundle:
+`WorkerRunController.start()` runs one `WorkerPreparation.prepare()`
+synchronously on its caller's thread. Core does not select that thread or
+submit a control task. A Host that needs non-blocking startup must schedule the
+call itself.
 
 ```text
-control ExecutorService          -> one asynchronous start task
-handler ExecutorService          -> admitted WorkerEvent Handler execution
+Host start caller                -> Properties, Identity, Register, Bind
+Host-injected Executor           -> admitted WorkerEvent Handler execution
 ```
 
-The Host creates these resources, may share one bundle across many Workers,
-and closes them only after every consuming Worker is closed. Core never creates
-or shuts down an executor. Closing one Controller does not affect another
-Worker using the same bundle. Prepare and Handler execution remain separate so
-a blocked business Handler cannot consume the control path.
+The Handler `Executor` is required and non-owning. A Host may share it across
+many Workers and closes it only after every consuming Worker is closed. Core
+never creates or shuts down an executor. Closing one Controller does not affect
+another Worker using the same executor.
 
 For Java hosts, `JavaWorkerHostResources` is the process-scoped owner for one
-bounded bundle. A `JavaWorkerManager` borrows that bundle and runs the fixed
-replica set of exactly one WorkerGroup. Multiple Group Managers may share the
-same resources; Managers close their Workers, and the process closes the
-resource owner last. This does not move resource ownership or group desired
-state into Core.
+bounded Control pool and one bounded Handler pool. A `JavaWorkerManager` uses
+the Control pool to schedule synchronous Worker starts and passes the Handler
+pool to each Worker. Multiple Group Managers may share the same resources;
+Managers close their Workers, and the process closes the resource owner last.
+This does not move resource ownership or group desired state into Core.
 
 ## Execution
 
@@ -76,7 +75,7 @@ One accepted `WorkerRunController.start()` represents one complete Worker run:
 
 ```text
 RUNNING
-  -> exactly one asynchronous WorkerPreparation.prepare()
+  -> exactly one synchronous WorkerPreparation.prepare()
   -> PreparedWorker(workerId, endpointUri)
   -> one reconnecting TextMessageWorkerRuntime
   -> exact-once runtime terminal callback
@@ -94,11 +93,12 @@ network connection or execute commands.
 
 Java and Android assemblies construct one immutable
 `WorkerCommandDispatcher` from their static definitions and inject it as a
-`WorkerCommandExecutor`. `WorkerRunController` owns the one submitted start
-task, current runtime reference, cooperative stop marker, and two-state
-lifecycle observation. It never inspects command-busy state or routes
-commands. Any Preparation failure ends that run in `STOPPED` with safe
-diagnostic evidence. Only a later Host call to `start()` tries again.
+`WorkerCommandExecutor`. `WorkerRunController` owns the synchronous startup
+transition, current runtime reference, cooperative stop marker, and two-state
+lifecycle observation. It never owns a Control Executor, inspects command-busy
+state, or routes commands. Any Preparation failure ends that run in `STOPPED`
+with safe diagnostic evidence before `start()` returns. Only a later Host call
+to `start()` tries again.
 
 The single-run runtime owns only:
 
@@ -170,7 +170,7 @@ completed. It deliberately exposes no physical connection state or connection
 query: Client reconnect is transparent and Worker lifecycle is not Kernel
 online truth or scheduling availability. Listener calls are synchronous,
 lightweight, and outside the lifecycle state lock. They may run on the
-lifecycle caller, Host control/Handler executor, or Client callback thread.
+lifecycle caller, Handler executor, or Client callback thread.
 Notifications are level observations and may repeat; `snapshot()` is the
 authoritative current value rather than an ordered transition stream. Hosts
 must move UI or blocking observation work onto their own appropriate executor.

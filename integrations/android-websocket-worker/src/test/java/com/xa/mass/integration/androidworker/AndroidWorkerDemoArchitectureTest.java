@@ -96,13 +96,15 @@ public class AndroidWorkerDemoArchitectureTest {
                 "new AndroidDemoStateCapability"
         ));
         assertTrue(application.contains(
-                "new AndroidWorkerExecutionResources"
+                "new AndroidWorkerDemoResources"
         ));
-        assertTrue(application.contains(".executionResources("));
-        assertTrue(host.contains("executionResources.close()"));
+        assertTrue(application.contains(".handlerExecutor("));
+        assertTrue(host.contains("controlExecutor().execute("));
+        assertTrue(host.contains("resources.close()"));
         assertTrue(application.contains("host.start();"));
         assertFalse(source.contains("retryScheduler"));
         assertFalse(source.contains("ScheduledExecutorService"));
+        assertFalse(source.contains("WorkerExecutionResources"));
         assertTrue(activity.contains("workerHost.addListener"));
         assertTrue(activity.contains("workerHost.removeListener"));
         assertFalse(activity.contains("AndroidWorker.builder"));

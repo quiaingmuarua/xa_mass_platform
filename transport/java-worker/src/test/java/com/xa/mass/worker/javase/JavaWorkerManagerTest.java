@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import org.junit.jupiter.api.Test;
@@ -21,8 +20,12 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 class JavaWorkerManagerTest {
 
@@ -33,7 +36,7 @@ class JavaWorkerManagerTest {
         FakeWorker second = new FakeWorker("second", events);
         try (TestResources resources = new TestResources()) {
             JavaWorkerManager manager = managerBuilder(
-                    resources.resources,
+                    resources.hostResources,
                     first,
                     second
             )
@@ -59,6 +62,7 @@ class JavaWorkerManagerTest {
             );
 
             manager.start();
+            resources.runControl();
 
             assertEquals(
                     List.of("start:first", "start:second"),
@@ -116,12 +120,12 @@ class JavaWorkerManagerTest {
             );
 
             JavaWorkerManager.Builder empty = baseBuilder()
-                    .executionResources(resources.resources)
+                    .hostResources(resources.hostResources)
                     .eventDefinitions(definitions());
             assertThrows(IllegalStateException.class, empty::build);
 
             JavaWorkerManager.Builder duplicate = baseBuilder()
-                    .executionResources(resources.resources)
+                    .hostResources(resources.hostResources)
                     .eventDefinitions(definitions())
                     .replica(
                             "client",
@@ -151,7 +155,7 @@ class JavaWorkerManagerTest {
             assertThrows(
                     IllegalStateException.class,
                     () -> baseBuilder()
-                            .executionResources(resources.resources)
+                            .hostResources(resources.hostResources)
                             .replica(
                                     "client",
                                     WorkerIdentityStore.noCache(),
@@ -168,12 +172,13 @@ class JavaWorkerManagerTest {
         FakeWorker second = new FakeWorker("second", new ArrayList<>());
         try (TestResources resources = new TestResources()) {
             JavaWorkerManager manager = manager(
-                    resources.resources,
+                    resources.hostResources,
                     first,
                     second
             );
 
             manager.start();
+            resources.runControl();
             first.terminate();
 
             assertEquals(1, first.startCalls);
@@ -184,9 +189,69 @@ class JavaWorkerManagerTest {
             );
 
             manager.reconcile();
+            resources.runControl();
 
             assertEquals(2, first.startCalls);
             assertEquals(1, second.startCalls);
+            manager.close();
+        }
+    }
+
+    @Test
+    void repeatedReconcileCoalescesOneQueuedStartPerReplica() {
+        FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
+        try (TestResources resources = new TestResources()) {
+            JavaWorkerManager manager = manager(
+                    resources.hostResources,
+                    worker
+            );
+
+            manager.start();
+            manager.reconcile();
+
+            assertEquals(1, resources.control.pendingTasks());
+            resources.runControl();
+            assertEquals(1, worker.startCalls);
+            manager.close();
+        }
+    }
+
+    @Test
+    void stopBeforeQueuedStartPreventsWorkerStartup() {
+        FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
+        try (TestResources resources = new TestResources()) {
+            JavaWorkerManager manager = manager(
+                    resources.hostResources,
+                    worker
+            );
+
+            manager.start();
+            manager.stop();
+            resources.runControl();
+
+            assertEquals(0, worker.startCalls);
+            assertEquals(WorkerLifecycle.State.STOPPED, worker.state);
+            manager.close();
+        }
+    }
+
+    @Test
+    void rejectedControlSubmissionCanBeExplicitlyReconciledLater() {
+        FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
+        try (TestResources resources = new TestResources()) {
+            JavaWorkerManager manager = manager(
+                    resources.hostResources,
+                    worker
+            );
+            resources.control.reject(true);
+
+            assertThrows(RejectedExecutionException.class, manager::start);
+            assertEquals(0, resources.control.pendingTasks());
+
+            resources.control.reject(false);
+            manager.reconcile();
+            resources.runControl();
+            assertEquals(1, worker.startCalls);
             manager.close();
         }
     }
@@ -197,11 +262,12 @@ class JavaWorkerManagerTest {
         worker.completeStopImmediately = false;
         try (TestResources resources = new TestResources()) {
             JavaWorkerManager manager = manager(
-                    resources.resources,
+                    resources.hostResources,
                     worker
             );
 
             manager.start();
+            resources.runControl();
             manager.stop();
             manager.start();
 
@@ -212,6 +278,7 @@ class JavaWorkerManagerTest {
             assertEquals(1, worker.startCalls);
 
             manager.reconcile();
+            resources.runControl();
             assertEquals(2, worker.startCalls);
             manager.close();
         }
@@ -226,15 +293,16 @@ class JavaWorkerManagerTest {
         second.startFailuresRemaining = 1;
         try (TestResources resources = new TestResources()) {
             JavaWorkerManager manager = manager(
-                    resources.resources,
+                    resources.hostResources,
                     first,
                     second,
                     third
             );
 
+            manager.start();
             IllegalStateException failure = assertThrows(
                     IllegalStateException.class,
-                    manager::start
+                    resources::runControl
             );
 
             assertTrue(failure.getMessage().contains("first"));
@@ -244,6 +312,7 @@ class JavaWorkerManagerTest {
             assertEquals(1, third.startCalls);
 
             manager.reconcile();
+            resources.runControl();
 
             assertEquals(2, first.startCalls);
             assertEquals(2, second.startCalls);
@@ -260,7 +329,7 @@ class JavaWorkerManagerTest {
             Deque<WorkerLifecycle> assembled = new ArrayDeque<>();
             assembled.add(first);
             JavaWorkerManager.Builder builder = configuredBuilder(
-                    resources.resources
+                    resources.hostResources
             ).workerAssembler(ignored -> {
                 if (assembled.isEmpty()) {
                     throw new IllegalStateException("assemble second");
@@ -294,7 +363,7 @@ class JavaWorkerManagerTest {
         second.failClose = true;
         try (TestResources resources = new TestResources()) {
             JavaWorkerManager manager = manager(
-                    resources.resources,
+                    resources.hostResources,
                     first,
                     second
             );
@@ -318,7 +387,7 @@ class JavaWorkerManagerTest {
     }
 
     private static JavaWorkerManager manager(
-            WorkerExecutionResources resources,
+            JavaWorkerHostResources resources,
             FakeWorker... workers
     ) {
         JavaWorkerManager.Builder builder = managerBuilder(
@@ -336,7 +405,7 @@ class JavaWorkerManagerTest {
     }
 
     private static JavaWorkerManager.Builder managerBuilder(
-            WorkerExecutionResources resources,
+            JavaWorkerHostResources resources,
             FakeWorker... workers
     ) {
         Deque<WorkerLifecycle> assembled = new ArrayDeque<>();
@@ -346,10 +415,10 @@ class JavaWorkerManagerTest {
     }
 
     private static JavaWorkerManager.Builder configuredBuilder(
-            WorkerExecutionResources resources
+            JavaWorkerHostResources resources
     ) {
         return baseBuilder()
-                .executionResources(resources)
+                .hostResources(resources)
                 .eventDefinitions(definitions());
     }
 
@@ -372,17 +441,97 @@ class JavaWorkerManagerTest {
 
     private static final class TestResources implements AutoCloseable {
 
-        private final ExecutorService control =
-                Executors.newSingleThreadExecutor();
+        private final ManualExecutorService control =
+                new ManualExecutorService();
         private final ExecutorService handler =
                 Executors.newSingleThreadExecutor();
-        private final WorkerExecutionResources resources =
-                WorkerExecutionResources.of(control, handler);
+        private final JavaWorkerHostResources hostResources =
+                new JavaWorkerHostResources(control, handler);
+
+        private void runControl() {
+            control.runAll();
+        }
 
         @Override
         public void close() {
-            handler.shutdownNow();
-            control.shutdownNow();
+            hostResources.close();
+        }
+    }
+
+    private static final class ManualExecutorService
+            extends AbstractExecutorService {
+
+        private final Queue<Runnable> tasks = new ArrayDeque<>();
+        private boolean shutdown;
+        private boolean reject;
+
+        @Override
+        public synchronized void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public synchronized List<Runnable> shutdownNow() {
+            shutdown = true;
+            List<Runnable> queued = new ArrayList<>(tasks);
+            tasks.clear();
+            return queued;
+        }
+
+        @Override
+        public synchronized boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public synchronized boolean isTerminated() {
+            return shutdown && tasks.isEmpty();
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return isTerminated();
+        }
+
+        @Override
+        public synchronized void execute(Runnable command) {
+            if (shutdown || reject) {
+                throw new RejectedExecutionException();
+            }
+            tasks.add(command);
+        }
+
+        private void runAll() {
+            RuntimeException failure = null;
+            while (true) {
+                Runnable task;
+                synchronized (this) {
+                    task = tasks.poll();
+                }
+                if (task == null) {
+                    break;
+                }
+                try {
+                    task.run();
+                } catch (RuntimeException error) {
+                    if (failure == null) {
+                        failure = error;
+                    } else {
+                        failure.addSuppressed(error);
+                    }
+                }
+            }
+            if (failure != null) {
+                throw failure;
+            }
+        }
+
+        private synchronized int pendingTasks() {
+            return tasks.size();
+        }
+
+        private synchronized void reject(boolean value) {
+            reject = value;
         }
     }
 

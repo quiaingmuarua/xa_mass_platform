@@ -22,8 +22,8 @@ public final class AndroidWorkerDemoApplication extends Application {
         URI runtimeApiBaseUrl = URI.create(
                 getString(R.string.runtime_api_base_url)
         );
-        AndroidWorkerExecutionResources executionResources =
-                new AndroidWorkerExecutionResources();
+        AndroidWorkerDemoResources resources =
+                new AndroidWorkerDemoResources();
         AndroidWorker worker;
         try {
             worker = AndroidWorker.builder(
@@ -33,11 +33,11 @@ public final class AndroidWorkerDemoApplication extends Application {
                     )
                     .workerProperties(deviceProperties)
                     .eventDefinitions(demoCapability.definitions())
-                    .executionResources(executionResources.resources())
+                    .handlerExecutor(resources.handlerExecutor())
                     .requestTimeout(REQUEST_TIMEOUT)
                     .build();
-        } catch (RuntimeException error) {
-            executionResources.close();
+        } catch (RuntimeException | Error error) {
+            resources.close();
             throw error;
         }
         AndroidWorkerDemoHost host = null;
@@ -45,14 +45,14 @@ public final class AndroidWorkerDemoApplication extends Application {
             host = new AndroidWorkerDemoHost(
                     worker,
                     demoCapability,
-                    executionResources
+                    resources
             );
             host.start();
             workerHost = host;
-        } catch (RuntimeException error) {
+        } catch (RuntimeException | Error error) {
             if (host == null) {
                 worker.close();
-                executionResources.close();
+                resources.close();
             } else {
                 host.close();
             }

@@ -45,7 +45,7 @@ JavaWorker worker = JavaWorker.builder(
                 "stable-installation-key",
                 WorkerTransportType.WEBSOCKET
         )
-        .executionResources(executionResources)
+        .handlerExecutor(handlerExecutor)
         .identityStore(identityStore)
         .workerProperties(() -> Map.of(
                 "runtime", "java",
@@ -59,11 +59,11 @@ JavaWorker worker = JavaWorker.builder(
 worker.start();
 ```
 
-For standalone construction, `executionResources` is required and contains
-Host-owned shared control and Handler executors. `JavaWorker.close()`
-never shuts the bundle down: the Host closes all Workers first, then shuts down
-the two underlying executors. There is no per-Worker fallback pool or hidden
-static executor.
+For standalone construction, `handlerExecutor` is required and Host-owned.
+`JavaWorker.start()` performs one Preparation synchronously on its calling
+thread, while admitted Handlers run on that injected Executor.
+`JavaWorker.close()` never shuts the Executor down. There is no per-Worker
+fallback pool or hidden static executor.
 
 The fixed client key is injected as the reserved
 `workerProperties.clientWorkerKey`; the caller Properties provider may not
@@ -77,9 +77,10 @@ key.
 rejected because its request-response lifecycle is assembled separately.
 
 `JavaWorker` implements Core's `WorkerLifecycle`. Its builder composes
-`RegisteredWorkerPreparation` with one `WorkerRunController`: an accepted `start()`
-enters `RUNNING`, a missing Worker ID is registered and saved, Endpoint Bind is
-performed, and the returned URI starts one reconnecting Client. Temporary
+`RegisteredWorkerPreparation` with one `WorkerRunController`: an accepted
+`start()` synchronously enters `RUNNING`, registers and saves a missing Worker
+ID, performs Endpoint Bind, starts one reconnecting Client, and returns.
+Temporary
 disconnects reuse the same URI and do not repeat HTTP Bind. Exhausting the
 Client reconnect budget ends the run in `STOPPED`; only a later explicit
 `start()` reloads Properties and performs one Preparation again. A failed
@@ -109,7 +110,7 @@ JavaWorkerManager manager = JavaWorkerManager.builder(
                 "phone-workers",
                 WorkerTransportType.WEBSOCKET
         )
-        .executionResources(hostResources.executionResources())
+        .hostResources(hostResources)
         .eventDefinitions(eventDefinitions)
         .replica("installation-1", identityStore1, properties1)
         .replica("installation-2", identityStore2, properties2)
@@ -129,16 +130,19 @@ removing capacity requires rebuilding from configuration and restarting the
 Host process.
 
 One Java process creates one `JavaWorkerHostResources` using its total replica
-count and shares the returned bundle across all of its Group Managers. Control
-concurrency is bounded at four, and Handler concurrency is bounded by total
-replica count and available processors. A
+count and shares it across all of its Group Managers. Managers schedule the
+synchronous Worker starts on its Control pool; Workers borrow its Handler
+executor. Control concurrency is bounded at four, and Handler concurrency is
+bounded by total replica count and available processors. A
 Manager closes its Workers in reverse replica order but never closes the
 borrowed resources; the process closes all Managers first and the Host
 resources last.
 
-`start` and `stop` update one private group-level desired state and reconcile
-every replica immediately. `reconcile()` later compares that intent with each
-Worker's actual `STOPPED/RUNNING` snapshot. A terminal replica remains
+`start` and `reconcile` update one private group-level desired state and submit
+at most one Control task for each stopped replica, so Manager startup remains
+non-blocking. `stop` prevents queued starts and stops active replicas.
+`reconcile()` later compares intent with each Worker's actual
+`STOPPED/RUNNING` snapshot. A terminal replica remains
 `STOPPED` until the Host explicitly invokes `reconcile()` or `start()` again.
 The Manager has no timer, Worker listener, connection query, aggregate Worker
 state, or per-replica lifecycle controls. `snapshot(key)` and
