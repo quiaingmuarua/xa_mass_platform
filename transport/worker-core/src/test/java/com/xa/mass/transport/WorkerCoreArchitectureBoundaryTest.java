@@ -317,6 +317,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/runtime/WorkerRunController.java"
         );
         String controller = Files.readString(controllerFile);
+        assertTrue(controller.contains("private enum Phase"));
         for (String forbidden : new String[]{
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
@@ -334,7 +335,11 @@ class WorkerCoreArchitectureBoundaryTest {
                 "FutureTask",
                 "PreparationRetry",
                 "maxPrepareAttempts",
-                "retryScheduler"
+                "retryScheduler",
+                "private State state",
+                "private boolean closed",
+                "private boolean stopRequested",
+                "private boolean startTaskActive"
         }) {
             assertFalse(controller.contains(forbidden), forbidden);
         }

@@ -18,6 +18,14 @@ import java.util.concurrent.CopyOnWriteArraySet;
  */
 public final class WorkerRunController implements WorkerLifecycle {
 
+    private enum Phase {
+        STOPPED,
+        STARTING,
+        ACTIVE,
+        STOPPING,
+        CLOSED
+    }
+
     @FunctionalInterface
     public interface NetworkClientFactory {
 
@@ -31,10 +39,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     private final WorkerExecutionResources executionResources;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
-    private State state = State.STOPPED;
-    private boolean closed;
-    private boolean stopRequested;
-    private boolean startTaskActive;
+    private Phase phase = Phase.STOPPED;
     private PreparedWorker preparedWorker;
     private TextMessageWorkerRuntime activeRuntime;
     private String diagnosticMessage;
@@ -67,17 +72,15 @@ public final class WorkerRunController implements WorkerLifecycle {
     public void start() {
         Throwable submissionFailure = null;
         synchronized (lock) {
-            if (closed) {
+            if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
                         "WorkerRunController is closed"
                 );
             }
-            if (state == State.RUNNING) {
+            if (phase != Phase.STOPPED) {
                 return;
             }
-            state = State.RUNNING;
-            stopRequested = false;
-            startTaskActive = true;
+            phase = Phase.STARTING;
             preparedWorker = null;
             activeRuntime = null;
             diagnosticMessage = null;
@@ -86,7 +89,6 @@ public final class WorkerRunController implements WorkerLifecycle {
                         this::runStartTask
                 );
             } catch (Throwable error) {
-                startTaskActive = false;
                 transitionStoppedLocked(
                         "Worker control executor is unavailable"
                 );
@@ -106,20 +108,14 @@ public final class WorkerRunController implements WorkerLifecycle {
     @Override
     public void stop() {
         TextMessageWorkerRuntime runtime;
-        boolean stopped = false;
         synchronized (lock) {
-            if (closed || state == State.STOPPED || stopRequested) {
+            if (phase == Phase.STOPPED
+                    || phase == Phase.STOPPING
+                    || phase == Phase.CLOSED) {
                 return;
             }
-            stopRequested = true;
+            phase = Phase.STOPPING;
             runtime = activeRuntime;
-            if (runtime == null && !startTaskActive) {
-                transitionStoppedLocked(null);
-                stopped = true;
-            }
-        }
-        if (stopped) {
-            publish();
         }
         if (runtime != null) {
             runtime.requestStop();
@@ -130,7 +126,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     public Snapshot snapshot() {
         synchronized (lock) {
             return new Snapshot(
-                    state,
+                    lifecycleStateLocked(),
                     preparedWorker == null
                             ? null
                             : preparedWorker.workerId(),
@@ -146,7 +142,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
         synchronized (lock) {
-            if (closed) {
+            if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
                         "WorkerRunController is closed"
                 );
@@ -167,16 +163,13 @@ public final class WorkerRunController implements WorkerLifecycle {
     public void close() {
         TextMessageWorkerRuntime runtime;
         synchronized (lock) {
-            if (closed) {
+            if (phase == Phase.CLOSED) {
                 return;
             }
-            closed = true;
-            stopRequested = true;
+            phase = Phase.CLOSED;
             runtime = activeRuntime;
             activeRuntime = null;
-            startTaskActive = false;
             preparedWorker = null;
-            state = State.STOPPED;
             diagnosticMessage = null;
         }
 
@@ -189,61 +182,26 @@ public final class WorkerRunController implements WorkerLifecycle {
     }
 
     private void runStartTask() {
-        boolean stoppedBeforePreparation;
-        synchronized (lock) {
-            if (!startTaskActive) {
+        TextMessageClient client = null;
+        TextMessageWorkerRuntime runtime = null;
+        boolean installed = false;
+        try {
+            if (abortStartIfRequested()) {
                 return;
             }
-            stoppedBeforePreparation = closed || stopRequested;
-            if (stoppedBeforePreparation) {
-                finishStartTaskLocked(null);
-            }
-        }
-        if (stoppedBeforePreparation) {
-            publish();
-            return;
-        }
 
-        PreparedWorker prepared;
-        try {
-            prepared = Objects.requireNonNull(
+            PreparedWorker prepared = Objects.requireNonNull(
                     preparation.prepare(),
                     "preparation returned null"
             );
-        } catch (Throwable error) {
-            finishFailedStart(error);
-            rethrowError(error);
-            return;
-        }
-
-        boolean stoppedAfterPreparation;
-        synchronized (lock) {
-            stoppedAfterPreparation = !startTaskActive
-                    || closed
-                    || stopRequested;
-            if (stoppedAfterPreparation) {
-                finishStartTaskLocked(null);
+            if (abortStartIfRequested()) {
+                return;
             }
-        }
-        if (stoppedAfterPreparation) {
-            publish();
-            return;
-        }
 
-        TextMessageClient client;
-        try {
             client = Objects.requireNonNull(
                     networkClientFactory.create(prepared.endpointUri()),
                     "networkClientFactory returned null"
             );
-        } catch (Throwable error) {
-            finishFailedStart(error);
-            rethrowError(error);
-            return;
-        }
-
-        TextMessageWorkerRuntime runtime;
-        try {
             runtime = new TextMessageWorkerRuntime(
                     client,
                     prepared.workerId(),
@@ -251,59 +209,88 @@ public final class WorkerRunController implements WorkerLifecycle {
                     executionResources.handlerExecutor(),
                     this::runtimeTerminated
             );
-        } catch (Throwable error) {
-            closeQuietly(client);
-            finishFailedStart(error);
-            rethrowError(error);
-            return;
-        }
-        boolean installed;
-        synchronized (lock) {
-            installed = startTaskActive && !closed && !stopRequested;
-            if (installed) {
-                activeRuntime = runtime;
-                preparedWorker = prepared;
-                startTaskActive = false;
-            } else {
-                finishStartTaskLocked(null);
-            }
-        }
-        if (!installed) {
-            closeQuietly(runtime);
-            publish();
-            return;
-        }
+            client = null;
 
-        try {
-            runtime.start();
-        } catch (Throwable error) {
-            runtimeTerminated(runtime, error);
-            rethrowError(error);
-            return;
-        }
-        publish();
-    }
-
-    private void finishFailedStart(Throwable error) {
-        synchronized (lock) {
-            if (!startTaskActive) {
+            installed = installRuntime(prepared, runtime);
+            if (!installed) {
                 return;
             }
-            finishStartTaskLocked(
-                    stopRequested || closed
-                            ? null
-                            : "Worker start failed: "
-                                    + safeFailureType(error)
-            );
+
+            runtime.start();
+        } catch (Throwable error) {
+            if (installed) {
+                runtimeTerminated(runtime, error);
+            } else {
+                failStart(error);
+            }
+            rethrowError(error);
+            return;
+        } finally {
+            closeQuietly(client);
+            if (!installed) {
+                closeQuietly(runtime);
+            }
         }
+
         publish();
     }
 
-    private void finishStartTaskLocked(String message) {
-        startTaskActive = false;
-        if (!closed && state == State.RUNNING && activeRuntime == null) {
-            transitionStoppedLocked(message);
+    private boolean installRuntime(
+            PreparedWorker prepared,
+            TextMessageWorkerRuntime runtime
+    ) {
+        boolean stopped = false;
+        synchronized (lock) {
+            if (phase == Phase.STARTING) {
+                activeRuntime = runtime;
+                preparedWorker = prepared;
+                phase = Phase.ACTIVE;
+                return true;
+            } else if (phase == Phase.STOPPING) {
+                transitionStoppedLocked(null);
+                stopped = true;
+            }
         }
+        if (stopped) {
+            publish();
+        }
+        return false;
+    }
+
+    private void failStart(Throwable error) {
+        boolean stopped = false;
+        synchronized (lock) {
+            if (phase == Phase.STARTING) {
+                transitionStoppedLocked(
+                        "Worker start failed: "
+                                + safeFailureType(error)
+                );
+                stopped = true;
+            } else if (phase == Phase.STOPPING) {
+                transitionStoppedLocked(null);
+                stopped = true;
+            }
+        }
+        if (stopped) {
+            publish();
+        }
+    }
+
+    private boolean abortStartIfRequested() {
+        boolean stopped = false;
+        synchronized (lock) {
+            if (phase == Phase.STARTING) {
+                return false;
+            }
+            if (phase == Phase.STOPPING) {
+                transitionStoppedLocked(null);
+                stopped = true;
+            }
+        }
+        if (stopped) {
+            publish();
+        }
+        return true;
     }
 
     private void runtimeTerminated(
@@ -312,11 +299,14 @@ public final class WorkerRunController implements WorkerLifecycle {
     ) {
         boolean current;
         synchronized (lock) {
-            current = isCurrentRuntimeLocked(runtime);
+            current = activeRuntime == runtime
+                    && (phase == Phase.ACTIVE
+                    || phase == Phase.STOPPING);
             if (current) {
+                boolean requestedStop = phase == Phase.STOPPING;
                 activeRuntime = null;
                 transitionStoppedLocked(
-                        stopRequested
+                        requestedStop
                                 ? null
                                 : failure == null
                                         ? "Endpoint terminated"
@@ -331,19 +321,16 @@ public final class WorkerRunController implements WorkerLifecycle {
         }
     }
 
-    private boolean isCurrentRuntimeLocked(
-            TextMessageWorkerRuntime runtime
-    ) {
-        return !closed
-                && state == State.RUNNING
-                && activeRuntime == runtime;
-    }
-
     private void transitionStoppedLocked(String message) {
-        state = State.STOPPED;
-        stopRequested = false;
+        phase = Phase.STOPPED;
         preparedWorker = null;
         diagnosticMessage = message;
+    }
+
+    private State lifecycleStateLocked() {
+        return phase == Phase.STOPPED || phase == Phase.CLOSED
+                ? State.STOPPED
+                : State.RUNNING;
     }
 
     private void publish() {

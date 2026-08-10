@@ -253,6 +253,26 @@ class WorkerRunControllerTest {
     }
 
     @Test
+    void runtimeStartFailureStopsAndClosesInstalledRuntime()
+            throws Exception {
+        FakeTextMessageClient client = new FakeTextMessageClient(
+                new IllegalStateException("start failed")
+        );
+        WorkerRunController controller = controller(
+                new ScriptedPreparation(0),
+                endpointUri -> client,
+                executions.resources()
+        );
+
+        controller.start();
+        awaitStopped(controller);
+
+        assertEquals(1, client.closeCalls.get());
+        assertTrue(controller.snapshot().diagnosticMessage()
+                .contains("IllegalStateException"));
+    }
+
+    @Test
     void preparationErrorCleansStateBeforeItEscapesExecutor() {
         ManualExecutorService control = new ManualExecutorService();
         ExecutorService handler = Executors.newSingleThreadExecutor();
@@ -452,11 +472,23 @@ class WorkerRunControllerTest {
             implements TextMessageClient {
 
         private final AtomicInteger closeCalls = new AtomicInteger();
+        private final RuntimeException startFailure;
         private volatile Listener listener;
+
+        private FakeTextMessageClient() {
+            this(null);
+        }
+
+        private FakeTextMessageClient(RuntimeException startFailure) {
+            this.startFailure = startFailure;
+        }
 
         @Override
         public void start(Listener value) {
             listener = value;
+            if (startFailure != null) {
+                throw startFailure;
+            }
         }
 
         @Override
