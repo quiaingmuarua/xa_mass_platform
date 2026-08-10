@@ -148,8 +148,10 @@ messages.
 
 ## Client Boundary
 
-Core exposes string-only `WorkerPointClient`, `TextMessageClient`, and
-`TextMessageClientFactory`, plus the JDK-type-only `WorkerControlClient`.
+Core exposes string-only `WorkerPointClient` and `TextMessageClient`, plus the
+JDK-type-only `WorkerControlClient`. Per-run Client creation remains local to
+`TextMessageWorkerTransportFactory` because the Endpoint URI is only known
+after preparation.
 Concrete Clients own I/O, framing, reconnect timers, physical-attempt
 filtering, and callback serialization. Their expensive infrastructure comes
 from the platform assembly; closing one Client closes only that connection.

@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
 import com.xa.mass.transport.client.TextMessageReconnectState;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
@@ -80,8 +79,7 @@ class WorkerCoreArchitectureBoundaryTest {
         for (Class<?> type : new Class<?>[]{
                 WorkerPointClient.class,
                 TextMessageClient.class,
-                TextMessageClient.Listener.class,
-                TextMessageClientFactory.class
+                TextMessageClient.Listener.class
         }) {
             for (Method method : type.getDeclaredMethods()) {
                 String signature = method.toGenericString();
@@ -136,9 +134,14 @@ class WorkerCoreArchitectureBoundaryTest {
                 TextMessageClient.Listener.class,
                 "onEndpointTerminated"
         ));
-        assertTrue(Modifier.isInterface(
-                TextMessageClientFactory.class.getModifiers()
-        ));
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        "com.xa.mass.transport.client."
+                                + "TextMessageClient"
+                                + "Factory"
+                )
+        );
     }
 
     @Test

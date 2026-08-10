@@ -68,8 +68,9 @@ final class JavaWorkerAssembly {
                         options.requestTimeout()
                 ),
                 new TextMessageWorkerTransportFactory(
-                        platform.textClientFactory(
+                        endpointUri -> platform.textClient(
                                 transportType,
+                                endpointUri,
                                 options.requestTimeout(),
                                 options.reconnectPolicy()
                         ),

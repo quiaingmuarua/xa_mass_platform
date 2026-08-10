@@ -1,7 +1,6 @@
 package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -140,48 +139,21 @@ final class JavaWorkerPlatform implements AutoCloseable {
         );
     }
 
-    synchronized TextMessageClientFactory textClientFactory(
+    synchronized TextMessageClient textClient(
             WorkerTransportType transportType,
+            URI endpointUri,
             Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
     ) {
         requireOpen();
         Objects.requireNonNull(transportType, "transportType");
+        Objects.requireNonNull(endpointUri, "endpointUri");
         requirePositive(requestTimeout, "requestTimeout");
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
         if (transportType == WorkerTransportType.POLLING) {
             throw new IllegalArgumentException(
                     "transportType must be WEBSOCKET or SOCKET"
             );
-        }
-        return endpointUri -> textClient(
-                transportType,
-                endpointUri,
-                requestTimeout,
-                reconnectPolicy
-        );
-    }
-
-    @Override
-    public synchronized void close() {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        socketExecutor.shutdownNow();
-        networkScheduler.shutdownNow();
-        controlExecutor.shutdownNow();
-        closeHttp(httpClient);
-    }
-
-    private TextMessageClient textClient(
-            WorkerTransportType transportType,
-            URI endpointUri,
-            Duration requestTimeout,
-            TextMessageReconnectPolicy reconnectPolicy
-    ) {
-        synchronized (this) {
-            requireOpen();
         }
         if (transportType == WorkerTransportType.WEBSOCKET) {
             long timeoutMillis = requirePositive(
@@ -212,6 +184,18 @@ final class JavaWorkerPlatform implements AutoCloseable {
         throw new IllegalArgumentException(
                 "transportType must be WEBSOCKET or SOCKET"
         );
+    }
+
+    @Override
+    public synchronized void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        socketExecutor.shutdownNow();
+        networkScheduler.shutdownNow();
+        controlExecutor.shutdownNow();
+        closeHttp(httpClient);
     }
 
     private void requireOpen() {

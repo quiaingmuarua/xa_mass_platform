@@ -15,7 +15,7 @@ Status: repository-local transport contracts and implementations.
   -> Java 11 Worker execution mechanism
   -> WorkerPreparation + two-state WorkerRunController + single-run Transport
   -> synchronous single Preparation on the Host calling thread
-  -> synchronous WorkerCommandExecutor and TextMessageClientFactory ports
+  -> synchronous WorkerCommandExecutor and TextMessageClient ports
   -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation

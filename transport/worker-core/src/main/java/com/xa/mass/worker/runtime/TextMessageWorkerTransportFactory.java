@@ -1,26 +1,27 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 
+import java.net.URI;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Creates one text-message Transport for a prepared Worker run.
  */
 public final class TextMessageWorkerTransportFactory {
 
-    private final TextMessageClientFactory clientFactory;
+    private final Function<URI, TextMessageClient> clientCreator;
     private final WorkerCommandExecutor commandDispatcher;
 
     public TextMessageWorkerTransportFactory(
-            TextMessageClientFactory clientFactory,
+            Function<URI, TextMessageClient> clientCreator,
             WorkerCommandExecutor commandDispatcher
     ) {
-        this.clientFactory = Objects.requireNonNull(
-                clientFactory,
-                "clientFactory"
+        this.clientCreator = Objects.requireNonNull(
+                clientCreator,
+                "clientCreator"
         );
         this.commandDispatcher = Objects.requireNonNull(
                 commandDispatcher,
@@ -34,8 +35,8 @@ public final class TextMessageWorkerTransportFactory {
     ) {
         Objects.requireNonNull(preparedWorker, "preparedWorker");
         TextMessageClient client = Objects.requireNonNull(
-                clientFactory.create(preparedWorker.endpointUri()),
-                "clientFactory returned null"
+                clientCreator.apply(preparedWorker.endpointUri()),
+                "clientCreator returned null"
         );
         try {
             return new TextMessageWorkerTransport(

@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +22,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 class WorkerRunControllerTest {
 
@@ -49,7 +49,7 @@ class WorkerRunControllerTest {
     void startSubmitsOnePreparationAndDuplicateIsIdempotent()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 preparation,
                 networks
@@ -84,7 +84,7 @@ class WorkerRunControllerTest {
     void failedPreparationStopsWithoutRetryUntilExplicitStart()
             throws Exception {
         ScriptedPreparation preparation = new ScriptedPreparation(1);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 preparation,
                 networks
@@ -113,7 +113,7 @@ class WorkerRunControllerTest {
     void endpointTerminationStopsWithoutStartingAnotherRun()
             throws Exception {
         ScriptedPreparation preparation = new ScriptedPreparation(0);
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 preparation,
                 networks
@@ -135,7 +135,7 @@ class WorkerRunControllerTest {
     void stopDuringPreparationDiscardsItsResultWithoutInterruption()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 preparation,
                 networks
@@ -159,7 +159,7 @@ class WorkerRunControllerTest {
     void closeDuringPreparationEndsTheObjectWithoutCreatingClient()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 preparation,
                 networks
@@ -176,7 +176,7 @@ class WorkerRunControllerTest {
 
     @Test
     void stopRequestsCurrentRuntimeTermination() throws Exception {
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks
@@ -224,7 +224,7 @@ class WorkerRunControllerTest {
         };
         WorkerRunController controller = controller(
                 preparation,
-                new FakeNetworkFactory()
+                new RecordingClientCreator()
         );
 
         controller.start();
@@ -238,7 +238,7 @@ class WorkerRunControllerTest {
     @Test
     void listenerErrorAfterRuntimeInstallCleansState()
             throws Exception {
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks
@@ -263,7 +263,7 @@ class WorkerRunControllerTest {
     @Test
     void listenerErrorObservesAlreadyCommittedTerminalState()
             throws Exception {
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks
@@ -290,7 +290,7 @@ class WorkerRunControllerTest {
 
     @Test
     void closeIsTerminalAndDoesNotCreateNetworkResources() {
-        FakeNetworkFactory networks = new FakeNetworkFactory();
+        RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
                 networks
@@ -305,7 +305,7 @@ class WorkerRunControllerTest {
     void rejectedStartRestoresStoppedState() {
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                new FakeNetworkFactory(),
+                new RecordingClientCreator(),
                 command -> {
                     throw new RejectedExecutionException("closed");
                 }
@@ -322,14 +322,14 @@ class WorkerRunControllerTest {
 
     private WorkerRunController controller(
             WorkerPreparation preparation,
-            TextMessageClientFactory networks
+            Function<URI, TextMessageClient> networks
     ) {
         return controller(preparation, networks, startExecutor);
     }
 
     private WorkerRunController controller(
             WorkerPreparation preparation,
-            TextMessageClientFactory networks,
+            Function<URI, TextMessageClient> networks,
             java.util.concurrent.Executor executor
     ) {
         WorkerRunController controller = new WorkerRunController(
@@ -428,14 +428,14 @@ class WorkerRunControllerTest {
         }
     }
 
-    private static final class FakeNetworkFactory
-            implements TextMessageClientFactory {
+    private static final class RecordingClientCreator
+            implements Function<URI, TextMessageClient> {
 
         private final List<FakeTextMessageClient> clients =
                 new java.util.concurrent.CopyOnWriteArrayList<>();
 
         @Override
-        public TextMessageClient create(URI endpointUri) {
+        public TextMessageClient apply(URI endpointUri) {
             FakeTextMessageClient client = new FakeTextMessageClient();
             clients.add(client);
             return client;

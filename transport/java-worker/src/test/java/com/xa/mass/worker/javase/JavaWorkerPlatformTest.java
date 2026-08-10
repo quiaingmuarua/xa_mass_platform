@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
 
@@ -73,16 +72,17 @@ class JavaWorkerPlatformTest {
                 "test-java-shared",
                 true
         )) {
-            TextMessageClientFactory factory = platform.textClientFactory(
+            TextMessageClient first = platform.textClient(
                     WorkerTransportType.WEBSOCKET,
+                    URI.create("ws://127.0.0.1:18084/first"),
                     Duration.ofSeconds(1),
                     TextMessageReconnectPolicy.defaults()
             );
-            TextMessageClient first = factory.create(
-                    URI.create("ws://127.0.0.1:18084/first")
-            );
-            TextMessageClient second = factory.create(
-                    URI.create("ws://127.0.0.1:18084/second")
+            TextMessageClient second = platform.textClient(
+                    WorkerTransportType.WEBSOCKET,
+                    URI.create("ws://127.0.0.1:18084/second"),
+                    Duration.ofSeconds(1),
+                    TextMessageReconnectPolicy.defaults()
             );
             ScheduledExecutorService firstScheduler =
                     (ScheduledExecutorService) field(
