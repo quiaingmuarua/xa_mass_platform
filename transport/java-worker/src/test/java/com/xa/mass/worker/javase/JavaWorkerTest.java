@@ -41,15 +41,9 @@ class JavaWorkerTest {
 
     private MockWebServer server;
     private JavaWorker worker;
-    private JavaWorkerHostResources resources;
 
     @BeforeEach
     void setUp() throws IOException {
-        resources = JavaWorkerHostResources.create(
-                1,
-                "java-worker-test",
-                true
-        );
         server = new MockWebServer();
         server.start();
     }
@@ -59,7 +53,6 @@ class JavaWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        resources.close();
         if (server != null) {
             server.close();
         }
@@ -109,7 +102,6 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .hostResources(resources)
                 .workerProperties(Map::of)
                 .eventDefinitions(definitions());
 
@@ -117,8 +109,8 @@ class JavaWorkerTest {
     }
 
     @Test
-    void builderRequiresExplicitHostResources() {
-        JavaWorker.Builder builder = JavaWorker.builder(
+    void builderOwnsItsPlatformResources() {
+        JavaWorker built = JavaWorker.builder(
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
@@ -126,9 +118,10 @@ class JavaWorkerTest {
                 )
                 .identityStore(WorkerIdentityStore.noCache())
                 .workerProperties(Map::of)
-                .eventDefinitions(definitions());
+                .eventDefinitions(definitions())
+                .build();
 
-        assertThrows(IllegalStateException.class, builder::build);
+        built.close();
     }
 
     @Test
@@ -139,6 +132,8 @@ class JavaWorkerTest {
         );
 
         worker.start();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
                 "IllegalArgumentException"
@@ -155,7 +150,6 @@ class JavaWorkerTest {
                         "fixed-installation",
                         WorkerTransportType.WEBSOCKET
                 )
-                .hostResources(resources)
                 .identityStore(identity)
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
@@ -196,7 +190,6 @@ class JavaWorkerTest {
                             "fixed-installation",
                             WorkerTransportType.SOCKET
                     )
-                    .hostResources(resources)
                     .identityStore(identity)
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())

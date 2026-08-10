@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.concurrent.Executor;
 import java.util.stream.Stream;
 
 class WorkerCoreArchitectureBoundaryTest {
@@ -269,7 +270,8 @@ class WorkerCoreArchitectureBoundaryTest {
         assertConstructor(
                 WorkerRunController.class,
                 WorkerPreparation.class,
-                TextMessageWorkerTransportFactory.class
+                TextMessageWorkerTransportFactory.class,
+                Executor.class
         );
 
         for (Class<?> transport : new Class<?>[]{
@@ -374,7 +376,6 @@ class WorkerCoreArchitectureBoundaryTest {
                 "PreparationRetry",
                 "maxPrepareAttempts",
                 "retryScheduler",
-                "controlExecutor",
                 "WorkerExecutionResources",
                 "private State state",
                 "private boolean closed",

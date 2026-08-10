@@ -2,16 +2,12 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.javase.JavaWorkerHostResources;
+import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.worker.runtime.PreparedWorker;
-import com.xa.mass.worker.runtime.WorkerPreparation;
-import com.xa.mass.worker.runtime.WorkerRunController;
-import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
+import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
@@ -25,6 +21,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
@@ -167,8 +164,11 @@ class RuntimeApiPythonIntegrationTest {
         String workerId = boundWorker.workerId();
 
         RunningWorker worker = startWorker(
+                workerGroupId,
+                clientWorkerKey,
                 workerId,
                 boundWorker.endpointUri(),
+                Map.of("region", "snapshot-only"),
                 TransportProfile.WEBSOCKET
         );
         try {
@@ -268,8 +268,11 @@ class RuntimeApiPythonIntegrationTest {
         String workerId = boundWorker.workerId();
 
         RunningWorker worker = startWorker(
+                workerGroupId,
+                clientWorkerKey,
                 workerId,
                 boundWorker.endpointUri(),
+                Map.of("runtime", "java"),
                 transportProfile
         );
         try {
@@ -421,8 +424,11 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private RunningWorker startWorker(
+            String workerGroupId,
+            String clientWorkerKey,
             String workerId,
             URI serverUrl,
+            Map<String, Object> workerProperties,
             TransportProfile transportProfile
     ) throws Exception {
         List<WorkerEventDefinition<?>> definitions =
@@ -442,14 +448,18 @@ class RuntimeApiPythonIntegrationTest {
                 );
         return switch (transportProfile) {
             case WEBSOCKET -> startTextMessageWorker(
+                    workerGroupId,
+                    clientWorkerKey,
                     workerId,
-                    serverUrl,
+                    workerProperties,
                     definitions,
                     WorkerTransportType.WEBSOCKET
             );
             case SOCKET -> startTextMessageWorker(
+                    workerGroupId,
+                    clientWorkerKey,
                     workerId,
-                    serverUrl,
+                    workerProperties,
                     definitions,
                     WorkerTransportType.SOCKET
             );
@@ -467,31 +477,26 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private RunningWorker startTextMessageWorker(
+            String workerGroupId,
+            String clientWorkerKey,
             String workerId,
-            URI endpointUri,
+            Map<String, Object> workerProperties,
             List<WorkerEventDefinition<?>> definitions,
             WorkerTransportType transportType
-    ) throws Exception {
-        JavaWorkerHostResources resources =
-                JavaWorkerHostResources.create(
-                        1,
-                        "xa-runtime-integration-worker",
-                        true
-                );
-        WorkerCommandDispatcher dispatcher =
-                new WorkerCommandDispatcher(definitions);
-        WorkerRunController worker = new WorkerRunController(
-                fixedPreparation(workerId, endpointUri),
-                new TextMessageWorkerTransportFactory(
-                        resources.textClientFactory(
-                                transportType,
-                                Duration.ofSeconds(2),
-                                connectionPolicy()
-                        ),
-                        dispatcher
+    ) {
+        JavaWorker worker = JavaWorker.builder(
+                        URI.create("http://127.0.0.1:" + port),
+                        workerGroupId,
+                        clientWorkerKey,
+                        transportType
                 )
-        );
-        return new TextMessageWorkerHandle(worker, resources);
+                .identityStore(fixedIdentity(workerId))
+                .workerProperties(() -> workerProperties)
+                .eventDefinitions(definitions)
+                .requestTimeout(Duration.ofSeconds(2))
+                .reconnectPolicy(connectionPolicy())
+                .build();
+        return new TextMessageWorkerHandle(worker);
     }
 
     private static TextMessageReconnectPolicy connectionPolicy() {
@@ -502,18 +507,18 @@ class RuntimeApiPythonIntegrationTest {
         );
     }
 
-    private static WorkerPreparation fixedPreparation(
-            String workerId,
-            URI endpointUri
-    ) {
-        return new WorkerPreparation() {
+    private static WorkerIdentityStore fixedIdentity(String workerId) {
+        return new WorkerIdentityStore() {
             @Override
-            public PreparedWorker prepare() {
-                return new PreparedWorker(workerId, endpointUri);
+            public Optional<String> loadWorkerId() {
+                return Optional.of(workerId);
             }
 
             @Override
-            public void close() {
+            public void saveWorkerId(String value) {
+                throw new IllegalStateException(
+                        "Existing integration identity must be reused"
+                );
             }
         };
     }
@@ -910,31 +915,21 @@ class RuntimeApiPythonIntegrationTest {
     private static final class TextMessageWorkerHandle
             implements RunningWorker {
 
-        private final WorkerRunController transport;
-        private final JavaWorkerHostResources hostResources;
+        private final JavaWorker worker;
 
-        private TextMessageWorkerHandle(
-                WorkerRunController transport,
-                JavaWorkerHostResources hostResources
-        ) throws Exception {
-            this.transport = transport;
-            this.hostResources = hostResources;
+        private TextMessageWorkerHandle(JavaWorker worker) {
+            this.worker = worker;
             try {
-                transport.start();
-            } catch (Exception | Error failure) {
-                transport.close();
-                hostResources.close();
+                worker.start();
+            } catch (RuntimeException | Error failure) {
+                worker.close();
                 throw failure;
             }
         }
 
         @Override
         public void close() {
-            try {
-                transport.close();
-            } finally {
-                hostResources.close();
-            }
+            worker.close();
         }
     }
 }

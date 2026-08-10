@@ -20,10 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
 
-/**
- * Process-scoped Java Host owner for Worker network and control resources.
- */
-public final class JavaWorkerHostResources implements AutoCloseable {
+/** Owns network and control resources for one Java Worker assembly. */
+final class JavaWorkerPlatform implements AutoCloseable {
 
     private final OkHttpClient httpClient;
     private final ExecutorService controlExecutor;
@@ -31,7 +29,7 @@ public final class JavaWorkerHostResources implements AutoCloseable {
     private final ExecutorService socketExecutor;
     private boolean closed;
 
-    private JavaWorkerHostResources(
+    private JavaWorkerPlatform(
             OkHttpClient httpClient,
             ExecutorService controlExecutor,
             ScheduledExecutorService networkScheduler,
@@ -52,16 +50,26 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         );
     }
 
-    JavaWorkerHostResources(ExecutorService controlExecutor) {
-        this(
-                new OkHttpClient(),
-                controlExecutor,
-                Executors.newSingleThreadScheduledExecutor(),
-                Executors.newSingleThreadExecutor()
+    static JavaWorkerPlatform standalone(String workerGroupId) {
+        return create(
+                1,
+                "xa-java-worker-" + threadSegment(workerGroupId),
+                false
         );
     }
 
-    public static JavaWorkerHostResources create(
+    static JavaWorkerPlatform managed(
+            String workerGroupId,
+            int replicaCount
+    ) {
+        return create(
+                replicaCount,
+                "xa-java-worker-manager-" + threadSegment(workerGroupId),
+                true
+        );
+    }
+
+    static JavaWorkerPlatform create(
             int workerCapacity,
             String threadNamePrefix,
             boolean daemonThreads
@@ -78,34 +86,31 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         ExecutorService sockets = null;
         OkHttpClient http = null;
         try {
-            ThreadFactory controlFactory = namedThreadFactory(
-                    prefix + "-control",
-                    daemonThreads
-            );
-            ThreadFactory networkFactory = namedThreadFactory(
-                    prefix + "-network",
-                    daemonThreads
-            );
-            ThreadFactory socketFactory = namedThreadFactory(
-                    prefix + "-socket",
-                    daemonThreads
-            );
             control = Executors.newFixedThreadPool(
                     controlThreads,
-                    controlFactory
+                    namedThreadFactory(
+                            prefix + "-control",
+                            daemonThreads
+                    )
             );
             network = Executors.newSingleThreadScheduledExecutor(
-                    networkFactory
+                    namedThreadFactory(
+                            prefix + "-network",
+                            daemonThreads
+                    )
             );
             sockets = Executors.newFixedThreadPool(
                     workerCapacity,
-                    socketFactory
+                    namedThreadFactory(
+                            prefix + "-socket",
+                            daemonThreads
+                    )
             );
             Dispatcher dispatcher = new Dispatcher();
             http = new OkHttpClient.Builder()
                     .dispatcher(dispatcher)
                     .build();
-            return new JavaWorkerHostResources(
+            return new JavaWorkerPlatform(
                     http,
                     control,
                     network,
@@ -120,12 +125,14 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         }
     }
 
-    public synchronized Executor controlExecutor() {
+    synchronized Executor controlExecutor() {
         requireOpen();
         return controlExecutor;
     }
 
-    synchronized WorkerControlClient controlClient(URI runtimeApiBaseUrl) {
+    synchronized WorkerControlClient controlClient(
+            URI runtimeApiBaseUrl
+    ) {
         requireOpen();
         return new JavaOkHttpWorkerControlClient(
                 httpClient,
@@ -133,45 +140,7 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         );
     }
 
-    synchronized TextMessageClient textClient(
-            WorkerTransportType transportType,
-            URI endpointUri,
-            Duration requestTimeout,
-            TextMessageReconnectPolicy reconnectPolicy
-    ) {
-        requireOpen();
-        if (transportType == WorkerTransportType.WEBSOCKET) {
-            long timeoutMillis = requirePositive(
-                    requestTimeout,
-                    "requestTimeout"
-            ).toMillis();
-            OkHttpClient socketHttp = httpClient.newBuilder()
-                    .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
-                    .readTimeout(0, TimeUnit.MILLISECONDS)
-                    .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
-                    .callTimeout(0, TimeUnit.MILLISECONDS)
-                    .build();
-            return new JavaOkHttpTextWebSocketClient(
-                    socketHttp,
-                    networkScheduler,
-                    endpointUri,
-                    reconnectPolicy
-            );
-        }
-        if (transportType == WorkerTransportType.SOCKET) {
-            return new JavaLineSocketClient(
-                    socketExecutor,
-                    endpointUri,
-                    requestTimeout,
-                    reconnectPolicy
-            );
-        }
-        throw new IllegalArgumentException(
-                "transportType must be WEBSOCKET or SOCKET"
-        );
-    }
-
-    public synchronized TextMessageClientFactory textClientFactory(
+    synchronized TextMessageClientFactory textClientFactory(
             WorkerTransportType transportType,
             Duration requestTimeout,
             TextMessageReconnectPolicy reconnectPolicy
@@ -205,11 +174,49 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         closeHttp(httpClient);
     }
 
+    private TextMessageClient textClient(
+            WorkerTransportType transportType,
+            URI endpointUri,
+            Duration requestTimeout,
+            TextMessageReconnectPolicy reconnectPolicy
+    ) {
+        synchronized (this) {
+            requireOpen();
+        }
+        if (transportType == WorkerTransportType.WEBSOCKET) {
+            long timeoutMillis = requirePositive(
+                    requestTimeout,
+                    "requestTimeout"
+            ).toMillis();
+            OkHttpClient socketHttp = httpClient.newBuilder()
+                    .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+                    .readTimeout(0, TimeUnit.MILLISECONDS)
+                    .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+                    .callTimeout(0, TimeUnit.MILLISECONDS)
+                    .build();
+            return new JavaOkHttpTextWebSocketClient(
+                    socketHttp,
+                    networkScheduler,
+                    endpointUri,
+                    reconnectPolicy
+            );
+        }
+        if (transportType == WorkerTransportType.SOCKET) {
+            return new JavaLineSocketClient(
+                    socketExecutor,
+                    endpointUri,
+                    requestTimeout,
+                    reconnectPolicy
+            );
+        }
+        throw new IllegalArgumentException(
+                "transportType must be WEBSOCKET or SOCKET"
+        );
+    }
+
     private void requireOpen() {
         if (closed) {
-            throw new IllegalStateException(
-                    "JavaWorkerHostResources is closed"
-            );
+            throw new IllegalStateException("Java Worker platform is closed");
         }
     }
 
@@ -226,6 +233,11 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             thread.setDaemon(daemon);
             return thread;
         };
+    }
+
+    private static String threadSegment(String value) {
+        String source = requireNonBlank(value, "workerGroupId").trim();
+        return source.replaceAll("[^A-Za-z0-9._-]", "-");
     }
 
     private static void closeHttp(OkHttpClient client) {

@@ -21,48 +21,27 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.junit.jupiter.api.Test;
 
-class JavaWorkerHostResourcesTest {
+class JavaWorkerPlatformTest {
 
     @Test
-    void validatesStaticReplicaSizingInputs() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> JavaWorkerHostResources.create(
-                        0,
-                        "workers",
-                        false
-                )
-        );
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> JavaWorkerHostResources.create(
-                        1,
-                        " ",
-                        false
-                )
-        );
-    }
-
-    @Test
-    void createsOneBoundedNamedBundleAndRejectsAfterClose()
+    void createsOneBoundedManagedBundleAndRejectsAfterClose()
             throws Exception {
-        JavaWorkerHostResources resources =
-                JavaWorkerHostResources.create(
-                        8,
-                        "test-java-worker",
-                        true
-                );
-        ExecutorService control = executor(resources, "controlExecutor");
-        ExecutorService network = executor(resources, "networkScheduler");
-        ExecutorService sockets = executor(resources, "socketExecutor");
+        JavaWorkerPlatform platform = JavaWorkerPlatform.create(
+                8,
+                "test-java-worker",
+                true
+        );
+        ExecutorService control = executor(platform, "controlExecutor");
+        ExecutorService network = executor(platform, "networkScheduler");
+        ExecutorService sockets = executor(platform, "socketExecutor");
 
         assertEquals(4, ((ThreadPoolExecutor) control).getCorePoolSize());
-        assertThread(control, "test-java-worker-control-");
-        assertThread(network, "test-java-worker-network-");
-        assertThread(sockets, "test-java-worker-socket-");
+        assertThread(control, "test-java-worker-control-", true);
+        assertThread(network, "test-java-worker-network-", true);
+        assertThread(sockets, "test-java-worker-socket-", true);
 
-        resources.close();
-        resources.close();
+        platform.close();
+        platform.close();
 
         assertTrue(control.isShutdown());
         assertTrue(network.isShutdown());
@@ -75,20 +54,30 @@ class JavaWorkerHostResourcesTest {
     }
 
     @Test
+    void standaloneControlThreadIsNonDaemon() throws Exception {
+        try (JavaWorkerPlatform platform =
+                     JavaWorkerPlatform.standalone("group-1")) {
+            assertThread(
+                    executor(platform, "controlExecutor"),
+                    "xa-java-worker-group-1-control-",
+                    false
+            );
+        }
+    }
+
+    @Test
     void websocketClientsBorrowOneNetworkScheduler()
             throws Exception {
-        try (JavaWorkerHostResources resources =
-                     JavaWorkerHostResources.create(
-                             2,
-                             "test-java-shared",
-                             true
-                     )) {
-            TextMessageClientFactory factory =
-                    resources.textClientFactory(
-                            WorkerTransportType.WEBSOCKET,
-                            Duration.ofSeconds(1),
-                            TextMessageReconnectPolicy.defaults()
-                    );
+        try (JavaWorkerPlatform platform = JavaWorkerPlatform.create(
+                2,
+                "test-java-shared",
+                true
+        )) {
+            TextMessageClientFactory factory = platform.textClientFactory(
+                    WorkerTransportType.WEBSOCKET,
+                    Duration.ofSeconds(1),
+                    TextMessageReconnectPolicy.defaults()
+            );
             TextMessageClient first = factory.create(
                     URI.create("ws://127.0.0.1:18084/first")
             );
@@ -117,14 +106,12 @@ class JavaWorkerHostResourcesTest {
     }
 
     private static ExecutorService executor(
-            JavaWorkerHostResources resources,
+            JavaWorkerPlatform platform,
             String fieldName
     ) throws Exception {
-        Field field = JavaWorkerHostResources.class.getDeclaredField(
-                fieldName
-        );
+        Field field = JavaWorkerPlatform.class.getDeclaredField(fieldName);
         field.setAccessible(true);
-        return (ExecutorService) field.get(resources);
+        return (ExecutorService) field.get(platform);
     }
 
     private static Object field(Object target, String fieldName)
@@ -136,11 +123,12 @@ class JavaWorkerHostResourcesTest {
 
     private static void assertThread(
             ExecutorService executor,
-            String expectedPrefix
+            String expectedPrefix,
+            boolean daemon
     ) throws Exception {
         Future<Thread> future = executor.submit(Thread::currentThread);
         Thread thread = future.get();
         assertTrue(thread.getName().startsWith(expectedPrefix));
-        assertTrue(thread.isDaemon());
+        assertEquals(daemon, thread.isDaemon());
     }
 }

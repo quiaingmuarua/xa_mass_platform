@@ -2,10 +2,7 @@ package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
-import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
-import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -13,18 +10,20 @@ import com.xa.mass.worker.runtime.WorkerRunController;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public final class JavaWorker implements WorkerLifecycle {
 
-    private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
             Duration.ofSeconds(10);
     private final WorkerRunController worker;
+    private final JavaWorkerPlatform platform;
 
-    private JavaWorker(WorkerRunController worker) {
+    private JavaWorker(
+            WorkerRunController worker,
+            JavaWorkerPlatform platform
+    ) {
         this.worker = worker;
+        this.platform = platform;
     }
 
     public static Builder builder(
@@ -68,7 +67,11 @@ public final class JavaWorker implements WorkerLifecycle {
 
     @Override
     public void close() {
-        worker.close();
+        try {
+            worker.close();
+        } finally {
+            platform.close();
+        }
     }
 
     public static final class Builder {
@@ -80,7 +83,6 @@ public final class JavaWorker implements WorkerLifecycle {
         private WorkerIdentityStore identityStore;
         private WorkerPropertiesProvider workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private JavaWorkerHostResources hostResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -139,16 +141,6 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder hostResources(JavaWorkerHostResources value) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "hostResources must be present"
-                );
-            }
-            hostResources = value;
-            return this;
-        }
-
         public Builder requestTimeout(Duration value) {
             requestTimeout = requirePositive(value, "requestTimeout");
             return this;
@@ -165,11 +157,6 @@ public final class JavaWorker implements WorkerLifecycle {
         }
 
         public JavaWorker build() {
-            if (hostResources == null) {
-                throw new IllegalStateException(
-                        "hostResources must be configured"
-                );
-            }
             if (identityStore == null) {
                 throw new IllegalStateException(
                         "identityStore must be configured"
@@ -185,49 +172,26 @@ public final class JavaWorker implements WorkerLifecycle {
                         "eventDefinitions must not be empty"
                 );
             }
-            WorkerPropertiesProvider completeProperties = () -> {
-                Map<String, Object> supplied =
-                        workerProperties.loadProperties();
-                if (supplied == null) {
-                    throw new IllegalArgumentException(
-                            "workerProperties must be present"
-                    );
-                }
-                if (supplied.containsKey(CLIENT_WORKER_KEY)) {
-                    throw new IllegalArgumentException(
-                            "workerProperties must not override "
-                                    + CLIENT_WORKER_KEY
-                    );
-                }
-                Map<String, Object> complete = new LinkedHashMap<>();
-                complete.put(CLIENT_WORKER_KEY, clientWorkerKey);
-                complete.putAll(supplied);
-                return complete;
-            };
-            Duration resolvedRequestTimeout = requestTimeout;
-            TextMessageReconnectPolicy resolvedReconnectPolicy =
-                    reconnectPolicy;
-            WorkerCommandDispatcher dispatcher =
-                    new WorkerCommandDispatcher(definitions);
-            WorkerRunController worker = new WorkerRunController(
-                    new RegisteredWorkerPreparation(
-                            workerGroupId,
-                            transportType,
-                            identityStore,
-                            completeProperties,
-                            hostResources.controlClient(runtimeApiBaseUrl),
-                            resolvedRequestTimeout
-                    ),
-                    new TextMessageWorkerTransportFactory(
-                            hostResources.textClientFactory(
-                                    transportType,
-                                    resolvedRequestTimeout,
-                                    resolvedReconnectPolicy
-                            ),
-                            dispatcher
-                    )
-            );
-            return new JavaWorker(worker);
+            JavaWorkerPlatform platform =
+                    JavaWorkerPlatform.standalone(workerGroupId);
+            try {
+                WorkerRunController worker = JavaWorkerAssembly.assemble(
+                        runtimeApiBaseUrl,
+                        workerGroupId,
+                        clientWorkerKey,
+                        transportType,
+                        identityStore,
+                        workerProperties,
+                        definitions,
+                        requestTimeout,
+                        reconnectPolicy,
+                        platform
+                );
+                return new JavaWorker(worker, platform);
+            } catch (RuntimeException | Error failure) {
+                platform.close();
+                throw failure;
+            }
         }
 
     }

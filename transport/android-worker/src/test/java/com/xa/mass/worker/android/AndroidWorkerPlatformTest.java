@@ -19,26 +19,23 @@ import java.net.URI;
 import java.time.Duration;
 
 @RunWith(RobolectricTestRunner.class)
-public class AndroidWorkerHostResourcesTest {
+public class AndroidWorkerPlatformTest {
 
     @Test
     public void clientsBorrowOneLooperAndCloseIndependently()
             throws Exception {
-        AndroidWorkerHostResources resources =
-                AndroidWorkerHostResources.create(
-                        2,
-                        "test-android-shared"
-                );
+        AndroidWorkerPlatform platform =
+                AndroidWorkerPlatform.create("test-group");
         HandlerThread networkThread = (HandlerThread) field(
-                resources,
+                platform,
                 "networkThread"
         );
-        TextMessageClient first = resources.textClient(
+        TextMessageClient first = platform.textClient(
                 URI.create("ws://127.0.0.1:18084/first"),
                 Duration.ofSeconds(1),
                 TextMessageReconnectPolicy.defaults()
         );
-        TextMessageClient second = resources.textClient(
+        TextMessageClient second = platform.textClient(
                 URI.create("ws://127.0.0.1:18084/second"),
                 Duration.ofSeconds(1),
                 TextMessageReconnectPolicy.defaults()
@@ -56,11 +53,11 @@ public class AndroidWorkerHostResourcesTest {
             second.close();
             assertTrue(networkThread.isAlive());
         } finally {
-            resources.close();
+            platform.close();
         }
         assertThrows(
                 IllegalStateException.class,
-                resources::controlExecutor
+                platform::controlExecutor
         );
     }
 

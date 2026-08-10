@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,7 +46,7 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void startRunsOnePreparationSynchronouslyAndDuplicateIsIdempotent()
+    void startSubmitsOnePreparationAndDuplicateIsIdempotent()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
         FakeNetworkFactory networks = new FakeNetworkFactory();
@@ -60,10 +61,10 @@ class WorkerRunControllerTest {
             }
         });
 
-        Future<?> starting = startExecutor.submit(controller::start);
+        Future<?> request = startExecutor.submit(controller::start);
+        request.get(5, TimeUnit.SECONDS);
         assertTrue(runningObserved.await(5, TimeUnit.SECONDS));
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
-        assertFalse(starting.isDone());
         assertEquals(
                 WorkerLifecycle.State.RUNNING,
                 controller.snapshot().state()
@@ -73,7 +74,6 @@ class WorkerRunControllerTest {
         assertEquals(1, preparation.calls.get());
 
         preparation.release.countDown();
-        starting.get(5, TimeUnit.SECONDS);
         networks.awaitClient(0);
         assertEquals(1, preparation.calls.get());
         assertEquals(WORKER_ID, controller.snapshot().workerId());
@@ -91,6 +91,7 @@ class WorkerRunControllerTest {
         );
 
         controller.start();
+        awaitStopped(controller);
         assertEquals(1, preparation.calls.get());
         assertTrue(networks.clients.isEmpty());
         assertTrue(controller.snapshot().diagnosticMessage()
@@ -140,7 +141,7 @@ class WorkerRunControllerTest {
                 networks
         );
 
-        Future<?> starting = startExecutor.submit(controller::start);
+        controller.start();
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
         controller.stop();
         assertEquals(
@@ -149,7 +150,6 @@ class WorkerRunControllerTest {
         );
 
         preparation.release.countDown();
-        starting.get(5, TimeUnit.SECONDS);
         awaitStopped(controller);
         assertTrue(networks.clients.isEmpty());
         assertEquals(1, preparation.calls.get());
@@ -165,10 +165,9 @@ class WorkerRunControllerTest {
                 networks
         );
 
-        Future<?> starting = startExecutor.submit(controller::start);
+        controller.start();
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
         controller.close();
-        starting.get(5, TimeUnit.SECONDS);
         awaitStopped(controller);
 
         assertTrue(networks.clients.isEmpty());
@@ -204,14 +203,15 @@ class WorkerRunControllerTest {
         );
 
         controller.start();
-
+        awaitStopped(controller);
         assertEquals(1, client.closeCalls.get());
         assertTrue(controller.snapshot().diagnosticMessage()
                 .contains("IllegalStateException"));
     }
 
     @Test
-    void preparationErrorCleansStateBeforeItEscapesStart() {
+    void preparationErrorCleansStateOnTheControlExecutor()
+            throws Exception {
         WorkerPreparation preparation = new WorkerPreparation() {
             @Override
             public PreparedWorker prepare() {
@@ -227,7 +227,8 @@ class WorkerRunControllerTest {
                 new FakeNetworkFactory()
         );
 
-        assertThrows(AssertionError.class, controller::start);
+        controller.start();
+        awaitStopped(controller);
         assertEquals(
                 WorkerLifecycle.State.STOPPED,
                 controller.snapshot().state()
@@ -235,7 +236,7 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void listenerErrorAfterRuntimeInstallCleansStateBeforeItEscapes()
+    void listenerErrorAfterRuntimeInstallCleansState()
             throws Exception {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
@@ -250,8 +251,8 @@ class WorkerRunControllerTest {
             }
         });
 
-        assertThrows(AssertionError.class, controller::start);
-
+        controller.start();
+        awaitStopped(controller);
         assertEquals(
                 WorkerLifecycle.State.STOPPED,
                 controller.snapshot().state()
@@ -300,16 +301,44 @@ class WorkerRunControllerTest {
         assertThrows(IllegalStateException.class, controller::start);
     }
 
+    @Test
+    void rejectedStartRestoresStoppedState() {
+        WorkerRunController controller = controller(
+                new ScriptedPreparation(0),
+                new FakeNetworkFactory(),
+                command -> {
+                    throw new RejectedExecutionException("closed");
+                }
+        );
+
+        assertThrows(RejectedExecutionException.class, controller::start);
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                controller.snapshot().state()
+        );
+        assertTrue(controller.snapshot().diagnosticMessage()
+                .contains("RejectedExecutionException"));
+    }
+
     private WorkerRunController controller(
             WorkerPreparation preparation,
             TextMessageClientFactory networks
+    ) {
+        return controller(preparation, networks, startExecutor);
+    }
+
+    private WorkerRunController controller(
+            WorkerPreparation preparation,
+            TextMessageClientFactory networks,
+            java.util.concurrent.Executor executor
     ) {
         WorkerRunController controller = new WorkerRunController(
                 preparation,
                 new TextMessageWorkerTransportFactory(
                         networks,
                         command -> java.util.Optional.empty()
-                )
+                ),
+                executor
         );
         controllers.add(controller);
         return controller;

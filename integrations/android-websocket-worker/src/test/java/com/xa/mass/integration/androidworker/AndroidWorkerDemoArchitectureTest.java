@@ -29,7 +29,6 @@ public class AndroidWorkerDemoArchitectureTest {
                 "AndroidWorkerDemoApplication.java"
         );
         String activity = readSource(project, "MainActivity.java");
-        String host = readSource(project, "AndroidWorkerDemoHost.java");
         String capability = readSource(
                 project,
                 "AndroidDemoStateCapability.java"
@@ -89,38 +88,39 @@ public class AndroidWorkerDemoArchitectureTest {
             assertFalse(forbidden, source.contains(forbidden));
         }
 
+        assertTrue(application.contains("private AndroidWorker worker;"));
         assertTrue(application.contains(
-                "AndroidWorker.builder"
+                "private AndroidDemoStateCapability demoCapability;"
         ));
+        assertTrue(application.contains("AndroidWorker.builder("));
         assertTrue(application.contains(
-                "new AndroidDemoStateCapability"
+                "new AndroidDemoStateCapability("
         ));
-        assertTrue(application.contains(
-                "AndroidWorkerHostResources.create("
-        ));
-        assertTrue(application.replaceAll("\\s+", "").contains(
-                "AndroidWorkerHostResources.create("
-                        + "1,\"xa-android-worker-demo\")"
-        ));
-        assertTrue(application.contains(".hostResources(resources)"));
-        assertTrue(host.contains("controlExecutor.execute("));
-        assertTrue(application.contains("workerResources.close()"));
-        assertFalse(source.contains("AndroidWorkerDemoResources"));
-        assertTrue(application.contains("host.start();"));
+        assertTrue(application.contains("worker.start();"));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/xa/mass/integration/androidworker/"
+                        + "AndroidWorker" + "Demo.java"
+        )));
+        assertFalse(source.contains("HostResources"));
+        assertFalse(source.contains("controlExecutor"));
+        assertFalse(source.contains("java.util.concurrent.Executor"));
         assertFalse(source.contains("retryScheduler"));
         assertFalse(source.contains("ScheduledExecutorService"));
         assertFalse(source.contains("WorkerExecutionResources"));
-        assertTrue(activity.contains("workerHost.addListener"));
-        assertTrue(activity.contains("workerHost.removeListener"));
+        assertTrue(activity.contains("worker.addListener(workerListener)"));
+        assertTrue(activity.contains(
+                "demoCapability.addListener(capabilityListener)"
+        ));
+        assertTrue(activity.contains("runOnUiThread(this::render)"));
         assertFalse(activity.contains("AndroidWorker.builder"));
         assertFalse(activity.contains("OkHttpWorkerControlClient"));
         assertFalse(activity.contains("WorkerEventDefinition"));
-        assertFalse(activity.contains("workerHost.close()"));
+        assertFalse(activity.contains("worker.close()"));
         assertFalse(section(
                 activity,
                 "protected void onStop()",
                 "private void bindViews()"
-        ).contains("workerHost.stop()"));
+        ).contains("worker.stop()"));
 
         for (String forbidden : new String[]{
                 "WorkerControlClient",
@@ -129,7 +129,7 @@ public class AndroidWorkerDemoArchitectureTest {
                 ".register(",
                 ".bind("
         }) {
-            assertFalse(forbidden, host.contains(forbidden));
+            assertFalse(forbidden, application.contains(forbidden));
         }
         for (String forbidden : new String[]{
                 "workerId",
@@ -141,7 +141,6 @@ public class AndroidWorkerDemoArchitectureTest {
         }
         assertFalse(source.contains("AndroidWorkerIdentityStore"));
         assertFalse(source.contains("AndroidWorkerEndpointCacheStore"));
-        assertFalse(source.contains("AndroidWorkerDemoController"));
         assertFalse(source.contains("AndroidDemoStateStore"));
         assertFalse(source.contains("AndroidDemoEvents"));
         assertFalse(source.contains("AndroidWebSocketWorkerRuntime"));

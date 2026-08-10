@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.stream.Stream;
 
 @RunWith(RobolectricTestRunner.class)
@@ -63,8 +65,18 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(networkClient.contains("message(attempt, text);"));
         String resources = read(project.resolve(
                 "src/main/java/com/xa/mass/worker/android/"
-                        + "AndroidWorkerHostResources.java"
+                        + "AndroidWorkerPlatform.java"
         ));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/xa/mass/worker/android/"
+                        + "AndroidWorker" + "HostResources.java"
+        )));
+        assertFalse(Modifier.isPublic(
+                AndroidWorkerPlatform.class.getModifiers()
+        ));
+        for (Method method : AndroidWorker.Builder.class.getMethods()) {
+            assertFalse(method.getName().equals("hostResources"));
+        }
         assertTrue(resources.contains("new HandlerThread("));
         assertFalse(resources.contains("commandExecutor"));
         assertFalse(resources.contains("maxConcurrentCommands"));
@@ -76,10 +88,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
-        assertTrue(assembly.contains(
-                "public Builder hostResources("
-        ));
-        assertFalse(assembly.contains("controlExecutor"));
+        assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));

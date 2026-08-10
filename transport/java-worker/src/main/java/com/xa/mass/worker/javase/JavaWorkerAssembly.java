@@ -1,0 +1,81 @@
+package com.xa.mass.worker.javase;
+
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
+import com.xa.mass.worker.runtime.WorkerIdentityStore;
+import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.worker.runtime.WorkerRunController;
+
+import java.net.URI;
+import java.time.Duration;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/** Assembles one Java Worker against a caller-owned platform. */
+final class JavaWorkerAssembly {
+
+    private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
+
+    private JavaWorkerAssembly() {
+    }
+
+    static WorkerRunController assemble(
+            URI runtimeApiBaseUrl,
+            String workerGroupId,
+            String clientWorkerKey,
+            WorkerTransportType transportType,
+            WorkerIdentityStore identityStore,
+            WorkerPropertiesProvider workerProperties,
+            Collection<? extends WorkerEventDefinition<?>> definitions,
+            Duration requestTimeout,
+            TextMessageReconnectPolicy reconnectPolicy,
+            JavaWorkerPlatform platform
+    ) {
+        Objects.requireNonNull(platform, "platform");
+        WorkerPropertiesProvider completeProperties = () -> {
+            Map<String, Object> supplied = workerProperties.loadProperties();
+            if (supplied == null) {
+                throw new IllegalArgumentException(
+                        "workerProperties must be present"
+                );
+            }
+            if (supplied.containsKey(CLIENT_WORKER_KEY)) {
+                throw new IllegalArgumentException(
+                        "workerProperties must not override "
+                                + CLIENT_WORKER_KEY
+                );
+            }
+            Map<String, Object> complete = new LinkedHashMap<>();
+            complete.put(CLIENT_WORKER_KEY, clientWorkerKey);
+            complete.putAll(supplied);
+            return complete;
+        };
+        WorkerCommandDispatcher dispatcher =
+                new WorkerCommandDispatcher(definitions);
+        return new WorkerRunController(
+                new RegisteredWorkerPreparation(
+                        workerGroupId,
+                        transportType,
+                        identityStore,
+                        completeProperties,
+                        platform.controlClient(runtimeApiBaseUrl),
+                        requestTimeout
+                ),
+                new TextMessageWorkerTransportFactory(
+                        platform.textClientFactory(
+                                transportType,
+                                requestTimeout,
+                                reconnectPolicy
+                        ),
+                        dispatcher
+                ),
+                platform.controlExecutor()
+        );
+    }
+}

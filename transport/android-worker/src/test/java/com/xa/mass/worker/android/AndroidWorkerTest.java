@@ -35,9 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -61,14 +58,9 @@ public class AndroidWorkerTest {
     private MockWebServer server;
     private AndroidWorker worker;
     private AtomicReference<Map<String, Object>> properties;
-    private AndroidWorkerHostResources resources;
 
     @Before
     public void setUp() throws Exception {
-        resources = AndroidWorkerHostResources.create(
-                2,
-                "android-worker-test"
-        );
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
                 AndroidWorkerIdentityStore.PREFERENCES,
@@ -89,7 +81,6 @@ public class AndroidWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        resources.close();
         if (server != null) {
             server.close();
         }
@@ -272,23 +263,22 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void builderRequiresExplicitHostResources() {
-        assertThrows(
-                IllegalStateException.class,
-                () -> AndroidWorker.builder(
-                                application,
-                                URI.create(server.url("/").toString()),
-                                WORKER_GROUP_ID
-                        )
-                        .workerProperties(context -> properties.get())
-                        .eventDefinitions(List.of(WorkerEventDefinition.of(
-                                "TASK",
-                                EVENT_CODE,
-                                WorkerEventParameterResolvers.jsonMap(),
-                                parameters -> "null"
-                        )))
-                        .build()
-        );
+    public void builderOwnsItsPlatformResources() {
+        AndroidWorker built = AndroidWorker.builder(
+                        application,
+                        URI.create(server.url("/").toString()),
+                        WORKER_GROUP_ID
+                )
+                .workerProperties(context -> properties.get())
+                .eventDefinitions(List.of(WorkerEventDefinition.of(
+                        "TASK",
+                        EVENT_CODE,
+                        WorkerEventParameterResolvers.jsonMap(),
+                        parameters -> "null"
+                )))
+                .build();
+
+        built.close();
     }
 
     @Test
@@ -347,14 +337,11 @@ public class AndroidWorkerTest {
                 }
         );
         AndroidWorker duplicate = worker(context -> properties.get());
-        ExecutorService stopCaller = Executors.newSingleThreadExecutor();
         try {
             worker.start();
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
-            Future<?> stopping = stopCaller.submit(worker::stop);
-            Thread.sleep(50L);
-            assertFalse(stopping.isDone());
+            worker.stop();
             assertEquals(
                     WorkerLifecycle.State.RUNNING,
                     worker.snapshot().state()
@@ -362,7 +349,6 @@ public class AndroidWorkerTest {
             assertThrows(IllegalStateException.class, duplicate::start);
 
             release.countDown();
-            stopping.get(5, TimeUnit.SECONDS);
             await(() -> worker.snapshot().state()
                     == WorkerLifecycle.State.STOPPED);
 
@@ -393,7 +379,6 @@ public class AndroidWorkerTest {
             assertTrue(duplicateOpen.await(5, TimeUnit.SECONDS));
         } finally {
             release.countDown();
-            stopCaller.shutdownNow();
             duplicate.close();
         }
     }
@@ -417,7 +402,6 @@ public class AndroidWorkerTest {
                         URI.create(server.url("/").toString()),
                         WORKER_GROUP_ID
                 )
-                .hostResources(resources)
                 .workerProperties(provider)
                 .eventDefinitions(List.of(WorkerEventDefinition.of(
                         "TASK",

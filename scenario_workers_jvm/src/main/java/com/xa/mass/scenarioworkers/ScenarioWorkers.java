@@ -2,7 +2,6 @@ package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.javase.JavaWorkerHostResources;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
@@ -22,13 +21,11 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final URI runtimeApiBaseUrl;
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerIndexUpdater indexUpdater;
-    private final HostResourcesFactory hostResourcesFactory;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
     private final List<ScenarioWorkerSandbox> sandboxes =
             new ArrayList<>();
 
-    private JavaWorkerHostResources hostResources;
     private boolean started;
     private boolean closed;
 
@@ -37,7 +34,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<ScenarioWorkerGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>> definitionsByEventCode,
             ScenarioWorkerIndexClient indexClient,
-            HostResourcesFactory hostResourcesFactory,
             GroupManagerFactory groupManagerFactory
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
@@ -49,10 +45,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                 immutableDefinitions(definitionsByEventCode)
         );
         indexUpdater = new ScenarioWorkerIndexUpdater(indexClient);
-        this.hostResourcesFactory = Objects.requireNonNull(
-                hostResourcesFactory,
-                "hostResourcesFactory"
-        );
         this.groupManagerFactory = Objects.requireNonNull(
                 groupManagerFactory,
                 "groupManagerFactory"
@@ -73,11 +65,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                     configs,
                     builtInDefinitions(),
                     indexClient,
-                    replicaCount -> JavaWorkerHostResources.create(
-                            replicaCount,
-                            "xa-scenario-worker",
-                            true
-                    ),
                     ScenarioWorkers::createManager
             );
         } catch (IllegalArgumentException error) {
@@ -102,10 +89,6 @@ public final class ScenarioWorkers implements AutoCloseable {
         try {
             List<PreparedGroup> preparedGroups = prepareGroups();
             if (!preparedGroups.isEmpty()) {
-                hostResources = Objects.requireNonNull(
-                        hostResourcesFactory.create(workerCount()),
-                        "hostResources"
-                );
                 createManagers(preparedGroups);
                 RuntimeException startFailure = startManagers();
                 if (startFailure != null) {
@@ -137,7 +120,6 @@ public final class ScenarioWorkers implements AutoCloseable {
         closed = true;
         RuntimeException failure = closeManagers(null);
         failure = closeSandboxes(failure);
-        failure = closeHostResources(failure);
         if (failure != null) {
             throw failure;
         }
@@ -183,8 +165,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             JavaWorkerManager manager = Objects.requireNonNull(
                     groupManagerFactory.create(
                             runtimeApiBaseUrl,
-                            preparedGroup,
-                            hostResources
+                            preparedGroup
                     ),
                     "groupManager"
             );
@@ -245,24 +226,9 @@ public final class ScenarioWorkers implements AutoCloseable {
         return failure;
     }
 
-    private RuntimeException closeHostResources(RuntimeException failure) {
-        JavaWorkerHostResources closing = hostResources;
-        hostResources = null;
-        if (closing == null) {
-            return failure;
-        }
-        try {
-            closing.close();
-        } catch (RuntimeException error) {
-            failure = accumulate(failure, error);
-        }
-        return failure;
-    }
-
     private void closeResourcesAndSuppress(RuntimeException failure) {
         RuntimeException closeFailure = closeManagers(null);
         closeFailure = closeSandboxes(closeFailure);
-        closeFailure = closeHostResources(closeFailure);
         if (closeFailure != null) {
             failure.addSuppressed(closeFailure);
         }
@@ -270,8 +236,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     private static JavaWorkerManager createManager(
             URI runtimeApiBaseUrl,
-            PreparedGroup preparedGroup,
-            JavaWorkerHostResources hostResources
+            PreparedGroup preparedGroup
     ) {
         GroupAssembly group = preparedGroup.group();
         ScenarioWorkerGroupConfig config = group.config();
@@ -280,7 +245,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                         config.workerGroupId(),
                         WorkerTransportType.WEBSOCKET
                 )
-                .hostResources(hostResources)
                 .eventDefinitions(group.definitions())
                 .requestTimeout(config.requestTimeout())
                 .reconnectPolicy(config.reconnectPolicy());
@@ -292,14 +256,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             );
         }
         return builder.build();
-    }
-
-    private int workerCount() {
-        int count = 0;
-        for (GroupAssembly group : groups) {
-            count += group.config().workers().size();
-        }
-        return count;
     }
 
     private static RuntimeException accumulate(
@@ -404,18 +360,11 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     @FunctionalInterface
-    interface HostResourcesFactory {
-
-        JavaWorkerHostResources create(int totalReplicaCount);
-    }
-
-    @FunctionalInterface
     interface GroupManagerFactory {
 
         JavaWorkerManager create(
                 URI runtimeApiBaseUrl,
-                PreparedGroup preparedGroup,
-                JavaWorkerHostResources hostResources
+                PreparedGroup preparedGroup
         );
     }
 

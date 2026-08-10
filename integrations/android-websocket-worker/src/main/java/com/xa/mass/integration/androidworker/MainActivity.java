@@ -14,9 +14,13 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 public final class MainActivity extends Activity {
 
-    private final AndroidWorkerDemoHost.Listener hostListener = this::render;
+    private final WorkerLifecycle.Listener workerListener =
+            ignored -> requestRender();
+    private final AndroidDemoStateCapability.Listener capabilityListener =
+            this::requestRender;
 
-    private AndroidWorkerDemoHost workerHost;
+    private WorkerLifecycle worker;
+    private AndroidDemoStateCapability demoCapability;
     private TextView statusValue;
     private TextView workerIdValue;
     private TextView endpointValue;
@@ -32,32 +36,36 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         bindViews();
-        workerHost = ((AndroidWorkerDemoApplication) getApplication())
-                .workerHost();
+        AndroidWorkerDemoApplication application =
+                (AndroidWorkerDemoApplication) getApplication();
+        worker = application.worker();
+        demoCapability = application.demoCapability();
 
-        connectButton.setOnClickListener(view -> workerHost.start());
-        disconnectButton.setOnClickListener(view -> workerHost.stop());
+        connectButton.setOnClickListener(view -> worker.start());
+        disconnectButton.setOnClickListener(view -> worker.stop());
         findViewById(R.id.incrementButton).setOnClickListener(
-                view -> workerHost.incrementCounter()
+                view -> demoCapability.incrementCounter()
         );
         findViewById(R.id.resetButton).setOnClickListener(
-                view -> workerHost.resetCounter()
+                view -> demoCapability.resetCounter()
         );
         findViewById(R.id.copyWorkerIdButton).setOnClickListener(
                 view -> copyWorkerId()
         );
-        render(workerHost.snapshot());
+        render();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        workerHost.addListener(hostListener);
+        worker.addListener(workerListener);
+        demoCapability.addListener(capabilityListener);
     }
 
     @Override
     protected void onStop() {
-        workerHost.removeListener(hostListener);
+        demoCapability.removeListener(capabilityListener);
+        worker.removeListener(workerListener);
         super.onStop();
     }
 
@@ -73,38 +81,50 @@ public final class MainActivity extends Activity {
         disconnectButton = findViewById(R.id.disconnectButton);
     }
 
-    private void render(AndroidWorkerDemoHost.Snapshot snapshot) {
+    private void requestRender() {
+        runOnUiThread(this::render);
+    }
+
+    private void render() {
         if (isFinishing() || isDestroyed()) {
             return;
         }
-        statusValue.setText(snapshot.state().name());
+        WorkerLifecycle.Snapshot workerSnapshot = worker.snapshot();
+        AndroidDemoStateCapability.Snapshot demoSnapshot =
+                demoCapability.snapshot();
+        statusValue.setText(workerSnapshot.state().name());
         workerIdValue.setText(orFallback(
-                snapshot.workerId(),
+                workerSnapshot.workerId(),
                 "Not registered"
         ));
-        endpointValue.setText(snapshot.endpointUri() == null
+        endpointValue.setText(workerSnapshot.endpointUri() == null
                 ? "Not bound"
-                : snapshot.endpointUri().toString());
-        counterValue.setText("Counter: " + snapshot.counter());
+                : workerSnapshot.endpointUri().toString());
+        counterValue.setText("Counter: " + demoSnapshot.counter());
         processedValue.setText(String.valueOf(
-                snapshot.processedCommands()
+                demoSnapshot.processedCommands()
         ));
         lastEventValue.setText(orFallback(
-                snapshot.lastEvent(),
+                demoSnapshot.lastEvent(),
                 "None"
         ));
-        errorValue.setText(orFallback(snapshot.errorMessage(), ""));
-        errorValue.setVisibility(snapshot.errorMessage() == null
+        errorValue.setText(orFallback(
+                workerSnapshot.diagnosticMessage(),
+                ""
+        ));
+        errorValue.setVisibility(
+                workerSnapshot.diagnosticMessage() == null
                 ? View.GONE
-                : View.VISIBLE);
-        boolean restartable = snapshot.state()
+                : View.VISIBLE
+        );
+        boolean restartable = workerSnapshot.state()
                 == WorkerLifecycle.State.STOPPED;
         connectButton.setEnabled(restartable);
         disconnectButton.setEnabled(!restartable);
     }
 
     private void copyWorkerId() {
-        String workerId = workerHost.snapshot().workerId();
+        String workerId = worker.snapshot().workerId();
         if (workerId == null) {
             Toast.makeText(
                     this,

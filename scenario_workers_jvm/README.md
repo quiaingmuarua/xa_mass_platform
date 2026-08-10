@@ -78,20 +78,19 @@ build one fixed JavaWorkerManager replica set per configured WorkerGroup
 -> submit explicit Property Index updates as best effort
 ```
 
-The aggregate creates one `JavaWorkerHostResources` bundle and shares it across
-one `JavaWorkerManager` per configured WorkerGroup. Each Manager owns only its
-group's fixed Worker replicas. The Control pool is capped at four threads, all
-WebSocket Clients share one network scheduler and OkHttp infrastructure, and
-Commands execute synchronously on each Client's serialized OkHttp callback.
-Blocking Socket capacity is sized for all 20 Workers although Scenario selects
-WebSocket. These daemon resources are aggregate-scoped; there is no Core,
-per-Worker Control thread, or Command thread pool.
+The aggregate creates one `JavaWorkerManager` per configured WorkerGroup.
+Each Manager owns one internal daemon Platform shared by only that group's
+fixed replicas. Its Control pool is capped at four threads; replicas share one
+network scheduler and OkHttp infrastructure, and Commands execute
+synchronously on each Client's serialized OkHttp callback. Different groups
+do not share platform resources. There is no Core or per-Worker Command thread
+pool.
 
-Malformed local assembly, duplicate sandbox use, or synchronous Worker
-construction/start submission failure closes all local transports, releases
-sandbox locks, and fails aggregate startup. Group Managers submit each
-Worker's synchronous Register/Bind Preparation to the aggregate Control pool;
-the initial connection remains asynchronous. Preparation or reconnect failure
+Malformed local assembly, duplicate sandbox use, or Worker construction/start
+submission failure closes all local transports, releases sandbox locks, and
+fails aggregate startup. Each Group Manager submits every stopped Worker's
+Register/Bind Preparation to its internal Control pool; the initial connection
+remains asynchronous. Preparation or reconnect failure
 leads that Worker to `STOPPED` and does not close the aggregate. A persisted identity
 is never silently replaced; an operator must clear the sandbox explicitly when
 the Server Identity registry has been reset.
@@ -103,8 +102,8 @@ the Channel. Scenario has no connection query and does not expose a first-Bind
 startup barrier. For a configured Index update it waits for `workerId`, then
 may retry `NOT_FOUND`, within the existing `connectTimeoutMillis` budget. A
 missing identity or remaining Index failure is logged as `14010` and skipped.
-`close()` closes Group Managers in reverse group order, releases sandbox locks,
-and closes the process execution resources last. Startup failure performs the
+`close()` closes Group Managers in reverse group order, which also closes each
+Manager Platform, then releases sandbox locks. Startup failure performs the
 same cleanup; it preserves sandbox files and does not mutate WorkerGroup,
 Worker metadata, score, identity, Binding, or Property Index truth. Scenario
 does not expose Manager reconciliation; terminal Workers are not restarted

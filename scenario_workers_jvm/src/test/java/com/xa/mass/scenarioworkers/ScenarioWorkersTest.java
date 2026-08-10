@@ -11,7 +11,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.javase.JavaWorkerHostResources;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -75,15 +74,12 @@ class ScenarioWorkersTest {
 
     @Test
     void buildsOneManagerForOneGroupAndKeepsReplicaMetadata() {
-        JavaWorkerHostResources resources =
-                mock(JavaWorkerHostResources.class);
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         when(manager.snapshot("client-1")).thenReturn(snapshot(WORKER_ID_1));
         when(manager.snapshot("client-2")).thenReturn(snapshot(WORKER_ID_2));
         List<String> indexedWorkerIds = new ArrayList<>();
         List<ScenarioWorkers.PreparedGroup> preparedGroups =
                 new ArrayList<>();
-        AtomicInteger resourceReplicaCount = new AtomicInteger();
 
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
@@ -91,13 +87,8 @@ class ScenarioWorkersTest {
                     indexedWorkerIds.add(workerId);
                     return acceptedIndexResults(updates);
                 },
-                count -> {
-                    resourceReplicaCount.set(count);
-                    return resources;
-                },
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) -> {
+                (runtimeApiBaseUrl, preparedGroup) -> {
                     assertThat(runtimeApiBaseUrl).isEqualTo(RUNTIME_API);
-                    assertThat(sharedResources).isSameAs(resources);
                     preparedGroups.add(preparedGroup);
                     return manager;
                 }
@@ -106,7 +97,6 @@ class ScenarioWorkersTest {
         workers.start();
         workers.close();
 
-        assertThat(resourceReplicaCount).hasValue(2);
         assertThat(preparedGroups).hasSize(1);
         ScenarioWorkers.PreparedGroup prepared = preparedGroups.get(0);
         assertThat(prepared.group().config().workerGroupId())
@@ -124,23 +114,19 @@ class ScenarioWorkersTest {
                 WORKER_ID_2
         );
 
-        InOrder lifecycle = inOrder(manager, resources);
+        InOrder lifecycle = inOrder(manager);
         lifecycle.verify(manager).start();
         lifecycle.verify(manager).close();
-        lifecycle.verify(resources).close();
     }
 
     @Test
     void groupAssemblyFailureClosesEarlierManagersWithoutStartingAny() {
-        JavaWorkerHostResources resources =
-                mock(JavaWorkerHostResources.class);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 twoGroupConfig(),
                 acceptedIndexes(),
-                ignored -> resources,
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) -> {
+                (runtimeApiBaseUrl, preparedGroup) -> {
                     if (groups.incrementAndGet() == 1) {
                         return first;
                     }
@@ -153,9 +139,8 @@ class ScenarioWorkersTest {
                 .hasMessageContaining("Could not start");
 
         verify(first, never()).start();
-        InOrder closeOrder = inOrder(first, resources);
+        InOrder closeOrder = inOrder(first);
         closeOrder.verify(first).close();
-        closeOrder.verify(resources).close();
         assertThatThrownBy(workers::start)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("closed");
@@ -163,8 +148,6 @@ class ScenarioWorkersTest {
 
     @Test
     void synchronousGroupStartFailureDoesNotSkipLaterGroups() {
-        JavaWorkerHostResources resources =
-                mock(JavaWorkerHostResources.class);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         JavaWorkerManager second = mock(JavaWorkerManager.class);
         doThrow(new IllegalStateException("start first"))
@@ -173,8 +156,7 @@ class ScenarioWorkersTest {
         ScenarioWorkers workers = workers(
                 twoGroupConfig(),
                 acceptedIndexes(),
-                ignored -> resources,
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) ->
+                (runtimeApiBaseUrl, preparedGroup) ->
                         groups.getAndIncrement() == 0 ? first : second
         );
 
@@ -183,10 +165,9 @@ class ScenarioWorkersTest {
 
         verify(first).start();
         verify(second).start();
-        InOrder closeOrder = inOrder(first, second, resources);
+        InOrder closeOrder = inOrder(first, second);
         closeOrder.verify(second).close();
         closeOrder.verify(first).close();
-        closeOrder.verify(resources).close();
     }
 
     @Test
@@ -204,8 +185,7 @@ class ScenarioWorkersTest {
                     indexCalls.incrementAndGet();
                     return Map.of();
                 },
-                ignored -> mock(JavaWorkerHostResources.class),
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) ->
+                (runtimeApiBaseUrl, preparedGroup) ->
                         manager
         );
 
@@ -223,8 +203,7 @@ class ScenarioWorkersTest {
                 (group, workerId, updates, timeout) -> {
                     throw new IllegalStateException("index unavailable");
                 },
-                ignored -> mock(JavaWorkerHostResources.class),
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) ->
+                (runtimeApiBaseUrl, preparedGroup) ->
                         manager
         );
 
@@ -274,7 +253,7 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void sandboxPreflightFailureCreatesNoResourcesOrManagerAndReleasesLocks(
+    void sandboxPreflightFailureCreatesNoManagerAndReleasesLocks(
             @TempDir Path temporaryDirectory
     ) throws IOException {
         Path first = temporaryDirectory.resolve("first");
@@ -296,16 +275,11 @@ class ScenarioWorkersTest {
                         )
                 )
         ));
-        AtomicInteger resourcesCreated = new AtomicInteger();
         AtomicInteger managersCreated = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config,
                 acceptedIndexes(),
-                ignored -> {
-                    resourcesCreated.incrementAndGet();
-                    return mock(JavaWorkerHostResources.class);
-                },
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) -> {
+                (runtimeApiBaseUrl, preparedGroup) -> {
                     managersCreated.incrementAndGet();
                     return mock(JavaWorkerManager.class);
                 }
@@ -313,7 +287,6 @@ class ScenarioWorkersTest {
 
         assertThatThrownBy(workers::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class);
-        assertThat(resourcesCreated).hasValue(0);
         assertThat(managersCreated).hasValue(0);
 
         ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
@@ -326,40 +299,29 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void closesManagersThenSandboxesThenHostResources(
+    void closesManagersThenReleasesSandboxes(
             @TempDir Path temporaryDirectory
     ) {
         Path sandboxDirectory = temporaryDirectory.resolve("worker");
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        JavaWorkerHostResources resources =
-                mock(JavaWorkerHostResources.class);
-        AtomicInteger sandboxWasReleased = new AtomicInteger();
-        doAnswer(ignored -> {
-            ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
-                    sandboxDirectory,
-                    "scenario-group",
-                    "client-1",
-                    Map.of()
-            );
-            reopened.close();
-            sandboxWasReleased.incrementAndGet();
-            return null;
-        }).when(resources).close();
         ScenarioWorkers workers = workers(
                 sandboxConfig(sandboxDirectory, "local"),
                 acceptedIndexes(),
-                ignored -> resources,
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) ->
+                (runtimeApiBaseUrl, preparedGroup) ->
                         manager
         );
 
         workers.start();
         workers.close();
 
-        InOrder closeOrder = inOrder(manager, resources);
-        closeOrder.verify(manager).close();
-        closeOrder.verify(resources).close();
-        assertThat(sandboxWasReleased).hasValue(1);
+        verify(manager).close();
+        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
+                sandboxDirectory,
+                "scenario-group",
+                "client-1",
+                Map.of()
+        );
+        reopened.close();
     }
 
     private static ScenarioWorkers sandboxWorkers(
@@ -373,8 +335,7 @@ class ScenarioWorkersTest {
         return workers(
                 sandboxConfig(sandboxDirectory, region),
                 acceptedIndexes(),
-                ignored -> mock(JavaWorkerHostResources.class),
-                (runtimeApiBaseUrl, preparedGroup, sharedResources) -> {
+                (runtimeApiBaseUrl, preparedGroup) -> {
                     ScenarioWorkers.PreparedReplica replica =
                             preparedGroup.replicas().get(0);
                     doAnswer(invocation -> {
@@ -395,7 +356,6 @@ class ScenarioWorkersTest {
     private static ScenarioWorkers workers(
             String json,
             ScenarioWorkerIndexClient indexes,
-            ScenarioWorkers.HostResourcesFactory resourcesFactory,
             ScenarioWorkers.GroupManagerFactory managerFactory
     ) {
         return new ScenarioWorkers(
@@ -403,7 +363,6 @@ class ScenarioWorkersTest {
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
                 indexes,
-                resourcesFactory,
                 managerFactory
         );
     }

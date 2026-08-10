@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.Executor;
 
 /**
  * Coordinates one explicitly requested Worker run.
@@ -26,6 +27,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     private final Object lock = new Object();
     private final WorkerPreparation preparation;
     private final TextMessageWorkerTransportFactory transportFactory;
+    private final Executor controlExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private Phase phase = Phase.STOPPED;
@@ -35,7 +37,8 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     public WorkerRunController(
             WorkerPreparation preparation,
-            TextMessageWorkerTransportFactory transportFactory
+            TextMessageWorkerTransportFactory transportFactory,
+            Executor controlExecutor
     ) {
         this.preparation = Objects.requireNonNull(
                 preparation,
@@ -44,6 +47,10 @@ public final class WorkerRunController implements WorkerLifecycle {
         this.transportFactory = Objects.requireNonNull(
                 transportFactory,
                 "transportFactory"
+        );
+        this.controlExecutor = Objects.requireNonNull(
+                controlExecutor,
+                "controlExecutor"
         );
     }
 
@@ -63,7 +70,13 @@ public final class WorkerRunController implements WorkerLifecycle {
             activeTransport = null;
             diagnosticMessage = null;
         }
-        runStart();
+        publish();
+        try {
+            controlExecutor.execute(this::runStart);
+        } catch (RuntimeException | Error failure) {
+            rejectStart(failure);
+            throw failure;
+        }
     }
 
     @Override
@@ -78,8 +91,14 @@ public final class WorkerRunController implements WorkerLifecycle {
             phase = Phase.STOPPING;
             transport = activeTransport;
         }
+        publish();
         if (transport != null) {
-            transport.requestStop();
+            try {
+                controlExecutor.execute(transport::requestStop);
+            } catch (RuntimeException | Error failure) {
+                transport.requestStop();
+                throw failure;
+            }
         }
     }
 
@@ -146,7 +165,6 @@ public final class WorkerRunController implements WorkerLifecycle {
         TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
-            publish();
             if (abortStartIfRequested()) {
                 return;
             }
@@ -183,6 +201,22 @@ public final class WorkerRunController implements WorkerLifecycle {
             if (!installed) {
                 closeQuietly(transport);
             }
+        }
+    }
+
+    private void rejectStart(Throwable failure) {
+        boolean stopped = false;
+        synchronized (lock) {
+            if (phase == Phase.STARTING) {
+                transitionStoppedLocked(
+                        "Worker start request rejected: "
+                                + safeFailureType(failure)
+                );
+                stopped = true;
+            }
+        }
+        if (stopped) {
+            publish();
         }
     }
 

@@ -19,17 +19,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
 
-/**
- * Application-scoped Android owner for Worker network and control resources.
- */
-public final class AndroidWorkerHostResources implements AutoCloseable {
+/** Owns network and control resources for one Android Worker. */
+final class AndroidWorkerPlatform implements AutoCloseable {
 
     private final OkHttpClient httpClient;
     private final HandlerThread networkThread;
     private final ExecutorService controlExecutor;
     private boolean closed;
 
-    private AndroidWorkerHostResources(
+    private AndroidWorkerPlatform(
             OkHttpClient httpClient,
             HandlerThread networkThread,
             ExecutorService controlExecutor
@@ -45,36 +43,22 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
         );
     }
 
-    public static AndroidWorkerHostResources create(
-            int workerCapacity,
-            String threadNamePrefix
-    ) {
-        requirePositive(workerCapacity, "workerCapacity");
-        String prefix = requireNonBlank(
-                threadNamePrefix,
-                "threadNamePrefix"
-        ).trim();
-        int controlThreads = Math.min(workerCapacity, 4);
-
+    static AndroidWorkerPlatform create(String workerGroupId) {
+        String prefix = "xa-android-worker-" + threadSegment(workerGroupId);
         HandlerThread network = null;
         ExecutorService control = null;
         OkHttpClient http = null;
         try {
             network = new HandlerThread(prefix + "-network");
             network.start();
-            control = Executors.newFixedThreadPool(
-                    controlThreads,
+            control = Executors.newSingleThreadExecutor(
                     namedThreadFactory(prefix + "-control")
             );
             Dispatcher dispatcher = new Dispatcher();
             http = new OkHttpClient.Builder()
                     .dispatcher(dispatcher)
                     .build();
-            return new AndroidWorkerHostResources(
-                    http,
-                    network,
-                    control
-            );
+            return new AndroidWorkerPlatform(http, network, control);
         } catch (RuntimeException | Error failure) {
             closeHttp(http);
             shutdown(control);
@@ -85,12 +69,14 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
         }
     }
 
-    public synchronized Executor controlExecutor() {
+    synchronized Executor controlExecutor() {
         requireOpen();
         return controlExecutor;
     }
 
-    synchronized WorkerControlClient controlClient(URI runtimeApiBaseUrl) {
+    synchronized WorkerControlClient controlClient(
+            URI runtimeApiBaseUrl
+    ) {
         requireOpen();
         return new AndroidOkHttpWorkerControlClient(
                 httpClient,
@@ -136,7 +122,7 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
     private void requireOpen() {
         if (closed) {
             throw new IllegalStateException(
-                    "AndroidWorkerHostResources is closed"
+                    "Android Worker platform is closed"
             );
         }
     }
@@ -147,6 +133,15 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
                 runnable,
                 prefix + "-" + sequence.incrementAndGet()
         );
+    }
+
+    private static String threadSegment(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "workerGroupId must be non-blank"
+            );
+        }
+        return value.trim().replaceAll("[^A-Za-z0-9._-]", "-");
     }
 
     private static void closeHttp(OkHttpClient client) {
@@ -164,26 +159,12 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
         }
     }
 
-    private static int requirePositive(int value, String name) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-        return value;
-    }
-
     private static Duration requirePositive(Duration value, String name) {
         if (value == null
                 || value.isZero()
                 || value.isNegative()
                 || value.toMillis() <= 0) {
             throw new IllegalArgumentException(name + " must be positive");
-        }
-        return value;
-    }
-
-    private static String requireNonBlank(String value, String name) {
-        if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException(name + " must be non-blank");
         }
         return value;
     }

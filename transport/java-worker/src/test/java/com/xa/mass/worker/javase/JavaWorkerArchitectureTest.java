@@ -65,7 +65,7 @@ class JavaWorkerArchitectureTest {
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
-        assertTrue(assembly.contains("public Builder hostResources("));
+        assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
@@ -94,12 +94,11 @@ class JavaWorkerArchitectureTest {
                 }
             }
         }
-        for (Method method : JavaWorkerHostResources.class.getMethods()) {
-            if (method.getDeclaringClass() != Object.class) {
-                String signature = method.toGenericString();
-                assertFalse(signature.contains("okhttp3"), signature);
-                assertFalse(signature.contains("java.net.Socket"), signature);
-            }
+        assertFalse(Modifier.isPublic(
+                JavaWorkerPlatform.class.getModifiers()
+        ));
+        for (Method method : JavaWorker.Builder.class.getMethods()) {
+            assertFalse(method.getName().equals("hostResources"));
         }
         assertFalse(Modifier.isPublic(
                 JavaOkHttpTextWebSocketClient.class.getModifiers()
@@ -144,8 +143,12 @@ class JavaWorkerArchitectureTest {
         ));
         String resources = Files.readString(project.resolve(
                 "src/main/java/com/xa/mass/worker/javase/"
-                        + "JavaWorkerHostResources.java"
+                        + "JavaWorkerPlatform.java"
         ));
+        assertFalse(Files.exists(project.resolve(
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaWorker" + "HostResources.java"
+        )));
 
         assertTrue(AutoCloseable.class.isAssignableFrom(
                 JavaWorkerManager.class
@@ -162,8 +165,10 @@ class JavaWorkerArchitectureTest {
         assertFalse(resources.contains("SynchronousQueue"));
         assertFalse(resources.contains("retryScheduler"));
         assertFalse(resources.contains("ConcurrentHashMap"));
-        assertTrue(manager.contains("JavaWorker.Builder"));
+        assertTrue(manager.contains("JavaWorkerAssembly.assemble"));
         assertTrue(manager.contains("desiredRunning"));
+        assertFalse(manager.contains("scheduledStarts"));
+        assertFalse(manager.contains("submitStart"));
         assertFalse(manager.contains("class WorkerKey"));
         assertFalse(manager.contains("ManagedWorkerSnapshot"));
         assertFalse(manager.contains(" register("));

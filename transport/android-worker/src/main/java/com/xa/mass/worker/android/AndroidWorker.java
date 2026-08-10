@@ -30,16 +30,19 @@ public final class AndroidWorker implements WorkerLifecycle {
     private final Object lock = new Object();
     private final String processCoordinate;
     private final WorkerRunController worker;
+    private final AndroidWorkerPlatform platform;
     private final WorkerLifecycle.Listener lifecycleListener;
     private boolean processLeaseHeld;
     private boolean closed;
 
     private AndroidWorker(
             String processCoordinate,
-            WorkerRunController worker
+            WorkerRunController worker,
+            AndroidWorkerPlatform platform
     ) {
         this.processCoordinate = processCoordinate;
         this.worker = worker;
+        this.platform = platform;
         lifecycleListener = this::releaseProcessLeaseWhenStopped;
         worker.addListener(lifecycleListener);
     }
@@ -116,9 +119,13 @@ public final class AndroidWorker implements WorkerLifecycle {
             }
             closed = true;
         }
-        worker.close();
-        worker.removeListener(lifecycleListener);
-        releaseProcessLease();
+        try {
+            worker.close();
+        } finally {
+            worker.removeListener(lifecycleListener);
+            releaseProcessLease();
+            platform.close();
+        }
     }
 
     private void releaseProcessLeaseWhenStopped(Snapshot snapshot) {
@@ -151,7 +158,6 @@ public final class AndroidWorker implements WorkerLifecycle {
         private final String workerGroupId;
         private AndroidWorkerProperties workerProperties;
         private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private AndroidWorkerHostResources hostResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
         private TextMessageReconnectPolicy reconnectPolicy =
                 TextMessageReconnectPolicy.defaults();
@@ -201,16 +207,6 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder hostResources(AndroidWorkerHostResources value) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "hostResources must be present"
-                );
-            }
-            hostResources = value;
-            return this;
-        }
-
         public Builder requestTimeout(Duration value) {
             requestTimeout = requirePositive(value, "requestTimeout");
             return this;
@@ -235,11 +231,6 @@ public final class AndroidWorker implements WorkerLifecycle {
             if (definitions == null || definitions.isEmpty()) {
                 throw new IllegalStateException(
                         "eventDefinitions must not be empty"
-                );
-            }
-            if (hostResources == null) {
-                throw new IllegalStateException(
-                        "hostResources must be configured"
                 );
             }
             AndroidClientWorkerKeyStore clientKeyStore =
@@ -280,29 +271,50 @@ public final class AndroidWorker implements WorkerLifecycle {
                     reconnectPolicy;
             WorkerCommandDispatcher dispatcher =
                     new WorkerCommandDispatcher(definitions);
-            WorkerRunController worker = new WorkerRunController(
-                    new RegisteredWorkerPreparation(
-                            workerGroupId,
-                            WorkerTransportType.WEBSOCKET,
-                            identityStore,
-                            completeProperties,
-                            hostResources.controlClient(runtimeApiBaseUrl),
-                            resolvedRequestTimeout
-                    ),
-                    new TextMessageWorkerTransportFactory(
-                            endpointUri -> hostResources.textClient(
-                                    endpointUri,
-                                    resolvedRequestTimeout,
-                                    resolvedReconnectPolicy
-                            ),
-                            dispatcher
-                    )
-            );
-            return new AndroidWorker(
-                    applicationContext.getPackageName()
-                            + "\n" + workerGroupId,
-                    worker
-            );
+            AndroidWorkerPlatform platform =
+                    AndroidWorkerPlatform.create(workerGroupId);
+            WorkerRunController worker = null;
+            try {
+                worker = new WorkerRunController(
+                        new RegisteredWorkerPreparation(
+                                workerGroupId,
+                                WorkerTransportType.WEBSOCKET,
+                                identityStore,
+                                completeProperties,
+                                platform.controlClient(runtimeApiBaseUrl),
+                                resolvedRequestTimeout
+                        ),
+                        new TextMessageWorkerTransportFactory(
+                                endpointUri -> platform.textClient(
+                                        endpointUri,
+                                        resolvedRequestTimeout,
+                                        resolvedReconnectPolicy
+                                ),
+                                dispatcher
+                        ),
+                        platform.controlExecutor()
+                );
+                return new AndroidWorker(
+                        applicationContext.getPackageName()
+                                + "\n" + workerGroupId,
+                        worker,
+                        platform
+                );
+            } catch (RuntimeException | Error failure) {
+                if (worker != null) {
+                    try {
+                        worker.close();
+                    } catch (RuntimeException closeFailure) {
+                        failure.addSuppressed(closeFailure);
+                    }
+                }
+                try {
+                    platform.close();
+                } catch (RuntimeException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+                throw failure;
+            }
         }
     }
 

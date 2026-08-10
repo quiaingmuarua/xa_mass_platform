@@ -22,7 +22,8 @@ Redis, or Kernel scheduling.
 
 ```text
 WorkerRunController
-  -> one synchronous Preparation
+  -> one asynchronous start request on a platform-injected Control Executor
+  -> exactly one Preparation per accepted start
   -> one current TextMessageWorkerTransport
   -> STOPPED/RUNNING observation
 
@@ -45,8 +46,9 @@ WorkerCommandDispatcher
   -> synchronous Definition resolution and Handler execution
 ```
 
-Core creates, submits to, or closes no execution resource. Platform Clients
-own only networking threads that their protocol implementation needs.
+Core creates or closes no execution resource. `WorkerRunController` submits
+start and stop work only to its injected Control `Executor`; platform
+assemblies own that Executor and all networking threads.
 
 ## Message Path
 
@@ -89,7 +91,7 @@ One accepted `WorkerRunController.start()` represents one complete run:
 
 ```text
 RUNNING
-  -> exactly one synchronous WorkerPreparation.prepare()
+  -> submit exactly one WorkerPreparation.prepare()
   -> PreparedWorker(workerId, endpointUri)
   -> create and start one TextMessageWorkerTransport
   -> Client reconnects within that Endpoint budget
@@ -116,8 +118,9 @@ same Client callback fence. There is no cross-run pending Result.
 ## Lifecycle
 
 `WorkerLifecycle` exposes `start`, `stop`, `close`, `snapshot`, and Listener
-registration. Its observable state is only `STOPPED / RUNNING`. `RUNNING`
-includes Preparation, Client connection and reconnect, Handler execution, and
+registration. `start()` and `stop()` are non-blocking requests. Its observable
+state is only `STOPPED / RUNNING`; `RUNNING` includes a queued or executing
+Preparation, Client connection and reconnect, Handler execution, and
 cooperative stop. It does not assert physical connectivity, Adapter route
 verification, Kernel online truth, or scheduling availability.
 
@@ -136,9 +139,8 @@ messages.
 Core exposes string-only `WorkerPointClient`, `TextMessageClient`, and
 `TextMessageClientFactory`, plus the JDK-type-only `WorkerControlClient`.
 Concrete Clients own I/O, framing, reconnect timers, physical-attempt
-filtering, and callback serialization. Their expensive infrastructure is
-borrowed from platform Host Resources; closing one Client closes only that
-connection.
+filtering, and callback serialization. Their expensive infrastructure comes
+from the platform assembly; closing one Client closes only that connection.
 
 `TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and
 exact-once `onEndpointTerminated`. A Client suppresses superseded physical

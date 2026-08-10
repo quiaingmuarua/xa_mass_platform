@@ -112,9 +112,8 @@ public class AndroidWebSocketCompositionTest {
                             Duration.ofMillis(20),
                             Duration.ofMillis(100)
                     );
-            AndroidWorkerHostResources resources =
-                    AndroidWorkerHostResources.create(
-                            1,
+            AndroidWorkerPlatform platform =
+                    AndroidWorkerPlatform.create(
                             "android-composition-test"
                     );
             WorkerCommandDispatcher dispatcher =
@@ -133,14 +132,15 @@ public class AndroidWebSocketCompositionTest {
             WorkerRunController worker = new WorkerRunController(
                     preparation,
                     new TextMessageWorkerTransportFactory(
-                            endpoint -> resources.textClient(
+                            endpoint -> platform.textClient(
                                     endpoint,
                                     Duration.ofSeconds(2),
                                     connectionPolicy
                             ),
                             dispatcher
-                    )
-                    );
+                    ),
+                    platform.controlExecutor()
+            );
             try {
                 worker.start();
                 assertTrue(resultReceived.await(
@@ -149,7 +149,7 @@ public class AndroidWebSocketCompositionTest {
                 ));
             } finally {
                 worker.close();
-                resources.close();
+                platform.close();
             }
         }
 

@@ -5,14 +5,14 @@ repository Worker layers without copying their state machines:
 
 ```text
 MainActivity
-  -> observes AndroidWorkerDemoHost
+  -> observes AndroidWorker lifecycle
+  -> reads AndroidDemoStateCapability state
 
 AndroidWorkerDemoApplication
-  -> AndroidWorkerDemoHost
-     -> AndroidWorker
-     -> AndroidDemoStateCapability
-        -> counter state
-        -> android.demo.state.read Definition
+  -> AndroidWorker
+  -> AndroidDemoStateCapability
+     -> counter state
+     -> android.demo.state.read Definition
 ```
 
 The application is an integration host, not an SDK. It does not depend on the
@@ -43,20 +43,20 @@ retain it from an Application, Service, or another process owner without
 changing Worker execution.
 
 This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
-Worker when the application process is created. `MainActivity` only subscribes
-to snapshots while visible and invokes explicit Connect/Disconnect commands;
-leaving the Activity does not implicitly stop the Worker. Android can still
-kill the process in the background because this demo installs no Service or
-WorkManager and makes no background-lifetime guarantee.
+Worker when the application process is created. The Application directly owns
+the complete `AndroidWorker` and the separate Demo business capability; it
+does not introduce another Worker facade or merged UI snapshot. `MainActivity`
+subscribes to both owners while visible, switches their notifications to the
+Main Looper, and invokes explicit Connect/Disconnect commands. Leaving the
+Activity does not implicitly stop the Worker. Android can still kill the
+process in the background because this demo installs no Service or WorkManager
+and makes no background-lifetime guarantee.
 
-The Application owns one `AndroidWorkerHostResources` configured for one
-Worker. Its application-owned budget is one reconnect `HandlerThread` and one
-Control thread, plus OkHttp's shared internal network threads. Each Client
-owns a `Handler` bound to the shared Looper; that Handler is not another
-thread. The Demo Host borrows the Control `Executor` to keep Application and
-UI calls non-blocking; `AndroidWorker` borrows the complete resource bundle.
-The Application closes the Worker first and Host Resources last. Core creates
-no background thread of its own.
+The Worker internally owns one reconnect `HandlerThread`, one Control thread,
+and OkHttp's internal network resources. Each Client owns a `Handler` bound to
+the Worker Platform Looper; that Handler is not another thread. `start()` and
+`stop()` are already non-blocking, so the Integration adds no lifecycle
+Executor or scheduling state. Core creates no thread of its own.
 
 The Demo capability executes synchronously from the serialized OkHttp protocol
 callback. A slow capability backpressures only this Worker connection; it does
