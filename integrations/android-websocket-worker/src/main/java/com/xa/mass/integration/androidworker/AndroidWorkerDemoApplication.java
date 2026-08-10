@@ -25,14 +25,13 @@ public final class AndroidWorkerDemoApplication extends Application {
                 this,
                 deviceProperties
         );
-        worker = AndroidWorker.builder(
-                        this,
-                        runtimeApiBaseUrl,
-                        WORKER_GROUP_ID
-                )
-                .workerProperties(deviceProperties)
-                .eventDefinitions(demoCapability.definitions())
-                .build();
+        worker = AndroidWorker.create(
+                this,
+                runtimeApiBaseUrl,
+                WORKER_GROUP_ID,
+                deviceProperties,
+                demoCapability.definitionExtensions()
+        );
         worker.start();
     }
 

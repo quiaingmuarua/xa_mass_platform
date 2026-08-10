@@ -3,33 +3,37 @@ package com.xa.mass.worker.execution;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.function.LongSupplier;
 
 public final class WorkerCommandDispatcher
         implements WorkerCommandExecutor {
 
-    private final WorkerEventDefinitionManager eventDefinitionManager;
-    private final LongSupplier nowMillis;
+    private final Map<String, WorkerEventDefinition<?>> definitions;
 
-    public WorkerCommandDispatcher(
-            Collection<? extends WorkerEventDefinition<?>> definitions
+    private WorkerCommandDispatcher(
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions
     ) {
-        this(
-                definitions,
-                System::currentTimeMillis
-        );
+        definitions = effectiveDefinitions(definitionExtensions);
     }
 
-    WorkerCommandDispatcher(
-            Collection<? extends WorkerEventDefinition<?>> definitions,
-            LongSupplier nowMillis
+    public static WorkerCommandDispatcher forWorker() {
+        return forWorker(Collections.emptyList());
+    }
+
+    public static WorkerCommandDispatcher forWorker(
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions
     ) {
-        this.eventDefinitionManager =
-                new WorkerEventDefinitionManager(definitions);
-        this.nowMillis = requirePresent(nowMillis, "nowMillis");
+        return new WorkerCommandDispatcher(definitionExtensions);
     }
 
     @Override
@@ -42,7 +46,8 @@ public final class WorkerCommandDispatcher
                     null
             );
         }
-        if (nowMillis.getAsLong() >= command.executeBeforeMillis()) {
+        if (System.currentTimeMillis()
+                >= command.executeBeforeMillis()) {
             return Optional.empty();
         }
 
@@ -52,10 +57,13 @@ public final class WorkerCommandDispatcher
     private WorkerResult executeEvent(WorkerCommand command) {
         try {
             WorkerEventDefinition<?> definition =
-                    eventDefinitionManager.require(
+                    definitions.get(definitionKey(
                             command.src().wireValue(),
                             command.messageType()
-                    );
+                    ));
+            if (definition == null) {
+                return result(command, "1404", "null");
+            }
             String payload = invokeDefinition(
                     definition,
                     command.payload()
@@ -68,9 +76,6 @@ public final class WorkerCommandDispatcher
             if (error.errorCode()
                     == WorkerErrorCode.EVENT_INPUT_INVALID) {
                 return result(command, "1400", "null");
-            }
-            if (error.errorCode() == WorkerErrorCode.EVENT_NOT_FOUND) {
-                return result(command, "1404", "null");
             }
             return result(command, "1500", "null");
         } catch (Exception error) {
@@ -115,12 +120,68 @@ public final class WorkerCommandDispatcher
         );
     }
 
-    private static <T> T requirePresent(T value, String name) {
-        if (value == null) {
+    private static Map<String, WorkerEventDefinition<?>>
+    effectiveDefinitions(
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions
+    ) {
+        Objects.requireNonNull(
+                definitionExtensions,
+                "definitionExtensions"
+        );
+        Map<String, WorkerEventDefinition<?>> definitions =
+                new LinkedHashMap<>();
+        addDefinitions(definitions, builtInDefinitions());
+        addDefinitions(definitions, definitionExtensions);
+        return Collections.unmodifiableMap(definitions);
+    }
+
+    private static void addDefinitions(
+            Map<String, WorkerEventDefinition<?>> target,
+            Collection<? extends WorkerEventDefinition<?>> additions
+    ) {
+        for (WorkerEventDefinition<?> definition : additions) {
+            WorkerEventDefinition<?> present = Objects.requireNonNull(
+                    definition,
+                    "definition"
+            );
+            String key = definitionKey(
+                    present.src(),
+                    present.eventCode()
+            );
+            if (target.putIfAbsent(key, present) != null) {
+                throw new IllegalArgumentException(
+                        "Duplicate Worker event: "
+                                + present.src()
+                                + "/"
+                                + present.eventCode()
+                );
+            }
+        }
+    }
+
+    private static String definitionKey(String src, String eventCode) {
+        if (src == null || src.trim().isEmpty()) {
             throw new IllegalArgumentException(
-                    name + " must be present"
+                    "src must be non-blank"
             );
         }
-        return value;
+        WorkerMessageEndpoint endpoint =
+                WorkerMessageEndpoint.fromWire(src);
+        if (endpoint == WorkerMessageEndpoint.WORKER) {
+            throw new IllegalArgumentException(
+                    "Worker event src cannot be WORKER"
+            );
+        }
+        if (eventCode == null || eventCode.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "eventCode must be non-blank"
+            );
+        }
+        return endpoint.wireValue() + ":" + eventCode;
+    }
+
+    private static List<WorkerEventDefinition<?>> builtInDefinitions() {
+        return Collections.emptyList();
     }
 }

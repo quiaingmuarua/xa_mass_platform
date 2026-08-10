@@ -9,6 +9,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -65,6 +66,8 @@ class JavaWorkerTest {
         enqueueSession(true);
         worker = worker(identity, Map.of("runtime", "java"));
 
+        assertEquals(0, server.getRequestCount());
+
         worker.start();
         RecordedRequest register = takeRequest();
         RecordedRequest firstBind = takeRequest();
@@ -95,31 +98,30 @@ class JavaWorkerTest {
     }
 
     @Test
-    void builderRequiresExplicitIdentityStore() {
-        JavaWorker.Builder builder = JavaWorker.builder(
+    void createRequiresExplicitIdentityStore() {
+        assertThrows(
+                NullPointerException.class,
+                () -> JavaWorker.create(
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
-                        WorkerTransportType.WEBSOCKET
+                        null,
+                        WorkerTransportType.WEBSOCKET,
+                        Map::of
                 )
-                .workerProperties(Map::of)
-                .eventDefinitions(definitions());
-
-        assertThrows(IllegalStateException.class, builder::build);
+        );
     }
 
     @Test
-    void builderOwnsItsPlatformResources() {
-        JavaWorker built = JavaWorker.builder(
-                        URI.create(server.url("/").toString()),
-                        "group-1",
-                        "fixed-installation",
-                        WorkerTransportType.WEBSOCKET
-                )
-                .identityStore(WorkerIdentityStore.noCache())
-                .workerProperties(Map::of)
-                .eventDefinitions(definitions())
-                .build();
+    void createOwnsItsPlatformResourcesAndAllowsNoExtensions() {
+        JavaWorker built = JavaWorker.create(
+                URI.create(server.url("/").toString()),
+                "group-1",
+                "fixed-installation",
+                WorkerIdentityStore.noCache(),
+                WorkerTransportType.WEBSOCKET,
+                Map::of
+        );
 
         built.close();
     }
@@ -144,29 +146,32 @@ class JavaWorkerTest {
             WorkerIdentityStore identity,
             Map<String, Object> properties
     ) {
-        return JavaWorker.builder(
-                        URI.create(server.url("/").toString()),
-                        "group-1",
-                        "fixed-installation",
-                        WorkerTransportType.WEBSOCKET
+        return JavaWorker.create(
+                URI.create(server.url("/").toString()),
+                "group-1",
+                "fixed-installation",
+                identity,
+                WorkerTransportType.WEBSOCKET,
+                () -> properties,
+                definitions(),
+                WorkerConnectionOptions.of(
+                        Duration.ofSeconds(2),
+                        reconnectPolicy()
                 )
-                .identityStore(identity)
-                .workerProperties(() -> properties)
-                .eventDefinitions(definitions())
-                .requestTimeout(Duration.ofSeconds(2))
-                .reconnectPolicy(reconnectPolicy())
-                .build();
+        );
     }
 
     @Test
     void pollingIsRejectedByTheTextMessageAssembly() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> JavaWorker.builder(
+                () -> JavaWorker.create(
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
-                        WorkerTransportType.POLLING
+                        WorkerIdentityStore.noCache(),
+                        WorkerTransportType.POLLING,
+                        Map::of
                 )
         );
     }
@@ -184,18 +189,19 @@ class JavaWorkerTest {
                     .body("{\"transportType\":\"SOCKET\","
                             + "\"endpointUri\":\"" + endpoint + "\"}")
                     .build());
-            worker = JavaWorker.builder(
-                            URI.create(server.url("/").toString()),
-                            "group-1",
-                            "fixed-installation",
-                            WorkerTransportType.SOCKET
+            worker = JavaWorker.create(
+                    URI.create(server.url("/").toString()),
+                    "group-1",
+                    "fixed-installation",
+                    identity,
+                    WorkerTransportType.SOCKET,
+                    () -> Map.of("runtime", "java"),
+                    definitions(),
+                    WorkerConnectionOptions.of(
+                            Duration.ofSeconds(2),
+                            reconnectPolicy()
                     )
-                    .identityStore(identity)
-                    .workerProperties(() -> Map.of("runtime", "java"))
-                    .eventDefinitions(definitions())
-                    .requestTimeout(Duration.ofSeconds(2))
-                    .reconnectPolicy(reconnectPolicy())
-                    .build();
+            );
 
             worker.start();
             RecordedRequest bind = takeRequest();

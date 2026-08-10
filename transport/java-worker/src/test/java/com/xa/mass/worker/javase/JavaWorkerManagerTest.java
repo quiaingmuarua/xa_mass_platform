@@ -146,17 +146,7 @@ class JavaWorkerManagerTest {
         assertThrows(
                 IllegalStateException.class,
                 () -> baseBuilder()
-                        .eventDefinitions(definitions())
-                        .build()
-        );
-        assertThrows(
-                IllegalStateException.class,
-                () -> baseBuilder()
-                        .replica(
-                                "client",
-                                WorkerIdentityStore.noCache(),
-                                Map::of
-                        )
+                        .extendEventDefinitions(definitions())
                         .build()
         );
 
@@ -169,6 +159,34 @@ class JavaWorkerManagerTest {
                         Map::of
                 )
         );
+    }
+
+    @Test
+    void zeroDefinitionExtensionsCanBuild() {
+        JavaWorkerManager manager = baseBuilder()
+                .replica(
+                        "client",
+                        WorkerIdentityStore.noCache(),
+                        Map::of
+                )
+                .build();
+
+        manager.close();
+    }
+
+    @Test
+    void repeatedDefinitionExtensionCallsAccumulate() {
+        WorkerEventDefinition<?> definition = definitions().get(0);
+        JavaWorkerManager.Builder builder = baseBuilder()
+                .extendEventDefinitions(List.of(definition))
+                .extendEventDefinitions(List.of(definition))
+                .replica(
+                        "client",
+                        WorkerIdentityStore.noCache(),
+                        Map::of
+                );
+
+        assertThrows(IllegalArgumentException.class, builder::build);
     }
 
     @Test
@@ -194,7 +212,7 @@ class JavaWorkerManagerTest {
                 Arrays.asList(workers)
         );
         JavaWorkerManager.Builder builder = baseBuilder()
-                .eventDefinitions(definitions())
+                .extendEventDefinitions(definitions())
                 .workerAssembler((platform, key, identity, properties) ->
                         assembled.removeFirst());
         for (int index = 0; index < workers.length; index++) {
@@ -220,7 +238,7 @@ class JavaWorkerManagerTest {
 
     private static JavaWorkerManager.Builder configuredBuilder() {
         return baseBuilder()
-                .eventDefinitions(definitions())
+                .extendEventDefinitions(definitions())
                 .replica(
                         "client-1",
                         WorkerIdentityStore.noCache(),

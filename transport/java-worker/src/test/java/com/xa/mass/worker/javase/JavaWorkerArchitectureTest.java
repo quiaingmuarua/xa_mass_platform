@@ -97,8 +97,10 @@ class JavaWorkerArchitectureTest {
         assertFalse(Modifier.isPublic(
                 JavaWorkerPlatform.class.getModifiers()
         ));
-        for (Method method : JavaWorker.Builder.class.getMethods()) {
-            assertFalse(method.getName().equals("hostResources"));
+        assertFalse(Stream.of(JavaWorker.class.getDeclaredClasses())
+                .anyMatch(type -> type.getSimpleName().equals("Builder")));
+        for (Method method : JavaWorker.class.getMethods()) {
+            assertFalse(method.getName().equals("builder"));
         }
         assertFalse(Modifier.isPublic(
                 JavaOkHttpTextWebSocketClient.class.getModifiers()
@@ -166,6 +168,9 @@ class JavaWorkerArchitectureTest {
         assertFalse(resources.contains("retryScheduler"));
         assertFalse(resources.contains("ConcurrentHashMap"));
         assertTrue(manager.contains("JavaWorkerAssembly.assemble"));
+        assertTrue(manager.contains("extendEventDefinitions("));
+        assertFalse(manager.contains("eventDefinitions("));
+        assertTrue(manager.contains("WorkerConnectionOptions"));
         assertTrue(manager.contains("desiredRunning"));
         assertFalse(manager.contains("scheduledStarts"));
         assertFalse(manager.contains("submitStart"));

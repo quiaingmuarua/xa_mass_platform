@@ -26,7 +26,7 @@ final class AndroidDemoStateCapability {
 
     private final SharedPreferences preferences;
     private final AndroidDeviceProperties deviceProperties;
-    private final Collection<WorkerEventDefinition<?>> definitions;
+    private final Collection<WorkerEventDefinition<?>> definitionExtensions;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private int processedCommands;
@@ -46,7 +46,7 @@ final class AndroidDemoStateCapability {
                 Context.MODE_PRIVATE
         );
         this.deviceProperties = deviceProperties;
-        definitions = Collections.singletonList(
+        definitionExtensions = Collections.singletonList(
                 WorkerEventDefinition.of(
                         "TASK",
                         EVENT_CODE,
@@ -56,8 +56,8 @@ final class AndroidDemoStateCapability {
         );
     }
 
-    Collection<WorkerEventDefinition<?>> definitions() {
-        return definitions;
+    Collection<WorkerEventDefinition<?>> definitionExtensions() {
+        return definitionExtensions;
     }
 
     synchronized Snapshot snapshot() {

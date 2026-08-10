@@ -15,30 +15,35 @@ or cache Worker Commands or Results.
 ## Assembly
 
 ```java
-AndroidWorker worker = AndroidWorker.builder(
-                applicationContext,
-                URI.create("http://127.0.0.1:18082"),
-                "android-demo-workers"
-        )
-        .workerProperties(context -> Map.of(
+AndroidWorker worker = AndroidWorker.create(
+        applicationContext,
+        URI.create("http://127.0.0.1:18082"),
+        "android-demo-workers",
+        context -> Map.of(
                 "runtime", "android",
                 "packageName", context.getPackageName()
-        ))
-        .eventDefinitions(definitions)
-        .requestTimeout(Duration.ofSeconds(10))
-        .reconnectPolicy(TextMessageReconnectPolicy.defaults())
-        .build();
+        ),
+        definitionExtensions,
+        WorkerConnectionOptions.defaults()
+);
 
 worker.addListener(snapshot -> observe(snapshot));
 worker.start();
 ```
 
-The Builder creates local Platform resources but performs no file or network
-access. Android generates and stores a canonical UUID client key with the
+`create()` builds the complete Worker and local Platform resources but does
+not read or mutate Identity, call Register/Bind, or connect. The common
+overloads omit extensions and/or use default connection options. Android
+generates and stores a canonical UUID client key with the
 platform-issued Worker ID under the
 application package and WorkerGroup coordinate. A valid Worker ID skips
 Register on later starts. The Properties function cannot override the
 reserved `clientWorkerKey` field.
+
+The supplied Definitions are business extensions, not a complete registry.
+Core appends their defensive copy after its built-in set (currently empty)
+and rejects duplicate `(src, eventCode)` keys. Definitions remain immutable
+for the lifetime of the Worker.
 
 Only one active `AndroidWorker` for a package and WorkerGroup is allowed in
 one process. An `Application`, Service, or another Host owner decides its

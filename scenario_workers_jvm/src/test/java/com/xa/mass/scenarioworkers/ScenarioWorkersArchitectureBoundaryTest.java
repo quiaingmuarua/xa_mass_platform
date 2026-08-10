@@ -55,8 +55,9 @@ class ScenarioWorkersArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
 
         assertThat(sources)
-                .contains("definitionsByEventCode")
+                .contains("availableExtensionsByEventCode")
                 .contains("JavaWorkerManager.builder")
+                .contains(".extendEventDefinitions(")
                 .contains(".replica(")
                 .contains("WorkerIdentityStore")
                 .contains("java.net.http.HttpClient")

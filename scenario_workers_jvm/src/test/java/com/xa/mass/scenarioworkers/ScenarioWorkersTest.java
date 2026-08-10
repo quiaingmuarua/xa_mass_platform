@@ -101,7 +101,7 @@ class ScenarioWorkersTest {
         ScenarioWorkers.PreparedGroup prepared = preparedGroups.get(0);
         assertThat(prepared.group().config().workerGroupId())
                 .isEqualTo("scenario-group");
-        assertThat(prepared.group().definitions())
+        assertThat(prepared.group().definitionExtensions())
                 .extracting(WorkerEventDefinition::eventCode)
                 .containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
         assertThat(prepared.replicas())

@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.stream.Stream;
 
@@ -74,14 +73,17 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(Modifier.isPublic(
                 AndroidWorkerPlatform.class.getModifiers()
         ));
-        for (Method method : AndroidWorker.Builder.class.getMethods()) {
-            assertFalse(method.getName().equals("hostResources"));
-        }
+        assertFalse(Stream.of(AndroidWorker.class.getDeclaredClasses())
+                .anyMatch(type -> type.getSimpleName().equals("Builder")));
+        assertFalse(assembly.contains(" builder("));
+        assertTrue(assembly.contains(" AndroidWorker create("));
         assertTrue(resources.contains("new HandlerThread("));
         assertFalse(resources.contains("commandExecutor"));
         assertFalse(resources.contains("maxConcurrentCommands"));
         assertFalse(resources.contains("SynchronousQueue"));
         assertTrue(source.contains("public final class AndroidWorker"));
+        assertFalse(assembly.contains("class Builder"));
+        assertTrue(assembly.contains("AndroidWorker create("));
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
         assertTrue(source.contains("new WorkerRunController("));

@@ -2,11 +2,13 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
@@ -470,7 +472,7 @@ class RuntimeApiPythonIntegrationTest {
                                     Duration.ofSeconds(2)
                             ),
                             workerId,
-                            definitions
+                            WorkerCommandDispatcher.forWorker(definitions)
                     )
             );
         };
@@ -484,18 +486,19 @@ class RuntimeApiPythonIntegrationTest {
             List<WorkerEventDefinition<?>> definitions,
             WorkerTransportType transportType
     ) {
-        JavaWorker worker = JavaWorker.builder(
-                        URI.create("http://127.0.0.1:" + port),
-                        workerGroupId,
-                        clientWorkerKey,
-                        transportType
+        JavaWorker worker = JavaWorker.create(
+                URI.create("http://127.0.0.1:" + port),
+                workerGroupId,
+                clientWorkerKey,
+                fixedIdentity(workerId),
+                transportType,
+                () -> workerProperties,
+                definitions,
+                WorkerConnectionOptions.of(
+                        Duration.ofSeconds(2),
+                        connectionPolicy()
                 )
-                .identityStore(fixedIdentity(workerId))
-                .workerProperties(() -> workerProperties)
-                .eventDefinitions(definitions)
-                .requestTimeout(Duration.ofSeconds(2))
-                .reconnectPolicy(connectionPolicy())
-                .build();
+        );
         return new TextMessageWorkerHandle(worker);
     }
 

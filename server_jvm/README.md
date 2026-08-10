@@ -564,10 +564,12 @@ new long-lived Worker ID to be issued.
 The phone-number group references `phonenumber.e164`,
 `phonenumber.country`, and `phonenumber.original-carrier`. The string-utils
 group references `string.md5`, `string.sha1`, and `string.base64.encode`.
-Every Worker in a group receives the same immutable Definition list and shared
-Handler instances. Worker identity remains outside Event Definitions and
-business result payloads. WorkerGroup `eventCodes` in `group-config-json` are a
-display/recommendation summary and may lag the local Definition list in
+Every Worker in a group receives the same immutable business Definition
+extension list and shared Handler instances. Core composes the final registry;
+its built-in set is currently empty. Worker identity remains outside Event
+Definitions and business result payloads. WorkerGroup `eventCodes` in
+`group-config-json` are a
+display/recommendation summary and may lag the local extension list in
 `worker-config-json`; neither Server nor Kernel enforces equality.
 
 Worker Assembly does not expose a new Kernel operation, access Redis, start a

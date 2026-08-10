@@ -5,12 +5,13 @@ checked-in `scenario-workers` Server profile. It demonstrates ordinary Workers;
 it is not a Kernel owner, privileged Server extension, Adapter, plugin SPI, or
 independently deployed application.
 
-The module owns its built-in phone-number and string-utility
-`WorkerEventDefinition` values. Those definitions are package-private and are
+The module owns checked-in phone-number and string-utility business
+`WorkerEventDefinition` extensions. Those extensions are package-private and are
 selected by each worker-config group's local `eventCodes`. This field is local
 assembly input, not the WorkerGroup catalog projection. Every Worker in the
-same configured group receives the same immutable Definition list and shared
-Handler instances, so built-in Handlers must be stateless or thread-safe.
+same configured group receives the same immutable extension list and shared
+Handler instances, so Scenario Handlers must be stateless or thread-safe.
+Core owns the final Dispatcher registry and currently adds no built-in events.
 
 The only public assembly surface is:
 

@@ -92,7 +92,13 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "private AndroidDemoStateCapability demoCapability;"
         ));
-        assertTrue(application.contains("AndroidWorker.builder("));
+        assertTrue(application.contains("AndroidWorker.create("));
+        assertFalse(application.contains(
+                "AndroidWorker." + "builder("
+        ));
+        assertTrue(application.contains(
+                "demoCapability.definitionExtensions()"
+        ));
         assertTrue(application.contains(
                 "new AndroidDemoStateCapability("
         ));

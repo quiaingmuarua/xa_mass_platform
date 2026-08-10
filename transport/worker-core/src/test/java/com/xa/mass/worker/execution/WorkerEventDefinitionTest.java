@@ -3,6 +3,7 @@ package com.xa.mass.worker.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.lang.reflect.Method;
@@ -45,6 +46,31 @@ class WorkerEventDefinitionTest {
                 .anyMatch(name -> name.equals("invoke")
                         || name.equals("execute")
                         || name.equals("dispatch")));
+    }
+
+    @Test
+    void rejectsBlankIdentityFields() {
+        WorkerEventParameterResolver<String> resolver = payload -> payload;
+        WorkerEventHandler<String> handler = payload -> payload;
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerEventDefinition.of(
+                        "",
+                        "test.observe",
+                        resolver,
+                        handler
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerEventDefinition.of(
+                        "TASK",
+                        "",
+                        resolver,
+                        handler
+                )
+        );
     }
 
     private static final class Parameters {

@@ -28,10 +28,6 @@ public enum WorkerErrorCode {
     EVENT_INPUT_INVALID(
             33001,
             "Worker event input is invalid"
-    ),
-    EVENT_NOT_FOUND(
-            33002,
-            "Worker event is not registered"
     );
 
     private final int code;

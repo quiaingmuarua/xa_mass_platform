@@ -7,6 +7,8 @@ It owns:
 
 - Worker event definitions, parameter resolution, dispatch, and outcome
   mapping.
+- Final Definition registry composition from Core built-ins and Host-supplied
+  extensions.
 - `WorkerPreparation` and the default Register/Bind implementation.
 - `WorkerRunController`, the two-state coordinator for one explicit Worker
   run.
@@ -43,6 +45,7 @@ TextMessageClient
   -> bounded reconnect within one prepared Endpoint
 
 WorkerCommandDispatcher
+  -> Core built-ins + immutable Host extensions
   -> synchronous Definition resolution and Handler execution
 ```
 
@@ -69,9 +72,18 @@ queue or Command executor. Different Worker connections can execute on their
 respective protocol callback threads, so Definitions shared by Worker
 instances must still be thread-safe.
 
-`WorkerCommandDispatcher` checks the deadline, resolves the immutable
+`WorkerCommandDispatcher` compares the Command deadline with the local system
+epoch-millisecond clock, resolves the immutable
 `(src, messageType)` definition, invokes the resolver and handler, and
 preserves Command correlation fields in the Result.
+
+Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
+`forWorker(definitionExtensions)`. Core owns the complete registry: it loads
+its built-in Definitions first and appends a defensive copy of Host business
+extensions. The built-in set is empty in this version. Duplicate
+`(src, eventCode)` keys, including an extension attempting to replace a future
+built-in, fail assembly; runtime mutation and last-wins replacement are not
+supported.
 
 | Outcome | Meaning |
 | --- | --- |
@@ -153,7 +165,14 @@ millisecond interval, and a 10 second stable window. The threadless
 `TextMessageReconnectState` remains an optional helper for concrete Clients;
 each Client still owns its timer and I/O actions.
 
-`PollingWorkerTransport` remains a separate request-response mechanism.
+`WorkerConnectionOptions.defaults()` groups the 10 second Control request
+timeout with the default reconnect policy. Java and Android direct factories
+accept this immutable value only when a Host needs non-default connection
+settings.
+
+`PollingWorkerTransport` remains a separate request-response mechanism and
+accepts an already assembled `WorkerCommandExecutor`; it does not compose
+Definition collections.
 
 ## Verification
 

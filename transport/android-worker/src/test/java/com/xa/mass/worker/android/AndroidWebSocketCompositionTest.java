@@ -115,9 +115,9 @@ public class AndroidWebSocketCompositionTest {
             AndroidWorkerPlatform platform =
                     AndroidWorkerPlatform.create(
                             "android-composition-test"
-                    );
+            );
             WorkerCommandDispatcher dispatcher =
-                    new WorkerCommandDispatcher(List.of(
+                    WorkerCommandDispatcher.forWorker(List.of(
                             WorkerEventDefinition.of(
                                     "TASK",
                                     "test.observe",

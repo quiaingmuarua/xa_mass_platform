@@ -1,14 +1,13 @@
 package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.WorkerTransportType;
-import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -20,9 +19,9 @@ import java.util.Objects;
 /**
  * Runs one fixed set of replicas for one Java WorkerGroup.
  *
- * <p>Every replica shares this Manager's platform resources, event capacity,
- * and run policy. Reconciliation happens only when the Host explicitly
- * invokes it.
+ * <p>Every replica shares this Manager's platform resources, Definition
+ * extensions, and connection options. Reconciliation happens only when the
+ * Host explicitly invokes it.
  */
 public final class JavaWorkerManager implements AutoCloseable {
 
@@ -185,19 +184,16 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     public static final class Builder {
 
-        private static final Duration DEFAULT_REQUEST_TIMEOUT =
-                Duration.ofSeconds(10);
-
         private final URI runtimeApiBaseUrl;
         private final String workerGroupId;
         private final WorkerTransportType transportType;
         private final LinkedHashMap<String, ReplicaSpec> replicas =
                 new LinkedHashMap<>();
 
-        private List<WorkerEventDefinition<?>> definitions;
-        private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private TextMessageReconnectPolicy reconnectPolicy =
-                TextMessageReconnectPolicy.defaults();
+        private final List<WorkerEventDefinition<?>> definitionExtensions =
+                new ArrayList<>();
+        private WorkerConnectionOptions options =
+                WorkerConnectionOptions.defaults();
         private WorkerAssembler workerAssembler;
 
         private Builder(
@@ -217,32 +213,23 @@ public final class JavaWorkerManager implements AutoCloseable {
             );
         }
 
-        public Builder eventDefinitions(
+        public Builder extendEventDefinitions(
                 Collection<? extends WorkerEventDefinition<?>> value
         ) {
-            Objects.requireNonNull(value, "eventDefinitions");
-            List<WorkerEventDefinition<?>> copy = new ArrayList<>();
+            Objects.requireNonNull(value, "definitionExtensions");
             for (WorkerEventDefinition<?> definition : value) {
-                copy.add(Objects.requireNonNull(
+                definitionExtensions.add(Objects.requireNonNull(
                         definition,
-                        "eventDefinition"
+                        "definitionExtension"
                 ));
             }
-            definitions = Collections.unmodifiableList(copy);
             return this;
         }
 
-        public Builder requestTimeout(Duration value) {
-            requestTimeout = requirePositive(value, "requestTimeout");
-            return this;
-        }
-
-        public Builder reconnectPolicy(
-                TextMessageReconnectPolicy value
-        ) {
-            reconnectPolicy = Objects.requireNonNull(
+        public Builder options(WorkerConnectionOptions value) {
+            options = Objects.requireNonNull(
                     value,
-                    "reconnectPolicy"
+                    "options"
             );
             return this;
         }
@@ -273,11 +260,6 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
 
         public JavaWorkerManager build() {
-            if (definitions == null || definitions.isEmpty()) {
-                throw new IllegalStateException(
-                        "eventDefinitions must not be empty"
-                );
-            }
             if (replicas.isEmpty()) {
                 throw new IllegalStateException(
                         "at least one Worker replica must be configured"
@@ -300,9 +282,8 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     transportType,
                                     replica.identityStore,
                                     replica.workerProperties,
-                                    definitions,
-                                    requestTimeout,
-                                    reconnectPolicy,
+                                    definitionExtensions,
+                                    options,
                                     platform
                             )
                             : workerAssembler.assemble(
@@ -384,16 +365,6 @@ public final class JavaWorkerManager implements AutoCloseable {
             throw new IllegalArgumentException(
                     "runtimeApiBaseUrl must be an absolute HTTP(S) URI"
             );
-        }
-        return value;
-    }
-
-    private static Duration requirePositive(Duration value, String name) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
     }

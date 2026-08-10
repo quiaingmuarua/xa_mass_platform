@@ -1,20 +1,19 @@
 package com.xa.mass.worker.javase;
 
-import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
 import java.net.URI;
-import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Objects;
 
 public final class JavaWorker implements WorkerLifecycle {
 
-    private static final Duration DEFAULT_REQUEST_TIMEOUT =
-            Duration.ofSeconds(10);
     private final WorkerRunController worker;
     private final JavaWorkerPlatform platform;
 
@@ -26,18 +25,110 @@ public final class JavaWorker implements WorkerLifecycle {
         this.platform = platform;
     }
 
-    public static Builder builder(
+    public static JavaWorker create(
             URI runtimeApiBaseUrl,
             String workerGroupId,
             String clientWorkerKey,
-            WorkerTransportType transportType
+            WorkerIdentityStore identityStore,
+            WorkerTransportType transportType,
+            WorkerPropertiesProvider workerProperties
     ) {
-        return new Builder(
+        return create(
                 runtimeApiBaseUrl,
                 workerGroupId,
                 clientWorkerKey,
-                transportType
+                identityStore,
+                transportType,
+                workerProperties,
+                Collections.emptyList(),
+                WorkerConnectionOptions.defaults()
         );
+    }
+
+    public static JavaWorker create(
+            URI runtimeApiBaseUrl,
+            String workerGroupId,
+            String clientWorkerKey,
+            WorkerIdentityStore identityStore,
+            WorkerTransportType transportType,
+            WorkerPropertiesProvider workerProperties,
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions
+    ) {
+        return create(
+                runtimeApiBaseUrl,
+                workerGroupId,
+                clientWorkerKey,
+                identityStore,
+                transportType,
+                workerProperties,
+                definitionExtensions,
+                WorkerConnectionOptions.defaults()
+        );
+    }
+
+    public static JavaWorker create(
+            URI runtimeApiBaseUrl,
+            String workerGroupId,
+            String clientWorkerKey,
+            WorkerIdentityStore identityStore,
+            WorkerTransportType transportType,
+            WorkerPropertiesProvider workerProperties,
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions,
+            WorkerConnectionOptions options
+    ) {
+        URI resolvedRuntimeApiBaseUrl = requireRuntimeApiBaseUrl(
+                runtimeApiBaseUrl
+        );
+        String resolvedWorkerGroupId = requireNonBlank(
+                workerGroupId,
+                "workerGroupId"
+        );
+        String resolvedClientWorkerKey = requireNonBlank(
+                clientWorkerKey,
+                "clientWorkerKey"
+        );
+        WorkerIdentityStore resolvedIdentityStore = Objects.requireNonNull(
+                identityStore,
+                "identityStore"
+        );
+        WorkerTransportType resolvedTransportType =
+                requireTextMessageTransportType(transportType);
+        WorkerPropertiesProvider resolvedWorkerProperties =
+                Objects.requireNonNull(
+                        workerProperties,
+                        "workerProperties"
+                );
+        Collection<? extends WorkerEventDefinition<?>>
+                resolvedDefinitionExtensions = Objects.requireNonNull(
+                        definitionExtensions,
+                        "definitionExtensions"
+                );
+        WorkerConnectionOptions resolvedOptions = Objects.requireNonNull(
+                options,
+                "options"
+        );
+
+        JavaWorkerPlatform platform =
+                JavaWorkerPlatform.standalone(resolvedWorkerGroupId);
+        try {
+            WorkerRunController worker = JavaWorkerAssembly.assemble(
+                    resolvedRuntimeApiBaseUrl,
+                    resolvedWorkerGroupId,
+                    resolvedClientWorkerKey,
+                    resolvedTransportType,
+                    resolvedIdentityStore,
+                    resolvedWorkerProperties,
+                    resolvedDefinitionExtensions,
+                    resolvedOptions,
+                    platform
+            );
+            return new JavaWorker(worker, platform);
+        } catch (RuntimeException | Error failure) {
+            platform.close();
+            throw failure;
+        }
     }
 
     @Override
@@ -74,128 +165,6 @@ public final class JavaWorker implements WorkerLifecycle {
         }
     }
 
-    public static final class Builder {
-
-        private final URI runtimeApiBaseUrl;
-        private final String workerGroupId;
-        private final String clientWorkerKey;
-        private final WorkerTransportType transportType;
-        private WorkerIdentityStore identityStore;
-        private WorkerPropertiesProvider workerProperties;
-        private Collection<? extends WorkerEventDefinition<?>> definitions;
-        private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private TextMessageReconnectPolicy reconnectPolicy =
-                TextMessageReconnectPolicy.defaults();
-
-        private Builder(
-                URI runtimeApiBaseUrl,
-                String workerGroupId,
-                String clientWorkerKey,
-                WorkerTransportType transportType
-        ) {
-            this.runtimeApiBaseUrl = requireRuntimeApiBaseUrl(
-                    runtimeApiBaseUrl
-            );
-            this.workerGroupId = requireNonBlank(
-                    workerGroupId,
-                    "workerGroupId"
-            );
-            this.clientWorkerKey = requireNonBlank(
-                    clientWorkerKey,
-                    "clientWorkerKey"
-            );
-            this.transportType = requireTextMessageTransportType(
-                    transportType
-            );
-        }
-
-        public Builder identityStore(WorkerIdentityStore value) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "identityStore must be present"
-                );
-            }
-            identityStore = value;
-            return this;
-        }
-
-        public Builder workerProperties(WorkerPropertiesProvider value) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "workerProperties must be present"
-                );
-            }
-            workerProperties = value;
-            return this;
-        }
-
-        public Builder eventDefinitions(
-                Collection<? extends WorkerEventDefinition<?>> value
-        ) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "eventDefinitions must be present"
-                );
-            }
-            definitions = value;
-            return this;
-        }
-
-        public Builder requestTimeout(Duration value) {
-            requestTimeout = requirePositive(value, "requestTimeout");
-            return this;
-        }
-
-        public Builder reconnectPolicy(TextMessageReconnectPolicy value) {
-            if (value == null) {
-                throw new IllegalArgumentException(
-                        "reconnectPolicy must be present"
-                );
-            }
-            reconnectPolicy = value;
-            return this;
-        }
-
-        public JavaWorker build() {
-            if (identityStore == null) {
-                throw new IllegalStateException(
-                        "identityStore must be configured"
-                );
-            }
-            if (workerProperties == null) {
-                throw new IllegalStateException(
-                        "workerProperties must be configured"
-                );
-            }
-            if (definitions == null || definitions.isEmpty()) {
-                throw new IllegalStateException(
-                        "eventDefinitions must not be empty"
-                );
-            }
-            JavaWorkerPlatform platform =
-                    JavaWorkerPlatform.standalone(workerGroupId);
-            try {
-                WorkerRunController worker = JavaWorkerAssembly.assemble(
-                        runtimeApiBaseUrl,
-                        workerGroupId,
-                        clientWorkerKey,
-                        transportType,
-                        identityStore,
-                        workerProperties,
-                        definitions,
-                        requestTimeout,
-                        reconnectPolicy,
-                        platform
-                );
-                return new JavaWorker(worker, platform);
-            } catch (RuntimeException | Error failure) {
-                platform.close();
-                throw failure;
-            }
-        }
-
-    }
-
     private static URI requireRuntimeApiBaseUrl(URI value) {
         if (value == null
                 || !value.isAbsolute()
@@ -205,16 +174,6 @@ public final class JavaWorker implements WorkerLifecycle {
             throw new IllegalArgumentException(
                     "runtimeApiBaseUrl must be an absolute HTTP(S) URI"
             );
-        }
-        return value;
-    }
-
-    private static Duration requirePositive(Duration value, String name) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
     }

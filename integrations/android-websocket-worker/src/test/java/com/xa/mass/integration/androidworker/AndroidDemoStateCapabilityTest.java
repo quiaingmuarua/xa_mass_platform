@@ -44,7 +44,7 @@ public class AndroidDemoStateCapabilityTest {
         capability.incrementCounter();
         WorkerEventDefinition<Map<String, Object>> definition =
                 (WorkerEventDefinition<Map<String, Object>>)
-                        capability.definitions().iterator().next();
+                        capability.definitionExtensions().iterator().next();
 
         Map<String, Object> parameters =
                 definition.parameterResolver().resolve("{}");

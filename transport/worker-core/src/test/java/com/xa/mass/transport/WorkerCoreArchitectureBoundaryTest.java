@@ -259,13 +259,15 @@ class WorkerCoreArchitectureBoundaryTest {
                 PollingWorkerTransport.class,
                 WorkerPointClient.class,
                 String.class,
-                Collection.class
-        );
-        assertConstructor(
-                PollingWorkerTransport.class,
-                WorkerPointClient.class,
-                String.class,
                 WorkerCommandExecutor.class
+        );
+        assertThrows(
+                NoSuchMethodException.class,
+                () -> PollingWorkerTransport.class.getConstructor(
+                        WorkerPointClient.class,
+                        String.class,
+                        Collection.class
+                )
         );
         assertConstructor(
                 WorkerRunController.class,
@@ -295,6 +297,36 @@ class WorkerCoreArchitectureBoundaryTest {
                 }
             }
         }
+    }
+
+    @Test
+    void coreOwnsTheFinalWorkerDefinitionRegistry() throws Exception {
+        Class<?> dispatcher = Class.forName(
+                "com.xa.mass.worker.execution.WorkerCommandDispatcher"
+        );
+        Path sourceRoot = Path.of("").toAbsolutePath()
+                .resolve("src/main/java");
+        String dispatcherSource = Files.readString(sourceRoot.resolve(
+                "com/xa/mass/worker/execution/"
+                        + "WorkerCommandDispatcher.java"
+        ));
+
+        assertEquals(0, dispatcher.getConstructors().length);
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        "com.xa.mass.worker.execution."
+                                + "WorkerEventDefinition"
+                                + "Manager"
+                )
+        );
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/execution/"
+                        + "WorkerEventDefinition"
+                        + "Manager.java"
+        )));
+        assertFalse(dispatcherSource.contains("LongSupplier"));
+        assertFalse(dispatcherSource.contains("java.time.Clock"));
     }
 
     @Test

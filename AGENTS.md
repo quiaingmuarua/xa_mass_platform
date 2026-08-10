@@ -159,6 +159,11 @@ tag.
   terminal Transport waits for the current callback, discards its late Result,
   and exposes no Bind, execution, reconnect, or exit-in-progress state to the
   lifecycle layer.
+  `WorkerCommandDispatcher.forWorker` exclusively composes the effective
+  immutable registry from Core built-ins followed by Host Definition
+  extensions. The Core built-in set is currently empty. Duplicate
+  `(src,eventCode)` keys fail assembly; Transports receive an already assembled
+  `WorkerCommandExecutor` and must not accept Definition collections.
   `TextMessageClient` alone owns transient
   disconnect/failure handling and reconnect scheduling; its Transport listener
   exposes only open, inbound message, and exact-once endpoint termination.
@@ -174,7 +179,8 @@ tag.
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
-  Standalone `JavaWorker.Builder.build()` creates a package-private Platform;
+  Standalone `JavaWorker.create(...)` creates a package-private Platform but
+  performs no Control or connection I/O before `start()`;
   `start()` and `stop()` submit non-blocking requests, and closing a
   JavaWorker closes its Controller before its Platform. The Platform owns one
   OkHttp base client, one WebSocket scheduler, bounded Socket and Control
@@ -184,7 +190,9 @@ tag.
   `JavaWorkerManager.Builder`
   binds one WorkerGroup's shared
   capacity and a fixed, non-empty set of unique `clientWorkerKey` replicas at
-  construction; it provides no runtime registration, keyed lifecycle, or
+  construction. Its repeated `extendEventDefinitions` calls append immutable
+  business extensions, while zero extensions are valid; it provides no
+  runtime registration, keyed lifecycle, or
   dynamic scale API. Each Manager owns one daemon Platform shared by only its
   replicas and never exposes managed JavaWorkers. One private group desired
   state is separate from each Worker's actual state; endpoint terminal never
@@ -205,9 +213,11 @@ tag.
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.
-  `AndroidWorker.Builder` creates one package-private Platform containing
+  `AndroidWorker.create(...)` creates one package-private Platform containing
   OkHttp, one network HandlerThread, and one Control executor, but no Command
-  executor. `start()` and `stop()` are non-blocking and may be called from the
+  executor, and performs no Identity or network I/O before `start()`. Its
+  Definition parameter contains only Host business extensions; Core owns the
+  final immutable registry. `start()` and `stop()` are non-blocking and may be called from the
   Main Looper; `close()` synchronously closes the Controller and then the
   Platform. Android hosts own process lifetime, permissions beyond INTERNET,
   static handler assembly, and backup policy.

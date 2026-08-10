@@ -12,6 +12,7 @@ import android.content.Context;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -117,6 +118,8 @@ public class AndroidWorkerTest {
             providerContext.set(context);
             return properties.get();
         });
+
+        assertEquals(0, server.getRequestCount());
 
         worker.start();
         assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
@@ -263,20 +266,13 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void builderOwnsItsPlatformResources() {
-        AndroidWorker built = AndroidWorker.builder(
-                        application,
-                        URI.create(server.url("/").toString()),
-                        WORKER_GROUP_ID
-                )
-                .workerProperties(context -> properties.get())
-                .eventDefinitions(List.of(WorkerEventDefinition.of(
-                        "TASK",
-                        EVENT_CODE,
-                        WorkerEventParameterResolvers.jsonMap(),
-                        parameters -> "null"
-                )))
-                .build();
+    public void createOwnsItsPlatformResourcesAndAllowsNoExtensions() {
+        AndroidWorker built = AndroidWorker.create(
+                application,
+                URI.create(server.url("/").toString()),
+                WORKER_GROUP_ID,
+                context -> properties.get()
+        );
 
         built.close();
     }
@@ -397,25 +393,26 @@ public class AndroidWorkerTest {
             AndroidWorkerProperties provider,
             WorkerEventHandler<Map<String, Object>> handler
     ) {
-        return AndroidWorker.builder(
-                        application,
-                        URI.create(server.url("/").toString()),
-                        WORKER_GROUP_ID
-                )
-                .workerProperties(provider)
-                .eventDefinitions(List.of(WorkerEventDefinition.of(
+        return AndroidWorker.create(
+                application,
+                URI.create(server.url("/").toString()),
+                WORKER_GROUP_ID,
+                provider,
+                List.of(WorkerEventDefinition.of(
                         "TASK",
                         EVENT_CODE,
                         WorkerEventParameterResolvers.jsonMap(),
                         handler
-                )))
-                .requestTimeout(Duration.ofSeconds(2))
-                .reconnectPolicy(TextMessageReconnectPolicy.of(
-                        20,
-                        Duration.ofMillis(20),
-                        Duration.ofMillis(100)
-                ))
-                .build();
+                )),
+                WorkerConnectionOptions.of(
+                        Duration.ofSeconds(2),
+                        TextMessageReconnectPolicy.of(
+                                20,
+                                Duration.ofMillis(20),
+                                Duration.ofMillis(100)
+                        )
+                )
+        );
     }
 
     private static boolean startWhenLeaseIsAvailable(AndroidWorker worker) {

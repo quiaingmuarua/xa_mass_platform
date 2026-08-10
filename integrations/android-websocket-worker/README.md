@@ -36,11 +36,16 @@ call `start()` again. A later explicit or process start restores the same
 Worker ID, skips Register, and performs Bind again before connecting.
 
 `AndroidWorker` has no Activity, Service, Application subclass, UI, or demo
-state dependency. It accepts a Properties function and Definitions, then owns
+state dependency. It accepts a Properties function and Definition extensions,
+then owns
 identity recovery and concrete Android Client assembly while Core owns
 Register/Bind sequencing and WebSocket Worker composition. An Android host can
 retain it from an Application, Service, or another process owner without
 changing Worker execution.
+
+The Demo capability contributes one business Definition extension,
+`android.demo.state.read`. It is not the complete Worker registry; Core owns
+the effective immutable registry and currently has no built-in events.
 
 This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
 Worker when the application process is created. The Application directly owns

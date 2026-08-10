@@ -1,17 +1,16 @@
 package com.xa.mass.worker.javase;
 
-import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
+import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,12 +31,13 @@ final class JavaWorkerAssembly {
             WorkerTransportType transportType,
             WorkerIdentityStore identityStore,
             WorkerPropertiesProvider workerProperties,
-            Collection<? extends WorkerEventDefinition<?>> definitions,
-            Duration requestTimeout,
-            TextMessageReconnectPolicy reconnectPolicy,
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions,
+            WorkerConnectionOptions options,
             JavaWorkerPlatform platform
     ) {
         Objects.requireNonNull(platform, "platform");
+        Objects.requireNonNull(options, "options");
         WorkerPropertiesProvider completeProperties = () -> {
             Map<String, Object> supplied = workerProperties.loadProperties();
             if (supplied == null) {
@@ -57,7 +57,7 @@ final class JavaWorkerAssembly {
             return complete;
         };
         WorkerCommandDispatcher dispatcher =
-                new WorkerCommandDispatcher(definitions);
+                WorkerCommandDispatcher.forWorker(definitionExtensions);
         return new WorkerRunController(
                 new RegisteredWorkerPreparation(
                         workerGroupId,
@@ -65,13 +65,13 @@ final class JavaWorkerAssembly {
                         identityStore,
                         completeProperties,
                         platform.controlClient(runtimeApiBaseUrl),
-                        requestTimeout
+                        options.requestTimeout()
                 ),
                 new TextMessageWorkerTransportFactory(
                         platform.textClientFactory(
                                 transportType,
-                                requestTimeout,
-                                reconnectPolicy
+                                options.requestTimeout(),
+                                options.reconnectPolicy()
                         ),
                         dispatcher
                 ),

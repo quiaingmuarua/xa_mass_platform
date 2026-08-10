@@ -30,21 +30,19 @@ internal. Cross-module callers use `JavaWorker` or `JavaWorkerManager`.
 ## Worker Assembly
 
 ```java
-JavaWorker worker = JavaWorker.builder(
-                URI.create("http://127.0.0.1:18082"),
-                "phone-workers",
-                "stable-installation-key",
-                WorkerTransportType.WEBSOCKET
-        )
-        .identityStore(identityStore)
-        .workerProperties(() -> Map.of(
+JavaWorker worker = JavaWorker.create(
+        URI.create("http://127.0.0.1:18082"),
+        "phone-workers",
+        "stable-installation-key",
+        identityStore,
+        WorkerTransportType.WEBSOCKET,
+        () -> Map.of(
                 "runtime", "java",
                 "region", "local"
-        ))
-        .eventDefinitions(eventDefinitions)
-        .requestTimeout(Duration.ofSeconds(10))
-        .reconnectPolicy(TextMessageReconnectPolicy.defaults())
-        .build();
+        ),
+        definitionExtensions,
+        WorkerConnectionOptions.defaults()
+);
 
 worker.start();
 worker.close();
@@ -58,6 +56,13 @@ use `WorkerIdentityStore.noCache()` and rely on Register idempotency.
 `WEBSOCKET` selects the internal OkHttp text Client and `SOCKET` selects the
 internal UTF-8 line Client. `POLLING` remains a separate request-response
 assembly.
+
+The Definition collection is an extension set, not the Worker's complete
+registry. Core composes its built-ins (currently empty) before these business
+extensions and rejects duplicate `(src, eventCode)` keys. The common overload
+omits both extensions and options; another overload accepts extensions with
+default connection options. `create()` assembles local resources but performs
+no Register, Bind, or connection I/O until `start()`.
 
 `start()` submits one Preparation to the Worker's internal Control executor
 and returns immediately:
@@ -103,13 +108,18 @@ JavaWorkerManager manager = JavaWorkerManager.builder(
                 "phone-workers",
                 WorkerTransportType.WEBSOCKET
         )
-        .eventDefinitions(eventDefinitions)
+        .extendEventDefinitions(phoneDefinitionExtensions)
+        .extendEventDefinitions(commonDefinitionExtensions)
+        .options(WorkerConnectionOptions.defaults())
         .replica("installation-1", identityStore1, properties1)
         .replica("installation-2", identityStore2, properties2)
         .build();
 ```
 
-Topology is immutable after build. A Manager creates one daemon Platform;
+Topology is immutable after build. Repeated `extendEventDefinitions` calls
+append in order, and zero business
+extensions are valid. The effective registry is still finalized and checked
+by Core when replicas are assembled. A Manager creates one daemon Platform;
 replicas in that Manager share its Control pool, OkHttp infrastructure,
 WebSocket scheduler, and Socket pool. Different Managers do not share
 resources. `start()` and `reconcile()` request one start per stopped replica.

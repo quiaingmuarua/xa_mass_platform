@@ -14,6 +14,7 @@ import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -23,9 +24,84 @@ import org.junit.jupiter.api.Test;
 
 class WorkerCommandDispatcherTest {
 
-    private static final long NOW = 1_000_000L;
+    private static final long EXPIRED_DEADLINE = 1L;
+    private static final long ACTIVE_DEADLINE = Long.MAX_VALUE;
     private static final String MESSAGE_ID =
             "91bc4b8c-29d8-4c18-950d-72c8f25e20e0";
+
+    @Test
+    void workerWithoutExtensionsHasNoBusinessEvents() {
+        assertFailure(
+                WorkerCommandDispatcher.forWorker().execute(command(
+                        TASK,
+                        "test.missing",
+                        "{}",
+                        ACTIVE_DEADLINE
+                )),
+                "1404"
+        );
+    }
+
+    @Test
+    void definitionExtensionsAreDefensivelyCopied() {
+        List<WorkerEventDefinition<?>> extensions = new ArrayList<>();
+        extensions.add(definition(
+                "TASK",
+                "test.observe",
+                "\"copied\""
+        ));
+        WorkerCommandDispatcher dispatcher =
+                WorkerCommandDispatcher.forWorker(extensions);
+
+        extensions.clear();
+
+        assertEquals(
+                "\"copied\"",
+                resultPayload(dispatcher, TASK, "test.observe")
+        );
+    }
+
+    @Test
+    void duplicateExtensionsAreRejected() {
+        WorkerEventDefinition<?> definition = definition(
+                "TASK",
+                "test.observe",
+                "\"duplicate\""
+        );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerCommandDispatcher.forWorker(List.of(
+                        definition,
+                        definition
+                ))
+        );
+    }
+
+    @Test
+    void invalidDefinitionSourcesAreRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerCommandDispatcher.forWorker(List.of(
+                        definition(
+                                "UNKNOWN",
+                                "test.observe",
+                                "\"unknown\""
+                        )
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerCommandDispatcher.forWorker(List.of(
+                        definition(
+                                "WORKER",
+                                "test.observe",
+                                "\"worker\""
+                        )
+                ))
+        );
+    }
+
     @Test
     void successfulEventProducesCorrelatedWorkerResult() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
@@ -42,7 +118,7 @@ class WorkerCommandDispatcherTest {
                 TASK,
                 "test.observe",
                 "{\"value\":\"ready\"}",
-                NOW + 1
+                ACTIVE_DEADLINE
         )).orElseThrow();
 
         assertEquals(MESSAGE_ID, result.messageId());
@@ -105,7 +181,7 @@ class WorkerCommandDispatcherTest {
                         TASK,
                         "test.observe",
                         "not-json",
-                        NOW + 1
+                        ACTIVE_DEADLINE
                 )),
                 "1400"
         );
@@ -114,7 +190,7 @@ class WorkerCommandDispatcherTest {
                         TASK,
                         "test.observe",
                         "{}",
-                        NOW + 1
+                        ACTIVE_DEADLINE
                 )),
                 "1400"
         );
@@ -131,7 +207,7 @@ class WorkerCommandDispatcherTest {
                         SYSTEM,
                         "shared.inspect",
                         "{}",
-                        NOW + 1
+                        ACTIVE_DEADLINE
                 )),
                 "1404"
         );
@@ -161,7 +237,7 @@ class WorkerCommandDispatcherTest {
                         TASK,
                         "test.observe",
                         "{}",
-                        NOW + 1
+                        ACTIVE_DEADLINE
                 )),
                 "1500"
         );
@@ -170,7 +246,7 @@ class WorkerCommandDispatcherTest {
                         TASK,
                         "test.observe",
                         "{}",
-                        NOW + 1
+                        ACTIVE_DEADLINE
                 )),
                 "1500"
         );
@@ -205,7 +281,7 @@ class WorkerCommandDispatcherTest {
                 TASK,
                 "test.raw",
                 "not-json",
-                NOW + 1
+                ACTIVE_DEADLINE
         )).orElseThrow();
 
         assertEquals("\"not-json\"", result.payload());
@@ -230,38 +306,11 @@ class WorkerCommandDispatcherTest {
                 TASK,
                 "test.observe",
                 "{}",
-                NOW
+                EXPIRED_DEADLINE
         ));
 
         assertFalse(result.isPresent());
         assertFalse(executed.get());
-    }
-
-    @Test
-    void deadlineIsNotRecheckedAfterHandlerStarts() {
-        WorkerCommandDispatcher dispatcher = new WorkerCommandDispatcher(
-                List.of(definition(
-                        "TASK",
-                        "test.observe",
-                        "\"done\""
-                )),
-                new java.util.function.LongSupplier() {
-                    private int calls;
-
-                    @Override
-                    public long getAsLong() {
-                        calls++;
-                        return calls == 1 ? NOW : NOW + 10_000;
-                    }
-                }
-        );
-
-        assertTrue(dispatcher.execute(command(
-                TASK,
-                "test.observe",
-                "{}",
-                NOW + 1
-        )).isPresent());
     }
 
     private static WorkerEventDefinition<Map<String, Object>> definition(
@@ -293,10 +342,7 @@ class WorkerCommandDispatcherTest {
     private static WorkerCommandDispatcher dispatcher(
             Collection<? extends WorkerEventDefinition<?>> definitions
     ) {
-        return new WorkerCommandDispatcher(
-                definitions,
-                () -> NOW
-        );
+        return WorkerCommandDispatcher.forWorker(definitions);
     }
 
     private static String resultPayload(
@@ -308,7 +354,7 @@ class WorkerCommandDispatcherTest {
                 src,
                 eventCode,
                 "{}",
-                NOW + 1
+                ACTIVE_DEADLINE
         )).orElseThrow().payload();
     }
 
