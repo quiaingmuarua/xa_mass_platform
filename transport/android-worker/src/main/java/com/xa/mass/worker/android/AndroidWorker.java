@@ -2,15 +2,15 @@ package com.xa.mass.worker.android;
 
 import android.content.Context;
 
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.worker.runtime.WorkerRunController;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
@@ -29,14 +29,14 @@ public final class AndroidWorker implements WorkerLifecycle {
 
     private final Object lock = new Object();
     private final String processCoordinate;
-    private final WorkerLoop worker;
+    private final WorkerRunController worker;
     private final WorkerLifecycle.Listener lifecycleListener;
     private boolean processLeaseHeld;
     private boolean closed;
 
     private AndroidWorker(
             String processCoordinate,
-            WorkerLoop worker
+            WorkerRunController worker
     ) {
         this.processCoordinate = processCoordinate;
         this.worker = worker;
@@ -145,7 +145,8 @@ public final class AndroidWorker implements WorkerLifecycle {
         private Collection<? extends WorkerEventDefinition<?>> definitions;
         private WorkerExecutionResources executionResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
+        private TextMessageReconnectPolicy reconnectPolicy =
+                TextMessageReconnectPolicy.defaults();
 
         private Builder(
                 Context applicationContext,
@@ -207,13 +208,13 @@ public final class AndroidWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder retryPolicy(WorkerRetryPolicy value) {
+        public Builder reconnectPolicy(TextMessageReconnectPolicy value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "retryPolicy must be present"
+                        "reconnectPolicy must be present"
                 );
             }
-            retryPolicy = value;
+            reconnectPolicy = value;
             return this;
         }
 
@@ -267,8 +268,9 @@ public final class AndroidWorker implements WorkerLifecycle {
                 return complete;
             };
             Duration resolvedRequestTimeout = requestTimeout;
-            WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
-            WorkerLoop worker = new WorkerLoop(
+            TextMessageReconnectPolicy resolvedReconnectPolicy =
+                    reconnectPolicy;
+            WorkerRunController worker = new WorkerRunController(
                     new RegisteredWorkerPreparation(
                             workerGroupId,
                             WorkerTransportType.WEBSOCKET,
@@ -283,9 +285,8 @@ public final class AndroidWorker implements WorkerLifecycle {
                     endpointUri -> new AndroidOkHttpTextWebSocketClient(
                             endpointUri,
                             resolvedRequestTimeout,
-                            resolvedRetryPolicy.connectionPolicy()
+                            resolvedReconnectPolicy
                     ),
-                    resolvedRetryPolicy,
                     executionResources
             );
             return new AndroidWorker(

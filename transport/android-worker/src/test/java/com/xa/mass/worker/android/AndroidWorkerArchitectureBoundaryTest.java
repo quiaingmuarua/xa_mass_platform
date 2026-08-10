@@ -57,7 +57,9 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(source.contains("public final class AndroidWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
-        assertTrue(source.contains("new WorkerLoop("));
+        assertTrue(source.contains("new WorkerRunController("));
+        assertFalse(source.contains("WorkerLoop"));
+        assertFalse(source.contains("WorkerRetryPolicy"));
         assertTrue(assembly.contains("WorkerExecutionResources"));
         assertTrue(assembly.contains(
                 "public Builder executionResources("

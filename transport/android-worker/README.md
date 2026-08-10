@@ -12,7 +12,7 @@ It owns:
 - Android OkHttp Register/Bind Client and HandlerThread WebSocket Client.
 - Application-Context-specific Worker Properties loading.
 
-Core owns `RegisteredWorkerPreparation`, `WorkerLoop`, command dispatch, event
+Core owns `RegisteredWorkerPreparation`, `WorkerRunController`, command dispatch, event
 definitions, and the one-endpoint runtime. The runtime is the final command
 admission and performs at most one send for each produced result; the loop
 guards one two-state run. Android does not implement a second Worker lifecycle,
@@ -39,7 +39,7 @@ AndroidWorker worker = AndroidWorker.builder(
         ))
         .eventDefinitions(definitions)
         .requestTimeout(Duration.ofSeconds(10))
-        .retryPolicy(WorkerRetryPolicy.defaults())
+        .reconnectPolicy(TextMessageReconnectPolicy.defaults())
         .build();
 
 worker.addListener(snapshot -> observe(snapshot));
@@ -47,7 +47,7 @@ worker.start();
 ```
 
 `executionResources` is required. The Android process owner creates and
-shares its control executor, Handler executor, and retry scheduler for the
+shares its control executor and Handler executor for the
 same lifetime as the process-level Worker owner. `AndroidWorker.close()` does
 not shut shared resources down; the Host closes all Workers before shutting
 them down. The WebSocket Client's dedicated Android `HandlerThread` remains a
@@ -69,6 +69,7 @@ Identity is scoped by application package and WorkerGroup, and only one active
 ```text
 start
   -> enter RUNNING immediately
+  -> submit one asynchronous start task
   -> load one complete Properties snapshot with Application Context
   -> restore Worker ID, or Register and persist it
   -> always Bind
@@ -82,6 +83,10 @@ endpoint terminated after reconnect exhaustion
   -> the current runtime reports one exit callback
   -> finish any in-flight Handler and discard its result
   -> enter STOPPED and wait for an explicit start
+
+Register or Bind failure
+  -> enter STOPPED after that single Preparation attempt
+  -> wait for an explicit start
 
 stop
   -> close the Client and reject new commands
@@ -114,9 +119,9 @@ graceful stop. Failures return to `STOPPED` with a diagnostic message.
 Physical WebSocket state and reconnect attempts are private to the Client and
 produce neither lifecycle events nor a connection query. `RUNNING` therefore
 does not assert Adapter route verification, Kernel online truth, or assignment
-availability. Android uses Core's default 10-attempt prepare budget and
-20-attempt connection budget unless the Builder receives another immutable
-`WorkerRetryPolicy`.
+availability. Android uses the default 20-attempt connection budget unless the
+Builder receives another immutable `TextMessageReconnectPolicy`. Core does not
+retry Register or Bind.
 
 Applications must decide whether Android Backup may migrate Worker Identity.
 The repository demo excludes the Android Worker preference file from backup.

@@ -4,7 +4,6 @@ import com.xa.mass.worker.runtime.WorkerExecutionResources;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -15,23 +14,19 @@ public final class JavaWorkerHostResources implements AutoCloseable {
 
     private final ExecutorService controlExecutor;
     private final ExecutorService handlerExecutor;
-    private final ScheduledExecutorService retryScheduler;
     private final WorkerExecutionResources executionResources;
 
     private boolean closed;
 
     private JavaWorkerHostResources(
             ExecutorService controlExecutor,
-            ExecutorService handlerExecutor,
-            ScheduledExecutorService retryScheduler
+            ExecutorService handlerExecutor
     ) {
         this.controlExecutor = controlExecutor;
         this.handlerExecutor = handlerExecutor;
-        this.retryScheduler = retryScheduler;
         executionResources = WorkerExecutionResources.of(
                 controlExecutor,
-                handlerExecutor,
-                retryScheduler
+                handlerExecutor
         );
     }
 
@@ -66,7 +61,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
 
         ExecutorService control = null;
         ExecutorService handler = null;
-        ScheduledExecutorService retry = null;
         try {
             control = Executors.newFixedThreadPool(
                     controlThreads,
@@ -82,19 +76,11 @@ public final class JavaWorkerHostResources implements AutoCloseable {
                             daemonThreads
                     )
             );
-            retry = Executors.newSingleThreadScheduledExecutor(
-                    namedThreadFactory(
-                            prefix + "-retry",
-                            daemonThreads
-                    )
-            );
             return new JavaWorkerHostResources(
                     control,
-                    handler,
-                    retry
+                    handler
             );
         } catch (RuntimeException | Error failure) {
-            shutdown(retry);
             shutdown(handler);
             shutdown(control);
             throw failure;
@@ -111,7 +97,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             return;
         }
         closed = true;
-        retryScheduler.shutdownNow();
         handlerExecutor.shutdownNow();
         controlExecutor.shutdownNow();
     }

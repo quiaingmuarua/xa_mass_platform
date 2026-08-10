@@ -4,14 +4,12 @@ import com.xa.mass.worker.runtime.WorkerExecutionResources;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 final class AndroidWorkerExecutionResources implements AutoCloseable {
 
     private final ExecutorService controlExecutor;
     private final ExecutorService handlerExecutor;
-    private final ScheduledExecutorService retryScheduler;
     private final WorkerExecutionResources resources;
     private boolean closed;
 
@@ -22,13 +20,9 @@ final class AndroidWorkerExecutionResources implements AutoCloseable {
         handlerExecutor = Executors.newSingleThreadExecutor(
                 daemonThreadFactory("xa-android-worker-handler")
         );
-        retryScheduler = Executors.newSingleThreadScheduledExecutor(
-                daemonThreadFactory("xa-android-worker-retry")
-        );
         resources = WorkerExecutionResources.of(
                 controlExecutor,
-                handlerExecutor,
-                retryScheduler
+                handlerExecutor
         );
     }
 
@@ -42,7 +36,6 @@ final class AndroidWorkerExecutionResources implements AutoCloseable {
             return;
         }
         closed = true;
-        retryScheduler.shutdownNow();
         handlerExecutor.shutdownNow();
         controlExecutor.shutdownNow();
     }

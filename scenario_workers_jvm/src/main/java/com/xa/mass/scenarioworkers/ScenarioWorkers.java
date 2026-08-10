@@ -283,7 +283,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 .executionResources(hostResources.executionResources())
                 .eventDefinitions(group.definitions())
                 .requestTimeout(config.requestTimeout())
-                .retryPolicy(config.retryPolicy());
+                .reconnectPolicy(config.reconnectPolicy());
         for (PreparedReplica replica : preparedGroup.replicas()) {
             builder.replica(
                     replica.clientWorkerKey(),

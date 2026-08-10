@@ -44,7 +44,6 @@ class JavaWorkerHostResourcesTest {
                 );
         ExecutorService control = executor(resources, "controlExecutor");
         ExecutorService handler = executor(resources, "handlerExecutor");
-        ExecutorService retry = executor(resources, "retryScheduler");
 
         assertEquals(4, ((ThreadPoolExecutor) control).getCorePoolSize());
         assertEquals(
@@ -59,14 +58,12 @@ class JavaWorkerHostResourcesTest {
         );
         assertThread(control, "test-java-worker-control-");
         assertThread(handler, "test-java-worker-handler-");
-        assertThread(retry, "test-java-worker-retry-");
 
         resources.close();
         resources.close();
 
         assertTrue(control.isShutdown());
         assertTrue(handler.isShutdown());
-        assertTrue(retry.isShutdown());
         assertThrows(
                 RejectedExecutionException.class,
                 () -> control.execute(() -> {

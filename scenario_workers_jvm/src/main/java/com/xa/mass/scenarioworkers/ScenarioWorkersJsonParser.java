@@ -1,7 +1,6 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
 import java.nio.file.InvalidPathException;
@@ -19,14 +18,12 @@ final class ScenarioWorkersJsonParser {
     private static final Set<String> GROUP_FIELDS = Set.of(
             "eventCodes",
             "requestTimeoutMillis",
-            "retryPolicy",
+            "reconnectPolicy",
             "connectTimeoutMillis",
             "workers"
     );
-    private static final Set<String> RETRY_POLICY_FIELDS = Set.of(
-            "maxPrepareAttempts",
-            "prepareRetryIntervalMillis",
-            "maxReconnectAttempts",
+    private static final Set<String> RECONNECT_POLICY_FIELDS = Set.of(
+            "maxUnstableAttempts",
             "reconnectIntervalMillis",
             "stableConnectionDurationMillis"
     );
@@ -73,7 +70,7 @@ final class ScenarioWorkersJsonParser {
                             "requestTimeoutMillis",
                             10_000L
                     )),
-                    parseRetryPolicy(group),
+                    parseReconnectPolicy(group),
                     Duration.ofMillis(optionalPositiveLong(
                             group,
                             "connectTimeoutMillis",
@@ -84,42 +81,39 @@ final class ScenarioWorkersJsonParser {
         return List.copyOf(configs);
     }
 
-    private static WorkerRetryPolicy parseRetryPolicy(
+    private static TextMessageReconnectPolicy parseReconnectPolicy(
             Map<String, Object> group
     ) {
-        if (!group.containsKey("retryPolicy")) {
-            return WorkerRetryPolicy.defaults();
+        if (!group.containsKey("reconnectPolicy")) {
+            return TextMessageReconnectPolicy.defaults();
         }
         Map<String, Object> policy = requireObject(
-                group.get("retryPolicy"),
-                "retryPolicy"
+                group.get("reconnectPolicy"),
+                "reconnectPolicy"
         );
-        requireExactFields(policy, RETRY_POLICY_FIELDS, "retryPolicy");
-        if (!policy.keySet().containsAll(RETRY_POLICY_FIELDS)) {
+        requireExactFields(
+                policy,
+                RECONNECT_POLICY_FIELDS,
+                "reconnectPolicy"
+        );
+        if (!policy.keySet().containsAll(RECONNECT_POLICY_FIELDS)) {
             throw new IllegalArgumentException(
-                    "retryPolicy must contain all retry policy fields"
+                    "reconnectPolicy must contain all fields"
             );
         }
-        return WorkerRetryPolicy.of(
-                requirePositiveInt(policy, "maxPrepareAttempts"),
+        return TextMessageReconnectPolicy.of(
+                requirePositiveInt(
+                        policy,
+                        "maxUnstableAttempts"
+                ),
                 Duration.ofMillis(requirePositiveLong(
                         policy,
-                        "prepareRetryIntervalMillis"
+                        "reconnectIntervalMillis"
                 )),
-                TextMessageReconnectPolicy.of(
-                        requirePositiveInt(
-                                policy,
-                                "maxReconnectAttempts"
-                        ),
-                        Duration.ofMillis(requirePositiveLong(
-                                policy,
-                                "reconnectIntervalMillis"
-                        )),
-                        Duration.ofMillis(requirePositiveLong(
-                                policy,
-                                "stableConnectionDurationMillis"
-                        ))
-                )
+                Duration.ofMillis(requirePositiveLong(
+                        policy,
+                        "stableConnectionDurationMillis"
+                ))
         );
     }
 

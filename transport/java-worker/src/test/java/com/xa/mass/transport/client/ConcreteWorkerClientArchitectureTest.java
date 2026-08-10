@@ -61,7 +61,9 @@ class ConcreteWorkerClientArchitectureTest {
         assertTrue(source.contains("public final class JavaWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));
-        assertTrue(source.contains("new WorkerLoop("));
+        assertTrue(source.contains("new WorkerRunController("));
+        assertFalse(source.contains("WorkerLoop"));
+        assertFalse(source.contains("WorkerRetryPolicy"));
         assertTrue(assembly.contains("WorkerExecutionResources"));
         assertTrue(assembly.contains(
                 "public Builder executionResources("
@@ -136,9 +138,8 @@ class ConcreteWorkerClientArchitectureTest {
         assertFalse(manager.contains("new Thread"));
         assertFalse(manager.contains("shutdown"));
         assertTrue(resources.contains("Executors.newFixedThreadPool"));
-        assertTrue(resources.contains(
-                "Executors.newSingleThreadScheduledExecutor"
-        ));
+        assertFalse(resources.contains("ScheduledExecutorService"));
+        assertFalse(resources.contains("retryScheduler"));
         assertTrue(manager.contains("JavaWorker.Builder"));
         assertTrue(manager.contains("desiredRunning"));
         assertFalse(manager.contains("class WorkerKey"));

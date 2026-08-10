@@ -28,10 +28,8 @@ class ScenarioWorkersJsonParserTest {
                           "string-group": {
                             "eventCodes":["string.first"],
                             "requestTimeoutMillis":2000,
-                            "retryPolicy":{
-                              "maxPrepareAttempts":4,
-                              "prepareRetryIntervalMillis":200,
-                              "maxReconnectAttempts":6,
+                            "reconnectPolicy":{
+                              "maxUnstableAttempts":6,
                               "reconnectIntervalMillis":300,
                               "stableConnectionDurationMillis":5000
                             },
@@ -48,8 +46,9 @@ class ScenarioWorkersJsonParserTest {
         assertThat(phone.eventCodes())
                 .containsExactly("phone.first", "phone.second");
         assertThat(phone.requestTimeout()).isEqualTo(Duration.ofSeconds(10));
-        assertThat(phone.retryPolicy().maxPrepareAttempts()).isEqualTo(10);
-        assertThat(phone.retryPolicy().connectionPolicy()
+        assertThat(phone.reconnectPolicy().maxUnstableAttempts())
+                .isEqualTo(20);
+        assertThat(phone.reconnectPolicy()
                 .reconnectInterval()).isEqualTo(Duration.ofMillis(500));
         assertThat(phone.connectTimeout()).isEqualTo(Duration.ofSeconds(15));
         assertThat(phone.workers().get(0).workerProperties())
@@ -60,13 +59,12 @@ class ScenarioWorkersJsonParserTest {
 
         ScenarioWorkerGroupConfig strings = configs.get(1);
         assertThat(strings.requestTimeout()).isEqualTo(Duration.ofSeconds(2));
-        assertThat(strings.retryPolicy().maxPrepareAttempts()).isEqualTo(4);
-        assertThat(strings.retryPolicy().prepareRetryInterval())
-                .isEqualTo(Duration.ofMillis(200));
-        assertThat(strings.retryPolicy().connectionPolicy()
+        assertThat(strings.reconnectPolicy().maxUnstableAttempts())
+                .isEqualTo(6);
+        assertThat(strings.reconnectPolicy()
                 .reconnectInterval())
                 .isEqualTo(Duration.ofMillis(300));
-        assertThat(strings.retryPolicy().connectionPolicy()
+        assertThat(strings.reconnectPolicy()
                 .stableConnectionDuration())
                 .isEqualTo(Duration.ofSeconds(5));
         assertThat(strings.connectTimeout()).isEqualTo(Duration.ofSeconds(4));
@@ -97,7 +95,7 @@ class ScenarioWorkersJsonParserTest {
     }
 
     @Test
-    void rejectsLegacyAndPartialRetryPolicy() {
+    void rejectsLegacyAndPartialReconnectPolicy() {
         assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
                 {
                   "group": {
@@ -122,7 +120,19 @@ class ScenarioWorkersJsonParserTest {
                 }
                 """))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("must contain all retry policy fields");
+                .hasMessageContaining("unknown field retryPolicy");
+
+        assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
+                {
+                  "group": {
+                    "eventCodes":["event.one"],
+                    "reconnectPolicy":{"maxUnstableAttempts":3},
+                    "workers":[{"clientWorkerKey":"worker-1"}]
+                  }
+                }
+                """))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must contain all fields");
     }
 
     @Test

@@ -10,8 +10,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Runs Worker Delivery protocol over one prepared, reconnecting text endpoint.
@@ -40,6 +38,7 @@ final class TextMessageWorkerRuntime
     private boolean bound;
     private boolean terminationRequested;
     private boolean terminationNotified;
+    private boolean clientClosed;
     private Throwable terminationFailure;
     private CommandExecution activeCommand;
 
@@ -100,8 +99,9 @@ final class TextMessageWorkerRuntime
             accepted = client.send(
                     codec.encodeWorkerConnectionBind(bind)
             );
-        } catch (RuntimeException error) {
+        } catch (Throwable error) {
             terminateWithFailure(error);
+            rethrowError(error);
             return;
         }
         if (!accepted) {
@@ -159,9 +159,10 @@ final class TextMessageWorkerRuntime
         }
 
         try {
-            handlerExecutor.execute(execution.task);
-        } catch (RejectedExecutionException error) {
+            handlerExecutor.execute(() -> executeCommand(execution));
+        } catch (Throwable error) {
             failCommandExecution(execution, error);
+            rethrowError(error);
         }
     }
 
@@ -176,7 +177,6 @@ final class TextMessageWorkerRuntime
 
     @Override
     public void close() {
-        CommandExecution command;
         synchronized (this) {
             if (closed) {
                 return;
@@ -184,24 +184,43 @@ final class TextMessageWorkerRuntime
             closed = true;
             bound = false;
             terminationRequested = true;
-            command = activeCommand;
             activeCommand = null;
-        }
-        if (command != null) {
-            command.task.cancel(true);
         }
         closeClientQuietly();
     }
 
     private void executeCommand(CommandExecution execution) {
+        boolean notifyBeforeExecution = false;
+        Throwable failureBeforeExecution = null;
+        synchronized (this) {
+            if (activeCommand != execution) {
+                return;
+            }
+            if (closed || terminationRequested) {
+                activeCommand = null;
+                if (terminationReadyLocked()) {
+                    terminationNotified = true;
+                    notifyBeforeExecution = true;
+                    failureBeforeExecution = terminationFailure;
+                }
+            } else {
+                execution.started = true;
+            }
+        }
+        if (notifyBeforeExecution) {
+            notifyTerminated(failureBeforeExecution);
+            return;
+        }
+
         Optional<WorkerResult> result;
         try {
             result = Objects.requireNonNull(
                     commandExecutor.execute(execution.command),
                     "commandExecutor returned null"
             );
-        } catch (RuntimeException error) {
+        } catch (Throwable error) {
             failCommandExecution(execution, error);
+            rethrowError(error);
             return;
         }
 
@@ -224,15 +243,18 @@ final class TextMessageWorkerRuntime
         }
 
         boolean sent;
+        Throwable sendFailure = null;
         try {
             sent = client.send(codec.encodeWorkerResult(sending));
-        } catch (RuntimeException ignored) {
+        } catch (Throwable error) {
             sent = false;
+            sendFailure = error;
         }
         completeCommand(execution, !sent);
         if (!sent) {
             client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
         }
+        rethrowError(sendFailure);
     }
 
     private void completeCommand(
@@ -262,7 +284,7 @@ final class TextMessageWorkerRuntime
 
     private void failCommandExecution(
             CommandExecution execution,
-            RuntimeException error
+            Throwable error
     ) {
         boolean notify = false;
         Throwable failure = null;
@@ -278,13 +300,13 @@ final class TextMessageWorkerRuntime
                 failure = terminationFailure;
             }
         }
-        closeClientQuietly();
         if (notify) {
             notifyTerminated(failure);
         }
+        closeClientQuietly();
     }
 
-    private void terminateWithFailure(RuntimeException error) {
+    private void terminateWithFailure(Throwable error) {
         requestTermination(error, true);
     }
 
@@ -299,17 +321,20 @@ final class TextMessageWorkerRuntime
                 return;
             }
             requestTerminationLocked(failure);
+            if (activeCommand != null && !activeCommand.started) {
+                activeCommand = null;
+            }
             if (terminationReadyLocked()) {
                 terminationNotified = true;
                 notify = true;
                 reportedFailure = terminationFailure;
             }
         }
-        if (closeClient) {
-            closeClientQuietly();
-        }
         if (notify) {
             notifyTerminated(reportedFailure);
+        }
+        if (closeClient) {
+            closeClientQuietly();
         }
     }
 
@@ -345,11 +370,17 @@ final class TextMessageWorkerRuntime
         try {
             listener.onTerminated(this, failure);
         } catch (RuntimeException ignored) {
-            // WorkerLoop owns current-runtime callback suppression.
+            // The controller owns current-runtime callback suppression.
         }
     }
 
     private void closeClientQuietly() {
+        synchronized (this) {
+            if (clientClosed) {
+                return;
+            }
+            clientClosed = true;
+        }
         try {
             client.close();
         } catch (RuntimeException ignored) {
@@ -360,14 +391,16 @@ final class TextMessageWorkerRuntime
     private final class CommandExecution {
 
         private final WorkerCommand command;
-        private final FutureTask<Void> task;
+        private boolean started;
 
         private CommandExecution(WorkerCommand command) {
             this.command = command;
-            task = new FutureTask<>(() -> {
-                executeCommand(this);
-                return null;
-            });
+        }
+    }
+
+    private static void rethrowError(Throwable error) {
+        if (error instanceof Error) {
+            throw (Error) error;
         }
     }
 }

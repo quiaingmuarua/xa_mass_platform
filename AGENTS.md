@@ -39,12 +39,12 @@ Status: current repository handoff.
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
-  Polling, `WorkerPreparation`, the two-state `WorkerLoop`, single-run
+  Polling, `WorkerPreparation`, the two-state `WorkerRunController`, single-run
   text-message runtime, Host-injected `WorkerExecutionResources`, and network
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
   Properties provider, and platform-neutral Register/Bind control contracts.
   The Client owns concrete networking and transparent reconnect, the Runtime
-  owns Bind/Command/Result protocol, and `WorkerLoop` owns only the
+  owns Bind/Command/Result protocol, and `WorkerRunController` owns only the
   `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
   or Scheduler and contains no concrete network or platform implementation.
 - `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly,
@@ -60,7 +60,7 @@ Status: current repository handoff.
   HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
   long-lived Identity storage, and the complete `AndroidWorker` assembly. It
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
-  Worker Loop, and does not persist Endpoint URIs or implement a
+  Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
@@ -137,24 +137,28 @@ tag.
   contract. It must compile with `--release 11` and must not import OkHttp,
   Android, Netty, Spring, Redis, Server, or Kernel implementations.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
-  recovery, and Register/Bind. `WorkerLoop` owns one two-state run, bounded
-  preparation retry, the current runtime, cancellable task handles, and local
-  lifecycle observation. Host code must inject shared control, Handler, and
-  retry execution resources; Core must not create or shut down execution
-  resources. Lifecycle listeners are synchronous, lightweight, coalesced, and
-  invoked outside the lifecycle state lock. `WorkerLoop` does not accept or
-  route Worker commands. The single-run runtime owns inbound WorkerCommand
+  recovery, and Register/Bind. `WorkerRunController` owns one two-state run,
+  one asynchronous Preparation call, the current runtime, cooperative stop,
+  and local lifecycle observation. Host code must inject shared control and
+  Handler execution resources; Core must not create or shut down execution
+  resources. Lifecycle listeners are synchronous, lightweight level
+  observations invoked outside the lifecycle state lock; `snapshot()` is
+  authoritative and notifications may repeat. `WorkerRunController` does not
+  accept or route Worker commands. The single-run runtime owns inbound WorkerCommand
   decoding and final admission, per-Worker serialized execution on the shared
   Handler pool, connection Bind, one-shot WorkerResult send, and exact-once
-  terminal notification to `WorkerLoop`. It exposes no Bind, busy, reconnect,
+  terminal notification to `WorkerRunController`. A terminal Runtime drops a
+  queued command; a Handler already running may finish but its result is
+  discarded. It exposes no Bind, busy, reconnect,
   Handler, or exit-in-progress state to the lifecycle layer.
   `TextMessageClient` alone owns transient
   disconnect/failure handling and reconnect scheduling; its Runtime listener
   exposes only open, inbound message, and exact-once endpoint termination.
   It exposes no physical connection query or reconnect event; `send()` is the
   Runtime's only evidence that the current frame was accepted for sending.
-  Endpoint termination ends the current Worker run; only a later explicit
-  `start()` may prepare another run. `WorkerLifecycle`, `JavaWorker`, and
+  Preparation failure or endpoint termination ends the current Worker run;
+  Core neither retries Preparation nor schedules another start. Only a later
+  explicit Host `start()` may prepare another run. `WorkerLifecycle`, `JavaWorker`, and
   `AndroidWorker` expose only the two-state lifecycle snapshot and must not
   expose connection state, a local WorkerCommand injection method, or cached
   Worker business messages.
@@ -177,13 +181,13 @@ tag.
   bounded fixed reconnect scheduling on a
   dedicated HandlerThread. `AndroidWorker` owns application-scoped Identity,
   concrete Android Client assembly, and Application Context adaptation; Core
-  owns Register/Bind preparation and the unified Worker Loop. Android Worker
+  owns Register/Bind preparation and the unified Worker Run Controller. Android Worker
   must not persist Endpoint URIs or cache or interpret Worker business
   messages. A Client endpoint terminal ends the current run; Android hosts
   decide when to call `start()` again.
   `AndroidWorker.Builder` requires Host-owned `WorkerExecutionResources`;
   closing an AndroidWorker must not shut shared resources down. Android hosts
-  own process lifetime, shared control/Handler/retry resource lifetime,
+  own process lifetime, shared control/Handler resource lifetime,
   permissions beyond INTERNET, static handler assembly, and backup policy.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /

@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 
 class JavaWorkerManagerTest {
 
@@ -377,14 +376,11 @@ class JavaWorkerManagerTest {
                 Executors.newSingleThreadExecutor();
         private final ExecutorService handler =
                 Executors.newSingleThreadExecutor();
-        private final ScheduledExecutorService retry =
-                Executors.newSingleThreadScheduledExecutor();
         private final WorkerExecutionResources resources =
-                WorkerExecutionResources.of(control, handler, retry);
+                WorkerExecutionResources.of(control, handler);
 
         @Override
         public void close() {
-            retry.shutdownNow();
             handler.shutdownNow();
             control.shutdownNow();
         }

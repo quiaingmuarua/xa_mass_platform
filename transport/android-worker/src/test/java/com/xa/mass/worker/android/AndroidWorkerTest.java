@@ -14,7 +14,6 @@ import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -39,7 +38,6 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -64,18 +62,15 @@ public class AndroidWorkerTest {
     private AtomicReference<Map<String, Object>> properties;
     private ExecutorService controlExecutor;
     private ExecutorService handlerExecutor;
-    private ScheduledExecutorService retryScheduler;
     private WorkerExecutionResources executionResources;
 
     @Before
     public void setUp() throws Exception {
         controlExecutor = Executors.newSingleThreadExecutor();
         handlerExecutor = Executors.newSingleThreadExecutor();
-        retryScheduler = Executors.newSingleThreadScheduledExecutor();
         executionResources = WorkerExecutionResources.of(
                 controlExecutor,
-                handlerExecutor,
-                retryScheduler
+                handlerExecutor
         );
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
@@ -97,7 +92,6 @@ public class AndroidWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        retryScheduler.shutdownNow();
         handlerExecutor.shutdownNow();
         controlExecutor.shutdownNow();
         if (server != null) {
@@ -277,7 +271,7 @@ public class AndroidWorkerTest {
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
-                "must not override clientWorkerKey"
+                "IllegalArgumentException"
         ));
     }
 
@@ -404,14 +398,10 @@ public class AndroidWorkerTest {
                         handler
                 )))
                 .requestTimeout(Duration.ofSeconds(2))
-                .retryPolicy(WorkerRetryPolicy.of(
-                        10,
+                .reconnectPolicy(TextMessageReconnectPolicy.of(
+                        20,
                         Duration.ofMillis(20),
-                        TextMessageReconnectPolicy.of(
-                                20,
-                                Duration.ofMillis(20),
-                                Duration.ofMillis(100)
-                        )
+                        Duration.ofMillis(100)
                 ))
                 .build();
     }

@@ -12,9 +12,8 @@ import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.worker.runtime.WorkerRunController;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
@@ -26,9 +25,9 @@ public final class JavaWorker implements WorkerLifecycle {
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
             Duration.ofSeconds(10);
-    private final WorkerLoop worker;
+    private final WorkerRunController worker;
 
-    private JavaWorker(WorkerLoop worker) {
+    private JavaWorker(WorkerRunController worker) {
         this.worker = worker;
     }
 
@@ -87,7 +86,8 @@ public final class JavaWorker implements WorkerLifecycle {
         private Collection<? extends WorkerEventDefinition<?>> definitions;
         private WorkerExecutionResources executionResources;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private WorkerRetryPolicy retryPolicy = WorkerRetryPolicy.defaults();
+        private TextMessageReconnectPolicy reconnectPolicy =
+                TextMessageReconnectPolicy.defaults();
 
         private Builder(
                 URI runtimeApiBaseUrl,
@@ -158,13 +158,13 @@ public final class JavaWorker implements WorkerLifecycle {
             return this;
         }
 
-        public Builder retryPolicy(WorkerRetryPolicy value) {
+        public Builder reconnectPolicy(TextMessageReconnectPolicy value) {
             if (value == null) {
                 throw new IllegalArgumentException(
-                        "retryPolicy must be present"
+                        "reconnectPolicy must be present"
                 );
             }
-            retryPolicy = value;
+            reconnectPolicy = value;
             return this;
         }
 
@@ -215,8 +215,9 @@ public final class JavaWorker implements WorkerLifecycle {
                 return complete;
             };
             Duration resolvedRequestTimeout = requestTimeout;
-            WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
-            WorkerLoop worker = new WorkerLoop(
+            TextMessageReconnectPolicy resolvedReconnectPolicy =
+                    reconnectPolicy;
+            WorkerRunController worker = new WorkerRunController(
                     new RegisteredWorkerPreparation(
                             workerGroupId,
                             transportType,
@@ -232,10 +233,8 @@ public final class JavaWorker implements WorkerLifecycle {
                             transportType,
                             endpointUri,
                             resolvedRequestTimeout,
-                            resolvedRetryPolicy
-                                    .connectionPolicy()
+                            resolvedReconnectPolicy
                     ),
-                    resolvedRetryPolicy,
                     resolvedExecutionResources
             );
             return new JavaWorker(worker);

@@ -12,7 +12,6 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 
 import org.junit.jupiter.api.AfterEach;
@@ -31,7 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import mockwebserver3.MockResponse;
@@ -48,18 +46,15 @@ class JavaWorkerTest {
     private JavaWorker worker;
     private ExecutorService controlExecutor;
     private ExecutorService handlerExecutor;
-    private ScheduledExecutorService retryScheduler;
     private WorkerExecutionResources executionResources;
 
     @BeforeEach
     void setUp() throws IOException {
         controlExecutor = Executors.newSingleThreadExecutor();
         handlerExecutor = Executors.newSingleThreadExecutor();
-        retryScheduler = Executors.newSingleThreadScheduledExecutor();
         executionResources = WorkerExecutionResources.of(
                 controlExecutor,
-                handlerExecutor,
-                retryScheduler
+                handlerExecutor
         );
         server = new MockWebServer();
         server.start();
@@ -70,7 +65,6 @@ class JavaWorkerTest {
         if (worker != null) {
             worker.close();
         }
-        retryScheduler.shutdownNow();
         handlerExecutor.shutdownNow();
         controlExecutor.shutdownNow();
         if (server != null) {
@@ -158,7 +152,7 @@ class JavaWorkerTest {
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
-                "must not override clientWorkerKey"
+                "IllegalArgumentException"
         ));
     }
 
@@ -177,7 +171,7 @@ class JavaWorkerTest {
                 .workerProperties(() -> properties)
                 .eventDefinitions(definitions())
                 .requestTimeout(Duration.ofSeconds(2))
-                .retryPolicy(retryPolicy())
+                .reconnectPolicy(reconnectPolicy())
                 .build();
     }
 
@@ -218,7 +212,7 @@ class JavaWorkerTest {
                     .workerProperties(() -> Map.of("runtime", "java"))
                     .eventDefinitions(definitions())
                     .requestTimeout(Duration.ofSeconds(2))
-                    .retryPolicy(retryPolicy())
+                    .reconnectPolicy(reconnectPolicy())
                     .build();
 
             worker.start();
@@ -253,15 +247,11 @@ class JavaWorkerTest {
         ));
     }
 
-    private static WorkerRetryPolicy retryPolicy() {
-        return WorkerRetryPolicy.of(
-                10,
+    private static TextMessageReconnectPolicy reconnectPolicy() {
+        return TextMessageReconnectPolicy.of(
+                20,
                 Duration.ofMillis(20),
-                TextMessageReconnectPolicy.of(
-                        20,
-                        Duration.ofMillis(20),
-                        Duration.ofMillis(100)
-                )
+                Duration.ofMillis(100)
         );
     }
 

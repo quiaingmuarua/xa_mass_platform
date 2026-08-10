@@ -8,10 +8,9 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.PreparedWorker;
-import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerPreparation;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.worker.runtime.WorkerRunController;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
@@ -31,7 +30,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Assumptions;
@@ -484,15 +482,14 @@ class RuntimeApiPythonIntegrationTest {
             String workerId,
             URI endpointUri,
             List<WorkerEventDefinition<?>> definitions,
-            WorkerLoop.NetworkClientFactory clientFactory
+            WorkerRunController.NetworkClientFactory clientFactory
     ) throws Exception {
         TestWorkerExecutionResources resources =
                 new TestWorkerExecutionResources();
-        WorkerLoop worker = new WorkerLoop(
+        WorkerRunController worker = new WorkerRunController(
                 fixedPreparation(workerId, endpointUri),
                 new WorkerCommandDispatcher(definitions),
                 clientFactory,
-                workerRetryPolicy(),
                 resources.resources()
         );
         return new TextMessageWorkerHandle(worker, resources);
@@ -503,14 +500,6 @@ class RuntimeApiPythonIntegrationTest {
                 20,
                 Duration.ofMillis(20),
                 Duration.ofSeconds(1)
-        );
-    }
-
-    private static WorkerRetryPolicy workerRetryPolicy() {
-        return WorkerRetryPolicy.of(
-                1,
-                Duration.ofMillis(20),
-                connectionPolicy()
         );
     }
 
@@ -913,11 +902,11 @@ class RuntimeApiPythonIntegrationTest {
     private static final class TextMessageWorkerHandle
             implements RunningWorker {
 
-        private final WorkerLoop transport;
+        private final WorkerRunController transport;
         private final TestWorkerExecutionResources executionResources;
 
         private TextMessageWorkerHandle(
-                WorkerLoop transport,
+                WorkerRunController transport,
                 TestWorkerExecutionResources executionResources
         ) throws Exception {
             this.transport = transport;
@@ -948,13 +937,10 @@ class RuntimeApiPythonIntegrationTest {
                 Executors.newSingleThreadExecutor();
         private final ExecutorService handlerExecutor =
                 Executors.newSingleThreadExecutor();
-        private final ScheduledExecutorService retryScheduler =
-                Executors.newSingleThreadScheduledExecutor();
         private final WorkerExecutionResources resources =
                 WorkerExecutionResources.of(
                         controlExecutor,
-                        handlerExecutor,
-                        retryScheduler
+                        handlerExecutor
                 );
 
         private WorkerExecutionResources resources() {
@@ -963,7 +949,6 @@ class RuntimeApiPythonIntegrationTest {
 
         @Override
         public void close() {
-            retryScheduler.shutdownNow();
             handlerExecutor.shutdownNow();
             controlExecutor.shutdownNow();
         }

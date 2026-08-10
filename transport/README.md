@@ -13,8 +13,8 @@ Status: repository-local transport contracts and implementations.
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
-  -> WorkerPreparation + two-state WorkerLoop + single-run text runtime
-  -> Host-injected shared control/Handler/retry execution resources
+  -> WorkerPreparation + two-state WorkerRunController + single-run runtime
+  -> Host-injected shared control/Handler execution resources
   -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
@@ -41,14 +41,15 @@ into that wire contract.
 `transport:worker-core` is not a generic transport framework. Its long-lived
 path has three owners: a concrete Client owns networking and transparent
 reconnect, the package-private Runtime owns Bind/Command/Result protocol, and
-`WorkerLoop` owns only the two-state Worker run. Java and Android hosts compose
-`RegisteredWorkerPreparation` with one `WorkerLoop` and expose the same
-`WorkerLifecycle` contract. One accepted `start()` covers bounded preparation
-and one reconnecting endpoint Client. Platform modules provide Identity
+`WorkerRunController` owns only the two-state Worker run. Java and Android
+hosts compose `RegisteredWorkerPreparation` with one Controller and expose the
+same `WorkerLifecycle` contract. One accepted `start()` submits exactly one
+Preparation and, if successful, one reconnecting endpoint Client. Platform
+modules provide Identity
 storage, concrete network Clients, and explicitly owned shared execution
 resources. Worker Core creates and closes no thread, executor, or scheduler.
-Client reconnect exhaustion ends that run; only another explicit `start()`
-prepares again. Reconnect and physical connection state are not Worker
+Preparation failure or Client reconnect exhaustion ends that run; only another
+explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
 lifecycle events or queries. No Endpoint URI or Worker business message is
 persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism

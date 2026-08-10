@@ -8,6 +8,12 @@ import java.util.Objects;
  */
 public final class TextMessageReconnectPolicy {
 
+    private static final TextMessageReconnectPolicy DEFAULT = of(
+            20,
+            Duration.ofMillis(500),
+            Duration.ofSeconds(10)
+    );
+
     private final int maxUnstableAttempts;
     private final Duration reconnectInterval;
     private final Duration stableConnectionDuration;
@@ -43,6 +49,10 @@ public final class TextMessageReconnectPolicy {
                 reconnectInterval,
                 stableConnectionDuration
         );
+    }
+
+    public static TextMessageReconnectPolicy defaults() {
+        return DEFAULT;
     }
 
     public int maxUnstableAttempts() {

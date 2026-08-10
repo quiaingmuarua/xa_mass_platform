@@ -13,9 +13,8 @@ import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPreparation;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.worker.runtime.WorkerRunController;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import org.junit.jupiter.api.Test;
 
@@ -177,7 +176,7 @@ class WorkerCoreArchitectureBoundaryTest {
     @Test
     void assembledWorkersShareOneLifecycleAndObservationContract() {
         assertTrue(WorkerLifecycle.class.isAssignableFrom(
-                WorkerLoop.class
+                WorkerRunController.class
         ));
         assertTrue(Arrays.equals(
                 WorkerLifecycle.State.values(),
@@ -230,8 +229,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerExecutionResources.class,
                 "of",
                 java.util.concurrent.ExecutorService.class,
-                java.util.concurrent.ExecutorService.class,
-                java.util.concurrent.ScheduledExecutorService.class
+                java.util.concurrent.ExecutorService.class
         ));
         assertConstructor(
                 PollingWorkerTransport.class,
@@ -246,17 +244,16 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerCommandExecutor.class
         );
         assertConstructor(
-                WorkerLoop.class,
+                WorkerRunController.class,
                 WorkerPreparation.class,
                 WorkerCommandExecutor.class,
-                WorkerLoop.NetworkClientFactory.class,
-                WorkerRetryPolicy.class,
+                WorkerRunController.NetworkClientFactory.class,
                 WorkerExecutionResources.class
         );
 
         for (Class<?> transport : new Class<?>[]{
                 PollingWorkerTransport.class,
-                WorkerLoop.class
+                WorkerRunController.class
         }) {
             for (Constructor<?> constructor
                     : transport.getConstructors()) {
@@ -298,6 +295,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
                 "WorkerRetryPolicy",
+                "FutureTask",
                 "commandThread",
                 "isConnected",
                 "isExiting",
@@ -315,10 +313,10 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/runtime/WorkerResultSlot.java"
         )));
 
-        Path loopFile = sourceRoot.resolve(
-                "com/xa/mass/worker/runtime/WorkerLoop.java"
+        Path controllerFile = sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/WorkerRunController.java"
         );
-        String loop = Files.readString(loopFile);
+        String controller = Files.readString(controllerFile);
         for (String forbidden : new String[]{
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
@@ -330,10 +328,22 @@ class WorkerCoreArchitectureBoundaryTest {
                 "isConnected",
                 "ConnectionState",
                 "Executors.new",
-                "new Thread("
+                "new Thread(",
+                "WorkerRetryPolicy",
+                "ScheduledFuture",
+                "FutureTask",
+                "PreparationRetry",
+                "maxPrepareAttempts",
+                "retryScheduler"
         }) {
-            assertFalse(loop.contains(forbidden), forbidden);
+            assertFalse(controller.contains(forbidden), forbidden);
         }
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/WorkerLoop.java"
+        )));
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/WorkerRetryPolicy.java"
+        )));
     }
 
     private static boolean hasMethod(

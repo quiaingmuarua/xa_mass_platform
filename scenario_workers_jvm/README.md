@@ -33,10 +33,8 @@ The worker JSON is keyed by WorkerGroup ID:
       "phonenumber.country",
       "phonenumber.original-carrier"
     ],
-    "retryPolicy": {
-      "maxPrepareAttempts": 10,
-      "prepareRetryIntervalMillis": 1000,
-      "maxReconnectAttempts": 20,
+    "reconnectPolicy": {
+      "maxUnstableAttempts": 20,
       "reconnectIntervalMillis": 500,
       "stableConnectionDurationMillis": 10000
     },
@@ -51,10 +49,10 @@ The worker JSON is keyed by WorkerGroup ID:
 }
 ```
 
-`retryPolicy` is optional as a whole and otherwise strict: all five fields are
-required and unknown fields are rejected. When omitted, Worker Core uses 10
-prepare attempts and 20 unstable connection attempts. The legacy top-level
-`reconnectIntervalMillis` field is rejected.
+`reconnectPolicy` is optional as a whole and otherwise strict: all three fields
+are required and unknown fields are rejected. When omitted, the Client uses 20
+unstable connection attempts. The old `retryPolicy`, Preparation retry fields,
+and legacy top-level `reconnectIntervalMillis` field are rejected.
 
 `sandboxDirectory` is optional. Without it, the Worker remains ephemeral and
 uses `WorkerIdentityStore.noCache()`, so each process start repeats the
@@ -84,8 +82,7 @@ The aggregate creates one `JavaWorkerHostResources` bundle and shares it across
 one `JavaWorkerManager` per configured WorkerGroup. Each Manager owns only its
 group's fixed Worker replicas. The control pool is
 `max(1, min(workerCount, 4))`, the Handler pool is
-`max(1, min(workerCount, max(2, availableProcessors)))`, and preparation
-retry uses one scheduler thread. These daemon threads are aggregate-scoped;
+`max(1, min(workerCount, max(2, availableProcessors)))`. These daemon threads are aggregate-scoped;
 there is no Core or per-Worker control/Handler thread.
 
 Malformed local assembly, duplicate sandbox use, or synchronous Worker
@@ -117,7 +114,7 @@ Definition selection; Scenario Workers never compare or update the two values.
 
 The module depends internally on Worker Core, `JavaWorker`, and the transport
 wire contract. `JavaWorker` injects each configured client key into the final
-Properties and delegates bounded prepare plus connection supervision to the
+Properties and delegates one Preparation plus connection supervision to the
 shared Core runtime; transparent reconnect remains inside the concrete Client
 and Index update uses a private HTTP client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,

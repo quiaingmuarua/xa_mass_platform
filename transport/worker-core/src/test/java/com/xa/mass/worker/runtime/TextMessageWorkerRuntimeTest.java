@@ -368,6 +368,46 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
+    void commandErrorCleansRuntimeBeforeEscapingHandlerThread()
+            throws Exception {
+        AssertionError failure = new AssertionError("fatal command");
+        CountDownLatch uncaught = new CountDownLatch(1);
+        AtomicReference<Throwable> escaped = new AtomicReference<>();
+        ExecutorService handler = Executors.newSingleThreadExecutor(
+                runnable -> {
+                    Thread thread = new Thread(runnable);
+                    thread.setUncaughtExceptionHandler((ignored, error) -> {
+                        escaped.set(error);
+                        uncaught.countDown();
+                    });
+                    return thread;
+                }
+        );
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerRuntime runtime = runtime(
+                client,
+                command -> {
+                    throw failure;
+                },
+                listener,
+                handler
+        );
+        try {
+            runtime.start();
+            client.open();
+            client.message(CODEC.encodeWorkerCommand(command()));
+
+            await(() -> listener.exits.get() == 1);
+            assertTrue(uncaught.await(5, TimeUnit.SECONDS));
+            assertSame(failure, listener.lastFailure.get());
+            assertSame(failure, escaped.get());
+        } finally {
+            handler.shutdownNow();
+        }
+    }
+
+    @Test
     void blockingResultSendDoesNotHoldRuntimeStateLock()
             throws Exception {
         FakeTextMessageClient client = new FakeTextMessageClient();
@@ -400,7 +440,7 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void sharedHandlerPoolQueuesAcrossWorkersAndStopWaitsForQueuedCommand()
+    void stopDropsCommandQueuedInSharedHandlerPool()
             throws Exception {
         ExecutorService sharedHandler =
                 Executors.newSingleThreadExecutor();
@@ -441,10 +481,9 @@ class TextMessageWorkerRuntimeTest {
             assertFalse(secondExecuted.await(100, TimeUnit.MILLISECONDS));
 
             second.requestStop();
-            assertEquals(0, secondListener.exits.get());
-            releaseFirst.countDown();
-            assertTrue(secondExecuted.await(5, TimeUnit.SECONDS));
             await(() -> secondListener.exits.get() == 1);
+            releaseFirst.countDown();
+            assertFalse(secondExecuted.await(100, TimeUnit.MILLISECONDS));
 
             assertEquals(1, secondClient.sent.size());
         } finally {
@@ -504,9 +543,11 @@ class TextMessageWorkerRuntimeTest {
     }
 
     @Test
-    void closeInterruptsRunningHandlerWithoutClosingSharedPool()
+    void closeLetsRunningHandlerFinishWithoutClosingSharedPool()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch completed = new CountDownLatch(1);
         CountDownLatch interrupted = new CountDownLatch(1);
         FakeTextMessageClient client = new FakeTextMessageClient();
         TextMessageWorkerRuntime runtime = runtime(
@@ -514,11 +555,12 @@ class TextMessageWorkerRuntimeTest {
                 command -> {
                     entered.countDown();
                     try {
-                        new CountDownLatch(1).await();
+                        release.await();
                     } catch (InterruptedException error) {
                         interrupted.countDown();
                         Thread.currentThread().interrupt();
                     }
+                    completed.countDown();
                     return Optional.empty();
                 },
                 new RecordingListener()
@@ -530,7 +572,9 @@ class TextMessageWorkerRuntimeTest {
 
         runtime.close();
 
-        assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+        assertFalse(interrupted.await(100, TimeUnit.MILLISECONDS));
+        release.countDown();
+        assertTrue(completed.await(5, TimeUnit.SECONDS));
         assertFalse(executions.handlerExecutor().isShutdown());
     }
 

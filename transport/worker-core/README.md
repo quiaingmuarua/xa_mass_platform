@@ -8,9 +8,10 @@ It owns:
 - Worker event definitions, parameter resolution, dispatch, and outcome
   mapping.
 - `WorkerPreparation` and the default Register/Bind implementation.
-- `WorkerLoop`, the two-state guard for one Worker run.
+- `WorkerRunController`, the two-state coordinator for one explicit Worker
+  run.
 - `WorkerExecutionResources`, the non-owning Host injection contract for
-  shared control, Handler, and retry execution.
+  shared control and Handler execution.
 - The package-private one-endpoint text-message runtime.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
@@ -20,18 +21,17 @@ scheduling.
 
 ## Execution Resources
 
-Every `WorkerLoop` receives a required `WorkerExecutionResources` bundle:
+Every `WorkerRunController` receives a required
+`WorkerExecutionResources` bundle:
 
 ```text
-control ExecutorService          -> preparation and preparation resubmission
+control ExecutorService          -> one asynchronous start task
 handler ExecutorService          -> admitted WorkerEvent Handler execution
-retry ScheduledExecutorService   -> bounded preparation retry timers
 ```
 
 The Host creates these resources, may share one bundle across many Workers,
 and closes them only after every consuming Worker is closed. Core never creates
-or shuts down an executor. Closing one `WorkerLoop` cancels only its current
-prepare/Handler task handles and scheduled retry; it does not affect another
+or shuts down an executor. Closing one Controller does not affect another
 Worker using the same bundle. Prepare and Handler execution remain separate so
 a blocked business Handler cannot consume the control path.
 
@@ -72,11 +72,11 @@ rechecked after execution starts.
 
 ## One Worker Run
 
-One accepted `WorkerLoop.start()` represents one complete Worker run:
+One accepted `WorkerRunController.start()` represents one complete Worker run:
 
 ```text
 RUNNING
-  -> WorkerPreparation with bounded retry
+  -> exactly one asynchronous WorkerPreparation.prepare()
   -> PreparedWorker(workerId, endpointUri)
   -> one reconnecting TextMessageWorkerRuntime
   -> exact-once runtime terminal callback
@@ -94,11 +94,11 @@ network connection or execute commands.
 
 Java and Android assemblies construct one immutable
 `WorkerCommandDispatcher` from their static definitions and inject it as a
-`WorkerCommandExecutor`. `WorkerLoop` owns preparation retry, the current
-runtime reference, cancellable task handles, and two-state lifecycle
-observation. It never inspects command-busy state or routes commands.
-Preparation network failures consume the bounded prepare budget. Exhaustion or
-a contract failure ends the run in `STOPPED` with diagnostic evidence.
+`WorkerCommandExecutor`. `WorkerRunController` owns the one submitted start
+task, current runtime reference, cooperative stop marker, and two-state
+lifecycle observation. It never inspects command-busy state or routes
+commands. Any Preparation failure ends that run in `STOPPED` with safe
+diagnostic evidence. Only a later Host call to `start()` tries again.
 
 The single-run runtime owns only:
 
@@ -116,7 +116,7 @@ no Identity Store, Properties provider, Control Client, definitions,
 dispatcher construction, preparation retry logic, or business-message cache.
 Ordinary disconnects, failures, and reconnects stay inside the current
 `TextMessageClient` and reuse the prepared endpoint. The Runtime sends
-`WorkerLoop` only one terminal fact; Bind admission, command busy state,
+`WorkerRunController` only one terminal fact; Bind admission, command busy state,
 Handler progress, and reconnect activity never cross that owner boundary.
 Endpoint termination, explicit stop, or a local Runtime infrastructure failure
 ends the run after Handler cleanup. The current concrete Clients terminate an
@@ -126,7 +126,7 @@ endpoint when their reconnect budget is exhausted.
 
 `TASK`, `SYSTEM`, and `ADAPTER` commands all enter through the active
 connection's inbound text callback. `WorkerLifecycle` exposes no local command
-injection or message-send operation, and `WorkerLoop` never accepts or routes a
+injection or message-send operation, and `WorkerRunController` never accepts or routes a
 `WorkerCommand`. The runtime decodes the inbound frame and is the final
 admission owner: it accepts only after the current open's Bind send was
 accepted and while no command is executing. A malformed or inadmissible
@@ -160,7 +160,7 @@ The lifecycle has one observable axis:
 State  STOPPED / RUNNING
 ```
 
-`RUNNING` begins when `start()` is accepted and includes preparation retry,
+`RUNNING` begins when `start()` is accepted and includes its one Preparation,
 Client connection/reconnect, command execution, and graceful stop while an
 in-flight Handler finishes. Failures return to `STOPPED` and remain available
 through `diagnosticMessage`; `close()` is an internal terminal object
@@ -170,11 +170,10 @@ completed. It deliberately exposes no physical connection state or connection
 query: Client reconnect is transparent and Worker lifecycle is not Kernel
 online truth or scheduling availability. Listener calls are synchronous,
 lightweight, and outside the lifecycle state lock. They may run on the
-lifecycle caller, Host control/Handler executor, or Client callback thread. A
-no-thread coalescing drain rereads the latest snapshot, preventing a slow
-callback from holding the state lock or delivering queued stale snapshots.
-Hosts must move UI or blocking observation work onto their own appropriate
-executor.
+lifecycle caller, Host control/Handler executor, or Client callback thread.
+Notifications are level observations and may repeat; `snapshot()` is the
+authoritative current value rather than an ordered transition stream. Hosts
+must move UI or blocking observation work onto their own appropriate executor.
 
 There is intentionally no direct Properties-refresh or local-command lifecycle
 method. Platform or Adapter initiated Worker behavior is expressed through
@@ -199,9 +198,9 @@ connection must survive its stable window before the count resets. Exhaustion
 stops reconnecting and emits one `onEndpointTerminated()` callback, which ends
 the current Worker run. A host must explicitly call `start()` to run again.
 
-`WorkerRetryPolicy.defaults()` uses 10 preparation attempts one second apart,
-plus 20 unstable connection attempts 500 milliseconds apart with a 10 second
-stable window.
+`TextMessageReconnectPolicy.defaults()` uses 20 unstable connection attempts
+500 milliseconds apart with a 10 second stable window. Core has no Preparation
+retry policy or retry scheduler.
 
 ## Verification
 

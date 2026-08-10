@@ -101,6 +101,8 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(".executionResources("));
         assertTrue(host.contains("executionResources.close()"));
         assertTrue(application.contains("host.start();"));
+        assertFalse(source.contains("retryScheduler"));
+        assertFalse(source.contains("ScheduledExecutorService"));
         assertTrue(activity.contains("workerHost.addListener"));
         assertTrue(activity.contains("workerHost.removeListener"));
         assertFalse(activity.contains("AndroidWorker.builder"));

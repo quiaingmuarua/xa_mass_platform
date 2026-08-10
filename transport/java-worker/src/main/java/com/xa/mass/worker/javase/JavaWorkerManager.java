@@ -1,12 +1,12 @@
 package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.WorkerExecutionResources;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
-import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 
 import java.net.URI;
 import java.time.Duration;
@@ -181,8 +181,8 @@ public final class JavaWorkerManager implements AutoCloseable {
         private WorkerExecutionResources executionResources;
         private List<WorkerEventDefinition<?>> definitions;
         private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
-        private WorkerRetryPolicy retryPolicy =
-                WorkerRetryPolicy.defaults();
+        private TextMessageReconnectPolicy reconnectPolicy =
+                TextMessageReconnectPolicy.defaults();
         private WorkerAssembler workerAssembler = JavaWorker.Builder::build;
 
         private Builder(
@@ -232,8 +232,13 @@ public final class JavaWorkerManager implements AutoCloseable {
             return this;
         }
 
-        public Builder retryPolicy(WorkerRetryPolicy value) {
-            retryPolicy = Objects.requireNonNull(value, "retryPolicy");
+        public Builder reconnectPolicy(
+                TextMessageReconnectPolicy value
+        ) {
+            reconnectPolicy = Objects.requireNonNull(
+                    value,
+                    "reconnectPolicy"
+            );
             return this;
         }
 
@@ -294,7 +299,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                             .workerProperties(replica.workerProperties)
                             .eventDefinitions(definitions)
                             .requestTimeout(requestTimeout)
-                            .retryPolicy(retryPolicy);
+                            .reconnectPolicy(reconnectPolicy);
                     WorkerLifecycle worker = workerAssembler.assemble(
                             workerBuilder
                     );

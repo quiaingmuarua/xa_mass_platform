@@ -8,7 +8,7 @@ It provides:
 
 ```text
 JavaWorker
-  -> RegisteredWorkerPreparation + WorkerLoop
+  -> RegisteredWorkerPreparation + WorkerRunController
   -> explicit WEBSOCKET or SOCKET selection
 
 JavaWorkerManager
@@ -16,7 +16,7 @@ JavaWorkerManager
   -> explicit group desired-state reconciliation
 
 JavaWorkerHostResources
-  -> process-scoped shared control/Handler/retry resource bundle
+  -> process-scoped shared control/Handler resource bundle
 
 OkHttpWorkerPointClient
   -> target Worker poll/result HTTP
@@ -53,16 +53,16 @@ JavaWorker worker = JavaWorker.builder(
         ))
         .eventDefinitions(eventDefinitions)
         .requestTimeout(Duration.ofSeconds(10))
-        .retryPolicy(WorkerRetryPolicy.defaults())
+        .reconnectPolicy(TextMessageReconnectPolicy.defaults())
         .build();
 
 worker.start();
 ```
 
 For standalone construction, `executionResources` is required and contains
-Host-owned shared control, Handler, and retry executors. `JavaWorker.close()`
+Host-owned shared control and Handler executors. `JavaWorker.close()`
 never shuts the bundle down: the Host closes all Workers first, then shuts down
-the three underlying executors. There is no per-Worker fallback pool or hidden
+the two underlying executors. There is no per-Worker fallback pool or hidden
 static executor.
 
 The fixed client key is injected as the reserved
@@ -77,12 +77,13 @@ key.
 rejected because its request-response lifecycle is assembled separately.
 
 `JavaWorker` implements Core's `WorkerLifecycle`. Its builder composes
-`RegisteredWorkerPreparation` with one `WorkerLoop`: an accepted `start()`
+`RegisteredWorkerPreparation` with one `WorkerRunController`: an accepted `start()`
 enters `RUNNING`, a missing Worker ID is registered and saved, Endpoint Bind is
 performed, and the returned URI starts one reconnecting Client. Temporary
 disconnects reuse the same URI and do not repeat HTTP Bind. Exhausting the
 Client reconnect budget ends the run in `STOPPED`; only a later explicit
-`start()` reloads Properties and performs bounded preparation again. `stop()`
+`start()` reloads Properties and performs one Preparation again. A failed
+Register or Bind also ends that attempt without a Core retry. `stop()`
 preserves identity and discards any result produced while its in-flight Handler
 finishes. `JavaWorker` exposes no connection-state query: reconnect remains a
 private Client mechanism, while its public snapshot reports only the Worker run
@@ -91,7 +92,7 @@ state and prepared identity/Endpoint metadata.
 ## Managed Java Host
 
 `JavaWorkerManager` runs a fixed replica set for exactly one WorkerGroup.
-Capacity, transport, request timeout, retry policy, and Definition/Handler
+Capacity, transport, request timeout, reconnect policy, and Definition/Handler
 instances are group-wide; Identity, Properties, and `clientWorkerKey` remain
 replica-specific:
 
@@ -129,8 +130,8 @@ Host process.
 
 One Java process creates one `JavaWorkerHostResources` using its total replica
 count and shares the returned bundle across all of its Group Managers. Control
-concurrency is bounded at four, Handler concurrency is bounded by total replica
-count and available processors, and preparation retry uses one scheduler. A
+concurrency is bounded at four, and Handler concurrency is bounded by total
+replica count and available processors. A
 Manager closes its Workers in reverse replica order but never closes the
 borrowed resources; the process closes all Managers first and the Host
 resources last.
@@ -139,13 +140,13 @@ resources last.
 every replica immediately. `reconcile()` later compares that intent with each
 Worker's actual `STOPPED/RUNNING` snapshot. A terminal replica remains
 `STOPPED` until the Host explicitly invokes `reconcile()` or `start()` again.
-The Manager has no timer, Worker listener, connection query, reconnect policy,
-aggregate Worker state, or per-replica lifecycle controls. `snapshot(key)` and
+The Manager has no timer, Worker listener, connection query, aggregate Worker
+state, or per-replica lifecycle controls. `snapshot(key)` and
 `snapshots()` expose only the underlying Worker lifecycle snapshots.
 
 ## Lower-level Composition
 
-Callers may still compose concrete Clients with `WorkerLoop` or
+Callers may still compose concrete Clients with `WorkerRunController` or
 `PollingWorkerTransport` for custom lifecycle policy. Concrete Clients expose
 only Core interfaces and JDK types. They own URL/request handling, sockets,
 stale callback suppression, stable-window accounting, bounded fixed reconnect,
