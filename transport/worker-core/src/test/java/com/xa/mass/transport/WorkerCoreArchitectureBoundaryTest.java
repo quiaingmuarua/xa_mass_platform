@@ -425,6 +425,10 @@ class WorkerCoreArchitectureBoundaryTest {
         assertFalse(Files.exists(sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/WorkerRetryPolicy.java"
         )));
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/"
+                        + "WorkerPropertiesSnapshot.java"
+        )));
     }
 
     private static boolean hasMethod(

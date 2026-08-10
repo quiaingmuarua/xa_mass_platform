@@ -140,8 +140,9 @@ tag.
 - `transport/worker-core` may depend only on the shared Worker Delivery
   contract. It must compile with `--release 11` and must not import OkHttp,
   Android, Netty, Spring, Redis, Server, or Kernel implementations.
-  `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
-  recovery, and Register/Bind. `WorkerRunController` owns one two-state run,
+  `RegisteredWorkerPreparation` owns one-time Properties loading, validation,
+  defensive copying, Worker ID recovery, and Register/Bind.
+  `WorkerRunController` owns one two-state run,
   one asynchronously submitted Preparation call, the current Transport,
   cooperative stop, and local lifecycle observation. Core may submit to its
   injected Control Executor but must not create or shut down threads,

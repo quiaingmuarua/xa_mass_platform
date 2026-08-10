@@ -113,9 +113,9 @@ RUNNING
 
 `RegisteredWorkerPreparation` owns `WorkerIdentityStore`,
 `WorkerPropertiesProvider`, and `WorkerControlClient`. Each call loads one
-immutable Properties snapshot, restores or registers the Worker ID, persists
-a newly issued ID, and performs Endpoint Bind. It does not start networking or
-execute Commands.
+Properties map, validates and recursively copies it, restores or registers the
+Worker ID, persists a newly issued ID, and performs Endpoint Bind. It does not
+start networking or execute Commands.
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may

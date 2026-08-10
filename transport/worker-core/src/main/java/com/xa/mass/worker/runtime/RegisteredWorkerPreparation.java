@@ -7,6 +7,11 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnecti
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -15,6 +20,8 @@ import java.util.Optional;
  */
 public final class RegisteredWorkerPreparation
         implements WorkerPreparation {
+
+    private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
 
     private final String workerGroupId;
     private final WorkerTransportType transportType;
@@ -61,7 +68,7 @@ public final class RegisteredWorkerPreparation
     @Override
     public synchronized PreparedWorker prepare() throws Exception {
         requireOpen();
-        WorkerPropertiesSnapshot properties = WorkerPropertiesSnapshot.from(
+        Map<String, Object> properties = immutableProperties(
                 propertiesProvider.loadProperties()
         );
         Optional<String> cached = identityStore.loadWorkerId();
@@ -71,7 +78,7 @@ public final class RegisteredWorkerPreparation
         } else {
             workerId = requireWorkerId(controlClient.register(
                     workerGroupId,
-                    properties.properties(),
+                    properties,
                     requestTimeout
             ));
             persistWorkerId(workerId);
@@ -80,7 +87,7 @@ public final class RegisteredWorkerPreparation
                 workerGroupId,
                 workerId,
                 transportType,
-                properties.properties(),
+                properties,
                 requestTimeout
         );
         return new PreparedWorker(workerId, endpointUri);
@@ -113,6 +120,64 @@ public final class RegisteredWorkerPreparation
 
     private static String requireWorkerId(String value) {
         return new WorkerConnectionBind(value).workerId();
+    }
+
+    private static Map<String, Object> immutableProperties(
+            Map<?, ?> source
+    ) {
+        if (source == null) {
+            throw new IllegalArgumentException(
+                    "workerProperties must be present"
+            );
+        }
+        Map<String, Object> properties = immutableObject(source);
+        Object rawClientKey = properties.get(CLIENT_WORKER_KEY);
+        if (!(rawClientKey instanceof String)
+                || ((String) rawClientKey).trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "workerProperties.clientWorkerKey must be a "
+                            + "non-blank string"
+            );
+        }
+        return properties;
+    }
+
+    private static Map<String, Object> immutableObject(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            if (!(entry.getKey() instanceof String)) {
+                throw new IllegalArgumentException(
+                        "workerProperties keys must be strings"
+                );
+            }
+            result.put(
+                    (String) entry.getKey(),
+                    immutableValue(entry.getValue())
+            );
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Object immutableValue(Object value) {
+        if (value == null
+                || value instanceof String
+                || value instanceof Boolean
+                || value instanceof Number) {
+            return value;
+        }
+        if (value instanceof Map<?, ?>) {
+            return immutableObject((Map<?, ?>) value);
+        }
+        if (value instanceof List<?>) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : (List<?>) value) {
+                result.add(immutableValue(item));
+            }
+            return Collections.unmodifiableList(result);
+        }
+        throw new IllegalArgumentException(
+                "workerProperties contain a non-JSON value"
+        );
     }
 
     private static Duration requirePositive(Duration value, String name) {

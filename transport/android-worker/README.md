@@ -83,7 +83,7 @@ plus OkHttp's internal threads. A per-Client Handler is not a thread.
 ```text
 start from any Host thread, including the Main Looper
   -> submit one startup request to the internal Control executor
-  -> load one complete Properties snapshot
+  -> load and defensively copy one complete Properties map
   -> recover Worker ID, or Register and persist it
   -> always Bind
   -> install one Core TextMessageWorkerTransport

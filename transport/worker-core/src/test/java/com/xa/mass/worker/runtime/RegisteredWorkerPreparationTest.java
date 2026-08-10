@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,12 +28,13 @@ class RegisteredWorkerPreparationTest {
     );
 
     @Test
-    void registersPersistsAndBindsAnImmutablePropertiesSnapshot()
+    void registersPersistsAndBindsOneDefensivePropertiesCopy()
             throws Exception {
         MutableIdentityStore identity = new MutableIdentityStore();
         FakeControlClient control = new FakeControlClient();
+        List<String> tags = new ArrayList<>(List.of("one"));
         Map<String, Object> nested = new LinkedHashMap<>();
-        nested.put("tags", new ArrayList<>(List.of("one")));
+        nested.put("tags", tags);
         Map<String, Object> source = new LinkedHashMap<>();
         source.put("clientWorkerKey", "installation-1");
         source.put("nested", nested);
@@ -49,12 +51,22 @@ class RegisteredWorkerPreparationTest {
         assertEquals(Optional.of(WORKER_ID), identity.loadWorkerId());
         assertEquals(1, control.registerCalls);
         assertEquals(1, control.bindCalls);
+        assertSame(
+                control.registeredProperties,
+                control.boundProperties.get(0)
+        );
         assertThrows(
                 UnsupportedOperationException.class,
                 () -> control.lastProperties.put("new", "value")
         );
         source.put("afterPrepare", true);
+        tags.add("two");
         assertTrue(!control.lastProperties.containsKey("afterPrepare"));
+        assertEquals(
+                List.of("one"),
+                ((Map<?, ?>) control.lastProperties.get("nested"))
+                        .get("tags")
+        );
     }
 
     @Test
@@ -164,6 +176,7 @@ class RegisteredWorkerPreparationTest {
         private int registerCalls;
         private int bindCalls;
         private boolean closed;
+        private Map<String, Object> registeredProperties;
         private Map<String, Object> lastProperties;
         private final List<Map<String, Object>> boundProperties =
                 new ArrayList<>();
@@ -175,6 +188,7 @@ class RegisteredWorkerPreparationTest {
                 Duration timeout
         ) {
             registerCalls++;
+            registeredProperties = workerProperties;
             lastProperties = workerProperties;
             return WORKER_ID;
         }
