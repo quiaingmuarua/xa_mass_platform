@@ -82,10 +82,10 @@ The aggregate creates one `JavaWorkerHostResources` bundle and shares it across
 one `JavaWorkerManager` per configured WorkerGroup. Each Manager owns only its
 group's fixed Worker replicas. The Control pool is capped at four threads, all
 WebSocket Clients share one network scheduler and OkHttp infrastructure, and
-the zero-buffer Command pool has eight execution slots. Blocking Socket
-capacity is sized for all 20 Workers although Scenario selects WebSocket.
-These daemon resources are aggregate-scoped; there is no Core or per-Worker
-Control, network, or Command thread.
+Commands execute synchronously on each Client's serialized OkHttp callback.
+Blocking Socket capacity is sized for all 20 Workers although Scenario selects
+WebSocket. These daemon resources are aggregate-scoped; there is no Core,
+per-Worker Control thread, or Command thread pool.
 
 Malformed local assembly, duplicate sandbox use, or synchronous Worker
 construction/start submission failure closes all local transports, releases

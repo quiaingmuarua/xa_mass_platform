@@ -25,6 +25,10 @@ class JavaWorkerArchitectureTest {
         String assembly = Files.readString(project.resolve(
                 "src/main/java/com/xa/mass/worker/javase/JavaWorker.java"
         ));
+        String webSocketClient = Files.readString(project.resolve(
+                "src/main/java/com/xa/mass/worker/javase/"
+                        + "JavaOkHttpTextWebSocketClient.java"
+        ));
         String build = Files.readString(project.resolve("build.gradle"));
 
         assertTrue(build.contains("id 'java-library'"));
@@ -68,6 +72,14 @@ class JavaWorkerArchitectureTest {
         assertFalse(assembly.contains("shutdownNow("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("new JavaLineSocketClient("));
+        assertFalse(webSocketClient.contains(
+                "TextMessageReconnectState"
+        ));
+        assertFalse(webSocketClient.contains("generation"));
+        assertFalse(webSocketClient.contains(
+                "execute(() -> message"
+        ));
+        assertTrue(webSocketClient.contains("message(attempt, text);"));
     }
 
     @Test
@@ -145,7 +157,9 @@ class JavaWorkerArchitectureTest {
         assertFalse(manager.contains("shutdown"));
         assertTrue(resources.contains("Executors.newFixedThreadPool"));
         assertTrue(resources.contains("ScheduledExecutorService"));
-        assertTrue(resources.contains("new SynchronousQueue<>()"));
+        assertFalse(resources.contains("commandExecutor"));
+        assertFalse(resources.contains("maxConcurrentCommands"));
+        assertFalse(resources.contains("SynchronousQueue"));
         assertFalse(resources.contains("retryScheduler"));
         assertFalse(resources.contains("ConcurrentHashMap"));
         assertTrue(manager.contains("JavaWorker.Builder"));

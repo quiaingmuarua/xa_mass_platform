@@ -35,12 +35,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
+import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
@@ -63,7 +67,6 @@ public class AndroidWorkerTest {
     public void setUp() throws Exception {
         resources = AndroidWorkerHostResources.create(
                 2,
-                4,
                 "android-worker-test"
         );
         application = RuntimeEnvironment.getApplication();
@@ -309,6 +312,7 @@ public class AndroidWorkerTest {
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch duplicateOpen = new CountDownLatch(1);
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         enqueueRegister();
         enqueueBind();
@@ -320,6 +324,15 @@ public class AndroidWorkerTest {
                             command("blocked")
                     ));
                 }
+            }
+
+            @Override
+            public void onClosing(
+                    WebSocket socket,
+                    int code,
+                    String reason
+            ) {
+                socket.close(code, reason);
             }
         }));
         worker = worker(
@@ -334,11 +347,14 @@ public class AndroidWorkerTest {
                 }
         );
         AndroidWorker duplicate = worker(context -> properties.get());
+        ExecutorService stopCaller = Executors.newSingleThreadExecutor();
         try {
             worker.start();
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
-            worker.stop();
+            Future<?> stopping = stopCaller.submit(worker::stop);
+            Thread.sleep(50L);
+            assertFalse(stopping.isDone());
             assertEquals(
                     WorkerLifecycle.State.RUNNING,
                     worker.snapshot().state()
@@ -346,19 +362,38 @@ public class AndroidWorkerTest {
             assertThrows(IllegalStateException.class, duplicate::start);
 
             release.countDown();
+            stopping.get(5, TimeUnit.SECONDS);
             await(() -> worker.snapshot().state()
                     == WorkerLifecycle.State.STOPPED);
 
             enqueueBind();
             server.enqueue(webSocketSession(new WebSocketListener() {
+                @Override
+                public void onOpen(
+                        WebSocket socket,
+                        Response response
+                ) {
+                    duplicateOpen.countDown();
+                }
+
+                @Override
+                public void onClosing(
+                        WebSocket socket,
+                        int code,
+                        String reason
+                ) {
+                    socket.close(code, reason);
+                }
             }));
             await(() -> startWhenLeaseIsAvailable(duplicate));
             assertEquals(
                     WorkerLifecycle.State.RUNNING,
                     duplicate.snapshot().state()
             );
+            assertTrue(duplicateOpen.await(5, TimeUnit.SECONDS));
         } finally {
             release.countDown();
+            stopCaller.shutdownNow();
             duplicate.close();
         }
     }

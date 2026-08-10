@@ -47,7 +47,6 @@ class JavaWorkerTest {
     void setUp() throws IOException {
         resources = JavaWorkerHostResources.create(
                 1,
-                4,
                 "java-worker-test",
                 true
         );

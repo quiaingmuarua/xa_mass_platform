@@ -10,16 +10,13 @@ It owns:
 - `WorkerPreparation` and the default Register/Bind implementation.
 - `WorkerRunController`, the two-state coordinator for one explicit Worker
   run.
-- The package-private one-endpoint `TextMessageWorkerTransport`.
-- Synchronous Command dispatch, Host Executor handoff, and the text Client
-  factory port.
-- The threadless reconnect generation and stability state used by concrete
-  Clients.
+- `TextMessageWorkerTransportFactory` and the package-private one-endpoint
+  `TextMessageWorkerTransport`.
 - Polling Worker behavior and platform-neutral network Client contracts.
 
-It does not own concrete network libraries, Android storage, Host process
-lifecycle, threads, executors, schedulers, connection registries, Adapter
-behavior, Redis, or Kernel scheduling.
+It does not own concrete networking, platform storage, Host process lifetime,
+threads, executors, schedulers, connection registries, Adapter behavior,
+Redis, or Kernel scheduling.
 
 ## Owners
 
@@ -29,69 +26,62 @@ WorkerRunController
   -> one current TextMessageWorkerTransport
   -> STOPPED/RUNNING observation
 
+TextMessageWorkerTransportFactory
+  -> prepared Endpoint + immutable Dispatcher -> Transport
+
 TextMessageWorkerTransport
   -> Connection Bind
-  -> strict WorkerCommand decode and admission
-  -> correlated WorkerResult send
+  -> strict WorkerCommand decode
+  -> synchronous Dispatcher execution
+  -> one-shot WorkerResult send
   -> exact-once endpoint termination
 
 TextMessageClient
   -> protocol connection and framing
-  -> reconnect within one prepared Endpoint
-  -> stale connection generation filtering
+  -> ordered, non-overlapping Listener callbacks
+  -> bounded reconnect within one prepared Endpoint
 
 WorkerCommandDispatcher
   -> synchronous Definition resolution and Handler execution
-
-Host Command Executor
-  -> thread handoff and execution-capacity admission
 ```
 
-Core creates and closes no execution resources. The Transport submits one
-`Runnable` to a Host-provided `Executor`, then calls the synchronous
-`WorkerCommandExecutor` inside that Runnable. Java and Android Host Resources
-use fixed pools with `SynchronousQueue`; `RejectedExecutionException` means the
-Command obtained no execution capacity and will never run later. There is no
-separate asynchronous business execution contract.
+Core creates, submits to, or closes no execution resource. Platform Clients
+own only networking threads that their protocol implementation needs.
 
-## Execution
+## Message Path
 
-Every text Command follows one path:
+Every long-connection Command follows one synchronous path:
 
 ```text
-raw text
+Client protocol callback
   -> TextMessageWorkerTransport strict decode
-  -> reject duplicate in-flight messageId
-  -> Host Command Executor.execute
-  -> WorkerCommandDispatcher.execute synchronously
+  -> WorkerCommandDispatcher.execute
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
   -> optional WorkerResult
-  -> one send attempt on the current bound connection
+  -> one send attempt on the current connection
 ```
 
-`WorkerCommandDispatcher` is synchronous and immutable. It checks the
-deadline, resolves the static `(src, messageType)` definition, invokes the
-resolver and handler, and preserves the Command correlation fields in the
-Result. Distinct message IDs may execute concurrently, so Definitions and
-Handlers must be thread-safe whenever the Host configures concurrency above
-one.
+The Client contract serializes Listener callbacks for one Client. Therefore a
+single Worker connection processes Commands in callback order without a Core
+queue or Command executor. Different Worker connections can execute on their
+respective protocol callback threads, so Definitions shared by Worker
+instances must still be thread-safe.
+
+`WorkerCommandDispatcher` checks the deadline, resolves the immutable
+`(src, messageType)` definition, invokes the resolver and handler, and
+preserves Command correlation fields in the Result.
 
 | Outcome | Meaning |
 | --- | --- |
 | `200` | Handler returned a non-empty result payload |
 | `1400` | Resolver or handler rejected event input |
 | `1404` | No definition exists for `(src, messageType)` |
-| `1500` | Handler failed, returned invalid output, or no execution slot was available |
+| `1500` | Handler failed or returned invalid output |
 
-Expired Commands are dropped before Handler invocation. A deadline is not
-rechecked after execution starts.
-
-The Transport has no Command queue and no Result cache. A malformed frame or
-duplicate in-flight message ID closes the current connection. Capacity
-rejection sends an immediate correlated `1500` without closing the connection.
-Results may be returned out of order. If a Result cannot be sent on the
-current connection, it is dropped and the current connection is closed for a
-send failure; reconnect never replays it.
+Expired Commands are dropped before Handler invocation. A malformed frame
+closes the current connection with `PROTOCOL_ERROR`. If a Result send is not
+accepted, the Result is discarded and the connection is closed with
+`SEND_FAILURE`. Commands and Results are never queued, cached, or replayed.
 
 ## One Worker Run
 
@@ -113,40 +103,31 @@ immutable Properties snapshot, restores or registers the Worker ID, persists
 a newly issued ID, and performs Endpoint Bind. It does not start networking or
 execute Commands.
 
-Preparation failure or Endpoint termination ends the current run. Core does
-not retry Preparation, schedule restart, or persist the Endpoint URI. A Host
-may explicitly call `start()` again. Temporary disconnects remain inside the
+Preparation failure or Endpoint termination ends the run. Core does not retry
+Preparation, schedule restart, or persist the Endpoint URI. A Host may
+explicitly call `start()` again. Temporary disconnects remain inside the
 current `TextMessageClient` and reuse the current URI.
 
-Graceful `stop()` and Endpoint termination stop admitting new Commands, wait
-for already accepted executions to complete, discard their late Results, and
-then finish the run. Immediate `close()` tears down the current Client without
-waiting for or cancelling tasks in the shared Host executor.
+`stop()` first prevents new Commands and closes the Client. A Handler already
+running on the Client callback completes, but its Result is discarded; the
+Transport then terminates exactly once. `close()` is terminal and follows the
+same Client callback fence. There is no cross-run pending Result.
 
 ## Lifecycle
 
-`WorkerLifecycle` exposes:
+`WorkerLifecycle` exposes `start`, `stop`, `close`, `snapshot`, and Listener
+registration. Its observable state is only `STOPPED / RUNNING`. `RUNNING`
+includes Preparation, Client connection and reconnect, Handler execution, and
+cooperative stop. It does not assert physical connectivity, Adapter route
+verification, Kernel online truth, or scheduling availability.
 
-```text
-start / stop / close
-snapshot
-addListener / removeListener
-```
-
-Its observable state is only `STOPPED / RUNNING`. `RUNNING` includes
-Preparation, Client connection and reconnect, Command execution, and graceful
-stop. It does not assert physical connectivity, Adapter route verification,
-Kernel online truth, or scheduling availability. Snapshot identity and
-Endpoint fields describe only the current prepared run.
-
-Listener calls are synchronous, lightweight level observations outside the
-lifecycle state lock. Notifications may repeat and may occur on the lifecycle
-caller, a Client callback lane, or a Command execution lane. `snapshot()` is
-the authoritative current value; Hosts must move UI or blocking observation
-work to the appropriate platform executor.
+Lifecycle Listener calls are synchronous level observations outside the
+lifecycle lock. Notifications may repeat; `snapshot()` is authoritative.
+Hosts move UI or blocking observation work to their own platform execution
+mechanism.
 
 There is no local Command injection or Properties-refresh lifecycle method.
-Platform and Adapter capabilities continue to use statically assembled
+Platform and Adapter capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `WorkerCommand`
 messages.
 
@@ -154,20 +135,21 @@ messages.
 
 Core exposes string-only `WorkerPointClient`, `TextMessageClient`, and
 `TextMessageClientFactory`, plus the JDK-type-only `WorkerControlClient`.
-Concrete Clients own I/O, framing, reconnect scheduling, and stale callback
-suppression. Their expensive infrastructure is borrowed from platform Host
-Resources; closing one Client closes only that connection. A Client never
-decodes Worker DTOs or caches business messages.
+Concrete Clients own I/O, framing, reconnect timers, physical-attempt
+filtering, and callback serialization. Their expensive infrastructure is
+borrowed from platform Host Resources; closing one Client closes only that
+connection.
 
-`TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and exact-once
-`onEndpointTerminated`. The Client exposes no physical connection query or
-transient reconnect event. `send()` reports only whether the current network
-stack accepted that frame.
+`TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and
+exact-once `onEndpointTerminated`. A Client suppresses superseded physical
+connection callbacks. External `close()` waits for a callback already in
+progress; reentrant close from that callback is permitted. `send()` reports
+only whether the current network stack accepted the frame.
 
-`TextMessageReconnectState` is a synchronized, threadless generation and
-stability state machine shared by the concrete Clients. The default policy is
-20 unstable attempts, a 500 millisecond reconnect interval, and a 10 second
-stable window. Concrete platform Clients still own every timer and I/O action.
+`TextMessageReconnectPolicy` defaults to 20 unstable attempts, a 500
+millisecond interval, and a 10 second stable window. The threadless
+`TextMessageReconnectState` remains an optional helper for concrete Clients;
+each Client still owns its timer and I/O actions.
 
 `PollingWorkerTransport` remains a separate request-response mechanism.
 

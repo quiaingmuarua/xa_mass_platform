@@ -13,9 +13,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,13 +21,12 @@ import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
 
 /**
- * Process-scoped Java Host owner for Worker network and execution resources.
+ * Process-scoped Java Host owner for Worker network and control resources.
  */
 public final class JavaWorkerHostResources implements AutoCloseable {
 
     private final OkHttpClient httpClient;
     private final ExecutorService controlExecutor;
-    private final ExecutorService commandExecutor;
     private final ScheduledExecutorService networkScheduler;
     private final ExecutorService socketExecutor;
     private boolean closed;
@@ -37,7 +34,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
     private JavaWorkerHostResources(
             OkHttpClient httpClient,
             ExecutorService controlExecutor,
-            ExecutorService commandExecutor,
             ScheduledExecutorService networkScheduler,
             ExecutorService socketExecutor
     ) {
@@ -45,10 +41,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         this.controlExecutor = Objects.requireNonNull(
                 controlExecutor,
                 "controlExecutor"
-        );
-        this.commandExecutor = Objects.requireNonNull(
-                commandExecutor,
-                "commandExecutor"
         );
         this.networkScheduler = Objects.requireNonNull(
                 networkScheduler,
@@ -60,14 +52,10 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         );
     }
 
-    JavaWorkerHostResources(
-            ExecutorService controlExecutor,
-            ExecutorService commandExecutor
-    ) {
+    JavaWorkerHostResources(ExecutorService controlExecutor) {
         this(
                 new OkHttpClient(),
                 controlExecutor,
-                commandExecutor,
                 Executors.newSingleThreadScheduledExecutor(),
                 Executors.newSingleThreadExecutor()
         );
@@ -75,15 +63,10 @@ public final class JavaWorkerHostResources implements AutoCloseable {
 
     public static JavaWorkerHostResources create(
             int workerCapacity,
-            int maxConcurrentCommands,
             String threadNamePrefix,
             boolean daemonThreads
     ) {
         requirePositive(workerCapacity, "workerCapacity");
-        requirePositive(
-                maxConcurrentCommands,
-                "maxConcurrentCommands"
-        );
         String prefix = requireNonBlank(
                 threadNamePrefix,
                 "threadNamePrefix"
@@ -91,17 +74,12 @@ public final class JavaWorkerHostResources implements AutoCloseable {
         int controlThreads = Math.min(workerCapacity, 4);
 
         ExecutorService control = null;
-        ThreadPoolExecutor commands = null;
         ScheduledExecutorService network = null;
         ExecutorService sockets = null;
         OkHttpClient http = null;
         try {
             ThreadFactory controlFactory = namedThreadFactory(
                     prefix + "-control",
-                    daemonThreads
-            );
-            ThreadFactory commandFactory = namedThreadFactory(
-                    prefix + "-command",
                     daemonThreads
             );
             ThreadFactory networkFactory = namedThreadFactory(
@@ -115,15 +93,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             control = Executors.newFixedThreadPool(
                     controlThreads,
                     controlFactory
-            );
-            commands = new ThreadPoolExecutor(
-                    maxConcurrentCommands,
-                    maxConcurrentCommands,
-                    0L,
-                    TimeUnit.MILLISECONDS,
-                    new SynchronousQueue<>(),
-                    commandFactory,
-                    new ThreadPoolExecutor.AbortPolicy()
             );
             network = Executors.newSingleThreadScheduledExecutor(
                     networkFactory
@@ -139,7 +108,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             return new JavaWorkerHostResources(
                     http,
                     control,
-                    commands,
                     network,
                     sockets
             );
@@ -147,7 +115,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             closeHttp(http);
             shutdown(sockets);
             shutdown(network);
-            shutdown(commands);
             shutdown(control);
             throw failure;
         }
@@ -156,11 +123,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
     public synchronized Executor controlExecutor() {
         requireOpen();
         return controlExecutor;
-    }
-
-    public synchronized Executor commandExecutor() {
-        requireOpen();
-        return commandExecutor;
     }
 
     synchronized WorkerControlClient controlClient(URI runtimeApiBaseUrl) {
@@ -237,7 +199,6 @@ public final class JavaWorkerHostResources implements AutoCloseable {
             return;
         }
         closed = true;
-        commandExecutor.shutdownNow();
         socketExecutor.shutdownNow();
         networkScheduler.shutdownNow();
         controlExecutor.shutdownNow();

@@ -12,9 +12,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,21 +20,19 @@ import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
 
 /**
- * Application-scoped Android owner for Worker network and execution resources.
+ * Application-scoped Android owner for Worker network and control resources.
  */
 public final class AndroidWorkerHostResources implements AutoCloseable {
 
     private final OkHttpClient httpClient;
     private final HandlerThread networkThread;
     private final ExecutorService controlExecutor;
-    private final ExecutorService commandExecutor;
     private boolean closed;
 
     private AndroidWorkerHostResources(
             OkHttpClient httpClient,
             HandlerThread networkThread,
-            ExecutorService controlExecutor,
-            ExecutorService commandExecutor
+            ExecutorService controlExecutor
     ) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.networkThread = Objects.requireNonNull(
@@ -47,22 +43,13 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
                 controlExecutor,
                 "controlExecutor"
         );
-        this.commandExecutor = Objects.requireNonNull(
-                commandExecutor,
-                "commandExecutor"
-        );
     }
 
     public static AndroidWorkerHostResources create(
             int workerCapacity,
-            int maxConcurrentCommands,
             String threadNamePrefix
     ) {
         requirePositive(workerCapacity, "workerCapacity");
-        requirePositive(
-                maxConcurrentCommands,
-                "maxConcurrentCommands"
-        );
         String prefix = requireNonBlank(
                 threadNamePrefix,
                 "threadNamePrefix"
@@ -71,7 +58,6 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
 
         HandlerThread network = null;
         ExecutorService control = null;
-        ExecutorService commands = null;
         OkHttpClient http = null;
         try {
             network = new HandlerThread(prefix + "-network");
@@ -80,15 +66,6 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
                     controlThreads,
                     namedThreadFactory(prefix + "-control")
             );
-            commands = new ThreadPoolExecutor(
-                    maxConcurrentCommands,
-                    maxConcurrentCommands,
-                    0L,
-                    TimeUnit.MILLISECONDS,
-                    new SynchronousQueue<>(),
-                    namedThreadFactory(prefix + "-command"),
-                    new ThreadPoolExecutor.AbortPolicy()
-            );
             Dispatcher dispatcher = new Dispatcher();
             http = new OkHttpClient.Builder()
                     .dispatcher(dispatcher)
@@ -96,12 +73,10 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
             return new AndroidWorkerHostResources(
                     http,
                     network,
-                    control,
-                    commands
+                    control
             );
         } catch (RuntimeException | Error failure) {
             closeHttp(http);
-            shutdown(commands);
             shutdown(control);
             if (network != null) {
                 network.quitSafely();
@@ -113,11 +88,6 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
     public synchronized Executor controlExecutor() {
         requireOpen();
         return controlExecutor;
-    }
-
-    public synchronized Executor commandExecutor() {
-        requireOpen();
-        return commandExecutor;
     }
 
     synchronized WorkerControlClient controlClient(URI runtimeApiBaseUrl) {
@@ -158,7 +128,6 @@ public final class AndroidWorkerHostResources implements AutoCloseable {
             return;
         }
         closed = true;
-        commandExecutor.shutdownNow();
         controlExecutor.shutdownNow();
         networkThread.quitSafely();
         closeHttp(httpClient);

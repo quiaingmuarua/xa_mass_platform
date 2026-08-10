@@ -7,6 +7,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
@@ -288,13 +289,14 @@ public final class AndroidWorker implements WorkerLifecycle {
                             hostResources.controlClient(runtimeApiBaseUrl),
                             resolvedRequestTimeout
                     ),
-                    endpointUri -> hostResources.textClient(
-                            endpointUri,
-                            resolvedRequestTimeout,
-                            resolvedReconnectPolicy
-                    ),
-                    dispatcher,
-                    hostResources.commandExecutor()
+                    new TextMessageWorkerTransportFactory(
+                            endpointUri -> hostResources.textClient(
+                                    endpointUri,
+                                    resolvedRequestTimeout,
+                                    resolvedReconnectPolicy
+                            ),
+                            dispatcher
+                    )
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()

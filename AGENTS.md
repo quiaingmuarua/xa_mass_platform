@@ -44,7 +44,7 @@ Status: current repository handoff.
   Client contracts. It also owns the shared `WorkerLifecycle`, Identity store,
   Properties provider, platform-neutral Register/Bind control contracts,
   Client factory, immutable reconnect policy, and the threadless reconnect
-  helper still consumed by Java clients.
+  helper still consumed by the Java line-Socket Client.
   The Client owns concrete networking and transparent reconnect, the Transport
   owns Bind/Command/Result protocol, and `WorkerRunController` owns only the
   `RUNNING/STOPPED` run lifecycle. Core creates and closes no thread, Executor,
@@ -141,20 +141,20 @@ tag.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerRunController` owns one two-state run,
   one synchronous Preparation call on the Host's calling thread, the current
-  Transport, cooperative stop, and local lifecycle observation. Host code must
-  inject a non-owning Command `Executor`; Core must not create or shut down threads,
-  Executors, or Schedulers. Lifecycle listeners are synchronous, lightweight level
+  Transport, cooperative stop, and local lifecycle observation. Core must not
+  create, submit to, or shut down threads, Executors, or Schedulers. Lifecycle
+  listeners are synchronous, lightweight level
   observations invoked outside the lifecycle state lock; `snapshot()` is
   authoritative and notifications may repeat. `WorkerRunController` does not
   accept or route Worker commands. The single-run Transport owns inbound
-  WorkerCommand decoding, in-flight message-ID admission, connection Bind,
-  one-shot WorkerResult send, and exact-once terminal notification to
-  `WorkerRunController`. It submits distinct Commands to a Host-provided
-  zero-buffer `Executor`, then invokes the synchronous `WorkerCommandExecutor`
-  on that execution thread. Capacity rejection returns an
-  immediate `1500`, with no local Command queue or Result cache. A terminal
-  Transport waits for accepted executions, discards their late Results, and
-  exposes no Bind, execution, reconnect, or exit-in-progress state to the
+  WorkerCommand decoding, connection Bind, synchronous
+  `WorkerCommandExecutor` invocation, one-shot WorkerResult send, and
+  exact-once terminal notification to `WorkerRunController`. It creates no
+  Command queue, execution task, in-flight registry, or Result cache. One
+  Client's ordered callback lane serializes its Commands; separate Client
+  connections may execute shared thread-safe Definitions concurrently. A
+  terminal Transport waits for the current callback, discards its late Result,
+  and exposes no Bind, execution, reconnect, or exit-in-progress state to the
   lifecycle layer.
   `TextMessageClient` alone owns transient
   disconnect/failure handling and reconnect scheduling; its Transport listener
@@ -175,7 +175,10 @@ tag.
   `JavaWorkerHostResources`; `start()` performs Preparation synchronously and
   closing a JavaWorker must not shut shared resources down. Host Resources own
   one OkHttp base client, one WebSocket scheduler, bounded Socket and Control
-  pools, and a fixed zero-buffer Command pool. `JavaWorkerManager.Builder`
+  pools, and no Command executor. OkHttp callbacks invoke the Transport and
+  Handler synchronously through a per-Client serialization gate; the shared
+  WebSocket scheduler owns only connect/reconnect timing.
+  `JavaWorkerManager.Builder`
   binds one WorkerGroup's shared
   capacity and a fixed, non-empty set of unique `clientWorkerKey` replicas at
   construction; it provides no runtime registration, keyed lifecycle, or
@@ -184,11 +187,13 @@ tag.
   Worker's actual state; endpoint terminal never triggers restart until the
   Host explicitly invokes `reconcile()` or `start()`.
 - `transport/android-worker` may depend on `transport/worker-core` and OkHttp,
-  but not on `transport/java-worker`. Its network Client serializes connection
-  state, current-attempt identity filtering, callbacks, stable-window
-  accounting, and bounded fixed reconnect scheduling through a per-Client
-  Handler on a shared Host-owned HandlerThread. The Android Client does not
-  delegate its mutable reconnect state to Core. `AndroidWorker` owns
+  but not on `transport/java-worker`. Its network Client owns connection state,
+  current-attempt identity filtering, callback serialization, stable-window
+  accounting, and bounded fixed reconnect. A per-Client Handler on the shared
+  Host HandlerThread performs only connect and timer work; OkHttp protocol
+  callbacks invoke the Transport and Handler synchronously on their callback
+  thread. The Android Client does not delegate mutable reconnect state to Core.
+  `AndroidWorker` owns
   application-scoped Identity, concrete Android Client assembly, and
   Application Context adaptation; Core owns Register/Bind preparation and the
   unified Worker Run Controller. Android Worker
@@ -199,7 +204,7 @@ tag.
   `AndroidWorkerHostResources`; its synchronous `start()` must not run on the
   Main Looper, and closing an AndroidWorker must not shut shared resources
   down. Android Host Resources own shared OkHttp, one network HandlerThread,
-  bounded Control execution, and a fixed zero-buffer Command pool. Android
+  and bounded Control execution, but no Command executor. Android
   hosts own process lifetime, asynchronous Control scheduling, resource
   lifetime, permissions beyond INTERNET, static handler assembly, and backup
   policy.

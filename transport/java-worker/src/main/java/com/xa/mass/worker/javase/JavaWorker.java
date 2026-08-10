@@ -5,6 +5,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
@@ -217,13 +218,14 @@ public final class JavaWorker implements WorkerLifecycle {
                             hostResources.controlClient(runtimeApiBaseUrl),
                             resolvedRequestTimeout
                     ),
-                    hostResources.textClientFactory(
-                            transportType,
-                            resolvedRequestTimeout,
-                            resolvedReconnectPolicy
-                    ),
-                    dispatcher,
-                    hostResources.commandExecutor()
+                    new TextMessageWorkerTransportFactory(
+                            hostResources.textClientFactory(
+                                    transportType,
+                                    resolvedRequestTimeout,
+                                    resolvedReconnectPolicy
+                            ),
+                            dispatcher
+                    )
             );
             return new JavaWorker(worker);
         }

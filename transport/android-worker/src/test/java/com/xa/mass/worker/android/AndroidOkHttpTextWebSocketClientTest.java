@@ -21,12 +21,13 @@ import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import okhttp3.Request;
 import okhttp3.WebSocket;
@@ -60,8 +61,9 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    public void serializesCallbacksOnDedicatedHandlerThread()
+    public void forwardsCallbacksDirectlyInProtocolOrder()
             throws Exception {
+        String callbackThread = Thread.currentThread().getName();
         client.start(listener);
         client.start(listener);
         FakeConnection connection = awaitConnection(0);
@@ -74,12 +76,9 @@ public class AndroidOkHttpTextWebSocketClientTest {
                 List.of("open", "message:command"),
                 listener.events
         );
-        Set<String> callbackThreads = listener.callbackThreads.stream()
-                .collect(Collectors.toSet());
-        assertEquals(1, callbackThreads.size());
-        assertTrue(
-                callbackThreads.iterator().next()
-                        .contains("android-worker-test-network")
+        assertEquals(
+                List.of(callbackThread, callbackThread),
+                listener.callbackThreads
         );
         assertEquals(
                 URI.create("ws://127.0.0.1:18084/worker"),
@@ -222,12 +221,18 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    public void closeDoesNotWaitForAHandlerCallback() throws Exception {
+    public void slowCallbackDoesNotBlockSharedNetworkLooper()
+            throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch networkTask = new CountDownLatch(1);
         client.start(new TextMessageClient.Listener() {
             @Override
             public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
                 entered.countDown();
                 try {
                     release.await(3, TimeUnit.SECONDS);
@@ -237,7 +242,71 @@ public class AndroidOkHttpTextWebSocketClientTest {
             }
 
             @Override
+            public void onEndpointTerminated() {
+            }
+        });
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        ExecutorService callback = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> handling = callback.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            new Handler(networkThread.getLooper()).post(
+                    networkTask::countDown
+            );
+            assertTrue(networkTask.await(1, TimeUnit.SECONDS));
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            callback.shutdownNow();
+        }
+    }
+
+    @Test
+    public void externalCloseWaitsForCurrentCallback() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        client.start(blockingMessageListener(entered, release));
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> handling = callers.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            Future<?> closing = callers.submit(client::close);
+            Thread.sleep(50L);
+            assertFalse(closing.isDone());
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+            closing.get(3, TimeUnit.SECONDS);
+            assertTrue(connection.socket.cancelled);
+        } finally {
+            release.countDown();
+            callers.shutdownNow();
+        }
+    }
+
+    @Test
+    public void callbackMayCloseClientReentrantly() throws Exception {
+        CountDownLatch closedFromCallback = new CountDownLatch(1);
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
             public void onMessage(String message) {
+                client.close();
+                closedFromCallback.countDown();
             }
 
             @Override
@@ -246,22 +315,11 @@ public class AndroidOkHttpTextWebSocketClientTest {
         });
         FakeConnection connection = awaitConnection(0);
         connection.open();
-        assertTrue(entered.await(1, TimeUnit.SECONDS));
 
-        long startedAt = System.nanoTime();
-        try {
-            client.close();
-        } finally {
-            release.countDown();
-        }
-        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(
-                System.nanoTime() - startedAt
-        );
+        connection.text("close");
 
-        assertTrue("close blocked for " + elapsedMillis + " ms",
-                elapsedMillis < 500);
+        assertTrue(closedFromCallback.await(1, TimeUnit.SECONDS));
         assertTrue(connection.socket.cancelled);
-        assertTrue(networkThread.isAlive());
     }
 
     @Test
@@ -344,6 +402,31 @@ public class AndroidOkHttpTextWebSocketClientTest {
                 Duration.ofMillis(10),
                 Duration.ofMillis(100)
         );
+    }
+
+    private static TextMessageClient.Listener blockingMessageListener(
+            CountDownLatch entered,
+            CountDownLatch release
+    ) {
+        return new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                entered.countDown();
+                try {
+                    release.await(3, TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        };
     }
 
     private FakeConnection awaitConnection(int index) throws Exception {

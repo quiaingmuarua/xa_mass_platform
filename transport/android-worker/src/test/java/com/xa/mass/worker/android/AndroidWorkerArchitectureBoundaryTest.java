@@ -56,12 +56,19 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(networkClient.contains("HandlerThread"));
         assertFalse(networkClient.contains("new OkHttpClient"));
         assertFalse(networkClient.contains("Executors.new"));
+        assertFalse(networkClient.contains("postConnectionCallback"));
+        assertFalse(networkClient.contains(
+                "handler.post(() -> message"
+        ));
+        assertTrue(networkClient.contains("message(attempt, text);"));
         String resources = read(project.resolve(
                 "src/main/java/com/xa/mass/worker/android/"
                         + "AndroidWorkerHostResources.java"
         ));
         assertTrue(resources.contains("new HandlerThread("));
-        assertTrue(resources.contains("new SynchronousQueue<>()"));
+        assertFalse(resources.contains("commandExecutor"));
+        assertFalse(resources.contains("maxConcurrentCommands"));
+        assertFalse(resources.contains("SynchronousQueue"));
         assertTrue(source.contains("public final class AndroidWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new RegisteredWorkerPreparation("));

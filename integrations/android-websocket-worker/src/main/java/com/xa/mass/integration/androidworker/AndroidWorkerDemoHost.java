@@ -93,7 +93,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
             }
             desiredRunning = false;
         }
-        worker.stop();
+        controlExecutor.execute(worker::stop);
     }
 
     int incrementCounter() {

@@ -22,10 +22,10 @@ Status: repository-local transport contracts and implementations.
 
 :transport:java-worker
   -> JavaWorker WebSocket/line-Socket assembly
-  -> shared Java network, Control, Socket, and Command resources
+  -> shared Java network, Control, and Socket resources
 
 :transport:android-worker
-  -> shared Android OkHttp, HandlerThread, Control, and Command resources
+  -> shared Android OkHttp, HandlerThread, and Control resources
   -> Android Identity persistence and complete Worker assembly
 ```
 
@@ -47,9 +47,10 @@ hosts compose `RegisteredWorkerPreparation` with one Controller and expose the
 same `WorkerLifecycle` contract. One accepted `start()` performs exactly one
 Preparation synchronously and, if successful, starts one reconnecting endpoint
 Client. Platform modules provide Identity storage, concrete network Clients,
-shared network resources, zero-buffer Command execution, and any asynchronous
-Host scheduling. Worker Core creates and closes no thread, executor, or
-scheduler.
+shared network resources, and any asynchronous Host scheduling. A Client's
+ordered protocol callback synchronously enters the Transport, Dispatcher, and
+Handler; there is no long-connection Command executor or queue. Worker Core
+creates and closes no thread, executor, or scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
 lifecycle events or queries. No Endpoint URI or Worker business message is

@@ -16,7 +16,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -34,7 +33,6 @@ class WorkerRunControllerTest {
 
     private final List<WorkerRunController> controllers =
             new ArrayList<>();
-    private final TestCommandExecutor commands = new TestCommandExecutor();
     private final ExecutorService startExecutor =
             Executors.newCachedThreadPool();
 
@@ -44,7 +42,6 @@ class WorkerRunControllerTest {
             controller.close();
         }
         startExecutor.shutdownNow();
-        commands.close();
     }
 
     @Test
@@ -54,8 +51,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
-                networks,
-                commands.executor()
+                networks
         );
         CountDownLatch runningObserved = new CountDownLatch(1);
         controller.addListener(snapshot -> {
@@ -91,8 +87,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
-                networks,
-                commands.executor()
+                networks
         );
 
         controller.start();
@@ -120,8 +115,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
-                networks,
-                commands.executor()
+                networks
         );
 
         controller.start();
@@ -143,8 +137,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
-                networks,
-                commands.executor()
+                networks
         );
 
         Future<?> starting = startExecutor.submit(controller::start);
@@ -169,8 +162,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 preparation,
-                networks,
-                commands.executor()
+                networks
         );
 
         Future<?> starting = startExecutor.submit(controller::start);
@@ -188,8 +180,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                networks,
-                commands.executor()
+                networks
         );
 
         controller.start();
@@ -209,8 +200,7 @@ class WorkerRunControllerTest {
         );
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                endpointUri -> client,
-                commands.executor()
+                endpointUri -> client
         );
 
         controller.start();
@@ -234,8 +224,7 @@ class WorkerRunControllerTest {
         };
         WorkerRunController controller = controller(
                 preparation,
-                new FakeNetworkFactory(),
-                commands.executor()
+                new FakeNetworkFactory()
         );
 
         assertThrows(AssertionError.class, controller::start);
@@ -251,8 +240,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                networks,
-                commands.executor()
+                networks
         );
         AtomicInteger runningNotifications = new AtomicInteger();
         controller.addListener(snapshot -> {
@@ -277,8 +265,7 @@ class WorkerRunControllerTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                networks,
-                commands.executor()
+                networks
         );
         AtomicBoolean failOnStopped = new AtomicBoolean();
         WorkerLifecycle.Listener listener = snapshot -> {
@@ -301,28 +288,28 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void closeDoesNotShutHostCommandExecutorDown() {
+    void closeIsTerminalAndDoesNotCreateNetworkResources() {
+        FakeNetworkFactory networks = new FakeNetworkFactory();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
-                new FakeNetworkFactory(),
-                commands.executor()
+                networks
         );
         controller.close();
 
-        assertFalse(commands.executor().isShutdown());
+        assertTrue(networks.clients.isEmpty());
         assertThrows(IllegalStateException.class, controller::start);
     }
 
     private WorkerRunController controller(
             WorkerPreparation preparation,
-            TextMessageClientFactory networks,
-            Executor commandExecutor
+            TextMessageClientFactory networks
     ) {
         WorkerRunController controller = new WorkerRunController(
                 preparation,
-                networks,
-                command -> java.util.Optional.empty(),
-                commandExecutor
+                new TextMessageWorkerTransportFactory(
+                        networks,
+                        command -> java.util.Optional.empty()
+                )
         );
         controllers.add(controller);
         return controller;

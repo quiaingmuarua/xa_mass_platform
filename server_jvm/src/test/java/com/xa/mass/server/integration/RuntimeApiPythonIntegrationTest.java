@@ -11,6 +11,7 @@ import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
@@ -474,7 +475,6 @@ class RuntimeApiPythonIntegrationTest {
         JavaWorkerHostResources resources =
                 JavaWorkerHostResources.create(
                         1,
-                        4,
                         "xa-runtime-integration-worker",
                         true
                 );
@@ -482,13 +482,14 @@ class RuntimeApiPythonIntegrationTest {
                 new WorkerCommandDispatcher(definitions);
         WorkerRunController worker = new WorkerRunController(
                 fixedPreparation(workerId, endpointUri),
-                resources.textClientFactory(
-                        transportType,
-                        Duration.ofSeconds(2),
-                        connectionPolicy()
-                ),
-                dispatcher,
-                resources.commandExecutor()
+                new TextMessageWorkerTransportFactory(
+                        resources.textClientFactory(
+                                transportType,
+                                Duration.ofSeconds(2),
+                                connectionPolicy()
+                        ),
+                        dispatcher
+                )
         );
         return new TextMessageWorkerHandle(worker, resources);
     }

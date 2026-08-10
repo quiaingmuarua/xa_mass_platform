@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 final class JavaLineSocketClient implements TextMessageClient {
 
     private final Object lock = new Object();
+    private final Object callbackGate = new Object();
     private final ExecutorService socketExecutor;
     private final SocketConnector connector;
     private final URI socketUri;
@@ -137,10 +138,14 @@ final class JavaLineSocketClient implements TextMessageClient {
             reconnectState.close();
             connection = current;
             current = null;
-            listener = null;
         }
         if (connection != null) {
             closeQuietly(connection.socket);
+        }
+        synchronized (callbackGate) {
+            synchronized (lock) {
+                listener = null;
+            }
         }
     }
 
@@ -176,11 +181,15 @@ final class JavaLineSocketClient implements TextMessageClient {
                     break;
                 }
                 openedAtNanos = System.nanoTime();
-                currentListener().onOpen();
+                emit(connection, Listener::onOpen);
                 String line;
                 while (isCurrent(connection)
                         && (line = reader.readLine()) != null) {
-                    currentListener().onMessage(line);
+                    String message = line;
+                    emit(
+                            connection,
+                            callback -> callback.onMessage(message)
+                    );
                 }
             } catch (IOException | RuntimeException ignored) {
                 // Transient connection failures stay inside the Client.
@@ -206,7 +215,7 @@ final class JavaLineSocketClient implements TextMessageClient {
                     == TextMessageReconnectState.DisconnectAction.TERMINATE) {
                 Listener callback = nullableListener();
                 if (callback != null) {
-                    callback.onEndpointTerminated();
+                    emitEndpointTerminated(callback);
                 }
                 break;
             }
@@ -248,18 +257,49 @@ final class JavaLineSocketClient implements TextMessageClient {
         }
     }
 
-    private Listener currentListener() {
-        Listener callback = nullableListener();
-        if (callback == null) {
-            throw new IllegalStateException("Text client listener is absent");
+    private void emit(
+            Connection connection,
+            ListenerCallback action
+    ) {
+        synchronized (callbackGate) {
+            Listener callback;
+            synchronized (lock) {
+                if (!running || closed || current != connection) {
+                    return;
+                }
+                callback = listener;
+            }
+            if (callback != null) {
+                action.invoke(callback);
+            }
         }
-        return callback;
+    }
+
+    private void emitEndpointTerminated(Listener expected) {
+        synchronized (callbackGate) {
+            Listener callback;
+            synchronized (lock) {
+                if (closed) {
+                    return;
+                }
+                callback = listener;
+            }
+            if (callback == expected) {
+                callback.onEndpointTerminated();
+            }
+        }
     }
 
     private Listener nullableListener() {
         synchronized (lock) {
             return listener;
         }
+    }
+
+    @FunctionalInterface
+    private interface ListenerCallback {
+
+        void invoke(Listener listener);
     }
 
     private boolean sleepBeforeReconnect() {

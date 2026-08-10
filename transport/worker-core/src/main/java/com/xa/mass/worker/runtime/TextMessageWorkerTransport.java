@@ -7,12 +7,8 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Runs Worker Delivery text protocol over one prepared endpoint.
@@ -29,28 +25,30 @@ final class TextMessageWorkerTransport
         );
     }
 
+    private enum State {
+        NEW,
+        RUNNING,
+        TERMINATING,
+        CLOSED
+    }
+
     private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandDispatcher;
-    private final Executor commandExecutor;
     private final Listener listener;
-    private final Set<String> inFlightMessageIds = new HashSet<>();
 
-    private boolean startRequested;
-    private boolean closed;
+    private State state = State.NEW;
     private boolean bound;
-    private boolean terminationRequested;
     private boolean terminationNotified;
     private boolean clientClosed;
+    private int activeCommands;
     private Throwable terminationFailure;
-    private long connectionGeneration;
 
     TextMessageWorkerTransport(
             TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandDispatcher,
-            Executor commandExecutor,
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");
@@ -59,70 +57,55 @@ final class TextMessageWorkerTransport
                 commandDispatcher,
                 "commandDispatcher"
         );
-        this.commandExecutor = Objects.requireNonNull(
-                commandExecutor,
-                "commandExecutor"
-        );
         this.listener = Objects.requireNonNull(listener, "listener");
     }
 
     void start() {
         synchronized (this) {
-            if (closed || terminationRequested || startRequested) {
+            if (state == State.CLOSED || state == State.TERMINATING) {
                 return;
             }
-            startRequested = true;
+            if (state == State.RUNNING) {
+                return;
+            }
+            state = State.RUNNING;
         }
         try {
             client.start(this);
-        } catch (RuntimeException error) {
+        } catch (RuntimeException | Error failure) {
             synchronized (this) {
-                if (closed || terminationRequested) {
-                    return;
+                if (state == State.RUNNING) {
+                    state = State.NEW;
                 }
-                startRequested = false;
             }
-            throw error;
+            throw failure;
         }
     }
 
     @Override
     public void onOpen() {
-        long openedGeneration;
         synchronized (this) {
             bound = false;
-            if (!startRequested || closed || terminationRequested) {
+            if (state != State.RUNNING) {
                 client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
                 return;
             }
-            openedGeneration = ++connectionGeneration;
         }
 
-        boolean accepted;
-        Throwable failure = null;
-        try {
-            accepted = client.send(
-                    codec.encodeWorkerConnectionBind(bind)
-            );
-        } catch (Throwable error) {
-            accepted = false;
-            failure = error;
-        }
-        if (!accepted) {
-            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+        Throwable failure = sendBind();
+        if (failure != null) {
+            closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             rethrowError(failure);
             return;
         }
 
         synchronized (this) {
-            if (closed
-                    || terminationRequested
-                    || connectionGeneration != openedGeneration) {
-                client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
-            } else {
+            if (state == State.RUNNING) {
                 bound = true;
+                return;
             }
         }
+        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
     }
 
     @Override
@@ -130,28 +113,31 @@ final class TextMessageWorkerTransport
         WorkerCommand command;
         try {
             command = codec.decodeWorkerCommand(message);
-        } catch (RuntimeException error) {
+        } catch (RuntimeException failure) {
             closeProtocolError();
             return;
         }
-        long admittedGeneration = command == null
-                ? -1L
-                : admit(command.messageId());
-        if (command == null || admittedGeneration < 0L) {
+        if (command == null || !beginCommand()) {
             closeProtocolError();
             return;
         }
 
+        Throwable failure = null;
         try {
-            commandExecutor.execute(
-                    () -> executeAndReport(command, admittedGeneration)
+            Optional<WorkerResult> result = Objects.requireNonNull(
+                    commandDispatcher.execute(command),
+                    "commandDispatcher returned null"
             );
-        } catch (RejectedExecutionException rejected) {
-            completeRejected(command, admittedGeneration);
-        } catch (Throwable failure) {
-            completeFailure(command, admittedGeneration, failure);
-            rethrowError(failure);
+            if (result.isPresent()) {
+                sendResult(result.get());
+            }
+        } catch (Throwable error) {
+            failure = error;
+            sendResult(workerFailure(command));
+        } finally {
+            finishCommand();
         }
+        rethrowError(failure);
     }
 
     @Override
@@ -166,114 +152,56 @@ final class TextMessageWorkerTransport
     @Override
     public void close() {
         synchronized (this) {
-            if (closed) {
+            if (state == State.CLOSED) {
                 return;
             }
-            closed = true;
+            state = State.CLOSED;
             bound = false;
-            terminationRequested = true;
-            inFlightMessageIds.clear();
         }
         closeClientQuietly();
     }
 
-    private long admit(String messageId) {
-        synchronized (this) {
-            if (!closed
-                    && !terminationRequested
-                    && bound
-                    && inFlightMessageIds.add(messageId)) {
-                return connectionGeneration;
-            }
-            return -1L;
-        }
-    }
-
-    private void completeRejected(
-            WorkerCommand command,
-            long admittedGeneration
-    ) {
-        boolean known = removeInFlight(command.messageId());
-        if (known) {
-            sendResult(workerFailure(command), admittedGeneration);
-        }
-    }
-
-    private void executeAndReport(
-            WorkerCommand command,
-            long admittedGeneration
-    ) {
+    private Throwable sendBind() {
         try {
-            Optional<WorkerResult> result = Objects.requireNonNull(
-                    commandDispatcher.execute(command),
-                    "commandDispatcher returned null"
-            );
-            completeSuccess(command, admittedGeneration, result);
+            return client.send(codec.encodeWorkerConnectionBind(bind))
+                    ? null
+                    : new IllegalStateException(
+                            "Worker connection bind was not accepted"
+                    );
         } catch (Throwable failure) {
-            completeFailure(command, admittedGeneration, failure);
-            rethrowError(failure);
+            return failure;
         }
     }
 
-    private void completeFailure(
-            WorkerCommand command,
-            long admittedGeneration,
-            Throwable failure
-    ) {
-        if (isInFlight(command.messageId())) {
-            sendResult(workerFailure(command), admittedGeneration);
-            removeInFlight(command.messageId());
-        }
-    }
-
-    private void completeSuccess(
-            WorkerCommand command,
-            long admittedGeneration,
-            Optional<WorkerResult> result
-    ) {
-        Objects.requireNonNull(result, "result");
-        if (!isInFlight(command.messageId())) {
-            return;
-        }
-        if (result.isPresent()) {
-            sendResult(result.get(), admittedGeneration);
-        }
-        removeInFlight(command.messageId());
-    }
-
-    private boolean isInFlight(String messageId) {
+    private boolean beginCommand() {
         synchronized (this) {
-            return inFlightMessageIds.contains(messageId);
-        }
-    }
-
-    private boolean removeInFlight(String messageId) {
-        boolean known;
-        boolean notify;
-        Throwable failure;
-        synchronized (this) {
-            known = inFlightMessageIds.remove(messageId);
-            notify = known && terminationReadyLocked();
-            if (notify) {
-                terminationNotified = true;
+            if (state != State.RUNNING || !bound) {
+                return false;
             }
-            failure = notify ? terminationFailure : null;
+            activeCommands++;
+            return true;
+        }
+    }
+
+    private void finishCommand() {
+        Throwable failure = null;
+        boolean notify = false;
+        synchronized (this) {
+            activeCommands--;
+            if (terminationReadyLocked()) {
+                terminationNotified = true;
+                failure = terminationFailure;
+                notify = true;
+            }
         }
         if (notify) {
             notifyTerminated(failure);
         }
-        return known;
     }
 
-    private void sendResult(
-            WorkerResult result,
-            long admittedGeneration
-    ) {
+    private void sendResult(WorkerResult result) {
         synchronized (this) {
-            if (closed
-                    || terminationRequested
-                    || !bound
-                    || connectionGeneration != admittedGeneration) {
+            if (state != State.RUNNING || !bound) {
                 return;
             }
         }
@@ -287,10 +215,7 @@ final class TextMessageWorkerTransport
             failure = error;
         }
         if (!sent) {
-            synchronized (this) {
-                bound = false;
-            }
-            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+            closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
         }
         rethrowError(failure);
     }
@@ -299,25 +224,27 @@ final class TextMessageWorkerTransport
             Throwable failure,
             boolean closeClient
     ) {
-        boolean notify;
-        Throwable reportedFailure;
+        Throwable reportedFailure = null;
+        boolean notify = false;
         synchronized (this) {
-            if (closed || terminationNotified) {
+            if (state == State.CLOSED || terminationNotified) {
                 return;
             }
-            if (!terminationRequested) {
-                terminationRequested = true;
+            if (state != State.TERMINATING) {
+                state = State.TERMINATING;
                 terminationFailure = failure;
             }
             bound = false;
-            notify = terminationReadyLocked();
-            if (notify) {
-                terminationNotified = true;
-            }
-            reportedFailure = notify ? terminationFailure : null;
         }
         if (closeClient) {
             closeClientQuietly();
+        }
+        synchronized (this) {
+            if (terminationReadyLocked()) {
+                terminationNotified = true;
+                reportedFailure = terminationFailure;
+                notify = true;
+            }
         }
         if (notify) {
             notifyTerminated(reportedFailure);
@@ -325,23 +252,23 @@ final class TextMessageWorkerTransport
     }
 
     private boolean terminationReadyLocked() {
-        return !closed
-                && terminationRequested
+        return state == State.TERMINATING
                 && !terminationNotified
-                && inFlightMessageIds.isEmpty();
+                && activeCommands == 0;
     }
 
     private void closeProtocolError() {
-        boolean closeCurrent;
+        closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    }
+
+    private void closeCurrent(TextMessageClient.CloseReason reason) {
         synchronized (this) {
-            closeCurrent = !closed && !terminationRequested;
-            if (closeCurrent) {
-                bound = false;
+            if (state != State.RUNNING) {
+                return;
             }
+            bound = false;
         }
-        if (closeCurrent) {
-            client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
-        }
+        client.closeCurrent(reason);
     }
 
     private void notifyTerminated(Throwable failure) {

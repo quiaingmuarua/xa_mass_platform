@@ -11,7 +11,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -125,14 +128,128 @@ class JavaOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    void listenerCallbacksAreSerialized() throws Exception {
+    void listenerCallbacksRunDirectlyInProtocolOrder() throws Exception {
         FakeConnection first = connector.connections.get(0);
+        String callbackThread = Thread.currentThread().getName();
         first.open();
         first.text("one");
         first.text("two");
         await(() -> listener.messages.size() == 2);
 
-        assertEquals(1, listener.callbackThreads.stream().distinct().count());
+        assertEquals(
+                List.of(callbackThread, callbackThread, callbackThread),
+                listener.callbackThreads
+        );
+    }
+
+    @Test
+    void slowCallbackDoesNotBlockSharedNetworkScheduler()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch scheduled = new CountDownLatch(1);
+        JavaOkHttpTextWebSocketClient blockingClient =
+                new JavaOkHttpTextWebSocketClient(
+                        connector,
+                        networkExecutor,
+                        URI.create("ws://127.0.0.1:18083/slow"),
+                        reconnectPolicy()
+                );
+        blockingClient.start(blockingMessageListener(entered, release));
+        await(() -> connector.connections.size() == 2);
+        FakeConnection connection = connector.connections.get(1);
+        connection.open();
+        ExecutorService callback = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> handling = callback.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            networkExecutor.execute(scheduled::countDown);
+            assertTrue(scheduled.await(1, TimeUnit.SECONDS));
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            callback.shutdownNow();
+            blockingClient.close();
+        }
+    }
+
+    @Test
+    void externalCloseWaitsForCurrentCallback() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        JavaOkHttpTextWebSocketClient blockingClient =
+                new JavaOkHttpTextWebSocketClient(
+                        connector,
+                        networkExecutor,
+                        URI.create("ws://127.0.0.1:18083/close"),
+                        reconnectPolicy()
+                );
+        blockingClient.start(blockingMessageListener(entered, release));
+        await(() -> connector.connections.size() == 2);
+        FakeConnection connection = connector.connections.get(1);
+        connection.open();
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> handling = callers.submit(
+                    () -> connection.text("slow")
+            );
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            Future<?> closing = callers.submit(blockingClient::close);
+            Thread.sleep(50L);
+            assertFalse(closing.isDone());
+
+            release.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+            closing.get(3, TimeUnit.SECONDS);
+            assertTrue(connection.socket.cancelled);
+        } finally {
+            release.countDown();
+            callers.shutdownNow();
+            blockingClient.close();
+        }
+    }
+
+    @Test
+    void callbackMayCloseClientReentrantly() throws Exception {
+        FakeConnection first = connector.connections.get(0);
+        CountDownLatch closedFromCallback = new CountDownLatch(1);
+        client.close();
+        client = new JavaOkHttpTextWebSocketClient(
+                connector,
+                networkExecutor,
+                URI.create("ws://127.0.0.1:18083/reentrant"),
+                reconnectPolicy()
+        );
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                client.close();
+                closedFromCallback.countDown();
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        });
+        await(() -> connector.connections.size() == 2);
+        FakeConnection connection = connector.connections.get(1);
+        connection.open();
+
+        connection.text("close");
+
+        assertTrue(closedFromCallback.await(1, TimeUnit.SECONDS));
+        assertTrue(connection.socket.cancelled);
+        assertTrue(first.socket.cancelled);
     }
 
     @Test
@@ -193,6 +310,31 @@ class JavaOkHttpTextWebSocketClientTest {
                 Duration.ofMillis(5),
                 Duration.ofMillis(40)
         );
+    }
+
+    private static TextMessageClient.Listener blockingMessageListener(
+            CountDownLatch entered,
+            CountDownLatch release
+    ) {
+        return new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                entered.countDown();
+                try {
+                    release.await(3, TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        };
     }
 
     private static void await(Check check) throws Exception {

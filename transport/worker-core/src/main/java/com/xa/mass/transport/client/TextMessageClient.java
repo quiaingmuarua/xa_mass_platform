@@ -4,8 +4,10 @@ package com.xa.mass.transport.client;
  * Reconnecting, full-duplex text message connection used by one Worker.
  *
  * <p>The implementation owns network framing and reconnect mechanics. Listener
- * callbacks are serialized, callbacks from superseded connections are
- * suppressed, and no callback is emitted after {@link #close()} returns.
+ * callbacks for one Client are ordered and never overlap. Callbacks from
+ * superseded physical connections are suppressed. {@link #close()} prevents
+ * new callbacks and waits for a callback already in progress, except that a
+ * callback may reentrantly close its own Client.
  * Transient disconnect and failure handling stays inside the Client. Once the
  * current endpoint will no longer reconnect, the Client emits exactly one
  * {@code onEndpointTerminated} callback and no later callback.

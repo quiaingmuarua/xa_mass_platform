@@ -27,7 +27,6 @@ public final class AndroidWorkerDemoApplication extends Application {
         AndroidWorkerHostResources resources =
                 AndroidWorkerHostResources.create(
                         1,
-                        1,
                         "xa-android-worker-demo"
                 );
         AndroidWorker worker;

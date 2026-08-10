@@ -12,6 +12,7 @@ import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -114,7 +115,6 @@ public class AndroidWebSocketCompositionTest {
             AndroidWorkerHostResources resources =
                     AndroidWorkerHostResources.create(
                             1,
-                            2,
                             "android-composition-test"
                     );
             WorkerCommandDispatcher dispatcher =
@@ -131,14 +131,15 @@ public class AndroidWebSocketCompositionTest {
                             )
                     ));
             WorkerRunController worker = new WorkerRunController(
-                            preparation,
-                             endpoint -> resources.textClient(
+                    preparation,
+                    new TextMessageWorkerTransportFactory(
+                            endpoint -> resources.textClient(
                                     endpoint,
                                     Duration.ofSeconds(2),
-                                     connectionPolicy
-                             ),
-                            dispatcher,
-                            resources.commandExecutor()
+                                    connectionPolicy
+                            ),
+                            dispatcher
+                    )
                     );
             try {
                 worker.start();

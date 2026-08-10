@@ -1,16 +1,10 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.transport.client.TextMessageClient;
-import com.xa.mass.transport.client.TextMessageClientFactory;
-import com.xa.mass.worker.execution.WorkerCommandExecutor;
-
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.Executor;
 
 /**
  * Coordinates one explicitly requested Worker run.
@@ -31,9 +25,7 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private final Object lock = new Object();
     private final WorkerPreparation preparation;
-    private final TextMessageClientFactory clientFactory;
-    private final WorkerCommandExecutor commandDispatcher;
-    private final Executor commandExecutor;
+    private final TextMessageWorkerTransportFactory transportFactory;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private Phase phase = Phase.STOPPED;
@@ -43,25 +35,15 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     public WorkerRunController(
             WorkerPreparation preparation,
-            TextMessageClientFactory clientFactory,
-            WorkerCommandExecutor commandDispatcher,
-            Executor commandExecutor
+            TextMessageWorkerTransportFactory transportFactory
     ) {
         this.preparation = Objects.requireNonNull(
                 preparation,
                 "preparation"
         );
-        this.clientFactory = Objects.requireNonNull(
-                clientFactory,
-                "clientFactory"
-        );
-        this.commandDispatcher = Objects.requireNonNull(
-                commandDispatcher,
-                "commandDispatcher"
-        );
-        this.commandExecutor = Objects.requireNonNull(
-                commandExecutor,
-                "commandExecutor"
+        this.transportFactory = Objects.requireNonNull(
+                transportFactory,
+                "transportFactory"
         );
     }
 
@@ -161,7 +143,6 @@ public final class WorkerRunController implements WorkerLifecycle {
     }
 
     private void runStart() {
-        TextMessageClient client = null;
         TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
@@ -178,18 +159,10 @@ public final class WorkerRunController implements WorkerLifecycle {
                 return;
             }
 
-            client = Objects.requireNonNull(
-                    clientFactory.create(prepared.endpointUri()),
-                    "clientFactory returned null"
-            );
-            transport = new TextMessageWorkerTransport(
-                    client,
-                    prepared.workerId(),
-                    commandDispatcher,
-                    commandExecutor,
+            transport = transportFactory.create(
+                    prepared,
                     this::transportTerminated
             );
-            client = null;
 
             installed = installTransport(prepared, transport);
             if (!installed) {
@@ -207,7 +180,6 @@ public final class WorkerRunController implements WorkerLifecycle {
             rethrowError(error);
             return;
         } finally {
-            closeQuietly(client);
             if (!installed) {
                 closeQuietly(transport);
             }

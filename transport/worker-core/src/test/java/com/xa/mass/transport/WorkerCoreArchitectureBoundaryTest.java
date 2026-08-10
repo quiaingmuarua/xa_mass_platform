@@ -13,6 +13,7 @@ import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerRunController;
@@ -27,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.concurrent.Executor;
 import java.util.stream.Stream;
 
 class WorkerCoreArchitectureBoundaryTest {
@@ -269,9 +269,7 @@ class WorkerCoreArchitectureBoundaryTest {
         assertConstructor(
                 WorkerRunController.class,
                 WorkerPreparation.class,
-                TextMessageClientFactory.class,
-                WorkerCommandExecutor.class,
-                Executor.class
+                TextMessageWorkerTransportFactory.class
         );
 
         for (Class<?> transport : new Class<?>[]{
@@ -311,6 +309,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/runtime/TextMessageWorkerTransport.java"
         );
         String transport = Files.readString(transportFile);
+        assertFalse(transport.contains("java.util.concurrent"));
         for (String forbidden : new String[]{
                 "WorkerIdentityStore",
                 "WorkerPropertiesProvider",
@@ -326,6 +325,8 @@ class WorkerCoreArchitectureBoundaryTest {
                 "WorkerRetryPolicy",
                 "FutureTask",
                 "commandThread",
+                "inFlightMessageIds",
+                "connectionGeneration",
                 "isConnected",
                 "isExiting",
                 "onStateChanged",
@@ -357,6 +358,7 @@ class WorkerCoreArchitectureBoundaryTest {
         for (String forbidden : new String[]{
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
+                "WorkerCommand",
                 "commandInFlight",
                 "prepareAfterCommand",
                 "pendingResult",

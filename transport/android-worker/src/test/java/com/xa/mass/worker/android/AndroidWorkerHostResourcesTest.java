@@ -17,50 +17,15 @@ import org.robolectric.RobolectricTestRunner;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
 
 @RunWith(RobolectricTestRunner.class)
 public class AndroidWorkerHostResourcesTest {
-
-    @Test
-    public void commandCapacityRejectsImmediatelyWithoutQueueing()
-            throws Exception {
-        CountDownLatch entered = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        CountDownLatch completed = new CountDownLatch(1);
-        try (AndroidWorkerHostResources resources =
-                     AndroidWorkerHostResources.create(
-                             1,
-                             1,
-                             "test-android-capacity"
-                     )) {
-            Executor executor = resources.commandExecutor();
-            executor.execute(() -> {
-                entered.countDown();
-                awaitLatch(release);
-                completed.countDown();
-            });
-            assertTrue(entered.await(5, TimeUnit.SECONDS));
-            assertThrows(
-                    RejectedExecutionException.class,
-                    () -> executor.execute(() -> {
-                    })
-            );
-
-            release.countDown();
-            assertTrue(completed.await(5, TimeUnit.SECONDS));
-        }
-    }
 
     @Test
     public void clientsBorrowOneLooperAndCloseIndependently()
             throws Exception {
         AndroidWorkerHostResources resources =
                 AndroidWorkerHostResources.create(
-                        2,
                         2,
                         "test-android-shared"
                 );
@@ -104,14 +69,5 @@ public class AndroidWorkerHostResourcesTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(target);
-    }
-
-    private static void awaitLatch(CountDownLatch latch) {
-        try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(error);
-        }
     }
 }

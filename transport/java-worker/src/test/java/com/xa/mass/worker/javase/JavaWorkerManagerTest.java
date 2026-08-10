@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -443,10 +442,8 @@ class JavaWorkerManagerTest {
 
         private final ManualExecutorService control =
                 new ManualExecutorService();
-        private final ExecutorService handler =
-                Executors.newSingleThreadExecutor();
         private final JavaWorkerHostResources hostResources =
-                new JavaWorkerHostResources(control, handler);
+                new JavaWorkerHostResources(control);
 
         private void runControl() {
             control.runAll();
