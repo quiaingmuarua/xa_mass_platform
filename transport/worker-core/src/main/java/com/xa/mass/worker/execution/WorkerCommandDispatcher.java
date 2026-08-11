@@ -55,68 +55,64 @@ public final class WorkerCommandDispatcher
     }
 
     private WorkerResult executeEvent(WorkerCommand command) {
-        try {
-            WorkerEventDefinition<?> definition =
-                    definitions.get(definitionKey(
-                            command.src().wireValue(),
-                            command.messageType()
-                    ));
-            if (definition == null) {
-                return result(command, "1404", "null");
-            }
-            String payload = invokeDefinition(
-                    definition,
-                    command.payload()
-            );
-            if (payload == null || payload.isEmpty()) {
-                return result(command, "1500", "null");
-            }
-            return result(command, "200", payload);
-        } catch (WorkerException error) {
-            if (error.errorCode()
-                    == WorkerErrorCode.EVENT_INPUT_INVALID) {
-                return result(command, "1400", "null");
-            }
-            return result(command, "1500", "null");
-        } catch (Exception error) {
-            return result(command, "1500", "null");
+        WorkerEventDefinition<?> definition = definitions.get(
+                definitionKey(
+                        command.src().wireValue(),
+                        command.messageType()
+                )
+        );
+        if (definition == null) {
+            return failure(command, WorkerErrorCode.EVENT_NOT_FOUND);
         }
+        return invokeDefinition(command, definition);
     }
 
-    private static <P> String invokeDefinition(
-            WorkerEventDefinition<P> definition,
-            String payload
-    ) throws Exception {
+    private static <P> WorkerResult invokeDefinition(
+            WorkerCommand command,
+            WorkerEventDefinition<P> definition
+    ) {
         P parameters;
         try {
             parameters = definition
                     .parameterResolver()
-                    .resolve(payload);
+                    .resolve(command.payload());
         } catch (WorkerException error) {
-            throw error;
-        } catch (IllegalArgumentException error) {
-            throw new WorkerException(
-                    WorkerErrorCode.EVENT_INPUT_INVALID,
-                    "event.resolve",
-                    null,
-                    error
+            return failure(command, error.errorCode());
+        } catch (Exception error) {
+            return failure(
+                    command,
+                    WorkerErrorCode.EVENT_INPUT_INVALID
             );
         }
-        return definition.handler().execute(parameters);
+
+        String payload;
+        try {
+            payload = definition.handler().execute(parameters);
+        } catch (WorkerException error) {
+            return failure(command, error.errorCode());
+        } catch (Exception error) {
+            return failure(
+                    command,
+                    WorkerErrorCode.EVENT_EXECUTION_FAILED
+            );
+        }
+        if (payload == null || payload.isEmpty()) {
+            return failure(
+                    command,
+                    WorkerErrorCode.EVENT_RESULT_INVALID
+            );
+        }
+        return WorkerResult.fromCommand(command, "200", payload);
     }
 
-    private static WorkerResult result(
+    private static WorkerResult failure(
             WorkerCommand command,
-            String outcomeCode,
-            String payload
+            WorkerErrorCode errorCode
     ) {
-        return new WorkerResult(
-                command.messageId(),
-                command.src(),
-                command.messageType(),
-                outcomeCode,
-                payload,
-                command.forward()
+        return WorkerResult.fromCommand(
+                command,
+                Integer.toString(errorCode.code()),
+                errorCode.defaultMessage()
         );
     }
 

@@ -17,7 +17,7 @@ class WorkerExceptionTest {
         Set<Integer> codes = new HashSet<>();
         Arrays.stream(WorkerErrorCode.values()).forEach(errorCode -> {
             int code = errorCode.code();
-            assertTrue(code >= 30_000 && code <= 39_999);
+            assertTrue(code >= 3_000 && code <= 3_999);
             assertTrue(codes.add(code));
             assertTrue(!errorCode.defaultMessage().isBlank());
         });

@@ -55,6 +55,24 @@ final class WorkerDeliveryProtocolTest {
     }
 
     @Test
+    void resultFromCommandOwnsCorrelationMapping() {
+        WorkerCommand command = command();
+
+        WorkerResult result = WorkerResult.fromCommand(
+                command,
+                "3302",
+                "not found"
+        );
+
+        assertEquals(command.messageId(), result.messageId());
+        assertEquals(command.src(), result.dst());
+        assertEquals(command.messageType(), result.messageType());
+        assertEquals("3302", result.outcomeCode());
+        assertEquals("not found", result.payload());
+        assertEquals(command.forward(), result.forward());
+    }
+
+    @Test
     void bindHasStableWireAndRoundTrips() {
         WorkerConnectionBind bind = new WorkerConnectionBind(MESSAGE_ID);
         String encoded = codec.encodeWorkerConnectionBind(bind);

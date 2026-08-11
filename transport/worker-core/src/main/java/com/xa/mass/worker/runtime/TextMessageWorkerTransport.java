@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -32,6 +33,10 @@ final class TextMessageWorkerTransport
         CLOSED
     }
 
+    private static final System.Logger LOGGER = System.getLogger(
+            TextMessageWorkerTransport.class.getName()
+    );
+
     private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
@@ -42,7 +47,6 @@ final class TextMessageWorkerTransport
     private boolean bound;
     private boolean terminationNotified;
     private boolean clientClosed;
-    private int activeCommands;
     private Throwable terminationFailure;
 
     TextMessageWorkerTransport(
@@ -110,34 +114,40 @@ final class TextMessageWorkerTransport
 
     @Override
     public void onMessage(String message) {
-        WorkerCommand command;
         try {
-            command = codec.decodeWorkerCommand(message);
-        } catch (RuntimeException failure) {
-            closeProtocolError();
-            return;
-        }
-        if (command == null || !beginCommand()) {
-            closeProtocolError();
-            return;
-        }
+            WorkerCommand command = codec.decodeWorkerCommand(message);
+            if (command == null) {
+                log(
+                        WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                        "command.decode",
+                        null
+                );
+                return;
+            }
 
-        Throwable failure = null;
-        try {
             Optional<WorkerResult> result = Objects.requireNonNull(
                     commandDispatcher.execute(command),
                     "commandDispatcher returned null"
             );
-            if (result.isPresent()) {
-                sendResult(result.get());
+            if (!result.isPresent()) {
+                return;
             }
-        } catch (Throwable error) {
-            failure = error;
-            sendResult(workerFailure(command));
-        } finally {
-            finishCommand();
+
+            String encoded = codec.encodeWorkerResult(result.get());
+            if (!client.send(encoded)) {
+                log(
+                        WorkerErrorCode.RESULT_SUBMIT_FAILED,
+                        "result.send",
+                        null
+                );
+            }
+        } catch (RuntimeException unexpected) {
+            log(
+                    WorkerErrorCode.EVENT_EXECUTION_FAILED,
+                    "command.process",
+                    unexpected
+            );
         }
-        rethrowError(failure);
     }
 
     @Override
@@ -173,53 +183,6 @@ final class TextMessageWorkerTransport
         }
     }
 
-    private boolean beginCommand() {
-        synchronized (this) {
-            if (state != State.RUNNING || !bound) {
-                return false;
-            }
-            activeCommands++;
-            return true;
-        }
-    }
-
-    private void finishCommand() {
-        Throwable failure = null;
-        boolean notify = false;
-        synchronized (this) {
-            activeCommands--;
-            if (terminationReadyLocked()) {
-                terminationNotified = true;
-                failure = terminationFailure;
-                notify = true;
-            }
-        }
-        if (notify) {
-            notifyTerminated(failure);
-        }
-    }
-
-    private void sendResult(WorkerResult result) {
-        synchronized (this) {
-            if (state != State.RUNNING || !bound) {
-                return;
-            }
-        }
-
-        boolean sent;
-        Throwable failure = null;
-        try {
-            sent = client.send(codec.encodeWorkerResult(result));
-        } catch (Throwable error) {
-            sent = false;
-            failure = error;
-        }
-        if (!sent) {
-            closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
-        }
-        rethrowError(failure);
-    }
-
     private void requestTermination(
             Throwable failure,
             boolean closeClient
@@ -253,12 +216,7 @@ final class TextMessageWorkerTransport
 
     private boolean terminationReadyLocked() {
         return state == State.TERMINATING
-                && !terminationNotified
-                && activeCommands == 0;
-    }
-
-    private void closeProtocolError() {
-        closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+                && !terminationNotified;
     }
 
     private void closeCurrent(TextMessageClient.CloseReason reason) {
@@ -279,6 +237,23 @@ final class TextMessageWorkerTransport
         }
     }
 
+    private void log(
+            WorkerErrorCode errorCode,
+            String operation,
+            RuntimeException failure
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode={0} operation={1} workerId={2} failureType={3}",
+                errorCode.code(),
+                operation,
+                bind.workerId(),
+                failure == null
+                        ? "none"
+                        : failure.getClass().getSimpleName()
+        );
+    }
+
     private void closeClientQuietly() {
         synchronized (this) {
             if (clientClosed) {
@@ -291,17 +266,6 @@ final class TextMessageWorkerTransport
         } catch (RuntimeException ignored) {
             // Terminal notification must not depend on network teardown.
         }
-    }
-
-    private static WorkerResult workerFailure(WorkerCommand command) {
-        return new WorkerResult(
-                command.messageId(),
-                command.src(),
-                command.messageType(),
-                "1500",
-                "null",
-                command.forward()
-        );
     }
 
     private static void rethrowError(Throwable failure) {

@@ -38,7 +38,7 @@ class WorkerCommandDispatcherTest {
                         "{}",
                         ACTIVE_DEADLINE
                 )),
-                "1404"
+                WorkerErrorCode.EVENT_NOT_FOUND
         );
     }
 
@@ -152,7 +152,7 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
-    void malformedPayloadAndResolverInputMapTo1400() {
+    void malformedPayloadAndResolverFailureMapToEventInputInvalid() {
         WorkerCommandDispatcher malformed = dispatcher(List.of(
                 mapDefinition(
                         "TASK",
@@ -183,7 +183,7 @@ class WorkerCommandDispatcherTest {
                         "not-json",
                         ACTIVE_DEADLINE
                 )),
-                "1400"
+                WorkerErrorCode.EVENT_INPUT_INVALID
         );
         assertFailure(
                 rejected.execute(command(
@@ -192,12 +192,12 @@ class WorkerCommandDispatcherTest {
                         "{}",
                         ACTIVE_DEADLINE
                 )),
-                "1400"
+                WorkerErrorCode.EVENT_INPUT_INVALID
         );
     }
 
     @Test
-    void unknownSourceEventPairMapsTo1404() {
+    void unknownSourceEventPairMapsToEventNotFound() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
                 definition("TASK", "shared.inspect", "\"task\"")
         ));
@@ -209,12 +209,12 @@ class WorkerCommandDispatcherTest {
                         "{}",
                         ACTIVE_DEADLINE
                 )),
-                "1404"
+                WorkerErrorCode.EVENT_NOT_FOUND
         );
     }
 
     @Test
-    void handlerFailureOrEmptyPayloadMapsTo1500() {
+    void handlerFailureMapsToEventExecutionFailed() {
         WorkerCommandDispatcher throwing = dispatcher(List.of(
                 mapDefinition(
                         "TASK",
@@ -224,14 +224,6 @@ class WorkerCommandDispatcherTest {
                         }
                 )
         ));
-        WorkerCommandDispatcher empty = dispatcher(List.of(
-                mapDefinition(
-                        "TASK",
-                        "test.observe",
-                        parameters -> ""
-                )
-        ));
-
         assertFailure(
                 throwing.execute(command(
                         TASK,
@@ -239,16 +231,95 @@ class WorkerCommandDispatcherTest {
                         "{}",
                         ACTIVE_DEADLINE
                 )),
-                "1500"
+                WorkerErrorCode.EVENT_EXECUTION_FAILED
+        );
+    }
+
+    @Test
+    void emptyOrNullHandlerResultMapsToEventResultInvalid() {
+        WorkerCommandDispatcher empty = dispatcher(List.of(
+                mapDefinition(
+                        "TASK",
+                        "test.empty",
+                        parameters -> ""
+                ),
+                mapDefinition(
+                        "TASK",
+                        "test.null",
+                        parameters -> null
+                )
+        ));
+
+        assertFailure(
+                empty.execute(command(
+                        TASK,
+                        "test.empty",
+                        "{}",
+                        ACTIVE_DEADLINE
+                )),
+                WorkerErrorCode.EVENT_RESULT_INVALID
         );
         assertFailure(
                 empty.execute(command(
                         TASK,
-                        "test.observe",
+                        "test.null",
                         "{}",
                         ACTIVE_DEADLINE
                 )),
-                "1500"
+                WorkerErrorCode.EVENT_RESULT_INVALID
+        );
+    }
+
+    @Test
+    void explicitWorkerExceptionCodeIsPreserved() {
+        WorkerCommandDispatcher resolverFailure = dispatcher(List.of(
+                WorkerEventDefinition.of(
+                        "TASK",
+                        "test.resolve",
+                        payload -> {
+                            throw new WorkerException(
+                                    WorkerErrorCode.EVENT_NOT_FOUND,
+                                    "event.resolve",
+                                    null,
+                                    null
+                            );
+                        },
+                        ignored -> "unused"
+                )
+        ));
+        WorkerCommandDispatcher handlerFailure = dispatcher(List.of(
+                WorkerEventDefinition.of(
+                        "TASK",
+                        "test.handle",
+                        WorkerEventParameterResolvers.string(),
+                        ignored -> {
+                            throw new WorkerException(
+                                    WorkerErrorCode.EVENT_RESULT_INVALID,
+                                    "event.execute",
+                                    null,
+                                    null
+                            );
+                        }
+                )
+        ));
+
+        assertFailure(
+                resolverFailure.execute(command(
+                        TASK,
+                        "test.resolve",
+                        "{}",
+                        ACTIVE_DEADLINE
+                )),
+                WorkerErrorCode.EVENT_NOT_FOUND
+        );
+        assertFailure(
+                handlerFailure.execute(command(
+                        TASK,
+                        "test.handle",
+                        "{}",
+                        ACTIVE_DEADLINE
+                )),
+                WorkerErrorCode.EVENT_RESULT_INVALID
         );
     }
 
@@ -377,10 +448,13 @@ class WorkerCommandDispatcherTest {
 
     private static void assertFailure(
             Optional<WorkerResult> result,
-            String outcomeCode
+            WorkerErrorCode errorCode
     ) {
         WorkerResult failure = result.orElseThrow();
-        assertEquals(outcomeCode, failure.outcomeCode());
-        assertEquals("null", failure.payload());
+        assertEquals(
+                Integer.toString(errorCode.code()),
+                failure.outcomeCode()
+        );
+        assertEquals(errorCode.defaultMessage(), failure.payload());
     }
 }

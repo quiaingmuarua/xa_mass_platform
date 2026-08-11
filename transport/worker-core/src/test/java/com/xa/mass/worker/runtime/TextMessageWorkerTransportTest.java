@@ -47,7 +47,7 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void openSendsConnectionBindBeforeCommands() {
+    void commandHandlingDoesNotDependOnLocalBindState() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         AtomicInteger executions = new AtomicInteger();
         TextMessageWorkerTransport transport = transport(
@@ -60,15 +60,12 @@ class TextMessageWorkerTransportTest {
         );
 
         transport.start();
-        client.message(CODEC.encodeWorkerCommand(command("before-bind")));
+        client.deliver(CODEC.encodeWorkerCommand(command("before-bind")));
         client.open();
         client.message(CODEC.encodeWorkerCommand(command("after-bind")));
 
-        assertEquals(1, executions.get());
-        assertEquals(
-                List.of(TextMessageClient.CloseReason.PROTOCOL_ERROR),
-                client.closeReasons
-        );
+        assertEquals(2, executions.get());
+        assertTrue(client.closeReasons.isEmpty());
         assertEquals(WORKER_ID, CODEC.decodeWorkerConnectionBind(
                 client.sent.get(0)
         ).workerId());
@@ -125,32 +122,40 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void malformedCommandClosesCurrentConnection() {
+    void malformedCommandIsDroppedWithoutClosingConnection() {
         FakeTextMessageClient client = new FakeTextMessageClient();
+        AtomicInteger executions = new AtomicInteger();
         TextMessageWorkerTransport transport = transport(
                 client,
-                command -> Optional.empty(),
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.of(result(command));
+                },
                 new RecordingListener()
         );
         transport.start();
         client.open();
 
         client.message("{}");
+        client.message(CODEC.encodeWorkerCommand(command("valid")));
 
-        assertEquals(
-                List.of(TextMessageClient.CloseReason.PROTOCOL_ERROR),
-                client.closeReasons
-        );
+        assertEquals(1, executions.get());
+        assertTrue(client.closeReasons.isEmpty());
+        assertEquals(2, client.sent.size());
     }
 
     @Test
-    void dispatcherFailureReturns1500WithoutEndingRun() {
+    void dispatcherFailureIsDroppedWithoutEndingRun() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         RecordingListener listener = new RecordingListener();
+        AtomicInteger calls = new AtomicInteger();
         TextMessageWorkerTransport transport = transport(
                 client,
                 command -> {
-                    throw new IllegalStateException("boom");
+                    if (calls.getAndIncrement() == 0) {
+                        throw new IllegalStateException("boom");
+                    }
+                    return Optional.of(result(command));
                 },
                 listener
         );
@@ -158,15 +163,18 @@ class TextMessageWorkerTransportTest {
         client.open();
 
         client.message(CODEC.encodeWorkerCommand(command("failed")));
+        client.message(CODEC.encodeWorkerCommand(command("recovered")));
 
-        WorkerResult failure = CODEC.decodeWorkerResult(client.sent.get(1));
-        assertEquals(id("failed"), failure.messageId());
-        assertEquals("1500", failure.outcomeCode());
+        assertEquals(2, client.sent.size());
+        assertEquals(id("recovered"), CODEC.decodeWorkerResult(
+                client.sent.get(1)
+        ).messageId());
+        assertTrue(client.closeReasons.isEmpty());
         assertEquals(0, listener.terminations.get());
     }
 
     @Test
-    void dispatcherErrorCleansCommandStateBeforeRethrow() {
+    void dispatcherErrorPropagatesWithoutFallbackResult() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         AssertionError failure = new AssertionError("fatal");
         TextMessageWorkerTransport transport = transport(
@@ -187,14 +195,13 @@ class TextMessageWorkerTransportTest {
         );
 
         assertSame(failure, thrown);
-        assertEquals("1500", CODEC.decodeWorkerResult(
-                client.sent.get(1)
-        ).outcomeCode());
+        assertEquals(1, client.sent.size());
+        assertTrue(client.closeReasons.isEmpty());
         transport.requestStop();
     }
 
     @Test
-    void failedResultSendIsDroppedAndClosesCurrentConnection() {
+    void failedResultSendIsDroppedWithoutClosingCurrentConnection() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         TextMessageWorkerTransport transport = transport(
                 client,
@@ -208,21 +215,18 @@ class TextMessageWorkerTransportTest {
         client.message(CODEC.encodeWorkerCommand(command("drop")));
 
         assertEquals(1, client.sent.size());
-        assertEquals(
-                List.of(TextMessageClient.CloseReason.SEND_FAILURE),
-                client.closeReasons
-        );
+        assertTrue(client.closeReasons.isEmpty());
 
         client.acceptSend = true;
-        client.open();
+        client.message(CODEC.encodeWorkerCommand(command("next")));
         assertEquals(2, client.sent.size());
-        assertEquals(WORKER_ID, CODEC.decodeWorkerConnectionBind(
+        assertEquals(id("next"), CODEC.decodeWorkerResult(
                 client.sent.get(1)
-        ).workerId());
+        ).messageId());
     }
 
     @Test
-    void stopWaitsForStartedHandlerAndDropsItsResult() throws Exception {
+    void stopDropsResultFromAlreadyStartedHandler() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         FakeTextMessageClient client = new FakeTextMessageClient();
@@ -246,7 +250,7 @@ class TextMessageWorkerTransportTest {
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
             transport.requestStop();
-            assertEquals(0, listener.terminations.get());
+            assertEquals(1, listener.terminations.get());
             assertEquals(1, client.closeCalls.get());
 
             release.countDown();
@@ -260,7 +264,7 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void endpointTerminationWaitsForHandlerAndNotifiesExactlyOnce()
+    void endpointTerminationNotifiesExactlyOnceWhileHandlerFinishes()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -286,7 +290,7 @@ class TextMessageWorkerTransportTest {
 
             client.terminate();
             client.terminate();
-            assertEquals(0, listener.terminations.get());
+            assertEquals(1, listener.terminations.get());
 
             release.countDown();
             handling.get(5, TimeUnit.SECONDS);
@@ -442,6 +446,12 @@ class TextMessageWorkerTransportTest {
         }
 
         private void message(String message) {
+            if (connected) {
+                listener.onMessage(message);
+            }
+        }
+
+        private void deliver(String message) {
             listener.onMessage(message);
         }
 

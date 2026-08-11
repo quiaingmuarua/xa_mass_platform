@@ -248,6 +248,25 @@ public final class WorkerDeliveryProtocol {
             this.forward = forward;
         }
 
+        public static WorkerResult fromCommand(
+                WorkerCommand command,
+                String outcomeCode,
+                String payload
+        ) {
+            WorkerCommand source = Objects.requireNonNull(
+                    command,
+                    "command"
+            );
+            return new WorkerResult(
+                    source.messageId(),
+                    source.src(),
+                    source.messageType(),
+                    outcomeCode,
+                    payload,
+                    source.forward()
+            );
+        }
+
         public String messageId() {
             return messageId;
         }
