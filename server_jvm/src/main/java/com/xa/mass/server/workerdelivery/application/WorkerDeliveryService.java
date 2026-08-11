@@ -109,7 +109,8 @@ public final class WorkerDeliveryService {
                 == WorkerResultOutcomeClass.ADAPTER_REJECTION) {
             throw invalid(
                     operation,
-                    "Worker result must target TASK with outcome 200 or 1xxx"
+                    "Worker result must target TASK with outcome 200 "
+                            + "or a Worker-owned 3... code"
             );
         }
         appendResults(List.of(result), operation);

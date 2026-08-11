@@ -16,7 +16,6 @@ import java.util.function.LongSupplier;
 
 public final class WorkerCommandLoop implements Runnable {
 
-    private static final String UNAVAILABLE_WORKER_OUTCOME_CODE = "3001";
     private static final System.Logger LOGGER = System.getLogger(
             WorkerCommandLoop.class.getName()
     );
@@ -169,7 +168,9 @@ public final class WorkerCommandLoop implements Runnable {
                 command.messageId(),
                 command.src(),
                 command.messageType(),
-                UNAVAILABLE_WORKER_OUTCOME_CODE,
+                Integer.toString(
+                        WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
+                ),
                 "null",
                 command.forward()
         );

@@ -143,7 +143,12 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("STARTED")
                 .contains("RETRY_LATER")
                 .contains("UNKNOWN")
+                .contains(
+                        "WorkerDeliveryAdapterErrorCode"
+                                + ".COMMAND_EXPIRED.code()"
+                )
                 .contains("public synchronized void run()")
+                .doesNotContain("UNAVAILABLE_WORKER_OUTCOME_CODE")
                 .doesNotContain("WorkerDeliveryAdapterCore")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ExecutorService")

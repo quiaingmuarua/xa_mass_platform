@@ -88,9 +88,10 @@ supported.
 | Outcome | Meaning |
 | --- | --- |
 | `200` | Handler returned a non-empty result payload |
-| `1400` | Resolver or handler rejected event input |
-| `1404` | No definition exists for `(src, messageType)` |
-| `1500` | Handler failed or returned invalid output |
+| `3301` | Resolver or handler rejected event input |
+| `3302` | No definition exists for `(src, messageType)` |
+| `3303` | Handler execution failed |
+| `3304` | Handler returned invalid output |
 
 Expired Commands are dropped before Handler invocation. A malformed frame
 closes the current connection with `PROTOCOL_ERROR`. If a Result send is not

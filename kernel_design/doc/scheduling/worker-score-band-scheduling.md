@@ -959,8 +959,8 @@ assignment-dispatch worker selection path.
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw connected / reconnect / session refresh | no | local observation only |
-| trusted Worker execution result (`200/1xxx`) | yes | exact release of the correlated Worker lease fence |
-| trusted Adapter pre-execution rejection (`3xxx`) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
+| trusted Worker execution result (`200` or Worker-owned `3...`) | yes | exact release of the correlated Worker lease fence |
+| trusted Adapter pre-execution rejection (`COMMAND_EXPIRED` for command expiry) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |
 | read projection / trace | no | diagnostics only |
 

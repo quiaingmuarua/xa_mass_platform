@@ -127,22 +127,30 @@ final class WorkerDeliveryProtocolTest {
     }
 
     @Test
-    void outcomeClassificationRemainsStable() {
+    void outcomeClassificationUsesOwnerPrefixWithoutWidthValidation() {
         assertEquals(
                 WorkerResultOutcomeClass.SUCCESS,
                 WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("200")
         );
         assertEquals(
                 WorkerResultOutcomeClass.WORKER_FAILURE,
+                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("33001")
+        );
+        assertEquals(
+                WorkerResultOutcomeClass.ADAPTER_REJECTION,
+                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("23001")
+        );
+        assertEquals(
+                WorkerResultOutcomeClass.ADAPTER_REJECTION,
                 WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("1400")
         );
         assertEquals(
                 WorkerResultOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("3001")
+                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(
+                        "adapter-error"
+                )
         );
-        assertNull(
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("2000")
-        );
+        assertNull(WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(" "));
     }
 
     @Test

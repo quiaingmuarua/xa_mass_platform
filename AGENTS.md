@@ -132,9 +132,11 @@ tag.
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
   connections, and bounded Command/Result queues. Worker results may be
-  decoded only to enforce the `200/1xxx` Worker ingress boundary; their
+  decoded only to enforce the `200` or Worker-owned `3...` ingress boundary.
+  Their
   encoded JSON, payload, and forward context must not be rebuilt or interpreted.
-  Only Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
+  Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. Its private
+  HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path.
 - `transport/worker-core` may depend only on the shared Worker Delivery
@@ -324,7 +326,7 @@ transport/netty-adapter
   -> per-connection route verification through Server HTTP
   -> per-endpoint Command/Result loops and current connection registry
   -> direct WorkerCommand/WorkerResult transport, unchanged encoded Worker
-     result forwarding, and Adapter-owned 3xxx generation
+     result forwarding, and Adapter-owned error generation
   -> independent Netty WebSocket and Socket listeners
 ```
 

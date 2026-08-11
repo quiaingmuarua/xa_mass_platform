@@ -7,6 +7,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerM
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
@@ -149,7 +150,9 @@ class WorkerCommandLoopTest {
                 COMMAND_ID,
                 TASK,
                 "test.observe",
-                "3001",
+                Integer.toString(
+                        WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
+                ),
                 "null",
                 "context"
         ));

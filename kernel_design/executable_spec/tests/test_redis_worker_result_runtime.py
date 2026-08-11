@@ -86,8 +86,8 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
 
     def test_mixed_append_partitions_three_fifo_queues(self) -> None:
         success = self.result("context-success", "200", '{"value":1}')
-        worker_failure = self.result("context-worker", "1000")
-        adapter_rejection = self.result("context-adapter", "3001")
+        worker_failure = self.result("context-worker", "3303")
+        adapter_rejection = self.result("context-adapter", "23002")
 
         self.assertEqual(
             3,
@@ -112,8 +112,8 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
             )
 
     def test_each_class_is_independently_bounded_and_fifo(self) -> None:
-        first = self.result("context-1", "1000")
-        second = self.result("context-2", "1001")
+        first = self.result("context-1", "3301")
+        second = self.result("context-2", "3302")
         self.runtime.append_worker_results(results=(first, second))
 
         self.assertEqual(
@@ -149,20 +149,30 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
         )
         self.assertEqual([], self.redis.lists[key])
 
-    def test_outcome_protocol_is_exact(self) -> None:
+    def test_outcome_protocol_uses_owner_prefix_without_width_validation(
+        self,
+    ) -> None:
         self.assertIs(
             WorkerResultOutcomeClass.SUCCESS,
             classify_worker_result_outcome_code("200"),
         )
         self.assertIs(
             WorkerResultOutcomeClass.WORKER_FAILURE,
-            classify_worker_result_outcome_code("1000"),
+            classify_worker_result_outcome_code("33001"),
+        )
+        self.assertIs(
+            WorkerResultOutcomeClass.WORKER_FAILURE,
+            classify_worker_result_outcome_code("3304"),
         )
         self.assertIs(
             WorkerResultOutcomeClass.ADAPTER_REJECTION,
-            classify_worker_result_outcome_code("3999"),
+            classify_worker_result_outcome_code("23001"),
         )
-        for invalid in ("", "500", "2000", "300", "30000", "失败"):
+        self.assertIs(
+            WorkerResultOutcomeClass.ADAPTER_REJECTION,
+            classify_worker_result_outcome_code("failure"),
+        )
+        for invalid in ("", " ", 200, None):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(
                     classify_worker_result_outcome_code(invalid)

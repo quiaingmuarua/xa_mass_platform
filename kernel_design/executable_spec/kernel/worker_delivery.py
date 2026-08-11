@@ -34,17 +34,11 @@ def classify_worker_result_outcome_code(
 ) -> WorkerResultOutcomeClass | None:
     if outcome_code == SUCCESS_OUTCOME_CODE:
         return WorkerResultOutcomeClass.SUCCESS
-    if (
-        isinstance(outcome_code, str)
-        and len(outcome_code) == 4
-        and outcome_code.isascii()
-        and outcome_code.isdecimal()
-    ):
-        if outcome_code[0] == "1":
-            return WorkerResultOutcomeClass.WORKER_FAILURE
-        if outcome_code[0] == "3":
-            return WorkerResultOutcomeClass.ADAPTER_REJECTION
-    return None
+    if not isinstance(outcome_code, str) or not outcome_code.strip():
+        return None
+    if outcome_code.startswith("3"):
+        return WorkerResultOutcomeClass.WORKER_FAILURE
+    return WorkerResultOutcomeClass.ADAPTER_REJECTION
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +103,7 @@ class WorkerResult:
             )
         _require_non_empty_text(self.message_type, "message type")
         if classify_worker_result_outcome_code(self.outcome_code) is None:
-            raise ValueError("outcome code must be 200, 1xxx, or 3xxx")
+            raise ValueError("outcome code must be non-empty")
         _require_text(self.payload, "payload")
         _require_text(self.forward, "forward")
         if self.dst is WorkerMessageEndpoint.TASK and not self.forward:

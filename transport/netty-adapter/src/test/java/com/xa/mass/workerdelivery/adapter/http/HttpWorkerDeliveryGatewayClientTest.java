@@ -105,7 +105,10 @@ class HttpWorkerDeliveryGatewayClientTest {
                         "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
                         TASK,
                         "test.observe",
-                        "3001",
+                        Integer.toString(
+                                WorkerDeliveryAdapterErrorCode
+                                        .COMMAND_EXPIRED.code()
+                        ),
                         "null",
                         "context-2"
                 )

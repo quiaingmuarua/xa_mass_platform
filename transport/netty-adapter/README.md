@@ -88,7 +88,7 @@ when a full consume batch fits
   -> consume at most commandConsumeLimit commands from Server
 
 for each command present at round start
-  -> expired: remove and enqueue Adapter 3001 best-effort
+  -> expired: remove and enqueue Adapter COMMAND_EXPIRED best-effort
   -> no active writable Channel: rotate to queue tail
   -> writeAndFlush started: remove
   -> write initiation/future failure: close exact Channel, result UNKNOWN
@@ -99,21 +99,23 @@ The Server mailbox already partitions by endpointManagerId, while workerId is
 the Channel route coordinate.
 
 Adapter holds a consumed command until send starts or the deadline expires.
-An Adapter-generated `3001` copies the command `messageId`, `src` as result
-`dst`, `messageType`, and `forward`; it uses payload `"null"`.
+An Adapter-generated `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` (`23002`)
+copies the command `messageId`, `src` as result `dst`, `messageType`, and
+`forward`; it uses payload `"null"`.
 
 No active Channel is a temporary retry condition while the command remains
-live. A send-started failure is ambiguous and must not fabricate `3xxx`
-evidence.
+live. A send-started failure is ambiguous and must not fabricate Adapter
+rejection evidence.
 
 ## Result Loop
 
 Netty handlers decode a direct `WorkerResult` only to enforce the Worker
-boundary: Worker-originated results may use `200/1xxx`, not Adapter-owned
-`3xxx`. A valid result is queued using its original encoded JSON; Adapter does
+boundary: Worker-originated results may use `200` or Worker-owned `3...`. A
+valid result is queued using its original encoded JSON; Adapter does
 not rebuild or re-encode it.
 
-Adapter-generated `3001` enters the same bounded queue. The Result Loop runs at
+Adapter-generated `COMMAND_EXPIRED` enters the same bounded queue. The Result
+Loop runs at
 `resultSubmitInterval`:
 
 ```text
@@ -123,8 +125,9 @@ submit one encoded-result batch to Server
 ```
 
 The batch request has no caller-provided source field. The Server endpoint is
-the trusted Adapter ingress and accepts valid `200/1xxx/3xxx` results targeting
-`TASK`. Point Worker result ingress separately rejects `3xxx`.
+the trusted Adapter ingress and accepts valid success, Worker-failure, and
+Adapter-rejection results targeting `TASK`. Point Worker result ingress
+separately rejects Adapter-rejection outcomes.
 
 Gateway protocol rejection drops the pending batch. Network or Server
 unavailability retains it for a later interval. Command consumption and result

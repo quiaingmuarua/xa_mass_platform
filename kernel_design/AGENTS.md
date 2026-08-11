@@ -435,15 +435,16 @@ Adapter-owned Netty listeners and unchanged encoded WorkerResult forwarding
 Its boundary starts after Task Dispatch handles mailbox publication and ends
 after WorkerResult append. It does not select Workers, claim Items, mutate Task
 score, interpret Worker score, or renew/release Worker leases. The current
-polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived
-Adapter endpoint accepts valid `200/1xxx/3xxx`. The HTTP access boundary, not
+polling HTTP slice accepts Worker-originated `200` and Worker-owned `3...`;
+the long-lived Adapter endpoint also accepts trusted
+Adapter rejection outcomes. The HTTP access boundary, not
 a caller-provided source field, expresses the trusted role. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
 Each Java Adapter instance owns one configured non-system-polling mailbox,
 one independent Netty listener, separate scheduled Command/Result loops,
 bounded command/result queues, one current connection per WorkerId, statically
-bound direct WorkerCommand/WorkerResult transport, and `3001` versus `UNKNOWN`
+bound direct WorkerCommand/WorkerResult transport, and Adapter rejection versus `UNKNOWN`
 classification. Adapter validates Worker-originated outcomes, but queues and
 forwards the original encoded result String; Server ingress performs the
 authoritative batch validation.
@@ -451,9 +452,10 @@ authoritative batch validation.
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
 in one JVM must use different endpoint-manager IDs and listener ports.
-Workers Register and Bind their endpoint/resource snapshot before connecting. Missing connection evidence may produce
-`3001`; expiry, disconnect, missing result, and any failure after send was
-attempted remain UNKNOWN. Same-endpoint distributed ownership remains
+Workers Register and Bind their endpoint/resource snapshot before connecting.
+Command expiry before send produces the Adapter-owned `COMMAND_EXPIRED` result;
+disconnect, missing result, and any failure after send was attempted remain
+UNKNOWN. Same-endpoint distributed ownership remains
 unsupported.
 
 Result-routing owns:
@@ -464,13 +466,18 @@ bounded consume, forward decode, owner-key grouping, and handler
 delegation through ResultRoutingPacer
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
 through the selected Task result handler
-current built-in policy performs no Item score mutation for `1xxx/3xxx`; the
-existing claim becomes due naturally
+current built-in policy performs no Item score mutation for failure outcomes;
+the existing claim becomes due naturally
 workerGroupId plus opaque workerLeaseScore pass-through to WorkerScoreCore exact
-release for `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx` through
+release for `200` and Worker failure outcomes or exact RECOVERY_RECHECK
+demotion for Adapter rejection outcomes through
 the selected Worker result handler
 valid routed-evidence counting
 ```
+
+Outcome codes provide only coarse result classes. Future retry, sleep, or
+band-transition policy must use explicit typed interface fields and must not
+parse exact Worker or Adapter subcodes.
 
 WorkerResultRuntime may classify only the public outcome class needed to select
 its queue; it must not decode context. ResultRoutingPacer must not interpret
@@ -524,8 +531,8 @@ renew_active_hot_score_leases(...)
 dispatch disposition
   validates/renews the exact active fence before Item claim
   rejects dirty/recovery/expired/stale candidates without compensation release
-  result-routing Worker handlers exact-release `200/1xxx` fences and move
-  `3xxx` fences to negative polarity
+  result-routing Worker handlers exact-release `200` and Worker-failure fences
+  and move Adapter-rejection fences to negative polarity
 
 Worker upsert during Server Bind
   missing score initializes positive, dirty=0

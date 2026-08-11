@@ -106,7 +106,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def test_worker_failure_code_is_forwarded_without_subcode_parsing(self) -> None:
         self.adapter.register_event_handler(
             "event-1",
-            lambda _payload, _worker: EventHandlerResult("1409"),
+            lambda _payload, _worker: EventHandlerResult("3409"),
         )
         self.consumer.consume_worker_commands.return_value = self.batch(
             self.command()
@@ -117,9 +117,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         result = self.result_commands.append_worker_results.call_args.kwargs[
             "results"
         ][0]
-        self.assertEqual("1409", result.outcome_code)
+        self.assertEqual("3409", result.outcome_code)
 
-    def test_handler_or_result_encoding_error_becomes_1500(self) -> None:
+    def test_handler_or_result_encoding_error_becomes_3500(self) -> None:
         for handler in (
             lambda _payload, _worker: (_ for _ in ()).throw(RuntimeError("boom")),
             lambda _payload, _worker: EventHandlerResult(
@@ -140,7 +140,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 result = self.result_commands.append_worker_results.call_args.kwargs[
                     "results"
                 ][0]
-                self.assertEqual("1500", result.outcome_code)
+                self.assertEqual("3500", result.outcome_code)
                 self.assertEqual("null", result.payload)
 
     def test_expired_corrupt_and_missing_handler_are_bounded(self) -> None:
@@ -165,7 +165,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "results"
         ]
         self.assertEqual(
-            ["1404"],
+            ["3404"],
             [result.outcome_code for result in results],
         )
 
@@ -235,7 +235,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             self.drain()
 
     def test_duplicate_registration_replaces_process_local_value(self) -> None:
-        first = Mock(return_value=EventHandlerResult("1000"))
+        first = Mock(return_value=EventHandlerResult("3303"))
         second = Mock(return_value=EventHandlerResult("200"))
         self.adapter.register_event_handler("event-1", first)
         self.adapter.register_event_handler("event-1", second)
@@ -274,8 +274,8 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
     def test_handler_outcome_code_accepts_only_success_or_worker_failure(self) -> None:
         self.assertEqual("200", EventHandlerResult("200").outcome_code)
-        self.assertEqual("1999", EventHandlerResult("1999").outcome_code)
-        for invalid in ("", "500", "3001", "１２３４", 200, None):
+        self.assertEqual("3304", EventHandlerResult("3304").outcome_code)
+        for invalid in ("", "500", "23002", "１２３４", 200, None):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 EventHandlerResult(invalid)  # type: ignore[arg-type]
 

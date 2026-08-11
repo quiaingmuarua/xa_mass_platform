@@ -228,7 +228,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerWebSocketHandler")
                 .doesNotContain("TextMessage")
                 .doesNotContain("WorkerResult")
-                .doesNotContain("\"3001\"")
+                .doesNotContain("\"23002\"")
                 .doesNotContain("ArrayBlockingQueue");
 
         String assembly = readSources(WORKER_ASSEMBLY);

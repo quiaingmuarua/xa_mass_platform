@@ -108,7 +108,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                         UUID.randomUUID().toString(),
                         WorkerMessageEndpoint.TASK,
                         "test.event",
-                        "1500",
+                        "3500",
                         "null",
                         "failure"
                 ),
@@ -116,7 +116,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                         UUID.randomUUID().toString(),
                         WorkerMessageEndpoint.TASK,
                         "test.event",
-                        "3001",
+                        "23002",
                         "null",
                         "rejection"
                 )

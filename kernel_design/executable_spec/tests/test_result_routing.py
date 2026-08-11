@@ -343,7 +343,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_worker_failure_only_releases_worker_lease(self) -> None:
-        failure = self.result(outcome_code="1500", payload=None)
+        failure = self.result(outcome_code="3500", payload=None)
         self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (failure,)
 
         self.assertEqual(1, self.route())
@@ -386,14 +386,14 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_worker_failure_batches_each_worker_group_once(self) -> None:
         self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (
-            self.result(outcome_code="1500", payload=None),
+            self.result(outcome_code="3500", payload=None),
             self.result(
                 task_id="task-2",
                 message_id="message-2",
                 worker_id="worker-2",
                 worker_group_id="gpu-workers",
                 worker_lease_score=202,
-                outcome_code="1500",
+                outcome_code="3500",
                 payload=None,
             ),
         )
@@ -417,7 +417,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
-        rejection = self.result(outcome_code="3001", payload=None)
+        rejection = self.result(outcome_code="23002", payload=None)
         self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
 
         self.assertEqual(1, self.route())
@@ -433,7 +433,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
     def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
         self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
         self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (
-            self.result(outcome_code="3001", payload=None),
+            self.result(outcome_code="23002", payload=None),
         )
 
         self.assertEqual(2, self.route())
@@ -466,7 +466,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
                 "null",
                 "{bad-json",
             ),
-            self.result(outcome_code="1000", payload=None),
+            self.result(outcome_code="3303", payload=None),
         )
 
         self.assertEqual(0, self.route())

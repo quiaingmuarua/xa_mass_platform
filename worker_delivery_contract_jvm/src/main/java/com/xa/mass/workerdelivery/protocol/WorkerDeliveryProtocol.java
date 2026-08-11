@@ -230,7 +230,7 @@ public final class WorkerDeliveryProtocol {
             requireNonBlank(messageType, "messageType");
             if (classifyWorkerResultOutcomeCode(outcomeCode) == null) {
                 throw new IllegalArgumentException(
-                        "outcomeCode must be 200, 1xxx, or 3xxx"
+                        "outcomeCode must be non-blank"
                 );
             }
             Objects.requireNonNull(payload, "payload");
@@ -336,19 +336,13 @@ public final class WorkerDeliveryProtocol {
         if (SUCCESS_OUTCOME_CODE.equals(outcomeCode)) {
             return WorkerResultOutcomeClass.SUCCESS;
         }
-        if (outcomeCode == null
-                || outcomeCode.length() != 4
-                || !isDecimal(outcomeCode)) {
+        if (outcomeCode == null || outcomeCode.isBlank()) {
             return null;
         }
-        char outcomeClass = outcomeCode.charAt(0);
-        if (outcomeClass == '1') {
+        if (outcomeCode.charAt(0) == '3') {
             return WorkerResultOutcomeClass.WORKER_FAILURE;
         }
-        if (outcomeClass == '3') {
-            return WorkerResultOutcomeClass.ADAPTER_REJECTION;
-        }
-        return null;
+        return WorkerResultOutcomeClass.ADAPTER_REJECTION;
     }
 
     private static void requireNonBlank(String value, String name) {
@@ -377,13 +371,4 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    private static boolean isDecimal(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < '0' || character > '9') {
-                return false;
-            }
-        }
-        return true;
-    }
 }

@@ -160,18 +160,18 @@ The opaque Worker fence returns through `ResultContext` together with its
 metadata to recover the Worker score bucket:
 
 ```text
-200 / 1xxx
+200 / Worker failure
   -> this attempt crossed the Worker execution boundary
   -> exact release preserving positive polarity
 
-3xxx
+Adapter rejection
   -> a trusted Adapter confirmed this attempt did not enter Worker execution
   -> exact CAS from HOT_ACQUIRE to RECOVERY_RECHECK
 ```
 
 A Worker Delivery Dispatch producer emits evidence only; it never mutates
-score. The polling Worker endpoint accepts only `200` and `1xxx`; it cannot
-manufacture `3xxx`. The long-lived Adapter batch endpoint accepts trusted
+score. The polling Worker endpoint accepts only `200` and Worker-owned `3...`.
+The long-lived Adapter batch endpoint accepts trusted
 pre-execution rejection evidence; authentication of that role remains
 deferred. Result routing invokes WorkerScoreCore and treats Worker disposition
 independently from Item movement.
@@ -238,11 +238,11 @@ classification lag is allowed.
 | Task Dispatch | mailbox residue replaced | publish the new lease-backed Seed; optional bounded residue metric |
 | Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
 | Worker Delivery Dispatch | expired or malformed Seed | drop; no synthetic result |
-| Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit `1xxx` |
-| Long-lived Adapter | direct evidence that execution was not entered | may emit `3xxx` through Adapter batch ingress |
+| Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit a Worker-owned `3...` outcome |
+| Long-lived Adapter | command expired before execution entry | may emit `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` through Adapter batch ingress |
 | Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
-| Result | `200/1xxx` | exact release |
-| Result | `3xxx` | exact RECOVERY_RECHECK demotion |
+| Result | `200` or Worker failure | exact release |
+| Result | Adapter rejection | exact RECOVERY_RECHECK demotion |
 | Result | malformed/missing evidence | no guessed mutation; expiry recovers |
 
 No branch adds a repair scanner, compensation queue, distributed lock, or
@@ -261,7 +261,7 @@ cross-owner transaction.
 | TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build WorkerCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and WorkerResult append | no Worker selection or score parsing/mutation |
-| Future trusted Adapter | direct pre-execution rejection evidence | no inferred `3xxx` from timeout, missing response or mailbox age |
+| Future trusted Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
 
@@ -280,7 +280,7 @@ payload.
 - Do not let TaskItemDispatcher or TaskDispatchPacer call WorkerScoreCore
   directly.
 - Do not release rejected dispatch candidates as compensation.
-- Do not treat missing result as `3xxx`.
+- Do not treat missing result as Adapter rejection.
 - Do not let old result evidence mutate a newer Worker lease.
 - Do not create separate Attempt, reservation, session epoch or lease registry.
 - Do not release a Worker fence after WorkerCommand append to simulate

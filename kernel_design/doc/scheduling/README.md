@@ -64,8 +64,8 @@ Task score acquire
      -> WorkerResult queue
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
-     -> 1xxx: keep Item claim coordinate + Worker exact release
-     -> 3xxx: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
+     -> Worker failure: keep Item claim coordinate + Worker exact release
+     -> Adapter rejection: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
      -> no result: Item claim and Worker lease expire naturally
 ```
 
@@ -225,7 +225,7 @@ consume one bounded random batch from its sparse bucket through the Server
 batch HTTP API and
 serve Workers through an independent Netty listener. The Adapter owns its
 scheduler, command consume bound, current connection selection, bounded
-delivery, `3001`/`UNKNOWN`, and result-buffer policy. The Server host only binds
+delivery, Adapter-rejection/`UNKNOWN`, and result-buffer policy. The Server host only binds
 configuration and forwards process lifecycle events.
 Destructive prefetch failure remains `UNKNOWN` without pending/ack.
 

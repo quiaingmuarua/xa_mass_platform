@@ -24,6 +24,10 @@ public enum WorkerDeliveryAdapterErrorCode {
     DELIVERY_INTERRUPTED(
             23001,
             "Worker command delivery was interrupted"
+    ),
+    COMMAND_EXPIRED(
+            23002,
+            "Worker command expired before delivery"
     );
 
     private final int code;

@@ -46,26 +46,31 @@ WorkerResult(
 Outcome classification is exact:
 
 ```text
-"200"  -> SUCCESS
-"1xxx" -> WORKER_FAILURE
-"3xxx" -> ADAPTER_REJECTION
+"200"                      -> SUCCESS
+other nonblank "3..."      -> WORKER_FAILURE
+other nonblank outcomeCode  -> ADAPTER_REJECTION
 ```
 
-`1xxx` and `3xxx` are exactly four ASCII digits. Result routing understands
-only the class. The Worker library uses JSON `"null"` for a successful handler
-with no business return value.
+Result routing does not validate outcome-code width or parse owner subcodes.
+The Worker library uses JSON `"null"` for a
+successful handler with no business return value.
+The outcome code supplies only this coarse evidence class. Future retry,
+sleep, or band-transition policy must use explicit typed interface fields,
+not an exact outcome subcode.
 `messageId` is canonical trace correlation copied from the outbound command.
 Result routing does not use it as an Item identity, deduplication key, outcome
 winner, or Worker lease fence.
 
 The Java Server Worker Delivery point result endpoint accepts Worker-originated
-`200` and `1xxx` only. Its Adapter batch endpoint also accepts trusted `3xxx`
-evidence that a delivery was rejected before entering Worker execution. A
+`200` and Worker-owned `3...` only. Its Adapter batch endpoint also accepts
+trusted Adapter rejection evidence that a delivery was rejected
+before entering Worker execution. A
 WebSocket Adapter instance reaches that endpoint over HTTP. The Server appends
 the corresponding outcome-class Redis queue but does not consume or interpret
 routing policy. Authentication of that Adapter role remains deferred. Result
-routing does not distinguish producers and never derives `3xxx` from timeout,
-missing response, or mailbox age.
+routing never infers a Worker or Adapter failure from timeout, missing
+response, or mailbox age. Adapter rejection requires direct evidence that the
+command expired before send began.
 
 Each class has an independent Redis LIST. `forward` remains opaque to the queue
 runtime and carries `taskId`, `messageId`, `workerId`,
@@ -242,10 +247,12 @@ or any other `UNKNOWN` evidence must continue waiting for claim expiry.
 - Do not carry `executeBeforeMillis` into WorkerResult.
 - Do not add a generic result envelope ahead of WorkerResult outcome
   partitioning.
-- Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
+- Do not parse exact Worker or Adapter failure subcodes in result routing.
+- Do not introduce policy by assigning meaning to exact outcome subcodes;
+  extend the owning interface with a typed field instead.
 - Do not partition queues by exact code, Task, WorkerGroup, or producer source.
-- The current built-in `1xxx/3xxx` handlers do not rewrite Item retry time.
-- Do not introduce a `3xxx` fast retry without an opaque Item claim fence and
+- The current built-in failure handlers do not rewrite Item retry time.
+- Do not introduce an Adapter-rejection fast retry without an opaque Item claim fence and
   an exact TaskItem score-owner release operation.
 - Never infer fast retry from `UNKNOWN` delivery evidence.
 - Do not promote Item before its successful payload is stored.

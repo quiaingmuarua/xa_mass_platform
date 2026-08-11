@@ -49,7 +49,7 @@ WorkerResult(
   messageId: UUID,
   dst: TASK | SYSTEM | ADAPTER,
   messageType: String,
-  outcomeCode: 200 | 1xxx | 3xxx,
+  outcomeCode: nonblank String,
   payload: String,
   forward: String
 )
@@ -144,7 +144,8 @@ The Worker first completes Server Register and Bind control calls outside this
 delivery API. Each point request verifies that the persisted Worker Binding is
 `system-polling`; this is a route-consistency check rather than authentication.
 Point poll returns `204` or the direct `WorkerCommand` fields. Point result
-accepts a direct `WorkerResult` and permits only `200/1xxx` targeting `TASK`.
+accepts a direct `WorkerResult` and permits only `200` or Worker-owned `3...`,
+targeting `TASK`.
 This is the pure polling Worker path.
 
 Active Adapter batch access:
@@ -176,7 +177,8 @@ Batch consume returns:
 ```
 
 The Adapter result endpoint itself is the trusted Adapter ingress. It accepts
-valid `200/1xxx/3xxx` results targeting `TASK`; it does not accept a
+valid success, Worker-failure, and Adapter-rejection results targeting `TASK`;
+it does not accept a
 caller-provided source label. Each encoded result is validated independently.
 The response reports accepted and rejected counts. A partial or failed Redis
 append returns `503` so the Adapter can retry its pending batch.
@@ -220,12 +222,14 @@ change messageType, decode payload, or decode forward.
 
 The Adapter keeps consumed commands in a bounded local queue. A command with
 no active connection rotates until the Worker reconnects or the command
-expires. On expiry the Adapter may create `3001` using the original
-correlation fields. If a send has started and later fails, delivery is
+expires. On expiry the Adapter may create
+`WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` using the original correlation
+fields. If a send has started and later fails, delivery is
 `UNKNOWN`; the Adapter must not fabricate rejection evidence.
 
-Worker-originated results are decoded only to enforce `200/1xxx`, then their
-original encoded JSON is queued unchanged. Adapter-generated `3001` uses the
+Worker-originated results are decoded only to enforce `200` or Worker-owned
+`3...`, then their original encoded JSON is queued unchanged.
+Adapter-generated `COMMAND_EXPIRED` uses the
 same result queue. A timed Result Loop batches the queue to Server. There is no
 source split, command/result coupling, ACK, durable Adapter queue, or
 exactly-once promise.
@@ -243,8 +247,9 @@ deadline check before start
 -> copy messageId/messageType/forward
 ```
 
-Handler completion maps to `200`; input errors map to `1400`; unknown events
-map to `1404`; other Handler failures map to `1500`. The Handler returns an
+Handler completion maps to `200`; input errors map to `3301`; unknown events
+map to `3302`; Handler failures map to `3303`, and invalid output maps to
+`3304`. The Handler returns an
 already serialized opaque String result. `"null"` represents no business
 value.
 
@@ -262,10 +267,14 @@ WorkerResult Redis keys are documented in
 as ResultContext, and delegates:
 
 ```text
-200   -> store TaskItem success payload, finalize Item, release Worker
-1xxx  -> Worker failure disposition policy
-3xxx  -> Adapter rejection disposition policy
+200                          -> success disposition policy
+other nonblank 3...          -> Worker failure disposition policy
+other nonblank outcomeCode   -> Adapter rejection disposition policy
 ```
+
+This classification is coarse evidence only. Exact retry or band policy must
+come from explicit typed interface fields rather than parsing an outcome
+subcode.
 
 The result `messageId` and `messageType` are not used as truth or fences. Task
 and Worker owner coordinates from `forward`, together with exact score/lease

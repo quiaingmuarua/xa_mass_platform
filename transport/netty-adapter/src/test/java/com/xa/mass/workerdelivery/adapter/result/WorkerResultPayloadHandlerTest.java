@@ -7,6 +7,7 @@ import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingRes
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
@@ -24,7 +25,7 @@ class WorkerResultPayloadHandlerTest {
         String valid = result("200");
 
         assertThat(handler.handle("worker-1", valid)).isEqualTo(ACCEPTED);
-        assertThat(handler.handle("worker-1", result("1500")))
+        assertThat(handler.handle("worker-1", result("3500")))
                 .isEqualTo(BUFFER_FULL);
         assertThat(queue.drain()).containsExactly(valid);
     }
@@ -37,7 +38,12 @@ class WorkerResultPayloadHandlerTest {
 
         assertThat(handler.handle("worker-1", "{bad-json"))
                 .isEqualTo(INVALID_RESULT);
-        assertThat(handler.handle("worker-1", result("3001")))
+        assertThat(handler.handle(
+                "worker-1",
+                result(Integer.toString(
+                        WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
+                ))
+        ))
                 .isEqualTo(INVALID_RESULT);
         assertThat(queue.isEmpty()).isTrue();
     }

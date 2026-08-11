@@ -302,7 +302,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     message_id=command.message_id,
                     dst=command.src,
                     message_type=command.message_type,
-                    outcome_code="3001",
+                    outcome_code="23002",
                     payload="null",
                     forward=command.forward,
                 ),

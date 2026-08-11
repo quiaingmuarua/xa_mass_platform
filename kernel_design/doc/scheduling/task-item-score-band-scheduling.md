@@ -528,7 +528,7 @@ not repair.
 ## Result And Finality
 
 Result routing does not perform a same-tag retry rewrite. A claim already places
-the ACTIVE Item at a future time coordinate. `1xxx` and `3xxx` leave that score
+the ACTIVE Item at a future time coordinate. Worker and Adapter failures leave that score
 unchanged; when the claim coordinate becomes due, ordinary acquisition retries
 the Item and consumes no additional result-owned budget.
 

@@ -382,9 +382,10 @@ Channel and exposes it to command delivery only when the persisted Binding
 matches the Adapter's endpoint-manager identity.
 The Adapter result request carries an array of encoded `WorkerResult` strings.
 The Adapter endpoint itself is the trusted ingress and accepts valid
-`200/1xxx/3xxx` results targeting `TASK`. Server appends the valid subset and
+success, Worker-failure, and Adapter-rejection results targeting `TASK`. Server
+appends the valid subset and
 returns both `acceptedCount` and `rejectedCount`. The point Worker result
-endpoint separately permits only `200/1xxx`.
+endpoint separately permits only `200` and Worker-owned `3...`.
 
 Management endpoints:
 

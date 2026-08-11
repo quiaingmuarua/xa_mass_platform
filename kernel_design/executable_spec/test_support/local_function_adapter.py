@@ -16,8 +16,8 @@ from ..assembly import (
 )
 
 
-WORKER_HANDLER_FAILURE_OUTCOME_CODE = "1500"
-WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "1404"
+WORKER_HANDLER_FAILURE_OUTCOME_CODE = "3500"
+WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "3404"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +47,9 @@ class EventHandlerResult:
             WorkerResultOutcomeClass.SUCCESS,
             WorkerResultOutcomeClass.WORKER_FAILURE,
         }:
-            raise ValueError("handler outcome code must be 200 or 1xxx")
+            raise ValueError(
+                "handler outcome code must be success or Worker failure"
+            )
 
 
 EventHandler = Callable[[Mapping[str, object], WorkerMeta], EventHandlerResult]

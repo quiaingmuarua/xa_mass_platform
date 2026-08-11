@@ -440,7 +440,8 @@ API compatibility remain out of scope.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
   an in-process call.
 - Do not move Adapter consume cadence, current-connection selection,
-  result-buffer, `3001`, or `UNKNOWN` policy into the Server lifecycle host.
+  result-buffer, Adapter rejection, or `UNKNOWN` policy into the Server
+  lifecycle host.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

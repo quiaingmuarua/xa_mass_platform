@@ -65,7 +65,7 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void workerResultRejectsAdapterEvidence() {
-        WorkerResult result = result(COMMAND_ID, "3001");
+        WorkerResult result = result(COMMAND_ID, "23002");
 
         assertThatThrownBy(() -> service.appendWorkerResult(
                 POLLING,
@@ -88,11 +88,11 @@ class WorkerDeliveryServiceTest {
         WorkerResult success = result(COMMAND_ID, "200");
         WorkerResult failure = result(
                 "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                "1500"
+                "3500"
         );
         WorkerResult forgedRejection = result(
                 "66f60ac8-e68f-4783-90e3-13b20a54ca13",
-                "3001"
+                "23002"
         );
         List<WorkerResult> accepted = List.of(
                 success,
@@ -125,7 +125,7 @@ class WorkerDeliveryServiceTest {
                 "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
                 WorkerMessageEndpoint.SYSTEM,
                 "test.event",
-                "3001",
+                "23002",
                 "null",
                 "context"
         );
