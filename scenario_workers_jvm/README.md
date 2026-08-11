@@ -11,7 +11,9 @@ selected by each worker-config group's local `eventCodes`. This field is local
 assembly input, not the WorkerGroup catalog projection. Every Worker in the
 same configured group receives the same immutable extension list and shared
 Handler instances, so Scenario Handlers must be stateless or thread-safe.
-Core owns the final Dispatcher registry and currently adds no built-in events.
+Core owns the final Dispatcher registry; its built-in set is currently empty,
+and Scenario contributes only the listed business extensions. Adapter-directed
+connection close remains a Transport lifecycle instruction.
 
 The only public assembly surface is:
 
@@ -74,7 +76,7 @@ build one fixed JavaWorkerManager replica set per configured WorkerGroup
 -> always Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
 -> receive the configured Adapter public URI
 -> start each JavaWorker's shared text-message Transport
--> return without waiting for first WebSocket Bind
+-> return without waiting for Adapter identity verification
 -> for configured indexes only, wait for workerId within connectTimeoutMillis
 -> submit explicit Property Index updates as best effort
 ```
@@ -97,9 +99,10 @@ is never silently replaced; an operator must clear the sandbox explicitly when
 the Server Identity registry has been reset.
 Editing `worker-properties.json` takes effect on the next Scenario start; there
 is no file watcher. Each
-long-lived Worker sends only `WorkerConnectionBind(workerId)` to its returned
-Adapter URI; the Adapter verifies the persisted endpoint route before exposing
-the Channel. Scenario has no connection query and does not expose a first-Bind
+long-lived Worker sends an Adapter-directed
+`worker.connection.identify` Result to its returned Adapter URI; the Adapter
+verifies the persisted endpoint route before exposing the Channel and sends no
+ACK. Scenario has no connection query and does not expose an identity
 startup barrier. For a configured Index update it waits for `workerId`, then
 may retry `NOT_FOUND`, within the existing `connectTimeoutMillis` budget. A
 missing identity or remaining Index failure is logged as `14010` and skipped.

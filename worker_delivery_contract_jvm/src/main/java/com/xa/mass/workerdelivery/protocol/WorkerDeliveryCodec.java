@@ -2,7 +2,6 @@ package com.xa.mass.workerdelivery.protocol;
 
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.math.BigDecimal;
@@ -12,8 +11,6 @@ import java.util.Set;
 
 public final class WorkerDeliveryCodec {
 
-    private static final Set<String> CONNECTION_BIND_FIELDS =
-            Set.of("workerId");
     private static final Set<String> COMMAND_FIELDS = Set.of(
             "dst",
             "executeBeforeMillis",
@@ -31,30 +28,6 @@ public final class WorkerDeliveryCodec {
             "outcomeCode",
             "payload"
     );
-
-    public WorkerConnectionBind decodeWorkerConnectionBind(String value) {
-        try {
-            Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(CONNECTION_BIND_FIELDS)
-                    || string(payload.get("workerId")) == null) {
-                return null;
-            }
-            return new WorkerConnectionBind(string(payload.get("workerId")));
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
-    }
-
-    public String encodeWorkerConnectionBind(WorkerConnectionBind bind) {
-        if (bind == null) {
-            throw new IllegalArgumentException(
-                    "WorkerConnectionBind must be present"
-            );
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("workerId", bind.workerId());
-        return Jsons.toJson(payload);
-    }
 
     public WorkerCommand decodeWorkerCommand(String value) {
         try {

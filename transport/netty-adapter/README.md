@@ -39,28 +39,38 @@ WebSocket uses:
 /api/v1/worker-delivery/websocket
 ```
 
-Socket uses one compact JSON value per UTF-8 line. Both transports start without
-an active Worker route. The first inbound value must be a strict Worker
-connection Bind frame:
+Socket uses one compact JSON value per UTF-8 line. Both transports start
+without an active Worker route. The first inbound value must be this strict
+Adapter-directed identity Result:
 
 ```json
 {
-  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+  "dst":"ADAPTER",
+  "forward":"",
+  "messageId":"5ca82f99-2398-4927-a814-c88ff47a5466",
+  "messageType":"worker.connection.identify",
+  "outcomeCode":"200",
+  "payload":"server-issued-worker-id"
 }
 ```
 
 A new Channel pauses reads while the Adapter asks Server whether the persisted
 Endpoint Binding for `workerId` points to this Adapter's `endpointManagerId`.
+Adapter requires a non-blank identity payload but leaves workerId format
+validation to Server.
 Successful route verification activates `workerId -> current Channel` and
-resumes reads; missing, conflicting, or unavailable Binding closes the Channel.
-Verification happens for every new connection. The Adapter has no identity or
-Binding cache and does not refresh Worker Properties.
+resumes reads without an identity ACK. A definite Server 4xx rejection causes
+the Adapter to write
+`WorkerCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
+and close the physical Channel after the write flushes. Gateway unavailability
+or a 5xx response only closes the physical Channel, allowing the Worker Client
+to consume its current-Endpoint reconnect budget. Verification happens for
+every new connection. The Adapter has no identity or Binding cache and does
+not refresh Worker Properties.
 
-An unverified Channel is never visible to the Command Loop. During verification,
-the transport boundary may retain one pending Result that immediately follows
-Bind; it is processed in order only after verification succeeds. A second
-pre-verification value is a protocol violation. This is not a second Adapter
-result queue.
+An unverified Channel is never visible to the Command Loop. Any message that
+arrives while identity verification is in progress is a protocol violation and
+closes the physical Channel. There is no pre-verification message buffer.
 
 After connection activation:
 
@@ -71,6 +81,20 @@ Worker  -> Adapter: direct WorkerResult JSON
 
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
+
+Adapter-directed Results are consumed by a fixed internal event Dispatcher
+and never enter the Server Result queue. Its built-in registry
+contains connection identity; an unknown Adapter event on an established
+connection is logged and dropped. Before identity, a malformed or non-identity
+message closes the physical Channel. The Dispatcher is not a plugin SPI and
+does not expose Netty types.
+
+After identity, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
+events, and Worker-originated `2...` outcomes are logged and dropped without
+closing the Channel. Only `TASK` Results with `200` or Worker-owned `3...`
+outcomes enter the bounded Result queue, preserving their original JSON. A
+full or closed Result queue drops the current Result and physically closes the
+Channel as process-local backpressure.
 
 Each registry stores the actual Netty `Channel`. A newly activated connection
 replaces the current Channel for that workerId. Deactivation compares workerId
@@ -109,10 +133,11 @@ rejection evidence.
 
 ## Result Loop
 
-Netty handlers decode a direct `WorkerResult` only to enforce the Worker
-boundary: Worker-originated results may use `200` or Worker-owned `3...`. A
-valid result is queued using its original encoded JSON; Adapter does
-not rebuild or re-encode it.
+Netty handlers strictly decode every direct `WorkerResult`. Results targeting
+`ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
+`3...` are queued, using their original encoded JSON so Adapter does not
+rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
+is dropped.
 
 Adapter-generated `COMMAND_EXPIRED` enters the same bounded queue. The Result
 Loop runs at
@@ -138,6 +163,10 @@ Both queues are bounded and process-local. Adapter process failure can lose
 queued commands or results. Existing TaskItem claims, Worker leases, and
 Result Routing fences remain the convergence mechanism. There is no ACK,
 persistent pending queue, or exactly-once claim.
+
+A physical Channel close is a reconnectable network fact. It does not tell the
+Worker to end its current run. Only a delivered
+`ADAPTER/worker.connection.close` Command carries that control meaning.
 
 ## Lifecycle
 

@@ -218,9 +218,6 @@
       "payload",
       "forward"
     ],
-    "WorkerConnectionBind": [
-      "worker_id"
-    ],
     "WorkerDeclaration": [
       "worker_id",
       "worker_group_id",

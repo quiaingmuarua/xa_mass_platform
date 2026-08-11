@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ScenarioWorkerSandboxTest {
 
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
 
     @TempDir
     Path temporaryDirectory;
@@ -69,7 +69,8 @@ class ScenarioWorkerSandboxTest {
     }
 
     @Test
-    void rejectsInvalidIdentityCoordinatesAndWorkerId() throws Exception {
+    void rejectsInvalidIdentityCoordinatesAndBlankWorkerId()
+            throws Exception {
         Path directory = temporaryDirectory.resolve("worker");
         Files.createDirectories(directory);
         Files.writeString(
@@ -101,7 +102,7 @@ class ScenarioWorkerSandboxTest {
                 Jsons.toJson(identity(
                         "scenario-group",
                         "client-1",
-                        "not-a-worker-id"
+                        " "
                 )),
                 StandardCharsets.UTF_8
         );

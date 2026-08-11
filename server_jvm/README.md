@@ -13,7 +13,9 @@ services depend only on contracts from `kernel_jvm`.
 Worker identity is a separate Server-owned control-plane boundary. It maps a
 stable `workerGroupId + workerProperties.clientWorkerKey` to a long-lived
 canonical UUID in the `wi:{prefix}:...` namespace. It is not a Kernel owner
-contract and does not create a scheduler-visible Worker by itself.
+contract and does not create a scheduler-visible Worker by itself. UUID format
+validation stays in this Server owner; Worker and Adapter layers treat the
+returned workerId as an opaque non-blank routing value.
 
 Runtime API failures use the module-local HTTP exception:
 
@@ -82,7 +84,7 @@ Configured Scenario Workers JSON
   -> Server initializes WorkerGroup catalog and starts Adapter Manager
   -> scenario_workers_jvm parses the opaque manifest
   -> scenario_workers_jvm registers and binds each Worker
-  -> long-lived Worker sends workerId-only connection Bind
+  -> long-lived Worker sends an Adapter-directed identity Result
   -> scenario_workers_jvm starts Worker Core + concrete network Clients
   -> real configured Adapter listener
   -> the same Worker Delivery HTTP/Redis path
@@ -142,8 +144,7 @@ Worker Delivery boundaries:
 
 ```text
 worker_delivery_contract_jvm
-  transport-neutral WorkerConnectionBind/WorkerCommand/WorkerResult contracts
-  and strict codecs
+  transport-neutral WorkerCommand/WorkerResult contracts and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
@@ -455,11 +456,14 @@ and do not declare that identity. Each configured instance starts an independent
 during Server startup, after the HTTP server is bound and before the process
 reports ready, and calls the shared Gateway `base-url`. A WebSocket Worker
 connects to the instance's fixed WebSocket path; a Socket Worker connects to
-its TCP port. Both send direct `WorkerConnectionBind(workerId)` JSON before any
-`WorkerCommand`; there is no generic connection-message envelope. Reads remain
+its TCP port. Both first send
+`WorkerResult(dst=ADAPTER,messageType=worker.connection.identify,payload=workerId)`;
+there is no generic connection-message envelope or identity ACK. Reads remain
 paused until Server route verification succeeds. Adapter keeps no identity or
-Binding cache; each new connection is checked. An empty or absent `instances`
-map starts no active Adapter.
+Binding cache; each new connection is checked. A definite route rejection may
+produce `ADAPTER/worker.connection.close`, while Gateway unavailability only
+closes the physical connection. An empty or absent `instances` map starts no
+active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
@@ -567,8 +571,9 @@ The phone-number group references `phonenumber.e164`,
 group references `string.md5`, `string.sha1`, and `string.base64.encode`.
 Every Worker in a group receives the same immutable business Definition
 extension list and shared Handler instances. Core composes the final registry;
-its built-in set is currently empty. Worker identity remains outside Event
-Definitions and business result payloads. WorkerGroup `eventCodes` in
+its fixed built-in set is currently empty. Connection identity remains a
+Transport-generated Adapter Result, while connection close is a Transport
+lifecycle instruction; neither is a business Definition. WorkerGroup `eventCodes` in
 `group-config-json` are a
 display/recommendation summary and may lag the local extension list in
 `worker-config-json`; neither Server nor Kernel enforces equality.
@@ -585,7 +590,8 @@ Worker resource lifecycle belong to `scenario_workers_jvm`.
 External Worker applications remain supported. They persist a client key,
 recover their platform-issued Worker ID through Identity registration, build
 one Bind control request for every start session, connect with
-`WorkerConnectionBind(workerId)`, and own their own process lifecycle.
+an Adapter-directed `worker.connection.identify` Result, and own their own
+process lifecycle.
 
 ### Android Worker Demo Profile
 

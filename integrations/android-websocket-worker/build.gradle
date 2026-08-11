@@ -49,7 +49,7 @@ tasks.register('runDemoRpc', Exec) {
         String workerId = providers.gradleProperty('workerId').orNull
         if (workerId == null || workerId.isBlank()) {
             throw new GradleException(
-                    'runDemoRpc requires -PworkerId=<canonical UUID>'
+                    'runDemoRpc requires -PworkerId=<non-blank worker ID>'
             )
         }
         String serverBaseUrl = providers.gradleProperty('serverBaseUrl')

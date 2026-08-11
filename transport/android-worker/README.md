@@ -41,8 +41,9 @@ Register on later starts. The Properties function cannot override the
 reserved `clientWorkerKey` field.
 
 The supplied Definitions are business extensions, not a complete registry.
-Core appends their defensive copy after its built-in set (currently empty)
-and rejects duplicate `(src, eventCode)` keys. Definitions remain immutable
+Core appends their defensive copy after its currently empty built-in set and
+rejects duplicate `(src, eventCode)` keys. Connection close is handled by
+Transport rather than registered as a Definition. Definitions remain immutable
 for the lifetime of the Worker.
 
 Only one active `AndroidWorker` for a package and WorkerGroup is allowed in

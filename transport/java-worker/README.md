@@ -58,8 +58,9 @@ internal UTF-8 line Client. `POLLING` remains a separate request-response
 assembly.
 
 The Definition collection is an extension set, not the Worker's complete
-registry. Core composes its built-ins (currently empty) before these business
-extensions and rejects duplicate `(src, eventCode)` keys. The common overload
+registry. Core composes its currently empty built-in set before these business
+extensions and rejects duplicate `(src, eventCode)` keys. Connection close is
+handled by Transport rather than registered as a Definition. The common overload
 omits both extensions and options; another overload accepts extensions with
 default connection options. `create()` assembles local resources but performs
 no Register, Bind, or connection I/O until `start()`.

@@ -11,7 +11,6 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
@@ -59,7 +58,8 @@ final class AndroidOkHttpWorkerControlClient
                 "workerControl.register"
         );
         if (!response.keySet().equals(Set.of("workerId"))
-                || !(response.get("workerId") instanceof String)) {
+                || !(response.get("workerId") instanceof String)
+                || ((String) response.get("workerId")).isBlank()) {
             throw failure(
                     WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.register",
@@ -67,9 +67,7 @@ final class AndroidOkHttpWorkerControlClient
                     null
             );
         }
-        return requireCanonicalWorkerId(
-                (String) response.get("workerId")
-        );
+        return (String) response.get("workerId");
     }
 
     @Override
@@ -82,7 +80,7 @@ final class AndroidOkHttpWorkerControlClient
     ) throws IOException {
         requireOpen();
         String group = requireNonBlank(workerGroupId, "workerGroupId");
-        String canonicalWorkerId = requireCanonicalWorkerId(workerId);
+        String resolvedWorkerId = requireNonBlank(workerId, "workerId");
         if (transportType == null) {
             throw new IllegalArgumentException(
                     "transportType must be present"
@@ -91,7 +89,7 @@ final class AndroidOkHttpWorkerControlClient
         requireProperties(workerProperties);
         HttpUrl url = workerGroupBase(group).newBuilder()
                 .addPathSegment("workers")
-                .addPathSegment(canonicalWorkerId + ":bind")
+                .addPathSegment(resolvedWorkerId + ":bind")
                 .build();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("transportType", transportType.name());
@@ -253,23 +251,6 @@ final class AndroidOkHttpWorkerControlClient
             );
         }
         return uri;
-    }
-
-    private static String requireCanonicalWorkerId(String workerId) {
-        String value = requireNonBlank(workerId, "workerId");
-        try {
-            if (!UUID.fromString(value).toString().equals(value)) {
-                throw new IllegalArgumentException();
-            }
-        } catch (IllegalArgumentException error) {
-            throw failure(
-                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    "workerControl.workerId",
-                    "workerId must be a canonical UUID",
-                    error
-            );
-        }
-        return value;
     }
 
     private static HttpUrl requireHttpUrl(URI value) {

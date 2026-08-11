@@ -7,7 +7,7 @@ from unittest.mock import patch
 import run_demo
 
 
-WORKER_ID = "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
+WORKER_ID = "server-issued-worker-id"
 
 
 class FakeRuntimeApiClient:
@@ -100,11 +100,11 @@ class RunDemoTest(unittest.TestCase):
         ]
         self.assertEqual("task.close", operations[-1])
 
-    def test_rejects_noncanonical_worker_id(self) -> None:
+    def test_rejects_blank_worker_id(self) -> None:
         with self.assertRaises(ValueError):
             run_demo.run_demo(
                 server_base_url="http://127.0.0.1:18082",
-                worker_id=WORKER_ID.upper(),
+                worker_id=" ",
                 request_timeout_seconds=2,
                 wait_timeout_millis=1_000,
             )

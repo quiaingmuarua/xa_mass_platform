@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
@@ -73,21 +72,57 @@ final class WorkerDeliveryProtocolTest {
     }
 
     @Test
-    void bindHasStableWireAndRoundTrips() {
-        WorkerConnectionBind bind = new WorkerConnectionBind(MESSAGE_ID);
-        String encoded = codec.encodeWorkerConnectionBind(bind);
-
+    void connectionControlEventCodesAreStable() {
         assertEquals(
-                "{\"workerId\":\"" + MESSAGE_ID + "\"}",
-                encoded
+                "worker.connection.identify",
+                WorkerDeliveryProtocol
+                        .WORKER_CONNECTION_IDENTIFY_EVENT_CODE
         );
-        assertEquals(bind, codec.decodeWorkerConnectionBind(encoded));
-        assertNull(codec.decodeWorkerConnectionBind(
-                "{\"workerId\":\"" + MESSAGE_ID + "\",\"extra\":true}"
-        ));
-        assertNull(codec.decodeWorkerConnectionBind(
-                "{\"workerId\":\"not-a-uuid\"}"
-        ));
+        assertEquals(
+                "worker.connection.close",
+                WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE
+        );
+    }
+
+    @Test
+    void connectionControlUsesExistingResultAndCommandWire() {
+        WorkerResult identity = new WorkerResult(
+                MESSAGE_ID,
+                ADAPTER,
+                WorkerDeliveryProtocol
+                        .WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                "200",
+                "3d813cbb-47fb-4ea8-a5be-6bf4c4a99089",
+                ""
+        );
+        assertEquals(
+                "{\"dst\":\"ADAPTER\",\"forward\":\"\","
+                        + "\"messageId\":\"" + MESSAGE_ID + "\","
+                        + "\"messageType\":\"worker.connection.identify\","
+                        + "\"outcomeCode\":\"200\","
+                        + "\"payload\":\"3d813cbb-47fb-4ea8-a5be-"
+                        + "6bf4c4a99089\"}",
+                codec.encodeWorkerResult(identity)
+        );
+
+        WorkerCommand close = new WorkerCommand(
+                MESSAGE_ID,
+                ADAPTER,
+                WORKER,
+                WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE,
+                1_234_567_890L,
+                "null",
+                ""
+        );
+        assertEquals(
+                "{\"dst\":\"WORKER\","
+                        + "\"executeBeforeMillis\":1234567890,"
+                        + "\"forward\":\"\",\"messageId\":\""
+                        + MESSAGE_ID + "\","
+                        + "\"messageType\":\"worker.connection.close\","
+                        + "\"payload\":\"null\",\"src\":\"ADAPTER\"}",
+                codec.encodeWorkerCommand(close)
+        );
     }
 
     @Test

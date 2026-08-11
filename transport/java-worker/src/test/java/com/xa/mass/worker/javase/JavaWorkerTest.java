@@ -1,5 +1,7 @@
 package com.xa.mass.worker.javase;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -13,6 +15,8 @@ import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +42,7 @@ import okhttp3.WebSocketListener;
 class JavaWorkerTest {
 
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
 
     private MockWebServer server;
     private JavaWorker worker;
@@ -218,10 +222,19 @@ class JavaWorkerTest {
                                  StandardCharsets.UTF_8
                          )
                  )) {
-                Map<String, Object> connectionBind = Jsons.parseObject(
-                        reader.readLine()
+                WorkerResult identityFrame = new WorkerDeliveryCodec()
+                        .decodeWorkerResult(
+                                reader.readLine()
+                        );
+                assertNotNull(identityFrame);
+                assertEquals(ADAPTER, identityFrame.dst());
+                assertEquals(
+                        WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                        identityFrame.messageType()
                 );
-                assertEquals(WORKER_ID, connectionBind.get("workerId"));
+                assertEquals("200", identityFrame.outcomeCode());
+                assertEquals(WORKER_ID, identityFrame.payload());
+                assertEquals("", identityFrame.forward());
             }
         }
     }

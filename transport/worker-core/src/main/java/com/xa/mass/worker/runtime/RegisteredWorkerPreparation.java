@@ -2,8 +2,6 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -119,7 +117,7 @@ public final class RegisteredWorkerPreparation
     }
 
     private static String requireWorkerId(String value) {
-        return new WorkerConnectionBind(value).workerId();
+        return requireNonBlank(value, "workerId");
     }
 
     private static Map<String, Object> immutableProperties(

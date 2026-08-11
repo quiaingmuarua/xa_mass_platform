@@ -1,7 +1,6 @@
 package com.xa.mass.integration.workercapability;
 
 import java.util.Map;
-import java.util.UUID;
 
 final class WorkerIdentityRegistrationClient {
 
@@ -36,18 +35,10 @@ final class WorkerIdentityRegistrationClient {
                 "workerIdentity.register"
         );
         Object value = response.body().get("workerId");
-        if (!(value instanceof String)) {
+        if (!(value instanceof String) || ((String) value).isBlank()) {
             throw invalidWorkerId();
         }
-        String workerId = (String) value;
-        try {
-            if (!UUID.fromString(workerId).toString().equals(workerId)) {
-                throw invalidWorkerId();
-            }
-        } catch (IllegalArgumentException error) {
-            throw invalidWorkerId();
-        }
-        return workerId;
+        return (String) value;
     }
 
     private static IllegalStateException invalidWorkerId() {

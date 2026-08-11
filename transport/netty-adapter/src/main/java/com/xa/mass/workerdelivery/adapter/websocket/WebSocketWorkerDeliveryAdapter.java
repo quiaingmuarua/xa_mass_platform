@@ -8,7 +8,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandLoop;
-import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -53,7 +52,7 @@ public final class WebSocketWorkerDeliveryAdapter
     private final NettyWorkerConnectionRegistry connections;
     private final WorkerCommandLoop commandLoop;
     private final WorkerResultLoop resultLoop;
-    private final WorkerResultPayloadHandler resultHandler;
+    private final BoundedWorkerResultQueue resultQueue;
     private final WorkerDeliveryGatewayClient gateway;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
@@ -110,9 +109,7 @@ public final class WebSocketWorkerDeliveryAdapter
         this.sendTimeLimit = sendTimeLimit;
         this.shutdownTimeout = shutdownTimeout;
         connections = new NettyWorkerConnectionRegistry(codec);
-        BoundedWorkerResultQueue resultQueue =
-                new BoundedWorkerResultQueue(resultQueueCapacity);
-        resultHandler = new WorkerResultPayloadHandler(resultQueue);
+        resultQueue = new BoundedWorkerResultQueue(resultQueueCapacity);
         WorkerDeliveryGatewayClient requiredGateway =
                 Objects.requireNonNull(gateway, "gateway");
         this.gateway = requiredGateway;
@@ -309,9 +306,10 @@ public final class WebSocketWorkerDeliveryAdapter
                                 .addLast(new WorkerWebSocketHandler(
                                         connections,
                                         codec,
-                                        resultHandler,
+                                        resultQueue,
                                         gateway,
                                         adapterId,
+                                        sendTimeLimit,
                                         () -> state
                                                 == WorkerDeliveryAdapterState
                                                 .RUNNING

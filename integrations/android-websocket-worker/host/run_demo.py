@@ -95,9 +95,8 @@ def run_demo(
     request_timeout_seconds: float,
     wait_timeout_millis: int,
 ) -> dict[str, Any]:
-    canonical_worker_id = str(uuid.UUID(worker_id))
-    if canonical_worker_id != worker_id:
-        raise ValueError("worker ID must be a canonical UUID")
+    if not isinstance(worker_id, str) or not worker_id.strip():
+        raise ValueError("worker ID must be non-blank")
     if wait_timeout_millis <= 0 or wait_timeout_millis > 60_000:
         raise ValueError("wait timeout must be in 1..60000 milliseconds")
 
@@ -144,7 +143,7 @@ def run_demo(
                     "createdAtMillis": int(time.time() * 1000),
                     "payload": {},
                     "allocationRule": {
-                        "workerId": {"$eq": canonical_worker_id}
+                        "workerId": {"$eq": worker_id}
                     },
                 },
                 "waitTimeoutMillis": wait_timeout_millis,
@@ -169,7 +168,7 @@ def run_demo(
             "taskId": task_id,
             "messageId": message_id,
             "workerGroupId": WORKER_GROUP_ID,
-            "workerId": canonical_worker_id,
+            "workerId": worker_id,
             "eventCode": EVENT_CODE,
             "result": result,
         }

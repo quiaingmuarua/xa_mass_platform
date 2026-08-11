@@ -1,7 +1,5 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-
 import java.net.URI;
 import java.util.Objects;
 
@@ -14,7 +12,7 @@ public final class PreparedWorker {
     private final URI endpointUri;
 
     public PreparedWorker(String workerId, URI endpointUri) {
-        this.workerId = new WorkerConnectionBind(workerId).workerId();
+        this.workerId = requireNonBlank(workerId, "workerId");
         this.endpointUri = requireEndpointUri(endpointUri);
     }
 
@@ -32,6 +30,13 @@ public final class PreparedWorker {
             throw new IllegalArgumentException(
                     "endpointUri must be an absolute network URI"
             );
+        }
+        return value;
+    }
+
+    private static String requireNonBlank(String value, String name) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(name + " must be non-blank");
         }
         return value;
     }

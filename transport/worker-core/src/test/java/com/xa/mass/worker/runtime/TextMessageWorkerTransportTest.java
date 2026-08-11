@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 class TextMessageWorkerTransportTest {
 
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
     private static final WorkerDeliveryCodec CODEC =
             new WorkerDeliveryCodec();
 
@@ -66,12 +67,49 @@ class TextMessageWorkerTransportTest {
 
         assertEquals(2, executions.get());
         assertTrue(client.closeReasons.isEmpty());
-        assertEquals(WORKER_ID, CODEC.decodeWorkerConnectionBind(
-                client.sent.get(0)
-        ).workerId());
+        assertIdentity(client.sent.get(0));
         assertEquals(id("after-bind"), CODEC.decodeWorkerResult(
                 client.sent.get(1)
         ).messageId());
+    }
+
+    @Test
+    void everyPhysicalOpenSendsFreshIdentityResult() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> Optional.empty(),
+                new RecordingListener()
+        );
+        transport.start();
+
+        client.open();
+        client.open();
+
+        WorkerResult first = identity(client.sent.get(0));
+        WorkerResult second = identity(client.sent.get(1));
+        assertNotEquals(first.messageId(), second.messageId());
+        assertEquals(WORKER_ID, first.payload());
+        assertEquals(WORKER_ID, second.payload());
+    }
+
+    @Test
+    void rejectedIdentitySendClosesCurrentConnectionForReconnect() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> Optional.empty(),
+                new RecordingListener()
+        );
+        transport.start();
+        client.acceptSend = false;
+
+        client.open();
+
+        assertEquals(
+                List.of(TextMessageClient.CloseReason.SEND_FAILURE),
+                client.closeReasons
+        );
     }
 
     @Test
@@ -226,6 +264,125 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
+    void adapterCloseTerminatesWithoutDispatchOrResult() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        AtomicInteger executions = new AtomicInteger();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.of(result(command));
+                },
+                listener
+        );
+        transport.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(closeCommand("null")));
+
+        assertEquals(0, executions.get());
+        assertEquals(1, client.sent.size());
+        assertEquals(1, client.closeCalls.get());
+        assertEquals(1, listener.terminations.get());
+    }
+
+    @Test
+    void adapterClosePayloadDoesNotEnterBusinessDispatcher() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> {
+                    throw new AssertionError(
+                            "Connection close must not enter dispatcher"
+                    );
+                },
+                listener
+        );
+        transport.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(closeCommand("{}")));
+
+        assertEquals(1, client.sent.size());
+        assertEquals(1, client.closeCalls.get());
+        assertEquals(1, listener.terminations.get());
+    }
+
+    @Test
+    void expiredAdapterCloseIsDroppedWithoutDispatch() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> {
+                    throw new AssertionError(
+                            "Connection close must not enter dispatcher"
+                    );
+                },
+                listener
+        );
+        transport.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
+                id("expired-adapter-close"),
+                WorkerMessageEndpoint.ADAPTER,
+                WorkerMessageEndpoint.WORKER,
+                "worker.connection.close",
+                1L,
+                "null",
+                ""
+        )));
+
+        assertEquals(1, client.sent.size());
+        assertEquals(0, client.closeCalls.get());
+        assertEquals(0, listener.terminations.get());
+    }
+
+    @Test
+    void sameEventFromTaskAndOtherAdapterEventsAreDispatchedNormally() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        RecordingListener listener = new RecordingListener();
+        AtomicInteger executions = new AtomicInteger();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.of(result(command));
+                },
+                listener
+        );
+        transport.start();
+        client.open();
+
+        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
+                id("task-close"),
+                WorkerMessageEndpoint.TASK,
+                WorkerMessageEndpoint.WORKER,
+                "worker.connection.close",
+                System.currentTimeMillis() + 60_000,
+                "null",
+                "forward"
+        )));
+        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
+                id("adapter-inspect"),
+                WorkerMessageEndpoint.ADAPTER,
+                WorkerMessageEndpoint.WORKER,
+                "adapter.inspect",
+                System.currentTimeMillis() + 60_000,
+                "null",
+                ""
+        )));
+
+        assertEquals(2, executions.get());
+        assertEquals(3, client.sent.size());
+        assertEquals(0, client.closeCalls.get());
+        assertEquals(0, listener.terminations.get());
+    }
+
+    @Test
     void stopDropsResultFromAlreadyStartedHandler() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -354,6 +511,18 @@ class TextMessageWorkerTransportTest {
         );
     }
 
+    private static WorkerCommand closeCommand(String payload) {
+        return new WorkerCommand(
+                id("adapter-close"),
+                WorkerMessageEndpoint.ADAPTER,
+                WorkerMessageEndpoint.WORKER,
+                "worker.connection.close",
+                System.currentTimeMillis() + 60_000,
+                payload,
+                ""
+        );
+    }
+
     private static String id(String value) {
         return UUID.nameUUIDFromBytes(
                 value.getBytes(StandardCharsets.UTF_8)
@@ -369,6 +538,24 @@ class TextMessageWorkerTransportTest {
                 "{\"value\":\"hello\"}",
                 command.forward()
         );
+    }
+
+    private static void assertIdentity(String encoded) {
+        identity(encoded);
+    }
+
+    private static WorkerResult identity(String encoded) {
+        WorkerResult result = CODEC.decodeWorkerResult(encoded);
+        UUID.fromString(result.messageId());
+        assertEquals(WorkerMessageEndpoint.ADAPTER, result.dst());
+        assertEquals(
+                "worker.connection.identify",
+                result.messageType()
+        );
+        assertEquals("200", result.outcomeCode());
+        assertEquals(WORKER_ID, result.payload());
+        assertEquals("", result.forward());
+        return result;
     }
 
     private static void awaitLatch(CountDownLatch latch) {

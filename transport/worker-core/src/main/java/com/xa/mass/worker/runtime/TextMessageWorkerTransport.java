@@ -1,15 +1,21 @@
 package com.xa.mass.worker.runtime;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Runs Worker Delivery text protocol over one prepared endpoint.
@@ -33,18 +39,17 @@ final class TextMessageWorkerTransport
         CLOSED
     }
 
-    private static final System.Logger LOGGER = System.getLogger(
+    private static final Logger LOGGER = Logger.getLogger(
             TextMessageWorkerTransport.class.getName()
     );
 
     private final TextMessageClient client;
-    private final WorkerConnectionBind bind;
+    private final String workerId;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandDispatcher;
     private final Listener listener;
 
     private State state = State.NEW;
-    private boolean bound;
     private boolean terminationNotified;
     private boolean clientClosed;
     private Throwable terminationFailure;
@@ -56,7 +61,7 @@ final class TextMessageWorkerTransport
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");
-        this.bind = new WorkerConnectionBind(workerId);
+        this.workerId = requireNonBlank(workerId, "workerId");
         this.commandDispatcher = Objects.requireNonNull(
                 commandDispatcher,
                 "commandDispatcher"
@@ -89,14 +94,13 @@ final class TextMessageWorkerTransport
     @Override
     public void onOpen() {
         synchronized (this) {
-            bound = false;
             if (state != State.RUNNING) {
                 client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
                 return;
             }
         }
 
-        Throwable failure = sendBind();
+        Throwable failure = sendIdentity();
         if (failure != null) {
             closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             rethrowError(failure);
@@ -105,7 +109,6 @@ final class TextMessageWorkerTransport
 
         synchronized (this) {
             if (state == State.RUNNING) {
-                bound = true;
                 return;
             }
         }
@@ -122,6 +125,13 @@ final class TextMessageWorkerTransport
                         "command.decode",
                         null
                 );
+                return;
+            }
+            if (isConnectionClose(command)) {
+                if (System.currentTimeMillis()
+                        < command.executeBeforeMillis()) {
+                    requestTermination(null, true);
+                }
                 return;
             }
 
@@ -166,17 +176,24 @@ final class TextMessageWorkerTransport
                 return;
             }
             state = State.CLOSED;
-            bound = false;
         }
         closeClientQuietly();
     }
 
-    private Throwable sendBind() {
+    private Throwable sendIdentity() {
         try {
-            return client.send(codec.encodeWorkerConnectionBind(bind))
+            WorkerResult identity = new WorkerResult(
+                    UUID.randomUUID().toString(),
+                    ADAPTER,
+                    WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                    "200",
+                    workerId,
+                    ""
+            );
+            return client.send(codec.encodeWorkerResult(identity))
                     ? null
                     : new IllegalStateException(
-                            "Worker connection bind was not accepted"
+                            "Worker connection identity was not accepted"
                     );
         } catch (Throwable failure) {
             return failure;
@@ -197,7 +214,6 @@ final class TextMessageWorkerTransport
                 state = State.TERMINATING;
                 terminationFailure = failure;
             }
-            bound = false;
         }
         if (closeClient) {
             closeClientQuietly();
@@ -224,7 +240,6 @@ final class TextMessageWorkerTransport
             if (state != State.RUNNING) {
                 return;
             }
-            bound = false;
         }
         client.closeCurrent(reason);
     }
@@ -243,14 +258,16 @@ final class TextMessageWorkerTransport
             RuntimeException failure
     ) {
         LOGGER.log(
-                System.Logger.Level.WARNING,
+                Level.WARNING,
                 "errorCode={0} operation={1} workerId={2} failureType={3}",
-                errorCode.code(),
-                operation,
-                bind.workerId(),
-                failure == null
-                        ? "none"
-                        : failure.getClass().getSimpleName()
+                new Object[]{
+                        errorCode.code(),
+                        operation,
+                        workerId,
+                        failure == null
+                                ? "none"
+                                : failure.getClass().getSimpleName()
+                }
         );
     }
 
@@ -266,6 +283,20 @@ final class TextMessageWorkerTransport
         } catch (RuntimeException ignored) {
             // Terminal notification must not depend on network teardown.
         }
+    }
+
+    private static boolean isConnectionClose(WorkerCommand command) {
+        return command.src() == ADAPTER
+                && WORKER_CONNECTION_CLOSE_EVENT_CODE.equals(
+                command.messageType()
+        );
+    }
+
+    private static String requireNonBlank(String value, String name) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(name + " must be non-blank");
+        }
+        return value;
     }
 
     private static void rethrowError(Throwable failure) {

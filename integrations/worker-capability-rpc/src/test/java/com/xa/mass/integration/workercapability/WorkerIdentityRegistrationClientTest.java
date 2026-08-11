@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class WorkerIdentityRegistrationClientTest {
 
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
 
     @Test
     void repeatedRegistrationRecoversTheSamePlatformWorkerId()
@@ -63,10 +63,10 @@ class WorkerIdentityRegistrationClientTest {
     }
 
     @Test
-    void rejectsNonCanonicalWorkerId() throws Exception {
+    void rejectsBlankWorkerId() throws Exception {
         try (TestServer server = TestServer.start(
                 200,
-                Jsons.toJson(Map.of("workerId", "worker-1")),
+                Jsons.toJson(Map.of("workerId", " ")),
                 new AtomicInteger(),
                 new AtomicReference<>()
         )) {

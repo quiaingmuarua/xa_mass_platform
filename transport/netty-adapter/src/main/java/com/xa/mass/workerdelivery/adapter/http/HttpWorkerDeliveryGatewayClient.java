@@ -150,20 +150,27 @@ public final class HttpWorkerDeliveryGatewayClient
                 );
             }
             if (response.statusCode() != 204) {
-                throw response.statusCode() >= 500
-                        ? statusFailure(
-                                operation,
-                                "Worker route verification",
-                                response.statusCode()
-                        )
-                        : new WorkerDeliveryAdapterException(
-                                WorkerDeliveryAdapterErrorCode
-                                        .GATEWAY_PROTOCOL_ERROR,
-                                operation,
-                                "Worker route verification failed with HTTP "
-                                        + response.statusCode(),
-                                null
-                        );
+                int statusCode = response.statusCode();
+                if (statusCode >= 500) {
+                    throw statusFailure(
+                            operation,
+                            "Worker route verification",
+                            statusCode
+                    );
+                }
+                WorkerDeliveryAdapterErrorCode errorCode =
+                        statusCode >= 400
+                                ? WorkerDeliveryAdapterErrorCode
+                                .WORKER_ROUTE_REJECTED
+                                : WorkerDeliveryAdapterErrorCode
+                                .GATEWAY_PROTOCOL_ERROR;
+                throw new WorkerDeliveryAdapterException(
+                        errorCode,
+                        operation,
+                        "Worker route verification failed with HTTP "
+                                + statusCode,
+                        null
+                );
             }
             return null;
         });

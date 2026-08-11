@@ -114,10 +114,6 @@ class KernelOwnerContractManifestTest {
                     WorkerDeliveryProtocol.WorkerCommand.class
             ),
             Map.entry(
-                    "WorkerConnectionBind",
-                    WorkerDeliveryProtocol.WorkerConnectionBind.class
-            ),
-            Map.entry(
                     "WorkerDeclaration",
                     WorkerRuntime.WorkerDeclaration.class
             ),

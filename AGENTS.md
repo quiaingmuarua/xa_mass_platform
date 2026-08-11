@@ -28,15 +28,17 @@ Status: current repository handoff.
   WebSocket connection. It is not a Kernel owner, Server profile, Adapter,
   plugin SPI, or independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
-  WorkerConnectionBind/WorkerCommand/WorkerResult contract shared by Server,
-  Adapter, and Worker. Long-lived transports send workerId-only Bind first and
-  then exchange direct command/result JSON; there is no generic
-  connection-message envelope.
+  WorkerCommand/WorkerResult contract shared by Server, Adapter, and Worker.
+  Long-lived transports first send an Adapter-directed identity Result and
+  then exchange direct command/result JSON; there is no third connection DTO
+  or generic connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded Command/Result queues, and independent Netty
-  WebSocket/Socket listeners. Worker result payloads remain opaque until
-  Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
+  WebSocket/Socket listeners. Adapter-directed payloads are consumed locally;
+  only bound TASK results with Worker-owned outcomes enter the Result queue,
+  preserving their original JSON.
+  It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
   Polling, `WorkerPreparation`, the two-state `WorkerRunController`, single-run
@@ -46,7 +48,7 @@ Status: current repository handoff.
   Client factory, immutable reconnect policy, and the threadless reconnect
   helper still consumed by the Java line-Socket Client.
   The Client owns concrete networking and transparent reconnect, the Transport
-  owns Bind/Command/Result protocol, and `WorkerRunController` owns only the
+  owns identity/Command/Result protocol, and `WorkerRunController` owns only the
   `RUNNING/STOPPED` run lifecycle. Core submits lifecycle work to a
   platform-injected Control Executor but creates and closes no thread, Executor,
   or Scheduler and contains no concrete network or platform implementation.
@@ -99,8 +101,10 @@ tag.
   cross-module exception base or move runtime exceptions into a wire contract.
   Keep exceptions to `errorCode + owner.method operation + message + cause`.
   Complete execution context belongs at log and tracing call sites.
-- Use JDK `System.Logger` directly. Log numeric owner error codes, operation,
-  and safe identifiers, never opaque Worker payload or result context.
+- Use JDK `System.Logger` directly in JVM-only modules. Android-consumed Java
+  modules use `java.util.logging` because Android 13 does not provide
+  `System.Logger`. Log numeric owner error codes, operation, and safe
+  identifiers, never opaque Worker payload or result context.
 - Do not add bridges, compatibility aliases, mirrored DTOs, or speculative
   modules.
 - Keep score values opaque outside their owner operations.
@@ -131,10 +135,15 @@ tag.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
-  connections, and bounded Command/Result queues. Worker results may be
-  decoded only to enforce the `200` or Worker-owned `3...` ingress boundary.
-  Their
-  encoded JSON, payload, and forward context must not be rebuilt or interpreted.
+  connections, and bounded Command/Result queues. Each Channel Handler owns
+  its `UNBOUND/VERIFYING/BOUND` phase, strict WorkerResult decode, destination
+  routing, and physical backpressure. Adapter-directed results are consumed by
+  the fixed internal Dispatcher. Only bound TASK results using `200` or
+  Worker-owned `3...` may enter the Result queue, with encoded JSON, payload,
+  and forward context unchanged. SYSTEM and invalid bound input are logged and
+  dropped; invalid unbound input and a full or closed Result queue physically
+  close the Channel. Physical close is reconnectable network evidence; only
+  `ADAPTER/worker.connection.close` terminates the current Worker run.
   Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. Its private
   HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
@@ -153,8 +162,9 @@ tag.
   observations invoked outside the lifecycle state lock; `snapshot()` is
   authoritative and notifications may repeat. `WorkerRunController` does not
   accept or route Worker commands. The single-run Transport owns inbound
-  WorkerCommand decoding, connection Bind, synchronous
-  `WorkerCommandExecutor` invocation, one-shot WorkerResult send, and
+  Adapter identity Result emission, WorkerCommand decoding, synchronous
+  `WorkerCommandExecutor` invocation, one-shot WorkerResult send, direct
+  `ADAPTER/worker.connection.close` termination without a Result, and
   exact-once terminal notification to `WorkerRunController`. It creates no
   Command queue, execution task, in-flight registry, or Result cache. One
   Client's ordered callback lane serializes its Commands; separate Client
@@ -164,7 +174,8 @@ tag.
   lifecycle layer.
   `WorkerCommandDispatcher.forWorker` exclusively composes the effective
   immutable registry from Core built-ins followed by Host Definition
-  extensions. The Core built-in set is currently empty. Duplicate
+  extensions. The Core built-in set is currently empty; connection-close is a
+  Transport lifecycle instruction, not a business Definition. Duplicate
   `(src,eventCode)` keys fail assembly; Transports receive an already assembled
   `WorkerCommandExecutor` and must not accept Definition collections.
   `TextMessageClient` alone owns transient
@@ -234,7 +245,7 @@ tag.
   verification, which are separate from Kernel Worker Runtime. It must not
   implement Handlers, parse
   Scenario Worker definitions, derive Worker IDs inside workerassembly, or
-  derive Adapter URIs, or own concrete Worker construction, connection Bind frame
+  derive Adapter URIs, or own concrete Worker construction, connection identity frame
   emission,
   connection waiting, generic class-name plugins, Redis bypass,
   Adapter scheduling, connection selection, queue
@@ -315,7 +326,8 @@ ServerWorkerAssemblyConfiguration
 scenario_workers_jvm
   -> strict Worker JSON parsing and internal Definition resolution
   -> public Worker Register and Bind plus platform-issued WorkerId recovery
-  -> WorkerConnectionBind(workerId) frame through the returned Adapter URI
+  -> Adapter-directed worker.connection.identify Result through the returned
+     Adapter URI
   -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
   -> one JavaWorkerManager per WorkerGroup -> fixed JavaWorker replicas
@@ -325,8 +337,10 @@ transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-connection route verification through Server HTTP
   -> per-endpoint Command/Result loops and current connection registry
-  -> direct WorkerCommand/WorkerResult transport, unchanged encoded Worker
-     result forwarding, and Adapter-owned error generation
+  -> per-Channel binding-phase and Worker Result ingress routing
+  -> fixed Adapter-local identity Result dispatch
+  -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
+     generation
   -> independent Netty WebSocket and Socket listeners
 ```
 

@@ -45,7 +45,8 @@ changing Worker execution.
 
 The Demo capability contributes one business Definition extension,
 `android.demo.state.read`. It is not the complete Worker registry; Core owns
-the effective immutable registry and currently has no built-in events.
+the effective immutable registry, whose built-in set is currently empty.
+Adapter-directed connection close is handled by Transport.
 
 This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
 Worker when the application process is created. The Application directly owns
@@ -131,7 +132,7 @@ Wait for `RUNNING` and a displayed Worker ID, then run one real Task RPC:
 
 ```powershell
 .\gradlew.bat :integrations:android-websocket-worker:runDemoRpc `
-  -PworkerId=<canonical-worker-uuid>
+  -PworkerId=<worker-id>
 ```
 
 The Gradle task launches the small standard-library Python host driver. The

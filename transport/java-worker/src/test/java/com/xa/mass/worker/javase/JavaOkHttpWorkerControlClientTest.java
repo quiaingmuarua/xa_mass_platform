@@ -143,17 +143,18 @@ class JavaOkHttpWorkerControlClientTest {
     }
 
     @Test
-    void rejectsInvalidRegistrationAndBindingResponses() {
+    void acceptsOpaqueNonBlankWorkerIdAndRejectsInvalidBindingResponse()
+            throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
                 .body("{\"workerId\":\"worker-1\"}")
                 .build());
-        assertThrows(
-                WorkerException.class,
-                () -> client.register(
-                        "group",
-                        Map.of("clientWorkerKey", "installation"),
-                        Duration.ofSeconds(2)
+        assertEquals(
+                "worker-1",
+                client.register(
+                    "group",
+                    Map.of("clientWorkerKey", "installation"),
+                    Duration.ofSeconds(2)
                 )
         );
 
@@ -168,6 +169,23 @@ class JavaOkHttpWorkerControlClientTest {
                         "group",
                         WORKER_ID,
                         WorkerTransportType.WEBSOCKET,
+                        Map.of("clientWorkerKey", "installation"),
+                        Duration.ofSeconds(2)
+                )
+        );
+    }
+
+    @Test
+    void rejectsBlankRegistrationWorkerId() {
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workerId\":\" \"}")
+                .build());
+
+        assertThrows(
+                WorkerException.class,
+                () -> client.register(
+                        "group",
                         Map.of("clientWorkerKey", "installation"),
                         Duration.ofSeconds(2)
                 )

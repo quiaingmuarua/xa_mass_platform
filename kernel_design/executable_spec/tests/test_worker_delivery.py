@@ -5,15 +5,14 @@ from dataclasses import fields
 from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
+    WORKER_CONNECTION_CLOSE_EVENT_CODE,
+    WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
     WorkerCommand,
-    WorkerConnectionBind,
     WorkerMessageEndpoint,
     WorkerResult,
-    decode_worker_connection_bind,
     decode_worker_command,
     decode_worker_result,
     encode_worker_command,
-    encode_worker_connection_bind,
     encode_worker_result,
 )
 
@@ -21,23 +20,43 @@ from kernel_design.executable_spec import (
 class WorkerDeliveryProtocolTest(unittest.TestCase):
     MESSAGE_ID = str(uuid5(NAMESPACE_DNS, "worker-delivery-message"))
 
-    def test_connection_bind_is_minimal_and_strict(self) -> None:
-        bind = WorkerConnectionBind(worker_id=self.MESSAGE_ID)
-        encoded = encode_worker_connection_bind(bind)
-
+    def test_connection_control_event_codes_are_stable(self) -> None:
         self.assertEqual(
-            '{"workerId":"' + self.MESSAGE_ID + '"}',
-            encoded,
+            "worker.connection.identify",
+            WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
         )
-        self.assertEqual(bind, decode_worker_connection_bind(encoded))
-        self.assertIsNone(
-            decode_worker_connection_bind(
-                '{"workerId":"' + self.MESSAGE_ID + '","extra":true}'
-            )
+        self.assertEqual(
+            "worker.connection.close",
+            WORKER_CONNECTION_CLOSE_EVENT_CODE,
         )
-        self.assertIsNone(
-            decode_worker_connection_bind('{"workerId":"not-a-uuid"}')
+
+    def test_connection_control_uses_existing_result_and_command_wire(
+        self,
+    ) -> None:
+        identity = WorkerResult(
+            message_id=self.MESSAGE_ID,
+            dst=WorkerMessageEndpoint.ADAPTER,
+            message_type=WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+            outcome_code="200",
+            payload="3d813cbb-47fb-4ea8-a5be-6bf4c4a99089",
+            forward="",
         )
+        self.assertEqual(identity, decode_worker_result(
+            encode_worker_result(identity)
+        ))
+
+        close = WorkerCommand(
+            message_id=self.MESSAGE_ID,
+            src=WorkerMessageEndpoint.ADAPTER,
+            dst=WorkerMessageEndpoint.WORKER,
+            message_type=WORKER_CONNECTION_CLOSE_EVENT_CODE,
+            execute_before_millis=123_456,
+            payload="null",
+            forward="",
+        )
+        self.assertEqual(close, decode_worker_command(
+            encode_worker_command(close)
+        ))
 
     def test_public_dto_shapes_are_direction_specific(self) -> None:
         self.assertEqual(

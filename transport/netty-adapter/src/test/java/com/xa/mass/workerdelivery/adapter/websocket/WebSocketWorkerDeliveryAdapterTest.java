@@ -1,5 +1,9 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,7 +17,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -33,8 +36,7 @@ import org.junit.jupiter.api.Test;
 
 class WebSocketWorkerDeliveryAdapterTest {
 
-    private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+    private static final String WORKER_ID = "server-issued-worker-id";
 
     @Test
     void twoAdaptersOwnDistinctPortsAndIsolateTheSameWorkerId()
@@ -78,8 +80,8 @@ class WebSocketWorkerDeliveryAdapterTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitBound(first);
-            awaitBound(second);
+            awaitActive(first);
+            awaitActive(second);
 
             WorkerCommand firstCommand = command(
                     "a5e9e10d-f78b-469e-93ab-864b49c189c1"
@@ -219,7 +221,7 @@ class WebSocketWorkerDeliveryAdapterTest {
     }
 
     @Test
-    void requiresOneBindAndRejectsTheOldIdentityPath()
+    void requiresIdentityResultAndRejectsNonIdentityFirstMessage()
             throws Exception {
         int port = availablePort();
         WebSocketWorkerDeliveryAdapter adapter = adapter(
@@ -252,21 +254,18 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
 
-            Probe bound = new Probe(WORKER_ID);
-            WebSocket boundSocket = connect(port, bound);
-            assertThat(bound.opened.await(
+            Probe identified = new Probe(WORKER_ID);
+            WebSocket identifiedSocket = connect(port, identified);
+            assertThat(identified.opened.await(
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitBound(adapter);
-            boundSocket.sendText(
-                    encodeBind(codec, WORKER_ID),
+            awaitActive(adapter);
+            identifiedSocket.sendText(
+                    encodeIdentity(codec, WORKER_ID),
                     true
             ).get(2, TimeUnit.SECONDS);
-            assertThat(bound.closed.await(
-                    2,
-                    TimeUnit.SECONDS
-            )).isTrue();
+            assertThat(adapter.activeConnectionCount()).isEqualTo(1);
 
             Probe oldPath = new Probe();
             assertThatThrownBy(() -> HttpClient.newHttpClient()
@@ -291,50 +290,168 @@ class WebSocketWorkerDeliveryAdapterTest {
     }
 
     @Test
-    void retainsOnePendingResultUntilBindingVerificationCompletes()
-            throws Exception {
+    void hardRouteRejectionSendsCloseCommandThenCloses() throws Exception {
         int port = availablePort();
-        CompletableFuture<Void> bindingResponse = new CompletableFuture<>();
-        FakeGateway gateway = new FakeGateway(bindingResponse);
+        FakeGateway gateway = new FakeGateway(failedVerification(
+                WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED
+        ));
         WebSocketWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
         );
         adapter.start();
-        WorkerResult result = new WorkerResult(
-                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                TASK,
-                "test.observe",
-                "200",
-                "null",
-                "context"
-        );
-        String encodedResult = new WorkerDeliveryCodec()
-                .encodeWorkerResult(result);
-        Probe probe = new Probe(WORKER_ID, encodedResult);
+        Probe probe = new Probe(WORKER_ID);
         WebSocket socket = connect(port, probe);
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(gateway.bindingVerified.await(
-                    2,
-                    TimeUnit.SECONDS
-            )).isTrue();
+            assertThat(probe.message.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+
+            WorkerCommand close = new WorkerDeliveryCodec()
+                    .decodeWorkerCommand(probe.messages.getFirst());
+            assertThat(close.src()).isEqualTo(ADAPTER);
+            assertThat(close.dst()).isEqualTo(WORKER);
+            assertThat(close.messageType())
+                    .isEqualTo(WORKER_CONNECTION_CLOSE_EVENT_CODE);
+            assertThat(close.payload()).isEqualTo("null");
+            assertThat(close.forward()).isEmpty();
             assertThat(adapter.activeConnectionCount()).isZero();
-            assertThat(gateway.resultAppended.await(
-                    100,
-                    TimeUnit.MILLISECONDS
-            )).isFalse();
+            assertThat(gateway.appendedResults).isEmpty();
+        } finally {
+            socket.abort();
+            adapter.close();
+        }
+    }
 
-            bindingResponse.complete(null);
+    @Test
+    void unavailableRouteVerificationClosesWithoutCommand()
+            throws Exception {
+        int port = availablePort();
+        FakeGateway gateway = new FakeGateway(failedVerification(
+                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE
+        ));
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                gateway
+        );
+        adapter.start();
+        Probe probe = new Probe(WORKER_ID);
+        WebSocket socket = connect(port, probe);
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(probe.messages).isEmpty();
+            assertThat(adapter.activeConnectionCount()).isZero();
+        } finally {
+            socket.abort();
+            adapter.close();
+        }
+    }
 
-            awaitBound(adapter);
+    @Test
+    void boundInvalidResultsAreDroppedAndNextTaskResultIsAccepted()
+            throws Exception {
+        int port = availablePort();
+        FakeGateway gateway = new FakeGateway();
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                gateway
+        );
+        adapter.start();
+        Probe probe = new Probe(WORKER_ID);
+        WebSocket socket = connect(port, probe);
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            awaitActive(adapter);
+
+            send(socket, "{bad-json");
+            send(socket, codec.encodeWorkerResult(result(
+                    TASK,
+                    "test.observe",
+                    "23002",
+                    "context"
+            )));
+            send(socket, codec.encodeWorkerResult(result(
+                    SYSTEM,
+                    "system.observe",
+                    "200",
+                    ""
+            )));
+            send(socket, codec.encodeWorkerResult(result(
+                    ADAPTER,
+                    "adapter.unknown",
+                    "200",
+                    ""
+            )));
+            send(socket, encodeIdentity(codec, WORKER_ID));
+
+            String accepted = codec.encodeWorkerResult(result(
+                    TASK,
+                    "test.observe",
+                    "3302",
+                    "context"
+            ));
+            send(socket, accepted);
+
             assertThat(gateway.resultAppended.await(
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
             assertThat(gateway.appendedResults)
-                    .containsExactly(List.of(encodedResult));
+                    .containsExactly(List.of(accepted));
+            assertThat(gateway.verifiedWorkerIds)
+                    .containsExactly(WORKER_ID);
+            assertThat(adapter.activeConnectionCount()).isEqualTo(1);
+        } finally {
+            socket.abort();
+            adapter.close();
+        }
+    }
+
+    @Test
+    void fullResultQueueClosesTheBoundChannel() throws Exception {
+        int port = availablePort();
+        FakeGateway gateway = new FakeGateway();
+        WebSocketWorkerDeliveryAdapter adapter = new WebSocketWorkerDeliveryAdapter(
+                "websocket-1",
+                gateway,
+                "127.0.0.1",
+                port,
+                Duration.ofMillis(10),
+                100,
+                1000,
+                Duration.ofSeconds(30),
+                1,
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1)
+        );
+        adapter.start();
+        Probe probe = new Probe(WORKER_ID);
+        WebSocket socket = connect(port, probe);
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            awaitActive(adapter);
+            send(socket, codec.encodeWorkerResult(result(
+                    TASK,
+                    "test.observe",
+                    "200",
+                    "context-1"
+            )));
+            send(socket, codec.encodeWorkerResult(result(
+                    TASK,
+                    "test.observe",
+                    "200",
+                    "context-2"
+            )));
+
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(adapter.activeConnectionCount()).isZero();
+            assertThat(gateway.appendedResults).isEmpty();
         } finally {
             socket.abort();
             adapter.close();
@@ -390,7 +507,29 @@ class WebSocketWorkerDeliveryAdapterTest {
                 .get(2, TimeUnit.SECONDS);
     }
 
-    private static void awaitBound(WebSocketWorkerDeliveryAdapter adapter)
+    private static void send(WebSocket socket, String message)
+            throws Exception {
+        socket.sendText(message, true).get(2, TimeUnit.SECONDS);
+    }
+
+    private static WorkerResult result(
+            com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+                    .WorkerMessageEndpoint dst,
+            String messageType,
+            String outcomeCode,
+            String forward
+    ) {
+        return new WorkerResult(
+                java.util.UUID.randomUUID().toString(),
+                dst,
+                messageType,
+                outcomeCode,
+                "null",
+                forward
+        );
+    }
+
+    private static void awaitActive(WebSocketWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -425,18 +564,20 @@ class WebSocketWorkerDeliveryAdapterTest {
                 new CopyOnWriteArrayList<>();
         private final List<List<String>> appendedResults =
                 new CopyOnWriteArrayList<>();
+        private final List<String> verifiedWorkerIds =
+                new CopyOnWriteArrayList<>();
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
-        private final CountDownLatch bindingVerified =
-                new CountDownLatch(1);
-        private final CompletableFuture<Void> bindingResponse;
+        private final CompletableFuture<Void> routeVerificationResponse;
 
         private FakeGateway() {
             this(CompletableFuture.completedFuture(null));
         }
 
-        private FakeGateway(CompletableFuture<Void> bindingResponse) {
-            this.bindingResponse = bindingResponse;
+        private FakeGateway(
+                CompletableFuture<Void> routeVerificationResponse
+        ) {
+            this.routeVerificationResponse = routeVerificationResponse;
         }
 
         @Override
@@ -462,8 +603,8 @@ class WebSocketWorkerDeliveryAdapterTest {
         @Override
         public java.util.concurrent.CompletionStage<Void>
         verifyWorkerRoute(String endpointManagerId, String workerId) {
-            bindingVerified.countDown();
-            return bindingResponse;
+            verifiedWorkerIds.add(workerId);
+            return routeVerificationResponse;
         }
     }
 
@@ -506,7 +647,6 @@ class WebSocketWorkerDeliveryAdapterTest {
     private static final class Probe implements WebSocket.Listener {
 
         private final String workerId;
-        private final String pendingResult;
         private final WorkerDeliveryCodec codec =
                 new WorkerDeliveryCodec();
         private final CountDownLatch opened = new CountDownLatch(1);
@@ -516,17 +656,11 @@ class WebSocketWorkerDeliveryAdapterTest {
         private final StringBuilder fragments = new StringBuilder();
 
         private Probe(String workerId) {
-            this(workerId, null);
-        }
-
-        private Probe(String workerId, String pendingResult) {
             this.workerId = workerId;
-            this.pendingResult = pendingResult;
         }
 
         private Probe() {
             this.workerId = null;
-            this.pendingResult = null;
         }
 
         @Override
@@ -537,15 +671,9 @@ class WebSocketWorkerDeliveryAdapterTest {
                 return;
             }
             CompletionStage<WebSocket> sent = webSocket.sendText(
-                    encodeBind(codec, workerId),
+                    encodeIdentity(codec, workerId),
                     true
             );
-            if (pendingResult != null) {
-                sent = sent.thenCompose(ignored -> webSocket.sendText(
-                        pendingResult,
-                        true
-                ));
-            }
             sent.whenComplete((ignored, error) -> {
                 if (error == null) {
                     opened.countDown();
@@ -581,12 +709,30 @@ class WebSocketWorkerDeliveryAdapterTest {
         }
     }
 
-    private static String encodeBind(
+    private static String encodeIdentity(
             WorkerDeliveryCodec codec,
             String workerId
     ) {
-        return codec.encodeWorkerConnectionBind(
-                new WorkerConnectionBind(workerId)
-        );
+        return codec.encodeWorkerResult(new WorkerResult(
+                "5ca82f99-2398-4927-a814-c88ff47a5466",
+                ADAPTER,
+                WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                "200",
+                workerId,
+                ""
+        ));
+    }
+
+    private static CompletableFuture<Void> failedVerification(
+            WorkerDeliveryAdapterErrorCode errorCode
+    ) {
+        CompletableFuture<Void> failure = new CompletableFuture<>();
+        failure.completeExceptionally(new WorkerDeliveryAdapterException(
+                errorCode,
+                "gateway.verifyWorkerRoute",
+                "Route verification failed",
+                null
+        ));
+        return failure;
     }
 }

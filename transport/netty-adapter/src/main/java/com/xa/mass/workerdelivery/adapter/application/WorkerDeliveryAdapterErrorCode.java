@@ -21,6 +21,10 @@ public enum WorkerDeliveryAdapterErrorCode {
             22002,
             "Worker Delivery Gateway response is invalid"
     ),
+    WORKER_ROUTE_REJECTED(
+            22003,
+            "Worker route was rejected"
+    ),
     DELIVERY_INTERRUPTED(
             23001,
             "Worker command delivery was interrupted"
@@ -28,6 +32,10 @@ public enum WorkerDeliveryAdapterErrorCode {
     COMMAND_EXPIRED(
             23002,
             "Worker command expired before delivery"
+    ),
+    WORKER_MESSAGE_INVALID(
+            23003,
+            "Worker message is invalid"
     );
 
     private final int code;

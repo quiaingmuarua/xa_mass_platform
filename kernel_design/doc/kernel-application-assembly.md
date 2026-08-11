@@ -396,8 +396,8 @@ receives the platform-issued WorkerId and public endpoint URI. The Worker
 Transport knows only that WorkerId, endpoint URI, Worker Delivery contracts,
 and statically provided event definitions. It does not know an endpoint-manager
 ID or import Kernel owners. Polling, WebSocket, and Socket share one serial
-execution core; long-lived transports send a workerId-only connection Bind frame before
-command exchange.
+execution core; long-lived transports first send an Adapter-directed identity
+`WorkerResult` containing workerId before command exchange.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
@@ -407,8 +407,9 @@ bounded local queues. The Server only parses instance configuration, registers c
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers Register and establish Endpoint Binding before connecting; the Bind
 control call carries the complete Worker Properties snapshot. The connection
-Bind frame carries only workerId, and the Adapter asks Server to verify that the
-persisted route points to itself before activating the Channel.
+identity Result carries workerId as payload, and the Adapter asks Server to
+verify that the persisted route points to itself before activating the Channel
+without an ACK.
 KernelApplication does not own or expose connection facts.
 
 The Python Runtime Server remains the Task scheduling command host and

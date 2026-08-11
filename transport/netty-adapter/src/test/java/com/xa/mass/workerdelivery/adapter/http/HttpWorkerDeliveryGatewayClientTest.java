@@ -185,6 +185,20 @@ class HttpWorkerDeliveryGatewayClientTest {
                         ((WorkerDeliveryAdapterException) error.getCause())
                                 .errorCode()
                 ).isEqualTo(
+                        WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED
+                ));
+
+        respond(302, "{}");
+        assertThatThrownBy(() -> client.verifyWorkerRoute(
+                "adapter-1",
+                COMMAND_ID
+        ).toCompletableFuture().join())
+                .isInstanceOf(CompletionException.class)
+                .hasCauseInstanceOf(WorkerDeliveryAdapterException.class)
+                .satisfies(error -> assertThat(
+                        ((WorkerDeliveryAdapterException) error.getCause())
+                                .errorCode()
+                ).isEqualTo(
                         WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR
                 ));
     }

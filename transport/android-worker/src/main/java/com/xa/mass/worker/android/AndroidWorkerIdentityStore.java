@@ -47,12 +47,12 @@ final class AndroidWorkerIdentityStore implements WorkerIdentityStore {
         String workerId = preferences.getString(workerIdKey, null);
         return workerId == null
                 ? Optional.empty()
-                : Optional.of(requireCanonicalWorkerId(workerId));
+                : Optional.of(requireWorkerId(workerId));
     }
 
     @Override
     public synchronized void saveWorkerId(String workerId) {
-        String canonical = requireCanonicalWorkerId(workerId);
+        String resolvedWorkerId = requireWorkerId(workerId);
         validateCoordinate();
         String clientWorkerKey = preferences.getString(clientKeyKey, null);
         if (clientWorkerKey == null || clientWorkerKey.trim().isEmpty()) {
@@ -61,15 +61,18 @@ final class AndroidWorkerIdentityStore implements WorkerIdentityStore {
             );
         }
         String existing = preferences.getString(workerIdKey, null);
-        if (existing != null && !canonical.equals(existing)) {
+        if (existing != null && !resolvedWorkerId.equals(existing)) {
             throw new IllegalStateException(
                     "Android Worker identity cannot be replaced"
             );
         }
-        if (canonical.equals(existing)) {
+        if (resolvedWorkerId.equals(existing)) {
             return;
         }
-        if (!preferences.edit().putString(workerIdKey, canonical).commit()) {
+        if (!preferences.edit().putString(
+                workerIdKey,
+                resolvedWorkerId
+        ).commit()) {
             throw new IllegalStateException(
                     "Unable to persist platform workerId"
             );
@@ -109,18 +112,12 @@ final class AndroidWorkerIdentityStore implements WorkerIdentityStore {
         );
     }
 
-    static String requireCanonicalWorkerId(String value) {
-        try {
-            if (value == null
-                    || !UUID.fromString(value).toString().equals(value)) {
-                throw new IllegalArgumentException();
-            }
-            return value;
-        } catch (IllegalArgumentException error) {
+    static String requireWorkerId(String value) {
+        if (value == null || value.trim().isEmpty()) {
             throw new IllegalStateException(
-                    "Stored workerId is not a canonical UUID",
-                    error
+                    "Stored workerId must be non-blank"
             );
         }
+        return value;
     }
 }

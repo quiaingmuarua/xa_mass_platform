@@ -6,15 +6,16 @@ import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class PollingWorkerTransport implements AutoCloseable {
 
-    private static final System.Logger LOGGER = System.getLogger(
+    private static final Logger LOGGER = Logger.getLogger(
             PollingWorkerTransport.class.getName()
     );
 
@@ -31,7 +32,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
             WorkerCommandExecutor commandExecutor
     ) {
         this.client = requirePresent(client, "client");
-        this.workerId = new WorkerConnectionBind(workerId).workerId();
+        this.workerId = requireNonBlank(workerId, "workerId");
         this.commandExecutor = requirePresent(
                 commandExecutor,
                 "commandExecutor"
@@ -85,11 +86,13 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 if (!closed) {
                     WorkerException failure = classifyRetry(error);
                     LOGGER.log(
-                            System.Logger.Level.WARNING,
+                            Level.WARNING,
                             "errorCode={0} operation={1} message={2}",
-                            failure.errorCode().code(),
-                            failure.operation(),
-                            failure.getMessage()
+                            new Object[]{
+                                    failure.errorCode().code(),
+                                    failure.operation(),
+                                    failure.getMessage()
+                            }
                     );
                     Thread.sleep(pollInterval.toMillis());
                 }
@@ -161,6 +164,13 @@ public final class PollingWorkerTransport implements AutoCloseable {
             throw new IllegalArgumentException(
                     name + " must be present"
             );
+        }
+        return value;
+    }
+
+    private static String requireNonBlank(String value, String name) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(name + " must be non-blank");
         }
         return value;
     }

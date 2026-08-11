@@ -65,6 +65,7 @@ class JavaWorkerArchitectureTest {
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
+        assertFalse(source.contains("UUID.fromString("));
         assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));

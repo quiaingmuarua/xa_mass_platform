@@ -11,7 +11,7 @@ The control and connection vocabulary is deliberately split by Owner:
 | --- | --- | --- |
 | Identity Register | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
 | Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
-| Connection Bind frame | Worker sends only `workerId` to initiate route verification | persistent Endpoint Binding |
+| Connection identity Result | Worker sends `worker.connection.identify` with `workerId` payload to initiate route verification | persistent Endpoint Binding |
 | Route Verification | Server read-only compares the persisted route with the receiving endpoint | authentication or Channel state |
 | Connection Activation | Adapter installs its process-local current Channel | Worker resource, online, or attribute truth |
 | Assignment / Result Fence | Kernel validates lease and opaque Result Routing evidence | connection state |
@@ -84,6 +84,23 @@ execution starts, it does not stop or re-check the deadline.
 
 There is no nested assignment handoff DTO and no generic connection-message
 envelope.
+
+Long-lived connection control uses those same DTOs:
+
+```text
+Worker -> Adapter
+  WorkerResult(dst=ADAPTER, messageType=worker.connection.identify,
+               outcomeCode=200, payload=<workerId>, forward="")
+
+Adapter -> Worker
+  WorkerCommand(src=ADAPTER, dst=WORKER,
+                messageType=worker.connection.close,
+                payload="null", forward="")
+```
+
+Each physical connection uses a new canonical identity `messageId`. The close
+Command is a first-version terminal instruction and carries no reason, sleep
+duration, or retry hint.
 
 ## Task Dispatch
 
@@ -195,19 +212,27 @@ transport routes:
 workerId -> current connection
 ```
 
-WebSocket and line Socket first receive a strict connection Bind:
+WebSocket and line Socket first receive a strict identity `WorkerResult`:
 
 ```json
 {
-  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+  "dst":"ADAPTER",
+  "forward":"",
+  "messageId":"5ca82f99-2398-4927-a814-c88ff47a5466",
+  "messageType":"worker.connection.identify",
+  "outcomeCode":"200",
+  "payload":"server-issued-worker-id"
 }
 ```
 
 For every new connection, Adapter pauses reads and asks Server whether the
 persisted Worker Binding points to this Adapter's endpoint-manager ID. Only a
-successful route verification installs the active Channel. Adapter maintains
-no identity or Binding cache and does not invoke Kernel Worker upsert. Missing,
-conflicting, or unavailable Binding closes the connection.
+successful route verification installs the active Channel; no ACK is sent.
+Adapter maintains no identity or Binding cache and does not invoke Kernel
+Worker upsert. A definite 4xx rejection emits
+`ADAPTER/worker.connection.close` and closes the physical connection after
+flush. Gateway unavailability or 5xx only closes the physical connection, so
+the Worker Client may reconnect to the same Endpoint.
 
 After route verification and connection activation they exchange direct
 protocol JSON:
@@ -217,8 +242,17 @@ Adapter -> Worker : WorkerCommand
 Worker  -> Adapter: WorkerResult
 ```
 
-The Adapter forwards the command unchanged. It does not create messageId,
-change messageType, decode payload, or decode forward.
+The Adapter forwards Task/System commands unchanged. Its fixed local
+Dispatcher consumes Results whose `dst=ADAPTER`; they never enter Server,
+Redis, or Kernel Result Routing. Its built-in registry contains connection
+identity, which activates the Channel. Unknown local events on an established
+connection are logged and dropped. This Dispatcher is not a plugin SPI.
+
+Before identity, malformed or non-identity input closes the physical Channel.
+During asynchronous route verification reads are paused and no input is
+buffered. Once bound, malformed JSON, `SYSTEM`, repeated identity, unknown
+Adapter events, and Worker-originated Adapter `2...` outcomes are logged and
+dropped while the Channel remains usable.
 
 The Adapter keeps consumed commands in a bounded local queue. A command with
 no active connection rotates until the Worker reconnects or the command
@@ -227,12 +261,16 @@ expires. On expiry the Adapter may create
 fields. If a send has started and later fails, delivery is
 `UNKNOWN`; the Adapter must not fabricate rejection evidence.
 
-Worker-originated results are decoded only to enforce `200` or Worker-owned
-`3...`, then their original encoded JSON is queued unchanged.
-Adapter-generated `COMMAND_EXPIRED` uses the
-same result queue. A timed Result Loop batches the queue to Server. There is no
-source split, command/result coupling, ACK, durable Adapter queue, or
-exactly-once promise.
+Only bound `TASK` Worker results using `200` or Worker-owned `3...` are queued,
+and their original encoded JSON is preserved unchanged. A full or closed queue
+drops the current Result and physically closes that Channel. Adapter-generated
+`COMMAND_EXPIRED` uses an Adapter-owned `2...` outcome and enters the same
+queue directly from the Command Loop rather than through Worker ingress. A
+timed Result Loop batches the queue to Server. There is no command/result
+coupling, ACK, durable Adapter queue, or exactly-once promise.
+
+Physical disconnect is a reconnectable network fact. Only
+`ADAPTER/worker.connection.close` instructs the Worker to end its current run.
 
 ## Worker
 
@@ -256,6 +294,13 @@ value.
 Polling submits the direct result through the point API. WebSocket and Socket
 send direct result JSON to the Adapter. A Worker that receives an already
 expired command drops it silently.
+
+The long-connection Transport consumes a non-expired
+`ADAPTER/worker.connection.close` directly and ends the current run without a
+WorkerResult. The control Command never enters the business Definition
+registry. A wrong source or expired close Command does not terminate the run.
+Identity send failure is a physical connection send failure and is handled by
+the Client's existing reconnect budget.
 
 ## Result Routing
 
@@ -284,8 +329,9 @@ operations, decide whether late or duplicate evidence can change state.
 
 - Mailbox consume is destructive; Adapter/Server process failure can lose a
   command before Worker receipt.
-- Worker or Adapter result caches are process-local and can be lost.
-- Network retry can duplicate a WorkerResult.
+- Worker sends each Result once; a failed send is lost. Adapter queues are
+  process-local and can be lost.
+- Adapter batch retry can duplicate a WorkerResult at Server ingress.
 - Result Routing fences converge late and duplicate evidence.
 - Item claim and Worker lease expiry recover missing evidence.
 

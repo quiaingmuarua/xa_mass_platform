@@ -172,18 +172,22 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void resultIngressValidatesButForwardsTheOriginalPayload()
+    void channelHandlersOwnBindingAndResultIngress()
             throws IOException {
         String messageSources = readSources(MESSAGE);
         assertThat(messageSources)
-                .contains("class WorkerResultPayloadHandler")
-                .contains("String encodedWorkerResult")
-                .contains("decodeWorkerResult(encodedWorkerResult)")
-                .contains("resultQueue.offer(encodedWorkerResult)")
+                .contains("public final class AdapterWorkerEventDispatcher")
+                .contains("WorkerResult result")
+                .contains("definitions.get(")
+                .doesNotContain("WorkerResultPayloadHandler")
+                .doesNotContain("WorkerResultHandlingResult")
+                .doesNotContain("boolean identified")
+                .doesNotContain("Consumer<")
+                .doesNotContain("AdapterWorkerEventContext")
+                .doesNotContain("WorkerResultAction")
                 .doesNotContain("encodeWorkerResult")
-                .doesNotContain("AdapterMessageDefinition")
-                .doesNotContain("WorkerConnectionMessage")
                 .doesNotContain("ServiceLoader")
+                .doesNotContain("UUID.fromString(")
                 .doesNotContain("io.netty")
                 .doesNotContain("org.springframework")
                 .doesNotContain("com.xa.mass.server")
@@ -195,12 +199,29 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("WorkerResultSource")
                 .doesNotContain("WorkerConnectionMessage");
 
-        String transportSources =
-                readSources(WEBSOCKET) + readSources(SOCKET);
-        assertThat(transportSources)
-                .contains("decodeWorkerConnectionBind")
-                .contains("verifyWorkerRoute")
-                .contains("resultHandler.handle(")
+        String websocket = readSources(WEBSOCKET);
+        String socket = readSources(SOCKET);
+        for (String transport : java.util.List.of(websocket, socket)) {
+            assertThat(transport)
+                    .contains("enum BindingPhase")
+                    .contains("UNBOUND")
+                    .contains("VERIFYING")
+                    .contains("BOUND")
+                    .contains("decodeWorkerResult(")
+                    .contains("result.dst()")
+                    .contains("resultQueue.offer(encodedResult)")
+                    .contains("verifyWorkerRoute")
+                    .contains("encodeWorkerCommand(command)")
+                    .doesNotContain("WorkerResultPayloadHandler")
+                    .doesNotContain("WorkerResultHandlingResult")
+                    .doesNotContain("workerChannel")
+                    .doesNotContain("boolean verifying")
+                    .doesNotContain("UUID.fromString(");
+        }
+
+        assertThat(websocket + socket)
+                .doesNotContain("WorkerConnection" + "Bind")
+                .doesNotContain("decodeWorkerConnection" + "Bind")
                 .doesNotContain("verifyWorkerBinding")
                 .doesNotContain("connections.bind(")
                 .doesNotContain("connections.unbind(")
@@ -209,6 +230,8 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("AdapterMessageDefinitionManager")
                 .doesNotContain("WorkerConnectionMessage")
                 .doesNotContain("WorkerHelloAdmission")
+                .doesNotContain("AdapterWorkerEventContext")
+                .doesNotContain("WorkerResultAction")
                 .doesNotContain("encodeWorkerResult")
                 .doesNotContain(
                         "private final "

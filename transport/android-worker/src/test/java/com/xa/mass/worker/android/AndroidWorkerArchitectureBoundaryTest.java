@@ -22,6 +22,9 @@ public class AndroidWorkerArchitectureBoundaryTest {
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(project.resolve("src/main/java"));
+        String coreSource = readTree(project.resolve(
+                "../worker-core/src/main/java"
+        ).normalize());
         String assembly = read(project.resolve(
                 "src/main/java/com/xa/mass/worker/android/AndroidWorker.java"
         ));
@@ -90,6 +93,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(source.contains("WorkerLoop"));
         assertFalse(source.contains("WorkerRetryPolicy"));
         assertFalse(source.contains("WorkerExecutionResources"));
+        assertFalse(source.contains("UUID.fromString("));
         assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
@@ -102,6 +106,8 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(source.contains("AndroidWorkerPropertiesFingerprint"));
         assertFalse(source.contains("pendingMessages"));
         assertFalse(source.contains("MessageInterceptor"));
+        assertFalse(coreSource.contains("System.getLogger"));
+        assertFalse(coreSource.contains("System.Logger"));
 
         for (String forbidden : new String[]{
                 "server_jvm",

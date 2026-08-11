@@ -62,26 +62,37 @@ Before opening a Worker transport, the Worker obtains a long-lived
 platform-issued `workerId` from the Server Identity API using its
 `workerGroupId + clientWorkerKey`. It then calls the Server Bind API with its
 requested transport and complete Worker Properties snapshot. Bind persists the
-delivery endpoint and returns its public URI.
+delivery endpoint and returns its public URI. Worker Delivery treats
+`workerId` as an opaque non-blank routing value; its concrete format remains
+owned by the Server Identity implementation.
 
-WebSocket and line Socket send this strict connection Bind as their first
-value:
+WebSocket and line Socket send a direct `WorkerResult` as their first value:
 
 ```json
 {
-  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+  "dst":"ADAPTER",
+  "forward":"",
+  "messageId":"5ca82f99-2398-4927-a814-c88ff47a5466",
+  "messageType":"worker.connection.identify",
+  "outcomeCode":"200",
+  "payload":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
 }
 ```
 
-The connection Bind frame only asks the receiving Adapter to start route
-verification. The Adapter asks Server whether `workerId` is persistently bound
-to its endpoint, then activates the Channel on success. Polling sends no
-connection Bind frame; Server verifies its persisted `system-polling` route on
-each point request. The frame does not create or update Endpoint Binding and is
-not identity authentication, heartbeat, ACK, property-index update, or endpoint
-migration. After route verification and connection activation, long-lived
-transports exchange direct `WorkerCommand` and `WorkerResult` JSON with no
-transport-specific wrapper.
+The Adapter consumes this Adapter-directed Result locally, requires a non-blank
+worker ID in `payload`, passes it to Server route verification without
+interpreting its format, and activates the Channel on success without an ACK.
+Every physical connection uses a fresh identity `messageId`. Polling sends no identity Result;
+Server verifies its persisted `system-polling` route on each point request.
+Identity reporting does not create or update Endpoint Binding and is not
+authentication, heartbeat, property-index update, or endpoint migration.
+
+The other fixed control event is
+`ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields
+are empty JSON value and empty string respectively. Worker Transport consumes
+the non-expired Command and ends its current run without returning a Result.
+These controls use the existing `WorkerCommand` and `WorkerResult` DTOs; there
+is no third connection DTO or transport-specific wrapper.
 
 ## JSON Boundary
 

@@ -27,6 +27,8 @@ class WorkerResultOutcomeClass(Enum):
 
 
 SUCCESS_OUTCOME_CODE = "200"
+WORKER_CONNECTION_IDENTIFY_EVENT_CODE = "worker.connection.identify"
+WORKER_CONNECTION_CLOSE_EVENT_CODE = "worker.connection.close"
 
 
 def classify_worker_result_outcome_code(
@@ -39,14 +41,6 @@ def classify_worker_result_outcome_code(
     if outcome_code.startswith("3"):
         return WorkerResultOutcomeClass.WORKER_FAILURE
     return WorkerResultOutcomeClass.ADAPTER_REJECTION
-
-
-@dataclass(frozen=True, slots=True)
-class WorkerConnectionBind:
-    worker_id: WorkerId
-
-    def __post_init__(self) -> None:
-        _require_canonical_uuid(self.worker_id, "worker id")
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,22 +138,6 @@ class WorkerCommandRuntime(ABC):
         limit: int,
     ) -> Mapping[WorkerId, WorkerCommand]:
         pass
-
-
-def encode_worker_connection_bind(bind: WorkerConnectionBind) -> str:
-    return _encode_json({"workerId": bind.worker_id})
-
-
-def decode_worker_connection_bind(
-    value: str | bytes,
-) -> WorkerConnectionBind | None:
-    payload = _decode_json_mapping(value)
-    if payload is None or set(payload) != {"workerId"}:
-        return None
-    try:
-        return WorkerConnectionBind(worker_id=payload["workerId"])
-    except (TypeError, ValueError):
-        return None
 
 
 def encode_worker_command(command: WorkerCommand) -> str:

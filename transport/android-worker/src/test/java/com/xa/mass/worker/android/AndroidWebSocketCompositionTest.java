@@ -1,5 +1,7 @@
 package com.xa.mass.worker.android;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -16,7 +18,6 @@ import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.net.URI;
@@ -42,7 +43,7 @@ public class AndroidWebSocketCompositionTest {
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
     @Test
-    public void completesBindCommandAndResultRoundTrip()
+    public void completesIdentifyCommandAndResultRoundTrip()
             throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerCommand command = new WorkerCommand(
@@ -64,7 +65,7 @@ public class AndroidWebSocketCompositionTest {
         );
 
         CountDownLatch resultReceived = new CountDownLatch(1);
-        AtomicReference<WorkerConnectionBind> bind =
+        AtomicReference<WorkerResult> identity =
                 new AtomicReference<>();
         AtomicReference<WorkerResult> result =
                 new AtomicReference<>();
@@ -74,8 +75,8 @@ public class AndroidWebSocketCompositionTest {
                     WebSocket webSocket,
                     String text
             ) {
-                if (bind.get() == null) {
-                    bind.set(codec.decodeWorkerConnectionBind(text));
+                if (identity.get() == null) {
+                    identity.set(codec.decodeWorkerResult(text));
                     webSocket.send(codec.encodeWorkerCommand(command));
                     return;
                 }
@@ -153,8 +154,15 @@ public class AndroidWebSocketCompositionTest {
             }
         }
 
-        assertNotNull(bind.get());
-        assertEquals(MESSAGE_ID, bind.get().workerId());
+        assertNotNull(identity.get());
+        assertEquals(ADAPTER, identity.get().dst());
+        assertEquals(
+                WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                identity.get().messageType()
+        );
+        assertEquals("200", identity.get().outcomeCode());
+        assertEquals(MESSAGE_ID, identity.get().payload());
+        assertEquals("", identity.get().forward());
         assertEquals(expectedResult, result.get());
     }
 }

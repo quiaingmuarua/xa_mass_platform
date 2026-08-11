@@ -1,5 +1,7 @@
 package com.xa.mass.worker.android;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -18,7 +20,6 @@ import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
@@ -52,7 +53,7 @@ public class AndroidWorkerTest {
 
     private static final String WORKER_GROUP_ID = "android-demo-workers";
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
     private static final String EVENT_CODE = "test.observe";
 
     private Application application;
@@ -92,7 +93,7 @@ public class AndroidWorkerTest {
             throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         CountDownLatch resultReceived = new CountDownLatch(1);
-        AtomicReference<WorkerConnectionBind> connectionBind =
+        AtomicReference<WorkerResult> identity =
                 new AtomicReference<>();
         AtomicReference<WorkerResult> result = new AtomicReference<>();
         enqueueRegister();
@@ -100,10 +101,8 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
-                if (connectionBind.get() == null) {
-                    connectionBind.set(
-                            codec.decodeWorkerConnectionBind(text)
-                    );
+                if (identity.get() == null) {
+                    identity.set(codec.decodeWorkerResult(text));
                     socket.send(codec.encodeWorkerCommand(
                             command("visible")
                     ));
@@ -156,7 +155,15 @@ public class AndroidWorkerTest {
                 socket.getTarget()
         );
         assertEquals(application, providerContext.get());
-        assertEquals(WORKER_ID, connectionBind.get().workerId());
+        assertNotNull(identity.get());
+        assertEquals(ADAPTER, identity.get().dst());
+        assertEquals(
+                WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                identity.get().messageType()
+        );
+        assertEquals("200", identity.get().outcomeCode());
+        assertEquals(WORKER_ID, identity.get().payload());
+        assertEquals("", identity.get().forward());
         assertNotNull(result.get());
         assertEquals("200", result.get().outcomeCode());
         assertEquals(
@@ -305,7 +312,11 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
-                if (codec.decodeWorkerConnectionBind(text) != null) {
+                WorkerResult identity = codec.decodeWorkerResult(text);
+                if (identity != null
+                        && WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
+                        identity.messageType()
+                )) {
                     socket.send(codec.encodeWorkerCommand(
                             command("blocked")
                     ));

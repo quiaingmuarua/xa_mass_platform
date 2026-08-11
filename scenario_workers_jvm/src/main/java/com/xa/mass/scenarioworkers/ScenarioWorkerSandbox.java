@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 final class ScenarioWorkerSandbox
         implements WorkerIdentityStore, AutoCloseable {
@@ -135,12 +134,12 @@ final class ScenarioWorkerSandbox
 
     void storeWorkerId(String value) {
         requireOpen();
-        String canonical = requireCanonicalWorkerId(
+        String resolvedWorkerId = requireWorkerId(
                 value,
                 "scenarioWorkerSandbox.storeIdentity"
         );
         if (workerId != null) {
-            if (!workerId.equals(canonical)) {
+            if (!workerId.equals(resolvedWorkerId)) {
                 throw new ScenarioWorkerAssemblyException(
                         SANDBOX_INVALID,
                         "scenarioWorkerSandbox.storeIdentity",
@@ -153,13 +152,13 @@ final class ScenarioWorkerSandbox
         Map<String, Object> identity = new LinkedHashMap<>();
         identity.put("workerGroupId", workerGroupId);
         identity.put("clientWorkerKey", clientWorkerKey);
-        identity.put("workerId", canonical);
+        identity.put("workerId", resolvedWorkerId);
         writeJson(
                 directory.resolve(IDENTITY_FILE),
                 identity,
                 "scenarioWorkerSandbox.storeIdentity"
         );
-        workerId = canonical;
+        workerId = resolvedWorkerId;
     }
 
     @Override
@@ -275,7 +274,7 @@ final class ScenarioWorkerSandbox
                 || !clientWorkerKey.equals(identity.get("clientWorkerKey"))) {
             throw invalidIdentity(path, null);
         }
-        return requireCanonicalWorkerId(
+        return requireWorkerId(
                 (String) identity.get("workerId"),
                 "scenarioWorkerSandbox.loadIdentity"
         );
@@ -333,24 +332,18 @@ final class ScenarioWorkerSandbox
         }
     }
 
-    private static String requireCanonicalWorkerId(
+    private static String requireWorkerId(
             String value,
             String operation
     ) {
-        try {
-            if (value == null
-                    || !UUID.fromString(value).toString().equals(value)) {
-                throw new IllegalArgumentException();
-            }
-            return value;
-        } catch (IllegalArgumentException error) {
+        if (value == null || value.trim().isEmpty()) {
             throw new ScenarioWorkerAssemblyException(
                     SANDBOX_INVALID,
                     operation,
-                    "Scenario Worker identity contains an invalid workerId",
-                    error
+                    "Scenario Worker identity contains a blank workerId"
             );
         }
+        return value;
     }
 
     private static ScenarioWorkerAssemblyException invalidIdentity(

@@ -33,8 +33,9 @@ TextMessageWorkerTransportFactory
   -> prepared Endpoint + immutable Dispatcher -> Transport
 
 TextMessageWorkerTransport
-  -> Connection Bind
+  -> Adapter-directed identity WorkerResult on every physical open
   -> strict WorkerCommand decode
+  -> direct Adapter connection-close termination
   -> synchronous Dispatcher execution
   -> one-shot WorkerResult send
   -> exact-once endpoint termination
@@ -60,6 +61,7 @@ Every long-connection Command follows one synchronous path:
 ```text
 Client protocol callback
   -> TextMessageWorkerTransport strict decode
+  -> ADAPTER/worker.connection.close: end current run
   -> WorkerCommandDispatcher.execute
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
   -> optional WorkerResult
@@ -80,7 +82,7 @@ preserves Command correlation fields in the Result.
 Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
 `forWorker(definitionExtensions)`. Core owns the complete registry: it loads
 its built-in Definitions first and appends a defensive copy of Host business
-extensions. The built-in set is empty in this version. Duplicate
+extensions. The built-in set is currently empty. Duplicate
 `(src, eventCode)` keys, including an extension attempting to replace a future
 built-in, fail assembly; runtime mutation and last-wins replacement are not
 supported.
@@ -93,10 +95,20 @@ supported.
 | `3303` | Handler execution failed |
 | `3304` | Handler returned invalid output |
 
-Expired Commands are dropped before Handler invocation. A malformed frame
-closes the current connection with `PROTOCOL_ERROR`. If a Result send is not
-accepted, the Result is discarded and the connection is closed with
-`SEND_FAILURE`. Commands and Results are never queued, cached, or replayed.
+Expired Commands are dropped before Handler invocation. A malformed frame or
+an unexpected processing failure is logged with a Worker-owned `3xxx` code and
+does not make the Worker reconnect. If a Result send is not accepted, the
+Result is discarded. Commands and Results are never queued, cached, or
+replayed.
+
+On every physical connection open, Transport first sends
+`WorkerResult(dst=ADAPTER,messageType=worker.connection.identify)` with a fresh
+message ID and the prepared worker ID as payload. A failed identity send asks
+the Client to close the current physical connection and consume its normal
+reconnect budget. A non-expired `ADAPTER/worker.connection.close` Command is
+the only protocol event that directly ends the current run. It is consumed by
+Transport and produces no WorkerResult; it never enters the business
+Dispatcher.
 
 ## One Worker Run
 
@@ -116,7 +128,8 @@ RUNNING
 `WorkerPropertiesProvider`, and `WorkerControlClient`. Each call loads one
 Properties map, validates and recursively copies it, restores or registers the
 Worker ID, persists a newly issued ID, and performs Endpoint Bind. It does not
-start networking or execute Commands.
+start networking or execute Commands. Core requires `workerId` to be non-blank
+but does not parse its Server-owned format.
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may

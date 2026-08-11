@@ -7,6 +7,10 @@ public final class WorkerDeliveryProtocol {
 
     public static final String SYSTEM_POLLING_ENDPOINT_MANAGER_ID =
             "system-polling";
+    public static final String WORKER_CONNECTION_IDENTIFY_EVENT_CODE =
+            "worker.connection.identify";
+    public static final String WORKER_CONNECTION_CLOSE_EVENT_CODE =
+            "worker.connection.close";
     private static final String SUCCESS_OUTCOME_CODE = "200";
 
     private WorkerDeliveryProtocol() {
@@ -44,42 +48,6 @@ public final class WorkerDeliveryProtocol {
         SUCCESS,
         WORKER_FAILURE,
         ADAPTER_REJECTION
-    }
-
-    public static final class WorkerConnectionBind {
-
-        private final String workerId;
-
-        public WorkerConnectionBind(String workerId) {
-            requireCanonicalUuid(workerId, "workerId");
-            this.workerId = workerId;
-        }
-
-        public String workerId() {
-            return workerId;
-        }
-
-        @Override
-        public boolean equals(Object value) {
-            if (this == value) {
-                return true;
-            }
-            if (!(value instanceof WorkerConnectionBind)) {
-                return false;
-            }
-            WorkerConnectionBind other = (WorkerConnectionBind) value;
-            return workerId.equals(other.workerId);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(workerId);
-        }
-
-        @Override
-        public String toString() {
-            return "WorkerConnectionBind[workerId=" + workerId + "]";
-        }
     }
 
     public static final class WorkerCommand {

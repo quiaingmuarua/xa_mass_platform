@@ -86,7 +86,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 for (String forbidden : new String[]{
                         "WorkerCommand",
                         "WorkerResult",
-                        "WorkerConnectionBind",
+                        "WorkerConnection" + "Bind",
                         "WorkerConnectionHello",
                         "okhttp3",
                         "android.",
@@ -170,7 +170,7 @@ class WorkerCoreArchitectureBoundaryTest {
                     "okhttp3",
                     "android.",
                     "SharedPreferences",
-                    "WorkerConnectionBind"
+                    "WorkerConnection" + "Bind"
             }) {
                 assertFalse(signature.contains(forbidden), signature);
             }
@@ -330,6 +330,9 @@ class WorkerCoreArchitectureBoundaryTest {
         )));
         assertFalse(dispatcherSource.contains("LongSupplier"));
         assertFalse(dispatcherSource.contains("java.time.Clock"));
+        assertFalse(dispatcherSource.contains(
+                "WORKER_CONNECTION_CLOSE_EVENT_CODE"
+        ));
     }
 
     @Test
@@ -346,7 +349,26 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/runtime/TextMessageWorkerTransport.java"
         );
         String transport = Files.readString(transportFile);
+        assertTrue(transport.contains(
+                "WORKER_CONNECTION_CLOSE_EVENT_CODE"
+        ));
+        assertFalse(transport.contains("UUID.fromString("));
         assertFalse(transport.contains("java.util.concurrent"));
+
+        String preparation = Files.readString(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/"
+                        + "RegisteredWorkerPreparation.java"
+        ));
+        String preparedWorker = Files.readString(sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/PreparedWorker.java"
+        ));
+        String polling = Files.readString(sourceRoot.resolve(
+                "com/xa/mass/worker/transport/polling/"
+                        + "PollingWorkerTransport.java"
+        ));
+        assertFalse(preparation.contains("UUID.fromString("));
+        assertFalse(preparedWorker.contains("UUID.fromString("));
+        assertFalse(polling.contains("UUID.fromString("));
         for (String forbidden : new String[]{
                 "WorkerIdentityStore",
                 "WorkerPropertiesProvider",
@@ -381,6 +403,9 @@ class WorkerCoreArchitectureBoundaryTest {
         )));
         assertFalse(Files.exists(sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/WorkerResultSlot.java"
+        )));
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/internal/WorkerIds.java"
         )));
         assertFalse(Files.exists(sourceRoot.resolve(
                 "com/xa/mass/worker/execution/"

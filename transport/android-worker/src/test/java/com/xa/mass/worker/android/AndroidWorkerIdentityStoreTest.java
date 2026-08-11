@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config;
 public class AndroidWorkerIdentityStoreTest {
 
     private static final String WORKER_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+            "server-issued-worker-id";
 
     private Application application;
 
@@ -60,15 +60,17 @@ public class AndroidWorkerIdentityStoreTest {
         );
 
         assertFalse(store.loadWorkerId().isPresent());
+        assertThrows(
+                IllegalStateException.class,
+                () -> store.saveWorkerId(" ")
+        );
         store.saveWorkerId(WORKER_ID);
         store.saveWorkerId(WORKER_ID);
         assertEquals(WORKER_ID, store.loadWorkerId().orElseThrow());
 
         assertThrows(
                 IllegalStateException.class,
-                () -> store.saveWorkerId(
-                        "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3"
-                )
+                () -> store.saveWorkerId("different-worker-id")
         );
     }
 

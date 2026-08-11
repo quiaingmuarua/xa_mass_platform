@@ -128,6 +128,22 @@ class RegisteredWorkerPreparationTest {
         assertEquals(0, control.bindCalls);
     }
 
+    @Test
+    void nonBlankCachedIdentityIsNotFormatParsed() throws Exception {
+        FakeControlClient control = new FakeControlClient();
+        RegisteredWorkerPreparation preparation = preparation(
+                new MutableIdentityStore("server-issued-worker-id"),
+                RegisteredWorkerPreparationTest::properties,
+                control
+        );
+
+        PreparedWorker prepared = preparation.prepare();
+
+        assertEquals("server-issued-worker-id", prepared.workerId());
+        assertEquals(0, control.registerCalls);
+        assertEquals(1, control.bindCalls);
+    }
+
     private static RegisteredWorkerPreparation preparation(
             WorkerIdentityStore identity,
             WorkerPropertiesProvider propertiesProvider,

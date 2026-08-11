@@ -23,8 +23,8 @@ The repository contains seven active areas:
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, strict JSON deployment manifest,
-  public-HTTP Register/Bind control, connection Bind frame construction, and aggregate
-  WebSocket Worker lifecycle
+  public-HTTP Register/Bind control, Adapter identity Result construction, and
+  aggregate WebSocket Worker lifecycle
   without owning WorkerGroup catalog initialization, Server profiles, or
   Adapters.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
@@ -34,7 +34,7 @@ The repository contains seven active areas:
   contains the Java 11 Worker Core execution mechanism, the Netty Adapter
   runtime, concrete JVM network clients, and the Android HandlerThread
   WebSocket client. Its long-lived Worker path has three explicit owners:
-  Client networking and reconnect, Runtime Bind/Command/Result protocol, and
+  Client networking and reconnect, Transport identity/Command/Result protocol, and
   `WorkerRunController` `RUNNING/STOPPED` lifecycle. Each Host `start()` makes
   one non-blocking request for exactly one Preparation attempt; failed
   preparation or endpoint termination remains stopped until the Host starts
