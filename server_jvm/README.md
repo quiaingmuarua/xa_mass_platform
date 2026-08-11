@@ -155,8 +155,9 @@ kernel_jvm delivery contracts/providers
   DeliveryCommand consume and DeliveryReport append owner operations
 
 transport/netty-adapter
-  complete Adapter instances, independent Netty WebSocket/Socket listeners,
-  mailbox loops, active connections, and bounded non-blocking delivery
+  stable concrete Adapter façades over per-instance shared Netty runtimes,
+  WebSocket/Socket listeners, mailbox pumps, child Channels, bound routes,
+  and bounded non-blocking delivery
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -169,8 +170,9 @@ The Adapter runtime is implemented by
 This Server reads the configured Adapter instance map, creates complete
 WebSocket or Socket Adapter instances, registers them, and starts/closes the
 manager at process boundaries. Each Adapter owns its Netty listener,
-bounded Command/Result loops, current Channel registry, and encoded result
-buffer. It consumes the existing batch HTTP API through loopback and has no
+bounded Command/Report pumps, every accepted child Channel, the current bound
+route directory, and encoded Report buffer through one shared Netty-specific
+runtime. It consumes the existing batch HTTP API through loopback and has no
 in-process or Redis shortcut. Polling continues to exchange DeliveryCommand and
 DeliveryReport through point HTTP.
 
@@ -469,8 +471,8 @@ active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
-Result loops. The Command Loop refills a bounded local queue and initiates
-non-blocking Channel writes. The Result Loop drains one shared bounded queue
+Report pumps. The Command Pump refills a bounded local queue and initiates
+non-blocking Channel writes. The Report Pump drains one shared bounded queue
 containing validated Worker-originated results and Adapter-owned rejections,
 and submits at most one pending or buffered batch per
 `result-submit-interval`. There is no producer-source split.

@@ -1,12 +1,11 @@
-package com.xa.mass.workerdelivery.adapter.dispatch;
+package com.xa.mass.workerdelivery.adapter.internal;
 
-import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -15,35 +14,35 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
-public final class WorkerCommandLoop implements Runnable {
+final class DeliveryCommandPump implements Runnable {
 
     private static final System.Logger LOGGER = System.getLogger(
-            WorkerCommandLoop.class.getName()
+            DeliveryCommandPump.class.getName()
     );
 
     private final WorkerDeliveryGatewayClient gateway;
-    private final WorkerCommandDelivery commandDelivery;
-    private final BoundedWorkerResultQueue resultQueue;
+    private final DeliveryCommandTarget commandTarget;
+    private final BoundedDeliveryReportQueue reportQueue;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final String adapterId;
     private final int consumeLimit;
     private final int queueCapacity;
     private final LongSupplier nowMillis;
     private final ArrayDeque<QueuedCommand> commands = new ArrayDeque<>();
-    private volatile boolean closed;
+    private boolean closed;
 
-    public WorkerCommandLoop(
+    DeliveryCommandPump(
             WorkerDeliveryGatewayClient gateway,
-            WorkerCommandDelivery commandDelivery,
-            BoundedWorkerResultQueue resultQueue,
+            DeliveryCommandTarget commandTarget,
+            BoundedDeliveryReportQueue reportQueue,
             String adapterId,
             int consumeLimit,
             int queueCapacity
     ) {
         this(
                 gateway,
-                commandDelivery,
-                resultQueue,
+                commandTarget,
+                reportQueue,
                 adapterId,
                 consumeLimit,
                 queueCapacity,
@@ -51,33 +50,26 @@ public final class WorkerCommandLoop implements Runnable {
         );
     }
 
-    WorkerCommandLoop(
+    DeliveryCommandPump(
             WorkerDeliveryGatewayClient gateway,
-            WorkerCommandDelivery commandDelivery,
-            BoundedWorkerResultQueue resultQueue,
+            DeliveryCommandTarget commandTarget,
+            BoundedDeliveryReportQueue reportQueue,
             String adapterId,
             int consumeLimit,
             int queueCapacity,
             LongSupplier nowMillis
     ) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
-        this.commandDelivery = Objects.requireNonNull(
-                commandDelivery,
-                "commandDelivery"
+        this.commandTarget = Objects.requireNonNull(
+                commandTarget,
+                "commandTarget"
         );
-        this.resultQueue = Objects.requireNonNull(
-                resultQueue,
-                "resultQueue"
-        );
+        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         if (adapterId == null || adapterId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "adapterId must be non-blank"
-            );
+            throw new IllegalArgumentException("adapterId must be non-blank");
         }
         if (consumeLimit <= 0) {
-            throw new IllegalArgumentException(
-                    "consumeLimit must be positive"
-            );
+            throw new IllegalArgumentException("consumeLimit must be positive");
         }
         if (queueCapacity < consumeLimit) {
             throw new IllegalArgumentException(
@@ -99,12 +91,12 @@ public final class WorkerCommandLoop implements Runnable {
         forwardCurrentQueue();
     }
 
-    public synchronized void close() {
+    synchronized void close() {
         closed = true;
         commands.clear();
     }
 
-    int queuedCommandCount() {
+    synchronized int queuedCommandCount() {
         return commands.size();
     }
 
@@ -125,8 +117,7 @@ public final class WorkerCommandLoop implements Runnable {
             return;
         }
 
-        for (Map.Entry<String, DeliveryCommand> entry
-                : acquired.entrySet()) {
+        for (Map.Entry<String, DeliveryCommand> entry : acquired.entrySet()) {
             if (commands.size() >= queueCapacity) {
                 break;
             }
@@ -150,7 +141,7 @@ public final class WorkerCommandLoop implements Runnable {
                 continue;
             }
 
-            var attempt = commandDelivery.deliver(
+            var attempt = commandTarget.deliver(
                     queued.workerId(),
                     command
             );
@@ -174,8 +165,8 @@ public final class WorkerCommandLoop implements Runnable {
                 ),
                 "null"
         );
-        var status = resultQueue.offer(codec.encodeDeliveryReport(rejection));
-        if (status != BoundedWorkerResultQueue.OfferStatus.ACCEPTED) {
+        var status = reportQueue.offer(codec.encodeDeliveryReport(rejection));
+        if (status != BoundedDeliveryReportQueue.OfferStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
                     "adapterId={0} workerId={1} message={2}",
@@ -208,9 +199,6 @@ public final class WorkerCommandLoop implements Runnable {
         );
     }
 
-    private record QueuedCommand(
-            String workerId,
-            DeliveryCommand command
-    ) {
+    private record QueuedCommand(String workerId, DeliveryCommand command) {
     }
 }

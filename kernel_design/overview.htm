@@ -1507,7 +1507,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Server 拥有 point/batch HTTP 与 delivery runtime；纯 polling Worker 使用 point API，Adapter 实例通过无 cursor 的 bounded batch 获取命令，并维护独立 Netty listener、Command/Result loop 与当前连接。</p>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；纯 polling Worker 使用 point API。每个具体 Adapter façade 委托一个 Netty runtime，通过无 cursor 的 bounded batch 获取命令，并维护独立 listener、全部 child Channel、bound route 与 Command/Report pump。</p>
           <code>output = WorkerResult</code>
         </div>
         <div class="owner-stage">
@@ -1690,7 +1690,7 @@
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>direct WorkerCommand / WorkerResult 与 Adapter-partitioned mailbox</li>
             <li>Java Server delivery point/batch HTTP owner</li>
-            <li>完整 Adapter 实例注册、独立 Netty WebSocket/Socket listener、start/close runtime、无 cursor bounded acquisition、current active connection 与 bounded result retry</li>
+            <li>完整 Adapter 实例注册、稳定 WebSocket/Socket façade、每实例一个 Netty runtime、独立 listener、全部 child Channel、bound route、无 cursor bounded acquisition 与 bounded Report retry</li>
             <li>三类 WorkerResult outcome queue 与 owner-local Result Routing</li>
           </ul>
         </article>
@@ -1772,7 +1772,7 @@
         </a>
         <a class="reading-link" href="../transport/netty-adapter/README.md">
           <span class="reading-number">11</span>
-          <span><b>Java Adapter Runtime</b>完整实例注册、独立 Netty WebSocket/Socket 监听端口、start/close、批量 HTTP client、Worker active connection、bounded non-blocking dispatch 与结果缓冲机制。</span>
+          <span><b>Java Adapter Runtime</b>稳定 WebSocket/Socket façade 委托每实例一个 Netty runtime，统一拥有监听端口、start/close、批量 HTTP client、全部 child Channel、Worker bound route、bounded Command/Report pump 与结果缓冲机制。</span>
         </a>
         <a class="reading-link" href="../transport/worker-core/README.md">
           <span class="reading-number">12</span>

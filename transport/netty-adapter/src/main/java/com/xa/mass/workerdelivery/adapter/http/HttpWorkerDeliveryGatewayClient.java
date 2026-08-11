@@ -84,10 +84,10 @@ public final class HttpWorkerDeliveryGatewayClient
     @Override
     public void appendResults(
             String endpointManagerId,
-            List<String> encodedWorkerResults
+            List<String> encodedDeliveryReports
     ) {
         String operation = "gateway.appendResults";
-        String body = contract.encodeResultBatch(encodedWorkerResults);
+        String body = contract.encodeResultBatch(encodedDeliveryReports);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "results:append")
                         .POST(HttpRequest.BodyPublishers.ofString(
@@ -115,7 +115,7 @@ public final class HttpWorkerDeliveryGatewayClient
         }
         contract.requireCompleteResultResponse(
                 response.body(),
-                encodedWorkerResults.size()
+                encodedDeliveryReports.size()
         );
     }
 

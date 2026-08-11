@@ -40,6 +40,28 @@ class SocketWorkerDeliveryAdapterTest {
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     @Test
+    void closeTerminatesAnUnboundSocketChannel() throws Exception {
+        int port = availablePort();
+        SocketWorkerDeliveryAdapter adapter = adapter(
+                port,
+                new FakeGateway()
+        );
+        adapter.start();
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(2_000);
+            awaitTracked(adapter);
+
+            adapter.close();
+
+            assertThat(socket.getInputStream().read()).isEqualTo(-1);
+            assertThat(adapter.trackedConnectionCount()).isZero();
+            assertThat(adapter.activeConnectionCount()).isZero();
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @Test
     void identifiesWithCrLfAndCompletesCommandResultRound()
             throws Exception {
         int port = availablePort();
@@ -448,6 +470,19 @@ class SocketWorkerDeliveryAdapterTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Worker connection was not bound");
+    }
+
+    private static void awaitTracked(SocketWorkerDeliveryAdapter adapter)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adapter.trackedConnectionCount() == 1) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker channel was not tracked");
     }
 
     private static int availablePort() {

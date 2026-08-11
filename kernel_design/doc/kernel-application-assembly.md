@@ -406,7 +406,8 @@ exchange.
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
 endpoint-manager mailbox, one independent Netty listener, one scheduled
-Command Loop, one timed Result Loop, one current connection per WorkerId, and
+DeliveryCommand Pump, one timed DeliveryReport Pump, one current bound
+connection per WorkerId, and
 bounded local queues. The Server only parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers Register and establish Endpoint Binding before connecting; the Bind

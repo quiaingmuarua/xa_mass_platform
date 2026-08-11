@@ -9,18 +9,27 @@ batch API through its `WorkerDeliveryGatewayClient`.
 
 ## Instance Boundary
 
-One concrete Adapter instance owns:
+The public WebSocket and Socket Adapter classes are stable construction
+façades. Both delegate to one Netty-specific internal runtime; this is shared
+mechanism, not a generic Adapter SPI. One runtime instance owns:
 
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
 one Netty listener
+all child Channels, including UNBOUND and VERIFYING Channels
 one current Channel per workerId
 one bounded DeliveryCommand queue
-one scheduled Command Loop
+one scheduled DeliveryCommand Pump
 one bounded encoded DeliveryReport queue
-one scheduled Result Loop
+one scheduled DeliveryReport Pump
 ```
+
+Only `NettyWorkerDeliveryAdapterRuntime` is public for Java cross-package
+delegation. It is an internal support type imported solely by the two concrete
+façades. Session, framing, bound-directory, queue, and pump types are
+package-private. Server continues to construct only the concrete Adapter
+classes.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
 start, start in order, and close in reverse order. Multiple instances in one
@@ -69,7 +78,7 @@ to consume its current-Endpoint reconnect budget. Verification happens for
 every new connection. The Adapter has no identity or Binding cache and does
 not refresh Worker Properties.
 
-An unverified Channel is never visible to the Command Loop. Any message that
+An unverified Channel is never visible to the DeliveryCommand Pump. Any message that
 arrives while identity verification is in progress is a protocol violation and
 closes the physical Channel. There is no pre-verification message buffer.
 
@@ -83,12 +92,13 @@ Worker  -> Adapter: direct DeliveryReport JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-Adapter-directed Results are consumed by a fixed internal event Dispatcher
-and never enter the Server Result queue. Its built-in registry
-contains connection identity; an unknown Adapter event on an established
-connection is logged and dropped. Before identity, a malformed or non-identity
-message closes the physical Channel. The Dispatcher is not a plugin SPI and
-does not expose Netty types.
+One connection-local session owns only `UNBOUND -> VERIFYING -> BOUND`.
+The identity Report is a fixed handshake handled directly by that session; it
+is not routed through an event registry or plugin dispatcher. Adapter-directed
+Reports never enter the Server Result queue. Repeated identity and unknown
+Adapter events on an established connection are logged and dropped. Before
+identity, a malformed, invalid, or non-identity Report closes the physical
+Channel.
 
 After identity, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
 events, mismatched `src/sourceId`, and Worker-originated `2...` outcomes are
@@ -98,16 +108,17 @@ enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
-Each registry stores the actual Netty `Channel`. A newly activated connection
+The bound connection directory stores the actual Netty `Channel` plus its
+text-frame strategy. A newly activated connection
 replaces the current Channel for that workerId. Deactivation compares workerId
 and Channel identity, so a delayed close from an old Channel cannot remove its
 replacement.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
-## Command Loop
+## DeliveryCommand Pump
 
-The Command Loop owns the temporary command queue:
+The DeliveryCommand Pump owns the temporary command queue:
 
 ```text
 when a full consume batch fits
@@ -134,7 +145,7 @@ No active Channel is a temporary retry condition while the command remains
 live. A send-started failure is ambiguous and must not fabricate Adapter
 rejection evidence.
 
-## Result Loop
+## DeliveryReport Pump
 
 Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 `ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
@@ -142,8 +153,8 @@ Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
 is dropped.
 
-Adapter-generated `COMMAND_EXPIRED` enters the same bounded queue. The Result
-Loop runs at
+Adapter-generated `COMMAND_EXPIRED` enters the same bounded queue. The
+DeliveryReport Pump runs at
 `resultSubmitInterval`:
 
 ```text
@@ -159,8 +170,8 @@ accepts `ADAPTER` `2...` Reports whose `sourceId` matches the batch
 `WORKER + path workerId`.
 
 Gateway protocol rejection drops the pending batch. Network or Server
-unavailability retains it for a later interval. Command consumption and result
-submission are independent loops; result failure does not stop command
+unavailability retains it for a later interval. Command consumption and Report
+submission are independent pumps; Report failure does not stop command
 forwarding.
 
 Both queues are bounded and process-local. Adapter process failure can lose
@@ -179,16 +190,16 @@ Start:
 ```text
 bind listener
 -> state RUNNING
--> schedule Command Loop and Result Loop
+-> schedule DeliveryCommand and DeliveryReport Pumps
 ```
 
 Close:
 
 ```text
 state STOPPING
--> stop Command Loop
--> close listener and Channels
--> stop Result Loop
+-> stop DeliveryCommand Pump
+-> close listener and every child Channel in UNBOUND/VERIFYING/BOUND
+-> stop DeliveryReport Pump
 -> stop accepting Worker results
 -> bounded final result flush
 -> state CLOSED
@@ -197,7 +208,7 @@ state STOPPING
 The WebSocket handler accepts text only. Socket uses
 `LineBasedFrameDecoder(1 MiB)`, UTF-8 decoders/encoders, and accepts LF or
 CRLF. Netty owns TCP fragmentation and coalescing. Both use
-`WriteTimeoutHandler`; neither loop blocks on a `ChannelFuture`.
+`WriteTimeoutHandler`; neither pump blocks on a `ChannelFuture`.
 
 Runtime failures use one `WorkerDeliveryAdapterException` with numeric
 module-local error codes. Logs use `System.Logger` and must not include command

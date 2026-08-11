@@ -211,8 +211,8 @@ Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
 remain executable-spec oracles and test support. External Worker
 implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
-Adapter instances and their Netty WebSocket/Socket listeners live in
-`transport/netty-adapter`;
+Adapter instances, their stable WebSocket/Socket façades, and one shared
+Netty-specific runtime per instance live in `transport/netty-adapter`;
 `server_jvm` supplies only instance configuration and process lifecycle
 events. Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or
 Redis dependency.
@@ -428,7 +428,7 @@ point HTTP forwarding of DeliveryCommand to the selected Worker
 direct DeliveryCommand/DeliveryReport long-connection transport
 Server point Worker result and Adapter batch validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
-independent bounded Command/Result loops and active-connection mechanism
+independent bounded Command/Report pumps, all-child Channels, and bound routes
 Adapter-owned Netty listeners and unchanged encoded DeliveryReport forwarding
 ```
 
@@ -445,11 +445,14 @@ the long-lived Adapter endpoint also accepts Adapter `2...` Reports when
 authentication. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
-Each Java Adapter instance owns one configured non-system-polling mailbox,
-one independent Netty listener, separate scheduled Command/Result loops,
-bounded command/result queues, one current connection per WorkerId, statically
-bound direct DeliveryCommand/DeliveryReport transport, and Adapter rejection versus `UNKNOWN`
-classification. Adapter validates Worker-originated outcomes, but queues and
+Each Java Adapter instance owns one configured non-system-polling mailbox and
+one independent Netty listener through the common Netty-specific runtime. The
+runtime owns separate scheduled Command/Report pumps, bounded queues, every
+accepted child Channel, one current bound route per WorkerId, statically bound
+direct DeliveryCommand/DeliveryReport transport, and Adapter rejection versus
+`UNKNOWN` classification. The connection Session owns only
+`UNBOUND/VERIFYING/BOUND` and handles the fixed identity handshake directly;
+there is no Adapter event plugin registry. Adapter validates Worker-originated outcomes, but queues and
 forwards the original encoded result String; Server ingress performs the
 authoritative batch validation.
 `server_jvm` may turn each configured JSON tree into a concrete instance,

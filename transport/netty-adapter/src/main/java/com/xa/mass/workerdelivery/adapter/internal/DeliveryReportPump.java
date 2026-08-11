@@ -1,39 +1,34 @@
-package com.xa.mass.workerdelivery.adapter.result;
+package com.xa.mass.workerdelivery.adapter.internal;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import java.util.List;
 import java.util.Objects;
 
-public final class WorkerResultLoop implements Runnable {
+final class DeliveryReportPump implements Runnable {
 
     private static final System.Logger LOGGER = System.getLogger(
-            WorkerResultLoop.class.getName()
+            DeliveryReportPump.class.getName()
     );
 
     private final WorkerDeliveryGatewayClient gateway;
     private final String adapterId;
-    private final BoundedWorkerResultQueue resultQueue;
+    private final BoundedDeliveryReportQueue reportQueue;
     private List<String> pendingBatch;
-    private volatile boolean closed;
+    private boolean closed;
 
-    public WorkerResultLoop(
+    DeliveryReportPump(
             WorkerDeliveryGatewayClient gateway,
             String adapterId,
-            BoundedWorkerResultQueue resultQueue
+            BoundedDeliveryReportQueue reportQueue
     ) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
         if (adapterId == null || adapterId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "adapterId must be non-blank"
-            );
+            throw new IllegalArgumentException("adapterId must be non-blank");
         }
         this.adapterId = adapterId;
-        this.resultQueue = Objects.requireNonNull(
-                resultQueue,
-                "resultQueue"
-        );
+        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
     }
 
     @Override
@@ -44,15 +39,15 @@ public final class WorkerResultLoop implements Runnable {
         submitAtMostOneBatch();
     }
 
-    public void stopAccepting() {
-        resultQueue.stopAccepting();
+    void stopAccepting() {
+        reportQueue.stopAccepting();
     }
 
-    public synchronized void closeAndFlush() {
+    synchronized void closeAndFlush() {
         if (closed) {
             return;
         }
-        resultQueue.stopAccepting();
+        reportQueue.stopAccepting();
 
         if (pendingBatch != null) {
             SubmissionOutcome outcome = submit(pendingBatch);
@@ -61,7 +56,7 @@ public final class WorkerResultLoop implements Runnable {
             }
         }
         if (pendingBatch == null) {
-            List<String> remaining = resultQueue.drain();
+            List<String> remaining = reportQueue.drain();
             if (!remaining.isEmpty()
                     && submit(remaining) == SubmissionOutcome.RETRY) {
                 pendingBatch = remaining;
@@ -70,14 +65,14 @@ public final class WorkerResultLoop implements Runnable {
         closed = true;
     }
 
-    List<String> pendingBatch() {
+    synchronized List<String> pendingBatch() {
         return pendingBatch;
     }
 
     private void submitAtMostOneBatch() {
         List<String> batch = pendingBatch;
         if (batch == null) {
-            batch = resultQueue.drain();
+            batch = reportQueue.drain();
         }
         if (batch.isEmpty()) {
             return;
@@ -105,8 +100,7 @@ public final class WorkerResultLoop implements Runnable {
                     failure.getMessage()
             );
             return failure.errorCode()
-                    == WorkerDeliveryAdapterErrorCode
-                    .GATEWAY_PROTOCOL_ERROR
+                    == WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR
                     ? SubmissionOutcome.DROP
                     : SubmissionOutcome.RETRY;
         }

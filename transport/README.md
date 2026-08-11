@@ -7,9 +7,9 @@ Status: repository-local transport contracts and implementations.
   -> Worker Delivery DTOs, Jsons, strict codecs
 
 :transport:netty-adapter
-  -> complete Adapter instances
-  -> Netty WebSocket and line-oriented Socket listeners
-  -> bounded mailbox dispatch and result buffering
+  -> stable WebSocket and Socket Adapter façades
+  -> one shared Netty-specific runtime per configured instance
+  -> bounded command/report pumps, child Channels, and bound routes
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism

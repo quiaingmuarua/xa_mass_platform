@@ -10,20 +10,14 @@ import org.junit.jupiter.api.Test;
 class WorkerDeliveryAdapterArchitectureTest {
 
     private static final Path SOURCE = Path.of("src/main/java");
-    private static final Path CORE = SOURCE.resolve(
+    private static final Path APPLICATION = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/application"
     );
     private static final Path HTTP = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/http"
     );
-    private static final Path MESSAGE = SOURCE.resolve(
-            "com/xa/mass/workerdelivery/adapter/message"
-    );
-    private static final Path DISPATCH = SOURCE.resolve(
-            "com/xa/mass/workerdelivery/adapter/dispatch"
-    );
-    private static final Path RESULT = SOURCE.resolve(
-            "com/xa/mass/workerdelivery/adapter/result"
+    private static final Path INTERNAL = SOURCE.resolve(
+            "com/xa/mass/workerdelivery/adapter/internal"
     );
     private static final Path SOCKET = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/socket"
@@ -31,18 +25,18 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path WEBSOCKET = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/websocket"
     );
+    private static final String INTERNAL_RUNTIME_IMPORT =
+            "import com.xa.mass.workerdelivery.adapter.internal."
+                    + "NettyWorkerDeliveryAdapterRuntime;";
 
     @Test
     void moduleDependsOnlyOnTheWorkerProtocolBoundary()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
+                .contains("archivesName.set('xa-mass-netty-adapter')")
                 .contains(
-                        "archivesName.set('xa-mass-netty-adapter')"
-                )
-                .contains(
-                        "api project("
-                                + "':worker_delivery_contract_jvm')"
+                        "api project(':worker_delivery_contract_jvm')"
                 )
                 .contains("io.netty:netty-transport")
                 .contains("io.netty:netty-codec")
@@ -64,182 +58,132 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("WorkerResultRuntime")
-                .doesNotContain("com.xa.mass.foundation");
-        assertThat(sources)
+                .doesNotContain("com.xa.mass.foundation")
                 .doesNotContain("java.util.logging")
-                .doesNotContain("LogUtils");
-        assertThat(sources)
+                .doesNotContain("LogUtils")
                 .contains("class WorkerDeliveryAdapterException")
                 .containsOnlyOnce("extends RuntimeException");
     }
 
     @Test
-    void concreteAdapterOwnsListenerLifecycleAndDispatchMechanism()
+    void concreteAdaptersAreStableFacadesOverOneNettyRuntime()
             throws IOException {
-        String sources = readSources(CORE) + readSources(HTTP);
-        assertThat(sources)
+        String application = readSources(APPLICATION) + readSources(HTTP);
+        assertThat(application)
                 .contains("interface WorkerDeliveryAdapter")
                 .contains("final class WorkerDeliveryAdapterManager")
                 .contains("register(WorkerDeliveryAdapter adapter)")
-                .doesNotContain("interface WorkerConnection {")
-                .doesNotContain("interface WorkerConnectionRegistry")
-                .doesNotContain("NettyWorkerConnectionRegistry")
-                .doesNotContain("WorkerSessionToken")
-                .doesNotContain("generation")
-                .doesNotContain("isCurrent")
-                .doesNotContain("STALE_SESSION")
-                .doesNotContain("WebSocketSession")
-                .doesNotContain("WorkerDeliveryAdapterDefinition")
-                .doesNotContain("WorkerDeliveryAdapterFactory")
-                .doesNotContain("SmartLifecycle")
+                .doesNotContain("NettyWorkerDeliveryAdapterRuntime")
+                .doesNotContain("BoundWorkerConnectionDirectory")
+                .doesNotContain("WorkerConnectionSession")
+                .doesNotContain("ServerBootstrap")
+                .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("@Configuration")
                 .doesNotContain("@Component");
 
-        String websocketTransport = readSources(WEBSOCKET);
-        assertThat(websocketTransport)
+        String websocket = readSources(WEBSOCKET);
+        String socket = readSources(SOCKET);
+        for (String facade : java.util.List.of(websocket, socket)) {
+            assertThat(facade)
+                    .contains(INTERNAL_RUNTIME_IMPORT)
+                    .contains("private final NettyWorkerDeliveryAdapterRuntime")
+                    .contains("runtime.start()")
+                    .contains("runtime.close()")
+                    .doesNotContain("io.netty")
+                    .doesNotContain("ServerBootstrap")
+                    .doesNotContain("ScheduledExecutorService")
+                    .doesNotContain("WorkerConnectionSession")
+                    .doesNotContain("Map<String, Channel>")
+                    .doesNotContain("BindingPhase");
+        }
+        assertThat(websocket)
                 .contains("class WebSocketWorkerDeliveryAdapter")
-                .contains("interface WorkerConnectionRegistry")
-                .contains(
-                        "Map<String, Channel> channels"
-                )
-                .contains("class NettyWorkerConnectionRegistry")
-                .contains("ServerBootstrap")
-                .contains("NioServerSocketChannel")
-                .contains("newScheduledThreadPool")
-                .contains("commandTask = scheduler.scheduleWithFixedDelay")
-                .contains("resultTask = scheduler.scheduleWithFixedDelay")
-                .contains("WriteTimeoutHandler")
-                .doesNotContain("WebSocketWorkerDeliveryAdapterFactory")
-                .doesNotContain("AdapterRoundResult")
-                .doesNotContain("newFixedThreadPool")
-                .doesNotContain("deliveryExecutor")
-                .doesNotContain("Future.get(")
-                .doesNotContain("interface WorkerConnection {")
-                .doesNotContain("ConnectionHandle")
-                .doesNotContain("NettyWebSocketWorkerConnection")
-                .doesNotContain("SpringWebSocket")
-                .doesNotContain("WorkerWebSocketEndpointConfigurer");
-
-        String socketTransport = readSources(SOCKET);
-        assertThat(socketTransport)
+                .contains("NettyWorkerDeliveryAdapterRuntime.webSocket(");
+        assertThat(socket)
                 .contains("class SocketWorkerDeliveryAdapter")
-                .contains("Map<String, Channel> channels")
-                .contains("class NettySocketWorkerConnectionRegistry")
-                .contains("LineBasedFrameDecoder")
-                .contains("StringDecoder")
-                .contains("StringEncoder")
-                .contains("WriteTimeoutHandler")
-                .doesNotContain("newFixedThreadPool")
-                .doesNotContain("deliveryExecutor")
-                .doesNotContain("Future.get(")
-                .doesNotContain("ConnectionHandle")
-                .doesNotContain("WorkerSessionToken");
-
-        String dispatch = readSources(DISPATCH);
-        assertThat(dispatch)
-                .contains("interface WorkerCommandDelivery")
-                .contains("final class WorkerCommandLoop")
-                .contains("ArrayDeque")
-                .contains("STARTED")
-                .contains("RETRY_LATER")
-                .contains("UNKNOWN")
-                .contains(
-                        "WorkerDeliveryAdapterErrorCode"
-                                + ".COMMAND_EXPIRED.code()"
-                )
-                .contains("public synchronized void run()")
-                .doesNotContain("UNAVAILABLE_WORKER_OUTCOME_CODE")
-                .doesNotContain("WorkerDeliveryAdapterCore")
-                .doesNotContain("dispatchOnce")
-                .doesNotContain("ExecutorService")
-                .doesNotContain("Future")
-                .doesNotContain("io.netty")
-                .doesNotContain(".websocket")
-                .doesNotContain(".socket")
-                .doesNotContain("Channel");
-
-        String result = readSources(RESULT);
-        assertThat(result)
-                .contains("final class BoundedWorkerResultQueue")
-                .contains("final class WorkerResultLoop")
-                .contains("ArrayDeque")
-                .contains("String encodedWorkerResult")
-                .contains("public synchronized void run()")
-                .doesNotContain("decodeDeliveryReport")
-                .doesNotContain("encodeDeliveryReport")
-                .doesNotContain("io.netty")
-                .doesNotContain("Channel");
+                .contains("NettyWorkerDeliveryAdapterRuntime.socket(");
+        assertThat(occurrences(readSources(SOURCE), INTERNAL_RUNTIME_IMPORT))
+                .isEqualTo(2);
     }
 
     @Test
-    void channelHandlersOwnBindingAndResultIngress()
+    void internalRuntimeOwnsOneNettySpecificMechanismWithoutAnSpi()
             throws IOException {
-        String messageSources = readSources(MESSAGE);
-        assertThat(messageSources)
-                .contains("public final class AdapterWorkerEventDispatcher")
-                .contains("DeliveryReport result")
-                .contains("definitions.get(")
-                .doesNotContain("WorkerResultPayloadHandler")
-                .doesNotContain("WorkerResultHandlingResult")
-                .doesNotContain("boolean identified")
-                .doesNotContain("Consumer<")
-                .doesNotContain("AdapterWorkerEventContext")
-                .doesNotContain("WorkerResultAction")
-                .doesNotContain("encodeDeliveryReport")
+        String internal = readSources(INTERNAL);
+        assertThat(internal)
+                .contains(
+                        "public final class "
+                                + "NettyWorkerDeliveryAdapterRuntime"
+                )
+                .contains("ServerBootstrap")
+                .contains("NioServerSocketChannel")
+                .contains("newScheduledThreadPool(")
+                .contains("new MultiThreadIoEventLoopGroup(")
+                .contains("scheduleWithFixedDelay(")
+                .contains("LineBasedFrameDecoder")
+                .contains("WebSocketServerProtocolHandler")
+                .contains("WriteTimeoutHandler")
+                .contains("Set<Channel> childChannels")
+                .contains("track(Channel channel)")
+                .contains("closeChildChannels(")
+                .contains("final class DeliveryCommandPump")
+                .contains("final class DeliveryReportPump")
+                .contains("final class BoundedDeliveryReportQueue")
+                .contains("final class BoundWorkerConnectionDirectory")
+                .contains("final class WorkerConnectionSession")
+                .doesNotContain("public final class DeliveryCommandPump")
+                .doesNotContain("public final class DeliveryReportPump")
+                .doesNotContain("public final class BoundedDeliveryReportQueue")
+                .doesNotContain("public interface TextFrameStrategy")
+                .doesNotContain("WorkerDeliveryAdapterFactory")
+                .doesNotContain("WorkerDeliveryAdapterDefinition")
                 .doesNotContain("ServiceLoader")
-                .doesNotContain("UUID.fromString(")
-                .doesNotContain("io.netty")
-                .doesNotContain("org.springframework")
-                .doesNotContain("com.xa.mass.server")
-                .doesNotContain("com.xa.mass.kernel")
-                .doesNotContain("io.lettuce");
+                .doesNotContain("Class.forName")
+                .doesNotContain("Future.get(")
+                .doesNotContain("newFixedThreadPool")
+                .doesNotContain("deliveryExecutor");
 
-        assertThat(readSources(RESULT))
-                .contains("class BoundedWorkerResultQueue")
-                .doesNotContain("WorkerResultSource")
-                .doesNotContain("WorkerConnectionMessage");
+        assertThat(occurrences(
+                internal,
+                "public final class NettyWorkerDeliveryAdapterRuntime"
+        )).isEqualTo(1);
+    }
 
-        String websocket = readSources(WEBSOCKET);
-        String socket = readSources(SOCKET);
-        for (String transport : java.util.List.of(websocket, socket)) {
-            assertThat(transport)
-                    .contains("enum BindingPhase")
-                    .contains("UNBOUND")
-                    .contains("VERIFYING")
-                    .contains("BOUND")
-                    .contains("decodeDeliveryReport(")
-                    .contains("result.dst()")
-                    .contains("resultQueue.offer(encodedResult)")
-                    .contains("verifyWorkerRoute")
-                    .contains("encodeDeliveryCommand(command)")
-                    .doesNotContain("WorkerResultPayloadHandler")
-                    .doesNotContain("WorkerResultHandlingResult")
-                    .doesNotContain("workerChannel")
-                    .doesNotContain("boolean verifying")
-                    .doesNotContain("UUID.fromString(");
-        }
-
-        assertThat(websocket + socket)
-                .doesNotContain("WorkerConnection" + "Bind")
-                .doesNotContain("decodeWorkerConnection" + "Bind")
-                .doesNotContain("verifyWorkerBinding")
-                .doesNotContain("connections.bind(")
-                .doesNotContain("connections.unbind(")
-                .doesNotContain("decodeWorkerConnectionMessage")
-                .doesNotContain("encodeWorkerConnectionMessage")
+    @Test
+    void oneConnectionSessionOwnsFixedIdentityAndTaskReportIngress()
+            throws IOException {
+        String internal = readSources(INTERNAL);
+        assertThat(internal)
+                .contains("enum BindingPhase")
+                .contains("UNBOUND")
+                .contains("VERIFYING")
+                .contains("BOUND")
+                .contains("decodeDeliveryReport(")
+                .contains("report.dst()")
+                .contains("reportQueue.offer(encodedDeliveryReport)")
+                .contains("verifyWorkerRoute(")
+                .contains("encodeDeliveryCommand(command)")
+                .contains("WORKER_CONNECTION_IDENTIFY_EVENT_CODE")
+                .contains("WORKER_CONNECTION_CLOSE_EVENT_CODE")
+                .doesNotContain("AdapterWorkerEventDispatcher")
+                .doesNotContain("definitions.get(")
                 .doesNotContain("AdapterMessageDefinitionManager")
                 .doesNotContain("WorkerConnectionMessage")
-                .doesNotContain("WorkerHelloAdmission")
-                .doesNotContain("AdapterWorkerEventContext")
+                .doesNotContain("WorkerConnectionBind")
+                .doesNotContain("decodeWorkerConnectionBind")
+                .doesNotContain("verifyWorkerBinding")
+                .doesNotContain("WorkerSessionToken")
+                .doesNotContain("generation")
+                .doesNotContain("TERMINATED")
+                .doesNotContain("WorkerResultPayloadHandler")
                 .doesNotContain("WorkerResultAction")
-                .doesNotContain("encodeDeliveryReport")
-                .doesNotContain(
-                        "private final "
-                                + "WebSocketWorkerDeliveryAdapter adapter"
-                );
+                .doesNotContain("ServiceLoader");
     }
 
     private static String readSources(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return "";
+        }
         StringBuilder sources = new StringBuilder();
         try (var paths = Files.walk(root)) {
             paths.filter(path -> path.toString().endsWith(".java"))
@@ -252,5 +196,12 @@ class WorkerDeliveryAdapterArchitectureTest {
                     });
         }
         return sources.toString();
+    }
+
+    private static int occurrences(String value, String fragment) {
+        return value.split(
+                java.util.regex.Pattern.quote(fragment),
+                -1
+        ).length - 1;
     }
 }

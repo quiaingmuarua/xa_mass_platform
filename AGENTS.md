@@ -36,10 +36,11 @@ Status: current repository handoff.
   Adapter-directed identity Report and
   then exchange direct command/result JSON; there is no third connection DTO
   or generic connection-message envelope.
-- `transport/netty-adapter/` owns complete Adapter instances: local
-  registration, start/close lifecycle, scheduled Gateway consumption, active
-  connections, bounded Command/Result queues, and independent Netty
-  WebSocket/Socket listeners. Adapter-directed payloads are consumed locally;
+- `transport/netty-adapter/` owns complete Adapter instances: stable concrete
+  WebSocket/Socket façades, one Netty-specific internal runtime per instance,
+  local registration, start/close lifecycle, scheduled Gateway pumps, all
+  child Channels, current bound routes, and bounded Command/Report queues.
+  Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
   It has no Spring, Server, Kernel, or Redis dependency.
@@ -138,11 +139,12 @@ tag.
   contract.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
-  its complete instances, Netty listeners, scheduled dispatch loops, active
-  connections, and bounded Command/Result queues. Each Channel Handler owns
-  its `UNBOUND/VERIFYING/BOUND` phase, strict DeliveryReport decode, destination
-  routing, and physical backpressure. Adapter-directed Reports are consumed by
-  the fixed internal Dispatcher. Only bound TASK Reports declaring
+  its complete instances, Netty listeners, scheduled Command/Report pumps,
+  every accepted child Channel, current bound routes, and bounded queues. One
+  connection-local Session owns its `UNBOUND/VERIFYING/BOUND` phase, strict
+  DeliveryReport decode, fixed identity handshake, destination routing, and
+  physical backpressure. There is no Adapter event registry or plugin
+  dispatcher. Only bound TASK Reports declaring
   `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` may enter
   the Result queue, with encoded JSON, payload, and forward context unchanged.
   SYSTEM and invalid bound input are logged and
@@ -342,9 +344,10 @@ scenario_workers_jvm
 transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-connection route verification through Server HTTP
-  -> per-endpoint Command/Result loops and current connection registry
-  -> per-Channel binding-phase and Worker Result ingress routing
-  -> fixed Adapter-local identity Report dispatch
+  -> stable WebSocket/Socket façades over one Netty-specific runtime
+  -> per-endpoint Command/Report pumps and current bound-route directory
+  -> all-child Channel lifecycle plus per-connection binding-phase routing
+  -> direct fixed Adapter-local identity Report handshake
   -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
      generation
   -> independent Netty WebSocket and Socket listeners

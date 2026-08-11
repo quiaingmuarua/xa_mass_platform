@@ -97,21 +97,21 @@ final class WorkerDeliveryGatewayHttpContract {
         }
     }
 
-    String encodeResultBatch(List<String> encodedWorkerResults) {
-        if (encodedWorkerResults == null || encodedWorkerResults.isEmpty()) {
+    String encodeResultBatch(List<String> encodedDeliveryReports) {
+        if (encodedDeliveryReports == null || encodedDeliveryReports.isEmpty()) {
             throw new IllegalArgumentException(
                     "results must not be empty"
             );
         }
         ObjectNode payload = mapper.createObjectNode();
         ArrayNode encodedResults = payload.putArray("results");
-        for (String encodedWorkerResult : encodedWorkerResults) {
-            if (encodedWorkerResult == null || encodedWorkerResult.isEmpty()) {
+        for (String encodedDeliveryReport : encodedDeliveryReports) {
+            if (encodedDeliveryReport == null || encodedDeliveryReport.isEmpty()) {
                 throw new IllegalArgumentException(
                         "encoded DeliveryReport must be non-empty"
                 );
             }
-            encodedResults.add(encodedWorkerResult);
+            encodedResults.add(encodedDeliveryReport);
         }
         return write(payload, "DeliveryReport batch");
     }

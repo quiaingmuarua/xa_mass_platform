@@ -36,7 +36,67 @@ import org.junit.jupiter.api.Test;
 
 class WebSocketWorkerDeliveryAdapterTest {
 
+    private static final String WORKER_PATH =
+            "/api/v1/worker-delivery/websocket";
+
     private static final String WORKER_ID = "server-issued-worker-id";
+
+    @Test
+    void closeTerminatesAnUnboundWebSocketChannel() throws Exception {
+        int port = availablePort();
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                new FakeGateway()
+        );
+        adapter.start();
+        Probe probe = new Probe();
+        WebSocket socket = connect(port, probe);
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            awaitTracked(adapter);
+
+            adapter.close();
+
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(adapter.trackedConnectionCount()).isZero();
+            assertThat(adapter.activeConnectionCount()).isZero();
+        } finally {
+            socket.abort();
+            adapter.close();
+        }
+    }
+
+    @Test
+    void closeTerminatesAChannelWaitingForRouteVerification()
+            throws Exception {
+        int port = availablePort();
+        CompletableFuture<Void> verification = new CompletableFuture<>();
+        FakeGateway gateway = new FakeGateway(verification);
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                gateway
+        );
+        adapter.start();
+        Probe probe = new Probe(WORKER_ID);
+        WebSocket socket = connect(port, probe);
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            awaitVerification(gateway);
+            assertThat(adapter.activeConnectionCount()).isZero();
+            assertThat(adapter.trackedConnectionCount()).isEqualTo(1);
+
+            adapter.close();
+
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(adapter.trackedConnectionCount()).isZero();
+        } finally {
+            verification.complete(null);
+            socket.abort();
+            adapter.close();
+        }
+    }
 
     @Test
     void twoAdaptersOwnDistinctPortsAndIsolateTheSameWorkerId()
@@ -274,8 +334,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                     .buildAsync(
                             URI.create(
                                     "ws://127.0.0.1:" + port
-                                            + WorkerWebSocketHandler
-                                            .WORKER_PATH
+                                            + WORKER_PATH
                                             + "/workers/" + WORKER_ID
                             ),
                             oldPath
@@ -506,7 +565,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                 .buildAsync(
                         URI.create(
                                 "ws://127.0.0.1:" + port
-                                        + WorkerWebSocketHandler.WORKER_PATH
+                                        + WORKER_PATH
                         ),
                         probe
                 )
@@ -564,6 +623,32 @@ class WebSocketWorkerDeliveryAdapterTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Worker connection was not bound");
+    }
+
+    private static void awaitTracked(WebSocketWorkerDeliveryAdapter adapter)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adapter.trackedConnectionCount() == 1) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker channel was not tracked");
+    }
+
+    private static void awaitVerification(FakeGateway gateway)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!gateway.verifiedWorkerIds.isEmpty()) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker route verification did not start");
     }
 
     private static int availablePort() {

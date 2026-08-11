@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Thread-safe Gateway boundary shared by independent command and result loops.
+ * Thread-safe Gateway boundary shared by independent command and report pumps.
  */
 public interface WorkerDeliveryGatewayClient {
 
@@ -17,7 +17,7 @@ public interface WorkerDeliveryGatewayClient {
 
     void appendResults(
             String endpointManagerId,
-            List<String> encodedWorkerResults
+            List<String> encodedDeliveryReports
     );
 
     CompletionStage<Void> verifyWorkerRoute(

@@ -148,10 +148,11 @@ Other scheduling pacers
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
-  result ingress; the Adapter Runtime registers complete instances, each of
-  which owns a Netty listener, start/close, scheduled batch consumption,
-  current connection selection, bounded non-blocking delivery, and result
-  buffering. Server only binds instance config and invokes lifecycle; neither
+  result ingress; stable concrete Adapter façades delegate each complete
+  instance to one Netty-specific runtime. That runtime owns a listener,
+  start/close, all child Channels, the bound-route directory, scheduled
+  Command/Report pumps, bounded non-blocking delivery, and Report buffering.
+  Server only binds instance config and invokes lifecycle; neither
   path selects Workers nor mutates score
 ```
 
@@ -223,9 +224,10 @@ The polling API performs only point mailbox consume for one target Worker. It
 never scans a bucket. Each locally registered Adapter instance may
 consume one bounded random batch from its sparse bucket through the Server
 batch HTTP API and
-serve Workers through an independent Netty listener. The Adapter owns its
-scheduler, command consume bound, current connection selection, bounded
-delivery, Adapter-rejection/`UNKNOWN`, and result-buffer policy. The Server host only binds
+serve Workers through an independent Netty listener. The Adapter runtime owns
+its scheduler, command consume bound, every child Channel, current bound-route
+selection, bounded delivery, Adapter-rejection/`UNKNOWN`, and Report-buffer
+policy. The Server host only binds
 configuration and forwards process lifecycle events.
 Destructive prefetch failure remains `UNKNOWN` without pending/ack.
 

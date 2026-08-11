@@ -611,7 +611,8 @@ no hidden compatibility path or second mainline remains
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Server-owned point/batch mailbox access plus Adapter-owned complete Netty
-    instances, independent Command/Result loops, direct DeliveryCommand/
+    instances, a shared Netty-specific runtime with independent
+    Command/Report pumps, direct DeliveryCommand/
     DeliveryReport transport, bounded queues, and trusted pre-execution rejection
     without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
@@ -623,9 +624,9 @@ no hidden compatibility path or second mainline remains
     identity Register, persistent Endpoint Bind and Worker upsert, TaskItem
     append/last-success query, point polling, and Adapter batch HTTP API.
 - [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
-  - complete Adapter instance registration, independent Netty WebSocket
-    and Socket listeners, start/close lifecycle, bounded mailbox dispatch,
-    active connections, and Server batch HTTP client.
+  - stable WebSocket/Socket façades over one internal Netty runtime per
+    instance, start/close lifecycle, all-child Channel ownership, bounded
+    mailbox pumps, bound connections, and Server batch HTTP client.
 - [Worker Core](../transport/worker-core/README.md)
   - Java 11 compatible Worker execution, event dispatch, and
     Polling/WebSocket/Socket protocol state machines shared by JVM and Android

@@ -249,11 +249,12 @@ Adapter -> Worker : DeliveryCommand
 Worker  -> Adapter: DeliveryReport
 ```
 
-The Adapter forwards Task/System commands unchanged. Its fixed local
-Dispatcher consumes Results whose `dst=ADAPTER`; they never enter Server,
-Redis, or Kernel Result Routing. Its built-in registry contains connection
-identity, which activates the Channel. Unknown local events on an established
-connection are logged and dropped. This Dispatcher is not a plugin SPI.
+The Adapter forwards Task/System commands unchanged. One connection-local
+Session owns only `UNBOUND/VERIFYING/BOUND` and handles the fixed identity
+Report directly; there is no Adapter event registry or plugin dispatcher.
+Reports whose `dst=ADAPTER` never enter Server, Redis, or Kernel Result
+Routing. Identity activates the Channel after route verification. Unknown
+local events on an established connection are logged and dropped.
 
 Before identity, malformed or non-identity input closes the physical Channel.
 During asynchronous route verification reads are paused and no input is
@@ -273,9 +274,15 @@ or Worker-owned `3...` are queued, and their original encoded JSON is
 preserved unchanged. A full or closed queue
 drops the current Result and physically closes that Channel. Adapter-generated
 `COMMAND_EXPIRED` uses an Adapter-owned `2...` outcome and enters the same
-queue directly from the Command Loop rather than through Worker ingress. A
-timed Result Loop batches the queue to Server. There is no command/result
+queue directly from the DeliveryCommand Pump rather than through Worker
+ingress. A timed DeliveryReport Pump batches the queue to Server. There is no command/result
 coupling, ACK, durable Adapter queue, or exactly-once promise.
+
+The public WebSocket and Socket Adapter classes are stable façades over one
+Netty-specific runtime per instance. That runtime owns the listener, every
+accepted child Channel (including unbound and verifying Channels), the current
+bound-route directory, both bounded pumps, and shutdown. Closing an Adapter
+therefore closes all child Channels, not only routes that reached BOUND.
 
 Physical disconnect is a reconnectable network fact. Only
 `ADAPTER/worker.connection.close` instructs the Worker to end its current run.
