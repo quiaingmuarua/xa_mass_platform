@@ -4,8 +4,8 @@ from collections.abc import Mapping, Sequence
 
 from ..kernel import (
     EndpointManagerId,
-    WorkerResult,
-    WorkerCommand,
+    DeliveryReport,
+    DeliveryCommand,
     WorkerId,
 )
 from ..redis_runtime import RedisWorkerResultRuntime, RedisWorkerCommandRuntime
@@ -47,7 +47,7 @@ class WorkerCommandConsumerClient:
         *,
         endpoint_manager_id: EndpointManagerId,
         worker_id: WorkerId,
-    ) -> WorkerCommand | None:
+    ) -> DeliveryCommand | None:
         return self._runtime.consume_worker_command(
             endpoint_manager_id=endpoint_manager_id,
             worker_id=worker_id,
@@ -58,7 +58,7 @@ class WorkerCommandConsumerClient:
         *,
         endpoint_manager_id: EndpointManagerId,
         limit: int,
-    ) -> Mapping[WorkerId, WorkerCommand]:
+    ) -> Mapping[WorkerId, DeliveryCommand]:
         return self._runtime.consume_worker_commands(
             endpoint_manager_id=endpoint_manager_id,
             limit=limit,
@@ -66,7 +66,7 @@ class WorkerCommandConsumerClient:
 
 
 class WorkerResultCommandClient:
-    """External boundary for appending semantic WorkerResult evidence."""
+    """External boundary for appending semantic DeliveryReport evidence."""
 
     def __init__(self, config: KernelApplicationConfig | None = None) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
@@ -87,6 +87,6 @@ class WorkerResultCommandClient:
     def append_worker_results(
         self,
         *,
-        results: Sequence[WorkerResult],
+        results: Sequence[DeliveryReport],
     ) -> int:
         return self._runtime.append_worker_results(results=results)

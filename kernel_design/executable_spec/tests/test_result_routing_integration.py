@@ -32,8 +32,8 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.assembly import (
     TaskType,
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-    WorkerMessageEndpoint,
-    WorkerResult,
+    DeliveryEndpoint,
+    DeliveryReport,
     WorkerCommandConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
@@ -298,13 +298,12 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         assert command is not None
         accepted = self.result_commands.append_worker_results(
             results=(
-                WorkerResult(
-                    message_id=command.message_id,
-                    dst=command.src,
-                    message_type=command.message_type,
+                DeliveryReport.from_command(
+                    command=command,
+                    src=DeliveryEndpoint.ADAPTER,
+                    source_id="endpoint-1",
                     outcome_code="23002",
                     payload="null",
-                    forward=command.forward,
                 ),
             )
         )
@@ -358,7 +357,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         if command is None:
             return False
-        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
+        self.assertIs(command.src, DeliveryEndpoint.TASK)
         self.assertEqual(_PHONE_INSPECT_EVENT_CODE, command.message_type)
         self.assertEqual(
             {"phoneNumber": "+14155552671"},
@@ -366,10 +365,10 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         accepted = self.result_commands.append_worker_results(
             results=(
-                WorkerResult(
-                    message_id=command.message_id,
-                    dst=command.src,
-                    message_type=command.message_type,
+                DeliveryReport.from_command(
+                    command=command,
+                    src=DeliveryEndpoint.WORKER,
+                    source_id=worker_id,
                     outcome_code="200",
                     payload=json.dumps(
                         _FIXED_WORKER_RESULT,
@@ -377,7 +376,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
-                    forward=command.forward,
                 ),
             )
         )

@@ -14,8 +14,8 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -25,8 +25,14 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class WorkerPointDeliveryControllerTest {
 
-    private static final String COMMAND_ID =
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+    private static final DeliveryCommand COMMAND = DeliveryCommand.create(
+            DeliveryEndpoint.TASK,
+            DeliveryEndpoint.WORKER,
+            "test.event",
+            9_999_999_999_999L,
+            "opaque-item",
+            "context"
+    );
     private WorkerDeliveryService service;
     private MockMvc mockMvc;
 
@@ -53,7 +59,7 @@ class WorkerPointDeliveryControllerTest {
                 .thenReturn(command());
         mockMvc.perform(post(pointPath("commands:poll")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.messageId").value(COMMAND_ID))
+                .andExpect(jsonPath("$.messageId").doesNotExist())
                 .andExpect(jsonPath("$.src").value("TASK"))
                 .andExpect(jsonPath("$.dst").value("WORKER"))
                 .andExpect(jsonPath("$.messageType").value("test.event"))
@@ -84,10 +90,11 @@ class WorkerPointDeliveryControllerTest {
         mockMvc.perform(post(pointPath("results"))
                         .header("X-Request-Id", "invalid-result")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(successResult().replace(COMMAND_ID, "bad")))
+                        .content(successResult().replace(
+                                "}",
+                                ",\"messageId\":\"legacy\"}"
+                        )))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code")
-                        .value(13001))
                 .andExpect(jsonPath("$.requestId").value("invalid-result"));
 
         mockMvc.perform(post(pointPath("results"))
@@ -111,23 +118,16 @@ class WorkerPointDeliveryControllerTest {
                         .value(13002));
     }
 
-    private static WorkerCommand command() {
-        return new WorkerCommand(
-                COMMAND_ID,
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
-                "test.event",
-                9_999_999_999_999L,
-                "opaque-item",
-                "context"
-        );
+    private static DeliveryCommand command() {
+        return COMMAND;
     }
 
     private static String successResult() {
         return """
-                {"messageId":"%s","dst":"TASK","messageType":"test.event",\
+                {"src":"WORKER","sourceId":"worker-1",\
+                "dst":"TASK","messageType":"test.event",\
                 "outcomeCode":"200","payload":"null","forward":"context"}\
-                """.formatted(COMMAND_ID);
+                """;
     }
 
     private static String pointPath(String action) {

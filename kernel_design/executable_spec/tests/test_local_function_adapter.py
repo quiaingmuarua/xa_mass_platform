@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import Mock, call, patch
-from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec.test_support import (
     EventHandlerResult,
@@ -11,8 +10,8 @@ from kernel_design.executable_spec.test_support import (
 )
 from kernel_design.executable_spec.assembly import (
     WorkerCommandConsumerClient,
-    WorkerCommand,
-    WorkerMessageEndpoint,
+    DeliveryCommand,
+    DeliveryEndpoint,
     WorkerResultCommandClient,
 )
 
@@ -42,14 +41,11 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         payload: str = '{"value":1}',
         execute_before_millis: int = 105_000,
         result_context: str = "opaque-context",
-    ) -> dict[str, WorkerCommand]:
+    ) -> dict[str, DeliveryCommand]:
         return {
-            worker_id: WorkerCommand(
-                message_id=str(
-                    uuid5(NAMESPACE_DNS, worker_id + result_context)
-                ),
-                src=WorkerMessageEndpoint.TASK,
-                dst=WorkerMessageEndpoint.WORKER,
+            worker_id: DeliveryCommand.create(
+                src=DeliveryEndpoint.TASK,
+                dst=DeliveryEndpoint.WORKER,
                 message_type=event_code,
                 execute_before_millis=execute_before_millis,
                 payload=payload,
@@ -67,8 +63,8 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
     @staticmethod
     def batch(
-        *commands: dict[str, WorkerCommand],
-    ) -> dict[str, WorkerCommand]:
+        *commands: dict[str, DeliveryCommand],
+    ) -> dict[str, DeliveryCommand]:
         worker_commands = {}
         for command_batch in commands:
             worker_commands.update(command_batch)
@@ -96,10 +92,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "results"
         ][0]
         self.assertEqual("opaque-context", result.forward)
-        self.assertEqual(
-            self.command()["worker-1"].message_id,
-            result.message_id,
-        )
+        self.assertEqual("event-1", result.message_type)
         self.assertEqual("200", result.outcome_code)
         self.assertEqual('{"a":1,"z":2}', result.payload)
 

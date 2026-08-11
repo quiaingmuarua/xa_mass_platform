@@ -2,18 +2,19 @@ package com.xa.mass.worker.runtime;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -118,8 +119,10 @@ final class TextMessageWorkerTransport
     @Override
     public void onMessage(String message) {
         try {
-            WorkerCommand command = codec.decodeWorkerCommand(message);
-            if (command == null) {
+            DeliveryCommand command = codec.decodeDeliveryCommand(message);
+            if (command == null
+                    || command.dst() != WORKER
+                    || command.src() == WORKER) {
                 log(
                         WorkerErrorCode.COMMAND_MESSAGE_INVALID,
                         "command.decode",
@@ -135,7 +138,7 @@ final class TextMessageWorkerTransport
                 return;
             }
 
-            Optional<WorkerResult> result = Objects.requireNonNull(
+            Optional<WorkerCommandOutcome> result = Objects.requireNonNull(
                     commandDispatcher.execute(command),
                     "commandDispatcher returned null"
             );
@@ -143,7 +146,15 @@ final class TextMessageWorkerTransport
                 return;
             }
 
-            String encoded = codec.encodeWorkerResult(result.get());
+            WorkerCommandOutcome outcome = result.get();
+            DeliveryReport report = DeliveryReport.fromCommand(
+                    command,
+                    WORKER,
+                    workerId,
+                    outcome.outcomeCode(),
+                    outcome.payload()
+            );
+            String encoded = codec.encodeDeliveryReport(report);
             if (!client.send(encoded)) {
                 log(
                         WorkerErrorCode.RESULT_SUBMIT_FAILED,
@@ -182,15 +193,16 @@ final class TextMessageWorkerTransport
 
     private Throwable sendIdentity() {
         try {
-            WorkerResult identity = new WorkerResult(
-                    UUID.randomUUID().toString(),
+            DeliveryReport identity = DeliveryReport.create(
+                    WORKER,
+                    workerId,
                     ADAPTER,
                     WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                     "200",
-                    workerId,
+                    "null",
                     ""
             );
-            return client.send(codec.encodeWorkerResult(identity))
+            return client.send(codec.encodeDeliveryReport(identity))
                     ? null
                     : new IllegalStateException(
                             "Worker connection identity was not accepted"
@@ -285,7 +297,7 @@ final class TextMessageWorkerTransport
         }
     }
 
-    private static boolean isConnectionClose(WorkerCommand command) {
+    private static boolean isConnectionClose(DeliveryCommand command) {
         return command.src() == ADAPTER
                 && WORKER_CONNECTION_CLOSE_EVENT_CODE.equals(
                 command.messageType()

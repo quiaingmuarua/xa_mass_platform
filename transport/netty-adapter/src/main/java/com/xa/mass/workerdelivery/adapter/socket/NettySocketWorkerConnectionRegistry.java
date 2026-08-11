@@ -3,7 +3,7 @@ package com.xa.mass.workerdelivery.adapter.socket;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import java.util.Map;
@@ -41,7 +41,7 @@ final class NettySocketWorkerConnectionRegistry
     @Override
     public CommandDeliveryAttempt deliver(
             String workerId,
-            WorkerCommand command
+            DeliveryCommand command
     ) {
         requireWorkerId(workerId);
         Objects.requireNonNull(command, "command");
@@ -57,7 +57,7 @@ final class NettySocketWorkerConnectionRegistry
             return CommandDeliveryAttempt.RETRY_LATER;
         }
 
-        String encoded = codec.encodeWorkerCommand(command) + "\n";
+        String encoded = codec.encodeDeliveryCommand(command) + "\n";
         ChannelFuture send;
         try {
             send = current.writeAndFlush(encoded);

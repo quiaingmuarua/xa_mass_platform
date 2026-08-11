@@ -1,9 +1,9 @@
 package com.xa.mass.workerdelivery.protocol;
 
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,28 +15,27 @@ public final class WorkerDeliveryCodec {
             "dst",
             "executeBeforeMillis",
             "forward",
-            "messageId",
             "messageType",
             "payload",
             "src"
     );
-    private static final Set<String> RESULT_FIELDS = Set.of(
+    private static final Set<String> REPORT_FIELDS = Set.of(
             "dst",
             "forward",
-            "messageId",
             "messageType",
             "outcomeCode",
-            "payload"
+            "payload",
+            "sourceId",
+            "src"
     );
 
-    public WorkerCommand decodeWorkerCommand(String value) {
+    public DeliveryCommand decodeDeliveryCommand(String value) {
         try {
             Map<String, Object> payload = Jsons.parseObject(value);
             Long executeBefore = integralLong(
                     payload.get("executeBeforeMillis")
             );
             if (!payload.keySet().equals(COMMAND_FIELDS)
-                    || string(payload.get("messageId")) == null
                     || string(payload.get("src")) == null
                     || string(payload.get("dst")) == null
                     || string(payload.get("messageType")) == null
@@ -45,14 +44,9 @@ public final class WorkerDeliveryCodec {
                     || string(payload.get("forward")) == null) {
                 return null;
             }
-            return new WorkerCommand(
-                    string(payload.get("messageId")),
-                    WorkerMessageEndpoint.fromWire(
-                            string(payload.get("src"))
-                    ),
-                    WorkerMessageEndpoint.fromWire(
-                            string(payload.get("dst"))
-                    ),
+            return DeliveryCommand.restore(
+                    DeliveryEndpoint.fromWire(string(payload.get("src"))),
+                    DeliveryEndpoint.fromWire(string(payload.get("dst"))),
                     string(payload.get("messageType")),
                     executeBefore,
                     string(payload.get("payload")),
@@ -63,31 +57,40 @@ public final class WorkerDeliveryCodec {
         }
     }
 
-    public String encodeWorkerCommand(WorkerCommand command) {
+    public String encodeDeliveryCommand(DeliveryCommand command) {
         if (command == null) {
             throw new IllegalArgumentException(
-                    "WorkerCommand must be present"
+                    "DeliveryCommand must be present"
             );
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("dst", command.dst().wireValue());
-        payload.put(
-                "executeBeforeMillis",
-                command.executeBeforeMillis()
-        );
+        payload.put("executeBeforeMillis", command.executeBeforeMillis());
         payload.put("forward", command.forward());
-        payload.put("messageId", command.messageId());
         payload.put("messageType", command.messageType());
         payload.put("payload", command.payload());
         payload.put("src", command.src().wireValue());
         return Jsons.toJson(payload);
     }
 
-    public WorkerResult decodeWorkerResult(String value) {
+    public DeliveryReport decodeDeliveryReport(String value) {
         try {
-            Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(RESULT_FIELDS)
-                    || string(payload.get("messageId")) == null
+            return decodeDeliveryReport(Jsons.parseObject(value));
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    public DeliveryReport decodeDeliveryReport(
+            Map<String, ?> payload
+    ) {
+        try {
+            if (payload == null) {
+                return null;
+            }
+            if (!payload.keySet().equals(REPORT_FIELDS)
+                    || string(payload.get("src")) == null
+                    || string(payload.get("sourceId")) == null
                     || string(payload.get("dst")) == null
                     || string(payload.get("messageType")) == null
                     || string(payload.get("outcomeCode")) == null
@@ -95,11 +98,10 @@ public final class WorkerDeliveryCodec {
                     || string(payload.get("forward")) == null) {
                 return null;
             }
-            return new WorkerResult(
-                    string(payload.get("messageId")),
-                    WorkerMessageEndpoint.fromWire(
-                            string(payload.get("dst"))
-                    ),
+            return DeliveryReport.restore(
+                    DeliveryEndpoint.fromWire(string(payload.get("src"))),
+                    string(payload.get("sourceId")),
+                    DeliveryEndpoint.fromWire(string(payload.get("dst"))),
                     string(payload.get("messageType")),
                     string(payload.get("outcomeCode")),
                     string(payload.get("payload")),
@@ -110,19 +112,20 @@ public final class WorkerDeliveryCodec {
         }
     }
 
-    public String encodeWorkerResult(WorkerResult result) {
-        if (result == null) {
+    public String encodeDeliveryReport(DeliveryReport report) {
+        if (report == null) {
             throw new IllegalArgumentException(
-                    "WorkerResult must be present"
+                    "DeliveryReport must be present"
             );
         }
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("dst", result.dst().wireValue());
-        payload.put("forward", result.forward());
-        payload.put("messageId", result.messageId());
-        payload.put("messageType", result.messageType());
-        payload.put("outcomeCode", result.outcomeCode());
-        payload.put("payload", result.payload());
+        payload.put("dst", report.dst().wireValue());
+        payload.put("forward", report.forward());
+        payload.put("messageType", report.messageType());
+        payload.put("outcomeCode", report.outcomeCode());
+        payload.put("payload", report.payload());
+        payload.put("sourceId", report.sourceId());
+        payload.put("src", report.src().wireValue());
         return Jsons.toJson(payload);
     }
 

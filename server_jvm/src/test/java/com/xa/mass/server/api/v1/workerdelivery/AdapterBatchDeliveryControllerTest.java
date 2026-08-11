@@ -15,8 +15,8 @@ import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService.WorkerResultAppendCounts;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,8 +27,14 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class AdapterBatchDeliveryControllerTest {
 
-    private static final String COMMAND_ID =
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+    private static final DeliveryCommand COMMAND = DeliveryCommand.create(
+            DeliveryEndpoint.TASK,
+            DeliveryEndpoint.WORKER,
+            "test.event",
+            9_999_999_999_999L,
+            "opaque-item",
+            "context"
+    );
     private WorkerDeliveryService service;
     private MockMvc mockMvc;
 
@@ -57,7 +63,10 @@ class AdapterBatchDeliveryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
                         "$.workerCommandsByWorkerId.worker-1.messageId"
-                ).value(COMMAND_ID));
+                ).doesNotExist())
+                .andExpect(jsonPath(
+                        "$.workerCommandsByWorkerId.worker-1.messageType"
+                ).value("test.event"));
     }
 
     @Test
@@ -135,24 +144,16 @@ class AdapterBatchDeliveryControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    private static WorkerCommand command() {
-        return new WorkerCommand(
-                COMMAND_ID,
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
-                "test.event",
-                9_999_999_999_999L,
-                "opaque-item",
-                "context"
-        );
+    private static DeliveryCommand command() {
+        return COMMAND;
     }
 
     private static String successResult() {
         return """
-                {"dst":"TASK","forward":"context","messageId":"%s",\
+                {"dst":"TASK","forward":"context",\
                 "messageType":"test.event","outcomeCode":"200",\
-                "payload":"null"}\
-                """.formatted(COMMAND_ID);
+                "payload":"null","sourceId":"worker-1","src":"WORKER"}\
+                """;
     }
 
     private static String batchPath(String action) {

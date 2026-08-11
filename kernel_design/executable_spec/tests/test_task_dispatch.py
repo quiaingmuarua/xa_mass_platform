@@ -4,15 +4,14 @@ import inspect
 import json
 import unittest
 from unittest.mock import Mock, call, patch
-from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
     WorkerCommandAppendStatus,
-    WorkerCommand,
+    DeliveryCommand,
     WorkerCommandRuntime,
-    WorkerMessageEndpoint,
+    DeliveryEndpoint,
     TaskDispatchConfig,
     TaskDispatchPacer,
     TaskDispatchWakeInbox,
@@ -272,8 +271,8 @@ class TaskDispatchPacerTest(unittest.TestCase):
             "worker_commands_by_worker_id"
         ]["worker-1"]
         self.assertEqual(self.CLAIM_UNTIL_MILLIS, first_command.execute_before_millis)
-        self.assertIs(first_command.src, WorkerMessageEndpoint.TASK)
-        self.assertIs(first_command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertIs(first_command.src, DeliveryEndpoint.TASK)
+        self.assertIs(first_command.dst, DeliveryEndpoint.WORKER)
         self.assertEqual("event-1", first_command.message_type)
         self.assertEqual(
             {"value": "message-1"},
@@ -377,8 +376,11 @@ class TaskDispatchPacerTest(unittest.TestCase):
             tuple(commands),
         )
         self.assertEqual(
-            2,
-            len({command.message_id for command in commands.values()}),
+            {"message-1", "message-2"},
+            {
+                json.loads(command.forward)["messageId"]
+                for command in commands.values()
+            },
         )
 
     def test_publish_partitions_commands_by_endpoint_manager(self) -> None:
@@ -979,11 +981,10 @@ class TaskDispatchPacerTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _command(worker_id: str) -> WorkerCommand:
-        return WorkerCommand(
-            message_id=str(uuid5(NAMESPACE_DNS, worker_id)),
-            src=WorkerMessageEndpoint.TASK,
-            dst=WorkerMessageEndpoint.WORKER,
+    def _command(worker_id: str) -> DeliveryCommand:
+        return DeliveryCommand.create(
+            src=DeliveryEndpoint.TASK,
+            dst=DeliveryEndpoint.WORKER,
             message_type="test.event",
             execute_before_millis=20_000,
             payload="delivery",

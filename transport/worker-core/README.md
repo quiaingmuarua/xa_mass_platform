@@ -33,11 +33,11 @@ TextMessageWorkerTransportFactory
   -> prepared Endpoint + immutable Dispatcher -> Transport
 
 TextMessageWorkerTransport
-  -> Adapter-directed identity WorkerResult on every physical open
-  -> strict WorkerCommand decode
+  -> Adapter-directed identity DeliveryReport on every physical open
+  -> strict DeliveryCommand decode
   -> direct Adapter connection-close termination
   -> synchronous Dispatcher execution
-  -> one-shot WorkerResult send
+  -> one-shot DeliveryReport send
   -> exact-once endpoint termination
 
 TextMessageClient
@@ -48,6 +48,7 @@ TextMessageClient
 WorkerCommandDispatcher
   -> Core built-ins + immutable Host extensions
   -> synchronous Definition resolution and Handler execution
+  -> optional WorkerCommandOutcome(outcomeCode, payload)
 ```
 
 Core creates or closes no execution resource. `WorkerRunController` submits
@@ -64,7 +65,8 @@ Client protocol callback
   -> ADAPTER/worker.connection.close: end current run
   -> WorkerCommandDispatcher.execute
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
-  -> optional WorkerResult
+  -> optional WorkerCommandOutcome
+  -> Transport creates DeliveryReport.fromCommand(WORKER, workerId, ...)
   -> one send attempt on the current connection
 ```
 
@@ -76,8 +78,10 @@ instances must still be thread-safe.
 
 `WorkerCommandDispatcher` compares the Command deadline with the local system
 epoch-millisecond clock, resolves the immutable
-`(src, messageType)` definition, invokes the resolver and handler, and
-preserves Command correlation fields in the Result.
+`(src, messageType)` definition, and invokes the resolver and handler. It
+returns only `WorkerCommandOutcome`; it does not know workerId or construct a
+protocol Report. Transport owns Report routing and Worker source identity;
+Delivery defines no outer message or correlation ID.
 
 Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
 `forWorker(definitionExtensions)`. Core owns the complete registry: it loads
@@ -102,12 +106,13 @@ Result is discarded. Commands and Results are never queued, cached, or
 replayed.
 
 On every physical connection open, Transport first sends
-`WorkerResult(dst=ADAPTER,messageType=worker.connection.identify)` with a fresh
-message ID and the prepared worker ID as payload. A failed identity send asks
+`DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
+`messageType=worker.connection.identify,payload="null")` with a fresh message
+ID. A failed identity send asks
 the Client to close the current physical connection and consume its normal
 reconnect budget. A non-expired `ADAPTER/worker.connection.close` Command is
 the only protocol event that directly ends the current run. It is consumed by
-Transport and produces no WorkerResult; it never enters the business
+Transport and produces no DeliveryReport; it never enters the business
 Dispatcher.
 
 ## One Worker Run
@@ -157,7 +162,7 @@ mechanism.
 
 There is no local Command injection or Properties-refresh lifecycle method.
 Platform and Adapter capabilities use statically assembled
-`WorkerEventDefinition` values delivered through ordinary `WorkerCommand`
+`WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
 messages.
 
 ## Client Boundary

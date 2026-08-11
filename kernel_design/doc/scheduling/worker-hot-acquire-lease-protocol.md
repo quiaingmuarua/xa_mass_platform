@@ -34,7 +34,7 @@ trusted result disposition or lease expiry. A physical executor with parallel
 capacity exposes multiple logical WorkerIds; the kernel does not create several
 active assignments behind one Worker score.
 
-One Worker lease carries one TaskItem and one WorkerCommand. A Worker that exposes
+One Worker lease carries one TaskItem and one DeliveryCommand. A Worker that exposes
 a business batch operation receives the batch as a bounded collection inside
 that TaskItem payload. The kernel does not merge multiple TaskItems, create
 multiple Item claim fences behind one Worker lease, or release the slot early.
@@ -258,9 +258,9 @@ cross-owner transaction.
 | WorkerCandidateAcquirer TARGETED | request-local WorkerId source, pre-match, bounded exact lease and post-lease rematch | no index discovery, cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build WorkerCommand | no Task-score, mailbox, cache or Worker-score access |
+| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
-| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and WorkerResult append | no Worker selection or score parsing/mutation |
+| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Future trusted Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
@@ -283,7 +283,7 @@ payload.
 - Do not treat missing result as Adapter rejection.
 - Do not let old result evidence mutate a newer Worker lease.
 - Do not create separate Attempt, reservation, session epoch or lease registry.
-- Do not release a Worker fence after WorkerCommand append to simulate
+- Do not release a Worker fence after DeliveryCommand append to simulate
   immediate slot reuse.
 - Do not assign independent TaskItems or different Tasks concurrently to one
   WorkerId.

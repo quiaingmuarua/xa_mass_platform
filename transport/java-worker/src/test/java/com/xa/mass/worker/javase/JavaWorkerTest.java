@@ -1,7 +1,8 @@
 package com.xa.mass.worker.javase;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,7 +17,7 @@ import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -222,18 +223,20 @@ class JavaWorkerTest {
                                  StandardCharsets.UTF_8
                          )
                  )) {
-                WorkerResult identityFrame = new WorkerDeliveryCodec()
-                        .decodeWorkerResult(
+                DeliveryReport identityFrame = new WorkerDeliveryCodec()
+                        .decodeDeliveryReport(
                                 reader.readLine()
                         );
                 assertNotNull(identityFrame);
+                assertEquals(WORKER, identityFrame.src());
+                assertEquals(WORKER_ID, identityFrame.sourceId());
                 assertEquals(ADAPTER, identityFrame.dst());
                 assertEquals(
                         WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                         identityFrame.messageType()
                 );
                 assertEquals("200", identityFrame.outcomeCode());
-                assertEquals(WORKER_ID, identityFrame.payload());
+                assertEquals("null", identityFrame.payload());
                 assertEquals("", identityFrame.forward());
             }
         }

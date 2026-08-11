@@ -43,12 +43,12 @@ Task score admission and visibility
      -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
   -> Task Dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
-                     -> WorkerCommand mailbox append
+                     -> DeliveryCommand mailbox append
      -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
   -> Worker Delivery Dispatch
      -> outbound Worker command protocol
-     -> semantic WorkerResult ingress
-     -> outcome-class WorkerResult queues
+     -> semantic DeliveryReport ingress
+     -> outcome-class DeliveryReport queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
 ```
@@ -404,13 +404,13 @@ candidate ranking after worker-runtime matching
 short assignment plan evidence
 Item score claim timing
 dispatch-time Worker lease disposition through WorkerScoreCore owner primitives
-queued WorkerCommand creation
+queued DeliveryCommand creation
 ```
 
 Within Task Dispatch, `TaskDispatchPacer` owns the bounded RUNNING round,
 suffix routing, mailbox publication, and Task-score pacing.
 `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
-acquisition, exact Item claim, and WorkerCommand construction. It is not
+acquisition, exact Item claim, and DeliveryCommand construction. It is not
 another Pacer or lifecycle owner.
 
 It does not own Task lifecycle truth, Worker resource or score truth, Worker
@@ -424,27 +424,31 @@ Worker Delivery Dispatch owns:
 ```text
 Server point WorkerId polling through the fixed system-polling route
 Server bounded no-cursor access for a long-lived Adapter's sparse mailbox
-point HTTP forwarding of WorkerCommand to the selected Worker
-direct WorkerCommand/WorkerResult long-connection transport
+point HTTP forwarding of DeliveryCommand to the selected Worker
+direct DeliveryCommand/DeliveryReport long-connection transport
 Server point Worker result and Adapter batch validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
 independent bounded Command/Result loops and active-connection mechanism
-Adapter-owned Netty listeners and unchanged encoded WorkerResult forwarding
+Adapter-owned Netty listeners and unchanged encoded DeliveryReport forwarding
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
-after WorkerResult append. It does not select Workers, claim Items, mutate Task
+after DeliveryReport append. It does not select Workers, claim Items, mutate Task
 score, interpret Worker score, or renew/release Worker leases. The current
+Delivery DTOs carry no outer `messageId`; TaskItem identity remains in the Task
+owner contract and opaque ResultContext. Delivery owners must not decode
+`forward` or infer correlation from it. The current
 polling HTTP slice accepts Worker-originated `200` and Worker-owned `3...`;
-the long-lived Adapter endpoint also accepts trusted
-Adapter rejection outcomes. The HTTP access boundary, not
-a caller-provided source field, expresses the trusted role. Polling never
+the long-lived Adapter endpoint also accepts Adapter `2...` Reports when
+`sourceId` matches the path endpoint-manager ID. Point ingress requires
+`WORKER + path workerId`; these declarations are consistency evidence, not
+authentication. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
 Each Java Adapter instance owns one configured non-system-polling mailbox,
 one independent Netty listener, separate scheduled Command/Result loops,
 bounded command/result queues, one current connection per WorkerId, statically
-bound direct WorkerCommand/WorkerResult transport, and Adapter rejection versus `UNKNOWN`
+bound direct DeliveryCommand/DeliveryReport transport, and Adapter rejection versus `UNKNOWN`
 classification. Adapter validates Worker-originated outcomes, but queues and
 forwards the original encoded result String; Server ingress performs the
 authoritative batch validation.
@@ -461,7 +465,7 @@ unsupported.
 Result-routing owns:
 
 ```text
-three outcome-class WorkerResult queues through WorkerResultRuntime
+three outcome-class DeliveryReport queues through WorkerResultRuntime
 bounded consume, forward decode, owner-key grouping, and handler
 delegation through ResultRoutingPacer
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
@@ -485,7 +489,7 @@ current Item score, reproduce same-tag/cross-tag rules, select workers, parse
 transport connections as truth, depend directly on Task/Worker runtime owners, or
 refresh task or worker score as a generic side effect. Built-in owner-operation
 policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
-same stable handler contracts. WorkerResult queues are not partitioned by endpointManagerId,
+same stable handler contracts. DeliveryReport queues are not partitioned by endpointManagerId,
 exact subcode, Task, WorkerGroup, or producer source. The current result
 projection is a bounded Java read of requested Task-scoped last-success
 payloads. It exposes neither failure history nor pending/final state. Exhausted

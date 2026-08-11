@@ -15,8 +15,8 @@ The kernel has four scheduling planes:
 | --- | --- | --- | --- | --- |
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
-| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned WorkerCommand mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
-| Result-routing | How does returned evidence affect Task success finality and Worker disposition? | WorkerResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
+| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned DeliveryCommand mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
+| Result-routing | How does returned evidence affect Task success finality and Worker disposition? | DeliveryReports and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
 may change without changing owner authority.
@@ -55,13 +55,13 @@ Task score acquire
      -> TaskItem observation
      -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
      -> TaskItem exact claim
-     -> direct WorkerCommand construction
-     -> endpointManagerId-partitioned sparse WorkerCommand mailbox
+     -> direct DeliveryCommand construction
+     -> endpointManagerId-partitioned sparse DeliveryCommand mailbox
   -> Worker Delivery Dispatch
      -> target Worker point poll through system-polling or another binding
      -> long-lived Adapter bounded batch consume for active push transports
      -> accept Worker point results or Adapter result batches
-     -> WorkerResult queue
+     -> DeliveryReport queue
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
      -> Worker failure: keep Item claim coordinate + Worker exact release
@@ -128,7 +128,7 @@ CandidateWarmupSchedule
 
 TaskItemDispatcher
   owns one suffix-zero Task's bounded Item observation, Worker acquisition,
-  exact Item claim, and WorkerCommand construction;
+  exact Item claim, and DeliveryCommand construction;
   it owns no Task score, mailbox, or background lifecycle
 
 WorkerCommandRuntime
@@ -165,7 +165,7 @@ Worker Delivery Dispatch
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with per-connection route verification, stateless bounded batch acquisition, fixed system-polling route, and Java 11 Worker Core Polling/WebSocket/Socket state machines | Authentication, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
@@ -205,7 +205,7 @@ tr:{prefix}:task:{taskId}:results
   Task-local Item score and record/result HASHes
 
 wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
-  one sparse WorkerCommand HASH per Adapter route
+  one sparse DeliveryCommand HASH per Adapter route
 
 rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs
@@ -307,7 +307,7 @@ kernel_design/executable_spec/
 - Do not let a pacer decode or mint another owner's opaque score evidence.
 - Do not let Worker Delivery Dispatch select Workers or Result Routing refresh
   Task score.
-- Do not make transient candidate or WorkerResult queues durable lifecycle truth.
+- Do not make transient candidate or DeliveryReport queues durable lifecycle truth.
 - Do not add a hot-path index, scanner, lock, queue, or transaction without a
   named owner invariant and bounded cost.
 - Do not preserve superseded mechanisms as historical alternatives in active

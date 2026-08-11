@@ -4,19 +4,19 @@ from abc import ABC, abstractmethod
 from typing import Sequence
 
 from .worker_delivery import (
-    WorkerResult,
-    WorkerResultOutcomeClass,
+    DeliveryReport,
+    DeliveryReportOutcomeClass,
 )
 
 
 class WorkerResultRuntime(ABC):
-    """Best-effort WorkerResult queues partitioned by outcome class."""
+    """Best-effort DeliveryReport queues partitioned by outcome class."""
 
     @abstractmethod
     def append_worker_results(
         self,
         *,
-        results: Sequence[WorkerResult],
+        results: Sequence[DeliveryReport],
     ) -> int:
         pass
 
@@ -24,7 +24,7 @@ class WorkerResultRuntime(ABC):
     def consume_worker_results(
         self,
         *,
-        outcome_class: WorkerResultOutcomeClass,
+        outcome_class: DeliveryReportOutcomeClass,
         limit: int,
-    ) -> tuple[WorkerResult, ...]:
+    ) -> tuple[DeliveryReport, ...]:
         pass

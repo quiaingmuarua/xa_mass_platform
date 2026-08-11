@@ -5,16 +5,15 @@ import json
 import unittest
 from dataclasses import fields
 from unittest.mock import Mock, call, patch
-from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
     ResultRoutingConfig,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
-    WorkerResult,
-    WorkerMessageEndpoint,
-    WorkerResultOutcomeClass,
+    DeliveryReport,
+    DeliveryEndpoint,
+    DeliveryReportOutcomeClass,
     WorkerResultRuntime,
     TaskResultEvidence,
     TaskResultHandler,
@@ -88,7 +87,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.task_runtime = Mock(spec=TaskRuntime)
-        self.queues: dict[WorkerResultOutcomeClass, tuple[WorkerResult, ...]] = {}
+        self.queues: dict[DeliveryReportOutcomeClass, tuple[DeliveryReport, ...]] = {}
         self.runtime.consume_worker_results.side_effect = (
             lambda *, outcome_class, limit: self.queues.get(outcome_class, ())
         )
@@ -126,15 +125,16 @@ class ResultRoutingPacerTest(unittest.TestCase):
         worker_lease_score: int = 201,
         outcome_code: str = "200",
         payload: str | None = '{"value":1}',
-    ) -> WorkerResult:
-        return WorkerResult(
-            message_id=str(
-                uuid5(
-                    NAMESPACE_DNS,
-                    f"{task_id}:{message_id}:{worker_id}:{outcome_code}",
-                )
-            ),
-            dst=WorkerMessageEndpoint.TASK,
+    ) -> DeliveryReport:
+        source = (
+            DeliveryEndpoint.ADAPTER
+            if outcome_code != "200" and outcome_code.startswith("2")
+            else DeliveryEndpoint.WORKER
+        )
+        return DeliveryReport.create(
+            src=source,
+            source_id=("endpoint-manager-1" if source is DeliveryEndpoint.ADAPTER else worker_id),
+            dst=DeliveryEndpoint.TASK,
             message_type="test.event",
             outcome_code=outcome_code,
             payload=payload if payload is not None else "null",
@@ -172,14 +172,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                "message_id",
+                "src",
+                "source_id",
                 "dst",
                 "message_type",
                 "outcome_code",
                 "payload",
                 "forward",
             ],
-            [field.name for field in fields(WorkerResult)],
+            [field.name for field in fields(DeliveryReport)],
         )
         self.assertEqual(
             {"append_worker_results", "consume_worker_results"},
@@ -215,16 +216,16 @@ class ResultRoutingPacerTest(unittest.TestCase):
         task_handler = Mock()
         worker_handlers = {
             outcome_class: Mock()
-            for outcome_class in WorkerResultOutcomeClass
+            for outcome_class in DeliveryReportOutcomeClass
         }
         pacer = ResultRoutingPacer(
             self.runtime,
             task_result_handlers={
-                WorkerResultOutcomeClass.SUCCESS: task_handler,
+                DeliveryReportOutcomeClass.SUCCESS: task_handler,
             },
             worker_result_handlers=worker_handlers,
         )
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
 
         with patch.object(
             ResultRoutingPacer,
@@ -244,7 +245,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ),
             result_time_millis=self.NOW_MILLIS,
         )
-        worker_handlers[WorkerResultOutcomeClass.SUCCESS].assert_called_once_with(
+        worker_handlers[DeliveryReportOutcomeClass.SUCCESS].assert_called_once_with(
             worker_group_id="image-workers",
             results=(
                 WorkerResultEvidence(
@@ -261,15 +262,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
     def test_builtin_policy_mappings_expose_composable_named_methods(self) -> None:
         self.assertEqual(
             {
-                WorkerResultOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
+                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
             },
             self.builtin_policies.default_task_result_handlers(),
         )
         self.assertEqual(
             {
-                WorkerResultOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
-                WorkerResultOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
-                WorkerResultOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
+                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
+                DeliveryReportOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
             },
             self.builtin_policies.default_worker_result_handlers(),
         )
@@ -286,12 +287,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
                 self.runtime,
                 task_result_handlers=self.builtin_policies.default_task_result_handlers(),
                 worker_result_handlers={
-                    WorkerResultOutcomeClass.SUCCESS: Mock(),
+                    DeliveryReportOutcomeClass.SUCCESS: Mock(),
                 },
             )
 
     def test_success_results_are_last_write_grouped_by_task_and_stored_first(self) -> None:
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
             self.result(payload='{"version":1}'),
             self.result(payload='{"version":2}', worker_lease_score=202),
             self.result(
@@ -344,7 +345,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_worker_failure_only_releases_worker_lease(self) -> None:
         failure = self.result(outcome_code="3500", payload=None)
-        self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (failure,)
+        self.queues[DeliveryReportOutcomeClass.WORKER_FAILURE] = (failure,)
 
         self.assertEqual(1, self.route())
 
@@ -358,7 +359,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.rewrite_observed_item_scores.assert_not_called()
 
     def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
         release_time_millis = self.NOW_MILLIS + WorkerScoreCore.SLOT_MILLIS
 
         with patch.object(
@@ -385,7 +386,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_worker_failure_batches_each_worker_group_once(self) -> None:
-        self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (
+        self.queues[DeliveryReportOutcomeClass.WORKER_FAILURE] = (
             self.result(outcome_code="3500", payload=None),
             self.result(
                 task_id="task-2",
@@ -418,7 +419,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
         rejection = self.result(outcome_code="23002", payload=None)
-        self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
+        self.queues[DeliveryReportOutcomeClass.ADAPTER_REJECTION] = (rejection,)
 
         self.assertEqual(1, self.route())
 
@@ -431,8 +432,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.promote_item_outcomes.assert_not_called()
 
     def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
-        self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[DeliveryReportOutcomeClass.ADAPTER_REJECTION] = (
             self.result(outcome_code="23002", payload=None),
         )
 
@@ -442,7 +443,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once()
 
     def test_result_context_supplies_worker_disposition_bucket(self) -> None:
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
             self.result(worker_group_id="gpu-workers"),
         )
 
@@ -457,14 +458,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
-        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
-            WorkerResult(
-                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                WorkerMessageEndpoint.TASK,
-                "test.event",
-                "200",
-                "null",
-                "{bad-json",
+        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
+            DeliveryReport.create(
+                src=DeliveryEndpoint.WORKER,
+                source_id="worker-1",
+                dst=DeliveryEndpoint.TASK,
+                message_type="test.event",
+                outcome_code="200",
+                payload="null",
+                forward="{bad-json",
             ),
             self.result(outcome_code="3303", payload=None),
         )
@@ -482,15 +484,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.assertEqual(
             [
                 call(
-                    outcome_class=WorkerResultOutcomeClass.SUCCESS,
+                    outcome_class=DeliveryReportOutcomeClass.SUCCESS,
                     limit=100,
                 ),
                 call(
-                    outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
+                    outcome_class=DeliveryReportOutcomeClass.WORKER_FAILURE,
                     limit=100,
                 ),
                 call(
-                    outcome_class=WorkerResultOutcomeClass.ADAPTER_REJECTION,
+                    outcome_class=DeliveryReportOutcomeClass.ADAPTER_REJECTION,
                     limit=100,
                 ),
             ],

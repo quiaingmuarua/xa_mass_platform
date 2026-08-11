@@ -1,7 +1,8 @@
 package com.xa.mass.worker.android;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -17,9 +18,9 @@ import com.xa.mass.worker.runtime.WorkerRunController;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -39,35 +40,33 @@ import org.robolectric.RobolectricTestRunner;
 @RunWith(RobolectricTestRunner.class)
 public class AndroidWebSocketCompositionTest {
 
-    private static final String MESSAGE_ID =
+    private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
     @Test
     public void completesIdentifyCommandAndResultRoundTrip()
             throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        WorkerCommand command = new WorkerCommand(
-                MESSAGE_ID,
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
+        DeliveryCommand command = DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
                 "test.observe",
                 System.currentTimeMillis() + 30_000,
                 "{\"value\":\"visible\"}",
                 "result-context"
         );
-        WorkerResult expectedResult = new WorkerResult(
-                MESSAGE_ID,
-                WorkerMessageEndpoint.TASK,
-                "test.observe",
+        DeliveryReport expectedResult = DeliveryReport.fromCommand(
+                command,
+                WORKER,
+                WORKER_ID,
                 "200",
-                "{\"observed\":\"visible\"}",
-                "result-context"
+                "{\"observed\":\"visible\"}"
         );
 
         CountDownLatch resultReceived = new CountDownLatch(1);
-        AtomicReference<WorkerResult> identity =
+        AtomicReference<DeliveryReport> identity =
                 new AtomicReference<>();
-        AtomicReference<WorkerResult> result =
+        AtomicReference<DeliveryReport> result =
                 new AtomicReference<>();
         WebSocketListener serverListener = new WebSocketListener() {
             @Override
@@ -76,11 +75,11 @@ public class AndroidWebSocketCompositionTest {
                     String text
             ) {
                 if (identity.get() == null) {
-                    identity.set(codec.decodeWorkerResult(text));
-                    webSocket.send(codec.encodeWorkerCommand(command));
+                    identity.set(codec.decodeDeliveryReport(text));
+                    webSocket.send(codec.encodeDeliveryCommand(command));
                     return;
                 }
-                result.set(codec.decodeWorkerResult(text));
+                result.set(codec.decodeDeliveryReport(text));
                 resultReceived.countDown();
             }
         };
@@ -100,7 +99,7 @@ public class AndroidWebSocketCompositionTest {
             WorkerPreparation preparation = new WorkerPreparation() {
                 @Override
                 public PreparedWorker prepare() {
-                    return new PreparedWorker(MESSAGE_ID, socketUri);
+                    return new PreparedWorker(WORKER_ID, socketUri);
                 }
 
                 @Override
@@ -155,13 +154,15 @@ public class AndroidWebSocketCompositionTest {
         }
 
         assertNotNull(identity.get());
+        assertEquals(WORKER, identity.get().src());
+        assertEquals(WORKER_ID, identity.get().sourceId());
         assertEquals(ADAPTER, identity.get().dst());
         assertEquals(
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                 identity.get().messageType()
         );
         assertEquals("200", identity.get().outcomeCode());
-        assertEquals(MESSAGE_ID, identity.get().payload());
+        assertEquals("null", identity.get().payload());
         assertEquals("", identity.get().forward());
         assertEquals(expectedResult, result.get());
     }

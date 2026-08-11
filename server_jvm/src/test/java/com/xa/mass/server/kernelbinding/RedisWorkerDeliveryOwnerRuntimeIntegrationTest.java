@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -79,20 +79,18 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     @Test
     void commandConsumeAndResultAppendRemainSeparateOwners() {
-        String messageId = UUID.randomUUID().toString();
         String encoded = commandJson(
-                messageId,
                 System.currentTimeMillis() + 30_000
         );
         redis.hset(commandKey("endpoint-1"), "worker-1", encoded);
         redis.hset(commandKey("endpoint-2"), "worker-1", encoded);
 
-        WorkerCommand consumed =
+        DeliveryCommand consumed =
                 commandRuntime.consumeWorkerCommand(
                         "endpoint-1",
                         "worker-1"
                 );
-        assertThat(consumed.messageId()).isEqualTo(messageId);
+        assertThat(consumed.messageType()).isEqualTo("test.event");
         assertThat(commandRuntime.consumeWorkerCommand(
                 "endpoint-1",
                 "worker-1"
@@ -102,19 +100,21 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 "worker-1"
         )).isNotNull();
 
-        List<WorkerResult> results = List.of(
-                result(messageId, "success", "200"),
-                new WorkerResult(
-                        UUID.randomUUID().toString(),
-                        WorkerMessageEndpoint.TASK,
+        List<DeliveryReport> results = List.of(
+                result("success", "200"),
+                DeliveryReport.create(
+                        DeliveryEndpoint.WORKER,
+                        "worker-1",
+                        DeliveryEndpoint.TASK,
                         "test.event",
                         "3500",
                         "null",
                         "failure"
                 ),
-                new WorkerResult(
-                        UUID.randomUUID().toString(),
-                        WorkerMessageEndpoint.TASK,
+                DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER,
+                        "endpoint-1",
+                        DeliveryEndpoint.TASK,
                         "test.event",
                         "23002",
                         "null",
@@ -134,7 +134,6 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 key,
                 "worker-active",
                 commandJson(
-                        UUID.randomUUID().toString(),
                         System.currentTimeMillis() + 30_000
                 )
         );
@@ -142,7 +141,6 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 key,
                 "worker-expired",
                 commandJson(
-                        UUID.randomUUID().toString(),
                         System.currentTimeMillis() - 1
                 )
         );
@@ -167,7 +165,6 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                     key,
                     workerId,
                     commandJson(
-                            UUID.randomUUID().toString(),
                             System.currentTimeMillis() + 30_000
                     )
             );
@@ -197,7 +194,6 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                     key,
                     "worker-" + index,
                     commandJson(
-                            UUID.randomUUID().toString(),
                             System.currentTimeMillis() + 30_000
                     )
             );
@@ -244,27 +240,29 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         return 0;
     }
 
-    private static String commandJson(
-            String messageId,
-            long executeBeforeMillis
-    ) {
+    private static String commandJson(long executeBeforeMillis) {
         return "{\"dst\":\"WORKER\","
                 + "\"executeBeforeMillis\":" + executeBeforeMillis + ","
                 + "\"forward\":\"context\","
-                + "\"messageId\":\"" + messageId + "\","
                 + "\"messageType\":\"test.event\","
                 + "\"payload\":\"opaque-item\","
                 + "\"src\":\"TASK\"}";
     }
 
-    private static WorkerResult result(
-            String messageId,
+    private static DeliveryReport result(
             String forward,
             String outcomeCode
     ) {
-        return new WorkerResult(
-                messageId,
-                WorkerMessageEndpoint.TASK,
+        DeliveryEndpoint source = !"200".equals(outcomeCode)
+                && outcomeCode.startsWith("2")
+                ? DeliveryEndpoint.ADAPTER
+                : DeliveryEndpoint.WORKER;
+        return DeliveryReport.create(
+                source,
+                source == DeliveryEndpoint.ADAPTER
+                        ? "endpoint-1"
+                        : "worker-1",
+                DeliveryEndpoint.TASK,
                 "test.event",
                 outcomeCode,
                 "null",

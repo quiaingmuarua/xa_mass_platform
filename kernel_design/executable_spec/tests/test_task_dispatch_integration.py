@@ -17,9 +17,9 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec import (
     MappedWorkerPropertyIndexRuntime,
     TaskType,
-    WorkerCommand,
+    DeliveryCommand,
     WorkerCommandAppendStatus,
-    WorkerMessageEndpoint,
+    DeliveryEndpoint,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
@@ -245,7 +245,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             worker_commands_by_worker_id=commands_by_worker_id,
         )
 
-        consumed: dict[str, WorkerCommand] = {}
+        consumed: dict[str, DeliveryCommand] = {}
         for _ in range(10):
             commands = self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-batch",
@@ -319,7 +319,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         worker_id: str,
         opaque_delivery_item: str,
         opaque_result_context: str,
-    ) -> WorkerCommand:
+    ) -> DeliveryCommand:
         decoded_delivery = json.loads(opaque_delivery_item)
         if (
             isinstance(decoded_delivery, dict)
@@ -335,10 +335,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         else:
             message_type = "test.event"
             payload = opaque_delivery_item
-        return WorkerCommand(
-            message_id=str(uuid.uuid4()),
-            src=WorkerMessageEndpoint.TASK,
-            dst=WorkerMessageEndpoint.WORKER,
+        return DeliveryCommand.create(
+            src=DeliveryEndpoint.TASK,
+            dst=DeliveryEndpoint.WORKER,
             message_type=message_type,
             execute_before_millis=int(time.time() * 1_000) + 5_000,
             payload=payload,
@@ -551,8 +550,8 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(command)
         assert command is not None
-        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
-        self.assertIs(command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertIs(command.src, DeliveryEndpoint.TASK)
+        self.assertIs(command.dst, DeliveryEndpoint.WORKER)
         self.assertEqual("image.resize", command.message_type)
         delivery_item = json.loads(command.payload)
         result_context = json.loads(command.forward)

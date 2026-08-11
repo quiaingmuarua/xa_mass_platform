@@ -1,12 +1,12 @@
 package com.xa.mass.kernel.delivery.redis;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -43,27 +43,27 @@ public final class RedisWorkerResultRuntime
     }
 
     @Override
-    public int appendWorkerResults(List<WorkerResult> results) {
+    public int appendWorkerResults(List<DeliveryReport> results) {
         if (results == null) {
             throw new IllegalArgumentException("results must be present");
         }
         if (results.isEmpty()) {
             return 0;
         }
-        Map<WorkerResultOutcomeClass, List<String>> grouped =
-                new EnumMap<>(WorkerResultOutcomeClass.class);
-        for (WorkerResult result : results) {
-            WorkerResultOutcomeClass outcomeClass =
-                    classifyWorkerResultOutcomeCode(result.outcomeCode());
+        Map<DeliveryReportOutcomeClass, List<String>> grouped =
+                new EnumMap<>(DeliveryReportOutcomeClass.class);
+        for (DeliveryReport result : results) {
+            DeliveryReportOutcomeClass outcomeClass =
+                    classifyDeliveryReportOutcomeCode(result.outcomeCode());
             if (outcomeClass == null) {
                 throw new IllegalArgumentException(
-                        "WorkerResult outcome code is invalid"
+                        "DeliveryReport outcome code is invalid"
                 );
             }
             grouped.computeIfAbsent(
                     outcomeClass,
                     ignored -> new ArrayList<>()
-            ).add(codec.encodeWorkerResult(result));
+            ).add(codec.encodeDeliveryReport(result));
         }
         grouped.forEach((outcomeClass, encodedResults) ->
                 commands().rpush(
@@ -75,8 +75,8 @@ public final class RedisWorkerResultRuntime
     }
 
     @Override
-    public List<WorkerResult> consumeWorkerResults(
-            WorkerResultOutcomeClass outcomeClass,
+    public List<DeliveryReport> consumeWorkerResults(
+            DeliveryReportOutcomeClass outcomeClass,
             int limit
     ) {
         throw new KernelOperationNotImplementedException(
@@ -111,7 +111,7 @@ public final class RedisWorkerResultRuntime
         }
     }
 
-    private String resultKey(WorkerResultOutcomeClass outcomeClass) {
+    private String resultKey(DeliveryReportOutcomeClass outcomeClass) {
         return "rr:" + prefix + ":worker-results:"
                 + switch (outcomeClass) {
                     case SUCCESS -> "success";

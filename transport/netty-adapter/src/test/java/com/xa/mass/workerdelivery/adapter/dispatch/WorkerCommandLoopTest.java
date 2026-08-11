@@ -3,8 +3,9 @@ package com.xa.mass.workerdelivery.adapter.dispatch;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.UNKNOWN;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
@@ -12,8 +13,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,9 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class WorkerCommandLoopTest {
-
-    private static final String COMMAND_ID =
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
 
     @Test
     void refillsOnlyWhenACompleteConsumeBatchFits() {
@@ -124,9 +122,10 @@ class WorkerCommandLoopTest {
     @Test
     void expiredOfflineCommandCreatesBestEffortAdapterRejection() {
         FakeGateway gateway = new FakeGateway();
+        DeliveryCommand expired = command("worker-1", 1_000);
         gateway.batches.add(Map.of(
                 "worker-1",
-                command(COMMAND_ID, "worker-1", 1_000)
+                expired
         ));
         BoundedWorkerResultQueue results =
                 new BoundedWorkerResultQueue(10);
@@ -144,17 +143,16 @@ class WorkerCommandLoopTest {
 
         assertThat(loop.queuedCommandCount()).isZero();
         assertThat(gateway.appendedResults).hasSize(1);
-        assertThat(new WorkerDeliveryCodec().decodeWorkerResult(
+        assertThat(new WorkerDeliveryCodec().decodeDeliveryReport(
                 gateway.appendedResults.get(0).get(0)
-        )).isEqualTo(new WorkerResult(
-                COMMAND_ID,
-                TASK,
-                "test.observe",
+        )).isEqualTo(DeliveryReport.fromCommand(
+                expired,
+                ADAPTER,
+                "adapter-1",
                 Integer.toString(
                         WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
                 ),
-                "null",
-                "context"
+                "null"
         ));
     }
 
@@ -163,13 +161,13 @@ class WorkerCommandLoopTest {
         FakeGateway gateway = new FakeGateway();
         gateway.batches.add(Map.of(
                 "worker-1",
-                command(COMMAND_ID, "worker-1", 1_000)
+                command("worker-1", 1_000)
         ));
         BoundedWorkerResultQueue results =
                 new BoundedWorkerResultQueue(1);
-        WorkerResult existing =
-                result("b5e9e10d-f78b-469e-93ab-864b49c189c1");
-        results.offer(new WorkerDeliveryCodec().encodeWorkerResult(existing));
+        DeliveryReport existing =
+                result("existing-context");
+        results.offer(new WorkerDeliveryCodec().encodeDeliveryReport(existing));
         WorkerCommandLoop loop = loop(
                 gateway,
                 (workerId, command) -> RETRY_LATER,
@@ -186,7 +184,7 @@ class WorkerCommandLoopTest {
         assertThat(gateway.appendedResults)
                 .containsExactly(List.of(
                         new WorkerDeliveryCodec()
-                                .encodeWorkerResult(existing)
+                                .encodeDeliveryReport(existing)
                 ));
     }
 
@@ -209,17 +207,15 @@ class WorkerCommandLoopTest {
         );
     }
 
-    private static Map<String, WorkerCommand> commands(
+    private static Map<String, DeliveryCommand> commands(
             String... workerIds
     ) {
-        Map<String, WorkerCommand> commands = new LinkedHashMap<>();
+        Map<String, DeliveryCommand> commands = new LinkedHashMap<>();
         for (int index = 0; index < workerIds.length; index++) {
             String workerId = workerIds[index];
             commands.put(
                     workerId,
                     command(
-                            "00000000-0000-4000-8000-00000000000"
-                                    + index,
                             workerId,
                             2_000
                     )
@@ -228,13 +224,11 @@ class WorkerCommandLoopTest {
         return commands;
     }
 
-    private static WorkerCommand command(
-            String messageId,
+    private static DeliveryCommand command(
             String workerId,
             long deadline
     ) {
-        return new WorkerCommand(
-                messageId,
+        return DeliveryCommand.create(
                 TASK,
                 WORKER,
                 "test.observe",
@@ -244,14 +238,15 @@ class WorkerCommandLoopTest {
         );
     }
 
-    private static WorkerResult result(String messageId) {
-        return new WorkerResult(
-                messageId,
+    private static DeliveryReport result(String forward) {
+        return DeliveryReport.create(
+                WORKER,
+                "worker-1",
                 TASK,
                 "test.observe",
                 "200",
                 "null",
-                "context"
+                forward
         );
     }
 
@@ -268,7 +263,7 @@ class WorkerCommandLoopTest {
         @Override
         public CommandDeliveryAttempt deliver(
                 String workerId,
-                WorkerCommand command
+                DeliveryCommand command
         ) {
             workerIds.add(workerId);
             return attempt;
@@ -279,7 +274,7 @@ class WorkerCommandLoopTest {
             implements WorkerDeliveryGatewayClient {
 
         private final ConcurrentLinkedQueue<
-                Map<String, WorkerCommand>
+                Map<String, DeliveryCommand>
                 > batches = new ConcurrentLinkedQueue<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
         private final List<List<String>> appendedResults =
@@ -287,7 +282,7 @@ class WorkerCommandLoopTest {
         private int consumeFailures;
 
         @Override
-        public Map<String, WorkerCommand> consumeWorkerCommands(
+        public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
         ) {
@@ -296,7 +291,7 @@ class WorkerCommandLoopTest {
                 consumeFailures--;
                 throw new IllegalStateException("unavailable");
             }
-            Map<String, WorkerCommand> batch = batches.poll();
+            Map<String, DeliveryCommand> batch = batches.poll();
             return batch == null ? Map.of() : batch;
         }
 

@@ -22,8 +22,9 @@ Runtime API. It recovers each platform-issued Worker ID through the public,
 idempotent Register API before constructing explicit Worker allocation rules.
 The Server profile owns deployment composition, while
 `scenario_workers_jvm` owns business handlers, transport construction, and
-public-HTTP Register/Bind plus connection Bind construction. Server initializes the advisory WorkerGroup
-directory before starting Adapters and Scenario Workers. The caller does not depend on
+public-HTTP Register/Bind plus Adapter-directed Identify Report construction.
+Server initializes the advisory WorkerGroup directory before starting Adapters
+and Scenario Workers. The caller does not depend on
 `server_jvm`, `scenario_workers_jvm`, `kernel_jvm`, the Adapter Runtime, Worker
 Core, a network client, or Redis.
 

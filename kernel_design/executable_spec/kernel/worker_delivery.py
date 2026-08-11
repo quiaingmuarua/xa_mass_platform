@@ -6,21 +6,20 @@ from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
-from uuid import UUID
 
 from .task_score_band import TimeMillis
 from .worker_runtime import EndpointManagerId
 from .worker_score import WorkerId
 
 
-class WorkerMessageEndpoint(Enum):
+class DeliveryEndpoint(Enum):
     TASK = "TASK"
     SYSTEM = "SYSTEM"
     ADAPTER = "ADAPTER"
     WORKER = "WORKER"
 
 
-class WorkerResultOutcomeClass(Enum):
+class DeliveryReportOutcomeClass(Enum):
     SUCCESS = "SUCCESS"
     WORKER_FAILURE = "WORKER_FAILURE"
     ADAPTER_REJECTION = "ADAPTER_REJECTION"
@@ -31,77 +30,182 @@ WORKER_CONNECTION_IDENTIFY_EVENT_CODE = "worker.connection.identify"
 WORKER_CONNECTION_CLOSE_EVENT_CODE = "worker.connection.close"
 
 
-def classify_worker_result_outcome_code(
+def classify_delivery_report_outcome_code(
     outcome_code: str,
-) -> WorkerResultOutcomeClass | None:
+) -> DeliveryReportOutcomeClass | None:
     if outcome_code == SUCCESS_OUTCOME_CODE:
-        return WorkerResultOutcomeClass.SUCCESS
+        return DeliveryReportOutcomeClass.SUCCESS
     if not isinstance(outcome_code, str) or not outcome_code.strip():
         return None
     if outcome_code.startswith("3"):
-        return WorkerResultOutcomeClass.WORKER_FAILURE
-    return WorkerResultOutcomeClass.ADAPTER_REJECTION
+        return DeliveryReportOutcomeClass.WORKER_FAILURE
+    return DeliveryReportOutcomeClass.ADAPTER_REJECTION
 
 
-@dataclass(frozen=True, slots=True)
-class WorkerCommand:
-    message_id: str
-    src: WorkerMessageEndpoint
-    dst: WorkerMessageEndpoint
+@dataclass(frozen=True, slots=True, init=False)
+class DeliveryCommand:
+    src: DeliveryEndpoint
+    dst: DeliveryEndpoint
     message_type: str
     execute_before_millis: TimeMillis
     payload: str
     forward: str
 
-    def __post_init__(self) -> None:
-        _require_canonical_uuid(self.message_id, "message id")
+    def __new__(cls, *args: object, **kwargs: object) -> DeliveryCommand:
+        raise TypeError("use DeliveryCommand.create()")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        src: DeliveryEndpoint,
+        dst: DeliveryEndpoint,
+        message_type: str,
+        execute_before_millis: TimeMillis,
+        payload: str,
+        forward: str,
+    ) -> DeliveryCommand:
+        return cls._restore(
+            src=src,
+            dst=dst,
+            message_type=message_type,
+            execute_before_millis=execute_before_millis,
+            payload=payload,
+            forward=forward,
+        )
+
+    @classmethod
+    def _restore(
+        cls,
+        *,
+        src: DeliveryEndpoint,
+        dst: DeliveryEndpoint,
+        message_type: str,
+        execute_before_millis: TimeMillis,
+        payload: str,
+        forward: str,
+    ) -> DeliveryCommand:
+        if not isinstance(src, DeliveryEndpoint):
+            raise TypeError("src must be a DeliveryEndpoint")
+        if not isinstance(dst, DeliveryEndpoint):
+            raise TypeError("dst must be a DeliveryEndpoint")
+        _require_non_empty_text(message_type, "message type")
         if (
-            not isinstance(self.src, WorkerMessageEndpoint)
-            or self.src is WorkerMessageEndpoint.WORKER
-        ):
-            raise ValueError(
-                "Worker command src must be TASK, SYSTEM, or ADAPTER"
-            )
-        if self.dst is not WorkerMessageEndpoint.WORKER:
-            raise ValueError("Worker command dst must be WORKER")
-        _require_non_empty_text(self.message_type, "message type")
-        if (
-            isinstance(self.execute_before_millis, bool)
-            or not isinstance(self.execute_before_millis, int)
-            or self.execute_before_millis <= 0
+            isinstance(execute_before_millis, bool)
+            or not isinstance(execute_before_millis, int)
+            or execute_before_millis <= 0
         ):
             raise ValueError("execute-before deadline must be positive")
-        _require_text(self.payload, "payload")
-        _require_text(self.forward, "forward")
-        if self.src is WorkerMessageEndpoint.TASK and not self.forward:
+        _require_text(payload, "payload")
+        _require_text(forward, "forward")
+        if src is DeliveryEndpoint.TASK and not forward:
             raise ValueError("TASK command forward must be non-empty")
+        command = object.__new__(cls)
+        object.__setattr__(command, "src", src)
+        object.__setattr__(command, "dst", dst)
+        object.__setattr__(command, "message_type", message_type)
+        object.__setattr__(
+            command,
+            "execute_before_millis",
+            execute_before_millis,
+        )
+        object.__setattr__(command, "payload", payload)
+        object.__setattr__(command, "forward", forward)
+        return command
 
 
-@dataclass(frozen=True, slots=True)
-class WorkerResult:
-    message_id: str
-    dst: WorkerMessageEndpoint
+@dataclass(frozen=True, slots=True, init=False)
+class DeliveryReport:
+    src: DeliveryEndpoint
+    source_id: str
+    dst: DeliveryEndpoint
     message_type: str
     outcome_code: str
     payload: str
     forward: str
 
-    def __post_init__(self) -> None:
-        _require_canonical_uuid(self.message_id, "message id")
-        if (
-            not isinstance(self.dst, WorkerMessageEndpoint)
-            or self.dst is WorkerMessageEndpoint.WORKER
-        ):
-            raise ValueError(
-                "Worker result dst must be TASK, SYSTEM, or ADAPTER"
-            )
-        _require_non_empty_text(self.message_type, "message type")
-        if classify_worker_result_outcome_code(self.outcome_code) is None:
+    def __new__(cls, *args: object, **kwargs: object) -> DeliveryReport:
+        raise TypeError(
+            "use DeliveryReport.create() or DeliveryReport.from_command()"
+        )
+
+    @classmethod
+    def from_command(
+        cls,
+        *,
+        command: DeliveryCommand,
+        src: DeliveryEndpoint,
+        source_id: str,
+        outcome_code: str,
+        payload: str,
+    ) -> DeliveryReport:
+        if not isinstance(command, DeliveryCommand):
+            raise TypeError("command must be a DeliveryCommand")
+        return cls._restore(
+            src=src,
+            source_id=source_id,
+            dst=command.src,
+            message_type=command.message_type,
+            outcome_code=outcome_code,
+            payload=payload,
+            forward=command.forward,
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        src: DeliveryEndpoint,
+        source_id: str,
+        dst: DeliveryEndpoint,
+        message_type: str,
+        outcome_code: str,
+        payload: str,
+        forward: str,
+    ) -> DeliveryReport:
+        return cls._restore(
+            src=src,
+            source_id=source_id,
+            dst=dst,
+            message_type=message_type,
+            outcome_code=outcome_code,
+            payload=payload,
+            forward=forward,
+        )
+
+    @classmethod
+    def _restore(
+        cls,
+        *,
+        src: DeliveryEndpoint,
+        source_id: str,
+        dst: DeliveryEndpoint,
+        message_type: str,
+        outcome_code: str,
+        payload: str,
+        forward: str,
+    ) -> DeliveryReport:
+        if not isinstance(src, DeliveryEndpoint):
+            raise TypeError("src must be a DeliveryEndpoint")
+        _require_non_blank_text(source_id, "source id")
+        if not isinstance(dst, DeliveryEndpoint):
+            raise TypeError("dst must be a DeliveryEndpoint")
+        _require_non_empty_text(message_type, "message type")
+        if classify_delivery_report_outcome_code(outcome_code) is None:
             raise ValueError("outcome code must be non-empty")
-        _require_text(self.payload, "payload")
-        _require_text(self.forward, "forward")
-        if self.dst is WorkerMessageEndpoint.TASK and not self.forward:
-            raise ValueError("TASK result forward must be non-empty")
+        _require_text(payload, "payload")
+        _require_text(forward, "forward")
+        if dst is DeliveryEndpoint.TASK and not forward:
+            raise ValueError("TASK report forward must be non-empty")
+        report = object.__new__(cls)
+        object.__setattr__(report, "src", src)
+        object.__setattr__(report, "source_id", source_id)
+        object.__setattr__(report, "dst", dst)
+        object.__setattr__(report, "message_type", message_type)
+        object.__setattr__(report, "outcome_code", outcome_code)
+        object.__setattr__(report, "payload", payload)
+        object.__setattr__(report, "forward", forward)
+        return report
 
 
 class WorkerCommandAppendStatus(Enum):
@@ -117,7 +221,7 @@ class WorkerCommandRuntime(ABC):
         self,
         *,
         endpoint_manager_id: EndpointManagerId,
-        worker_commands_by_worker_id: Mapping[WorkerId, WorkerCommand],
+        worker_commands_by_worker_id: Mapping[WorkerId, DeliveryCommand],
     ) -> Mapping[WorkerId, WorkerCommandAppendStatus]:
         pass
 
@@ -127,7 +231,7 @@ class WorkerCommandRuntime(ABC):
         *,
         endpoint_manager_id: EndpointManagerId,
         worker_id: WorkerId,
-    ) -> WorkerCommand | None:
+    ) -> DeliveryCommand | None:
         pass
 
     @abstractmethod
@@ -136,17 +240,16 @@ class WorkerCommandRuntime(ABC):
         *,
         endpoint_manager_id: EndpointManagerId,
         limit: int,
-    ) -> Mapping[WorkerId, WorkerCommand]:
+    ) -> Mapping[WorkerId, DeliveryCommand]:
         pass
 
 
-def encode_worker_command(command: WorkerCommand) -> str:
+def encode_delivery_command(command: DeliveryCommand) -> str:
     return _encode_json(
         {
             "dst": command.dst.value,
             "executeBeforeMillis": command.execute_before_millis,
             "forward": command.forward,
-            "messageId": command.message_id,
             "messageType": command.message_type,
             "payload": command.payload,
             "src": command.src.value,
@@ -154,23 +257,21 @@ def encode_worker_command(command: WorkerCommand) -> str:
     )
 
 
-def decode_worker_command(value: str | bytes) -> WorkerCommand | None:
+def decode_delivery_command(value: str | bytes) -> DeliveryCommand | None:
     payload = _decode_json_mapping(value)
     if payload is None or set(payload) != {
         "dst",
         "executeBeforeMillis",
         "forward",
-        "messageId",
         "messageType",
         "payload",
         "src",
     }:
         return None
     try:
-        return WorkerCommand(
-            message_id=payload["messageId"],
-            src=WorkerMessageEndpoint(payload["src"]),
-            dst=WorkerMessageEndpoint(payload["dst"]),
+        return DeliveryCommand._restore(
+            src=DeliveryEndpoint(payload["src"]),
+            dst=DeliveryEndpoint(payload["dst"]),
             message_type=payload["messageType"],
             execute_before_millis=payload["executeBeforeMillis"],
             payload=payload["payload"],
@@ -180,34 +281,37 @@ def decode_worker_command(value: str | bytes) -> WorkerCommand | None:
         return None
 
 
-def encode_worker_result(result: WorkerResult) -> str:
+def encode_delivery_report(report: DeliveryReport) -> str:
     return _encode_json(
         {
-            "dst": result.dst.value,
-            "forward": result.forward,
-            "messageId": result.message_id,
-            "messageType": result.message_type,
-            "outcomeCode": result.outcome_code,
-            "payload": result.payload,
+            "dst": report.dst.value,
+            "forward": report.forward,
+            "messageType": report.message_type,
+            "outcomeCode": report.outcome_code,
+            "payload": report.payload,
+            "sourceId": report.source_id,
+            "src": report.src.value,
         }
     )
 
 
-def decode_worker_result(value: str | bytes) -> WorkerResult | None:
+def decode_delivery_report(value: str | bytes) -> DeliveryReport | None:
     payload = _decode_json_mapping(value)
     if payload is None or set(payload) != {
         "dst",
         "forward",
-        "messageId",
         "messageType",
         "outcomeCode",
         "payload",
+        "sourceId",
+        "src",
     }:
         return None
     try:
-        return WorkerResult(
-            message_id=payload["messageId"],
-            dst=WorkerMessageEndpoint(payload["dst"]),
+        return DeliveryReport._restore(
+            src=DeliveryEndpoint(payload["src"]),
+            source_id=payload["sourceId"],
+            dst=DeliveryEndpoint(payload["dst"]),
             message_type=payload["messageType"],
             outcome_code=payload["outcomeCode"],
             payload=payload["payload"],
@@ -228,15 +332,10 @@ def _require_non_empty_text(value: object, name: str) -> None:
         raise ValueError(f"{name} must be non-empty")
 
 
-def _require_canonical_uuid(value: object, name: str) -> None:
-    _require_non_empty_text(value, name)
-    assert isinstance(value, str)
-    try:
-        parsed = UUID(value)
-    except ValueError as error:
-        raise ValueError(f"{name} must be a canonical UUID") from error
-    if str(parsed) != value:
-        raise ValueError(f"{name} must be a canonical UUID")
+def _require_non_blank_text(value: object, name: str) -> None:
+    _require_text(value, name)
+    if not value.strip():
+        raise ValueError(f"{name} must be non-blank")
 
 
 def _encode_json(payload: Mapping[str, object]) -> str:

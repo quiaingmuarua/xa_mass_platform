@@ -18,7 +18,7 @@ Package responsibilities:
 | `worker` | Worker runtime, catalog, and dynamic-attribute contracts |
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
-| `delivery` | WorkerCommand and WorkerResult runtime contracts |
+| `delivery` | DeliveryCommand and DeliveryReport runtime contracts |
 | owner-local `redis` packages | Selected Redis implementations |
 
 The current implemented provider subset is:
@@ -59,7 +59,7 @@ WorkerResultRuntime
 
 Worker score acquisition, lease, dirty, polarity, release, and recovery
 operations remain explicit gaps in the JVM provider. Task creation, TaskItem
-record reads, success-result writes, WorkerCommand append, and WorkerResult
+record reads, success-result writes, DeliveryCommand append, and DeliveryReport
 consume likewise remain Python-owned or unimplemented on this provider
 surface. Implementing one method in a translated interface does not imply that
 the complete owner has migrated.

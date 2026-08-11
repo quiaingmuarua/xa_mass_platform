@@ -1,6 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
@@ -10,7 +10,7 @@ import java.util.concurrent.CompletionStage;
  */
 public interface WorkerDeliveryGatewayClient {
 
-    Map<String, WorkerCommand> consumeWorkerCommands(
+    Map<String, DeliveryCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     );

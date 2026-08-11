@@ -2,10 +2,10 @@ package com.xa.mass.server.workerdelivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -44,13 +44,13 @@ public final class WorkerDeliveryService {
         bindings.requireCurrentEndpoint(endpointManagerId, workerId);
     }
 
-    public WorkerCommand pollWorkerCommand(
+    public DeliveryCommand pollWorkerCommand(
             String endpointManagerId,
             String workerId
     ) {
         requirePointBinding(endpointManagerId, workerId);
         try {
-            WorkerCommand command = commandRuntime.consumeWorkerCommand(
+            DeliveryCommand command = commandRuntime.consumeWorkerCommand(
                     endpointManagerId,
                     workerId
             );
@@ -65,20 +65,20 @@ public final class WorkerDeliveryService {
         }
     }
 
-    public Map<String, WorkerCommand> consumeWorkerCommands(
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
         String operation = "workerDelivery.consumeCommands";
         requireAdapterBatchIdentity(endpointManagerId, operation);
         try {
-            Map<String, WorkerCommand> commands =
+            Map<String, DeliveryCommand> commands =
                     commandRuntime.consumeWorkerCommands(
                             endpointManagerId,
                             limit
                     );
             long nowMillis = System.currentTimeMillis();
-            Map<String, WorkerCommand> active =
+            Map<String, DeliveryCommand> active =
                     new LinkedHashMap<>();
             commands.forEach((workerId, command) -> {
                 if (command.executeBeforeMillis() > nowMillis) {
@@ -96,17 +96,18 @@ public final class WorkerDeliveryService {
     public void appendWorkerResult(
             String endpointManagerId,
             String workerId,
-            WorkerResult result
+            DeliveryReport result
     ) {
         String operation = "workerDelivery.appendWorkerResult";
         requirePointBinding(endpointManagerId, workerId);
-        WorkerResultOutcomeClass outcomeClass =
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(
+        DeliveryReportOutcomeClass outcomeClass =
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
                         result.outcomeCode()
         );
-        if (result.dst() != WorkerMessageEndpoint.TASK
-                || outcomeClass
-                == WorkerResultOutcomeClass.ADAPTER_REJECTION) {
+        if (result.src() != DeliveryEndpoint.WORKER
+                || !workerId.equals(result.sourceId())
+                || result.dst() != DeliveryEndpoint.TASK
+                || outcomeClass == DeliveryReportOutcomeClass.ADAPTER_REJECTION) {
             throw invalid(
                     operation,
                     "Worker result must target TASK with outcome 200 "
@@ -129,7 +130,7 @@ public final class WorkerDeliveryService {
             );
         }
 
-        List<WorkerResult> acceptedResults = new ArrayList<>();
+        List<DeliveryReport> acceptedResults = new ArrayList<>();
         int rejectedCount = 0;
         for (String encodedWorkerResult : encodedWorkerResults) {
             if (encodedWorkerResult == null
@@ -138,11 +139,13 @@ public final class WorkerDeliveryService {
                 continue;
             }
             try {
-                WorkerResult result = codec.decodeWorkerResult(
+                DeliveryReport result = codec.decodeDeliveryReport(
                         encodedWorkerResult
                 );
-                if (result == null
-                        || result.dst() != WorkerMessageEndpoint.TASK) {
+                if (!acceptableAdapterBatchReport(
+                        endpointManagerId,
+                        result
+                )) {
                     rejectedCount++;
                     continue;
                 }
@@ -171,8 +174,29 @@ public final class WorkerDeliveryService {
         );
     }
 
+    private static boolean acceptableAdapterBatchReport(
+            String endpointManagerId,
+            DeliveryReport report
+    ) {
+        if (report == null || report.dst() != DeliveryEndpoint.TASK) {
+            return false;
+        }
+        DeliveryReportOutcomeClass outcome =
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
+                        report.outcomeCode()
+                );
+        if (report.src() == DeliveryEndpoint.WORKER) {
+            return outcome == DeliveryReportOutcomeClass.SUCCESS
+                    || outcome == DeliveryReportOutcomeClass.WORKER_FAILURE;
+        }
+        return report.src() == DeliveryEndpoint.ADAPTER
+                && endpointManagerId.equals(report.sourceId())
+                && report.outcomeCode().startsWith("2")
+                && outcome == DeliveryReportOutcomeClass.ADAPTER_REJECTION;
+    }
+
     private void appendResults(
-            List<WorkerResult> results,
+            List<DeliveryReport> results,
             String operation
     ) {
         try {
@@ -181,7 +205,7 @@ public final class WorkerDeliveryService {
                 throw unavailable(
                         operation,
                         new IllegalStateException(
-                                "WorkerResult batch was not fully accepted"
+                                "DeliveryReport batch was not fully accepted"
                         )
                 );
             }

@@ -2,11 +2,12 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass.SUCCESS;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass.WORKER_FAILURE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass.SUCCESS;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass.WORKER_FAILURE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -14,8 +15,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.adapter.message.AdapterWorkerEventDispatcher;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -92,7 +93,7 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext context, String line) {
-        WorkerResult result = codec.decodeWorkerResult(line);
+        DeliveryReport result = codec.decodeDeliveryReport(line);
         if (result == null) {
             if (bindingPhase == BindingPhase.BOUND) {
                 logDrop("socket.dropMalformedWorkerResult", null);
@@ -125,7 +126,7 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private void handleUnbound(
             ChannelHandlerContext context,
-            WorkerResult result
+            DeliveryReport result
     ) {
         if (result.dst() == ADAPTER
                 && WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
@@ -139,9 +140,14 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private void handleBound(
             ChannelHandlerContext context,
-            WorkerResult result,
+            DeliveryReport result,
             String encodedResult
     ) {
+        if (result.src() != WORKER
+                || !workerId.equals(result.sourceId())) {
+            logDrop("socket.dropWorkerSourceMismatch", result);
+            return;
+        }
         if (result.dst() == ADAPTER) {
             if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                     result.messageType()
@@ -159,7 +165,7 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private void dispatchAdapterEvent(
             ChannelHandlerContext context,
-            WorkerResult result
+            DeliveryReport result
     ) {
         adapterEvents.dispatch(result).whenComplete((response, failure) -> {
             if (!context.channel().isActive()) {
@@ -234,10 +240,10 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private void acceptTaskResult(
             ChannelHandlerContext context,
-            WorkerResult result,
+            DeliveryReport result,
             String encodedResult
     ) {
-        var outcome = classifyWorkerResultOutcomeCode(result.outcomeCode());
+        var outcome = classifyDeliveryReportOutcomeCode(result.outcomeCode());
         if (outcome != SUCCESS && outcome != WORKER_FAILURE) {
             logDrop("socket.dropWorkerOutcome", result);
             return;
@@ -259,13 +265,13 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private void sendAdapterCommand(
             ChannelHandlerContext context,
-            WorkerCommand command
+            DeliveryCommand command
     ) {
         if (!context.channel().isActive()) {
             return;
         }
         var send = context.writeAndFlush(
-                codec.encodeWorkerCommand(command) + "\n"
+                codec.encodeDeliveryCommand(command) + "\n"
         );
         if (WORKER_CONNECTION_CLOSE_EVENT_CODE.equals(command.messageType())) {
             send.addListener(ChannelFutureListener.CLOSE);
@@ -280,7 +286,7 @@ final class SocketWorkerHandler extends SimpleChannelInboundHandler<String> {
         workerId = null;
     }
 
-    private void logDrop(String operation, WorkerResult result) {
+    private void logDrop(String operation, DeliveryReport result) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
                 "errorCode={0} operation={1} phase={2} messageType={3}",

@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import json
 import unittest
-from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     CandidateWorkerEntry,
-    WorkerCommand,
+    DeliveryCommand,
     WorkerCommandAppendStatus,
-    WorkerMessageEndpoint,
+    DeliveryEndpoint,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
-    encode_worker_command,
+    encode_delivery_command,
 )
 from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
     RedisCandidateWarmupSchedule,
@@ -308,7 +307,6 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
                 "dst": "WORKER",
                 "executeBeforeMillis": 103_000,
                 "forward": command.forward,
-                "messageId": command.message_id,
                 "messageType": "test.event",
                 "payload": command.payload,
                 "src": "TASK",
@@ -429,7 +427,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
         )
         expired = self._worker_command("message-1", "worker-1")
-        expired_value = encode_worker_command(expired)
+        expired_value = encode_delivery_command(expired)
         self.redis.hashes[key] = {"worker-1": expired_value}
         self.redis.now_millis = expired.execute_before_millis
 
@@ -514,7 +512,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
 
     def test_consume_drops_expired_and_corrupt_mailboxes(self) -> None:
         rows = {
-            "worker-1": encode_worker_command(
+            "worker-1": encode_delivery_command(
                 self._worker_command("expired", "worker-1", self.redis.now_millis)
             ),
             "worker-2": "{bad-json",
@@ -539,9 +537,9 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.redis.hset(
             key,
             "worker-1",
-            encode_worker_command(old_seed),
+            encode_delivery_command(old_seed),
         )
-        replacement_value = encode_worker_command(
+        replacement_value = encode_delivery_command(
             replacement
         )
         self.redis.before_exact_consume = (
@@ -790,13 +788,10 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         message_id: str,
         worker_id: str,
         claim_until_millis: int = 103_000,
-    ) -> WorkerCommand:
-        return WorkerCommand(
-            message_id=str(
-                uuid5(NAMESPACE_DNS, f"{worker_id}:{message_id}")
-            ),
-            src=WorkerMessageEndpoint.TASK,
-            dst=WorkerMessageEndpoint.WORKER,
+    ) -> DeliveryCommand:
+        return DeliveryCommand.create(
+            src=DeliveryEndpoint.TASK,
+            dst=DeliveryEndpoint.WORKER,
             message_type="test.event",
             execute_before_millis=claim_until_millis,
             payload=json.dumps(

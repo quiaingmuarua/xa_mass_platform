@@ -1,11 +1,10 @@
 package com.xa.mass.worker.execution;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.Optional;
 
 @FunctionalInterface
 public interface WorkerCommandExecutor {
 
-    Optional<WorkerResult> execute(WorkerCommand command);
+    Optional<WorkerCommandOutcome> execute(DeliveryCommand command);
 }

@@ -2,10 +2,10 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.SYSTEM;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -15,8 +15,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManag
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
@@ -83,10 +83,10 @@ class WebSocketWorkerDeliveryAdapterTest {
             awaitActive(first);
             awaitActive(second);
 
-            WorkerCommand firstCommand = command(
+            DeliveryCommand firstCommand = command(
                     "a5e9e10d-f78b-469e-93ab-864b49c189c1"
             );
-            WorkerCommand secondCommand = command(
+            DeliveryCommand secondCommand = command(
                     "9f0d983c-8010-4d59-a6d2-e8fedb8d0059"
             );
             firstGateway.batches.add(Map.of(WORKER_ID, firstCommand));
@@ -101,11 +101,11 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-            assertThat(codec.decodeWorkerCommand(
+            assertThat(codec.decodeDeliveryCommand(
                     firstProbe.messages.getFirst()
             ))
                     .isEqualTo(firstCommand);
-            assertThat(codec.decodeWorkerCommand(
+            assertThat(codec.decodeDeliveryCommand(
                     secondProbe.messages.getFirst()
             ))
                     .isEqualTo(secondCommand);
@@ -114,15 +114,14 @@ class WebSocketWorkerDeliveryAdapterTest {
             assertThat(secondGateway.endpointManagerIds)
                     .containsOnly("websocket-2");
 
-            WorkerResult result = new WorkerResult(
-                    firstCommand.messageId(),
-                    TASK,
-                    firstCommand.messageType(),
+            DeliveryReport result = DeliveryReport.fromCommand(
+                    firstCommand,
+                    WORKER,
+                    WORKER_ID,
                     "200",
-                    "null",
-                    firstCommand.forward()
+                    "null"
             );
-            String encodedResult = codec.encodeWorkerResult(result);
+            String encodedResult = codec.encodeDeliveryReport(result);
             firstSocket.sendText(
                     encodedResult,
                     true
@@ -239,8 +238,9 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             unboundSocket.sendText(
-                    codec.encodeWorkerResult(new WorkerResult(
-                            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                    codec.encodeDeliveryReport(DeliveryReport.create(
+                            WORKER,
+                            WORKER_ID,
                             TASK,
                             "test.observe",
                             "200",
@@ -308,8 +308,8 @@ class WebSocketWorkerDeliveryAdapterTest {
             assertThat(probe.message.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
 
-            WorkerCommand close = new WorkerDeliveryCodec()
-                    .decodeWorkerCommand(probe.messages.getFirst());
+            DeliveryCommand close = new WorkerDeliveryCodec()
+                    .decodeDeliveryCommand(probe.messages.getFirst());
             assertThat(close.src()).isEqualTo(ADAPTER);
             assertThat(close.dst()).isEqualTo(WORKER);
             assertThat(close.messageType())
@@ -369,27 +369,34 @@ class WebSocketWorkerDeliveryAdapterTest {
             awaitActive(adapter);
 
             send(socket, "{bad-json");
-            send(socket, codec.encodeWorkerResult(result(
+            send(socket, codec.encodeDeliveryReport(result(
                     TASK,
                     "test.observe",
                     "23002",
                     "context"
             )));
-            send(socket, codec.encodeWorkerResult(result(
+            send(socket, codec.encodeDeliveryReport(result(
                     SYSTEM,
                     "system.observe",
                     "200",
                     ""
             )));
-            send(socket, codec.encodeWorkerResult(result(
+            send(socket, codec.encodeDeliveryReport(result(
                     ADAPTER,
                     "adapter.unknown",
                     "200",
                     ""
             )));
+            send(socket, codec.encodeDeliveryReport(resultFrom(
+                    "another-worker",
+                    TASK,
+                    "test.observe",
+                    "200",
+                    "context"
+            )));
             send(socket, encodeIdentity(codec, WORKER_ID));
 
-            String accepted = codec.encodeWorkerResult(result(
+            String accepted = codec.encodeDeliveryReport(result(
                     TASK,
                     "test.observe",
                     "3302",
@@ -436,13 +443,13 @@ class WebSocketWorkerDeliveryAdapterTest {
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
             awaitActive(adapter);
-            send(socket, codec.encodeWorkerResult(result(
+            send(socket, codec.encodeDeliveryReport(result(
                     TASK,
                     "test.observe",
                     "200",
                     "context-1"
             )));
-            send(socket, codec.encodeWorkerResult(result(
+            send(socket, codec.encodeDeliveryReport(result(
                     TASK,
                     "test.observe",
                     "200",
@@ -478,14 +485,13 @@ class WebSocketWorkerDeliveryAdapterTest {
         );
     }
 
-    private static WorkerCommand command(String messageId) {
-        return new WorkerCommand(
-                messageId,
+    private static DeliveryCommand command(String marker) {
+        return DeliveryCommand.create(
                 TASK,
                 WORKER,
                 "test.observe",
                 System.currentTimeMillis() + 60_000,
-                "{}",
+                "{\"marker\":\"" + marker + "\"}",
                 "context"
         );
     }
@@ -512,15 +518,33 @@ class WebSocketWorkerDeliveryAdapterTest {
         socket.sendText(message, true).get(2, TimeUnit.SECONDS);
     }
 
-    private static WorkerResult result(
+    private static DeliveryReport result(
             com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-                    .WorkerMessageEndpoint dst,
+                    .DeliveryEndpoint dst,
             String messageType,
             String outcomeCode,
             String forward
     ) {
-        return new WorkerResult(
-                java.util.UUID.randomUUID().toString(),
+        return resultFrom(
+                WORKER_ID,
+                dst,
+                messageType,
+                outcomeCode,
+                forward
+        );
+    }
+
+    private static DeliveryReport resultFrom(
+            String sourceId,
+            com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+                    .DeliveryEndpoint dst,
+            String messageType,
+            String outcomeCode,
+            String forward
+    ) {
+        return DeliveryReport.create(
+                WORKER,
+                sourceId,
                 dst,
                 messageType,
                 outcomeCode,
@@ -557,7 +581,7 @@ class WebSocketWorkerDeliveryAdapterTest {
             implements WorkerDeliveryGatewayClient {
 
         private final ConcurrentLinkedQueue<
-                Map<String, WorkerCommand>
+                Map<String, DeliveryCommand>
                 > batches =
                 new ConcurrentLinkedQueue<>();
         private final List<String> endpointManagerIds =
@@ -581,12 +605,12 @@ class WebSocketWorkerDeliveryAdapterTest {
         }
 
         @Override
-        public Map<String, WorkerCommand> consumeWorkerCommands(
+        public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
         ) {
             endpointManagerIds.add(endpointManagerId);
-            Map<String, WorkerCommand> batch = batches.poll();
+            Map<String, DeliveryCommand> batch = batches.poll();
             return batch == null ? Map.of() : batch;
         }
 
@@ -615,7 +639,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                 new CountDownLatch(1);
 
         @Override
-        public Map<String, WorkerCommand> consumeWorkerCommands(
+        public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
         ) {
@@ -713,12 +737,13 @@ class WebSocketWorkerDeliveryAdapterTest {
             WorkerDeliveryCodec codec,
             String workerId
     ) {
-        return codec.encodeWorkerResult(new WorkerResult(
-                "5ca82f99-2398-4927-a814-c88ff47a5466",
+        return codec.encodeDeliveryReport(DeliveryReport.create(
+                WORKER,
+                workerId,
                 ADAPTER,
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                 "200",
-                workerId,
+                "null",
                 ""
         ));
     }

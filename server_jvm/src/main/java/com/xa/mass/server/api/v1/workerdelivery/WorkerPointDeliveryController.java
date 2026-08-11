@@ -4,7 +4,7 @@ import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.Accep
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerResultRequest;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +35,7 @@ public class WorkerPointDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId
     ) {
-        WorkerCommand command = workerDelivery.pollWorkerCommand(
+        DeliveryCommand command = workerDelivery.pollWorkerCommand(
                 endpointManagerId,
                 workerId
         );
@@ -53,7 +53,7 @@ public class WorkerPointDeliveryController {
         workerDelivery.appendWorkerResult(
                 endpointManagerId,
                 workerId,
-                request.toWorkerResult()
+                request.toDeliveryReport()
         );
         return ResponseEntity.accepted().body(new AcceptedResponse(true));
     }

@@ -5,7 +5,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -331,7 +331,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                                 + eventCode
                 );
             }
-            if (!WorkerMessageEndpoint.TASK.wireValue()
+            if (!DeliveryEndpoint.TASK.wireValue()
                     .equals(definition.src())) {
                 throw new IllegalArgumentException(
                         "Scenario Definition src must be TASK: "

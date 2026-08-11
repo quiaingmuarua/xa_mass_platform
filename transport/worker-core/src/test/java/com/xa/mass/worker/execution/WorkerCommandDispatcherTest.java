@@ -1,9 +1,9 @@
 package com.xa.mass.worker.execution;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.SYSTEM;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -11,9 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -26,8 +25,6 @@ class WorkerCommandDispatcherTest {
 
     private static final long EXPIRED_DEADLINE = 1L;
     private static final long ACTIVE_DEADLINE = Long.MAX_VALUE;
-    private static final String MESSAGE_ID =
-            "91bc4b8c-29d8-4c18-950d-72c8f25e20e0";
 
     @Test
     void workerWithoutExtensionsHasNoBusinessEvents() {
@@ -103,7 +100,7 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
-    void successfulEventProducesCorrelatedWorkerResult() {
+    void successfulEventProducesWorkerOutcome() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
                 mapDefinition(
                         "TASK",
@@ -114,19 +111,15 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        WorkerResult result = dispatcher.execute(command(
+        WorkerCommandOutcome result = dispatcher.execute(command(
                 TASK,
                 "test.observe",
                 "{\"value\":\"ready\"}",
                 ACTIVE_DEADLINE
         )).orElseThrow();
 
-        assertEquals(MESSAGE_ID, result.messageId());
-        assertEquals(TASK, result.dst());
-        assertEquals("test.observe", result.messageType());
         assertEquals("200", result.outcomeCode());
         assertEquals("{\"observed\":\"ready\"}", result.payload());
-        assertEquals("result-context", result.forward());
     }
 
     @Test
@@ -348,7 +341,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        WorkerResult result = dispatcher.execute(command(
+        WorkerCommandOutcome result = dispatcher.execute(command(
                 TASK,
                 "test.raw",
                 "not-json",
@@ -373,7 +366,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        Optional<WorkerResult> result = dispatcher.execute(command(
+        Optional<WorkerCommandOutcome> result = dispatcher.execute(command(
                 TASK,
                 "test.observe",
                 "{}",
@@ -418,7 +411,7 @@ class WorkerCommandDispatcherTest {
 
     private static String resultPayload(
             WorkerCommandDispatcher dispatcher,
-            WorkerMessageEndpoint src,
+            DeliveryEndpoint src,
             String eventCode
     ) {
         return dispatcher.execute(command(
@@ -429,14 +422,13 @@ class WorkerCommandDispatcherTest {
         )).orElseThrow().payload();
     }
 
-    private static WorkerCommand command(
-            WorkerMessageEndpoint src,
+    private static DeliveryCommand command(
+            DeliveryEndpoint src,
             String messageType,
             String payload,
             long executeBeforeMillis
     ) {
-        return new WorkerCommand(
-                MESSAGE_ID,
+        return DeliveryCommand.create(
                 src,
                 WORKER,
                 messageType,
@@ -447,10 +439,10 @@ class WorkerCommandDispatcherTest {
     }
 
     private static void assertFailure(
-            Optional<WorkerResult> result,
+            Optional<WorkerCommandOutcome> result,
             WorkerErrorCode errorCode
     ) {
-        WorkerResult failure = result.orElseThrow();
+        WorkerCommandOutcome failure = result.orElseThrow();
         assertEquals(
                 Integer.toString(errorCode.code()),
                 failure.outcomeCode()

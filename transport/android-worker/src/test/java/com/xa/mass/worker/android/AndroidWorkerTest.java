@@ -1,7 +1,7 @@
 package com.xa.mass.worker.android;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -19,9 +19,9 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
 import org.junit.After;
 import org.junit.Before;
@@ -93,22 +93,22 @@ public class AndroidWorkerTest {
             throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         CountDownLatch resultReceived = new CountDownLatch(1);
-        AtomicReference<WorkerResult> identity =
+        AtomicReference<DeliveryReport> identity =
                 new AtomicReference<>();
-        AtomicReference<WorkerResult> result = new AtomicReference<>();
+        AtomicReference<DeliveryReport> result = new AtomicReference<>();
         enqueueRegister();
         enqueueBind();
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
                 if (identity.get() == null) {
-                    identity.set(codec.decodeWorkerResult(text));
-                    socket.send(codec.encodeWorkerCommand(
+                    identity.set(codec.decodeDeliveryReport(text));
+                    socket.send(codec.encodeDeliveryCommand(
                             command("visible")
                     ));
                     return;
                 }
-                result.set(codec.decodeWorkerResult(text));
+                result.set(codec.decodeDeliveryReport(text));
                 resultReceived.countDown();
             }
         }));
@@ -162,7 +162,9 @@ public class AndroidWorkerTest {
                 identity.get().messageType()
         );
         assertEquals("200", identity.get().outcomeCode());
-        assertEquals(WORKER_ID, identity.get().payload());
+        assertEquals(DeliveryEndpoint.WORKER, identity.get().src());
+        assertEquals(WORKER_ID, identity.get().sourceId());
+        assertEquals("null", identity.get().payload());
         assertEquals("", identity.get().forward());
         assertNotNull(result.get());
         assertEquals("200", result.get().outcomeCode());
@@ -312,12 +314,12 @@ public class AndroidWorkerTest {
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
-                WorkerResult identity = codec.decodeWorkerResult(text);
+                DeliveryReport identity = codec.decodeDeliveryReport(text);
                 if (identity != null
                         && WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                         identity.messageType()
                 )) {
-                    socket.send(codec.encodeWorkerCommand(
+                    socket.send(codec.encodeDeliveryCommand(
                             command("blocked")
                     ));
                 }
@@ -462,11 +464,10 @@ public class AndroidWorkerTest {
         ).toString().replaceFirst("^http", "ws"));
     }
 
-    private static WorkerCommand command(String value) {
-        return new WorkerCommand(
-                "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3",
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
+    private static DeliveryCommand command(String value) {
+        return DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
                 EVENT_CODE,
                 System.currentTimeMillis() + 30_000,
                 Jsons.toJson(Map.of("value", value)),

@@ -84,7 +84,7 @@ Configured Scenario Workers JSON
   -> Server initializes WorkerGroup catalog and starts Adapter Manager
   -> scenario_workers_jvm parses the opaque manifest
   -> scenario_workers_jvm registers and binds each Worker
-  -> long-lived Worker sends an Adapter-directed identity Result
+  -> long-lived Worker sends an Adapter-directed identity Report
   -> scenario_workers_jvm starts Worker Core + concrete network Clients
   -> real configured Adapter listener
   -> the same Worker Delivery HTTP/Redis path
@@ -93,10 +93,10 @@ Configured Scenario Workers JSON
 The module is Java 21 and Spring Boot 4.1. It depends on `kernel_jvm` contracts
 but does not start the Python process. `kernelbinding` composes Task and Worker
 control/data providers. `WorkerDeliveryOwnerAssemblyConfiguration` separately
-composes only the WorkerCommand and WorkerResult Redis providers. The shared
+composes only the DeliveryCommand and DeliveryReport Redis providers. The shared
 `kernelredis` package owns only connection and health. Redis key operations are
 implemented in owner-local `kernel_jvm` packages. Java does not read Task
-scores, invoke Pacers, append Worker commands, or consume WorkerResult queues.
+scores, invoke Pacers, append Worker commands, or consume DeliveryReport queues.
 Its Worker score provider implements get/initialize for
 `WorkerRuntime.upsertWorker` plus a parity reconcile mechanism with no current
 production caller; scheduling score operations remain unavailable.
@@ -116,8 +116,8 @@ Current provider matrix:
 | Task and WorkerGroup descriptor reads | Java Redis |
 | TaskItem append and Task-scoped last-success load | Java Redis |
 | Task Dispatch wake hint | Python HTTP application command |
-| WorkerCommand consume | Java Redis |
-| WorkerResult append | Java Redis |
+| DeliveryCommand consume | Java Redis |
+| DeliveryReport append | Java Redis |
 | Other score, candidate, and scheduling internals | explicit not implemented |
 
 Task Data boundaries:
@@ -144,7 +144,7 @@ Worker Delivery boundaries:
 
 ```text
 worker_delivery_contract_jvm
-  transport-neutral WorkerCommand/WorkerResult contracts and strict codecs
+  transport-neutral DeliveryCommand/DeliveryReport contracts and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
@@ -152,7 +152,7 @@ workerdelivery.application
 workerdelivery
   HTTP application and delivery-owner composition
 kernel_jvm delivery contracts/providers
-  WorkerCommand consume and WorkerResult append owner operations
+  DeliveryCommand consume and DeliveryReport append owner operations
 
 transport/netty-adapter
   complete Adapter instances, independent Netty WebSocket/Socket listeners,
@@ -171,8 +171,8 @@ WebSocket or Socket Adapter instances, registers them, and starts/closes the
 manager at process boundaries. Each Adapter owns its Netty listener,
 bounded Command/Result loops, current Channel registry, and encoded result
 buffer. It consumes the existing batch HTTP API through loopback and has no
-in-process or Redis shortcut. Polling continues to exchange WorkerCommand and
-WorkerResult through point HTTP.
+in-process or Redis shortcut. Polling continues to exchange DeliveryCommand and
+DeliveryReport through point HTTP.
 
 ## Runtime Commands
 
@@ -381,12 +381,13 @@ Each point poll/result request verifies that the Worker is persistently bound to
 `system-polling`. A long-lived Adapter calls `verify-binding` for every new
 Channel and exposes it to command delivery only when the persisted Binding
 matches the Adapter's endpoint-manager identity.
-The Adapter result request carries an array of encoded `WorkerResult` strings.
-The Adapter endpoint itself is the trusted ingress and accepts valid
-success, Worker-failure, and Adapter-rejection results targeting `TASK`. Server
-appends the valid subset and
+The Adapter result request carries an array of encoded `DeliveryReport` strings.
+Server accepts `WORKER` success/failure Reports targeting `TASK`; it accepts an
+`ADAPTER` `2...` Report only when `sourceId` equals the path
+`endpointManagerId`. Server appends the valid subset and
 returns both `acceptedCount` and `rejectedCount`. The point Worker result
-endpoint separately permits only `200` and Worker-owned `3...`.
+endpoint separately requires `src=WORKER`, `sourceId` equal to the path
+workerId, and an outcome of `200` or Worker-owned `3...`.
 
 Management endpoints:
 
@@ -457,7 +458,8 @@ during Server startup, after the HTTP server is bound and before the process
 reports ready, and calls the shared Gateway `base-url`. A WebSocket Worker
 connects to the instance's fixed WebSocket path; a Socket Worker connects to
 its TCP port. Both first send
-`WorkerResult(dst=ADAPTER,messageType=worker.connection.identify,payload=workerId)`;
+`DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
+`messageType=worker.connection.identify,payload="null")`;
 there is no generic connection-message envelope or identity ACK. Reads remain
 paused until Server route verification succeeds. Adapter keeps no identity or
 Binding cache; each new connection is checked. A definite route rejection may

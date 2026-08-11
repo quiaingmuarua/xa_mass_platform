@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from threading import Lock
 from time import time_ns
 from typing import cast
-from uuid import uuid4
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
@@ -37,9 +36,9 @@ from ..kernel.task_score_band import (
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_delivery import (
     WorkerCommandAppendStatus,
-    WorkerCommand,
+    DeliveryCommand,
     WorkerCommandRuntime,
-    WorkerMessageEndpoint,
+    DeliveryEndpoint,
 )
 from .worker_candidate import (
     WorkerCandidateAcquirer,
@@ -206,7 +205,7 @@ class TaskItemDispatcher:
         warmup_due_time_millis: TimeMillis,
     ) -> dict[
         EndpointManagerId,
-        dict[str, WorkerCommand],
+        dict[str, DeliveryCommand],
     ]:
         candidate_workers_by_message_id = self._acquire_candidate_workers(
             task_id=task_id,
@@ -229,13 +228,12 @@ class TaskItemDispatcher:
 
         worker_commands: dict[
             EndpointManagerId,
-            dict[str, WorkerCommand],
+            dict[str, DeliveryCommand],
         ] = {}
         for candidate_worker, task_item in dispatch_assignments:
-            command = WorkerCommand(
-                message_id=str(uuid4()),
-                src=WorkerMessageEndpoint.TASK,
-                dst=WorkerMessageEndpoint.WORKER,
+            command = DeliveryCommand.create(
+                src=DeliveryEndpoint.TASK,
+                dst=DeliveryEndpoint.WORKER,
                 message_type=task_item.event_code,
                 execute_before_millis=claim_until_millis,
                 payload=self._payload_encoder(task_item),
@@ -395,7 +393,7 @@ class TaskDispatchPacer:
 
         round_worker_commands: dict[
             EndpointManagerId,
-            dict[str, WorkerCommand],
+            dict[str, DeliveryCommand],
         ] = {}
         activity_recheck_tasks: dict[
             TaskId,
@@ -588,7 +586,7 @@ class TaskDispatchPacer:
         *,
         worker_commands_by_endpoint_manager: Mapping[
             EndpointManagerId,
-            Mapping[str, WorkerCommand],
+            Mapping[str, DeliveryCommand],
         ],
     ) -> int:
         if not worker_commands_by_endpoint_manager:

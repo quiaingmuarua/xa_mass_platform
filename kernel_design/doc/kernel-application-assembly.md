@@ -49,12 +49,12 @@ wake_task_dispatch(taskIds)
 
 WorkerCommandConsumerClient
 consume_worker_command(endpointManagerId, workerId)
-  -> WorkerCommand | None
+  -> DeliveryCommand | None
 consume_worker_commands(endpointManagerId, limit)
-  -> workerId -> WorkerCommand
+  -> workerId -> DeliveryCommand
 
 WorkerResultCommandClient
-append_worker_results(WorkerResult...)
+append_worker_results(DeliveryReport...)
 
 JVM TaskRuntime provider
 appendItems(taskId, items)
@@ -86,8 +86,8 @@ Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
 TaskItem append / result load   -> Java Redis TaskRuntime provider
 Task Dispatch wake hint         -> Python HTTP application command
-WorkerCommand consume           -> Java Redis WorkerCommandRuntime provider
-WorkerResult append               -> Java Redis WorkerResultRuntime provider
+DeliveryCommand consume           -> Java Redis WorkerCommandRuntime provider
+DeliveryReport append               -> Java Redis WorkerResultRuntime provider
 other score/candidate/scheduling -> no Server provider
 ```
 
@@ -124,7 +124,7 @@ returns `TaskApprovalResult` without exposing score evidence.
 `close_task` is the common explicit termination command for both Task types and
 all positive bands. It returns `TaskCloseResult`, chooses terminal score
 internally, is idempotent after terminal, and does not retract existing Item,
-WorkerCommand, or result evidence.
+DeliveryCommand, or result evidence.
 The caller owns the close decision and its business evidence. For
 `ITEM_DRIVEN`, a server or other control-plane owner may call this command from
 deadline or completion evidence; `KernelApplication` does not infer completion
@@ -244,7 +244,7 @@ AssignmentDispatchApplication
   -> Task-dispatch loop
 
 ResultRoutingApplication
-  -> WorkerResult-routing loop
+  -> DeliveryReport-routing loop
 ```
 
 The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
@@ -288,7 +288,7 @@ claim a blocked round stopped. A timeout is reported rather than hidden.
 
 The application lifecycle owns timers and process coordination only. It does
 not construct policy inside a pacer, combine rounds into one sequential loop,
-own score or runtime truth, or consume WorkerCommand mailboxes. Its bounded
+own score or runtime truth, or consume DeliveryCommand mailboxes. Its bounded
 Task Dispatch wake inbox is optional acceleration: it coalesces taskIds and
 may ask Task Dispatch to exact-release an existing future empty-recheck hold.
 It does not make append acceptance or scheduling liveness depend on an event.
@@ -307,7 +307,7 @@ Java Task control API -> Python KernelApplication
   -> Java Server Worker Delivery HTTP command access
   -> Java polling Worker or Netty WebSocket/Socket Adapter instance + Worker
   -> Java phone tool execution
-  -> Java Server Worker Delivery HTTP WorkerResult ingress
+  -> Java Server Worker Delivery HTTP DeliveryReport ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
   -> Java single-Item last-success result probe / result query
@@ -384,12 +384,15 @@ the persisted route; this is routing consistency, not authentication.
 Bounded no-cursor consume and batch result append are long-lived Adapter
 operations and reject the built-in polling identity.
 
-`WorkerCommand` is the Kernel-defined transport-neutral outbound
-command DTO. Task Dispatch generates its canonical UUID `messageId`, uses the
-TaskItem eventCode as `messageType`, writes the Item payload directly, sets
-the execute-before deadline, and stores ResultContext in `forward`.
-Worker results use `WorkerResult` directly and copy `messageId`,
-`messageType`, and `forward`. Result ingress does not carry a deadline.
+`DeliveryCommand` is the Kernel-defined transport-neutral outbound
+command DTO. Task Dispatch uses the TaskItem eventCode as `messageType`, writes
+the Item payload directly, sets the execute-before deadline, and stores
+ResultContext in opaque `forward`. Worker Transports use
+`DeliveryReport.fromCommand()` to preserve `messageType` and `forward`, then
+declare `src=WORKER` and
+`sourceId=workerId`. Adapter pre-delivery rejections declare
+`src=ADAPTER + sourceId=adapterId`. Result ingress does not carry a deadline.
+Delivery has no outer message or correlation ID.
 
 The Worker host knows its WorkerGroup/client key for Register and Bind, then
 receives the platform-issued WorkerId and public endpoint URI. The Worker
@@ -397,7 +400,8 @@ Transport knows only that WorkerId, endpoint URI, Worker Delivery contracts,
 and statically provided event definitions. It does not know an endpoint-manager
 ID or import Kernel owners. Polling, WebSocket, and Socket share one serial
 execution core; long-lived transports first send an Adapter-directed identity
-`WorkerResult` containing workerId before command exchange.
+`DeliveryReport(src=WORKER, sourceId=workerId, payload="null")` before command
+exchange.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
@@ -407,7 +411,7 @@ bounded local queues. The Server only parses instance configuration, registers c
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers Register and establish Endpoint Binding before connecting; the Bind
 control call carries the complete Worker Properties snapshot. The connection
-identity Result carries workerId as payload, and the Adapter asks Server to
+identity Report carries workerId in `sourceId`, and the Adapter asks Server to
 verify that the persisted route points to itself before activating the Channel
 without an ACK.
 KernelApplication does not own or expose connection facts.
@@ -433,10 +437,10 @@ API compatibility remain out of scope.
 - Do not expose Worker Delivery methods on `KernelApplication`.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.
-- Do not let Java Worker Delivery Redis code append WorkerCommand, consume
-  WorkerResult, or access score/Pacer state.
+- Do not let Java Worker Delivery Redis code append DeliveryCommand, consume
+  DeliveryReport, or access score/Pacer state.
 - Do not let Java TaskData Redis code access Task score, Worker score,
-  candidate cache, WorkerCommand mailbox, WorkerResult queues, or Pacer state.
+  candidate cache, DeliveryCommand mailbox, DeliveryReport queues, or Pacer state.
 - Do not expose batch mailbox acquisition through the polling Worker endpoint.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
   an in-process call.

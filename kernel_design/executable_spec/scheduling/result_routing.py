@@ -8,9 +8,9 @@ from typing import Protocol, Callable
 
 from ..kernel.result_context import decode_result_context
 from ..kernel.worker_delivery import (
-    WorkerMessageEndpoint,
-    WorkerResultOutcomeClass,
-    classify_worker_result_outcome_code,
+    DeliveryEndpoint,
+    DeliveryReportOutcomeClass,
+    classify_delivery_report_outcome_code,
 )
 from ..kernel.worker_result_runtime import WorkerResultRuntime
 from ..kernel.task_item_score_band import TaskItemScoreBand, TaskItemScoreBandCore
@@ -77,18 +77,18 @@ class ResultRoutingBuiltinPolicies:
 
     def default_task_result_handlers(
         self,
-    ) -> dict[WorkerResultOutcomeClass, Callable[..., None]]:
+    ) -> dict[DeliveryReportOutcomeClass, Callable[..., None]]:
         return {
-            WorkerResultOutcomeClass.SUCCESS: self.store_task_success_results,
+            DeliveryReportOutcomeClass.SUCCESS: self.store_task_success_results,
         }
 
     def default_worker_result_handlers(
         self,
-    ) -> dict[WorkerResultOutcomeClass, Callable[..., None]]:
+    ) -> dict[DeliveryReportOutcomeClass, Callable[..., None]]:
         return {
-            WorkerResultOutcomeClass.SUCCESS: self.release_worker_score_holds,
-            WorkerResultOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
-            WorkerResultOutcomeClass.ADAPTER_REJECTION: self.demote_worker_score_holds_to_recovery,
+            DeliveryReportOutcomeClass.SUCCESS: self.release_worker_score_holds,
+            DeliveryReportOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
+            DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.demote_worker_score_holds_to_recovery,
         }
 
     def store_task_success_results(
@@ -161,9 +161,9 @@ class _DecodedWorkerResultBatch:
 
 
 _OUTCOME_CLASSES = (
-    WorkerResultOutcomeClass.SUCCESS,
-    WorkerResultOutcomeClass.WORKER_FAILURE,
-    WorkerResultOutcomeClass.ADAPTER_REJECTION,
+    DeliveryReportOutcomeClass.SUCCESS,
+    DeliveryReportOutcomeClass.WORKER_FAILURE,
+    DeliveryReportOutcomeClass.ADAPTER_REJECTION,
 )
 
 
@@ -175,10 +175,10 @@ class ResultRoutingPacer:
         worker_result_runtime: WorkerResultRuntime,
         *,
         task_result_handlers: Mapping[
-            WorkerResultOutcomeClass, TaskResultHandler
+            DeliveryReportOutcomeClass, TaskResultHandler
         ],
         worker_result_handlers: Mapping[
-            WorkerResultOutcomeClass, WorkerResultHandler
+            DeliveryReportOutcomeClass, WorkerResultHandler
         ],
     ) -> None:
         self.worker_result_runtime = worker_result_runtime
@@ -212,7 +212,7 @@ class ResultRoutingPacer:
     def _handle_task_results(
         self,
         *,
-        outcome_class: WorkerResultOutcomeClass,
+        outcome_class: DeliveryReportOutcomeClass,
         results_by_task: dict[TaskId, tuple[TaskResultEvidence, ...]],
         result_time_millis: TimeMillis,
     ) -> None:
@@ -229,7 +229,7 @@ class ResultRoutingPacer:
     def _handle_worker_results(
         self,
         *,
-        outcome_class: WorkerResultOutcomeClass,
+        outcome_class: DeliveryReportOutcomeClass,
         results_by_worker_group: dict[
             WorkerGroupId, tuple[WorkerResultEvidence, ...]
         ],
@@ -246,7 +246,7 @@ class ResultRoutingPacer:
     def _consume_decoded(
         self,
         *,
-        outcome_class: WorkerResultOutcomeClass,
+        outcome_class: DeliveryReportOutcomeClass,
         limit: int,
     ) -> _DecodedWorkerResultBatch:
         results = self.worker_result_runtime.consume_worker_results(
@@ -261,13 +261,13 @@ class ResultRoutingPacer:
         for result in results:
             context = decode_result_context(result.forward)
             if (
-                result.dst is WorkerMessageEndpoint.TASK
+                result.dst is DeliveryEndpoint.TASK
                 and context is not None
-                and classify_worker_result_outcome_code(result.outcome_code)
+                and classify_delivery_report_outcome_code(result.outcome_code)
                 is outcome_class
             ):
                 decoded_count += 1
-                if outcome_class is WorkerResultOutcomeClass.SUCCESS:
+                if outcome_class is DeliveryReportOutcomeClass.SUCCESS:
                     results_by_task[context.task_id].append(
                         TaskResultEvidence(
                             task_id=context.task_id,
@@ -294,7 +294,7 @@ class ResultRoutingPacer:
         )
 
     def _validate_result_handlers(self) -> None:
-        if set(self._task_result_handlers) != {WorkerResultOutcomeClass.SUCCESS}:
+        if set(self._task_result_handlers) != {DeliveryReportOutcomeClass.SUCCESS}:
             raise ValueError("Task result handlers must define SUCCESS exactly")
         if set(self._worker_result_handlers) != set(_OUTCOME_CLASSES):
             raise ValueError("Worker result handlers must define every outcome class")

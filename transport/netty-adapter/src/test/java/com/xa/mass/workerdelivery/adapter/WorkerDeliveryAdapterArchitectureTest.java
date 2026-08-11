@@ -165,8 +165,8 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("ArrayDeque")
                 .contains("String encodedWorkerResult")
                 .contains("public synchronized void run()")
-                .doesNotContain("decodeWorkerResult")
-                .doesNotContain("encodeWorkerResult")
+                .doesNotContain("decodeDeliveryReport")
+                .doesNotContain("encodeDeliveryReport")
                 .doesNotContain("io.netty")
                 .doesNotContain("Channel");
     }
@@ -177,7 +177,7 @@ class WorkerDeliveryAdapterArchitectureTest {
         String messageSources = readSources(MESSAGE);
         assertThat(messageSources)
                 .contains("public final class AdapterWorkerEventDispatcher")
-                .contains("WorkerResult result")
+                .contains("DeliveryReport result")
                 .contains("definitions.get(")
                 .doesNotContain("WorkerResultPayloadHandler")
                 .doesNotContain("WorkerResultHandlingResult")
@@ -185,7 +185,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("Consumer<")
                 .doesNotContain("AdapterWorkerEventContext")
                 .doesNotContain("WorkerResultAction")
-                .doesNotContain("encodeWorkerResult")
+                .doesNotContain("encodeDeliveryReport")
                 .doesNotContain("ServiceLoader")
                 .doesNotContain("UUID.fromString(")
                 .doesNotContain("io.netty")
@@ -207,11 +207,11 @@ class WorkerDeliveryAdapterArchitectureTest {
                     .contains("UNBOUND")
                     .contains("VERIFYING")
                     .contains("BOUND")
-                    .contains("decodeWorkerResult(")
+                    .contains("decodeDeliveryReport(")
                     .contains("result.dst()")
                     .contains("resultQueue.offer(encodedResult)")
                     .contains("verifyWorkerRoute")
-                    .contains("encodeWorkerCommand(command)")
+                    .contains("encodeDeliveryCommand(command)")
                     .doesNotContain("WorkerResultPayloadHandler")
                     .doesNotContain("WorkerResultHandlingResult")
                     .doesNotContain("workerChannel")
@@ -232,7 +232,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("WorkerHelloAdmission")
                 .doesNotContain("AdapterWorkerEventContext")
                 .doesNotContain("WorkerResultAction")
-                .doesNotContain("encodeWorkerResult")
+                .doesNotContain("encodeDeliveryReport")
                 .doesNotContain(
                         "private final "
                                 + "WebSocketWorkerDeliveryAdapter adapter"

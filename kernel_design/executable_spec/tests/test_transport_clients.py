@@ -5,9 +5,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
-    WorkerResult,
-    WorkerCommand,
-    WorkerMessageEndpoint,
+    DeliveryReport,
+    DeliveryCommand,
+    DeliveryEndpoint,
 )
 from kernel_design.executable_spec.assembly import (
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
@@ -104,23 +104,21 @@ class TransportClientsTest(unittest.TestCase):
         )
 
     def test_clients_delegate_to_their_redis_runtime(self) -> None:
-        command = WorkerCommand(
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-            WorkerMessageEndpoint.TASK,
-            WorkerMessageEndpoint.WORKER,
-            "test.event",
-            10_000,
-            "delivery",
-            "context",
+        command = DeliveryCommand.create(
+            src=DeliveryEndpoint.TASK,
+            dst=DeliveryEndpoint.WORKER,
+            message_type="test.event",
+            execute_before_millis=10_000,
+            payload="delivery",
+            forward="context",
         )
         commands = {"worker-1": command}
-        worker_result = WorkerResult(
-            command.message_id,
-            WorkerMessageEndpoint.TASK,
-            command.message_type,
-            "200",
-            "null",
-            "context",
+        worker_result = DeliveryReport.from_command(
+            command=command,
+            src=DeliveryEndpoint.WORKER,
+            source_id="worker-1",
+            outcome_code="200",
+            payload="null",
         )
         self.deliver_runtime.consume_worker_command.return_value = command
         self.deliver_runtime.consume_worker_commands.return_value = commands
@@ -162,21 +160,23 @@ class TransportClientsTest(unittest.TestCase):
     def test_result_client_accepts_all_worker_result_outcome_classes(self) -> None:
         client = WorkerResultCommandClient(self.config)
         results = (
-            WorkerResult(
-                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                WorkerMessageEndpoint.TASK,
-                "test.event",
-                "3500",
-                "null",
-                "worker-context",
+            DeliveryReport.create(
+                src=DeliveryEndpoint.WORKER,
+                source_id="worker-1",
+                dst=DeliveryEndpoint.TASK,
+                message_type="test.event",
+                outcome_code="3500",
+                payload="null",
+                forward="worker-context",
             ),
-            WorkerResult(
-                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                WorkerMessageEndpoint.TASK,
-                "test.event",
-                "23002",
-                "null",
-                "adapter-context",
+            DeliveryReport.create(
+                src=DeliveryEndpoint.ADAPTER,
+                source_id="endpoint-manager-1",
+                dst=DeliveryEndpoint.TASK,
+                message_type="test.event",
+                outcome_code="23002",
+                payload="null",
+                forward="adapter-context",
             ),
         )
         self.result_runtime.append_worker_results.return_value = 2

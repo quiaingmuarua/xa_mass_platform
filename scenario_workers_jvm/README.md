@@ -100,7 +100,8 @@ the Server Identity registry has been reset.
 Editing `worker-properties.json` takes effect on the next Scenario start; there
 is no file watcher. Each
 long-lived Worker sends an Adapter-directed
-`worker.connection.identify` Result to its returned Adapter URI; the Adapter
+`worker.connection.identify` Report with `WORKER + workerId` source identity to
+its returned Adapter URI; the Adapter
 verifies the persisted endpoint route before exposing the Channel and sends no
 ACK. Scenario has no connection query and does not expose an identity
 startup barrier. For a configured Index update it waits for `workerId`, then

@@ -1,7 +1,6 @@
 package com.xa.mass.workerdelivery.protocol;
 
 import java.util.Objects;
-import java.util.UUID;
 
 public final class WorkerDeliveryProtocol {
 
@@ -16,7 +15,7 @@ public final class WorkerDeliveryProtocol {
     private WorkerDeliveryProtocol() {
     }
 
-    public enum WorkerMessageEndpoint {
+    public enum DeliveryEndpoint {
         TASK("TASK"),
         SYSTEM("SYSTEM"),
         ADAPTER("ADAPTER"),
@@ -24,7 +23,7 @@ public final class WorkerDeliveryProtocol {
 
         private final String wireValue;
 
-        WorkerMessageEndpoint(String wireValue) {
+        DeliveryEndpoint(String wireValue) {
             this.wireValue = wireValue;
         }
 
@@ -32,54 +31,43 @@ public final class WorkerDeliveryProtocol {
             return wireValue;
         }
 
-        public static WorkerMessageEndpoint fromWire(String value) {
-            for (WorkerMessageEndpoint endpoint : values()) {
+        public static DeliveryEndpoint fromWire(String value) {
+            for (DeliveryEndpoint endpoint : values()) {
                 if (endpoint.wireValue.equals(value)) {
                     return endpoint;
                 }
             }
             throw new IllegalArgumentException(
-                    "Unknown Worker message endpoint: " + value
+                    "Unknown delivery endpoint: " + value
             );
         }
     }
 
-    public enum WorkerResultOutcomeClass {
+    public enum DeliveryReportOutcomeClass {
         SUCCESS,
         WORKER_FAILURE,
         ADAPTER_REJECTION
     }
 
-    public static final class WorkerCommand {
+    public static final class DeliveryCommand {
 
-        private final String messageId;
-        private final WorkerMessageEndpoint src;
-        private final WorkerMessageEndpoint dst;
+        private final DeliveryEndpoint src;
+        private final DeliveryEndpoint dst;
         private final String messageType;
         private final long executeBeforeMillis;
         private final String payload;
         private final String forward;
 
-        public WorkerCommand(
-                String messageId,
-                WorkerMessageEndpoint src,
-                WorkerMessageEndpoint dst,
+        private DeliveryCommand(
+                DeliveryEndpoint src,
+                DeliveryEndpoint dst,
                 String messageType,
                 long executeBeforeMillis,
                 String payload,
                 String forward
         ) {
-            requireCanonicalUuid(messageId, "messageId");
-            if (src == null || src == WorkerMessageEndpoint.WORKER) {
-                throw new IllegalArgumentException(
-                        "Worker command src must be TASK, SYSTEM, or ADAPTER"
-                );
-            }
-            if (dst != WorkerMessageEndpoint.WORKER) {
-                throw new IllegalArgumentException(
-                        "Worker command dst must be WORKER"
-                );
-            }
+            this.src = Objects.requireNonNull(src, "src");
+            this.dst = Objects.requireNonNull(dst, "dst");
             requireNonBlank(messageType, "messageType");
             if (executeBeforeMillis <= 0) {
                 throw new IllegalArgumentException(
@@ -88,29 +76,58 @@ public final class WorkerDeliveryProtocol {
             }
             Objects.requireNonNull(payload, "payload");
             Objects.requireNonNull(forward, "forward");
-            if (src == WorkerMessageEndpoint.TASK && forward.isEmpty()) {
+            if (src == DeliveryEndpoint.TASK && forward.isEmpty()) {
                 throw new IllegalArgumentException(
                         "TASK command forward must be non-empty"
                 );
             }
-            this.messageId = messageId;
-            this.src = src;
-            this.dst = dst;
             this.messageType = messageType;
             this.executeBeforeMillis = executeBeforeMillis;
             this.payload = payload;
             this.forward = forward;
         }
 
-        public String messageId() {
-            return messageId;
+        public static DeliveryCommand create(
+                DeliveryEndpoint src,
+                DeliveryEndpoint dst,
+                String messageType,
+                long executeBeforeMillis,
+                String payload,
+                String forward
+        ) {
+            return new DeliveryCommand(
+                    src,
+                    dst,
+                    messageType,
+                    executeBeforeMillis,
+                    payload,
+                    forward
+            );
         }
 
-        public WorkerMessageEndpoint src() {
+        static DeliveryCommand restore(
+                DeliveryEndpoint src,
+                DeliveryEndpoint dst,
+                String messageType,
+                long executeBeforeMillis,
+                String payload,
+                String forward
+        ) {
+            return new DeliveryCommand(
+                    src,
+                    dst,
+                    messageType,
+                    executeBeforeMillis,
+                    payload,
+                    forward
+            );
+        }
+
+        public DeliveryEndpoint src() {
             return src;
         }
 
-        public WorkerMessageEndpoint dst() {
+        public DeliveryEndpoint dst() {
             return dst;
         }
 
@@ -135,12 +152,11 @@ public final class WorkerDeliveryProtocol {
             if (this == value) {
                 return true;
             }
-            if (!(value instanceof WorkerCommand)) {
+            if (!(value instanceof DeliveryCommand)) {
                 return false;
             }
-            WorkerCommand other = (WorkerCommand) value;
+            DeliveryCommand other = (DeliveryCommand) value;
             return executeBeforeMillis == other.executeBeforeMillis
-                    && messageId.equals(other.messageId)
                     && src == other.src
                     && dst == other.dst
                     && messageType.equals(other.messageType)
@@ -151,7 +167,6 @@ public final class WorkerDeliveryProtocol {
         @Override
         public int hashCode() {
             return Objects.hash(
-                    messageId,
                     src,
                     dst,
                     messageType,
@@ -163,8 +178,7 @@ public final class WorkerDeliveryProtocol {
 
         @Override
         public String toString() {
-            return "WorkerCommand[messageId=" + messageId
-                    + ", src=" + src
+            return "DeliveryCommand[src=" + src
                     + ", dst=" + dst
                     + ", messageType=" + messageType
                     + ", executeBeforeMillis=" + executeBeforeMillis
@@ -172,61 +186,62 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    public static final class WorkerResult {
+    public static final class DeliveryReport {
 
-        private final String messageId;
-        private final WorkerMessageEndpoint dst;
+        private final DeliveryEndpoint src;
+        private final String sourceId;
+        private final DeliveryEndpoint dst;
         private final String messageType;
         private final String outcomeCode;
         private final String payload;
         private final String forward;
 
-        public WorkerResult(
-                String messageId,
-                WorkerMessageEndpoint dst,
+        private DeliveryReport(
+                DeliveryEndpoint src,
+                String sourceId,
+                DeliveryEndpoint dst,
                 String messageType,
                 String outcomeCode,
                 String payload,
                 String forward
         ) {
-            requireCanonicalUuid(messageId, "messageId");
-            if (dst == null || dst == WorkerMessageEndpoint.WORKER) {
-                throw new IllegalArgumentException(
-                        "Worker result dst must be TASK, SYSTEM, or ADAPTER"
-                );
-            }
+            this.src = Objects.requireNonNull(src, "src");
+            requireNonBlank(sourceId, "sourceId");
+            this.dst = Objects.requireNonNull(dst, "dst");
             requireNonBlank(messageType, "messageType");
-            if (classifyWorkerResultOutcomeCode(outcomeCode) == null) {
+            if (classifyDeliveryReportOutcomeCode(outcomeCode) == null) {
                 throw new IllegalArgumentException(
                         "outcomeCode must be non-blank"
                 );
             }
             Objects.requireNonNull(payload, "payload");
             Objects.requireNonNull(forward, "forward");
-            if (dst == WorkerMessageEndpoint.TASK && forward.isEmpty()) {
+            if (dst == DeliveryEndpoint.TASK && forward.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "TASK result forward must be non-empty"
+                        "TASK report forward must be non-empty"
                 );
             }
-            this.messageId = messageId;
-            this.dst = dst;
+            this.sourceId = sourceId;
             this.messageType = messageType;
             this.outcomeCode = outcomeCode;
             this.payload = payload;
             this.forward = forward;
         }
 
-        public static WorkerResult fromCommand(
-                WorkerCommand command,
+        public static DeliveryReport fromCommand(
+                DeliveryCommand command,
+                DeliveryEndpoint src,
+                String sourceId,
                 String outcomeCode,
                 String payload
         ) {
-            WorkerCommand source = Objects.requireNonNull(
+            DeliveryCommand source = Objects.requireNonNull(
                     command,
                     "command"
             );
-            return new WorkerResult(
-                    source.messageId(),
+            return new DeliveryReport(
+                    src,
+                    sourceId,
                     source.src(),
                     source.messageType(),
                     outcomeCode,
@@ -235,11 +250,55 @@ public final class WorkerDeliveryProtocol {
             );
         }
 
-        public String messageId() {
-            return messageId;
+        public static DeliveryReport create(
+                DeliveryEndpoint src,
+                String sourceId,
+                DeliveryEndpoint dst,
+                String messageType,
+                String outcomeCode,
+                String payload,
+                String forward
+        ) {
+            return new DeliveryReport(
+                    src,
+                    sourceId,
+                    dst,
+                    messageType,
+                    outcomeCode,
+                    payload,
+                    forward
+            );
         }
 
-        public WorkerMessageEndpoint dst() {
+        static DeliveryReport restore(
+                DeliveryEndpoint src,
+                String sourceId,
+                DeliveryEndpoint dst,
+                String messageType,
+                String outcomeCode,
+                String payload,
+                String forward
+        ) {
+            return new DeliveryReport(
+                    src,
+                    sourceId,
+                    dst,
+                    messageType,
+                    outcomeCode,
+                    payload,
+                    forward
+            );
+        }
+
+        public DeliveryEndpoint src() {
+            return src;
+        }
+
+        public String sourceId() {
+            return sourceId;
+        }
+
+        public DeliveryEndpoint dst() {
             return dst;
         }
 
@@ -264,11 +323,12 @@ public final class WorkerDeliveryProtocol {
             if (this == value) {
                 return true;
             }
-            if (!(value instanceof WorkerResult)) {
+            if (!(value instanceof DeliveryReport)) {
                 return false;
             }
-            WorkerResult other = (WorkerResult) value;
-            return messageId.equals(other.messageId)
+            DeliveryReport other = (DeliveryReport) value;
+            return src == other.src
+                    && sourceId.equals(other.sourceId)
                     && dst == other.dst
                     && messageType.equals(other.messageType)
                     && outcomeCode.equals(other.outcomeCode)
@@ -279,7 +339,8 @@ public final class WorkerDeliveryProtocol {
         @Override
         public int hashCode() {
             return Objects.hash(
-                    messageId,
+                    src,
+                    sourceId,
                     dst,
                     messageType,
                     outcomeCode,
@@ -290,7 +351,8 @@ public final class WorkerDeliveryProtocol {
 
         @Override
         public String toString() {
-            return "WorkerResult[messageId=" + messageId
+            return "DeliveryReport[src=" + src
+                    + ", sourceId=" + sourceId
                     + ", dst=" + dst
                     + ", messageType=" + messageType
                     + ", outcomeCode=" + outcomeCode
@@ -298,43 +360,25 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    public static WorkerResultOutcomeClass classifyWorkerResultOutcomeCode(
+    public static DeliveryReportOutcomeClass classifyDeliveryReportOutcomeCode(
             String outcomeCode
     ) {
         if (SUCCESS_OUTCOME_CODE.equals(outcomeCode)) {
-            return WorkerResultOutcomeClass.SUCCESS;
+            return DeliveryReportOutcomeClass.SUCCESS;
         }
         if (outcomeCode == null || outcomeCode.isBlank()) {
             return null;
         }
         if (outcomeCode.charAt(0) == '3') {
-            return WorkerResultOutcomeClass.WORKER_FAILURE;
+            return DeliveryReportOutcomeClass.WORKER_FAILURE;
         }
-        return WorkerResultOutcomeClass.ADAPTER_REJECTION;
+        return DeliveryReportOutcomeClass.ADAPTER_REJECTION;
     }
 
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(
                     name + " must be non-blank"
-            );
-        }
-    }
-
-    private static void requireCanonicalUuid(
-            String value,
-            String name
-    ) {
-        requireNonBlank(value, name);
-        try {
-            UUID parsed = UUID.fromString(value);
-            if (!parsed.toString().equals(value)) {
-                throw new IllegalArgumentException();
-            }
-        } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException(
-                    name + " must be a canonical UUID",
-                    error
             );
         }
     }

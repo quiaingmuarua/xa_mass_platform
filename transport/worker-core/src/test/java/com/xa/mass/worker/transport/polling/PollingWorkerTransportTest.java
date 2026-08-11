@@ -1,17 +1,18 @@
 package com.xa.mass.worker.transport.polling;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -22,34 +23,32 @@ import org.junit.jupiter.api.Test;
 
 class PollingWorkerTransportTest {
 
-    private static final String COMMAND_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+    private static final String WORKER_ID = "worker-1";
 
     private static final WorkerDeliveryCodec CODEC =
             new WorkerDeliveryCodec();
-    private static final WorkerCommand COMMAND = new WorkerCommand(
-            COMMAND_ID,
+    private static final DeliveryCommand COMMAND = DeliveryCommand.create(
             TASK,
-            WorkerMessageEndpoint.WORKER,
+            DeliveryEndpoint.WORKER,
             "test.observe",
             Long.MAX_VALUE,
             "{\"value\":\"input\"}",
             "opaque-context"
     );
     private static final String ENCODED_COMMAND =
-            CODEC.encodeWorkerCommand(COMMAND);
+            CODEC.encodeDeliveryCommand(COMMAND);
 
     @Test
     void executesEncodedCommandAndSubmitsEncodedResult()
             throws Exception {
         FakePointClient client = new FakePointClient();
         client.commands.add(Optional.of(ENCODED_COMMAND));
-        AtomicReference<WorkerCommand> executed = new AtomicReference<>();
+        AtomicReference<DeliveryCommand> executed = new AtomicReference<>();
         PollingWorkerTransport transport = transport(
                 client,
                 encoded -> {
                     executed.set(encoded);
-                    return Optional.of(result());
+                    return Optional.of(outcome());
                 }
         );
 
@@ -59,8 +58,14 @@ class PollingWorkerTransportTest {
         assertEquals(1, client.pollCount);
         assertEquals(1, client.submittedResults.size());
         assertEquals(
-                result(),
-                CODEC.decodeWorkerResult(
+                DeliveryReport.fromCommand(
+                        COMMAND,
+                        DeliveryEndpoint.WORKER,
+                        WORKER_ID,
+                        "200",
+                        "{\"observed\":\"input\"}"
+                ),
+                CODEC.decodeDeliveryReport(
                         client.submittedResults.get(0)
                 )
         );
@@ -95,7 +100,7 @@ class PollingWorkerTransportTest {
         client.submitFailures = 1;
         PollingWorkerTransport transport = transport(
                 client,
-                encoded -> Optional.of(result())
+                encoded -> Optional.of(outcome())
         );
 
         assertThrows(IOException.class, transport::runOnce);
@@ -124,21 +129,43 @@ class PollingWorkerTransportTest {
         assertThrows(IllegalStateException.class, transport::runOnce);
     }
 
+    @Test
+    void commandForAnotherDestinationIsRejectedAtPollingBoundary() {
+        FakePointClient client = new FakePointClient();
+        DeliveryCommand misrouted = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.TASK,
+                "system.observe",
+                Long.MAX_VALUE,
+                "null",
+                ""
+        );
+        client.commands.add(Optional.of(
+                CODEC.encodeDeliveryCommand(misrouted)
+        ));
+        PollingWorkerTransport transport = transport(
+                client,
+                encoded -> Optional.empty()
+        );
+
+        assertThrows(
+                com.xa.mass.worker.error.WorkerException.class,
+                transport::runOnce
+        );
+        transport.close();
+    }
+
     private static PollingWorkerTransport transport(
             WorkerPointClient client,
             WorkerCommandExecutor executor
     ) {
-        return new PollingWorkerTransport(client, COMMAND_ID, executor);
+        return new PollingWorkerTransport(client, WORKER_ID, executor);
     }
 
-    private static WorkerResult result() {
-        return new WorkerResult(
-                COMMAND_ID,
-                TASK,
-                "test.observe",
+    private static WorkerCommandOutcome outcome() {
+        return WorkerCommandOutcome.of(
                 "200",
-                "{\"observed\":\"input\"}",
-                "opaque-context"
+                "{\"observed\":\"input\"}"
         );
     }
 
@@ -155,7 +182,7 @@ class PollingWorkerTransportTest {
 
         @Override
         public Optional<String> pollCommand(String workerId) {
-            assertEquals(COMMAND_ID, workerId);
+            assertEquals(WORKER_ID, workerId);
             pollCount++;
             Optional<String> command = commands.poll();
             return command == null ? Optional.empty() : command;
@@ -164,7 +191,7 @@ class PollingWorkerTransportTest {
         @Override
         public void submitResult(String workerId, String encodedResult)
                 throws IOException {
-            assertEquals(COMMAND_ID, workerId);
+            assertEquals(WORKER_ID, workerId);
             if (submitFailures > 0) {
                 submitFailures--;
                 throw new IOException("scripted result failure");

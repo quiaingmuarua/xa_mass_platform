@@ -60,14 +60,14 @@ Task admission and score visibility
   -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
   -> Task Dispatch
      -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
-                     -> WorkerCommand mailbox append
+                     -> DeliveryCommand mailbox append
      -> no ACTIVE Item: increment the shared empty-recheck count
                         close only when emptyCloseAtMillis is due
   -> Worker Delivery Dispatch
      -> point polling for one target Worker
      -> bounded no-cursor batches for long-lived Adapters
-     -> semantic Worker/Adapter WorkerResult ingress
-     -> outcome-class WorkerResult queues
+     -> semantic Worker/Adapter DeliveryReport ingress
+     -> outcome-class DeliveryReport queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
   -> Java last-success result query
@@ -603,16 +603,16 @@ no hidden compatibility path or second mainline remains
     RUNNING/non-pause/suffix-zero validation.
 - [Task Dispatch Pacer](doc/scheduling/task-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
-    validation/renewal, WorkerCommand construction, and Adapter-partitioned
-    WorkerCommand mailbox append.
+    validation/renewal, DeliveryCommand construction, and Adapter-partitioned
+    DeliveryCommand mailbox append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Server-owned point/batch mailbox access plus Adapter-owned complete Netty
-    instances, independent Command/Result loops, direct WorkerCommand/
-    WorkerResult transport, bounded queues, and trusted pre-execution rejection
+    instances, independent Command/Result loops, direct DeliveryCommand/
+    DeliveryReport transport, bounded queues, and trusted pre-execution rejection
     without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI control host for Task create/approve/close and
@@ -637,10 +637,10 @@ no hidden compatibility path or second mainline remains
   - Android Identity persistence, HandlerThread WebSocket client, and complete
     composition of Worker Core's shared startup lifecycle.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
-  - transport-neutral Java connection Bind/command/result DTOs, strict validation,
-    outcome classification, and codec.
+  - transport-neutral Java `DeliveryCommand`/`DeliveryReport` DTOs, strict
+    validation, outcome classification, and codec.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
-  - outcome-class WorkerResult consumption, last-success result storage, TaskItem
+  - outcome-class DeliveryReport consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.
 - [Worker Result Runtime Redis Shape](doc/runtime-redis/worker-result-runtime-redis-shape.md)
   - three best-effort outcome-class queues plus Task-scoped success result HASH.

@@ -3,7 +3,7 @@ package com.xa.mass.kernel.delivery.redis;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -68,7 +68,7 @@ public final class RedisWorkerCommandRuntime
     @Override
     public Map<String, WorkerCommandAppendStatus> appendWorkerCommands(
             String endpointManagerId,
-            Map<String, WorkerCommand> workerCommandsByWorkerId
+            Map<String, DeliveryCommand> workerCommandsByWorkerId
     ) {
         throw new KernelOperationNotImplementedException(
                 "WorkerCommandRuntime",
@@ -77,7 +77,7 @@ public final class RedisWorkerCommandRuntime
     }
 
     @Override
-    public WorkerCommand consumeWorkerCommand(
+    public DeliveryCommand consumeWorkerCommand(
             String endpointManagerId,
             String workerId
     ) {
@@ -94,7 +94,7 @@ public final class RedisWorkerCommandRuntime
         }
         if (values.size() != 2) {
             throw new IllegalStateException(
-                    "Redis WorkerCommand script returned an invalid response"
+                    "Redis DeliveryCommand script returned an invalid response"
             );
         }
         return activeCommand(
@@ -104,7 +104,7 @@ public final class RedisWorkerCommandRuntime
     }
 
     @Override
-    public Map<String, WorkerCommand> consumeWorkerCommands(
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
@@ -143,15 +143,15 @@ public final class RedisWorkerCommandRuntime
         }
         if (consumed.size() % 2 != 0) {
             throw new IllegalStateException(
-                    "Redis WorkerCommand script returned an invalid response"
+                    "Redis DeliveryCommand script returned an invalid response"
             );
         }
 
-        Map<String, WorkerCommand> active = new LinkedHashMap<>();
+        Map<String, DeliveryCommand> active = new LinkedHashMap<>();
         long nowMillis = redisTimeMillis();
         for (int index = 0; index < consumed.size(); index += 2) {
             String workerId = String.valueOf(consumed.get(index));
-            WorkerCommand command = activeCommand(
+            DeliveryCommand command = activeCommand(
                     String.valueOf(consumed.get(index + 1)),
                     nowMillis
             );
@@ -162,11 +162,11 @@ public final class RedisWorkerCommandRuntime
         return Map.copyOf(active);
     }
 
-    private WorkerCommand activeCommand(
+    private DeliveryCommand activeCommand(
             String encoded,
             long nowMillis
     ) {
-        WorkerCommand command = codec.decodeWorkerCommand(encoded);
+        DeliveryCommand command = codec.decodeDeliveryCommand(encoded);
         if (command == null
                 || command.executeBeforeMillis() <= nowMillis) {
             return null;

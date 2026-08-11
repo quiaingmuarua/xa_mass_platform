@@ -16,9 +16,9 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one Netty listener
 one current Channel per workerId
-one bounded WorkerCommand queue
+one bounded DeliveryCommand queue
 one scheduled Command Loop
-one bounded encoded WorkerResult queue
+one bounded encoded DeliveryReport queue
 one scheduled Result Loop
 ```
 
@@ -41,27 +41,28 @@ WebSocket uses:
 
 Socket uses one compact JSON value per UTF-8 line. Both transports start
 without an active Worker route. The first inbound value must be this strict
-Adapter-directed identity Result:
+Adapter-directed identity Report:
 
 ```json
 {
   "dst":"ADAPTER",
   "forward":"",
-  "messageId":"5ca82f99-2398-4927-a814-c88ff47a5466",
   "messageType":"worker.connection.identify",
   "outcomeCode":"200",
-  "payload":"server-issued-worker-id"
+  "payload":"null",
+  "sourceId":"server-issued-worker-id",
+  "src":"WORKER"
 }
 ```
 
 A new Channel pauses reads while the Adapter asks Server whether the persisted
 Endpoint Binding for `workerId` points to this Adapter's `endpointManagerId`.
-Adapter requires a non-blank identity payload but leaves workerId format
-validation to Server.
+Adapter requires `src=WORKER` and a non-blank `sourceId`, but does not parse
+the workerId format. The identity payload is exactly `"null"`.
 Successful route verification activates `workerId -> current Channel` and
 resumes reads without an identity ACK. A definite Server 4xx rejection causes
 the Adapter to write
-`WorkerCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
+`DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
 and close the physical Channel after the write flushes. Gateway unavailability
 or a 5xx response only closes the physical Channel, allowing the Worker Client
 to consume its current-Endpoint reconnect budget. Verification happens for
@@ -75,8 +76,8 @@ closes the physical Channel. There is no pre-verification message buffer.
 After connection activation:
 
 ```text
-Adapter -> Worker : direct WorkerCommand JSON
-Worker  -> Adapter: direct WorkerResult JSON
+Adapter -> Worker : direct DeliveryCommand JSON
+Worker  -> Adapter: direct DeliveryReport JSON
 ```
 
 There is no outer frame DTO. Adapter identity comes from its listener and
@@ -90,9 +91,10 @@ message closes the physical Channel. The Dispatcher is not a plugin SPI and
 does not expose Netty types.
 
 After identity, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
-events, and Worker-originated `2...` outcomes are logged and dropped without
-closing the Channel. Only `TASK` Results with `200` or Worker-owned `3...`
-outcomes enter the bounded Result queue, preserving their original JSON. A
+events, mismatched `src/sourceId`, and Worker-originated `2...` outcomes are
+logged and dropped without closing the Channel. Only `TASK` Reports with
+`src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` outcomes
+enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
@@ -124,8 +126,9 @@ the Channel route coordinate.
 
 Adapter holds a consumed command until send starts or the deadline expires.
 An Adapter-generated `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` (`23002`)
-copies the command `messageId`, `src` as result `dst`, `messageType`, and
-`forward`; it uses payload `"null"`.
+uses `DeliveryReport.fromCommand`, declares `src=ADAPTER` and
+`sourceId=adapterId`, and copies the Command message type plus opaque forward
+context. Its payload is `"null"`.
 
 No active Channel is a temporary retry condition while the command remains
 live. A send-started failure is ambiguous and must not fabricate Adapter
@@ -133,7 +136,7 @@ rejection evidence.
 
 ## Result Loop
 
-Netty handlers strictly decode every direct `WorkerResult`. Results targeting
+Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 `ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
 `3...` are queued, using their original encoded JSON so Adapter does not
 rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
@@ -149,10 +152,11 @@ otherwise            -> drain current queue once
 submit one encoded-result batch to Server
 ```
 
-The batch request has no caller-provided source field. The Server endpoint is
-the trusted Adapter ingress and accepts valid success, Worker-failure, and
-Adapter-rejection results targeting `TASK`. Point Worker result ingress
-separately rejects Adapter-rejection outcomes.
+The batch wrapper has no caller-provided source field. Each encoded Report
+declares its producer. Server accepts `WORKER` success/failure Reports and only
+accepts `ADAPTER` `2...` Reports whose `sourceId` matches the batch
+`endpointManagerId`. Point Worker Report ingress separately requires
+`WORKER + path workerId`.
 
 Gateway protocol rejection drops the pending batch. Network or Server
 unavailability retains it for a later interval. Command consumption and result

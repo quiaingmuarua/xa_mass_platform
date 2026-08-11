@@ -2,8 +2,9 @@ package com.xa.mass.workerdelivery.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -11,8 +12,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -26,7 +27,7 @@ import org.junit.jupiter.api.Test;
 
 class HttpWorkerDeliveryGatewayClientTest {
 
-    private static final String COMMAND_ID =
+    private static final String WORKER_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private HttpServer server;
@@ -60,8 +61,7 @@ class HttpWorkerDeliveryGatewayClientTest {
 
     @Test
     void consumesTheExactEndpointBucketAndDecodesTheBatch() {
-        WorkerCommand command = new WorkerCommand(
-                COMMAND_ID,
+        DeliveryCommand command = DeliveryCommand.create(
                 TASK,
                 WORKER,
                 "test.observe",
@@ -72,7 +72,7 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(
                 200,
                 "{\"workerCommandsByWorkerId\":{\"worker-1\":"
-                        + codec.encodeWorkerCommand(command)
+                        + codec.encodeDeliveryCommand(command)
                         + "}}"
         );
 
@@ -92,17 +92,19 @@ class HttpWorkerDeliveryGatewayClientTest {
 
     @Test
     void appendsOpaqueResultsWithOneBatchSourceAndRequiresFullAccounting() {
-        List<WorkerResult> results = List.of(
-                new WorkerResult(
-                        COMMAND_ID,
+        List<DeliveryReport> results = List.of(
+                DeliveryReport.create(
+                        WORKER,
+                        "worker-1",
                         TASK,
                         "test.observe",
                         "200",
                         "null",
                         "context-1"
                 ),
-                new WorkerResult(
-                        "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
+                DeliveryReport.create(
+                        ADAPTER,
+                        "adapter-1",
                         TASK,
                         "test.observe",
                         Integer.toString(
@@ -114,7 +116,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 )
         );
         List<String> encodedResults = results.stream()
-                .map(codec::encodeWorkerResult)
+                .map(codec::encodeDeliveryReport)
                 .toList();
         respond(
                 202,
@@ -163,13 +165,13 @@ class HttpWorkerDeliveryGatewayClientTest {
 
         client.verifyWorkerRoute(
                 "adapter/one",
-                COMMAND_ID
+                WORKER_ID
         ).toCompletableFuture().join();
 
         assertThat(requestPath).isEqualTo(
                 "/api/v1/worker-delivery/endpoint-managers/"
                         + "adapter%2Fone/workers/"
-                        + COMMAND_ID
+                        + WORKER_ID
                         + ":verify-binding"
         );
         assertThat(requestBody).isEmpty();
@@ -177,7 +179,7 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(409, "{}");
         assertThatThrownBy(() -> client.verifyWorkerRoute(
                 "adapter-1",
-                COMMAND_ID
+                WORKER_ID
         ).toCompletableFuture().join())
                 .isInstanceOf(CompletionException.class)
                 .hasCauseInstanceOf(WorkerDeliveryAdapterException.class)
@@ -191,7 +193,7 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(302, "{}");
         assertThatThrownBy(() -> client.verifyWorkerRoute(
                 "adapter-1",
-                COMMAND_ID
+                WORKER_ID
         ).toCompletableFuture().join())
                 .isInstanceOf(CompletionException.class)
                 .hasCauseInstanceOf(WorkerDeliveryAdapterException.class)
@@ -247,8 +249,9 @@ class HttpWorkerDeliveryGatewayClientTest {
         );
         assertThatThrownBy(() -> client.appendResults(
                 "adapter-1",
-                List.of(codec.encodeWorkerResult(new WorkerResult(
-                            COMMAND_ID,
+                List.of(codec.encodeDeliveryReport(DeliveryReport.create(
+                            WORKER,
+                            "worker-1",
                             TASK,
                             "test.observe",
                             "200",

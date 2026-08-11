@@ -3,9 +3,9 @@ package com.xa.mass.server.api.v1.workerdelivery;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -33,7 +33,6 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerCommandResponse(
-            String messageId,
             String src,
             String dst,
             String messageType,
@@ -41,9 +40,8 @@ public final class WorkerDeliveryHttpContract {
             String payload,
             String forward
     ) {
-        static WorkerCommandResponse from(WorkerCommand command) {
+        static WorkerCommandResponse from(DeliveryCommand command) {
             return new WorkerCommandResponse(
-                    command.messageId(),
                     command.src().wireValue(),
                     command.dst().wireValue(),
                     command.messageType(),
@@ -58,7 +56,7 @@ public final class WorkerDeliveryHttpContract {
             Map<String, WorkerCommandResponse> workerCommandsByWorkerId
     ) {
         static WorkerCommandConsumeResponse from(
-                Map<String, WorkerCommand> commands
+                Map<String, DeliveryCommand> commands
         ) {
             Map<String, WorkerCommandResponse> response =
                     new LinkedHashMap<>();
@@ -73,32 +71,35 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerResultRequest(
-            @NotBlank String messageId,
+            @NotBlank String src,
+            @NotBlank String sourceId,
             @NotBlank String dst,
             @NotBlank String messageType,
             @NotBlank String outcomeCode,
             @NotNull String payload,
             @NotNull String forward
     ) {
-        WorkerResult toWorkerResult() {
-            try {
-                return new WorkerResult(
-                        messageId,
-                        WorkerMessageEndpoint.fromWire(dst),
-                        messageType,
-                        outcomeCode,
-                        payload,
-                        forward
-                );
-            } catch (IllegalArgumentException error) {
-                throw invalid(error.getMessage());
+        DeliveryReport toDeliveryReport() {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("src", src);
+            fields.put("sourceId", sourceId);
+            fields.put("dst", dst);
+            fields.put("messageType", messageType);
+            fields.put("outcomeCode", outcomeCode);
+            fields.put("payload", payload);
+            fields.put("forward", forward);
+            DeliveryReport report = new WorkerDeliveryCodec()
+                    .decodeDeliveryReport(fields);
+            if (report == null) {
+                throw invalid("DeliveryReport is invalid");
             }
+            return report;
         }
 
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw invalid(
-                    "Unknown WorkerResult field: " + name
+                    "Unknown DeliveryReport field: " + name
             );
         }
     }
@@ -109,7 +110,7 @@ public final class WorkerDeliveryHttpContract {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw invalid(
-                    "Unknown WorkerResult batch field: " + name
+                    "Unknown DeliveryReport batch field: " + name
             );
         }
     }

@@ -188,7 +188,7 @@ hiding later Tasks without lowering priority or promising global fairness.
 
 ```text
 suffix = 0
-  -> ordinary Item observation, Worker acquisition, Item claim, WorkerCommand
+  -> ordinary Item observation, Worker acquisition, Item claim, DeliveryCommand
 
 suffix > 0
   -> no Worker acquisition or Item claim
@@ -253,7 +253,7 @@ terminal score is an idempotent no-op. The public `KernelApplication.close_task`
 chooses the terminal score internally and returns only `TaskCloseResult`.
 
 Explicit close applies to both Task types and every positive band. It does not
-roll back Items, claims, WorkerCommands, or late results. Those facts cannot
+roll back Items, claims, DeliveryCommands, or late results. Those facts cannot
 reopen Task score.
 
 ### Hold Release
@@ -318,7 +318,7 @@ is read or written by Task score Lua.
 - Terminal close is irreversible and takes precedence over later scheduling
   rounds.
 - A Task discovered before pause/close may finish its already-bounded Item and
-  WorkerCommand work; the later score rewrite cannot reopen terminal state.
+  DeliveryCommand work; the later score rewrite cannot reopen terminal state.
 - Before `emptyCloseAtMillis`, an empty Task remains RUNNING and continues to
   consume the current soft-limit count. External close evidence may terminate
   either TaskType earlier.

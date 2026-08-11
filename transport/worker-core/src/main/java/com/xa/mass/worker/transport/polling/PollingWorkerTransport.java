@@ -1,12 +1,15 @@
 package com.xa.mass.worker.transport.polling;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
+
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Optional;
@@ -24,7 +27,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
     private volatile boolean closed;
-    private volatile WorkerResult pendingResult;
+    private volatile DeliveryReport pendingResult;
 
     public PollingWorkerTransport(
             WorkerPointClient client,
@@ -41,7 +44,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
 
     public boolean runOnce() throws IOException, InterruptedException {
         requireOpen();
-        WorkerResult pending = pendingResult;
+        DeliveryReport pending = pendingResult;
         if (pending != null) {
             submitPendingResult(pending);
             return true;
@@ -53,10 +56,12 @@ public final class PollingWorkerTransport implements AutoCloseable {
         if (!encodedCommand.isPresent()) {
             return false;
         }
-        WorkerCommand command = codec.decodeWorkerCommand(
+        DeliveryCommand command = codec.decodeDeliveryCommand(
                 encodedCommand.get()
         );
-        if (command == null) {
+        if (command == null
+                || command.dst() != WORKER
+                || command.src() == WORKER) {
             throw new WorkerException(
                     WorkerErrorCode.COMMAND_MESSAGE_INVALID,
                     "polling.decodeCommand",
@@ -64,11 +69,18 @@ public final class PollingWorkerTransport implements AutoCloseable {
                     null
             );
         }
-        Optional<WorkerResult> result = commandExecutor.execute(command);
+        Optional<WorkerCommandOutcome> result = commandExecutor.execute(command);
         if (!result.isPresent()) {
             return false;
         }
-        pendingResult = result.get();
+        WorkerCommandOutcome outcome = result.get();
+        pendingResult = DeliveryReport.fromCommand(
+                command,
+                WORKER,
+                workerId,
+                outcome.outcomeCode(),
+                outcome.payload()
+        );
         submitPendingResult(pendingResult);
         return true;
     }
@@ -113,11 +125,11 @@ public final class PollingWorkerTransport implements AutoCloseable {
         return pendingResult != null;
     }
 
-    private void submitPendingResult(WorkerResult sending)
+    private void submitPendingResult(DeliveryReport sending)
             throws IOException {
         client.submitResult(
                 workerId,
-                codec.encodeWorkerResult(sending)
+                codec.encodeDeliveryReport(sending)
         );
         if (pendingResult == sending) {
             pendingResult = null;

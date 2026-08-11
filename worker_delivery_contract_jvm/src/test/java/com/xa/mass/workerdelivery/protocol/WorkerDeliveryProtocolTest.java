@@ -1,112 +1,116 @@
 package com.xa.mass.workerdelivery.protocol;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.SYSTEM;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
 final class WorkerDeliveryProtocolTest {
 
-    private static final String MESSAGE_ID =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     @Test
     void commandHasStableWireAndRoundTrips() {
-        WorkerCommand command = command();
-        String encoded = codec.encodeWorkerCommand(command);
+        DeliveryCommand command = command();
+        String encoded = codec.encodeDeliveryCommand(command);
 
         assertEquals(
-                "{\"dst\":\"WORKER\",\"executeBeforeMillis\":1234567890,"
-                        + "\"forward\":\"context\",\"messageId\":\""
-                        + MESSAGE_ID
-                        + "\",\"messageType\":\"telecom.phone.inspect\","
-                        + "\"payload\":\"{\\\"phoneNumber\\\":"
-                        + "\\\"+14155552671\\\"}\",\"src\":\"TASK\"}",
+                commandJson(),
                 encoded
         );
-        assertEquals(command, codec.decodeWorkerCommand(encoded));
+        assertEquals(command, codec.decodeDeliveryCommand(encoded));
     }
 
     @Test
-    void resultHasStableWireAndRoundTrips() {
-        WorkerResult result = result("200");
-        String encoded = codec.encodeWorkerResult(result);
+    void reportHasStableWireAndRoundTrips() {
+        DeliveryReport report = DeliveryReport.fromCommand(
+                command(),
+                WORKER,
+                "worker-1",
+                "200",
+                "{\"isValid\":true}"
+        );
+        String encoded = codec.encodeDeliveryReport(report);
 
         assertEquals(
                 "{\"dst\":\"TASK\",\"forward\":\"context\","
-                        + "\"messageId\":\"" + MESSAGE_ID
-                        + "\",\"messageType\":\"telecom.phone.inspect\","
+                        + "\"messageType\":\"telecom.phone.inspect\","
                         + "\"outcomeCode\":\"200\","
-                        + "\"payload\":\"{\\\"isValid\\\":true}\"}",
+                        + "\"payload\":\"{\\\"isValid\\\":true}\","
+                        + "\"sourceId\":\"worker-1\",\"src\":\"WORKER\"}",
                 encoded
         );
-        assertEquals(result, codec.decodeWorkerResult(encoded));
+        assertEquals(report, codec.decodeDeliveryReport(encoded));
     }
 
     @Test
-    void resultFromCommandOwnsCorrelationMapping() {
-        WorkerCommand command = command();
-
-        WorkerResult result = WorkerResult.fromCommand(
+    void factoriesBuildReportsWithoutDeliveryCorrelationIdentity() {
+        DeliveryCommand command = DeliveryCommand.create(
+                TASK,
+                WORKER,
+                "event",
+                1,
+                "{}",
+                "context"
+        );
+        DeliveryReport report = DeliveryReport.fromCommand(
                 command,
-                "3302",
-                "not found"
-        );
-
-        assertEquals(command.messageId(), result.messageId());
-        assertEquals(command.src(), result.dst());
-        assertEquals(command.messageType(), result.messageType());
-        assertEquals("3302", result.outcomeCode());
-        assertEquals("not found", result.payload());
-        assertEquals(command.forward(), result.forward());
-    }
-
-    @Test
-    void connectionControlEventCodesAreStable() {
-        assertEquals(
-                "worker.connection.identify",
-                WorkerDeliveryProtocol
-                        .WORKER_CONNECTION_IDENTIFY_EVENT_CODE
-        );
-        assertEquals(
-                "worker.connection.close",
-                WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE
-        );
-    }
-
-    @Test
-    void connectionControlUsesExistingResultAndCommandWire() {
-        WorkerResult identity = new WorkerResult(
-                MESSAGE_ID,
                 ADAPTER,
-                WorkerDeliveryProtocol
-                        .WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                "adapter-1",
+                "23002",
+                "null"
+        );
+        assertEquals(ADAPTER, report.src());
+        assertEquals("adapter-1", report.sourceId());
+        assertEquals(command.src(), report.dst());
+        assertEquals(command.messageType(), report.messageType());
+        assertEquals(command.forward(), report.forward());
+
+        DeliveryReport active = DeliveryReport.create(
+                WORKER,
+                "worker-1",
+                ADAPTER,
+                "worker.connection.identify",
                 "200",
-                "3d813cbb-47fb-4ea8-a5be-6bf4c4a99089",
+                "null",
                 ""
         );
-        assertEquals(
-                "{\"dst\":\"ADAPTER\",\"forward\":\"\","
-                        + "\"messageId\":\"" + MESSAGE_ID + "\","
-                        + "\"messageType\":\"worker.connection.identify\","
-                        + "\"outcomeCode\":\"200\","
-                        + "\"payload\":\"3d813cbb-47fb-4ea8-a5be-"
-                        + "6bf4c4a99089\"}",
-                codec.encodeWorkerResult(identity)
-        );
+        assertEquals(WORKER, active.src());
+        assertEquals("worker-1", active.sourceId());
+        assertEquals(ADAPTER, active.dst());
+    }
 
-        WorkerCommand close = new WorkerCommand(
-                MESSAGE_ID,
+    @Test
+    void connectionControlUsesCommandAndReportWire() {
+        DeliveryReport identity = DeliveryReport.create(
+                WORKER,
+                "opaque-worker-id",
+                ADAPTER,
+                WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                "200",
+                "null",
+                ""
+        );
+        DeliveryReport decodedIdentity = codec.decodeDeliveryReport(
+                codec.encodeDeliveryReport(identity)
+        );
+        assertEquals(identity, decodedIdentity);
+        assertEquals("opaque-worker-id", decodedIdentity.sourceId());
+        assertEquals("null", decodedIdentity.payload());
+
+        DeliveryCommand close = DeliveryCommand.create(
                 ADAPTER,
                 WORKER,
                 WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE,
@@ -114,127 +118,167 @@ final class WorkerDeliveryProtocolTest {
                 "null",
                 ""
         );
-        assertEquals(
-                "{\"dst\":\"WORKER\","
-                        + "\"executeBeforeMillis\":1234567890,"
-                        + "\"forward\":\"\",\"messageId\":\""
-                        + MESSAGE_ID + "\","
-                        + "\"messageType\":\"worker.connection.close\","
-                        + "\"payload\":\"null\",\"src\":\"ADAPTER\"}",
-                codec.encodeWorkerCommand(close)
-        );
+        assertEquals(close, codec.decodeDeliveryCommand(
+                codec.encodeDeliveryCommand(close)
+        ));
     }
 
     @Test
     void endpointWireValuesAreExplicit() {
-        assertEquals(TASK, WorkerMessageEndpoint.fromWire("TASK"));
-        assertEquals(SYSTEM, WorkerMessageEndpoint.fromWire("SYSTEM"));
-        assertEquals(ADAPTER, WorkerMessageEndpoint.fromWire("ADAPTER"));
-        assertEquals(WORKER, WorkerMessageEndpoint.fromWire("WORKER"));
+        assertEquals(TASK, DeliveryEndpoint.fromWire("TASK"));
+        assertEquals(SYSTEM, DeliveryEndpoint.fromWire("SYSTEM"));
+        assertEquals(ADAPTER, DeliveryEndpoint.fromWire("ADAPTER"));
+        assertEquals(WORKER, DeliveryEndpoint.fromWire("WORKER"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> WorkerMessageEndpoint.fromWire("task")
+                () -> DeliveryEndpoint.fromWire("task")
         );
     }
 
     @Test
-    void codecsRejectUnknownFieldsAndDirections() {
-        assertNull(codec.decodeWorkerCommand(
-                "{\"dst\":\"WORKER\",\"executeBeforeMillis\":1,"
-                        + "\"forward\":\"context\",\"messageId\":\""
-                        + MESSAGE_ID
-                        + "\",\"messageType\":\"event\",\"payload\":\"{}\","
-                        + "\"src\":\"TASK\",\"extra\":true}"
+    void codecsRejectUnknownAndLegacyFields() {
+        assertNull(codec.decodeDeliveryCommand(
+                commandJson().replace(
+                        "\"src\":\"TASK\"}",
+                        "\"src\":\"TASK\",\"extra\":true}"
+                )
         ));
-        assertNull(codec.decodeWorkerCommand(
-                "{\"dst\":\"TASK\",\"executeBeforeMillis\":1,"
-                        + "\"forward\":\"context\",\"messageId\":\""
-                        + MESSAGE_ID
-                        + "\",\"messageType\":\"event\",\"payload\":\"{}\","
-                        + "\"src\":\"TASK\"}"
+        assertNull(codec.decodeDeliveryCommand(
+                commandJson().replace(
+                        "\"src\":\"TASK\"}",
+                        "\"src\":\"TASK\",\"messageId\":\"legacy\"}"
+                )
         ));
-        assertNull(codec.decodeWorkerResult(
-                "{\"dst\":\"WORKER\",\"forward\":\"context\","
-                        + "\"messageId\":\"" + MESSAGE_ID
-                        + "\",\"messageType\":\"event\","
+        assertNull(codec.decodeDeliveryReport(
+                "{\"dst\":\"TASK\",\"forward\":\"context\","
+                        + "\"messageType\":\"event\","
                         + "\"outcomeCode\":\"200\",\"payload\":\"null\"}"
         ));
+        String report = codec.encodeDeliveryReport(
+                DeliveryReport.fromCommand(
+                        command(),
+                        WORKER,
+                        "worker-1",
+                        "200",
+                        "null"
+                )
+        );
+        assertNull(codec.decodeDeliveryReport(report.replace(
+                "\"src\":\"WORKER\"}",
+                "\"src\":\"WORKER\",\"extra\":true}"
+        )));
+        assertNull(codec.decodeDeliveryReport(report.replace(
+                "\"src\":\"WORKER\"}",
+                "\"src\":\"WORKER\",\"messageId\":\"legacy\"}"
+        )));
+        assertNull(codec.decodeDeliveryReport(report.replace(
+                "\"sourceId\":\"worker-1\"",
+                "\"sourceId\":1"
+        )));
+        assertNull(codec.decodeDeliveryReport(report.replace(
+                "\"sourceId\":\"worker-1\"",
+                "\"sourceId\":\" \""
+        )));
     }
 
     @Test
     void outcomeClassificationUsesOwnerPrefixWithoutWidthValidation() {
         assertEquals(
-                WorkerResultOutcomeClass.SUCCESS,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("200")
+                DeliveryReportOutcomeClass.SUCCESS,
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("200")
         );
         assertEquals(
-                WorkerResultOutcomeClass.WORKER_FAILURE,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("33001")
+                DeliveryReportOutcomeClass.WORKER_FAILURE,
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("33001")
         );
         assertEquals(
-                WorkerResultOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("23001")
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("23001")
         );
         assertEquals(
-                WorkerResultOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode("1400")
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+                WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode("1400")
         );
-        assertEquals(
-                WorkerResultOutcomeClass.ADAPTER_REJECTION,
-                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(
-                        "adapter-error"
-                )
-        );
-        assertNull(WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(" "));
+        assertNull(WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(" "));
     }
 
     @Test
-    void messageIdIsCanonicalAndTaskForwardIsRequired() {
+    void deliveryDtosDoNotExposeMessageId() {
+        assertTrue(Modifier.isPrivate(
+                DeliveryCommand.class.getDeclaredConstructors()[0]
+                        .getModifiers()
+        ));
+        assertTrue(Modifier.isPrivate(
+                DeliveryReport.class.getDeclaredConstructors()[0]
+                        .getModifiers()
+        ));
+        assertTrue(Arrays.stream(DeliveryCommand.class.getDeclaredFields())
+                .noneMatch(field -> field.getName().equals("messageId")));
+        assertTrue(Arrays.stream(DeliveryReport.class.getDeclaredFields())
+                .noneMatch(field -> field.getName().equals("messageId")));
+        assertTrue(Arrays.stream(DeliveryCommand.class.getMethods())
+                .noneMatch(method -> method.getName().equals("messageId")));
+        assertTrue(Arrays.stream(DeliveryReport.class.getMethods())
+                .noneMatch(method -> method.getName().equals("messageId")));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new WorkerCommand(
-                        MESSAGE_ID.toUpperCase(),
+                () -> DeliveryCommand.create(
                         TASK,
                         WORKER,
                         "event",
                         1,
                         "{}",
-                        "context"
+                        ""
                 )
         );
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new WorkerResult(
-                        MESSAGE_ID,
+                () -> DeliveryReport.create(
+                        WORKER,
+                        " ",
                         TASK,
                         "event",
                         "200",
                         "null",
-                        ""
+                        "context"
                 )
         );
     }
 
-    private static WorkerCommand command() {
-        return new WorkerCommand(
-                MESSAGE_ID,
-                TASK,
-                WORKER,
-                "telecom.phone.inspect",
-                1_234_567_890L,
-                "{\"phoneNumber\":\"+14155552671\"}",
-                "context"
-        );
+    @Test
+    void legacyProtocolTypesAndCodecMethodsAreAbsent() {
+        for (String type : new String[]{
+                "WorkerCommand",
+                "WorkerResult",
+                "WorkerMessageEndpoint",
+                "WorkerResultOutcomeClass"
+        }) {
+            assertThrows(
+                    ClassNotFoundException.class,
+                    () -> Class.forName(
+                            WorkerDeliveryProtocol.class.getName()
+                                    + "$"
+                                    + type
+                    )
+            );
+        }
+        assertTrue(Arrays.stream(WorkerDeliveryCodec.class.getMethods())
+                .map(method -> method.getName())
+                .noneMatch(name -> name.equals("encodeWorkerCommand")
+                        || name.equals("decodeWorkerCommand")
+                        || name.equals("encodeWorkerResult")
+                        || name.equals("decodeWorkerResult")));
     }
 
-    private static WorkerResult result(String outcomeCode) {
-        return new WorkerResult(
-                MESSAGE_ID,
-                TASK,
-                "telecom.phone.inspect",
-                outcomeCode,
-                "{\"isValid\":true}",
-                "context"
-        );
+    private DeliveryCommand command() {
+        return codec.decodeDeliveryCommand(commandJson());
+    }
+
+    private static String commandJson() {
+        return "{\"dst\":\"WORKER\",\"executeBeforeMillis\":1234567890,"
+                + "\"forward\":\"context\","
+                + "\"messageType\":\"telecom.phone.inspect\","
+                + "\"payload\":\"{\\\"phoneNumber\\\":"
+                + "\\\"+14155552671\\\"}\",\"src\":\"TASK\"}";
     }
 }

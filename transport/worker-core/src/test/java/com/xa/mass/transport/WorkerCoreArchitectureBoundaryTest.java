@@ -84,8 +84,8 @@ class WorkerCoreArchitectureBoundaryTest {
             for (Method method : type.getDeclaredMethods()) {
                 String signature = method.toGenericString();
                 for (String forbidden : new String[]{
-                        "WorkerCommand",
-                        "WorkerResult",
+                        "DeliveryCommand",
+                        "DeliveryReport",
                         "WorkerConnection" + "Bind",
                         "WorkerConnectionHello",
                         "okhttp3",
@@ -219,8 +219,8 @@ class WorkerCoreArchitectureBoundaryTest {
         for (Method method : WorkerLifecycle.class.getDeclaredMethods()) {
             String signature = method.toGenericString();
             assertFalse("send".equals(method.getName()), signature);
-            assertFalse(signature.contains("WorkerCommand"), signature);
-            assertFalse(signature.contains("WorkerResult"), signature);
+            assertFalse(signature.contains("DeliveryCommand"), signature);
+            assertFalse(signature.contains("DeliveryReport"), signature);
         }
         assertFalse(hasMethod(WorkerLifecycle.class, "refreshProperties"));
         assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
@@ -330,6 +330,8 @@ class WorkerCoreArchitectureBoundaryTest {
         )));
         assertFalse(dispatcherSource.contains("LongSupplier"));
         assertFalse(dispatcherSource.contains("java.time.Clock"));
+        assertFalse(dispatcherSource.contains("DeliveryReport"));
+        assertFalse(dispatcherSource.contains("workerId"));
         assertFalse(dispatcherSource.contains(
                 "WORKER_CONNECTION_CLOSE_EVENT_CODE"
         ));
@@ -420,7 +422,7 @@ class WorkerCoreArchitectureBoundaryTest {
         for (String forbidden : new String[]{
                 "WorkerEventDefinition",
                 "WorkerCommandDispatcher",
-                "WorkerCommand",
+                "DeliveryCommand",
                 "commandInFlight",
                 "prepareAfterCommand",
                 "pendingResult",

@@ -179,8 +179,8 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("WorkerScore")
-                .doesNotContain("WorkerCommand")
-                .doesNotContain("WorkerResult")
+                .doesNotContain("DeliveryCommand")
+                .doesNotContain("DeliveryReport")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("Transport");
 
@@ -227,7 +227,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("WorkerWebSocketHandler")
                 .doesNotContain("TextMessage")
-                .doesNotContain("WorkerResult")
+                .doesNotContain("DeliveryReport")
                 .doesNotContain("\"23002\"")
                 .doesNotContain("ArrayBlockingQueue");
 

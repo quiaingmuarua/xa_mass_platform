@@ -39,7 +39,7 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendStatus,
     WorkerDeclaration,
     WorkerGroupDescriptor,
-    WorkerMessageEndpoint,
+    DeliveryEndpoint,
     WorkerRuntimeStatus,
 )
 from kernel_design.executable_spec.assembly._redis_process import _RedisKernelProcess
@@ -761,8 +761,8 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[message_id].status)
         self.assertIsNotNone(command)
         assert command is not None
-        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
-        self.assertIs(command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertIs(command.src, DeliveryEndpoint.TASK)
+        self.assertIs(command.dst, DeliveryEndpoint.WORKER)
         self.assertEqual("image.resize", command.message_type)
         self.assertEqual(
             message_id,

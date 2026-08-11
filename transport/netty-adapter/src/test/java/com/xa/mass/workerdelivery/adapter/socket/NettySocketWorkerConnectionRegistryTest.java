@@ -2,12 +2,12 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
@@ -24,18 +24,19 @@ class NettySocketWorkerConnectionRegistryTest {
             registry.activate("worker-1", first);
             registry.activate("worker-1", second);
             registry.deactivate("worker-1", first);
+            DeliveryCommand command = command();
 
-            assertThat(registry.deliver("worker-1", command()))
+            assertThat(registry.deliver("worker-1", command))
                     .isEqualTo(STARTED);
             assertThat(first.isOpen()).isFalse();
             assertThat(registry.activeConnectionCount()).isEqualTo(1);
 
             String delivered = second.readOutbound();
             assertThat(delivered).endsWith("\n");
-            assertThat(codec.decodeWorkerCommand(
+            assertThat(codec.decodeDeliveryCommand(
                     delivered.stripTrailing()
             ))
-                    .isEqualTo(command());
+                    .isEqualTo(command);
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();
@@ -63,9 +64,8 @@ class NettySocketWorkerConnectionRegistryTest {
         return new NettySocketWorkerConnectionRegistry(codec);
     }
 
-    private static WorkerCommand command() {
-        return new WorkerCommand(
-                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+    private static DeliveryCommand command() {
+        return DeliveryCommand.create(
                 TASK,
                 WORKER,
                 "test.observe",

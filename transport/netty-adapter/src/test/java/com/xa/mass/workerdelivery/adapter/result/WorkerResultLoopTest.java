@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -115,7 +115,7 @@ class WorkerResultLoopTest {
         private boolean protocolFailure;
 
         @Override
-        public Map<String, WorkerCommand> consumeWorkerCommands(
+        public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
         ) {

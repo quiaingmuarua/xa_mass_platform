@@ -7,12 +7,12 @@ from time import time_ns
 from types import MappingProxyType
 
 from ..assembly import (
-    WorkerMessageEndpoint,
-    WorkerResult,
+    DeliveryEndpoint,
+    DeliveryReport,
     WorkerResultCommandClient,
-    WorkerResultOutcomeClass,
+    DeliveryReportOutcomeClass,
     WorkerCommandConsumerClient,
-    classify_worker_result_outcome_code,
+    classify_delivery_report_outcome_code,
 )
 
 
@@ -42,10 +42,10 @@ class EventHandlerResult:
     payload: object | None = None
 
     def __post_init__(self) -> None:
-        outcome_class = classify_worker_result_outcome_code(self.outcome_code)
+        outcome_class = classify_delivery_report_outcome_code(self.outcome_code)
         if outcome_class not in {
-            WorkerResultOutcomeClass.SUCCESS,
-            WorkerResultOutcomeClass.WORKER_FAILURE,
+            DeliveryReportOutcomeClass.SUCCESS,
+            DeliveryReportOutcomeClass.WORKER_FAILURE,
         }:
             raise ValueError(
                 "handler outcome code must be success or Worker failure"
@@ -103,7 +103,7 @@ class LocalFunctionTransportAdapter:
             endpoint_manager_id=self.endpoint_manager_id,
             limit=limit,
         )
-        results: list[WorkerResult] = []
+        results: list[DeliveryReport] = []
 
         for worker_id, command in worker_commands.items():
             if self._current_time_millis() >= command.execute_before_millis:
@@ -116,13 +116,12 @@ class LocalFunctionTransportAdapter:
                 continue
             handler = self.handlers.get(command.message_type)
             if handler is None:
-                result = WorkerResult(
-                    message_id=command.message_id,
-                    dst=command.src,
-                    message_type=command.message_type,
+                result = DeliveryReport.from_command(
+                    command=command,
+                    src=DeliveryEndpoint.WORKER,
+                    source_id=worker_id,
                     outcome_code=WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
                     payload="null",
-                    forward=command.forward,
                 )
                 results.append(result)
                 continue
@@ -132,22 +131,20 @@ class LocalFunctionTransportAdapter:
                 if not isinstance(handled, EventHandlerResult):
                     raise TypeError("handler must return EventHandlerResult")
                 opaque_payload = self._encode_result_payload(handled.payload)
-                result = WorkerResult(
-                    message_id=command.message_id,
-                    dst=command.src,
-                    message_type=command.message_type,
+                result = DeliveryReport.from_command(
+                    command=command,
+                    src=DeliveryEndpoint.WORKER,
+                    source_id=worker_id,
                     outcome_code=handled.outcome_code,
                     payload=opaque_payload,
-                    forward=command.forward,
                 )
             except Exception:
-                result = WorkerResult(
-                    message_id=command.message_id,
-                    dst=command.src,
-                    message_type=command.message_type,
+                result = DeliveryReport.from_command(
+                    command=command,
+                    src=DeliveryEndpoint.WORKER,
+                    source_id=worker_id,
                     outcome_code=WORKER_HANDLER_FAILURE_OUTCOME_CODE,
                     payload="null",
-                    forward=command.forward,
                 )
             results.append(result)
 

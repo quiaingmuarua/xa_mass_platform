@@ -76,8 +76,8 @@ class KernelOwnerContractManifestTest {
                     CandidateWorkerCache.CandidateWorkerEntry.class
             ),
             Map.entry(
-                    "WorkerResult",
-                    WorkerDeliveryProtocol.WorkerResult.class
+                    "DeliveryReport",
+                    WorkerDeliveryProtocol.DeliveryReport.class
             ),
             Map.entry(
                     "TaskCreationResult",
@@ -110,8 +110,8 @@ class KernelOwnerContractManifestTest {
                     TaskScoreBandCore.TaskScoreTransitionResult.class
             ),
             Map.entry(
-                    "WorkerCommand",
-                    WorkerDeliveryProtocol.WorkerCommand.class
+                    "DeliveryCommand",
+                    WorkerDeliveryProtocol.DeliveryCommand.class
             ),
             Map.entry(
                     "WorkerDeclaration",
@@ -142,9 +142,9 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
                     Map.entry(
-                            "WorkerResultOutcomeClass",
+                            "DeliveryReportOutcomeClass",
                             WorkerDeliveryProtocol
-                                    .WorkerResultOutcomeClass.class
+                                    .DeliveryReportOutcomeClass.class
                     ),
                     Map.entry(
                             "TaskCreationStatus",
@@ -179,8 +179,8 @@ class KernelOwnerContractManifestTest {
                                     .WorkerCommandAppendStatus.class
                     ),
                     Map.entry(
-                            "WorkerMessageEndpoint",
-                            WorkerDeliveryProtocol.WorkerMessageEndpoint.class
+                            "DeliveryEndpoint",
+                            WorkerDeliveryProtocol.DeliveryEndpoint.class
                     ),
                     Map.entry(
                             "WorkerRuntimeStatus",

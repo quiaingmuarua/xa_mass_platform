@@ -46,7 +46,7 @@ class JavaWorkerArchitectureTest {
 
         for (String forbidden : new String[]{
                 "class PollingWorkerTransport",
-                "WorkerResult",
+                "DeliveryReport",
                 "WorkerConnectionHello",
                 "android.",
                 "androidx.",
@@ -191,8 +191,8 @@ class JavaWorkerArchitectureTest {
         for (String forbidden : new String[]{
                 "okhttp3",
                 "java.net.Socket",
-                "WorkerCommand",
-                "WorkerResult"
+                "DeliveryCommand",
+                "DeliveryReport"
         }) {
             assertFalse(signature.contains(forbidden), signature);
         }

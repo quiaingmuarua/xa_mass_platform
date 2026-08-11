@@ -2,15 +2,15 @@ package com.xa.mass.workerdelivery.adapter.message;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.util.Map;
@@ -33,7 +33,7 @@ class AdapterWorkerEventDispatcherTest {
             return CompletableFuture.completedFuture(null);
         });
 
-        Optional<WorkerCommand> response = dispatcher.dispatch(identity())
+        Optional<DeliveryCommand> response = dispatcher.dispatch(identity())
                 .toCompletableFuture()
                 .join();
 
@@ -47,7 +47,7 @@ class AdapterWorkerEventDispatcherTest {
                 failed(WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED)
         );
 
-        WorkerCommand command = dispatcher.dispatch(identity())
+        DeliveryCommand command = dispatcher.dispatch(identity())
                 .toCompletableFuture()
                 .join()
                 .orElseThrow();
@@ -79,12 +79,13 @@ class AdapterWorkerEventDispatcherTest {
             calls.incrementAndGet();
             return CompletableFuture.completedFuture(null);
         });
-        WorkerResult invalid = new WorkerResult(
-                "5ca82f99-2398-4927-a814-c88ff47a5466",
+        DeliveryReport invalid = DeliveryReport.create(
+                ADAPTER,
+                OPAQUE_WORKER_ID,
                 ADAPTER,
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                 "200",
-                " ",
+                "null",
                 ""
         );
 
@@ -102,8 +103,9 @@ class AdapterWorkerEventDispatcherTest {
             calls.incrementAndGet();
             return CompletableFuture.completedFuture(null);
         });
-        WorkerResult unknown = new WorkerResult(
-                "5ca82f99-2398-4927-a814-c88ff47a5466",
+        DeliveryReport unknown = DeliveryReport.create(
+                WORKER,
+                OPAQUE_WORKER_ID,
                 ADAPTER,
                 "adapter.unknown",
                 "200",
@@ -134,12 +136,12 @@ class AdapterWorkerEventDispatcherTest {
     }
 
     @Test
-    void dispatchAcceptsOnlyWorkerResult() throws ReflectiveOperationException {
+    void dispatchAcceptsOnlyDeliveryReport() throws ReflectiveOperationException {
         assertThat(AdapterWorkerEventDispatcher.class.getDeclaredMethods())
                 .filteredOn(method -> method.getName().equals("dispatch"))
                 .singleElement()
                 .satisfies(method -> assertThat(method.getParameterTypes())
-                        .containsExactly(WorkerResult.class));
+                        .containsExactly(DeliveryReport.class));
     }
 
     private AdapterWorkerEventDispatcher dispatcher(
@@ -154,13 +156,14 @@ class AdapterWorkerEventDispatcherTest {
         );
     }
 
-    private WorkerResult identity() {
-        return new WorkerResult(
-                "5ca82f99-2398-4927-a814-c88ff47a5466",
+    private DeliveryReport identity() {
+        return DeliveryReport.create(
+                WORKER,
+                OPAQUE_WORKER_ID,
                 ADAPTER,
                 WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                 "200",
-                OPAQUE_WORKER_ID,
+                "null",
                 ""
         );
     }

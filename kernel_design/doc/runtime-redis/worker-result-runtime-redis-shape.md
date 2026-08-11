@@ -11,31 +11,34 @@ rr:{prefix}:worker-results:worker-failure
 rr:{prefix}:worker-results:adapter-rejection
 ```
 
-Each key is a Redis LIST containing deterministic `WorkerResult` JSON:
+Each key is a Redis LIST containing deterministic `DeliveryReport` JSON:
 
 ```json
 {
   "dst": "TASK",
   "forward": "...",
-  "messageId": "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
   "messageType": "telecom.phone.inspect",
   "outcomeCode": "200",
-  "payload": "{\"isValid\":true}"
+  "payload": "{\"isValid\":true}",
+  "sourceId": "worker-1",
+  "src": "WORKER"
 }
 ```
 
 Ingress classifies only `outcomeCode`, groups a mixed batch by
-`WorkerResultOutcomeClass`, and `RPUSH`es non-empty groups. Cross-class append
+`DeliveryReportOutcomeClass`, and `RPUSH`es non-empty groups. Cross-class append
 is best-effort and not atomic.
 
-The runtime does not decode `forward`, interpret `messageType`, or use
-`messageId` for partitioning, deduplication, precedence, or score fencing.
+The runtime does not decode `forward` or interpret `messageType`. DeliveryReport
+has no outer message or correlation ID; TaskItem identity remains inside the
+opaque Result Context until Result Routing.
 `consume_worker_results(outcomeClass, limit)` performs bounded `LPOP` against
 one class queue. FIFO is preserved within each class; corrupt members are
 consumed and skipped.
 
-There is no endpoint-manager, Task, WorkerGroup, source, pending/ack, retry,
-repair-scan, or cross-key Lua state.
+There is no endpoint-manager, Task, WorkerGroup, producer-based partition,
+pending/ack, retry, repair-scan, or cross-key Lua state. `src/sourceId` remain
+part of the encoded Report evidence.
 
 ## Successful Result Truth
 

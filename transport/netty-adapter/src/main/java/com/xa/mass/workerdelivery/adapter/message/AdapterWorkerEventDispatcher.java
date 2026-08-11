@@ -2,24 +2,23 @@ package com.xa.mass.workerdelivery.adapter.message;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
-/** Fixed Adapter-local WorkerResult event registry used by channel handlers. */
+/** Fixed Adapter-local DeliveryReport event registry used by channel handlers. */
 public final class AdapterWorkerEventDispatcher {
 
     private static final System.Logger LOGGER = System.getLogger(
@@ -52,8 +51,8 @@ public final class AdapterWorkerEventDispatcher {
         );
     }
 
-    public CompletionStage<Optional<WorkerCommand>> dispatch(
-            WorkerResult result
+    public CompletionStage<Optional<DeliveryCommand>> dispatch(
+            DeliveryReport result
     ) {
         Objects.requireNonNull(result, "result");
         AdapterWorkerEventDefinition definition = definitions.get(
@@ -72,13 +71,14 @@ public final class AdapterWorkerEventDispatcher {
         return CompletableFuture.completedFuture(Optional.empty());
     }
 
-    private CompletionStage<Optional<WorkerCommand>> identify(
-            WorkerResult result
+    private CompletionStage<Optional<DeliveryCommand>> identify(
+            DeliveryReport result
     ) {
-        if (result.dst() != ADAPTER
+        if (result.src() != WORKER
+                || result.dst() != ADAPTER
                 || !"200".equals(result.outcomeCode())
                 || !result.forward().isEmpty()
-                || result.payload().isBlank()) {
+                || !"null".equals(result.payload())) {
             return failed(new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.WORKER_MESSAGE_INVALID,
                     "adapter.identifyWorker",
@@ -89,7 +89,7 @@ public final class AdapterWorkerEventDispatcher {
 
         CompletionStage<Void> verification;
         try {
-            verification = identifyWorker.apply(result.payload());
+            verification = identifyWorker.apply(result.sourceId());
         } catch (RuntimeException error) {
             return failed(error);
         }
@@ -115,9 +115,8 @@ public final class AdapterWorkerEventDispatcher {
         });
     }
 
-    private WorkerCommand closeCommand() {
-        return new WorkerCommand(
-                UUID.randomUUID().toString(),
+    private DeliveryCommand closeCommand() {
+        return DeliveryCommand.create(
                 ADAPTER,
                 WORKER,
                 WORKER_CONNECTION_CLOSE_EVENT_CODE,
@@ -147,6 +146,6 @@ public final class AdapterWorkerEventDispatcher {
 
     @FunctionalInterface
     private interface AdapterWorkerEventDefinition {
-        CompletionStage<Optional<WorkerCommand>> handle(WorkerResult result);
+        CompletionStage<Optional<DeliveryCommand>> handle(DeliveryReport result);
     }
 }

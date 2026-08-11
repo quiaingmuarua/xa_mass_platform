@@ -282,7 +282,7 @@ comes from `TaskDescriptor`.
 
 Non-atomic broadcast or fan-out is normalized before scheduling into multiple
 TaskItems. Each expanded Item has its own `messageId`, complete allocation rule,
-claim, retry budget, `WorkerCommand`, and result; each still occupies exactly one
+claim, retry budget, `DeliveryCommand`, and result; each still occupies exactly one
 Worker slot. The kernel therefore does not turn one Item into a multi-Worker
 assignment.
 
@@ -486,7 +486,7 @@ approval execution
 TaskItem score, claim, retry, or finality
 Worker descriptor, dynamic value, score, or lease
 matched Worker ids or candidate handoff
-WorkerCommand or WorkerResult queues
+DeliveryCommand or DeliveryReport queues
 transport
 result classification, trace, or diagnostics
 ```

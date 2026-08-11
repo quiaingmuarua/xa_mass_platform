@@ -33,9 +33,11 @@ truth.
 ## Protocol And Queues
 
 ```python
-WorkerResult(
+DeliveryReport(
     message_id: str,
-    dst: WorkerMessageEndpoint,
+    src: DeliveryEndpoint,
+    source_id: str,
+    dst: DeliveryEndpoint,
     message_type: str,
     outcome_code: str,
     payload: str,
@@ -61,10 +63,11 @@ not an exact outcome subcode.
 Result routing does not use it as an Item identity, deduplication key, outcome
 winner, or Worker lease fence.
 
-The Java Server Worker Delivery point result endpoint accepts Worker-originated
-`200` and Worker-owned `3...` only. Its Adapter batch endpoint also accepts
-trusted Adapter rejection evidence that a delivery was rejected
-before entering Worker execution. A
+The Java Server Worker Delivery point result endpoint requires
+`src=WORKER + sourceId=path workerId` and accepts `200` or Worker-owned `3...`
+only. Its Adapter batch endpoint accepts Worker reports plus Adapter rejection
+evidence only when `src=ADAPTER + sourceId=path endpointManagerId`. These fields
+are consistency evidence rather than authentication. A
 WebSocket Adapter instance reaches that endpoint over HTTP. The Server appends
 the corresponding outcome-class Redis queue but does not consume or interpret
 routing policy. Authentication of that Adapter role remains deferred. Result
@@ -78,12 +81,12 @@ runtime and carries `taskId`, `messageId`, `workerId`,
 home-bucket coordinate of the opaque Worker lease fence; result routing does
 not reread Task metadata to recover it. Item claim score and claim-until time
 are not result-routing inputs. The claim-until time remains a top-level
-`WorkerCommand.executeBeforeMillis` cutoff used before Worker submit.
+`DeliveryCommand.executeBeforeMillis` cutoff used before Worker submit.
 
 ## Routing Round
 
 One round calls the three class lanes in a fixed implementation order. Normal
-protocol produces one logical outcome per WorkerCommand, although Worker Delivery
+protocol produces one logical outcome per DeliveryCommand, although Worker Delivery
 Dispatch may duplicate the same evidence. Duplicate queue records converge through
 last-success storage and exact score fences; they do not create a second Item
 or Worker owner. If contradictory classes for one exact Worker lease do arrive,
@@ -108,7 +111,7 @@ workerGroupId -> ordered WorkerResultEvidence(
 )
 ```
 
-`WorkerResult` and `ResultContext` do not leave this decode cutpoint. Only the
+`DeliveryReport` and `ResultContext` do not leave this decode cutpoint. Only the
 SUCCESS lane creates Task evidence; every valid outcome creates Worker
 evidence. After consuming one outcome queue, routing enters two owner-local
 paths: `_handle_task_results` receives only `resultsByTask`, while
@@ -210,7 +213,7 @@ malformed context or result in the wrong class queue
 Worker STALE / NOOP
   -> does not roll back Item or result truth
 
-Worker Delivery Dispatch or Worker produces no WorkerResult
+Worker Delivery Dispatch or Worker produces no DeliveryReport
   -> UNKNOWN; Item claim and Worker lease expiry recover
 
 process crash after queue pop
@@ -242,10 +245,11 @@ or any other `UNKNOWN` evidence must continue waiting for claim expiry.
 ## Guardrails
 
 - Do not let Adapter or Worker mutate score directly.
-- Do not interpret `WorkerResult.messageId` as result truth or a fence.
-- Do not interpret `WorkerResult.messageType` as routing truth.
-- Do not carry `executeBeforeMillis` into WorkerResult.
-- Do not add a generic result envelope ahead of WorkerResult outcome
+- Do not add an outer Delivery message ID; TaskItem identity is recovered only
+  by the owner allowed to decode `forward`.
+- Do not interpret `DeliveryReport.messageType` as routing truth.
+- Do not carry `executeBeforeMillis` into DeliveryReport.
+- Do not add a generic result envelope ahead of DeliveryReport outcome
   partitioning.
 - Do not parse exact Worker or Adapter failure subcodes in result routing.
 - Do not introduce policy by assigning meaning to exact outcome subcodes;

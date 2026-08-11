@@ -2,9 +2,8 @@ package com.xa.mass.worker.execution;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -36,7 +35,7 @@ public final class WorkerCommandDispatcher
     }
 
     @Override
-    public Optional<WorkerResult> execute(WorkerCommand command) {
+    public Optional<WorkerCommandOutcome> execute(DeliveryCommand command) {
         if (command == null) {
             throw new WorkerException(
                     WorkerErrorCode.COMMAND_MESSAGE_INVALID,
@@ -53,7 +52,7 @@ public final class WorkerCommandDispatcher
         return Optional.of(executeEvent(command));
     }
 
-    private WorkerResult executeEvent(WorkerCommand command) {
+    private WorkerCommandOutcome executeEvent(DeliveryCommand command) {
         WorkerEventDefinition<?> definition = definitions.get(
                 definitionKey(
                         command.src().wireValue(),
@@ -61,13 +60,13 @@ public final class WorkerCommandDispatcher
                 )
         );
         if (definition == null) {
-            return failure(command, WorkerErrorCode.EVENT_NOT_FOUND);
+            return failure(WorkerErrorCode.EVENT_NOT_FOUND);
         }
         return invokeDefinition(command, definition);
     }
 
-    private static <P> WorkerResult invokeDefinition(
-            WorkerCommand command,
+    private static <P> WorkerCommandOutcome invokeDefinition(
+            DeliveryCommand command,
             WorkerEventDefinition<P> definition
     ) {
         P parameters;
@@ -76,40 +75,27 @@ public final class WorkerCommandDispatcher
                     .parameterResolver()
                     .resolve(command.payload());
         } catch (WorkerException error) {
-            return failure(command, error.errorCode());
+            return failure(error.errorCode());
         } catch (Exception error) {
-            return failure(
-                    command,
-                    WorkerErrorCode.EVENT_INPUT_INVALID
-            );
+            return failure(WorkerErrorCode.EVENT_INPUT_INVALID);
         }
 
         String payload;
         try {
             payload = definition.handler().execute(parameters);
         } catch (WorkerException error) {
-            return failure(command, error.errorCode());
+            return failure(error.errorCode());
         } catch (Exception error) {
-            return failure(
-                    command,
-                    WorkerErrorCode.EVENT_EXECUTION_FAILED
-            );
+            return failure(WorkerErrorCode.EVENT_EXECUTION_FAILED);
         }
         if (payload == null || payload.isEmpty()) {
-            return failure(
-                    command,
-                    WorkerErrorCode.EVENT_RESULT_INVALID
-            );
+            return failure(WorkerErrorCode.EVENT_RESULT_INVALID);
         }
-        return WorkerResult.fromCommand(command, "200", payload);
+        return WorkerCommandOutcome.of("200", payload);
     }
 
-    private static WorkerResult failure(
-            WorkerCommand command,
-            WorkerErrorCode errorCode
-    ) {
-        return WorkerResult.fromCommand(
-                command,
+    private static WorkerCommandOutcome failure(WorkerErrorCode errorCode) {
+        return WorkerCommandOutcome.of(
                 Integer.toString(errorCode.code()),
                 errorCode.defaultMessage()
         );
@@ -161,9 +147,9 @@ public final class WorkerCommandDispatcher
                     "src must be non-blank"
             );
         }
-        WorkerMessageEndpoint endpoint =
-                WorkerMessageEndpoint.fromWire(src);
-        if (endpoint == WorkerMessageEndpoint.WORKER) {
+        DeliveryEndpoint endpoint =
+                DeliveryEndpoint.fromWire(src);
+        if (endpoint == DeliveryEndpoint.WORKER) {
             throw new IllegalArgumentException(
                     "Worker event src cannot be WORKER"
             );

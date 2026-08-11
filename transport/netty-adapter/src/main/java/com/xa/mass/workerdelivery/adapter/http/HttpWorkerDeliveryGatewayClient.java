@@ -4,7 +4,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -56,7 +56,7 @@ public final class HttpWorkerDeliveryGatewayClient
     }
 
     @Override
-    public Map<String, WorkerCommand> consumeWorkerCommands(
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
@@ -101,14 +101,14 @@ public final class HttpWorkerDeliveryGatewayClient
             throw response.statusCode() >= 500
                     ? statusFailure(
                             operation,
-                            "WorkerResult append",
+                            "DeliveryReport append",
                             response.statusCode()
                     )
                     : new WorkerDeliveryAdapterException(
                             WorkerDeliveryAdapterErrorCode
                                     .GATEWAY_PROTOCOL_ERROR,
                             operation,
-                            "WorkerResult append was rejected with HTTP "
+                            "DeliveryReport append was rejected with HTTP "
                                     + response.statusCode(),
                             null
                     );

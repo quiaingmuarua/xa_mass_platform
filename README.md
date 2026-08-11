@@ -23,7 +23,7 @@ The repository contains seven active areas:
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, strict JSON deployment manifest,
-  public-HTTP Register/Bind control, Adapter identity Result construction, and
+  public-HTTP Register/Bind control, Adapter identity Report construction, and
   aggregate WebSocket Worker lifecycle
   without owning WorkerGroup catalog initialization, Server profiles, or
   Adapters.

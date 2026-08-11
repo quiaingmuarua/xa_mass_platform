@@ -1,26 +1,24 @@
 package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerCommandOutcome;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -55,26 +53,28 @@ class TextMessageWorkerTransportTest {
                 client,
                 command -> {
                     executions.incrementAndGet();
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 new RecordingListener()
         );
 
         transport.start();
-        client.deliver(CODEC.encodeWorkerCommand(command("before-bind")));
+        DeliveryCommand beforeBind = command("before-bind");
+        DeliveryCommand afterBind = command("after-bind");
+        client.deliver(CODEC.encodeDeliveryCommand(beforeBind));
         client.open();
-        client.message(CODEC.encodeWorkerCommand(command("after-bind")));
+        client.message(CODEC.encodeDeliveryCommand(afterBind));
 
         assertEquals(2, executions.get());
         assertTrue(client.closeReasons.isEmpty());
         assertIdentity(client.sent.get(0));
-        assertEquals(id("after-bind"), CODEC.decodeWorkerResult(
+        assertEquals(afterBind.payload(), CODEC.decodeDeliveryReport(
                 client.sent.get(1)
-        ).messageId());
+        ).payload());
     }
 
     @Test
-    void everyPhysicalOpenSendsFreshIdentityResult() {
+    void everyPhysicalOpenSendsIdentityResult() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         TextMessageWorkerTransport transport = transport(
                 client,
@@ -86,11 +86,11 @@ class TextMessageWorkerTransportTest {
         client.open();
         client.open();
 
-        WorkerResult first = identity(client.sent.get(0));
-        WorkerResult second = identity(client.sent.get(1));
-        assertNotEquals(first.messageId(), second.messageId());
-        assertEquals(WORKER_ID, first.payload());
-        assertEquals(WORKER_ID, second.payload());
+        DeliveryReport first = identity(client.sent.get(0));
+        DeliveryReport second = identity(client.sent.get(1));
+        assertEquals(first, second);
+        assertEquals(WORKER_ID, first.sourceId());
+        assertEquals(WORKER_ID, second.sourceId());
     }
 
     @Test
@@ -122,25 +122,27 @@ class TextMessageWorkerTransportTest {
                 client,
                 command -> {
                     executionThread.set(Thread.currentThread());
-                    executed.add(command.messageId());
-                    return Optional.of(result(command));
+                    executed.add(command.payload());
+                    return Optional.of(outcome(command));
                 },
                 new RecordingListener()
         );
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(command("one")));
-        client.message(CODEC.encodeWorkerCommand(command("two")));
+        DeliveryCommand one = command("one");
+        DeliveryCommand two = command("two");
+        client.message(CODEC.encodeDeliveryCommand(one));
+        client.message(CODEC.encodeDeliveryCommand(two));
 
         assertSame(callbackThread, executionThread.get());
-        assertEquals(List.of(id("one"), id("two")), executed);
-        assertEquals(id("one"), CODEC.decodeWorkerResult(
+        assertEquals(List.of(one.payload(), two.payload()), executed);
+        assertEquals(one.payload(), CODEC.decodeDeliveryReport(
                 client.sent.get(1)
-        ).messageId());
-        assertEquals(id("two"), CODEC.decodeWorkerResult(
+        ).payload());
+        assertEquals(two.payload(), CODEC.decodeDeliveryReport(
                 client.sent.get(2)
-        ).messageId());
+        ).payload());
     }
 
     @Test
@@ -154,7 +156,7 @@ class TextMessageWorkerTransportTest {
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(command("expired")));
+        client.message(CODEC.encodeDeliveryCommand(command("expired")));
 
         assertEquals(1, client.sent.size());
     }
@@ -167,7 +169,7 @@ class TextMessageWorkerTransportTest {
                 client,
                 command -> {
                     executions.incrementAndGet();
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 new RecordingListener()
         );
@@ -175,11 +177,42 @@ class TextMessageWorkerTransportTest {
         client.open();
 
         client.message("{}");
-        client.message(CODEC.encodeWorkerCommand(command("valid")));
+        client.message(CODEC.encodeDeliveryCommand(command("valid")));
 
         assertEquals(1, executions.get());
         assertTrue(client.closeReasons.isEmpty());
         assertEquals(2, client.sent.size());
+    }
+
+    @Test
+    void commandForAnotherDestinationIsDroppedBeforeDispatch() {
+        FakeTextMessageClient client = new FakeTextMessageClient();
+        AtomicInteger executions = new AtomicInteger();
+        TextMessageWorkerTransport transport = transport(
+                client,
+                command -> {
+                    executions.incrementAndGet();
+                    return Optional.empty();
+                },
+                new RecordingListener()
+        );
+        transport.start();
+        client.open();
+
+        client.message(CODEC.encodeDeliveryCommand(
+                DeliveryCommand.create(
+                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.TASK,
+                        "system.observe",
+                        System.currentTimeMillis() + 60_000,
+                        "null",
+                        ""
+                )
+        ));
+
+        assertEquals(0, executions.get());
+        assertTrue(client.closeReasons.isEmpty());
+        assertEquals(1, client.sent.size());
     }
 
     @Test
@@ -193,20 +226,22 @@ class TextMessageWorkerTransportTest {
                     if (calls.getAndIncrement() == 0) {
                         throw new IllegalStateException("boom");
                     }
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 listener
         );
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(command("failed")));
-        client.message(CODEC.encodeWorkerCommand(command("recovered")));
+        DeliveryCommand failed = command("failed");
+        DeliveryCommand recovered = command("recovered");
+        client.message(CODEC.encodeDeliveryCommand(failed));
+        client.message(CODEC.encodeDeliveryCommand(recovered));
 
         assertEquals(2, client.sent.size());
-        assertEquals(id("recovered"), CODEC.decodeWorkerResult(
+        assertEquals(recovered.payload(), CODEC.decodeDeliveryReport(
                 client.sent.get(1)
-        ).messageId());
+        ).payload());
         assertTrue(client.closeReasons.isEmpty());
         assertEquals(0, listener.terminations.get());
     }
@@ -227,7 +262,7 @@ class TextMessageWorkerTransportTest {
 
         AssertionError thrown = assertThrows(
                 AssertionError.class,
-                () -> client.message(CODEC.encodeWorkerCommand(
+                () -> client.message(CODEC.encodeDeliveryCommand(
                         command("fatal")
                 ))
         );
@@ -243,24 +278,26 @@ class TextMessageWorkerTransportTest {
         FakeTextMessageClient client = new FakeTextMessageClient();
         TextMessageWorkerTransport transport = transport(
                 client,
-                command -> Optional.of(result(command)),
+                command -> Optional.of(outcome(command)),
                 new RecordingListener()
         );
         transport.start();
         client.open();
         client.acceptSend = false;
 
-        client.message(CODEC.encodeWorkerCommand(command("drop")));
+        DeliveryCommand drop = command("drop");
+        client.message(CODEC.encodeDeliveryCommand(drop));
 
         assertEquals(1, client.sent.size());
         assertTrue(client.closeReasons.isEmpty());
 
         client.acceptSend = true;
-        client.message(CODEC.encodeWorkerCommand(command("next")));
+        DeliveryCommand next = command("next");
+        client.message(CODEC.encodeDeliveryCommand(next));
         assertEquals(2, client.sent.size());
-        assertEquals(id("next"), CODEC.decodeWorkerResult(
+        assertEquals(next.payload(), CODEC.decodeDeliveryReport(
                 client.sent.get(1)
-        ).messageId());
+        ).payload());
     }
 
     @Test
@@ -272,14 +309,14 @@ class TextMessageWorkerTransportTest {
                 client,
                 command -> {
                     executions.incrementAndGet();
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 listener
         );
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(closeCommand("null")));
+        client.message(CODEC.encodeDeliveryCommand(closeCommand("null")));
 
         assertEquals(0, executions.get());
         assertEquals(1, client.sent.size());
@@ -303,7 +340,7 @@ class TextMessageWorkerTransportTest {
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(closeCommand("{}")));
+        client.message(CODEC.encodeDeliveryCommand(closeCommand("{}")));
 
         assertEquals(1, client.sent.size());
         assertEquals(1, client.closeCalls.get());
@@ -326,10 +363,9 @@ class TextMessageWorkerTransportTest {
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
-                id("expired-adapter-close"),
-                WorkerMessageEndpoint.ADAPTER,
-                WorkerMessageEndpoint.WORKER,
+        client.message(CODEC.encodeDeliveryCommand(DeliveryCommand.create(
+                DeliveryEndpoint.ADAPTER,
+                DeliveryEndpoint.WORKER,
                 "worker.connection.close",
                 1L,
                 "null",
@@ -350,26 +386,24 @@ class TextMessageWorkerTransportTest {
                 client,
                 command -> {
                     executions.incrementAndGet();
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 listener
         );
         transport.start();
         client.open();
 
-        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
-                id("task-close"),
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
+        client.message(CODEC.encodeDeliveryCommand(DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
                 "worker.connection.close",
                 System.currentTimeMillis() + 60_000,
                 "null",
                 "forward"
         )));
-        client.message(CODEC.encodeWorkerCommand(new WorkerCommand(
-                id("adapter-inspect"),
-                WorkerMessageEndpoint.ADAPTER,
-                WorkerMessageEndpoint.WORKER,
+        client.message(CODEC.encodeDeliveryCommand(DeliveryCommand.create(
+                DeliveryEndpoint.ADAPTER,
+                DeliveryEndpoint.WORKER,
                 "adapter.inspect",
                 System.currentTimeMillis() + 60_000,
                 "null",
@@ -393,7 +427,7 @@ class TextMessageWorkerTransportTest {
                 command -> {
                     entered.countDown();
                     awaitLatch(release);
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 listener
         );
@@ -402,7 +436,7 @@ class TextMessageWorkerTransportTest {
         ExecutorService callback = Executors.newSingleThreadExecutor();
         try {
             Future<?> handling = callback.submit(() -> client.message(
-                    CODEC.encodeWorkerCommand(command("slow"))
+                    CODEC.encodeDeliveryCommand(command("slow"))
             ));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
@@ -432,7 +466,7 @@ class TextMessageWorkerTransportTest {
                 command -> {
                     entered.countDown();
                     awaitLatch(release);
-                    return Optional.of(result(command));
+                    return Optional.of(outcome(command));
                 },
                 listener
         );
@@ -441,7 +475,7 @@ class TextMessageWorkerTransportTest {
         ExecutorService callback = Executors.newSingleThreadExecutor();
         try {
             Future<?> handling = callback.submit(() -> client.message(
-                    CODEC.encodeWorkerCommand(command("slow"))
+                    CODEC.encodeDeliveryCommand(command("slow"))
             ));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
@@ -477,7 +511,7 @@ class TextMessageWorkerTransportTest {
         client.open();
 
         client.terminate();
-        client.message(CODEC.encodeWorkerCommand(command("late")));
+        client.message(CODEC.encodeDeliveryCommand(command("late")));
 
         assertEquals(1, listener.terminations.get());
         assertEquals(0, executions.get());
@@ -499,23 +533,21 @@ class TextMessageWorkerTransportTest {
         return transport;
     }
 
-    private static WorkerCommand command(String messageId) {
-        return new WorkerCommand(
-                id(messageId),
-                WorkerMessageEndpoint.TASK,
-                WorkerMessageEndpoint.WORKER,
+    private static DeliveryCommand command(String marker) {
+        return DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
                 "test.echo",
                 System.currentTimeMillis() + 60_000,
-                "{\"value\":\"hello\"}",
+                "{\"value\":\"" + marker + "\"}",
                 "forward"
         );
     }
 
-    private static WorkerCommand closeCommand(String payload) {
-        return new WorkerCommand(
-                id("adapter-close"),
-                WorkerMessageEndpoint.ADAPTER,
-                WorkerMessageEndpoint.WORKER,
+    private static DeliveryCommand closeCommand(String payload) {
+        return DeliveryCommand.create(
+                DeliveryEndpoint.ADAPTER,
+                DeliveryEndpoint.WORKER,
                 "worker.connection.close",
                 System.currentTimeMillis() + 60_000,
                 payload,
@@ -523,20 +555,10 @@ class TextMessageWorkerTransportTest {
         );
     }
 
-    private static String id(String value) {
-        return UUID.nameUUIDFromBytes(
-                value.getBytes(StandardCharsets.UTF_8)
-        ).toString();
-    }
-
-    private static WorkerResult result(WorkerCommand command) {
-        return new WorkerResult(
-                command.messageId(),
-                command.src(),
-                command.messageType(),
+    private static WorkerCommandOutcome outcome(DeliveryCommand command) {
+        return WorkerCommandOutcome.of(
                 "200",
-                "{\"value\":\"hello\"}",
-                command.forward()
+                command.payload()
         );
     }
 
@@ -544,16 +566,17 @@ class TextMessageWorkerTransportTest {
         identity(encoded);
     }
 
-    private static WorkerResult identity(String encoded) {
-        WorkerResult result = CODEC.decodeWorkerResult(encoded);
-        UUID.fromString(result.messageId());
-        assertEquals(WorkerMessageEndpoint.ADAPTER, result.dst());
+    private static DeliveryReport identity(String encoded) {
+        DeliveryReport result = CODEC.decodeDeliveryReport(encoded);
+        assertEquals(DeliveryEndpoint.WORKER, result.src());
+        assertEquals(WORKER_ID, result.sourceId());
+        assertEquals(DeliveryEndpoint.ADAPTER, result.dst());
         assertEquals(
                 "worker.connection.identify",
                 result.messageType()
         );
         assertEquals("200", result.outcomeCode());
-        assertEquals(WORKER_ID, result.payload());
+        assertEquals("null", result.payload());
         assertEquals("", result.forward());
         return result;
     }

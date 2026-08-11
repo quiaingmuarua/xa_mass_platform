@@ -1,14 +1,15 @@
 package com.xa.mass.workerdelivery.adapter.dispatch;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Objects;
@@ -113,7 +114,7 @@ public final class WorkerCommandLoop implements Runnable {
             return;
         }
 
-        Map<String, WorkerCommand> acquired;
+        Map<String, DeliveryCommand> acquired;
         try {
             acquired = gateway.consumeWorkerCommands(
                     adapterId,
@@ -124,7 +125,7 @@ public final class WorkerCommandLoop implements Runnable {
             return;
         }
 
-        for (Map.Entry<String, WorkerCommand> entry
+        for (Map.Entry<String, DeliveryCommand> entry
                 : acquired.entrySet()) {
             if (commands.size() >= queueCapacity) {
                 break;
@@ -142,7 +143,7 @@ public final class WorkerCommandLoop implements Runnable {
 
         for (int index = 0; index < observed; index++) {
             QueuedCommand queued = commands.removeFirst();
-            WorkerCommand command = queued.command();
+            DeliveryCommand command = queued.command();
             if (command == null
                     || command.executeBeforeMillis() <= currentTimeMillis) {
                 offerAdapterRejection(queued);
@@ -160,21 +161,20 @@ public final class WorkerCommandLoop implements Runnable {
     }
 
     private void offerAdapterRejection(QueuedCommand queued) {
-        WorkerCommand command = queued.command();
+        DeliveryCommand command = queued.command();
         if (command == null) {
             return;
         }
-        WorkerResult rejection = new WorkerResult(
-                command.messageId(),
-                command.src(),
-                command.messageType(),
+        DeliveryReport rejection = DeliveryReport.fromCommand(
+                command,
+                ADAPTER,
+                adapterId,
                 Integer.toString(
                         WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
                 ),
-                "null",
-                command.forward()
+                "null"
         );
-        var status = resultQueue.offer(codec.encodeWorkerResult(rejection));
+        var status = resultQueue.offer(codec.encodeDeliveryReport(rejection));
         if (status != BoundedWorkerResultQueue.OfferStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
@@ -210,7 +210,7 @@ public final class WorkerCommandLoop implements Runnable {
 
     private record QueuedCommand(
             String workerId,
-            WorkerCommand command
+            DeliveryCommand command
     ) {
     }
 }

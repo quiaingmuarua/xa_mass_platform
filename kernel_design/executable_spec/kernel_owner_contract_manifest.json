@@ -155,8 +155,9 @@
       "endpoint_manager_id",
       "worker_lease_score"
     ],
-    "WorkerResult": [
-      "message_id",
+    "DeliveryReport": [
+      "src",
+      "source_id",
       "dst",
       "message_type",
       "outcome_code",
@@ -209,8 +210,7 @@
       "status",
       "score"
     ],
-    "WorkerCommand": [
-      "message_id",
+    "DeliveryCommand": [
       "src",
       "dst",
       "message_type",
@@ -254,7 +254,7 @@
     ]
   },
   "enums": {
-    "WorkerResultOutcomeClass": [
+    "DeliveryReportOutcomeClass": [
       "SUCCESS",
       "WORKER_FAILURE",
       "ADAPTER_REJECTION"
@@ -304,7 +304,7 @@
       "APPENDED",
       "REPLACED"
     ],
-    "WorkerMessageEndpoint": [
+    "DeliveryEndpoint": [
       "TASK",
       "SYSTEM",
       "ADAPTER",

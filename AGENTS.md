@@ -28,8 +28,12 @@ Status: current repository handoff.
   WebSocket connection. It is not a Kernel owner, Server profile, Adapter,
   plugin SPI, or independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
-  WorkerCommand/WorkerResult contract shared by Server, Adapter, and Worker.
-  Long-lived transports first send an Adapter-directed identity Result and
+  DeliveryCommand/DeliveryReport contract shared by Server, Adapter, and Worker.
+  DeliveryReport carries required producer `src + sourceId`; DeliveryCommand
+  target identity remains outside the DTO. Neither DTO carries an outer
+  `messageId`; `forward` remains opaque until its owning downstream mechanism.
+  Long-lived transports first send an
+  Adapter-directed identity Report and
   then exchange direct command/result JSON; there is no third connection DTO
   or generic connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances: local
@@ -136,11 +140,12 @@ tag.
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
   connections, and bounded Command/Result queues. Each Channel Handler owns
-  its `UNBOUND/VERIFYING/BOUND` phase, strict WorkerResult decode, destination
-  routing, and physical backpressure. Adapter-directed results are consumed by
-  the fixed internal Dispatcher. Only bound TASK results using `200` or
-  Worker-owned `3...` may enter the Result queue, with encoded JSON, payload,
-  and forward context unchanged. SYSTEM and invalid bound input are logged and
+  its `UNBOUND/VERIFYING/BOUND` phase, strict DeliveryReport decode, destination
+  routing, and physical backpressure. Adapter-directed Reports are consumed by
+  the fixed internal Dispatcher. Only bound TASK Reports declaring
+  `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` may enter
+  the Result queue, with encoded JSON, payload, and forward context unchanged.
+  SYSTEM and invalid bound input are logged and
   dropped; invalid unbound input and a full or closed Result queue physically
   close the Channel. Physical close is reconnectable network evidence; only
   `ADAPTER/worker.connection.close` terminates the current Worker run.
@@ -162,8 +167,9 @@ tag.
   observations invoked outside the lifecycle state lock; `snapshot()` is
   authoritative and notifications may repeat. `WorkerRunController` does not
   accept or route Worker commands. The single-run Transport owns inbound
-  Adapter identity Result emission, WorkerCommand decoding, synchronous
-  `WorkerCommandExecutor` invocation, one-shot WorkerResult send, direct
+  Adapter identity Report emission, DeliveryCommand decoding, synchronous
+  `WorkerCommandExecutor` invocation, conversion of `WorkerCommandOutcome` to
+  `DeliveryReport.fromCommand(WORKER, workerId, ...)`, one-shot Report send, direct
   `ADAPTER/worker.connection.close` termination without a Result, and
   exact-once terminal notification to `WorkerRunController`. It creates no
   Command queue, execution task, in-flight registry, or Result cache. One
@@ -187,7 +193,7 @@ tag.
   Core neither retries Preparation nor schedules another start. Only a later
   explicit Host `start()` may prepare another run. `WorkerLifecycle`, `JavaWorker`, and
   `AndroidWorker` expose only the two-state lifecycle snapshot and must not
-  expose connection state, a local WorkerCommand injection method, or cached
+  expose connection state, a local DeliveryCommand injection method, or cached
   Worker business messages.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
@@ -292,7 +298,7 @@ interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
 reads, WorkerGroup upsert, Worker upsert, Platform Properties patch, Worker/Platform
 explicit indexed-property update/load, Worker score get/initialize plus an
-unused parity reconcile mechanism, WorkerCommand consume, and WorkerResult
+unused parity reconcile mechanism, DeliveryCommand consume, and DeliveryReport
 append. All other translated operations remain explicit gaps.
 
 `server_jvm.kernelbinding` composes Task and Worker control/data providers:
@@ -326,8 +332,8 @@ ServerWorkerAssemblyConfiguration
 scenario_workers_jvm
   -> strict Worker JSON parsing and internal Definition resolution
   -> public Worker Register and Bind plus platform-issued WorkerId recovery
-  -> Adapter-directed worker.connection.identify Result through the returned
-     Adapter URI
+  -> Adapter-directed worker.connection.identify Report carrying
+     WORKER + workerId source identity through the returned Adapter URI
   -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
   -> one JavaWorkerManager per WorkerGroup -> fixed JavaWorker replicas
@@ -338,7 +344,7 @@ transport/netty-adapter
   -> per-connection route verification through Server HTTP
   -> per-endpoint Command/Result loops and current connection registry
   -> per-Channel binding-phase and Worker Result ingress routing
-  -> fixed Adapter-local identity Result dispatch
+  -> fixed Adapter-local identity Report dispatch
   -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
      generation
   -> independent Netty WebSocket and Socket listeners

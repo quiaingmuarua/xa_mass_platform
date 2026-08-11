@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import unittest
-from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     RedisWorkerResultRuntime,
-    WorkerMessageEndpoint,
-    WorkerResult,
-    WorkerResultOutcomeClass,
-    classify_worker_result_outcome_code,
-    encode_worker_result,
+    DeliveryEndpoint,
+    DeliveryReport,
+    DeliveryReportOutcomeClass,
+    classify_delivery_report_outcome_code,
+    encode_delivery_report,
 )
 
 
@@ -66,7 +65,7 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
         self.redis = FakeRedis()
         self.runtime = RedisWorkerResultRuntime(self.redis, prefix="test")
 
-    def key(self, outcome_class: WorkerResultOutcomeClass) -> str:
+    def key(self, outcome_class: DeliveryReportOutcomeClass) -> str:
         return self.runtime._queue_key(outcome_class)
 
     @staticmethod
@@ -74,10 +73,20 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
         context: str,
         outcome_code: str,
         payload: str = "null",
-    ) -> WorkerResult:
-        return WorkerResult(
-            message_id=str(uuid5(NAMESPACE_DNS, context)),
-            dst=WorkerMessageEndpoint.TASK,
+    ) -> DeliveryReport:
+        source = (
+            DeliveryEndpoint.ADAPTER
+            if (
+                isinstance(outcome_code, str)
+                and outcome_code != "200"
+                and outcome_code.startswith("2")
+            )
+            else DeliveryEndpoint.WORKER
+        )
+        return DeliveryReport.create(
+            src=source,
+            source_id=("endpoint-manager-1" if source is DeliveryEndpoint.ADAPTER else "worker-1"),
+            dst=DeliveryEndpoint.TASK,
             message_type="test.observe",
             outcome_code=outcome_code,
             payload=payload,
@@ -99,9 +108,9 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
             all(":worker-results:" in key for key in self.redis.lists)
         )
         for outcome_class, expected in (
-            (WorkerResultOutcomeClass.SUCCESS, success),
-            (WorkerResultOutcomeClass.WORKER_FAILURE, worker_failure),
-            (WorkerResultOutcomeClass.ADAPTER_REJECTION, adapter_rejection),
+            (DeliveryReportOutcomeClass.SUCCESS, success),
+            (DeliveryReportOutcomeClass.WORKER_FAILURE, worker_failure),
+            (DeliveryReportOutcomeClass.ADAPTER_REJECTION, adapter_rejection),
         ):
             self.assertEqual(
                 (expected,),
@@ -119,31 +128,31 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
         self.assertEqual(
             (first,),
             self.runtime.consume_worker_results(
-                outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
+                outcome_class=DeliveryReportOutcomeClass.WORKER_FAILURE,
                 limit=1,
             ),
         )
         self.assertEqual(
             (second,),
             self.runtime.consume_worker_results(
-                outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
+                outcome_class=DeliveryReportOutcomeClass.WORKER_FAILURE,
                 limit=10,
             ),
         )
 
     def test_corrupt_messages_are_consumed_and_skipped(self) -> None:
         valid = self.result("context-1", "200")
-        key = self.key(WorkerResultOutcomeClass.SUCCESS)
+        key = self.key(DeliveryReportOutcomeClass.SUCCESS)
         self.redis.lists[key] = [
             "{bad-json",
             '{"outcomeCode":"200"}',
-            encode_worker_result(valid),
+            encode_delivery_report(valid),
         ]
 
         self.assertEqual(
             (valid,),
             self.runtime.consume_worker_results(
-                outcome_class=WorkerResultOutcomeClass.SUCCESS,
+                outcome_class=DeliveryReportOutcomeClass.SUCCESS,
                 limit=3,
             ),
         )
@@ -153,29 +162,29 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
         self,
     ) -> None:
         self.assertIs(
-            WorkerResultOutcomeClass.SUCCESS,
-            classify_worker_result_outcome_code("200"),
+            DeliveryReportOutcomeClass.SUCCESS,
+            classify_delivery_report_outcome_code("200"),
         )
         self.assertIs(
-            WorkerResultOutcomeClass.WORKER_FAILURE,
-            classify_worker_result_outcome_code("33001"),
+            DeliveryReportOutcomeClass.WORKER_FAILURE,
+            classify_delivery_report_outcome_code("33001"),
         )
         self.assertIs(
-            WorkerResultOutcomeClass.WORKER_FAILURE,
-            classify_worker_result_outcome_code("3304"),
+            DeliveryReportOutcomeClass.WORKER_FAILURE,
+            classify_delivery_report_outcome_code("3304"),
         )
         self.assertIs(
-            WorkerResultOutcomeClass.ADAPTER_REJECTION,
-            classify_worker_result_outcome_code("23001"),
+            DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+            classify_delivery_report_outcome_code("23001"),
         )
         self.assertIs(
-            WorkerResultOutcomeClass.ADAPTER_REJECTION,
-            classify_worker_result_outcome_code("failure"),
+            DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+            classify_delivery_report_outcome_code("failure"),
         )
         for invalid in ("", " ", 200, None):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(
-                    classify_worker_result_outcome_code(invalid)
+                    classify_delivery_report_outcome_code(invalid)
                 )
                 with self.assertRaises(ValueError):
                     self.result("context", invalid)
