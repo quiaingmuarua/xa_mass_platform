@@ -40,21 +40,20 @@ similarity:
 ```text
 netty/
   finite public factory + package-private Adapter aggregates
-netty/internal/connection/
-  binding Session, current-Channel directory, and frame/close seam
 netty/internal/gateway/
   DeliveryCommand target port, Result ingress buffer, and both Gateway Pumps
 netty/internal/websocket/
-  WebSocket listener, pipeline, handlers, and frame strategy
+  WebSocket listener, identity/bound handlers, bound directory, and close rules
 netty/internal/socket/
-  line-Socket listener, pipeline, handlers, and frame strategy
+  line-Socket listener, identity/bound handlers, bound directory, and close rules
 ```
 
 Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
-contracts, and Server is guarded from importing them. The only shared physical
-seam is the two-method `TextFrameStrategy` used to write or close a bound
-Channel; it does not own listener, pipeline, handshake, or lifecycle behavior.
+contracts, and Server is guarded from importing them. The only shared dispatch
+seam is the transport-neutral `DeliveryCommandTarget`. It accepts only a
+workerId and `DeliveryCommand`; it exposes no Netty Channel, connection phase,
+frame type, or close reason.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
 start, start in order, and close in reverse order. Multiple instances in one
@@ -117,13 +116,14 @@ Worker  -> Adapter: direct DeliveryReport JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-One connection-local session owns only `UNBOUND -> VERIFYING -> BOUND`.
-The identity Report is a fixed handshake handled directly by that session; it
-is not routed through an event registry or plugin dispatcher. Adapter-directed
-Reports never enter the Server Result queue. Repeated identity and unknown
-Adapter events on an established connection are logged and dropped. Before
-identity, a malformed, invalid, or non-identity Report closes the physical
-Channel.
+Each protocol pipeline starts with its own identity Handler. That Handler owns
+the awaiting-identity and verifying phases, pauses reads during route
+verification, and replaces itself with a protocol-specific bound Handler after
+verification succeeds. The fixed identity Report is not routed through an
+event registry or plugin dispatcher. Adapter-directed Reports never enter the
+Server Result queue. Repeated identity and unknown Adapter events on an
+established connection are logged and dropped. Before identity, a malformed,
+invalid, or non-identity Report closes the physical Channel.
 
 After identity, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
 events, mismatched `src/sourceId`, and Worker-originated `2...` outcomes are
@@ -133,12 +133,13 @@ enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
-Each Adapter constructs its bound connection directory with one fixed
-text-frame strategy. The directory stores the actual current Netty `Channel`
-for each workerId. A newly activated connection
-replaces the current Channel for that workerId. Deactivation compares workerId
-and Channel identity, so a delayed close from an old Channel cannot remove its
-replacement.
+Each Adapter constructs one protocol-specific bound Worker directory. The
+directory stores the actual current Netty `Channel` for each workerId and owns
+that protocol's physical write and close semantics directly. A newly activated
+connection replaces the current Channel for that workerId. Deactivation
+compares workerId and Channel identity, so a delayed close from an old Channel
+cannot remove its replacement. WebSocket and line-Socket directories share no
+Session or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
@@ -224,7 +225,7 @@ Close:
 ```text
 state STOPPING
 -> stop DeliveryCommand Pump
--> close listener and every child Channel in UNBOUND/VERIFYING/BOUND
+-> close listener and every child Channel in identity/verifying/bound phases
 -> stop DeliveryReport Pump
 -> stop accepting Worker results
 -> bounded final result flush

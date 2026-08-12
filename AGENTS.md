@@ -44,9 +44,10 @@ Status: current repository handoff.
   physical listeners, pipelines, EventLoops, all child Channels, and
   transport-specific close behavior. There is no shared Network Server SPI,
   abstract Adapter base, or transport-kind runtime. Cross-package Netty
-  collaborators are classified under `netty.internal.connection`,
-  `netty.internal.gateway`, `netty.internal.websocket`, and
-  `netty.internal.socket`; Server may depend only on the finite factory.
+  collaborators are classified under `netty.internal.gateway`,
+  `netty.internal.websocket`, and `netty.internal.socket`; Server may depend
+  only on the finite factory. WebSocket and line-Socket each own their bound
+  Channel directory and identity/bound Pipeline Handlers.
   Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
@@ -147,11 +148,14 @@ tag.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled Command/Report pumps,
-  every accepted child Channel, current bound routes, and bounded queues. One
-  connection-local Session owns its `UNBOUND/VERIFYING/BOUND` phase, strict
-  DeliveryReport decode, fixed identity handshake, destination routing, and
-  physical backpressure. There is no Adapter event registry or plugin
-  dispatcher. Only bound TASK Reports declaring
+  every accepted child Channel, current bound routes, and bounded queues. Each
+  protocol Pipeline starts with an identity Handler that owns awaiting-identity
+  and verification, then replaces itself with a bound Handler. Each complete
+  Adapter owns its protocol-specific `workerId -> current Channel` directory;
+  WebSocket and line-Socket share no Session or Channel registry. The Handlers
+  own strict DeliveryReport decode, fixed identity handshake, destination
+  routing, and physical backpressure. There is no Adapter event registry or
+  plugin dispatcher. Only bound TASK Reports declaring
   `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` may enter
   the Result queue, with encoded JSON, payload, and forward context unchanged.
   SYSTEM and invalid bound input are logged and
@@ -354,7 +358,7 @@ transport/netty-adapter
   -> finite factory returning the public WorkerDeliveryAdapter contract
   -> separate package-private WebSocket/Socket Adapter lifecycle aggregates
   -> separate physical WebSocket/Socket Network Server owners
-  -> per-endpoint Command/Report pumps and current bound-route directory
+  -> per-endpoint Command/Report pumps and protocol-specific bound-route directory
   -> all-child Channel lifecycle plus per-connection binding-phase routing
   -> direct fixed Adapter-local identity Report handshake
   -> unchanged encoded bound TASK Result forwarding and Adapter-owned error

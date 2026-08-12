@@ -249,11 +249,14 @@ Adapter -> Worker : DeliveryCommand
 Worker  -> Adapter: DeliveryReport
 ```
 
-The Adapter forwards Task/System commands unchanged. One connection-local
-Session owns only `UNBOUND/VERIFYING/BOUND` and handles the fixed identity
-Report directly; there is no Adapter event registry or plugin dispatcher.
-Reports whose `dst=ADAPTER` never enter Server, Redis, or Kernel Result
-Routing. Identity activates the Channel after route verification. Unknown
+The Adapter forwards Task/System commands unchanged. Each protocol Pipeline
+starts with an identity Handler that owns awaiting-identity and route
+verification. After successful verification it replaces itself with a bound
+Handler, activates that Adapter's protocol-specific `workerId -> Channel`
+directory, and resumes reads. WebSocket and line-Socket share no connection
+Session or Channel directory. The fixed identity Report is handled directly;
+there is no Adapter event registry or plugin dispatcher. Reports whose
+`dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
 local events on an established connection are logged and dropped.
 
 Before identity, malformed or non-identity input closes the physical Channel.
@@ -280,7 +283,8 @@ coupling, ACK, durable Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract. The
 package-private WebSocket and Socket Adapter aggregates each own lifecycle,
-the current bound-route directory, both bounded pumps, and shutdown sequencing.
+their protocol-specific current bound-route directory, both bounded pumps, and
+shutdown sequencing.
 Their exact Network Server separately owns its listener, pipeline, EventLoop,
 and every accepted child Channel, including unbound and verifying Channels.
 Closing an Adapter therefore closes all physical child Channels, not only

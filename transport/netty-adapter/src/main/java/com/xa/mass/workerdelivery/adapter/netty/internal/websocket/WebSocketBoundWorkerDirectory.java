@@ -1,31 +1,24 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
+package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import java.util.Map;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
-public final class BoundWorkerConnectionDirectory
+public final class WebSocketBoundWorkerDirectory
         implements DeliveryCommandTarget {
 
-    private final Map<String, Channel> connections =
+    private final ConcurrentMap<String, Channel> connections =
             new ConcurrentHashMap<>();
     private final WorkerDeliveryCodec codec;
-    private final TextFrameStrategy frameStrategy;
 
-    public BoundWorkerConnectionDirectory(
-            WorkerDeliveryCodec codec,
-            TextFrameStrategy frameStrategy
-    ) {
+    public WebSocketBoundWorkerDirectory(WorkerDeliveryCodec codec) {
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.frameStrategy = Objects.requireNonNull(
-                frameStrategy,
-                "frameStrategy"
-        );
     }
 
     void activate(String workerId, Channel channel) {
@@ -33,16 +26,14 @@ public final class BoundWorkerConnectionDirectory
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
         Channel previous = connections.put(workerId, requiredChannel);
         if (previous != null && previous != requiredChannel) {
-            frameStrategy.close(previous, ConnectionCloseReason.REPLACED);
+            WebSocketCloseReason.REPLACED.close(previous);
         }
     }
 
-    void deactivate(String workerId, Channel channel) {
+    void deactivate(String workerId, Channel expectedChannel) {
         requireWorkerId(workerId);
-        Objects.requireNonNull(channel, "channel");
-        connections.computeIfPresent(workerId, (ignored, current) ->
-                current == channel ? null : current
-        );
+        Objects.requireNonNull(expectedChannel, "expectedChannel");
+        connections.remove(workerId, expectedChannel);
     }
 
     @Override
@@ -60,7 +51,7 @@ public final class BoundWorkerConnectionDirectory
             removeAndClose(
                     workerId,
                     channel,
-                    ConnectionCloseReason.TRANSPORT_ERROR
+                    WebSocketCloseReason.TRANSPORT_ERROR
             );
             return DeliveryAttempt.RETRY_LATER;
         }
@@ -70,15 +61,14 @@ public final class BoundWorkerConnectionDirectory
 
         ChannelFuture send;
         try {
-            send = frameStrategy.writeText(
-                    channel,
+            send = channel.writeAndFlush(new TextWebSocketFrame(
                     codec.encodeDeliveryCommand(command)
-            );
+            ));
         } catch (RuntimeException error) {
             removeAndClose(
                     workerId,
                     channel,
-                    ConnectionCloseReason.TRANSPORT_ERROR
+                    WebSocketCloseReason.TRANSPORT_ERROR
             );
             return DeliveryAttempt.UNKNOWN;
         }
@@ -87,7 +77,7 @@ public final class BoundWorkerConnectionDirectory
                 removeAndClose(
                         workerId,
                         channel,
-                        ConnectionCloseReason.TRANSPORT_ERROR
+                        WebSocketCloseReason.TRANSPORT_ERROR
                 );
             }
         });
@@ -96,18 +86,14 @@ public final class BoundWorkerConnectionDirectory
 
     void close(
             String workerId,
-            Channel channel,
-            ConnectionCloseReason reason
+            Channel expectedChannel,
+            WebSocketCloseReason reason
     ) {
         requireWorkerId(workerId);
-        Objects.requireNonNull(channel, "channel");
+        Objects.requireNonNull(expectedChannel, "expectedChannel");
         Objects.requireNonNull(reason, "reason");
-        Channel current = connections.get(workerId);
-        if (current == channel) {
-            removeAndClose(workerId, current, reason);
-        } else {
-            closeUntracked(channel, reason);
-        }
+        connections.remove(workerId, expectedChannel);
+        reason.close(expectedChannel);
     }
 
     public int activeConnectionCount() {
@@ -116,26 +102,11 @@ public final class BoundWorkerConnectionDirectory
 
     private void removeAndClose(
             String workerId,
-            Channel channel,
-            ConnectionCloseReason reason
+            Channel expectedChannel,
+            WebSocketCloseReason reason
     ) {
-        if (connections.remove(workerId, channel)) {
-            frameStrategy.close(channel, reason);
-        }
-    }
-
-    private static void closeUntracked(
-            Channel channel,
-            ConnectionCloseReason reason
-    ) {
-        if (!channel.isOpen()) {
-            return;
-        }
-        try {
-            channel.close();
-        } catch (RuntimeException ignored) {
-            // A superseded or already-detached Channel is best effort.
-        }
+        connections.remove(workerId, expectedChannel);
+        reason.close(expectedChannel);
     }
 
     private static void requireWorkerId(String workerId) {

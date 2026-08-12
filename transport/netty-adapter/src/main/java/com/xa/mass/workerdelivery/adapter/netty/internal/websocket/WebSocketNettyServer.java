@@ -2,8 +2,9 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.ConnectionCloseReason;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSessionFactory;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -37,7 +38,10 @@ public final class WebSocketNettyServer implements AutoCloseable {
     private final int listenPort;
     private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
-    private final WorkerConnectionSessionFactory sessionFactory;
+    private final WebSocketBoundWorkerDirectory connections;
+    private final WorkerDeliveryCodec codec;
+    private final BoundedDeliveryReportQueue reportQueue;
+    private final WorkerDeliveryGatewayClient gateway;
     private final BooleanSupplier acceptingConnections;
     private final Set<Channel> childChannels =
             ConcurrentHashMap.newKeySet();
@@ -51,7 +55,10 @@ public final class WebSocketNettyServer implements AutoCloseable {
             int listenPort,
             Duration sendTimeLimit,
             Duration shutdownTimeout,
-            WorkerConnectionSessionFactory sessionFactory,
+            WebSocketBoundWorkerDirectory connections,
+            WorkerDeliveryCodec codec,
+            BoundedDeliveryReportQueue reportQueue,
+            WorkerDeliveryGatewayClient gateway,
             BooleanSupplier acceptingConnections
     ) {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
@@ -65,10 +72,10 @@ public final class WebSocketNettyServer implements AutoCloseable {
                 shutdownTimeout,
                 "shutdownTimeout"
         );
-        this.sessionFactory = Objects.requireNonNull(
-                sessionFactory,
-                "sessionFactory"
-        );
+        this.connections = Objects.requireNonNull(connections, "connections");
+        this.codec = Objects.requireNonNull(codec, "codec");
+        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
                 "acceptingConnections"
@@ -115,8 +122,13 @@ public final class WebSocketNettyServer implements AutoCloseable {
                                 .addLast(
                                         new UnmatchedWebSocketRequestHandler()
                                 )
-                                .addLast(new WebSocketWorkerChannelHandler(
-                                        sessionFactory,
+                                .addLast(new WebSocketWorkerIdentityHandler(
+                                        connections,
+                                        codec,
+                                        reportQueue,
+                                        gateway,
+                                        adapterId,
+                                        sendTimeLimit,
                                         acceptingConnections
                                 ));
                     }
@@ -184,10 +196,7 @@ public final class WebSocketNettyServer implements AutoCloseable {
     private RuntimeException closeChildChannels(RuntimeException failure) {
         try {
             for (Channel channel : Set.copyOf(childChannels)) {
-                WebSocketTextFrameStrategy.INSTANCE.close(
-                        channel,
-                        ConnectionCloseReason.ADAPTER_STOPPING
-                );
+                WebSocketCloseReason.ADAPTER_STOPPING.close(channel);
             }
             long deadline = System.nanoTime() + shutdownTimeout.toNanos();
             for (Channel channel : Set.copyOf(childChannels)) {

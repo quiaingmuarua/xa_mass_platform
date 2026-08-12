@@ -7,13 +7,11 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.BoundWorkerConnectionDirectory;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSessionFactory;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
+import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketBoundWorkerDirectory;
 import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketNettyServer;
-import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketTextFrameStrategy;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
 import java.util.Objects;
@@ -34,7 +32,7 @@ final class WebSocketWorkerDeliveryAdapter
     private final Duration commandPumpInterval;
     private final Duration reportSubmitInterval;
     private final Duration shutdownTimeout;
-    private final BoundWorkerConnectionDirectory connections;
+    private final WebSocketBoundWorkerDirectory connections;
     private final DeliveryCommandPump commandPump;
     private final DeliveryReportPump reportPump;
     private final WebSocketNettyServer networkServer;
@@ -76,10 +74,7 @@ final class WebSocketWorkerDeliveryAdapter
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         BoundedDeliveryReportQueue reportQueue =
                 new BoundedDeliveryReportQueue(reportQueueCapacity);
-        connections = new BoundWorkerConnectionDirectory(
-                codec,
-                WebSocketTextFrameStrategy.INSTANCE
-        );
+        connections = new WebSocketBoundWorkerDirectory(codec);
         commandPump = new DeliveryCommandPump(
                 requiredGateway,
                 connections,
@@ -93,25 +88,16 @@ final class WebSocketWorkerDeliveryAdapter
                 adapterId,
                 reportQueue
         );
-        WorkerConnectionSessionFactory sessionFactory =
-                new WorkerConnectionSessionFactory(
-                        connections,
-                        codec,
-                        reportQueue,
-                        requiredGateway,
-                        adapterId,
-                        sendTimeLimit,
-                        this::acceptingConnections,
-                        WebSocketTextFrameStrategy.INSTANCE,
-                        "websocket"
-                );
         networkServer = new WebSocketNettyServer(
                 adapterId,
                 listenHost,
                 listenPort,
                 sendTimeLimit,
                 shutdownTimeout,
-                sessionFactory,
+                connections,
+                codec,
+                reportQueue,
+                requiredGateway,
                 this::acceptingConnections
         );
         commandPumpInterval = commandLoopInterval;

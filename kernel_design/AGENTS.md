@@ -211,9 +211,9 @@ Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
 remain executable-spec oracles and test support. External Worker
 implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
-Complete WebSocket and line-Socket Adapter aggregates live in
+WebSocket and line-Socket Adapter aggregates live in
 `transport/netty-adapter`. Each aggregate independently owns its lifecycle,
-scheduler, Pumps, queues, connection directory, and protocol-specific Netty
+scheduler, Pumps, queues, protocol-specific bound Channel directory, and Netty
 Network Server. The finite Netty factory is the only supported construction
 entry; cross-package collaborators remain isolated under `netty.internal`.
 `server_jvm` supplies only instance configuration and process lifecycle events.
@@ -448,16 +448,18 @@ the long-lived Adapter endpoint also accepts Adapter `2...` Reports when
 authentication. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
-Each Java Adapter instance owns one configured non-system-polling mailbox and
-one independent Netty listener through the common Netty-specific runtime. The
-runtime owns separate scheduled Command/Report pumps, bounded queues, every
-accepted child Channel, one current bound route per WorkerId, statically bound
-direct DeliveryCommand/DeliveryReport transport, and Adapter rejection versus
-`UNKNOWN` classification. The connection Session owns only
-`UNBOUND/VERIFYING/BOUND` and handles the fixed identity handshake directly;
-there is no Adapter event plugin registry. Adapter validates Worker-originated outcomes, but queues and
-forwards the original encoded result String; Server ingress performs the
-authoritative batch validation.
+Each Java Adapter instance owns one configured non-system-polling mailbox, one
+independent Netty listener, separate scheduled Command/Report pumps, bounded
+queues, every accepted child Channel, and one protocol-specific current bound
+route per WorkerId. Its identity Handler owns awaiting-identity and route
+verification, then replaces itself with a bound Handler in that protocol's
+Pipeline. WebSocket and line-Socket Adapters share no connection Session or
+Channel directory. The Adapter owns statically bound direct
+DeliveryCommand/DeliveryReport transport and Adapter rejection versus
+`UNKNOWN` classification; there is no Adapter event plugin registry. Adapter
+validates Worker-originated outcomes, but queues and forwards the original
+encoded result String; Server ingress performs the authoritative batch
+validation.
 `server_jvm` may turn each configured JSON tree into a concrete instance,
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
