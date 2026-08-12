@@ -12,7 +12,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManag
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -362,19 +361,11 @@ class SocketAdapterContractTest {
     void fullResultQueueClosesTheBoundChannel() throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        NettyWorkerDeliveryAdapter adapter = new NettyWorkerDeliveryAdapter(
-                AdapterNetworkProtocol.socket(Duration.ofSeconds(1)),
-                "socket-1",
-                gateway,
-                "127.0.0.1",
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
-                Duration.ofMillis(10),
-                100,
-                1000,
+                gateway,
                 Duration.ofSeconds(30),
-                1,
-                Duration.ofSeconds(1),
-                Duration.ofSeconds(1)
+                1
         );
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port);
@@ -445,8 +436,22 @@ class SocketAdapterContractTest {
             int port,
             WorkerDeliveryGatewayClient gateway
     ) {
-        return new NettyWorkerDeliveryAdapter(
-                AdapterNetworkProtocol.socket(Duration.ofSeconds(1)),
+        return adapter(
+                port,
+                gateway,
+                Duration.ofMillis(10),
+                1000
+        );
+    }
+
+    private NettyWorkerDeliveryAdapter adapter(
+            int port,
+            WorkerDeliveryGatewayClient gateway,
+            Duration reportSubmitInterval,
+            int reportQueueCapacity
+    ) {
+        return (NettyWorkerDeliveryAdapter)
+                NettyWorkerDeliveryAdapters.socket(
                 "socket-1",
                 gateway,
                 "127.0.0.1",
@@ -454,8 +459,8 @@ class SocketAdapterContractTest {
                 Duration.ofMillis(10),
                 100,
                 1000,
-                Duration.ofMillis(10),
-                1000,
+                reportSubmitInterval,
+                reportQueueCapacity,
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1)
         );

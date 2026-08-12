@@ -259,12 +259,12 @@ Worker  -> Adapter: DeliveryReport
 ```
 
 The Adapter forwards Task/System commands unchanged. The selected physical
-protocol normalizes inbound text to `String`, then installs the common identity
-Handler. That Handler validates the first Report and coordinates optional first
-verification with the Adapter instance's common route directory. After
-activation it replaces itself with the common bound Handler. There is no
-identity phase state machine. Different Adapter instances share no connection
-Session, verified cache, or Channel directory. The fixed identity Report is handled directly;
+Server normalizes inbound text to `String`, then invokes one sharable common
+connection mechanism. That mechanism validates the first Report, coordinates
+optional first verification, and derives each inbound Channel's phase from the
+Adapter instance's route Registry. The same Handler remains installed; there
+is no phase enum, Session, or Pipeline replacement. Different Adapter instances
+share no verified cache, route Registry, or Channel state. The fixed identity Report is handled directly;
 there is no Adapter event registry or plugin dispatcher. Reports whose
 `dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
 local events on an established connection are logged and dropped.
@@ -294,15 +294,17 @@ coupling, ACK, durable Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract. It
 instantiates one package-private Adapter scheduling mechanism per endpoint and
-selects one finite WebSocket or line-Socket network protocol. Every instance
-independently owns lifecycle, its Worker route directory, both bounded pumps,
-shutdown sequencing, and a Netty Server lifecycle. That Server lifecycle owns
-its listener, EventLoop, and every accepted child Channel, including
-pre-identity, pending-verification, and bound Channels. The selected protocol
-owns only handshake/framing, String normalization, protocol errors, and
-physical close; it owns no Gateway, queue, route, or verification state.
+selects one complete WebSocket or line-Socket physical Server. Every instance
+independently owns three layers: the Adapter aggregate owns lifecycle,
+scheduler, both bounded pumps, and shutdown sequencing; one common connection
+mechanism and pure Registry own identity, verification, route selection, and
+Result ingress; the concrete physical Server owns its listener, EventLoop,
+every child Channel, complete Pipeline, framing, writes, asynchronous write
+failure, and protocol close mapping. Physical Servers own no Gateway, queue,
+route, or verification state, while the common mechanism never writes, closes,
+or mutates a Channel Pipeline directly.
 Closing an Adapter therefore closes all physical child Channels, not only
-routes that reached BOUND. The finite protocols do not form a public SPI or a
+verified routes. The two physical Servers do not form a public SPI or a
 transport-kind branch.
 
 Physical disconnect is a reconnectable network fact. Only

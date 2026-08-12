@@ -149,13 +149,12 @@ Other scheduling pacers
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; a finite factory creates independently isolated Adapter
-  instances using one package-private scheduling mechanism and one selected
-  WebSocket or line-Socket physical protocol. Each instance owns start/close,
-  one Worker route directory with process-local verified/pending/active state,
-  scheduled Command/Report pumps, bounded non-blocking delivery, Report
-  buffering, and one Netty Server lifecycle that owns the listener, EventLoop,
-  and all physical child Channels. The protocol owns only handshake/framing,
-  String normalization, protocol errors, and physical close. Server only
+  instances with three owners: an Adapter aggregate owns start/close and
+  scheduled Command/Report pumps; one shared connection mechanism plus route
+  Registry owns process-local verified/pending/active/correlation state,
+  identity, routing, and Result ingress; one complete WebSocket or line-Socket
+  Server owns the listener, EventLoop, all physical child Channels, full
+  Pipeline, framing, writes, and close behavior. Server only
   binds instance config and invokes lifecycle; neither path selects Workers
   nor mutates score
 ```

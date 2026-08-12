@@ -1,20 +1,13 @@
 package com.xa.mass.workerdelivery.adapter.netty;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
-
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionHandlerFactory;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteDirectory;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
-import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
-import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyServerLifecycle;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -33,10 +26,10 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     private final Duration commandPumpInterval;
     private final Duration reportSubmitInterval;
     private final Duration shutdownTimeout;
-    private final WorkerRouteDirectory routes;
+    private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryCommandPump commandPump;
     private final DeliveryReportPump reportPump;
-    private final NettyServerLifecycle networkServer;
+    private final NettyWorkerServer networkServer;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private ScheduledExecutorService scheduler;
@@ -44,78 +37,38 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     private ScheduledFuture<?> reportTask;
 
     NettyWorkerDeliveryAdapter(
-            AdapterNetworkProtocol networkProtocol,
             String adapterId,
-            WorkerDeliveryGatewayClient gateway,
-            String listenHost,
-            int listenPort,
             Duration commandLoopInterval,
-            int commandConsumeLimit,
-            int commandQueueCapacity,
             Duration reportSubmitInterval,
-            int reportQueueCapacity,
-            Duration sendTimeLimit,
-            Duration shutdownTimeout
+            Duration shutdownTimeout,
+            NettyWorkerServer networkServer,
+            WorkerConnectionMechanism connectionMechanism,
+            DeliveryCommandPump commandPump,
+            DeliveryReportPump reportPump
     ) {
-        AdapterNetworkProtocol requiredProtocol = Objects.requireNonNull(
-                networkProtocol,
-                "networkProtocol"
-        );
         this.adapterId = requireAdapterId(adapterId);
-        requireListener(listenHost, listenPort);
-        requirePositive(commandLoopInterval, "commandLoopInterval");
-        requirePositive(reportSubmitInterval, "resultSubmitInterval");
-        requirePositive(sendTimeLimit, "sendTimeLimit");
-        requirePositive(shutdownTimeout, "shutdownTimeout");
-        requireBounds(
-                commandConsumeLimit,
-                commandQueueCapacity,
-                reportQueueCapacity
+        commandPumpInterval = Objects.requireNonNull(
+                commandLoopInterval,
+                "commandLoopInterval"
         );
-
-        WorkerDeliveryGatewayClient requiredGateway = Objects.requireNonNull(
-                gateway,
-                "gateway"
+        this.reportSubmitInterval = Objects.requireNonNull(
+                reportSubmitInterval,
+                "reportSubmitInterval"
         );
-        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        BoundedDeliveryReportQueue reportQueue =
-                new BoundedDeliveryReportQueue(reportQueueCapacity);
-        routes = new WorkerRouteDirectory(codec, requiredProtocol);
-        commandPump = new DeliveryCommandPump(
-                requiredGateway,
-                routes,
-                reportQueue,
-                adapterId,
-                commandConsumeLimit,
-                commandQueueCapacity
-        );
-        reportPump = new DeliveryReportPump(
-                requiredGateway,
-                adapterId,
-                reportQueue
-        );
-        WorkerConnectionHandlerFactory handlers =
-                new WorkerConnectionHandlerFactory(
-                        routes,
-                        codec,
-                        reportQueue,
-                        requiredGateway,
-                        adapterId,
-                        sendTimeLimit,
-                        this::acceptingConnections
-                );
-        networkServer = new NettyServerLifecycle(
-                adapterId,
-                listenHost,
-                listenPort,
+        this.shutdownTimeout = Objects.requireNonNull(
                 shutdownTimeout,
-                requiredProtocol,
-                handlers,
-                this::acceptingConnections
+                "shutdownTimeout"
         );
-        commandPumpInterval = commandLoopInterval;
-        this.reportSubmitInterval = reportSubmitInterval;
-        this.shutdownTimeout = shutdownTimeout;
+        this.networkServer = Objects.requireNonNull(
+                networkServer,
+                "networkServer"
+        );
+        this.connectionMechanism = Objects.requireNonNull(
+                connectionMechanism,
+                "connectionMechanism"
+        );
+        this.commandPump = Objects.requireNonNull(commandPump, "commandPump");
+        this.reportPump = Objects.requireNonNull(reportPump, "reportPump");
     }
 
     @Override
@@ -128,16 +81,8 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         return state;
     }
 
-    String listenHost() {
-        return networkServer.listenHost();
-    }
-
-    int listenPort() {
-        return networkServer.listenPort();
-    }
-
     int activeConnectionCount() {
-        return routes.activeConnectionCount();
+        return connectionMechanism.activeConnectionCount();
     }
 
     int trackedConnectionCount() {
@@ -159,7 +104,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                     2,
                     daemonThreadFactory(adapterId + "-loop")
             );
-            networkServer.start();
+            networkServer.start(connectionMechanism);
             state = WorkerDeliveryAdapterState.RUNNING;
             commandTask = scheduler.scheduleWithFixedDelay(
                     this::runCommandPumpSafely,
@@ -223,7 +168,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         } finally {
-            routes.clear();
+            connectionMechanism.clear();
         }
         cancel(stoppingReportTask);
         failure = stopScheduler(stoppingScheduler, failure);
@@ -250,12 +195,12 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         }
     }
 
-    private boolean acceptingConnections() {
+    private boolean isRunning() {
         return state == WorkerDeliveryAdapterState.RUNNING;
     }
 
     private void runCommandPumpSafely() {
-        if (!acceptingConnections()) {
+        if (!isRunning()) {
             return;
         }
         try {
@@ -266,7 +211,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     }
 
     private void runReportPumpSafely() {
-        if (!acceptingConnections()) {
+        if (!isRunning()) {
             return;
         }
         try {
@@ -386,50 +331,6 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
-        if (SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(adapterId)) {
-            throw new IllegalArgumentException(
-                    "system-polling cannot own an active Adapter"
-            );
-        }
         return adapterId;
-    }
-
-    private static void requireListener(String listenHost, int listenPort) {
-        if (listenHost == null || listenHost.isBlank()) {
-            throw new IllegalArgumentException(
-                    "listenHost must be non-blank"
-            );
-        }
-        if (listenPort < 1 || listenPort > 65_535) {
-            throw new IllegalArgumentException(
-                    "listenPort must be between 1 and 65535"
-            );
-        }
-    }
-
-    private static void requireBounds(
-            int commandConsumeLimit,
-            int commandQueueCapacity,
-            int reportQueueCapacity
-    ) {
-        if (commandConsumeLimit <= 0 || reportQueueCapacity <= 0) {
-            throw new IllegalArgumentException(
-                    "Adapter bounds must be positive"
-            );
-        }
-        if (commandQueueCapacity < commandConsumeLimit) {
-            throw new IllegalArgumentException(
-                    "commandQueueCapacity must be at least commandConsumeLimit"
-            );
-        }
-    }
-
-    private static void requirePositive(Duration value, String name) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
     }
 }

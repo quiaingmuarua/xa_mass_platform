@@ -8,8 +8,9 @@ Status: repository-local transport contracts and implementations.
 
 :transport:netty-adapter
   -> stable WebSocket and Socket Adapter façades
-  -> one shared Netty-specific runtime per configured instance
-  -> bounded command/report pumps, child Channels, and bound routes
+  -> Adapter lifecycle and bounded Command/Report pumps
+  -> one shared Netty connection mechanism and route registry per instance
+  -> one complete protocol-specific physical Server per instance
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
@@ -55,8 +56,10 @@ Preparation failure or Client reconnect exhaustion ends that run; only another
 explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
 lifecycle events or queries. No Endpoint URI or Worker business message is
 persisted.
-Netty Adapter behavior remains independent until a concrete shared mechanism
-exists.
+The Netty Adapter is Netty-specific rather than a generic transport framework.
+Its shared connection mechanism owns identity, route verification, Command
+routing, and Result ingress; its WebSocket and Socket Servers independently
+own their complete physical network resources and protocols.
 
 See:
 

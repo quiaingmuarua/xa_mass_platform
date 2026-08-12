@@ -1,7 +1,8 @@
 # XA Mass Netty Worker Delivery Adapter
 
-Status: Java 21 multi-endpoint Adapter runtime with one shared delivery
-mechanism and finite Netty WebSocket / line-Socket physical protocols.
+Status: Java 21 multi-endpoint Adapter with three explicit Netty-specific
+owners: Adapter scheduling, shared connection mechanism, and complete
+WebSocket / line-Socket physical Servers.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
@@ -18,22 +19,21 @@ owns:
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one `NettyServerLifecycle` using one finite physical protocol
-one Netty listener and EventLoop
-all physical child Channels, including pre-identity, pending-verification,
-and bound Channels
-one current Channel per workerId
+one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
+one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
 one bounded DeliveryCommand queue
 one scheduled DeliveryCommand Pump
 one bounded encoded DeliveryReport queue
 one scheduled DeliveryReport Pump
 ```
 
-The common Adapter aggregate owns lifecycle, scheduler, queues, Pumps, and
-route state. `NettyServerLifecycle` owns listener, EventLoop, and every child
-Channel. The selected finite `AdapterNetworkProtocol` owns only Pipeline
-installation, frame normalization, and physical close behavior. It is a sealed
-internal boundary, not a generic Adapter SPI or transport-kind branch.
+The common Adapter aggregate owns lifecycle, scheduler, queues, and Pumps. The
+shared connection mechanism owns identity interpretation, first-seen route
+verification, Command routing, and Result ingress; its Registry alone owns
+verified, pending, active, and Channel-correlation truth. The selected physical
+Server owns its listener, EventLoop, all child Channels, complete Pipeline,
+framing, physical writes, asynchronous write failures, and close behavior.
+These are internal owners, not a public SPI or transport-kind branch.
 
 Implementation packages follow owner responsibility rather than protocol
 similarity:
@@ -44,18 +44,19 @@ netty/
 netty/internal/gateway/
   DeliveryCommand target port, Result ingress buffer, and both Gateway Pumps
 netty/internal/connection/
-  verified/pending/active route owner and common identity/bound handlers
+  pure Worker route truth + one shared Netty connection mechanism
 netty/internal/network/
-  one listener/EventLoop/child-Channel owner plus finite physical protocols
+  internal Server contract + complete WebSocket and Socket physical owners
 ```
 
 Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
 contracts, and Server is guarded from importing them. Gateway Pumps still see
 only the transport-neutral `DeliveryCommandTarget`. The shared connection
-mechanism sees only normalized strings plus the finite physical close port; it
-does not see WebSocket frames, Socket lines, handshake types, or listener
-resources.
+mechanism sees normalized strings and Netty Channels as route addresses, but
+all physical write/close operations return through `NettyWorkerServer`; it does
+not see WebSocket frames, Socket lines, handshake types, listener resources,
+or Pipeline mutation.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
 start, start in order, and close in reverse order. Multiple instances in one
@@ -131,11 +132,11 @@ Worker  -> Adapter: direct DeliveryReport JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-After the physical Pipeline normalizes input to `String`, the same identity
-Handler validates the first Report, coordinates optional first verification
-with the Adapter's route directory, and replaces itself with the same bound
-Handler after activation. Pipeline membership represents connection phase;
-there is no lifecycle phase state machine. The fixed
+After the physical Pipeline normalizes input to `String`, the one sharable
+`WorkerConnectionMechanism` validates the first Report, coordinates optional
+first verification, and dynamically derives each inbound Channel's phase from
+`WorkerRouteRegistry`. The same Handler remains installed for the full physical
+connection; there is no phase enum, Session, or Pipeline replacement. The fixed
 identity Report is not routed through an
 event registry or plugin dispatcher. Adapter-directed Reports never enter the
 Server Result queue. Repeated identity and unknown Adapter events on an
@@ -150,14 +151,16 @@ enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
-Each Adapter constructs one Worker route directory. It owns
-the process-local verified worker IDs, first-verification pending Channels,
-and active `workerId -> Channel` routes. It writes normalized command strings;
-the selected physical Pipeline produces a WebSocket text frame or one UTF-8
-line. Semantic close reasons are mapped by that protocol to a WebSocket close
-frame or TCP close. A verified reconnect replaces the current Channel for that
-workerId. Deactivation compares workerId and Channel identity, so a delayed
-close from an old Channel cannot remove its replacement or verified route.
+Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
+verified worker IDs, first-verification pending Channels, active
+`workerId -> Channel` routes, and Channel correlation as atomic truth. The
+connection mechanism selects a route and asks its physical Server to write a
+normalized command string. The WebSocket Server emits a text frame; the Socket
+Server emits one UTF-8 line. Those Servers also map semantic close reasons to a
+WebSocket close frame or TCP close. A verified reconnect replaces the current
+Channel for that workerId. Deactivation compares exact Channel identity, so a
+delayed close from an old Channel cannot remove its replacement or verified
+route.
 Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
@@ -173,8 +176,9 @@ when a full consume batch fits
 for each command present at round start
   -> expired: remove and enqueue Adapter COMMAND_EXPIRED best-effort
   -> no active writable Channel: rotate to queue tail
-  -> writeAndFlush started: remove
-  -> write initiation/future failure: close exact Channel, result UNKNOWN
+  -> physical Server write started: remove
+  -> synchronous write failure: close exact Channel, result UNKNOWN
+  -> asynchronous write failure: physical Server closes exact Channel
 ```
 
 The queue has no workerId index. One round observes each queued command once.

@@ -61,7 +61,7 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void finiteFactoryBuildsOneSharedAdapterMechanism() throws IOException {
+    void finiteFactoryComposesTheThreeOwnerLayers() throws IOException {
         String application = readSources(APPLICATION) + readSources(HTTP);
         assertThat(application)
                 .contains("interface WorkerDeliveryAdapter")
@@ -82,17 +82,24 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("static WorkerDeliveryAdapter webSocket(")
                 .contains("static WorkerDeliveryAdapter socket(")
                 .contains("new NettyWorkerDeliveryAdapter(")
-                .contains("AdapterNetworkProtocol.webSocket(")
-                .contains("AdapterNetworkProtocol.socket(");
+                .contains("new WebSocketNettyWorkerServer(")
+                .contains("new SocketNettyWorkerServer(")
+                .contains("new WorkerRouteRegistry()")
+                .contains("new WorkerConnectionMechanism(");
         assertThat(adapter)
                 .contains("final class NettyWorkerDeliveryAdapter")
                 .doesNotContain("public final class")
-                .contains("WorkerRouteDirectory routes")
+                .contains("WorkerConnectionMechanism connectionMechanism")
                 .contains("DeliveryCommandPump commandPump")
                 .contains("DeliveryReportPump reportPump")
-                .contains("NettyServerLifecycle networkServer")
+                .contains("NettyWorkerServer networkServer")
                 .contains("ScheduledExecutorService scheduler")
                 .contains("scheduleWithFixedDelay(")
+                .contains("networkServer.start(connectionMechanism)")
+                .doesNotContain("WebSocketNettyWorkerServer")
+                .doesNotContain("SocketNettyWorkerServer")
+                .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("ServerBootstrap")
                 .doesNotContain("TransportKind")
                 .doesNotContain("extends ");
         assertThat(directJavaFileNames(NETTY)).containsExactlyInAnyOrder(
@@ -102,65 +109,73 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void oneConnectionMechanismOwnsRouteIdentityAndResultIngress()
+    void connectionMechanismAndRouteTruthHaveSeparateOwners()
             throws IOException {
-        String connection = readSources(CONNECTION);
-        assertThat(connection)
-                .containsOnlyOnce("class WorkerRouteDirectory")
-                .containsOnlyOnce("class WorkerIdentityHandler")
-                .containsOnlyOnce("class BoundWorkerHandler")
-                .containsOnlyOnce("class WorkerConnectionHandlerFactory")
+        String registry = read(CONNECTION.resolve(
+                "WorkerRouteRegistry.java"
+        ));
+        String mechanism = read(CONNECTION.resolve(
+                "WorkerConnectionMechanism.java"
+        ));
+        assertThat(registry)
+                .contains("final class WorkerRouteRegistry")
                 .contains("verifiedWorkerIds")
                 .contains("pendingVerifications")
                 .contains("activeChannels")
-                .contains("verifyWorkerRoute(")
-                .contains("pipeline().replace(")
+                .contains("identifiedWorkerByChannel")
+                .contains("IdentityAdmission admitIdentity(")
+                .contains("InboundInspection inspectInbound(")
+                .doesNotContain("WorkerDeliveryGatewayClient")
+                .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("NettyWorkerServer")
+                .doesNotContain("writeAndFlush(")
+                .doesNotContain("closeConnection(");
+        assertThat(mechanism)
+                .contains("final class WorkerConnectionMechanism")
                 .contains("extends SimpleChannelInboundHandler<String>")
+                .contains("implements DeliveryCommandTarget")
+                .contains("@ChannelHandler.Sharable")
+                .contains("verifyWorkerRoute(")
                 .contains("reportQueue.offer(encodedReport)")
                 .contains("codec.encodeDeliveryCommand(command)")
+                .contains("networkServer.writeText(")
+                .contains("networkServer.writeTextAndClose(")
+                .contains("networkServer.closeConnection(")
+                .doesNotContain("pipeline()")
+                .doesNotContain("writeAndFlush(")
                 .doesNotContain("TextWebSocketFrame")
                 .doesNotContain("CloseWebSocketFrame")
+                .doesNotContain("HttpServerCodec")
+                .doesNotContain("ServerBootstrap")
                 .doesNotContain("LineBasedFrameDecoder")
                 .doesNotContain("StringDecoder")
-                .doesNotContain("StringEncoder")
                 .doesNotContain("LineEncoder");
     }
 
     @Test
-    void oneNetworkLifecycleOwnsResourcesAndProtocolsOwnOnlyFraming()
+    void eachPhysicalServerIsACompleteProtocolResourceOwner()
             throws IOException {
-        String lifecycle = read(NETWORK.resolve(
-                "NettyServerLifecycle.java"
-        ));
-        String protocol = read(NETWORK.resolve(
-                "AdapterNetworkProtocol.java"
+        String contract = read(NETWORK.resolve(
+                "NettyWorkerServer.java"
         ));
         String websocket = read(NETWORK.resolve(
-                "WebSocketNetworkProtocol.java"
+                "WebSocketNettyWorkerServer.java"
         ));
         String socket = read(NETWORK.resolve(
-                "SocketNetworkProtocol.java"
+                "SocketNettyWorkerServer.java"
         ));
 
-        assertThat(lifecycle)
+        assertThat(contract)
+                .contains("interface NettyWorkerServer extends AutoCloseable")
+                .contains("void start(ChannelHandler sharedConnectionHandler)")
+                .contains("TextWriteAttempt writeText(")
+                .contains("void writeTextAndClose(")
+                .contains("void closeConnection(");
+        assertThat(websocket)
+                .contains("implements NettyWorkerServer")
                 .contains("new ServerBootstrap()")
                 .contains("new MultiThreadIoEventLoopGroup(")
                 .contains("Set<Channel> childChannels")
-                .contains("networkProtocol.installPipeline(")
-                .contains("networkProtocol.close(")
-                .doesNotContain("HttpServerCodec")
-                .doesNotContain("WebSocketServerProtocolHandler")
-                .doesNotContain("LineBasedFrameDecoder")
-                .doesNotContain("WorkerDeliveryGatewayClient")
-                .doesNotContain("BoundedDeliveryReportQueue");
-        assertThat(protocol)
-                .contains("public sealed interface AdapterNetworkProtocol")
-                .contains("permits WebSocketNetworkProtocol")
-                .contains("SocketNetworkProtocol")
-                .contains("void installPipeline(")
-                .contains("void close(")
-                .doesNotContain("TransportKind");
-        assertThat(websocket)
                 .contains("new HttpServerCodec()")
                 .contains("new WebSocketServerProtocolHandler(")
                 .contains("new TextWebSocketFrame(")
@@ -170,8 +185,13 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("LineEncoder")
                 .doesNotContain("WorkerDeliveryGatewayClient")
                 .doesNotContain("BoundedDeliveryReportQueue")
-                .doesNotContain("WorkerDeliveryCodec");
+                .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("DeliveryCommandPump");
         assertThat(socket)
+                .contains("implements NettyWorkerServer")
+                .contains("new ServerBootstrap()")
+                .contains("new MultiThreadIoEventLoopGroup(")
+                .contains("Set<Channel> childChannels")
                 .contains("new LineBasedFrameDecoder(")
                 .contains("new StringDecoder(")
                 .contains("new LineEncoder(")
@@ -180,7 +200,8 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("WebSocketFrame")
                 .doesNotContain("WorkerDeliveryGatewayClient")
                 .doesNotContain("BoundedDeliveryReportQueue")
-                .doesNotContain("WorkerDeliveryCodec");
+                .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("DeliveryCommandPump");
     }
 
     @Test
@@ -198,6 +219,14 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("Future.get(")
                 .doesNotContain("newFixedThreadPool");
         assertThat(netty)
+                .doesNotContain("class NettyServerLifecycle")
+                .doesNotContain("interface AdapterNetworkProtocol")
+                .doesNotContain("class WebSocketNetworkProtocol")
+                .doesNotContain("class SocketNetworkProtocol")
+                .doesNotContain("class WorkerConnectionHandlerFactory")
+                .doesNotContain("class WorkerRouteDirectory")
+                .doesNotContain("class WorkerIdentityHandler")
+                .doesNotContain("class BoundWorkerHandler")
                 .doesNotContain("class WebSocketWorkerDeliveryAdapter")
                 .doesNotContain("class SocketWorkerDeliveryAdapter")
                 .doesNotContain("class WebSocketWorkerRouteDirectory")
@@ -206,11 +235,11 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("class SocketWorkerIdentityHandler")
                 .doesNotContain("class WebSocketBoundWorkerHandler")
                 .doesNotContain("class SocketBoundWorkerHandler")
-                .doesNotContain("class WebSocketNettyServer")
-                .doesNotContain("class SocketNettyServer")
                 .doesNotContain("IdentityPhase")
                 .doesNotContain("WorkerConnectionSession")
                 .doesNotContain("TextFrameStrategy")
+                .doesNotContain("AbstractNettyWorkerServer")
+                .doesNotContain("NettyServerResources")
                 .doesNotContain("AbstractNettyAdapter")
                 .doesNotContain("RouteDirectoryBridge")
                 .doesNotContain("ServiceLoader")

@@ -173,8 +173,9 @@ factory to create complete
 WebSocket or Socket Adapter instances, registers them, and starts/closes the
 manager at process boundaries. Each Adapter owns its Netty listener,
 bounded Command/Report pumps, every accepted child Channel, the current bound
-route directory, and encoded Report buffer through one shared Netty-specific
-runtime. It consumes the existing batch HTTP API through loopback and has no
+route Registry, and encoded Report buffer through three Netty-specific layers:
+the Adapter aggregate, one shared connection mechanism, and one complete
+protocol-specific physical Server. It consumes the existing batch HTTP API through loopback and has no
 in-process or Redis shortcut. Polling continues to exchange DeliveryCommand and
 DeliveryReport through point HTTP.
 
@@ -383,7 +384,7 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 consume and batch result append are reserved for long-lived Adapter identities.
 Each point poll/result request verifies that the Worker is persistently bound to
 `system-polling`. A long-lived Adapter calls `verify-binding` when its
-process-local route directory first sees a workerId and exposes the Channel to
+process-local route Registry first sees a workerId and exposes the Channel to
 command delivery only when the persisted Binding matches the Adapter's
 endpoint-manager identity. Every physical connection still sends identity;
 verified reconnects skip this Server read until the Adapter restarts.

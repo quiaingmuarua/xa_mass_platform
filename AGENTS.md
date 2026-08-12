@@ -38,14 +38,14 @@ Status: current repository handoff.
   or generic connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances. Server constructs
   the finite WebSocket/Socket choices through one public factory returning
-  `WorkerDeliveryAdapter`. One package-private Adapter mechanism is instantiated
-  independently for every configured endpoint and owns that instance's
-  lifecycle, scheduled Gateway Pumps, bounded Command/Report queues, Worker
-  route directory, and Netty Server lifecycle. The selected finite network
-  protocol owns only handshake/framing, String normalization, protocol errors,
-  and physical close behavior. Common identity/bound Pipeline Handlers and the
-  instance-local route directory own process-local verified Worker IDs, pending
-  first verification, and active Channels. There is no public protocol SPI,
+  `WorkerDeliveryAdapter`. Each endpoint has one package-private Adapter
+  aggregate for lifecycle, Gateway Pumps, and bounded queues; one shared
+  connection mechanism plus route Registry for identity, first verification,
+  Command routing, and Result ingress; and one complete WebSocket or Socket
+  physical Server for listener, EventLoop, every child Channel, full Pipeline,
+  writes, and close behavior. The common mechanism derives connection phase
+  from instance-local Registry truth and never performs physical Channel
+  operations. There is no public protocol SPI,
   abstract Adapter base, transport-kind runtime, shared mutable state, or fat
   connection Session. Cross-package Netty collaborators are classified under
   `netty.internal.gateway`, `netty.internal.connection`, and
@@ -149,26 +149,29 @@ tag.
   contract.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
-  its complete instances, one shared Adapter lifecycle mechanism, scheduled
-  Command/Report pumps, current bound routes, bounded queues, and one
-  `NettyServerLifecycle` per instance. That network owner maintains the
-  listener, EventLoop, and every accepted child Channel. A finite physical
-  protocol normalizes WebSocket text frames or UTF-8 lines to `String`; the
-  shared identity Handler then requires the strict identity first value,
-  coordinates optional first-seen route verification, and replaces itself
-  with the shared bound Handler without a phase state machine. Each complete
-  Adapter instance owns one verified worker-ID set, pending-verification map,
-  and `workerId -> current Channel` map; instances share implementation but no
-  Session, route state, or Channel registry. Verification
+  its complete instances through three Netty-specific owners. The
+  `NettyWorkerDeliveryAdapter` aggregate owns lifecycle, scheduler, bounded
+  queues, and scheduled Command/Report pumps. One shared
+  `WorkerConnectionMechanism` owns strict identity interpretation,
+  first-seen route verification, Command routing, and Result ingress, while
+  its `WorkerRouteRegistry` owns the verified worker-ID set,
+  pending-verification map, `workerId -> current Channel` truth, and
+  Channel-to-worker correlation. A complete `WebSocketNettyWorkerServer` or
+  `SocketNettyWorkerServer` owns the listener, EventLoop, every child Channel,
+  physical framing, writes, asynchronous write failure, and protocol close
+  mapping. The shared mechanism receives normalized `String` values and may
+  retain `Channel` only as an address; it must return every physical write or
+  close to the selected Server. Connection phase is derived from Registry
+  truth rather than a phase enum, Session, or Pipeline Handler replacement.
+  Adapter instances share implementation but no route state or Channel
+  registry. Verification
   success is cached only for that Adapter process. Ordinary disconnect removes
   the exact active Channel but retains verified identity; Adapter close/restart
   clears verified, pending, and active state. This cache is not persistent
   Binding, authentication, Worker online truth, or an implicit unbind mechanism.
   Input after identity while first verification is pending is dropped, not
-  buffered or used to close the Channel. The Handlers
-  own strict DeliveryReport decode, fixed identity handshake, destination
-  routing, and physical backpressure. There is no Adapter event registry or
-  plugin dispatcher. Only bound TASK Reports declaring
+  buffered or used to close the Channel. There is no Adapter event registry or
+  plugin dispatcher. Only verified TASK Reports declaring
   `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` may enter
   the Result queue, with encoded JSON, payload, and forward context unchanged.
   SYSTEM and invalid bound input are logged and
@@ -369,12 +372,11 @@ transport/netty-adapter
   -> Adapter batch HTTP client
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
-  -> one package-private Adapter lifecycle mechanism per configured instance
-  -> one shared listener/EventLoop/child-Channel lifecycle owner per instance
-  -> finite WebSocket/Socket Pipeline and physical-close protocols
-  -> per-endpoint Command/Report pumps and one Worker route directory
-  -> process-local verified/pending/active route ownership without a phase state machine
-  -> all-child Channel lifecycle plus strict first-frame identity routing
+  -> one Adapter lifecycle/scheduler/Pump aggregate per configured instance
+  -> one shared identity/route/Result connection mechanism per instance
+  -> process-local verified/pending/active/correlation Registry truth
+  -> one complete WebSocket or Socket listener/EventLoop/Pipeline Server
+  -> all-child physical Channel ownership and strict first-value identity
   -> direct fixed Adapter-local identity Report handshake
   -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
      generation

@@ -214,9 +214,11 @@ share one Java 11 compatible execution core and protocol module. Complete
 WebSocket and line-Socket Adapter instances live in
 `transport/netty-adapter`. A single package-private Adapter mechanism is
 instantiated independently per endpoint and owns that instance's lifecycle,
-scheduler, Pumps, queues, Worker route directory, and Netty Server lifecycle.
-Finite WebSocket and line-Socket protocol implementations own only physical
-handshake/framing, String normalization, protocol errors, and close behavior.
+scheduler, Pumps, and queues. One shared connection mechanism plus pure route
+Registry owns identity, first verification, current route selection, and Result
+ingress. One complete WebSocket or line-Socket physical Server owns listener,
+EventLoop, every child Channel, full Pipeline, framing, writes, asynchronous
+write failure, and close behavior.
 The finite Netty factory is the only supported construction entry;
 cross-package collaborators remain isolated under `netty.internal`.
 `server_jvm` supplies only instance configuration and process lifecycle events.
@@ -454,20 +456,22 @@ scans a mailbox, and `system-polling` is only a logical route binding.
 Each Java Adapter instance owns one configured non-system-polling mailbox, one
 independent Netty listener, separate scheduled Command/Report pumps, bounded
 queues, every accepted child Channel, and one current bound route per WorkerId.
-Its common Worker route directory owns a process-local set of verified Worker
+Its common Worker route Registry owns a process-local set of verified Worker
 IDs, one pending first-verification Channel per WorkerId, and the active
-Channels. The selected physical protocol owns no route or scheduling state.
+Channels plus Channel correlation. The selected physical Server owns no route
+or scheduling state.
 Every physical connection starts with strict identity. The first occurrence in
 one Adapter process is verified through Server; ordinary disconnect removes
 only the active Channel, while a later identity reconnects from the cached
 verified route. Adapter close/restart clears verified, pending, and active
 state. The cache is not persistent Binding, authentication, online truth, TTL,
-or an implicit unbind mechanism. The identity Handler coordinates this without
-a phase state machine, drops later input while verification is pending, and
-replaces itself with the common bound Handler after the protocol Pipeline has
-normalized input to String. Different Adapter instances share no connection
-Session, verified cache, or Channel directory, even when they select the same
-physical protocol. The Adapter owns statically bound direct
+or an implicit unbind mechanism. One sharable connection Handler coordinates
+this without a phase enum or Session, drops later input while verification is
+pending, and derives bound behavior from Registry truth after the physical
+Pipeline normalizes input to String. It does not mutate the Pipeline or perform
+physical Channel writes/closes. Different Adapter instances share no verified
+cache or Channel Registry, even when they select the same physical protocol.
+The Adapter owns statically bound direct
 DeliveryCommand/DeliveryReport transport and Adapter rejection versus
 `UNKNOWN` classification; there is no Adapter event plugin registry. Adapter
 validates Worker-originated outcomes, but queues and forwards the original

@@ -14,7 +14,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -566,19 +565,12 @@ class WebSocketAdapterContractTest {
     void fullResultQueueClosesTheBoundChannel() throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        NettyWorkerDeliveryAdapter adapter = new NettyWorkerDeliveryAdapter(
-                AdapterNetworkProtocol.webSocket(Duration.ofSeconds(1)),
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
-                gateway,
-                "127.0.0.1",
                 port,
-                Duration.ofMillis(10),
-                100,
-                1000,
+                gateway,
                 Duration.ofSeconds(30),
-                1,
-                Duration.ofSeconds(1),
-                Duration.ofSeconds(1)
+                1
         );
         adapter.start();
         Probe probe = new Probe(WORKER_ID);
@@ -614,8 +606,24 @@ class WebSocketAdapterContractTest {
             int port,
             WorkerDeliveryGatewayClient gateway
     ) {
-        return new NettyWorkerDeliveryAdapter(
-                AdapterNetworkProtocol.webSocket(Duration.ofSeconds(1)),
+        return adapter(
+                adapterId,
+                port,
+                gateway,
+                Duration.ofMillis(10),
+                1000
+        );
+    }
+
+    private static NettyWorkerDeliveryAdapter adapter(
+            String adapterId,
+            int port,
+            WorkerDeliveryGatewayClient gateway,
+            Duration reportSubmitInterval,
+            int reportQueueCapacity
+    ) {
+        return (NettyWorkerDeliveryAdapter)
+                NettyWorkerDeliveryAdapters.webSocket(
                 adapterId,
                 gateway,
                 "127.0.0.1",
@@ -623,8 +631,8 @@ class WebSocketAdapterContractTest {
                 Duration.ofMillis(10),
                 100,
                 1000,
-                Duration.ofMillis(10),
-                1000,
+                reportSubmitInterval,
+                reportQueueCapacity,
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1)
         );
