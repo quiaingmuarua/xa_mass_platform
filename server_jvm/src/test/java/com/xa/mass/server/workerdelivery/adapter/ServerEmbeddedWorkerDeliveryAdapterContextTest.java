@@ -2,9 +2,9 @@ package com.xa.mass.server.workerdelivery.adapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
-import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
 import java.io.IOException;
@@ -68,10 +68,9 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
         assertThat(manager.adapters()).containsOnlyKeys(
                 "embedded-websocket"
         );
-        WebSocketWorkerDeliveryAdapter adapter =
-                (WebSocketWorkerDeliveryAdapter)
-                        manager.requireAdapter("embedded-websocket");
-        assertThat(adapter.listenPort()).isEqualTo(ADAPTER_PORT);
+        WorkerDeliveryAdapter adapter =
+                manager.requireAdapter("embedded-websocket");
+        assertThat(adapter.adapterId()).isEqualTo("embedded-websocket");
         assertThat(adapter.state())
                 .isEqualTo(WorkerDeliveryAdapterState.RUNNING);
         assertThat(applicationContext.getBean(

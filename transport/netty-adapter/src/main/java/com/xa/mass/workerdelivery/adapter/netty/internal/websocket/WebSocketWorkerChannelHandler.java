@@ -1,5 +1,8 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.ConnectionCloseReason;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSession;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSessionFactory;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;

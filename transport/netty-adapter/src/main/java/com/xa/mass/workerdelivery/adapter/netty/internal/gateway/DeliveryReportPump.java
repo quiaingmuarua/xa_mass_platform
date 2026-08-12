@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -6,7 +6,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import java.util.List;
 import java.util.Objects;
 
-final class DeliveryReportPump implements Runnable {
+public final class DeliveryReportPump implements Runnable {
 
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportPump.class.getName()
@@ -18,7 +18,7 @@ final class DeliveryReportPump implements Runnable {
     private List<String> pendingBatch;
     private boolean closed;
 
-    DeliveryReportPump(
+    public DeliveryReportPump(
             WorkerDeliveryGatewayClient gateway,
             String adapterId,
             BoundedDeliveryReportQueue reportQueue
@@ -39,11 +39,11 @@ final class DeliveryReportPump implements Runnable {
         submitAtMostOneBatch();
     }
 
-    void stopAccepting() {
+    public void stopAccepting() {
         reportQueue.stopAccepting();
     }
 
-    synchronized void closeAndFlush() {
+    public synchronized void closeAndFlush() {
         if (closed) {
             return;
         }

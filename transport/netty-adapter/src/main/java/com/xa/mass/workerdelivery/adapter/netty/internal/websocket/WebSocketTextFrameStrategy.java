@@ -1,21 +1,17 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.ConnectionCloseReason;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.TextFrameStrategy;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 
-interface TextFrameStrategy {
+public final class WebSocketTextFrameStrategy
+        implements TextFrameStrategy {
 
-    ChannelFuture writeText(Channel channel, String encodedText);
-
-    void close(Channel channel, ConnectionCloseReason reason);
-}
-
-final class WebSocketTextFrameStrategy implements TextFrameStrategy {
-
-    static final WebSocketTextFrameStrategy INSTANCE =
+    public static final WebSocketTextFrameStrategy INSTANCE =
             new WebSocketTextFrameStrategy();
 
     private WebSocketTextFrameStrategy() {
@@ -33,7 +29,7 @@ final class WebSocketTextFrameStrategy implements TextFrameStrategy {
         }
         try {
             channel.writeAndFlush(new CloseWebSocketFrame(
-                    reason.webSocketCode(),
+                    closeCode(reason),
                     reason.message()
             )).addListener(ChannelFutureListener.CLOSE);
         } catch (RuntimeException ignored) {
@@ -48,27 +44,18 @@ final class WebSocketTextFrameStrategy implements TextFrameStrategy {
             // Channel teardown is best effort.
         }
     }
-}
 
-final class SocketLineFrameStrategy implements TextFrameStrategy {
-
-    static final SocketLineFrameStrategy INSTANCE =
-            new SocketLineFrameStrategy();
-
-    private SocketLineFrameStrategy() {
-    }
-
-    @Override
-    public ChannelFuture writeText(Channel channel, String encodedText) {
-        return channel.writeAndFlush(encodedText + "\n");
-    }
-
-    @Override
-    public void close(Channel channel, ConnectionCloseReason reason) {
-        try {
-            channel.close();
-        } catch (RuntimeException ignored) {
-            // Channel teardown is best effort.
-        }
+    private static int closeCode(ConnectionCloseReason reason) {
+        return switch (reason) {
+            case ADAPTER_STOPPING -> 1001;
+            case BINARY_UNSUPPORTED -> 1003;
+            case INVALID_REPORT -> 1007;
+            case IDENTITY_REQUIRED,
+                    VERIFICATION_IN_PROGRESS,
+                    VERIFICATION_FAILED,
+                    REPLACED -> 1008;
+            case TRANSPORT_ERROR -> 1011;
+            case RESULT_BUFFER_FULL -> 1013;
+        };
     }
 }

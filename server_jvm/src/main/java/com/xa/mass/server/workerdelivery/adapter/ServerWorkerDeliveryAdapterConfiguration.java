@@ -4,8 +4,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapters;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import java.time.Duration;
@@ -145,7 +144,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 adapterId
         );
         return switch (type) {
-            case "WEBSOCKET" -> new WebSocketWorkerDeliveryAdapter(
+            case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
                     gateway,
                     listenHost,
@@ -158,7 +157,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     sendTimeLimit,
                     shutdownTimeout
             );
-            case "SOCKET" -> new SocketWorkerDeliveryAdapter(
+            case "SOCKET" -> NettyWorkerDeliveryAdapters.socket(
                     adapterId,
                     gateway,
                     listenHost,

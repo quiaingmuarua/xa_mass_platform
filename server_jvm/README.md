@@ -155,9 +155,9 @@ kernel_jvm delivery contracts/providers
   DeliveryCommand consume and DeliveryReport append owner operations
 
 transport/netty-adapter
-  stable concrete Adapter façades over per-instance shared Netty runtimes,
-  WebSocket/Socket listeners, mailbox pumps, child Channels, bound routes,
-  and bounded non-blocking delivery
+  finite Adapter construction factory, package-private WebSocket/Socket
+  Adapter aggregates, independently owned physical Network Servers, mailbox
+  pumps, child Channels, bound routes, and bounded non-blocking delivery
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -167,7 +167,8 @@ dependency.
 
 The Adapter runtime is implemented by
 [`transport/netty-adapter`](../transport/netty-adapter/README.md).
-This Server reads the configured Adapter instance map, creates complete
+This Server reads the configured Adapter instance map, uses the finite Netty
+factory to create complete
 WebSocket or Socket Adapter instances, registers them, and starts/closes the
 manager at process boundaries. Each Adapter owns its Netty listener,
 bounded Command/Report pumps, every accepted child Channel, the current bound

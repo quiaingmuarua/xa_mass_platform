@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.socket;
+package com.xa.mass.workerdelivery.adapter.netty;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;

@@ -1,8 +1,8 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 
-interface DeliveryCommandTarget {
+public interface DeliveryCommandTarget {
 
     DeliveryAttempt deliver(String workerId, DeliveryCommand command);
 

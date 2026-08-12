@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;

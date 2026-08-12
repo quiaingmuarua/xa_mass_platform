@@ -1,6 +1,6 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
-final class DeliveryCommandPump implements Runnable {
+public final class DeliveryCommandPump implements Runnable {
 
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryCommandPump.class.getName()
@@ -31,7 +31,7 @@ final class DeliveryCommandPump implements Runnable {
     private final ArrayDeque<QueuedCommand> commands = new ArrayDeque<>();
     private boolean closed;
 
-    DeliveryCommandPump(
+    public DeliveryCommandPump(
             WorkerDeliveryGatewayClient gateway,
             DeliveryCommandTarget commandTarget,
             BoundedDeliveryReportQueue reportQueue,
@@ -91,7 +91,7 @@ final class DeliveryCommandPump implements Runnable {
         forwardCurrentQueue();
     }
 
-    synchronized void close() {
+    public synchronized void close() {
         closed = true;
         commands.clear();
     }

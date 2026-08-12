@@ -1,5 +1,6 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.Channel;
@@ -8,32 +9,31 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
+public final class BoundWorkerConnectionDirectory
+        implements DeliveryCommandTarget {
 
-    private final Map<String, BoundWorkerConnection> connections =
+    private final Map<String, Channel> connections =
             new ConcurrentHashMap<>();
     private final WorkerDeliveryCodec codec;
+    private final TextFrameStrategy frameStrategy;
 
-    BoundWorkerConnectionDirectory(WorkerDeliveryCodec codec) {
-        this.codec = Objects.requireNonNull(codec, "codec");
-    }
-
-    void activate(
-            String workerId,
-            Channel channel,
+    public BoundWorkerConnectionDirectory(
+            WorkerDeliveryCodec codec,
             TextFrameStrategy frameStrategy
     ) {
+        this.codec = Objects.requireNonNull(codec, "codec");
+        this.frameStrategy = Objects.requireNonNull(
+                frameStrategy,
+                "frameStrategy"
+        );
+    }
+
+    void activate(String workerId, Channel channel) {
         requireWorkerId(workerId);
-        BoundWorkerConnection connection = new BoundWorkerConnection(
-                Objects.requireNonNull(channel, "channel"),
-                Objects.requireNonNull(frameStrategy, "frameStrategy")
-        );
-        BoundWorkerConnection previous = connections.put(
-                workerId,
-                connection
-        );
-        if (previous != null && previous.channel() != channel) {
-            previous.close(ConnectionCloseReason.REPLACED);
+        Channel requiredChannel = Objects.requireNonNull(channel, "channel");
+        Channel previous = connections.put(workerId, requiredChannel);
+        if (previous != null && previous != requiredChannel) {
+            frameStrategy.close(previous, ConnectionCloseReason.REPLACED);
         }
     }
 
@@ -41,7 +41,7 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         connections.computeIfPresent(workerId, (ignored, current) ->
-                current.channel() == channel ? null : current
+                current == channel ? null : current
         );
     }
 
@@ -52,15 +52,14 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
     ) {
         requireWorkerId(workerId);
         Objects.requireNonNull(command, "command");
-        BoundWorkerConnection current = connections.get(workerId);
-        if (current == null) {
+        Channel channel = connections.get(workerId);
+        if (channel == null) {
             return DeliveryAttempt.RETRY_LATER;
         }
-        Channel channel = current.channel();
         if (!channel.isActive()) {
             removeAndClose(
                     workerId,
-                    current,
+                    channel,
                     ConnectionCloseReason.TRANSPORT_ERROR
             );
             return DeliveryAttempt.RETRY_LATER;
@@ -71,14 +70,14 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
 
         ChannelFuture send;
         try {
-            send = current.frameStrategy().writeText(
+            send = frameStrategy.writeText(
                     channel,
                     codec.encodeDeliveryCommand(command)
             );
         } catch (RuntimeException error) {
             removeAndClose(
                     workerId,
-                    current,
+                    channel,
                     ConnectionCloseReason.TRANSPORT_ERROR
             );
             return DeliveryAttempt.UNKNOWN;
@@ -87,7 +86,7 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
             if (!future.isSuccess()) {
                 removeAndClose(
                         workerId,
-                        current,
+                        channel,
                         ConnectionCloseReason.TRANSPORT_ERROR
                 );
             }
@@ -103,25 +102,25 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         Objects.requireNonNull(reason, "reason");
-        BoundWorkerConnection current = connections.get(workerId);
-        if (current != null && current.channel() == channel) {
+        Channel current = connections.get(workerId);
+        if (current == channel) {
             removeAndClose(workerId, current, reason);
         } else {
             closeUntracked(channel, reason);
         }
     }
 
-    int activeConnectionCount() {
+    public int activeConnectionCount() {
         return connections.size();
     }
 
     private void removeAndClose(
             String workerId,
-            BoundWorkerConnection connection,
+            Channel channel,
             ConnectionCloseReason reason
     ) {
-        if (connections.remove(workerId, connection)) {
-            connection.close(reason);
+        if (connections.remove(workerId, channel)) {
+            frameStrategy.close(channel, reason);
         }
     }
 
@@ -142,15 +141,6 @@ final class BoundWorkerConnectionDirectory implements DeliveryCommandTarget {
     private static void requireWorkerId(String workerId) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must be non-blank");
-        }
-    }
-
-    private record BoundWorkerConnection(
-            Channel channel,
-            TextFrameStrategy frameStrategy
-    ) {
-        private void close(ConnectionCloseReason reason) {
-            frameStrategy.close(channel, reason);
         }
     }
 }

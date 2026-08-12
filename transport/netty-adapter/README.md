@@ -1,7 +1,7 @@
 # XA Mass Netty Worker Delivery Adapter
 
-Status: Java 21 multi-endpoint Adapter runtime with Netty WebSocket and
-line-delimited Socket implementations.
+Status: Java 21 multi-endpoint Adapter runtime with independently owned Netty
+WebSocket and line-delimited Socket implementations.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
@@ -9,15 +9,17 @@ batch API through its `WorkerDeliveryGatewayClient`.
 
 ## Instance Boundary
 
-The public WebSocket and Socket Adapter classes are stable construction
-façades. Both delegate to one Netty-specific internal runtime; this is shared
-mechanism, not a generic Adapter SPI. One runtime instance owns:
+Server constructs the two finite Adapter kinds through
+`NettyWorkerDeliveryAdapters`, which returns only the public
+`WorkerDeliveryAdapter` contract. The concrete WebSocket and Socket Adapter
+aggregates are package-private and each independently owns:
 
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one Netty listener
-all child Channels, including UNBOUND and VERIFYING Channels
+one concrete WebSocket or line-Socket Network Server
+one Netty listener and EventLoop
+all physical child Channels, including UNBOUND and VERIFYING Channels
 one current Channel per workerId
 one bounded DeliveryCommand queue
 one scheduled DeliveryCommand Pump
@@ -25,11 +27,34 @@ one bounded encoded DeliveryReport queue
 one scheduled DeliveryReport Pump
 ```
 
-Only `NettyWorkerDeliveryAdapterRuntime` is public for Java cross-package
-delegation. It is an internal support type imported solely by the two concrete
-façades. Session, framing, bound-directory, queue, and pump types are
-package-private. Server continues to construct only the concrete Adapter
-classes.
+The WebSocket and Socket Adapter aggregates separately own their lifecycle,
+scheduler, queues, Pumps, and exact Network Server. `WebSocketNettyServer`
+owns only the HTTP/WebSocket pipeline and physical WebSocket resources;
+`SocketNettyServer` owns only the UTF-8 line pipeline and physical Socket
+resources. There is no shared Network Server interface, abstract Adapter base,
+transport-kind branch, or generic Adapter SPI.
+
+Implementation packages follow owner responsibility rather than protocol
+similarity:
+
+```text
+netty/
+  finite public factory + package-private Adapter aggregates
+netty/internal/connection/
+  binding Session, current-Channel directory, and frame/close seam
+netty/internal/gateway/
+  DeliveryCommand target port, Result ingress buffer, and both Gateway Pumps
+netty/internal/websocket/
+  WebSocket listener, pipeline, handlers, and frame strategy
+netty/internal/socket/
+  line-Socket listener, pipeline, handlers, and frame strategy
+```
+
+Java collaborators crossing those owner packages are `public` only for module
+assembly and remain under `netty.internal`; they are not supported construction
+contracts, and Server is guarded from importing them. The only shared physical
+seam is the two-method `TextFrameStrategy` used to write or close a bound
+Channel; it does not own listener, pipeline, handshake, or lifecycle behavior.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
 start, start in order, and close in reverse order. Multiple instances in one
@@ -108,8 +133,9 @@ enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
-The bound connection directory stores the actual Netty `Channel` plus its
-text-frame strategy. A newly activated connection
+Each Adapter constructs its bound connection directory with one fixed
+text-frame strategy. The directory stores the actual current Netty `Channel`
+for each workerId. A newly activated connection
 replaces the current Channel for that workerId. Deactivation compares workerId
 and Channel identity, so a delayed close from an old Channel cannot remove its
 replacement.

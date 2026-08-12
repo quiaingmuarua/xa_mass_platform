@@ -211,11 +211,14 @@ Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
 remain executable-spec oracles and test support. External Worker
 implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
-Adapter instances, their stable WebSocket/Socket façades, and one shared
-Netty-specific runtime per instance live in `transport/netty-adapter`;
-`server_jvm` supplies only instance configuration and process lifecycle
-events. Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or
-Redis dependency.
+Complete WebSocket and line-Socket Adapter aggregates live in
+`transport/netty-adapter`. Each aggregate independently owns its lifecycle,
+scheduler, Pumps, queues, connection directory, and protocol-specific Netty
+Network Server. The finite Netty factory is the only supported construction
+entry; cross-package collaborators remain isolated under `netty.internal`.
+`server_jvm` supplies only instance configuration and process lifecycle events.
+Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or Redis
+dependency.
 
 Use these rules:
 

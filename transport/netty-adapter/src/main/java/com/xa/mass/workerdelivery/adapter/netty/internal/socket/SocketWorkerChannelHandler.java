@@ -1,5 +1,7 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.socket;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSession;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionSessionFactory;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import java.util.Objects;

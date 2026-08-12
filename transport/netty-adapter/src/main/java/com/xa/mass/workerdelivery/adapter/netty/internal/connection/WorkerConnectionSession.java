@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
@@ -12,6 +12,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -24,7 +25,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 
-final class WorkerConnectionSession {
+public final class WorkerConnectionSession {
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionSession.class.getName()
@@ -84,7 +85,7 @@ final class WorkerConnectionSession {
         );
     }
 
-    void onText(String encodedDeliveryReport) {
+    public void onText(String encodedDeliveryReport) {
         DeliveryReport report = codec.decodeDeliveryReport(
                 encodedDeliveryReport
         );
@@ -109,7 +110,7 @@ final class WorkerConnectionSession {
         }
     }
 
-    void onInactive() {
+    public void onInactive() {
         if (phase == BindingPhase.BOUND && workerId != null) {
             connections.deactivate(workerId, context.channel());
         }
@@ -117,7 +118,7 @@ final class WorkerConnectionSession {
         workerId = null;
     }
 
-    void onException() {
+    public void onException() {
         if (phase == BindingPhase.BOUND && workerId != null) {
             connections.close(
                     workerId,
@@ -238,7 +239,7 @@ final class WorkerConnectionSession {
             return;
         }
 
-        connections.activate(identifyingWorkerId, channel, frameStrategy);
+        connections.activate(identifyingWorkerId, channel);
         workerId = identifyingWorkerId;
         phase = BindingPhase.BOUND;
         if (!acceptingConnections.getAsBoolean()) {

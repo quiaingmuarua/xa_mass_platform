@@ -1,8 +1,8 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.STARTED;
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.STARTED;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;

@@ -278,11 +278,14 @@ queue directly from the DeliveryCommand Pump rather than through Worker
 ingress. A timed DeliveryReport Pump batches the queue to Server. There is no command/result
 coupling, ACK, durable Adapter queue, or exactly-once promise.
 
-The public WebSocket and Socket Adapter classes are stable façades over one
-Netty-specific runtime per instance. That runtime owns the listener, every
-accepted child Channel (including unbound and verifying Channels), the current
-bound-route directory, both bounded pumps, and shutdown. Closing an Adapter
-therefore closes all child Channels, not only routes that reached BOUND.
+One finite construction factory returns only the public Adapter contract. The
+package-private WebSocket and Socket Adapter aggregates each own lifecycle,
+the current bound-route directory, both bounded pumps, and shutdown sequencing.
+Their exact Network Server separately owns its listener, pipeline, EventLoop,
+and every accepted child Channel, including unbound and verifying Channels.
+Closing an Adapter therefore closes all physical child Channels, not only
+routes that reached BOUND. The two physical servers do not share a transport
+kind branch or Network Server SPI.
 
 Physical disconnect is a reconnectable network fact. Only
 `ADAPTER/worker.connection.close` instructs the Worker to end its current run.

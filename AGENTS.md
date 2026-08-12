@@ -36,10 +36,17 @@ Status: current repository handoff.
   Adapter-directed identity Report and
   then exchange direct command/result JSON; there is no third connection DTO
   or generic connection-message envelope.
-- `transport/netty-adapter/` owns complete Adapter instances: stable concrete
-  WebSocket/Socket façades, one Netty-specific internal runtime per instance,
-  local registration, start/close lifecycle, scheduled Gateway pumps, all
-  child Channels, current bound routes, and bounded Command/Report queues.
+- `transport/netty-adapter/` owns complete Adapter instances. Server constructs
+  the finite WebSocket/Socket choices through one public factory returning
+  `WorkerDeliveryAdapter`. The two package-private concrete Adapter aggregates
+  separately own lifecycle, scheduled Gateway Pumps, current bound routes, and
+  bounded Command/Report queues. Their concrete Network Servers separately own
+  physical listeners, pipelines, EventLoops, all child Channels, and
+  transport-specific close behavior. There is no shared Network Server SPI,
+  abstract Adapter base, or transport-kind runtime. Cross-package Netty
+  collaborators are classified under `netty.internal.connection`,
+  `netty.internal.gateway`, `netty.internal.websocket`, and
+  `netty.internal.socket`; Server may depend only on the finite factory.
   Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
@@ -135,7 +142,7 @@ tag.
   methods, compatibility clients, or remote fallback.
 - Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
   access and the Kernel delivery owner facade live in `server_jvm`. The
-  Adapter Runtime may reach that facade only through the Adapter batch HTTP
+  Adapter instances may reach that facade only through the Adapter batch HTTP
   contract.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
@@ -344,7 +351,9 @@ scenario_workers_jvm
 transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-connection route verification through Server HTTP
-  -> stable WebSocket/Socket façades over one Netty-specific runtime
+  -> finite factory returning the public WorkerDeliveryAdapter contract
+  -> separate package-private WebSocket/Socket Adapter lifecycle aggregates
+  -> separate physical WebSocket/Socket Network Server owners
   -> per-endpoint Command/Report pumps and current bound-route directory
   -> all-child Channel lifecycle plus per-connection binding-phase routing
   -> direct fixed Adapter-local identity Report handshake

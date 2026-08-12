@@ -1,23 +1,23 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-final class BoundedDeliveryReportQueue {
+public final class BoundedDeliveryReportQueue {
 
     private final int capacity;
     private final ArrayDeque<String> reports = new ArrayDeque<>();
     private boolean accepting = true;
 
-    BoundedDeliveryReportQueue(int capacity) {
+    public BoundedDeliveryReportQueue(int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
         }
         this.capacity = capacity;
     }
 
-    synchronized OfferStatus offer(String encodedDeliveryReport) {
+    public synchronized OfferStatus offer(String encodedDeliveryReport) {
         if (encodedDeliveryReport == null || encodedDeliveryReport.isEmpty()) {
             throw new IllegalArgumentException(
                     "encodedDeliveryReport must be non-empty"
@@ -49,7 +49,7 @@ final class BoundedDeliveryReportQueue {
         return reports.isEmpty();
     }
 
-    enum OfferStatus {
+    public enum OfferStatus {
         ACCEPTED,
         FULL,
         CLOSED

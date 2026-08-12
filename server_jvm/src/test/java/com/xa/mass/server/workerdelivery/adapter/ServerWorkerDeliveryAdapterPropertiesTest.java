@@ -3,9 +3,8 @@ package com.xa.mass.server.workerdelivery.adapter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
-import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import java.net.URI;
 import java.time.Duration;
@@ -56,16 +55,12 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
             );
             assertThat(manager.adapters().keySet())
                     .containsExactly("websocket-1", "socket-1");
-            WebSocketWorkerDeliveryAdapter first =
-                    (WebSocketWorkerDeliveryAdapter)
-                            manager.requireAdapter("websocket-1");
-            SocketWorkerDeliveryAdapter second =
-                    (SocketWorkerDeliveryAdapter)
-                            manager.requireAdapter("socket-1");
-            assertThat(first.listenHost()).isEqualTo("0.0.0.0");
-            assertThat(first.listenPort()).isEqualTo(18083);
-            assertThat(second.listenHost()).isEqualTo("127.0.0.1");
-            assertThat(second.listenPort()).isEqualTo(18084);
+            WorkerDeliveryAdapter first =
+                    manager.requireAdapter("websocket-1");
+            WorkerDeliveryAdapter second =
+                    manager.requireAdapter("socket-1");
+            assertThat(first.adapterId()).isEqualTo("websocket-1");
+            assertThat(second.adapterId()).isEqualTo("socket-1");
         });
     }
 

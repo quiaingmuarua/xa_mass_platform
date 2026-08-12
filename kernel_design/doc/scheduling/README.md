@@ -148,12 +148,13 @@ Other scheduling pacers
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
-  result ingress; stable concrete Adapter façades delegate each complete
-  instance to one Netty-specific runtime. That runtime owns a listener,
-  start/close, all child Channels, the bound-route directory, scheduled
-  Command/Report pumps, bounded non-blocking delivery, and Report buffering.
-  Server only binds instance config and invokes lifecycle; neither
-  path selects Workers nor mutates score
+  result ingress; a finite factory creates separate package-private WebSocket
+  and Socket Adapter aggregates. Each aggregate owns start/close, the
+  bound-route directory, scheduled Command/Report pumps, bounded non-blocking
+  delivery, and Report buffering, while its exact Network Server owns the
+  listener, pipeline, EventLoop, and all physical child Channels. Server only
+  binds instance config and invokes lifecycle; neither path selects Workers
+  nor mutates score
 ```
 
 ## Mechanism Status

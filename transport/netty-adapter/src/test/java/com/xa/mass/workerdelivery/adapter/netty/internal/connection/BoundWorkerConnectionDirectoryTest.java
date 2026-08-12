@@ -1,11 +1,13 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
-import static com.xa.mass.workerdelivery.adapter.internal.DeliveryCommandTarget.DeliveryAttempt.STARTED;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.STARTED;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.socket.SocketLineFrameStrategy;
+import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketTextFrameStrategy;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -20,20 +22,14 @@ class BoundWorkerConnectionDirectoryTest {
 
     @Test
     void webSocketReplacementAndOldDeactivationPreserveCurrentChannel() {
-        BoundWorkerConnectionDirectory directory = directory();
+        BoundWorkerConnectionDirectory directory = directory(
+                WebSocketTextFrameStrategy.INSTANCE
+        );
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
-            directory.activate(
-                    "worker-1",
-                    first,
-                    WebSocketTextFrameStrategy.INSTANCE
-            );
-            directory.activate(
-                    "worker-1",
-                    second,
-                    WebSocketTextFrameStrategy.INSTANCE
-            );
+            directory.activate("worker-1", first);
+            directory.activate("worker-1", second);
             directory.deactivate("worker-1", first);
             DeliveryCommand command = command();
 
@@ -59,20 +55,14 @@ class BoundWorkerConnectionDirectoryTest {
 
     @Test
     void socketReplacementWritesOneLineToTheLatestChannel() {
-        BoundWorkerConnectionDirectory directory = directory();
+        BoundWorkerConnectionDirectory directory = directory(
+                SocketLineFrameStrategy.INSTANCE
+        );
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
-            directory.activate(
-                    "worker-1",
-                    first,
-                    SocketLineFrameStrategy.INSTANCE
-            );
-            directory.activate(
-                    "worker-1",
-                    second,
-                    SocketLineFrameStrategy.INSTANCE
-            );
+            directory.activate("worker-1", first);
+            directory.activate("worker-1", second);
             directory.deactivate("worker-1", first);
 
             assertThat(directory.deliver("worker-1", command()))
@@ -91,17 +81,15 @@ class BoundWorkerConnectionDirectoryTest {
 
     @Test
     void missingOrInactiveChannelRetriesWithoutAWrite() {
-        BoundWorkerConnectionDirectory directory = directory();
+        BoundWorkerConnectionDirectory directory = directory(
+                SocketLineFrameStrategy.INSTANCE
+        );
         assertThat(directory.deliver("worker-1", command()))
                 .isEqualTo(RETRY_LATER);
 
         EmbeddedChannel inactive = new EmbeddedChannel();
         inactive.close();
-        directory.activate(
-                "worker-1",
-                inactive,
-                SocketLineFrameStrategy.INSTANCE
-        );
+        directory.activate("worker-1", inactive);
 
         assertThat(directory.deliver("worker-1", command()))
                 .isEqualTo(RETRY_LATER);
@@ -111,20 +99,14 @@ class BoundWorkerConnectionDirectoryTest {
 
     @Test
     void closingAnOldChannelCannotRemoveItsReplacement() {
-        BoundWorkerConnectionDirectory directory = directory();
+        BoundWorkerConnectionDirectory directory = directory(
+                WebSocketTextFrameStrategy.INSTANCE
+        );
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
-            directory.activate(
-                    "worker-1",
-                    first,
-                    WebSocketTextFrameStrategy.INSTANCE
-            );
-            directory.activate(
-                    "worker-1",
-                    second,
-                    WebSocketTextFrameStrategy.INSTANCE
-            );
+            directory.activate("worker-1", first);
+            directory.activate("worker-1", second);
             directory.close(
                     "worker-1",
                     first,
@@ -140,8 +122,10 @@ class BoundWorkerConnectionDirectoryTest {
         }
     }
 
-    private BoundWorkerConnectionDirectory directory() {
-        return new BoundWorkerConnectionDirectory(codec);
+    private BoundWorkerConnectionDirectory directory(
+            TextFrameStrategy frameStrategy
+    ) {
+        return new BoundWorkerConnectionDirectory(codec, frameStrategy);
     }
 
     private static DeliveryCommand command() {

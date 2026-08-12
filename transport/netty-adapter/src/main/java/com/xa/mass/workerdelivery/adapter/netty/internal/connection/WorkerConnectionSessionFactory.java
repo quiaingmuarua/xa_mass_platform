@@ -1,13 +1,14 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-final class WorkerConnectionSessionFactory {
+public final class WorkerConnectionSessionFactory {
 
     private final BoundWorkerConnectionDirectory connections;
     private final WorkerDeliveryCodec codec;
@@ -19,7 +20,7 @@ final class WorkerConnectionSessionFactory {
     private final TextFrameStrategy frameStrategy;
     private final String operationPrefix;
 
-    WorkerConnectionSessionFactory(
+    public WorkerConnectionSessionFactory(
             BoundWorkerConnectionDirectory connections,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
@@ -56,7 +57,7 @@ final class WorkerConnectionSessionFactory {
         );
     }
 
-    WorkerConnectionSession create(ChannelHandlerContext context) {
+    public WorkerConnectionSession create(ChannelHandlerContext context) {
         return new WorkerConnectionSession(
                 connections,
                 codec,

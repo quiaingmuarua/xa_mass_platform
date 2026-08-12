@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.internal;
+package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
