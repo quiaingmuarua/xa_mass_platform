@@ -93,13 +93,14 @@ Start the Runtime API Server with the reusable Worker scenario:
 ```
 
 The default Server profile has no Adapter and no built-in Worker. The explicit
-profile initializes two advisory WorkerGroup catalog entries and starts one
-real WebSocket Adapter. Scenario initializes defaults only for configured
-WorkerGroup directories that do not yet exist, discovers the exact Worker
-files in both Group directories, registers or restores each client Worker
-identity, binds the complete Properties snapshot, starts 20 real WebSocket
-Worker transports, and finally attempts the explicit Property Index updates
-through the public Runtime API.
+profile initializes three advisory WorkerGroup catalog entries and starts one
+real WebSocket Adapter. Two entries belong to the JVM Scenario assembly; the
+third is reserved for the externally hosted Android demo. Scenario initializes
+defaults only for configured JVM Group directories that do not yet exist,
+discovers the exact Worker files in both directories, registers or restores
+each client Worker identity, binds the complete Properties snapshot, starts 20
+real WebSocket Worker transports, and finally attempts the explicit Property
+Index updates through the public Runtime API.
 There is no separate Worker launcher or in-process delivery shortcut.
 
 The first start creates both configured Group directories and 20 JSON files.

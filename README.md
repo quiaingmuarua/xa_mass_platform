@@ -52,8 +52,9 @@ The repository contains seven active areas:
   Worker identity resolution, Task creation, and single-Item RPC invocation
   through the public Runtime API, with independent JSONL evidence for each
   WorkerGroup. The `scenario-workers`
-  Server profile composes one real WebSocket Adapter with two reusable
-  Scenario WorkerGroups and six capabilities. The installable
+  Server profile composes one real WebSocket Adapter, two reusable JVM
+  Scenario WorkerGroups with six capabilities, and the advisory Android demo
+  WorkerGroup. The installable
   [`android-websocket-worker`](integrations/android-websocket-worker/) App
   separately proves public Register/Bind, the Android network Client, shared
   Worker Core, and a real device WebSocket Task result without embedding Task

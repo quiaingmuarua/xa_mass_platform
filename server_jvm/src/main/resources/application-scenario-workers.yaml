@@ -32,6 +32,12 @@ xa:
               "string.sha1",
               "string.base64.encode"
             ]
+          },
+          "android-demo-workers": {
+            "attributes": {"capability":"android-demo-state"},
+            "eventCodes": [
+              "android.demo.state.read"
+            ]
           }
         }
       worker-config-json: |

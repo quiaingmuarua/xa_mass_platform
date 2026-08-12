@@ -104,20 +104,20 @@ python -m kernel_design.runtime_server `
   --config integrations/android-websocket-worker/kernel-config.json
 ```
 
-Start the Java Runtime API with the dedicated profile:
+Start the Java Runtime API with the shared demo profile:
 
 ```powershell
 .\gradlew.bat :server_jvm:bootRun `
-  --args="--spring.profiles.active=android-worker-demo"
+  --args="--spring.profiles.active=scenario-workers"
 ```
 
-The profile initializes only `android-demo-workers` and the
-`android-demo-websocket` Adapter on port `18085`; it starts no JVM Scenario
-Workers. Route both required device-local ports to the Windows host:
+The profile initializes `android-demo-workers` alongside the two JVM Scenario
+WorkerGroups and shares the `scenario-websocket` Adapter on port `18083`.
+Route both required device-local ports to the Windows host:
 
 ```powershell
 adb reverse tcp:18082 tcp:18082
-adb reverse tcp:18085 tcp:18085
+adb reverse tcp:18083 tcp:18083
 ```
 
 Install and open the App:

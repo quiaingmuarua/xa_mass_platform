@@ -536,11 +536,13 @@ xa:
 ```
 
 Both JSON values default to `{}`. The checked-in
-`scenario-workers` profile declares one WebSocket Adapter and two independent
+`scenario-workers` profile declares one WebSocket Adapter and three advisory
 Worker capability groups. It creates no Task and has no dependency on RPC,
-ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
-groups discover their replicas from the fixed local Lab root
+ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. The two
+JVM Scenario groups discover their replicas from the fixed local Lab root
 `data/scenario-workers`; `worker-config-json` contains no Worker entries.
+The third catalog entry, `android-demo-workers`, is reserved for the external
+Android App and is deliberately absent from `worker-config-json`.
 Omitted runtime fields use a 10-second request timeout, the default bounded
 connection policy, and a 15-second initial-connect timeout.
 
@@ -610,15 +612,15 @@ one Bind control request for every start session, connect with
 an Adapter-directed `worker.connection.identify` Result, and own their own
 process lifecycle.
 
-### Android Worker Demo Profile
+### Unified Scenario Demo Profile
 
-The `android-worker-demo` profile exists for the installable
+The installable
 [`integrations/android-websocket-worker`](../integrations/android-websocket-worker/)
-application. It initializes the advisory `android-demo-workers` catalog entry,
-starts only the `android-demo-websocket` Adapter on `127.0.0.1:18085`, and
-leaves Scenario Worker configuration empty. The Android App performs its own
-public Register, Endpoint Bind, and Worker connection flow; Server does not
-construct or manage that Worker.
+application uses the same `scenario-workers` profile as the JVM demo. That
+profile initializes the advisory `android-demo-workers` catalog entry and
+shares the `scenario-websocket` Adapter on `127.0.0.1:18083`. The Android App
+performs its own public Register, Endpoint Bind, and Worker connection flow;
+Server and `scenario_workers_jvm` do not construct or manage that Worker.
 
 The demo App restores its long-lived Worker ID but performs Bind on every
 Worker start. The returned Endpoint URI is reused only by the WebSocket
@@ -626,12 +628,12 @@ Client's bounded temporary reconnects. Exhaustion returns control to Core,
 which prepares and Binds again; the URI is not persisted by Android.
 
 The profile publishes a device-local URI because the documented real-device
-path uses `adb reverse` for ports `18082` and `18085`. This is a debug
+path uses `adb reverse` for ports `18082` and `18083`. This is a debug
 deployment address, not an Adapter discovery or authentication mechanism.
 
 ```text
 ./gradlew :server_jvm:bootRun \
-  --args="--spring.profiles.active=android-worker-demo"
+  --args="--spring.profiles.active=scenario-workers"
 ```
 
 Defaults:

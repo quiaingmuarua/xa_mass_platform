@@ -325,10 +325,11 @@ tag.
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
 - The checked-in `scenario-workers` profile is capability assembly only. It
-  may declare WorkerGroups referencing the finite phone-number and string
-  utility event codes, but it must
-  not create Tasks or bind those Workers to RPC, Task type, or scheduling
-  policy. Individual Workers come only from the profile-owned
+  declares advisory WorkerGroup catalogs for the finite phone-number and
+  string-utility Scenario capabilities plus the externally hosted Android demo
+  capability, but it must not create Tasks or bind those Workers to RPC, Task
+  type, or scheduling policy. Individual JVM Scenario Workers come only from
+  the profile-owned
   `data/scenario-workers` Lab, never from an inline config array. A missing
   configured Group directory initializes only that Group's checked-in
   defaults; an existing directory receives no default mutation. WorkerGroup

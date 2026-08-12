@@ -79,9 +79,12 @@ class ServerWorkerAssemblyPropertiesTest {
             assertThat(properties.groupConfigJson())
                     .contains("\"scenario-phone-number-workers\"")
                     .contains("\"scenario-string-utils-workers\"")
+                    .contains("\"android-demo-workers\"")
                     .contains("\"capability\":\"libphonenumber\"")
+                    .contains("\"capability\":\"android-demo-state\"")
                     .contains("\"phonenumber.e164\"")
                     .contains("\"string.md5\"")
+                    .contains("\"android.demo.state.read\"")
                     .doesNotContain("\"workers\"");
             assertThat(properties.workerConfigJson())
                     .contains("\"scenario-phone-number-workers\"")
@@ -94,32 +97,12 @@ class ServerWorkerAssemblyPropertiesTest {
                     .doesNotContain("\"workerGroupId\"")
                     .doesNotContain("\"attributes\"")
                     .doesNotContain("\"workers\"")
+                    .doesNotContain("\"android-demo-workers\"")
+                    .doesNotContain("android.demo.state.read")
                     .doesNotContain("clientWorkerKey")
                     .doesNotContain("sandboxDirectory");
             assertThat(properties.sandboxRoot())
                     .isEqualTo("data/scenario-workers");
-        });
-    }
-
-    @Test
-    void androidWorkerDemoProfileStartsOnlyItsCatalogAndAdapter() {
-        contextRunner.withInitializer(
-                new ConfigDataApplicationContextInitializer()
-        ).withPropertyValues(
-                "spring.profiles.active=android-worker-demo"
-        ).run(context -> {
-            assertThat(context).hasNotFailed();
-            assertThat(context.getBean(
-                    WorkerDeliveryAdapterManager.class
-            ).adapters()).containsOnlyKeys("android-demo-websocket");
-            ServerWorkerAssemblyProperties properties = context.getBean(
-                    ServerWorkerAssemblyProperties.class
-            );
-            assertThat(properties.groupConfigJson())
-                    .contains("\"android-demo-workers\"")
-                    .contains("\"android.demo.state.read\"")
-                    .contains("\"android-demo-state\"");
-            assertThat(properties.workerConfigJson()).isEqualTo("{}");
         });
     }
 
