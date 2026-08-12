@@ -27,8 +27,6 @@ public interface NettyWorkerServer extends AutoCloseable {
             AdapterConnectionCloseReason reason
     );
 
-    int trackedConnectionCount();
-
     @Override
     void close();
 }

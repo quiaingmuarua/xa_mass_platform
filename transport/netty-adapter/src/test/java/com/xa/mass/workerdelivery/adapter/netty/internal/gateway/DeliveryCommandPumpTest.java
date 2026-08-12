@@ -177,6 +177,27 @@ class DeliveryCommandPumpTest {
                 ));
     }
 
+    @Test
+    void completedCloseDiscardsCommandsRetainedForRetry() {
+        FakeGateway gateway = new FakeGateway();
+        gateway.batches.add(commands("worker-1"));
+        DeliveryCommandPump pump = pump(
+                gateway,
+                new RecordingTarget(RETRY_LATER),
+                new BoundedDeliveryReportQueue(10),
+                1,
+                1,
+                1_000
+        );
+        pump.run();
+        assertThat(pump.queuedCommandCount()).isOne();
+
+        pump.close();
+        pump.finishCloseAfterSchedulerStop();
+
+        assertThat(pump.queuedCommandCount()).isZero();
+    }
+
     private static DeliveryCommandPump pump(
             WorkerDeliveryGatewayClient gateway,
             DeliveryCommandTarget target,

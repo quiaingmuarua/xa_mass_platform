@@ -24,7 +24,6 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -55,13 +54,10 @@ class WebSocketAdapterContractTest {
         WebSocket socket = connect(port, probe);
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
-            awaitTracked(adapter);
 
             adapter.close();
 
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(adapter.trackedConnectionCount()).isZero();
-            assertThat(adapter.activeConnectionCount()).isZero();
         } finally {
             socket.abort();
             adapter.close();
@@ -109,13 +105,10 @@ class WebSocketAdapterContractTest {
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
             awaitVerification(gateway);
-            assertThat(adapter.activeConnectionCount()).isZero();
-            assertThat(adapter.trackedConnectionCount()).isEqualTo(1);
 
             adapter.close();
 
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(adapter.trackedConnectionCount()).isZero();
         } finally {
             verification.complete(null);
             socket.abort();
@@ -142,12 +135,16 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitActive(adapter);
+            awaitRoutable(gateway, firstProbe);
             assertThat(gateway.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
 
-            first.abort();
-            awaitInactive(adapter);
+            first.sendClose(WebSocket.NORMAL_CLOSURE, "")
+                    .get(2, TimeUnit.SECONDS);
+            assertThat(firstProbe.closed.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
 
             DeliveryCommand command = command(
                     "cached-during-disconnect"
@@ -161,7 +158,6 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitActive(adapter);
 
             assertThat(gateway.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
@@ -223,9 +219,6 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitActive(first);
-            awaitActive(second);
-
             DeliveryCommand firstCommand = command(
                     "a5e9e10d-f78b-469e-93ab-864b49c189c1"
             );
@@ -363,13 +356,61 @@ class WebSocketAdapterContractTest {
     }
 
     @Test
+    void schedulerShutdownNowOnlyConsumesTheRemainingOwnerBudget()
+            throws InterruptedException {
+        StubbornGateway gateway = new StubbornGateway();
+        Duration shutdownTimeout = Duration.ofMillis(40);
+        NettyWorkerDeliveryAdapter adapter =
+                (NettyWorkerDeliveryAdapter)
+                        NettyWorkerDeliveryAdapters.webSocket(
+                                "websocket-1",
+                                gateway,
+                                "127.0.0.1",
+                                availablePort(),
+                                Duration.ofMillis(5),
+                                100,
+                                1000,
+                                Duration.ofSeconds(10),
+                                1000,
+                                Duration.ofSeconds(1),
+                                shutdownTimeout
+                        );
+        adapter.start();
+        assertThat(gateway.consumeStarted.await(
+                2,
+                TimeUnit.SECONDS
+        )).isTrue();
+        long started = System.nanoTime();
+        try {
+            WorkerDeliveryAdapterException failure =
+                    org.junit.jupiter.api.Assertions.assertThrows(
+                            WorkerDeliveryAdapterException.class,
+                            adapter::close
+                    );
+            assertThat(failure.errorCode()).isEqualTo(
+                    WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT
+            );
+            assertThat(failure.operation())
+                    .isEqualTo("netty.stopScheduler");
+            assertThat(Duration.ofNanos(System.nanoTime() - started))
+                    .isLessThan(Duration.ofSeconds(1));
+            assertThat(adapter.state())
+                    .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
+        } finally {
+            gateway.release.countDown();
+            adapter.close();
+        }
+    }
+
+    @Test
     void requiresIdentityResultAndRejectsNonIdentityFirstMessage()
             throws Exception {
         int port = availablePort();
+        FakeGateway gateway = new FakeGateway();
         NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
-                new FakeGateway()
+                gateway
         );
         adapter.start();
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
@@ -403,12 +444,11 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            awaitActive(adapter);
+            awaitRoutable(gateway, identified);
             identifiedSocket.sendText(
                     encodeIdentity(codec, WORKER_ID),
                     true
             ).get(2, TimeUnit.SECONDS);
-            assertThat(adapter.activeConnectionCount()).isEqualTo(1);
 
             Probe oldPath = new Probe();
             assertThatThrownBy(() -> HttpClient.newHttpClient()
@@ -458,7 +498,6 @@ class WebSocketAdapterContractTest {
                     .isEqualTo(WORKER_CONNECTION_CLOSE_EVENT_CODE);
             assertThat(close.payload()).isEqualTo("null");
             assertThat(close.forward()).isEmpty();
-            assertThat(adapter.activeConnectionCount()).isZero();
             assertThat(gateway.appendedResults).isEmpty();
         } finally {
             socket.abort();
@@ -485,7 +524,6 @@ class WebSocketAdapterContractTest {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(probe.messages).isEmpty();
-            assertThat(adapter.activeConnectionCount()).isZero();
         } finally {
             socket.abort();
             adapter.close();
@@ -508,7 +546,7 @@ class WebSocketAdapterContractTest {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
-            awaitActive(adapter);
+            awaitRoutable(gateway, probe);
 
             send(socket, "{bad-json");
             send(socket, codec.encodeDeliveryReport(result(
@@ -554,7 +592,6 @@ class WebSocketAdapterContractTest {
                     .containsExactly(List.of(accepted));
             assertThat(gateway.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
-            assertThat(adapter.activeConnectionCount()).isEqualTo(1);
         } finally {
             socket.abort();
             adapter.close();
@@ -578,7 +615,7 @@ class WebSocketAdapterContractTest {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         try {
             assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
-            awaitActive(adapter);
+            awaitRoutable(gateway, probe);
             send(socket, codec.encodeDeliveryReport(result(
                     TASK,
                     "test.observe",
@@ -593,7 +630,6 @@ class WebSocketAdapterContractTest {
             )));
 
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(adapter.activeConnectionCount()).isZero();
             assertThat(gateway.appendedResults).isEmpty();
         } finally {
             socket.abort();
@@ -706,43 +742,17 @@ class WebSocketAdapterContractTest {
         );
     }
 
-    private static void awaitActive(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.activeConnectionCount() == 1) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker connection was not bound");
-    }
-
-    private static void awaitTracked(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.trackedConnectionCount() == 1) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker channel was not tracked");
-    }
-
-    private static void awaitInactive(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.activeConnectionCount() == 0) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker connection remained active");
+    private static void awaitRoutable(
+            FakeGateway gateway,
+            Probe probe
+    ) throws InterruptedException {
+        DeliveryCommand barrier = command("route-ready");
+        gateway.batches.add(Map.of(WORKER_ID, barrier));
+        assertThat(probe.message.await(3, TimeUnit.SECONDS)).isTrue();
+        assertThat(new WorkerDeliveryCodec().decodeDeliveryCommand(
+                probe.messages.getFirst()
+        )).isEqualTo(barrier);
+        probe.resetMessages();
     }
 
     private static void awaitCommandConsumed(FakeGateway gateway)
@@ -873,15 +883,56 @@ class WebSocketAdapterContractTest {
         }
     }
 
+    private static final class StubbornGateway
+            implements WorkerDeliveryGatewayClient {
+
+        private final CountDownLatch consumeStarted =
+                new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        @Override
+        public Map<String, DeliveryCommand> consumeWorkerCommands(
+                String endpointManagerId,
+                int limit
+        ) {
+            consumeStarted.countDown();
+            boolean interrupted = false;
+            while (release.getCount() > 0) {
+                try {
+                    release.await();
+                } catch (InterruptedException error) {
+                    interrupted = true;
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return Map.of();
+        }
+
+        @Override
+        public void appendResults(
+                String endpointManagerId,
+                List<String> results
+        ) {
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void>
+        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     private static final class Probe implements WebSocket.Listener {
 
         private final String workerId;
         private final WorkerDeliveryCodec codec =
                 new WorkerDeliveryCodec();
         private final CountDownLatch opened = new CountDownLatch(1);
-        private final CountDownLatch message = new CountDownLatch(1);
+        private volatile CountDownLatch message = new CountDownLatch(1);
         private final CountDownLatch closed = new CountDownLatch(1);
-        private final List<String> messages = new ArrayList<>();
+        private final List<String> messages = new CopyOnWriteArrayList<>();
         private final StringBuilder fragments = new StringBuilder();
         private volatile int closeStatusCode;
 
@@ -937,6 +988,11 @@ class WebSocketAdapterContractTest {
             closeStatusCode = statusCode;
             closed.countDown();
             return CompletableFuture.completedFuture(null);
+        }
+
+        private void resetMessages() {
+            messages.clear();
+            message = new CountDownLatch(1);
         }
     }
 

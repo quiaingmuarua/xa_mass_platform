@@ -31,7 +31,6 @@ class WorkerRouteRegistryTest {
             assertThat(registry.inspectInbound(second).kind()).isEqualTo(
                     WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
             );
-            assertThat(registry.pendingVerificationCount()).isEqualTo(1);
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();
@@ -66,7 +65,6 @@ class WorkerRouteRegistryTest {
 
             assertThat(registry.activeChannel("worker-1"))
                     .isSameAs(replacement);
-            assertThat(registry.activeConnectionCount()).isEqualTo(1);
         } finally {
             first.finishAndReleaseAll();
             replacement.finishAndReleaseAll();
@@ -82,8 +80,7 @@ class WorkerRouteRegistryTest {
             verifyAndActivate(registry, "worker-1", first);
             registry.onChannelClosed(first);
 
-            assertThat(registry.activeConnectionCount()).isZero();
-            assertThat(registry.verifiedWorkerCount()).isEqualTo(1);
+            assertThat(registry.activeChannel("worker-1")).isNull();
 
             var admission = registry.admitIdentity("worker-1", reconnect);
             assertThat(admission.kind()).isEqualTo(
@@ -155,9 +152,16 @@ class WorkerRouteRegistryTest {
             verifyAndActivate(secondRegistry, "worker-1", second);
             firstRegistry.clear();
 
-            assertThat(firstRegistry.activeConnectionCount()).isZero();
-            assertThat(firstRegistry.verifiedWorkerCount()).isZero();
-            assertThat(firstRegistry.pendingVerificationCount()).isZero();
+            assertThat(firstRegistry.activeChannel("worker-1")).isNull();
+            assertThat(firstRegistry.inspectInbound(first).kind())
+                    .isEqualTo(
+                            WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
+                    );
+            assertThat(firstRegistry.admitIdentity("worker-1", first).kind())
+                    .isEqualTo(
+                            WorkerRouteRegistry.IdentityAdmissionKind
+                                    .VERIFICATION_CLAIMED
+                    );
             assertThat(secondRegistry.activeChannel("worker-1"))
                     .isSameAs(second);
         } finally {

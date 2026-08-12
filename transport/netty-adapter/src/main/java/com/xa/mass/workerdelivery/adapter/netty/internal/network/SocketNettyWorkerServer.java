@@ -41,7 +41,7 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
     private final Set<Channel> childChannels = ConcurrentHashMap.newKeySet();
     private EventLoopGroup eventLoopGroup;
     private Channel listener;
-    private boolean closed;
+    private volatile boolean closed;
 
     public SocketNettyWorkerServer(
             String adapterId,
@@ -200,11 +200,6 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
     }
 
     @Override
-    public int trackedConnectionCount() {
-        return childChannels.size();
-    }
-
-    @Override
     public void close() {
         EventLoopGroup stoppingGroup;
         Channel stoppingListener;
@@ -219,10 +214,11 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
             listener = null;
         }
 
+        long deadline = System.nanoTime() + shutdownTimeout.toNanos();
         RuntimeException failure = null;
-        failure = closeListener(stoppingListener, failure);
-        failure = closeChildChannels(failure);
-        failure = stopEventLoop(stoppingGroup, failure);
+        failure = closeListener(stoppingListener, deadline, failure);
+        failure = closeChildChannels(deadline, failure);
+        failure = stopEventLoop(stoppingGroup, deadline, failure);
         if (failure != null) {
             throw failure;
         }
@@ -242,9 +238,18 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
         channel.closeFuture().addListener(ignored ->
                 childChannels.remove(channel)
         );
+        if (closed) {
+            closeConnection(
+                    channel,
+                    AdapterConnectionCloseReason.ADAPTER_STOPPING
+            );
+        }
     }
 
-    private RuntimeException closeChildChannels(RuntimeException failure) {
+    private RuntimeException closeChildChannels(
+            long deadline,
+            RuntimeException failure
+    ) {
         try {
             for (Channel channel : Set.copyOf(childChannels)) {
                 closeConnection(
@@ -252,18 +257,30 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
                         AdapterConnectionCloseReason.ADAPTER_STOPPING
                 );
             }
-            long deadline = System.nanoTime() + shutdownTimeout.toNanos();
+            boolean timedOut = false;
             for (Channel channel : Set.copyOf(childChannels)) {
-                long remaining = deadline - System.nanoTime();
-                if (remaining > 0) {
-                    channel.closeFuture().awaitUninterruptibly(
-                            remaining,
-                            TimeUnit.NANOSECONDS
-                    );
+                ChannelFuture closeFuture = channel.closeFuture();
+                if (!awaitUntil(closeFuture, deadline)) {
+                    timedOut = true;
                 }
                 if (channel.isOpen()) {
-                    channel.close().syncUninterruptibly();
+                    closeBestEffort(channel);
                 }
+                if (closeFuture.isDone() && !closeFuture.isSuccess()) {
+                    failure = accumulateFutureFailure(
+                            failure,
+                            closeFuture
+                    );
+                }
+            }
+            if (timedOut) {
+                failure = accumulate(
+                        failure,
+                        shutdownTimeout(
+                                "netty.closeConnections",
+                                "Socket Worker connections"
+                        )
+                );
             }
             return failure;
         } catch (RuntimeException error) {
@@ -273,35 +290,107 @@ public final class SocketNettyWorkerServer implements NettyWorkerServer {
 
     private RuntimeException stopEventLoop(
             EventLoopGroup group,
+            long deadline,
             RuntimeException failure
     ) {
         if (group == null) {
             return failure;
         }
         try {
-            group.shutdownGracefully(
+            long remaining = Math.max(0, deadline - System.nanoTime());
+            var termination = group.shutdownGracefully(
                     0,
-                    shutdownTimeout.toMillis(),
-                    TimeUnit.MILLISECONDS
-            ).syncUninterruptibly();
-            return failure;
+                    remaining,
+                    TimeUnit.NANOSECONDS
+            );
+            if (!awaitUntil(termination, deadline)) {
+                group.shutdownGracefully(0, 0, TimeUnit.NANOSECONDS);
+                return accumulate(
+                        failure,
+                        shutdownTimeout(
+                                "netty.stopEventLoop",
+                                "Socket Worker EventLoop"
+                        )
+                );
+            }
+            return accumulateFutureFailure(failure, termination);
         } catch (RuntimeException error) {
             return accumulate(failure, error);
         }
     }
 
-    private static RuntimeException closeListener(
+    private RuntimeException closeListener(
             Channel channel,
+            long deadline,
             RuntimeException failure
     ) {
         if (channel == null) {
             return failure;
         }
         try {
-            channel.close().syncUninterruptibly();
-            return failure;
+            ChannelFuture closeFuture = channel.close();
+            if (!awaitUntil(closeFuture, deadline)) {
+                closeBestEffort(channel);
+                return accumulate(
+                        failure,
+                        shutdownTimeout(
+                                "netty.closeListener",
+                                "Socket Worker listener"
+                        )
+                );
+            }
+            return accumulateFutureFailure(failure, closeFuture);
         } catch (RuntimeException error) {
             return accumulate(failure, error);
+        }
+    }
+
+    private static boolean awaitUntil(
+            io.netty.util.concurrent.Future<?> future,
+            long deadline
+    ) {
+        if (future.isDone()) {
+            return true;
+        }
+        long remaining = deadline - System.nanoTime();
+        return remaining > 0 && future.awaitUninterruptibly(
+                remaining,
+                TimeUnit.NANOSECONDS
+        );
+    }
+
+    private static RuntimeException accumulateFutureFailure(
+            RuntimeException failure,
+            io.netty.util.concurrent.Future<?> future
+    ) {
+        Throwable cause = future.cause();
+        if (future.isSuccess() || cause == null) {
+            return failure;
+        }
+        RuntimeException error = cause instanceof RuntimeException runtime
+                ? runtime
+                : new RuntimeException(cause);
+        return accumulate(failure, error);
+    }
+
+    private WorkerDeliveryAdapterException shutdownTimeout(
+            String operation,
+            String resource
+    ) {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_TIMEOUT,
+                operation,
+                resource + " did not stop within the Adapter "
+                        + adapterId + " owner budget",
+                null
+        );
+    }
+
+    private static void closeBestEffort(Channel channel) {
+        try {
+            channel.close();
+        } catch (RuntimeException ignored) {
+            // Physical Channel teardown is best effort after the deadline.
         }
     }
 

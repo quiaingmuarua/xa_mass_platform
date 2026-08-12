@@ -45,13 +45,12 @@ class WorkerConnectionMechanismTest {
 
             assertThat(fixture.routes.inspectInbound(channel).kind())
                     .isEqualTo(WorkerRouteRegistry.InboundKind.VERIFIED);
-            assertThat(fixture.routes.activeConnectionCount()).isEqualTo(1);
-            assertThat(fixture.routes.verifiedWorkerCount()).isEqualTo(1);
+            assertThat(fixture.routes.activeChannel("worker-1"))
+                    .isSameAs(channel);
         } finally {
             channel.finishAndReleaseAll();
         }
-        assertThat(fixture.routes.activeConnectionCount()).isZero();
-        assertThat(fixture.routes.verifiedWorkerCount()).isEqualTo(1);
+        assertThat(fixture.routes.activeChannel("worker-1")).isNull();
     }
 
     @Test
@@ -66,7 +65,8 @@ class WorkerConnectionMechanismTest {
             fixture.reportPump().run();
 
             assertThat(fixture.gateway.appendedResults).isEmpty();
-            assertThat(fixture.routes.activeConnectionCount()).isEqualTo(1);
+            assertThat(fixture.routes.activeChannel("worker-1"))
+                    .isSameAs(channel);
         } finally {
             channel.finishAndReleaseAll();
         }
@@ -105,7 +105,6 @@ class WorkerConnectionMechanismTest {
         assertThat(second.isActive()).isFalse();
         second.finishAndReleaseAll();
         first.finishAndReleaseAll();
-        assertThat(fixture.routes.pendingVerificationCount()).isZero();
 
         EmbeddedChannel retry = fixture.channel();
         try {
@@ -113,7 +112,8 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.gateway.verificationCalls).isEqualTo(2);
             fixture.gateway.currentVerification().complete(null);
             retry.runPendingTasks();
-            assertThat(fixture.routes.activeConnectionCount()).isEqualTo(1);
+            assertThat(fixture.routes.activeChannel("worker-1"))
+                    .isSameAs(retry);
         } finally {
             retry.finishAndReleaseAll();
         }
@@ -129,8 +129,14 @@ class WorkerConnectionMechanismTest {
         fixture.gateway.currentVerification().complete(null);
         channel.runPendingTasks();
 
-        assertThat(fixture.routes.activeConnectionCount()).isZero();
-        assertThat(fixture.routes.verifiedWorkerCount()).isZero();
+        assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+        EmbeddedChannel retry = fixture.channel();
+        try {
+            retry.writeInbound(fixture.identity("worker-1"));
+            assertThat(fixture.gateway.verificationCalls).isEqualTo(2);
+        } finally {
+            retry.finishAndReleaseAll();
+        }
     }
 
     @Test
@@ -324,11 +330,6 @@ class WorkerConnectionMechanismTest {
             if (reason != AdapterConnectionCloseReason.REPLACED) {
                 channel.close();
             }
-        }
-
-        @Override
-        public int trackedConnectionCount() {
-            return 0;
         }
 
         @Override

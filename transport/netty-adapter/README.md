@@ -4,6 +4,10 @@ Status: Java 21 multi-endpoint Adapter with three explicit Netty-specific
 owners: Adapter scheduling, shared connection mechanism, and complete
 WebSocket / line-Socket physical Servers.
 
+The production owner cut is frozen. Hardening may refine an owner's local
+behavior and proof, but must not introduce another lifecycle owner, shared
+Server base, Session, Bridge, or protocol-extension framework.
+
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
 batch API through its `WorkerDeliveryGatewayClient`.
@@ -35,6 +39,13 @@ Server owns its listener, EventLoop, all child Channels, complete Pipeline,
 framing, physical writes, asynchronous write failures, and close behavior.
 These are internal owners, not a public SPI or transport-kind branch.
 
+The supported construction surface is deliberately limited to
+`WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
+`WorkerDeliveryGatewayClient`, and `NettyWorkerDeliveryAdapters`. Java types
+under `netty.internal` are `public` only where repository packages must
+collaborate without JPMS; they are repository-internal and carry no external
+compatibility promise.
+
 Implementation packages follow owner responsibility rather than protocol
 similarity:
 
@@ -57,6 +68,11 @@ mechanism sees normalized strings and Netty Channels as route addresses, but
 all physical write/close operations return through `NettyWorkerServer`; it does
 not see WebSocket frames, Socket lines, handshake types, listener resources,
 or Pipeline mutation.
+
+WebSocket and Socket keep complete, separately understandable physical Server
+implementations. A test-only parameterized `NettyWorkerServer` behavior
+contract constrains their common lifecycle and normalized-text semantics; the
+production implementations do not share a lifecycle helper or base class.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
 start, start in order, and close in reverse order. Multiple instances in one
@@ -255,6 +271,19 @@ state STOPPING
 -> bounded final result flush
 -> state CLOSED
 ```
+
+`shutdownTimeout` is an owner-local budget, not one Adapter-wide deadline.
+Each physical Server computes one deadline for its listener, all child
+Channels, and EventLoop; timeout initiates remaining closes without waiting
+again and reports `SHUTDOWN_TIMEOUT (21004)`. The Adapter scheduler then gets
+its own deadline, and `shutdownNow()` may consume only that deadline's
+remainder. A scheduler that misses its budget prevents a potentially blocking
+final Report flush; the Result queue has already stopped accepting and shutdown
+returns the timeout failure after the other cleanup steps. On the normal path,
+the final flush remains best effort and is bounded by the Gateway request
+timeout. Consequently the normal worst-case close envelope is the sum of the
+physical Server budget, scheduler budget, and one Gateway final-flush request,
+not an unbounded wait.
 
 The WebSocket protocol accepts text only and normalizes
 `TextWebSocketFrame <-> String`. Socket uses

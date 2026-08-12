@@ -13,6 +13,10 @@ public enum WorkerDeliveryAdapterErrorCode {
             21003,
             "Worker Delivery Adapter shutdown was interrupted"
     ),
+    SHUTDOWN_TIMEOUT(
+            21004,
+            "Worker Delivery Adapter shutdown exceeded its owner budget"
+    ),
     GATEWAY_UNAVAILABLE(
             22001,
             "Worker Delivery Gateway is unavailable"

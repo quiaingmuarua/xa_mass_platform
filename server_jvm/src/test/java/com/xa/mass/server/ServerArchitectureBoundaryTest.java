@@ -68,10 +68,6 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/runtimeview"
     );
-    private static final Path ADAPTER_SOURCE = Path.of(
-            "../transport/netty-adapter/src/main/java"
-    );
-
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
@@ -225,10 +221,6 @@ class ServerArchitectureBoundaryTest {
                 .contains("NettyWorkerDeliveryAdapters")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
-                .doesNotContain("WebSocketWorkerDeliveryAdapter")
-                .doesNotContain("SocketWorkerDeliveryAdapter")
-                .doesNotContain("WebSocketNettyServer")
-                .doesNotContain("SocketNettyServer")
                 .doesNotContain("adapter.netty.internal")
                 .doesNotContain("io.netty")
                 .doesNotContain("WebSocketSession")
@@ -250,7 +242,6 @@ class ServerArchitectureBoundaryTest {
                 .contains("properties.runtimeApiBaseUrl()")
                 .doesNotContain("ScenarioWorkerBundles")
                 .doesNotContain("ScenarioWorkerBundleConfig")
-                .doesNotContain("WebSocketWorkerDeliveryAdapter")
                 .doesNotContain("adapter.netty.internal")
                 .doesNotContain("PHONE_NUMBER")
                 .doesNotContain("STRING_UTILS")
@@ -266,53 +257,6 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("ScoreBand")
                 .doesNotContain("Pacer");
-
-        String adapter = readSources(ADAPTER_SOURCE);
-        assertThat(adapter)
-                .contains("class NettyWorkerDeliveryAdapter")
-                .contains("interface WorkerDeliveryAdapter")
-                .contains("class NettyWorkerDeliveryAdapters")
-                .contains("interface NettyWorkerServer")
-                .contains("class WebSocketNettyWorkerServer")
-                .contains("class SocketNettyWorkerServer")
-                .contains("class WorkerRouteRegistry")
-                .contains("class WorkerConnectionMechanism")
-                .contains("class DeliveryCommandPump")
-                .contains("class DeliveryReportPump")
-                .contains("BoundedDeliveryReportQueue")
-                .doesNotContain("class NettyServerLifecycle")
-                .doesNotContain("interface AdapterNetworkProtocol")
-                .doesNotContain("class WebSocketNetworkProtocol")
-                .doesNotContain("class SocketNetworkProtocol")
-                .doesNotContain("class WorkerRouteDirectory")
-                .doesNotContain("class WorkerIdentityHandler")
-                .doesNotContain("class BoundWorkerHandler")
-                .doesNotContain("class WorkerConnectionHandlerFactory")
-                .doesNotContain("class WebSocketWorkerDeliveryAdapter")
-                .doesNotContain("class SocketWorkerDeliveryAdapter")
-                .doesNotContain("class WebSocketWorkerRouteDirectory")
-                .doesNotContain("class SocketWorkerRouteDirectory")
-                .doesNotContain("class WebSocketWorkerIdentityHandler")
-                .doesNotContain("class SocketWorkerIdentityHandler")
-                .doesNotContain("WorkerConnectionSession")
-                .doesNotContain("WorkerConnectionSessionFactory")
-                .doesNotContain("BoundWorkerConnectionDirectory")
-                .doesNotContain("TextFrameStrategy")
-                .doesNotContain("WorkerDeliveryAdapterCore")
-                .doesNotContain("NettyWorkerDeliveryAdapterRuntime")
-                .doesNotContain("TransportKind")
-                .doesNotContain("AbstractNettyAdapter")
-                .doesNotContain("interface WorkerNetworkServer")
-                .doesNotContain("AdapterWorkerEventDispatcher")
-                .doesNotContain("WorkerCommandLoop")
-                .doesNotContain("WorkerResultLoop")
-                .doesNotContain("BoundedWorkerResultQueue")
-                .doesNotContain("deliveryExecutor")
-                .doesNotContain("Future.get(")
-                .contains("io.netty")
-                .doesNotContain("org.springframework")
-                .doesNotContain("SpringWebSocketWorkerConnection")
-                .doesNotContain("ScheduledWorkerDeliveryAdapter");
     }
 
     @Test

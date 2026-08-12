@@ -81,14 +81,6 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         return state;
     }
 
-    int activeConnectionCount() {
-        return connectionMechanism.activeConnectionCount();
-    }
-
-    int trackedConnectionCount() {
-        return networkServer.trackedConnectionCount();
-    }
-
     @Override
     public synchronized void start() {
         if (state == WorkerDeliveryAdapterState.RUNNING) {
@@ -171,12 +163,16 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             connectionMechanism.clear();
         }
         cancel(stoppingReportTask);
+        reportPump.stopAccepting();
         failure = stopScheduler(stoppingScheduler, failure);
-        try {
-            reportPump.stopAccepting();
-            reportPump.closeAndFlush();
-        } catch (RuntimeException error) {
-            failure = accumulate(failure, error);
+        if (stoppingScheduler == null
+                || stoppingScheduler.isTerminated()) {
+            try {
+                commandPump.finishCloseAfterSchedulerStop();
+                reportPump.closeAndFlush();
+            } catch (RuntimeException error) {
+                failure = accumulate(failure, error);
+            }
         }
 
         synchronized (this) {
@@ -249,17 +245,24 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         if (executor == null) {
             return failure;
         }
+        long deadline = System.nanoTime() + shutdownTimeout.toNanos();
         executor.shutdown();
         try {
-            if (!executor.awaitTermination(
-                    shutdownTimeout.toMillis(),
-                    TimeUnit.MILLISECONDS
-            )) {
+            if (!awaitSchedulerUntil(executor, deadline)) {
                 executor.shutdownNow();
-                executor.awaitTermination(
-                        shutdownTimeout.toMillis(),
-                        TimeUnit.MILLISECONDS
-                );
+                if (!awaitSchedulerUntil(executor, deadline)) {
+                    return accumulate(
+                            failure,
+                            new WorkerDeliveryAdapterException(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .SHUTDOWN_TIMEOUT,
+                                    "netty.stopScheduler",
+                                    "Adapter scheduler did not stop within "
+                                            + "its shutdown budget",
+                                    null
+                            )
+                    );
+                }
             }
             return failure;
         } catch (InterruptedException error) {
@@ -276,6 +279,21 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                     )
             );
         }
+    }
+
+    private static boolean awaitSchedulerUntil(
+            ScheduledExecutorService executor,
+            long deadline
+    ) throws InterruptedException {
+        if (executor.isTerminated()) {
+            return true;
+        }
+        long remaining = deadline - System.nanoTime();
+        return remaining > 0
+                && executor.awaitTermination(
+                        remaining,
+                        TimeUnit.NANOSECONDS
+                );
     }
 
     private static void cancel(ScheduledFuture<?> task) {

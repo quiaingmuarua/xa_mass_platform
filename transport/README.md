@@ -59,7 +59,10 @@ persisted.
 The Netty Adapter is Netty-specific rather than a generic transport framework.
 Its shared connection mechanism owns identity, route verification, Command
 routing, and Result ingress; its WebSocket and Socket Servers independently
-own their complete physical network resources and protocols.
+own their complete physical network resources and protocols. This three-owner
+production cut is frozen. The two physical Servers share a behavior contract
+in tests rather than a lifecycle implementation, and each Server plus the
+Adapter scheduler enforces its own bounded shutdown budget.
 
 See:
 

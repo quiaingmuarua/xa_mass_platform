@@ -176,24 +176,6 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public int activeConnectionCount() {
-        synchronized (routeLock) {
-            return activeChannels.size();
-        }
-    }
-
-    public int verifiedWorkerCount() {
-        synchronized (routeLock) {
-            return verifiedWorkerIds.size();
-        }
-    }
-
-    public int pendingVerificationCount() {
-        synchronized (routeLock) {
-            return pendingVerifications.size();
-        }
-    }
-
     public void clear() {
         synchronized (routeLock) {
             verifiedWorkerIds.clear();

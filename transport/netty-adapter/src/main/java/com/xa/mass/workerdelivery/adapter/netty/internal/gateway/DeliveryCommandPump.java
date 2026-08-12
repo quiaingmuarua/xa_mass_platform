@@ -29,7 +29,7 @@ public final class DeliveryCommandPump implements Runnable {
     private final int queueCapacity;
     private final LongSupplier nowMillis;
     private final ArrayDeque<QueuedCommand> commands = new ArrayDeque<>();
-    private boolean closed;
+    private volatile boolean closed;
 
     public DeliveryCommandPump(
             WorkerDeliveryGatewayClient gateway,
@@ -85,14 +85,31 @@ public final class DeliveryCommandPump implements Runnable {
     @Override
     public synchronized void run() {
         if (closed) {
+            commands.clear();
             return;
         }
         refillIfNeeded();
+        if (closed) {
+            commands.clear();
+            return;
+        }
         forwardCurrentQueue();
     }
 
-    public synchronized void close() {
+    public void close() {
         closed = true;
+    }
+
+    /**
+     * Releases retained Commands after the owning scheduler has terminated.
+     * The Adapter must not call this while a pump round can still be running.
+     */
+    public synchronized void finishCloseAfterSchedulerStop() {
+        if (!closed) {
+            throw new IllegalStateException(
+                    "Delivery Command Pump must be closed first"
+            );
+        }
         commands.clear();
     }
 
@@ -133,6 +150,10 @@ public final class DeliveryCommandPump implements Runnable {
         long currentTimeMillis = nowMillis.getAsLong();
 
         for (int index = 0; index < observed; index++) {
+            if (closed) {
+                commands.clear();
+                return;
+            }
             QueuedCommand queued = commands.removeFirst();
             DeliveryCommand command = queued.command();
             if (command == null

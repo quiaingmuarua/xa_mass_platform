@@ -163,10 +163,6 @@ public final class WorkerConnectionMechanism
         };
     }
 
-    public int activeConnectionCount() {
-        return routes.activeConnectionCount();
-    }
-
     public void clear() {
         routes.clear();
     }

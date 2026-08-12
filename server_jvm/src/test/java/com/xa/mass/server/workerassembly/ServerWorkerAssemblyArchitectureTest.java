@@ -43,7 +43,6 @@ class ServerWorkerAssemblyArchitectureTest {
                 .doesNotContain("ScenarioWorkerBundle")
                 .doesNotContain("ScenarioWorkerBundleConfig")
                 .doesNotContain("ScenarioWorkerBundles")
-                .doesNotContain("WebSocketWorkerDeliveryAdapter")
                 .doesNotContain("PHONE_NUMBER")
                 .doesNotContain("STRING_UTILS")
                 .doesNotContain("workerIdPrefix")

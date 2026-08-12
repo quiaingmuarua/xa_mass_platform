@@ -49,7 +49,11 @@ Status: current repository handoff.
   abstract Adapter base, transport-kind runtime, shared mutable state, or fat
   connection Session. Cross-package Netty collaborators are classified under
   `netty.internal.gateway`, `netty.internal.connection`, and
-  `netty.internal.network`; Server may depend only on the finite factory.
+  `netty.internal.network`; they are repository-internal even when Java
+  visibility must be public. Server may depend only on the finite factory.
+  This three-owner production cut is frozen. WebSocket and Socket preserve
+  complete physical ownership and are aligned by a test-only behavior contract,
+  not a shared lifecycle implementation.
   Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
@@ -181,7 +185,12 @@ tag.
   Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. Its private
   HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
-  in-process fast path.
+  in-process fast path. `shutdownTimeout` is separately budgeted by each
+  physical Server and by the Adapter scheduler; no close path may reset a
+  spent deadline or use an unbounded wait. Normal close may additionally spend
+  one Gateway request timeout on its best-effort final Result flush. If the
+  scheduler misses its budget, stop Result acceptance, skip the contended
+  final flush, finish other cleanup, and report Adapter error `21004`.
 - `transport/worker-core` may depend only on the shared Worker Delivery
   contract. It must compile with `--release 11` and must not import OkHttp,
   Android, Netty, Spring, Redis, Server, or Kernel implementations.

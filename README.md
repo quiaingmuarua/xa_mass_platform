@@ -36,6 +36,9 @@ The repository contains seven active areas:
   WebSocket client. The Netty Adapter has three explicit owners: the Adapter
   aggregate for lifecycle and pumps, one shared connection mechanism for
   identity/routes/results, and one complete protocol-specific physical Server.
+  That production cut is frozen; WebSocket and Socket share a test behavior
+  contract while retaining independent physical ownership and owner-local
+  bounded shutdown.
   Its long-lived Worker path likewise has three explicit owners:
   Client networking and reconnect, Transport identity/Command/Result protocol, and
   `WorkerRunController` `RUNNING/STOPPED` lifecycle. Each Host `start()` makes

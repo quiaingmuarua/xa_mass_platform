@@ -49,13 +49,10 @@ class SocketAdapterContractTest {
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(2_000);
-            awaitTracked(adapter);
 
             adapter.close();
 
             assertThat(socket.getInputStream().read()).isEqualTo(-1);
-            assertThat(adapter.trackedConnectionCount()).isZero();
-            assertThat(adapter.activeConnectionCount()).isZero();
         } finally {
             adapter.close();
         }
@@ -89,7 +86,6 @@ class SocketAdapterContractTest {
             writer.write(identity(WORKER_ID));
             writer.write("\r\n");
             writer.flush();
-            awaitActive(adapter);
 
             DeliveryCommand command = command();
             gateway.batches.add(Map.of(WORKER_ID, command));
@@ -131,6 +127,12 @@ class SocketAdapterContractTest {
         adapter.start();
         try {
             try (Socket first = new Socket("127.0.0.1", port);
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(
+                                    first.getInputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    );
                     BufferedWriter writer = new BufferedWriter(
                             new OutputStreamWriter(
                                     first.getOutputStream(),
@@ -140,11 +142,13 @@ class SocketAdapterContractTest {
                 writer.write(identity(WORKER_ID));
                 writer.write('\n');
                 writer.flush();
-                awaitActive(adapter);
+                first.setSoTimeout(2_000);
+                awaitRoutable(gateway, reader);
                 assertThat(gateway.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
+                first.shutdownOutput();
+                assertThat(reader.readLine()).isNull();
             }
-            awaitInactive(adapter);
 
             DeliveryCommand command = command();
             gateway.batches.add(Map.of(WORKER_ID, command));
@@ -167,7 +171,6 @@ class SocketAdapterContractTest {
                 writer.write(identity(WORKER_ID));
                 writer.write('\n');
                 writer.flush();
-                awaitActive(adapter);
 
                 assertThat(gateway.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
@@ -225,7 +228,7 @@ class SocketAdapterContractTest {
                 writer.write(identity);
                 writer.write('\n');
                 writer.flush();
-                awaitActive(adapter);
+                awaitRoutable(gateway, reader);
 
                 writer.write(identity);
                 writer.write('\n');
@@ -273,7 +276,6 @@ class SocketAdapterContractTest {
                         .containsExactly(List.of(accepted));
                 assertThat(gateway.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
-                assertThat(adapter.activeConnectionCount()).isEqualTo(1);
             }
         } finally {
             adapter.close();
@@ -316,7 +318,6 @@ class SocketAdapterContractTest {
             assertThat(close.payload()).isEqualTo("null");
             assertThat(close.forward()).isEmpty();
             assertThat(reader.readLine()).isNull();
-            assertThat(adapter.activeConnectionCount()).isZero();
             assertThat(gateway.appendedResults).isEmpty();
         } finally {
             adapter.close();
@@ -351,7 +352,6 @@ class SocketAdapterContractTest {
             writer.flush();
 
             assertThat(reader.readLine()).isNull();
-            assertThat(adapter.activeConnectionCount()).isZero();
         } finally {
             adapter.close();
         }
@@ -385,7 +385,7 @@ class SocketAdapterContractTest {
             writer.write(identity(WORKER_ID));
             writer.write('\n');
             writer.flush();
-            awaitActive(adapter);
+            awaitRoutable(gateway, reader);
 
             writer.write(codec.encodeDeliveryReport(result(
                     TASK,
@@ -402,7 +402,6 @@ class SocketAdapterContractTest {
             writer.flush();
 
             assertThat(reader.readLine()).isNull();
-            assertThat(adapter.activeConnectionCount()).isZero();
             assertThat(gateway.appendedResults).isEmpty();
         } finally {
             adapter.close();
@@ -524,43 +523,15 @@ class SocketAdapterContractTest {
         );
     }
 
-    private static void awaitActive(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.activeConnectionCount() == 1) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker connection was not bound");
-    }
-
-    private static void awaitTracked(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.trackedConnectionCount() == 1) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker channel was not tracked");
-    }
-
-    private static void awaitInactive(NettyWorkerDeliveryAdapter adapter)
-            throws InterruptedException {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (adapter.activeConnectionCount() == 0) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Worker connection remained active");
+    private static void awaitRoutable(
+            FakeGateway gateway,
+            BufferedReader reader
+    ) throws Exception {
+        DeliveryCommand barrier = command();
+        gateway.batches.add(Map.of(WORKER_ID, barrier));
+        assertThat(new WorkerDeliveryCodec().decodeDeliveryCommand(
+                reader.readLine()
+        )).isEqualTo(barrier);
     }
 
     private static void awaitCommandConsumed(FakeGateway gateway)
