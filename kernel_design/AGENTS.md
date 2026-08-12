@@ -451,10 +451,18 @@ scans a mailbox, and `system-polling` is only a logical route binding.
 Each Java Adapter instance owns one configured non-system-polling mailbox, one
 independent Netty listener, separate scheduled Command/Report pumps, bounded
 queues, every accepted child Channel, and one protocol-specific current bound
-route per WorkerId. Its identity Handler owns awaiting-identity and route
-verification, then replaces itself with a bound Handler in that protocol's
-Pipeline. WebSocket and line-Socket Adapters share no connection Session or
-Channel directory. The Adapter owns statically bound direct
+route per WorkerId. The protocol route directory also owns a process-local set
+of verified Worker IDs and one pending first-verification Channel per WorkerId.
+Every physical connection starts with strict identity. The first occurrence in
+one Adapter process is verified through Server; ordinary disconnect removes
+only the active Channel, while a later identity reconnects from the cached
+verified route. Adapter close/restart clears verified, pending, and active
+state. The cache is not persistent Binding, authentication, online truth, TTL,
+or an implicit unbind mechanism. The identity Handler coordinates this without
+a phase state machine, drops later input while verification is pending, and
+replaces itself with a bound Handler in that protocol's Pipeline. WebSocket and
+line-Socket Adapters share no connection Session, verified cache, or Channel
+directory. The Adapter owns statically bound direct
 DeliveryCommand/DeliveryReport transport and Adapter rejection versus
 `UNKNOWN` classification; there is no Adapter event plugin registry. Adapter
 validates Worker-originated outcomes, but queues and forwards the original

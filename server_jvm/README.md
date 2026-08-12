@@ -381,9 +381,11 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 `system-polling` may use only the point Worker operations. Bounded batch
 consume and batch result append are reserved for long-lived Adapter identities.
 Each point poll/result request verifies that the Worker is persistently bound to
-`system-polling`. A long-lived Adapter calls `verify-binding` for every new
-Channel and exposes it to command delivery only when the persisted Binding
-matches the Adapter's endpoint-manager identity.
+`system-polling`. A long-lived Adapter calls `verify-binding` when its
+process-local route directory first sees a workerId and exposes the Channel to
+command delivery only when the persisted Binding matches the Adapter's
+endpoint-manager identity. Every physical connection still sends identity;
+verified reconnects skip this Server read until the Adapter restarts.
 The Adapter result request carries an array of encoded `DeliveryReport` strings.
 Server accepts `WORKER` success/failure Reports targeting `TASK`; it accepts an
 `ADAPTER` `2...` Report only when `sourceId` equals the path
@@ -463,9 +465,14 @@ connects to the instance's fixed WebSocket path; a Socket Worker connects to
 its TCP port. Both first send
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
 `messageType=worker.connection.identify,payload="null")`;
-there is no generic connection-message envelope or identity ACK. Reads remain
-paused until Server route verification succeeds. Adapter keeps no identity or
-Binding cache; each new connection is checked. A definite route rejection may
+there is no generic connection-message envelope or identity ACK. The first
+occurrence of a workerId in one Adapter process is checked against Server
+Binding. Input arriving behind that identity during the asynchronous check is
+dropped. Successful verification is cached in that Adapter's protocol route
+directory; ordinary disconnect removes only the active Channel, and a later
+identity reconnects without another Server read. The cache is process-local,
+has no TTL, is cleared by Adapter close/restart, and is neither persistent
+Binding nor authentication or online truth. A definite route rejection may
 produce `ADAPTER/worker.connection.close`, while Gateway unavailability only
 closes the physical connection. An empty or absent `instances` map starts no
 active Adapter.

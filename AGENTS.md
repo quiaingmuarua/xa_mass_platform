@@ -46,8 +46,9 @@ Status: current repository handoff.
   abstract Adapter base, or transport-kind runtime. Cross-package Netty
   collaborators are classified under `netty.internal.gateway`,
   `netty.internal.websocket`, and `netty.internal.socket`; Server may depend
-  only on the finite factory. WebSocket and line-Socket each own their bound
-  Channel directory and identity/bound Pipeline Handlers.
+  only on the finite factory. WebSocket and line-Socket each own their Worker
+  route directory, including process-local verified worker IDs, pending first
+  verification, active Channels, and identity/bound Pipeline Handlers.
   Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
@@ -149,10 +150,18 @@ tag.
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled Command/Report pumps,
   every accepted child Channel, current bound routes, and bounded queues. Each
-  protocol Pipeline starts with an identity Handler that owns awaiting-identity
-  and verification, then replaces itself with a bound Handler. Each complete
-  Adapter owns its protocol-specific `workerId -> current Channel` directory;
-  WebSocket and line-Socket share no Session or Channel registry. The Handlers
+  protocol Pipeline starts with an identity Handler that requires the strict
+  identity first frame and coordinates optional first-seen route verification,
+  then replaces itself with a bound Handler without a phase state machine.
+  Each complete Adapter owns its protocol-specific verified worker-ID set,
+  pending-verification map, and `workerId -> current Channel` map; WebSocket and
+  line-Socket share no Session, route cache, or Channel registry. Verification
+  success is cached only for that Adapter process. Ordinary disconnect removes
+  the exact active Channel but retains verified identity; Adapter close/restart
+  clears verified, pending, and active state. This cache is not persistent
+  Binding, authentication, Worker online truth, or an implicit unbind mechanism.
+  Input after identity while first verification is pending is dropped, not
+  buffered or used to close the Channel. The Handlers
   own strict DeliveryReport decode, fixed identity handshake, destination
   routing, and physical backpressure. There is no Adapter event registry or
   plugin dispatcher. Only bound TASK Reports declaring
@@ -354,12 +363,13 @@ scenario_workers_jvm
 
 transport/netty-adapter
   -> Adapter batch HTTP client
-  -> per-connection route verification through Server HTTP
+  -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
   -> separate package-private WebSocket/Socket Adapter lifecycle aggregates
   -> separate physical WebSocket/Socket Network Server owners
-  -> per-endpoint Command/Report pumps and protocol-specific bound-route directory
-  -> all-child Channel lifecycle plus per-connection binding-phase routing
+  -> per-endpoint Command/Report pumps and protocol-specific Worker route directory
+  -> process-local verified/pending/active route ownership without a phase state machine
+  -> all-child Channel lifecycle plus strict first-frame identity routing
   -> direct fixed Adapter-local identity Report handshake
   -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
      generation

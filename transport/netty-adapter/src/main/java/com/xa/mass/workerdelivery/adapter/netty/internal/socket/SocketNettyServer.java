@@ -37,7 +37,7 @@ public final class SocketNettyServer implements AutoCloseable {
     private final int listenPort;
     private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
-    private final SocketBoundWorkerDirectory connections;
+    private final SocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final WorkerDeliveryGatewayClient gateway;
@@ -54,7 +54,7 @@ public final class SocketNettyServer implements AutoCloseable {
             int listenPort,
             Duration sendTimeLimit,
             Duration shutdownTimeout,
-            SocketBoundWorkerDirectory connections,
+            SocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             WorkerDeliveryGatewayClient gateway,
@@ -71,7 +71,7 @@ public final class SocketNettyServer implements AutoCloseable {
                 shutdownTimeout,
                 "shutdownTimeout"
         );
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         this.gateway = Objects.requireNonNull(gateway, "gateway");
@@ -118,7 +118,7 @@ public final class SocketNettyServer implements AutoCloseable {
                                         TimeUnit.MILLISECONDS
                                 ))
                                 .addLast(new SocketWorkerIdentityHandler(
-                                        connections,
+                                        routes,
                                         codec,
                                         reportQueue,
                                         gateway,
@@ -191,7 +191,7 @@ public final class SocketNettyServer implements AutoCloseable {
     private RuntimeException closeChildChannels(RuntimeException failure) {
         try {
             for (Channel channel : Set.copyOf(childChannels)) {
-                SocketBoundWorkerDirectory.closeBestEffort(channel);
+                SocketWorkerRouteDirectory.closeBestEffort(channel);
             }
             long deadline = System.nanoTime() + shutdownTimeout.toNanos();
             for (Channel channel : Set.copyOf(childChannels)) {

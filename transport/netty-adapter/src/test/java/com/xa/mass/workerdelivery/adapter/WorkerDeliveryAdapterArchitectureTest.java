@@ -131,11 +131,11 @@ class WorkerDeliveryAdapterArchitectureTest {
         }
         assertThat(websocket)
                 .contains("WebSocketNettyServer networkServer")
-                .contains("WebSocketBoundWorkerDirectory connections")
+                .contains("WebSocketWorkerRouteDirectory routes")
                 .doesNotContain("new SocketNettyServer(");
         assertThat(socket)
                 .contains("SocketNettyServer networkServer")
-                .contains("SocketBoundWorkerDirectory connections")
+                .contains("SocketWorkerRouteDirectory routes")
                 .doesNotContain("WebSocketNettyServer");
     }
 
@@ -190,7 +190,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("deliveryExecutor");
         assertThat(websocket)
                 .contains("class WebSocketNettyServer")
-                .contains("class WebSocketBoundWorkerDirectory")
+                .contains("class WebSocketWorkerRouteDirectory")
                 .contains("class WebSocketWorkerIdentityHandler")
                 .contains("class WebSocketBoundWorkerHandler")
                 .contains("enum WebSocketCloseReason")
@@ -200,7 +200,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain(".internal.socket");
         assertThat(socket)
                 .contains("class SocketNettyServer")
-                .contains("class SocketBoundWorkerDirectory")
+                .contains("class SocketWorkerRouteDirectory")
                 .contains("class SocketWorkerIdentityHandler")
                 .contains("class SocketBoundWorkerHandler")
                 .contains("new LineBasedFrameDecoder(")
@@ -213,10 +213,12 @@ class WorkerDeliveryAdapterArchitectureTest {
             throws IOException {
         String netty = readSources(NETTY);
         assertThat(netty)
-                .contains("enum IdentityPhase")
-                .contains("AWAITING_IDENTITY")
-                .contains("VERIFYING")
-                .contains("TRANSFERRED")
+                .contains("verifiedWorkerIds")
+                .contains("pendingVerifications")
+                .contains("activeChannels")
+                .contains("isRouteVerified(")
+                .contains("beginVerification(")
+                .contains("completeVerificationAndActivate(")
                 .contains("pipeline().replace(")
                 .contains("WebSocketBoundWorkerHandler")
                 .contains("SocketBoundWorkerHandler")
@@ -227,10 +229,18 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("encodeDeliveryCommand(command)")
                 .contains("WORKER_CONNECTION_IDENTIFY_EVENT_CODE")
                 .contains("WORKER_CONNECTION_CLOSE_EVENT_CODE")
+                .doesNotContain("IdentityPhase")
+                .doesNotContain("setAutoRead(false)")
+                .doesNotContain("WebSocketBoundWorkerDirectory")
+                .doesNotContain("SocketBoundWorkerDirectory")
                 .doesNotContain("WorkerConnectionSession")
                 .doesNotContain("WorkerConnectionSessionFactory")
                 .doesNotContain("BoundWorkerConnectionDirectory")
                 .doesNotContain("TextFrameStrategy")
+                .doesNotContain("interface WorkerRouteDirectory")
+                .doesNotContain("AbstractWorkerRouteDirectory")
+                .doesNotContain("SharedWorkerRouteDirectory")
+                .doesNotContain("RouteDirectoryBridge")
                 .doesNotContain("AdapterWorkerEventDispatcher")
                 .doesNotContain("definitions.get(")
                 .doesNotContain("AdapterMessageDefinitionManager")
@@ -239,6 +249,10 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("decodeWorkerConnectionBind")
                 .doesNotContain("verifyWorkerBinding")
                 .doesNotContain("WorkerSessionToken")
+                .doesNotContain("authToken")
+                .doesNotContain("verifiedUntil")
+                .doesNotContain("expireVerified")
+                .doesNotContain("unbind(")
                 .doesNotContain("WorkerResultPayloadHandler")
                 .doesNotContain("WorkerResultAction")
                 .doesNotContain("ServiceLoader");

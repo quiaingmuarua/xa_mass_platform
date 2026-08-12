@@ -29,17 +29,17 @@ import java.util.function.BooleanSupplier;
 final class WebSocketWorkerIdentityHandler
         extends SimpleChannelInboundHandler<WebSocketFrame> {
 
-    private final WebSocketBoundWorkerDirectory connections;
+    private final WebSocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final WorkerDeliveryGatewayClient gateway;
     private final String endpointManagerId;
     private final Duration sendTimeLimit;
     private final BooleanSupplier acceptingConnections;
-    private IdentityPhase phase = IdentityPhase.AWAITING_IDENTITY;
+    private String verifyingWorkerId;
 
     WebSocketWorkerIdentityHandler(
-            WebSocketBoundWorkerDirectory connections,
+            WebSocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             WorkerDeliveryGatewayClient gateway,
@@ -47,7 +47,7 @@ final class WebSocketWorkerIdentityHandler
             Duration sendTimeLimit,
             BooleanSupplier acceptingConnections
     ) {
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         this.gateway = Objects.requireNonNull(gateway, "gateway");
@@ -81,6 +81,9 @@ final class WebSocketWorkerIdentityHandler
             ChannelHandlerContext context,
             WebSocketFrame frame
     ) {
+        if (verifyingWorkerId != null) {
+            return;
+        }
         if (frame instanceof BinaryWebSocketFrame) {
             terminate(
                     context.channel(),
@@ -89,16 +92,6 @@ final class WebSocketWorkerIdentityHandler
             return;
         }
         if (!(frame instanceof TextWebSocketFrame text)) {
-            return;
-        }
-        if (phase == IdentityPhase.VERIFYING) {
-            terminate(
-                    context.channel(),
-                    WebSocketCloseReason.VERIFICATION_IN_PROGRESS
-            );
-            return;
-        }
-        if (phase != IdentityPhase.AWAITING_IDENTITY) {
             return;
         }
 
@@ -124,12 +117,12 @@ final class WebSocketWorkerIdentityHandler
             );
             return;
         }
-        verifyAndBind(context, report.sourceId());
+        identifyAndBind(context, report.sourceId());
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
-        phase = IdentityPhase.TERMINATED;
+        cancelCurrentVerification(context.channel());
         context.fireChannelInactive();
     }
 
@@ -138,7 +131,7 @@ final class WebSocketWorkerIdentityHandler
         terminate(context.channel(), WebSocketCloseReason.TRANSPORT_ERROR);
     }
 
-    private void verifyAndBind(
+    private void identifyAndBind(
             ChannelHandlerContext context,
             String identifyingWorkerId
     ) {
@@ -149,9 +142,23 @@ final class WebSocketWorkerIdentityHandler
             );
             return;
         }
-        phase = IdentityPhase.VERIFYING;
         Channel channel = context.channel();
-        channel.config().setAutoRead(false);
+        if (routes.isRouteVerified(identifyingWorkerId)) {
+            bindVerified(context, identifyingWorkerId);
+            return;
+        }
+        if (!routes.beginVerification(identifyingWorkerId, channel)) {
+            if (routes.isRouteVerified(identifyingWorkerId)) {
+                bindVerified(context, identifyingWorkerId);
+            } else {
+                terminate(
+                        channel,
+                        WebSocketCloseReason.VERIFICATION_IN_PROGRESS
+                );
+            }
+            return;
+        }
+        verifyingWorkerId = identifyingWorkerId;
 
         CompletionStage<Void> verification;
         try {
@@ -181,10 +188,15 @@ final class WebSocketWorkerIdentityHandler
             Throwable failure
     ) {
         Channel channel = context.channel();
-        if (!channel.isActive() || phase != IdentityPhase.VERIFYING) {
+        if (!channel.isActive()
+                || !routes.isVerificationPending(
+                identifyingWorkerId,
+                channel
+        )) {
             return;
         }
         if (failure != null) {
+            routes.cancelVerification(identifyingWorkerId, channel);
             Throwable cause = unwrap(failure);
             if (cause instanceof WorkerDeliveryAdapterException classified
                     && classified.errorCode()
@@ -199,50 +211,89 @@ final class WebSocketWorkerIdentityHandler
             return;
         }
         if (!acceptingConnections.getAsBoolean()) {
+            routes.cancelVerification(identifyingWorkerId, channel);
             terminate(channel, WebSocketCloseReason.ADAPTER_STOPPING);
             return;
         }
 
         WebSocketBoundWorkerHandler boundHandler =
                 new WebSocketBoundWorkerHandler(
-                        connections,
+                        routes,
                         codec,
                         reportQueue,
                         identifyingWorkerId
-                );
+        );
         try {
-            phase = IdentityPhase.TRANSFERRED;
             context.pipeline().replace(
                     this,
                     "websocket-bound-worker",
                     boundHandler
             );
-            if (!channel.isActive()) {
+            if (!channel.isActive()
+                    || !routes.completeVerificationAndActivate(
+                    identifyingWorkerId,
+                    channel
+            )) {
+                terminate(
+                        channel,
+                        WebSocketCloseReason.VERIFICATION_FAILED
+                );
                 return;
             }
-            connections.activate(identifyingWorkerId, channel);
         } catch (RuntimeException error) {
-            connections.deactivate(identifyingWorkerId, channel);
-            phase = IdentityPhase.TERMINATED;
+            routes.cancelVerification(identifyingWorkerId, channel);
+            routes.deactivate(identifyingWorkerId, channel);
             WebSocketCloseReason.TRANSPORT_ERROR.close(channel);
             return;
         }
         if (!acceptingConnections.getAsBoolean()) {
-            connections.close(
+            routes.close(
                     identifyingWorkerId,
                     channel,
                     WebSocketCloseReason.ADAPTER_STOPPING
             );
+        }
+    }
+
+    private void bindVerified(
+            ChannelHandlerContext context,
+            String identifyingWorkerId
+    ) {
+        Channel channel = context.channel();
+        if (!channel.isActive() || !acceptingConnections.getAsBoolean()) {
+            terminate(channel, WebSocketCloseReason.ADAPTER_STOPPING);
             return;
         }
-        if (!channel.config().isAutoRead()) {
-            channel.config().setAutoRead(true);
-            channel.read();
+        WebSocketBoundWorkerHandler boundHandler =
+                new WebSocketBoundWorkerHandler(
+                        routes,
+                        codec,
+                        reportQueue,
+                        identifyingWorkerId
+                );
+        try {
+            context.pipeline().replace(
+                    this,
+                    "websocket-bound-worker",
+                    boundHandler
+            );
+            if (!routes.activateIfVerified(
+                    identifyingWorkerId,
+                    channel
+            )) {
+                terminate(
+                        channel,
+                        WebSocketCloseReason.VERIFICATION_FAILED
+                );
+            }
+        } catch (RuntimeException error) {
+            routes.deactivate(identifyingWorkerId, channel);
+            WebSocketCloseReason.TRANSPORT_ERROR.close(channel);
         }
     }
 
     private void sendCloseCommand(Channel channel) {
-        phase = IdentityPhase.TERMINATED;
+        cancelCurrentVerification(channel);
         try {
             DeliveryCommand command = DeliveryCommand.create(
                     ADAPTER,
@@ -264,8 +315,15 @@ final class WebSocketWorkerIdentityHandler
     }
 
     private void terminate(Channel channel, WebSocketCloseReason reason) {
-        phase = IdentityPhase.TERMINATED;
+        cancelCurrentVerification(channel);
         reason.close(channel);
+    }
+
+    private void cancelCurrentVerification(Channel channel) {
+        String workerId = verifyingWorkerId;
+        if (workerId != null) {
+            routes.cancelVerification(workerId, channel);
+        }
     }
 
     private static boolean isValidIdentity(DeliveryReport report) {
@@ -295,12 +353,5 @@ final class WebSocketWorkerIdentityHandler
             );
         }
         return value;
-    }
-
-    private enum IdentityPhase {
-        AWAITING_IDENTITY,
-        VERIFYING,
-        TRANSFERRED,
-        TERMINATED
     }
 }

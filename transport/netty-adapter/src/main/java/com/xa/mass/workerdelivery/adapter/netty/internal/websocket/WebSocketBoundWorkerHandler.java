@@ -26,18 +26,18 @@ final class WebSocketBoundWorkerHandler
             WebSocketBoundWorkerHandler.class.getName()
     );
 
-    private final WebSocketBoundWorkerDirectory connections;
+    private final WebSocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final String workerId;
 
     WebSocketBoundWorkerHandler(
-            WebSocketBoundWorkerDirectory connections,
+            WebSocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             String workerId
     ) {
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         if (workerId == null || workerId.isBlank()) {
@@ -52,7 +52,7 @@ final class WebSocketBoundWorkerHandler
             WebSocketFrame frame
     ) {
         if (frame instanceof BinaryWebSocketFrame) {
-            connections.close(
+            routes.close(
                     workerId,
                     context.channel(),
                     WebSocketCloseReason.BINARY_UNSUPPORTED
@@ -96,12 +96,12 @@ final class WebSocketBoundWorkerHandler
         switch (reportQueue.offer(text.text())) {
             case ACCEPTED -> {
             }
-            case FULL -> connections.close(
+            case FULL -> routes.close(
                     workerId,
                     context.channel(),
                     WebSocketCloseReason.RESULT_BUFFER_FULL
             );
-            case CLOSED -> connections.close(
+            case CLOSED -> routes.close(
                     workerId,
                     context.channel(),
                     WebSocketCloseReason.ADAPTER_STOPPING
@@ -111,13 +111,13 @@ final class WebSocketBoundWorkerHandler
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
-        connections.deactivate(workerId, context.channel());
+        routes.deactivate(workerId, context.channel());
         context.fireChannelInactive();
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-        connections.close(
+        routes.close(
                 workerId,
                 context.channel(),
                 WebSocketCloseReason.TRANSPORT_ERROR

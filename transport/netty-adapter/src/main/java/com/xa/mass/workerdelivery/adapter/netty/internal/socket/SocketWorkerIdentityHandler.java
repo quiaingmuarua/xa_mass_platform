@@ -25,17 +25,17 @@ import java.util.function.BooleanSupplier;
 final class SocketWorkerIdentityHandler
         extends SimpleChannelInboundHandler<String> {
 
-    private final SocketBoundWorkerDirectory connections;
+    private final SocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final WorkerDeliveryGatewayClient gateway;
     private final String endpointManagerId;
     private final Duration sendTimeLimit;
     private final BooleanSupplier acceptingConnections;
-    private IdentityPhase phase = IdentityPhase.AWAITING_IDENTITY;
+    private String verifyingWorkerId;
 
     SocketWorkerIdentityHandler(
-            SocketBoundWorkerDirectory connections,
+            SocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             WorkerDeliveryGatewayClient gateway,
@@ -43,7 +43,7 @@ final class SocketWorkerIdentityHandler
             Duration sendTimeLimit,
             BooleanSupplier acceptingConnections
     ) {
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         this.gateway = Objects.requireNonNull(gateway, "gateway");
@@ -69,11 +69,7 @@ final class SocketWorkerIdentityHandler
 
     @Override
     protected void channelRead0(ChannelHandlerContext context, String line) {
-        if (phase == IdentityPhase.VERIFYING) {
-            terminate(context.channel());
-            return;
-        }
-        if (phase != IdentityPhase.AWAITING_IDENTITY) {
+        if (verifyingWorkerId != null) {
             return;
         }
 
@@ -93,12 +89,12 @@ final class SocketWorkerIdentityHandler
             terminate(context.channel());
             return;
         }
-        verifyAndBind(context, report.sourceId());
+        identifyAndBind(context, report.sourceId());
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
-        phase = IdentityPhase.TERMINATED;
+        cancelCurrentVerification(context.channel());
         context.fireChannelInactive();
     }
 
@@ -107,7 +103,7 @@ final class SocketWorkerIdentityHandler
         terminate(context.channel());
     }
 
-    private void verifyAndBind(
+    private void identifyAndBind(
             ChannelHandlerContext context,
             String identifyingWorkerId
     ) {
@@ -115,9 +111,20 @@ final class SocketWorkerIdentityHandler
             terminate(context.channel());
             return;
         }
-        phase = IdentityPhase.VERIFYING;
         Channel channel = context.channel();
-        channel.config().setAutoRead(false);
+        if (routes.isRouteVerified(identifyingWorkerId)) {
+            bindVerified(context, identifyingWorkerId);
+            return;
+        }
+        if (!routes.beginVerification(identifyingWorkerId, channel)) {
+            if (routes.isRouteVerified(identifyingWorkerId)) {
+                bindVerified(context, identifyingWorkerId);
+            } else {
+                terminate(channel);
+            }
+            return;
+        }
+        verifyingWorkerId = identifyingWorkerId;
 
         CompletionStage<Void> verification;
         try {
@@ -147,10 +154,15 @@ final class SocketWorkerIdentityHandler
             Throwable failure
     ) {
         Channel channel = context.channel();
-        if (!channel.isActive() || phase != IdentityPhase.VERIFYING) {
+        if (!channel.isActive()
+                || !routes.isVerificationPending(
+                identifyingWorkerId,
+                channel
+        )) {
             return;
         }
         if (failure != null) {
+            routes.cancelVerification(identifyingWorkerId, channel);
             Throwable cause = unwrap(failure);
             if (cause instanceof WorkerDeliveryAdapterException classified
                     && classified.errorCode()
@@ -162,45 +174,77 @@ final class SocketWorkerIdentityHandler
             return;
         }
         if (!acceptingConnections.getAsBoolean()) {
+            routes.cancelVerification(identifyingWorkerId, channel);
             terminate(channel);
             return;
         }
 
         SocketBoundWorkerHandler boundHandler = new SocketBoundWorkerHandler(
-                connections,
+                routes,
                 codec,
                 reportQueue,
                 identifyingWorkerId
         );
         try {
-            phase = IdentityPhase.TRANSFERRED;
             context.pipeline().replace(
                     this,
                     "socket-bound-worker",
                     boundHandler
             );
-            if (!channel.isActive()) {
+            if (!channel.isActive()
+                    || !routes.completeVerificationAndActivate(
+                    identifyingWorkerId,
+                    channel
+            )) {
+                terminate(channel);
                 return;
             }
-            connections.activate(identifyingWorkerId, channel);
         } catch (RuntimeException error) {
-            connections.deactivate(identifyingWorkerId, channel);
-            phase = IdentityPhase.TERMINATED;
-            SocketBoundWorkerDirectory.closeBestEffort(channel);
+            routes.cancelVerification(identifyingWorkerId, channel);
+            routes.deactivate(identifyingWorkerId, channel);
+            SocketWorkerRouteDirectory.closeBestEffort(channel);
             return;
         }
         if (!acceptingConnections.getAsBoolean()) {
-            connections.close(identifyingWorkerId, channel);
+            routes.close(identifyingWorkerId, channel);
+        }
+    }
+
+    private void bindVerified(
+            ChannelHandlerContext context,
+            String identifyingWorkerId
+    ) {
+        Channel channel = context.channel();
+        if (!channel.isActive() || !acceptingConnections.getAsBoolean()) {
+            terminate(channel);
             return;
         }
-        if (!channel.config().isAutoRead()) {
-            channel.config().setAutoRead(true);
-            channel.read();
+        SocketBoundWorkerHandler boundHandler = new SocketBoundWorkerHandler(
+                routes,
+                codec,
+                reportQueue,
+                identifyingWorkerId
+        );
+        try {
+            context.pipeline().replace(
+                    this,
+                    "socket-bound-worker",
+                    boundHandler
+            );
+            if (!routes.activateIfVerified(
+                    identifyingWorkerId,
+                    channel
+            )) {
+                terminate(channel);
+            }
+        } catch (RuntimeException error) {
+            routes.deactivate(identifyingWorkerId, channel);
+            SocketWorkerRouteDirectory.closeBestEffort(channel);
         }
     }
 
     private void sendCloseCommand(Channel channel) {
-        phase = IdentityPhase.TERMINATED;
+        cancelCurrentVerification(channel);
         try {
             DeliveryCommand command = DeliveryCommand.create(
                     ADAPTER,
@@ -217,13 +261,20 @@ final class SocketWorkerIdentityHandler
                     codec.encodeDeliveryCommand(command) + "\n"
             ).addListener(ChannelFutureListener.CLOSE);
         } catch (RuntimeException error) {
-            SocketBoundWorkerDirectory.closeBestEffort(channel);
+            SocketWorkerRouteDirectory.closeBestEffort(channel);
         }
     }
 
     private void terminate(Channel channel) {
-        phase = IdentityPhase.TERMINATED;
-        SocketBoundWorkerDirectory.closeBestEffort(channel);
+        cancelCurrentVerification(channel);
+        SocketWorkerRouteDirectory.closeBestEffort(channel);
+    }
+
+    private void cancelCurrentVerification(Channel channel) {
+        String workerId = verifyingWorkerId;
+        if (workerId != null) {
+            routes.cancelVerification(workerId, channel);
+        }
     }
 
     private static boolean isValidIdentity(DeliveryReport report) {
@@ -253,12 +304,5 @@ final class SocketWorkerIdentityHandler
             );
         }
         return value;
-    }
-
-    private enum IdentityPhase {
-        AWAITING_IDENTITY,
-        VERIFYING,
-        TRANSFERRED,
-        TERMINATED
     }
 }

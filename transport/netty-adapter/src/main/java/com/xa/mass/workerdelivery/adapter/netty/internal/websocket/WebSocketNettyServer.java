@@ -38,7 +38,7 @@ public final class WebSocketNettyServer implements AutoCloseable {
     private final int listenPort;
     private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
-    private final WebSocketBoundWorkerDirectory connections;
+    private final WebSocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final WorkerDeliveryGatewayClient gateway;
@@ -55,7 +55,7 @@ public final class WebSocketNettyServer implements AutoCloseable {
             int listenPort,
             Duration sendTimeLimit,
             Duration shutdownTimeout,
-            WebSocketBoundWorkerDirectory connections,
+            WebSocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             WorkerDeliveryGatewayClient gateway,
@@ -72,7 +72,7 @@ public final class WebSocketNettyServer implements AutoCloseable {
                 shutdownTimeout,
                 "shutdownTimeout"
         );
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         this.gateway = Objects.requireNonNull(gateway, "gateway");
@@ -123,7 +123,7 @@ public final class WebSocketNettyServer implements AutoCloseable {
                                         new UnmatchedWebSocketRequestHandler()
                                 )
                                 .addLast(new WebSocketWorkerIdentityHandler(
-                                        connections,
+                                        routes,
                                         codec,
                                         reportQueue,
                                         gateway,

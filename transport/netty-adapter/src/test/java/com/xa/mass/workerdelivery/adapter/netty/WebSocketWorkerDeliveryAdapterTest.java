@@ -99,6 +99,64 @@ class WebSocketWorkerDeliveryAdapterTest {
     }
 
     @Test
+    void reconnectReusesVerifiedRouteAndReceivesCachedCommand()
+            throws Exception {
+        int port = availablePort();
+        FakeGateway gateway = new FakeGateway();
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                gateway
+        );
+        adapter.start();
+        Probe firstProbe = new Probe(WORKER_ID);
+        WebSocket first = connect(port, firstProbe);
+        WebSocket reconnect = null;
+        try {
+            assertThat(firstProbe.opened.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            awaitActive(adapter);
+            assertThat(gateway.verifiedWorkerIds)
+                    .containsExactly(WORKER_ID);
+
+            first.abort();
+            awaitInactive(adapter);
+
+            DeliveryCommand command = command(
+                    "cached-during-disconnect"
+            );
+            gateway.batches.add(Map.of(WORKER_ID, command));
+            awaitCommandConsumed(gateway);
+
+            Probe reconnectProbe = new Probe(WORKER_ID);
+            reconnect = connect(port, reconnectProbe);
+            assertThat(reconnectProbe.opened.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            awaitActive(adapter);
+
+            assertThat(gateway.verifiedWorkerIds)
+                    .containsExactly(WORKER_ID);
+            assertThat(reconnectProbe.message.await(
+                    3,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(new WorkerDeliveryCodec().decodeDeliveryCommand(
+                    reconnectProbe.messages.getFirst()
+            )).isEqualTo(command);
+        } finally {
+            first.abort();
+            if (reconnect != null) {
+                reconnect.abort();
+            }
+            adapter.close();
+        }
+    }
+
+    @Test
     void twoAdaptersOwnDistinctPortsAndIsolateTheSameWorkerId()
             throws Exception {
         int firstPort = availablePort();
@@ -636,6 +694,32 @@ class WebSocketWorkerDeliveryAdapterTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Worker channel was not tracked");
+    }
+
+    private static void awaitInactive(WebSocketWorkerDeliveryAdapter adapter)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adapter.activeConnectionCount() == 0) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker connection remained active");
+    }
+
+    private static void awaitCommandConsumed(FakeGateway gateway)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (gateway.batches.isEmpty()) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Command was not cached by the Adapter");
     }
 
     private static void awaitVerification(FakeGateway gateway)

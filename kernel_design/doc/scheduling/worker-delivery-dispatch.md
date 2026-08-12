@@ -11,8 +11,8 @@ The control and connection vocabulary is deliberately split by Owner:
 | --- | --- | --- |
 | Identity Register | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
 | Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
-| Connection identity Report | Worker sends `worker.connection.identify` with `src=WORKER` and `sourceId=workerId` to initiate route verification | persistent Endpoint Binding |
-| Route Verification | Server read-only compares the persisted route with the receiving endpoint | authentication or Channel state |
+| Connection identity Report | Worker sends `worker.connection.identify` with `src=WORKER` and `sourceId=workerId` to declare every physical Channel; the Adapter may initiate first-seen route verification | persistent Endpoint Binding or authentication |
+| Route Verification | Server read-only compares the persisted route with the receiving endpoint; Adapter caches first success for that workerId until process close/restart | authentication, online truth, or persistent Binding |
 | Connection Activation | Adapter installs its process-local current Channel | Worker resource, online, or attribute truth |
 | Assignment / Result Fence | Kernel validates lease and opaque Result Routing evidence | connection state |
 
@@ -232,14 +232,23 @@ WebSocket and line Socket first receive a strict identity `DeliveryReport`:
 }
 ```
 
-For every new connection, Adapter pauses reads and asks Server whether the
-persisted Worker Binding points to this Adapter's endpoint-manager ID. Only a
-successful route verification installs the active Channel; no ACK is sent.
-Adapter maintains no identity or Binding cache and does not invoke Kernel
-Worker upsert. A definite 4xx rejection emits
+Every physical connection sends identity first. When one Adapter process sees a
+workerId for the first time, exactly one Channel becomes its pending
+verification owner and asks Server whether the persisted Worker Binding points
+to this Adapter's endpoint-manager ID. Another initial Channel for the same
+workerId is physically closed. Only successful route verification records the
+process-local verified workerId and installs the active Channel; no ACK is sent.
+Adapter does not invoke Kernel Worker upsert. A definite 4xx rejection emits
 `ADAPTER/worker.connection.close` and closes the physical connection after
 flush. Gateway unavailability or 5xx only closes the physical connection, so
 the Worker Client may reconnect to the same Endpoint.
+
+Ordinary disconnect removes only the exact active Channel. The verified route
+remains in that Adapter process, so the next identity for the same workerId
+skips Server verification and replaces the current Channel. The verified set is
+not Endpoint Binding, authentication, authorization, Worker liveness, or Worker
+score truth. It has no TTL or periodic recheck, is cleared on Adapter
+close/restart, and currently has no system unbind operation.
 
 After route verification and connection activation they exchange direct
 protocol JSON:
@@ -250,18 +259,19 @@ Worker  -> Adapter: DeliveryReport
 ```
 
 The Adapter forwards Task/System commands unchanged. Each protocol Pipeline
-starts with an identity Handler that owns awaiting-identity and route
-verification. After successful verification it replaces itself with a bound
-Handler, activates that Adapter's protocol-specific `workerId -> Channel`
-directory, and resumes reads. WebSocket and line-Socket share no connection
-Session or Channel directory. The fixed identity Report is handled directly;
+starts with an identity Handler that validates the first Report and coordinates
+optional first verification with that Adapter's protocol-specific route
+directory. After activation it replaces itself with a bound Handler. There is
+no identity phase state machine. WebSocket and line-Socket share no connection
+Session, verified cache, or Channel directory. The fixed identity Report is handled directly;
 there is no Adapter event registry or plugin dispatcher. Reports whose
 `dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
 local events on an established connection are logged and dropped.
 
 Before identity, malformed or non-identity input closes the physical Channel.
-During asynchronous route verification reads are paused and no input is
-buffered. Once bound, malformed JSON, `SYSTEM`, repeated identity, unknown
+During asynchronous route verification reads remain enabled, but later input is
+released and dropped without buffering or closing that Channel. Once bound,
+malformed JSON, `SYSTEM`, repeated identity, unknown
 Adapter events, mismatched `src/sourceId`, and Worker-originated Adapter
 `2...` outcomes are logged and dropped while the Channel remains usable.
 
@@ -283,10 +293,11 @@ coupling, ACK, durable Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract. The
 package-private WebSocket and Socket Adapter aggregates each own lifecycle,
-their protocol-specific current bound-route directory, both bounded pumps, and
+their protocol-specific Worker route directory, both bounded pumps, and
 shutdown sequencing.
 Their exact Network Server separately owns its listener, pipeline, EventLoop,
-and every accepted child Channel, including unbound and verifying Channels.
+and every accepted child Channel, including pre-identity,
+pending-verification, and bound Channels.
 Closing an Adapter therefore closes all physical child Channels, not only
 routes that reached BOUND. The two physical servers do not share a transport
 kind branch or Network Server SPI.

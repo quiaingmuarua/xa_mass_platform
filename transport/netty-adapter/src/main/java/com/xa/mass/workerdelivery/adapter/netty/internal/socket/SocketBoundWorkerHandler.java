@@ -23,18 +23,18 @@ final class SocketBoundWorkerHandler
             SocketBoundWorkerHandler.class.getName()
     );
 
-    private final SocketBoundWorkerDirectory connections;
+    private final SocketWorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final String workerId;
 
     SocketBoundWorkerHandler(
-            SocketBoundWorkerDirectory connections,
+            SocketWorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             String workerId
     ) {
-        this.connections = Objects.requireNonNull(connections, "connections");
+        this.routes = Objects.requireNonNull(routes, "routes");
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
         if (workerId == null || workerId.isBlank()) {
@@ -78,7 +78,7 @@ final class SocketBoundWorkerHandler
         switch (reportQueue.offer(line)) {
             case ACCEPTED -> {
             }
-            case FULL, CLOSED -> connections.close(
+            case FULL, CLOSED -> routes.close(
                     workerId,
                     context.channel()
             );
@@ -87,13 +87,13 @@ final class SocketBoundWorkerHandler
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
-        connections.deactivate(workerId, context.channel());
+        routes.deactivate(workerId, context.channel());
         context.fireChannelInactive();
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-        connections.close(workerId, context.channel());
+        routes.close(workerId, context.channel());
     }
 
     private void logDrop(String action, DeliveryReport report) {

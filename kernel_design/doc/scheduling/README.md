@@ -150,8 +150,9 @@ Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; a finite factory creates separate package-private WebSocket
   and Socket Adapter aggregates. Each aggregate owns start/close, the
-  bound-route directory, scheduled Command/Report pumps, bounded non-blocking
-  delivery, and Report buffering, while its exact Network Server owns the
+  protocol-specific Worker route directory with process-local
+  verified/pending/active state, scheduled Command/Report pumps, bounded
+  non-blocking delivery, and Report buffering, while its exact Network Server owns the
   listener, pipeline, EventLoop, and all physical child Channels. Server only
   binds instance config and invokes lifecycle; neither path selects Workers
   nor mutates score
@@ -168,7 +169,7 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with per-connection route verification, stateless bounded batch acquisition, fixed system-polling route, and Java 11 Worker Core Polling/WebSocket/Socket state machines | Authentication, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with process-local first-seen Worker route verification caches, stateless bounded batch acquisition, fixed system-polling route, and Java 11 Worker Core Polling/WebSocket/Socket state machines | Authentication, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and

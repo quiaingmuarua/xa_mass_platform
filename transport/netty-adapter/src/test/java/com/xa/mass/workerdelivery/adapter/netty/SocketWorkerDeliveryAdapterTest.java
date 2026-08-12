@@ -123,6 +123,63 @@ class SocketWorkerDeliveryAdapterTest {
     }
 
     @Test
+    void reconnectReusesVerifiedRouteAndReceivesCachedCommand()
+            throws Exception {
+        int port = availablePort();
+        FakeGateway gateway = new FakeGateway();
+        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        adapter.start();
+        try {
+            try (Socket first = new Socket("127.0.0.1", port);
+                    BufferedWriter writer = new BufferedWriter(
+                            new OutputStreamWriter(
+                                    first.getOutputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    )) {
+                writer.write(identity(WORKER_ID));
+                writer.write('\n');
+                writer.flush();
+                awaitActive(adapter);
+                assertThat(gateway.verifiedWorkerIds)
+                        .containsExactly(WORKER_ID);
+            }
+            awaitInactive(adapter);
+
+            DeliveryCommand command = command();
+            gateway.batches.add(Map.of(WORKER_ID, command));
+            awaitCommandConsumed(gateway);
+
+            try (Socket reconnect = new Socket("127.0.0.1", port);
+                    BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(
+                                    reconnect.getInputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    );
+                    BufferedWriter writer = new BufferedWriter(
+                            new OutputStreamWriter(
+                                    reconnect.getOutputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    )) {
+                reconnect.setSoTimeout(3_000);
+                writer.write(identity(WORKER_ID));
+                writer.write('\n');
+                writer.flush();
+                awaitActive(adapter);
+
+                assertThat(gateway.verifiedWorkerIds)
+                        .containsExactly(WORKER_ID);
+                assertThat(codec.decodeDeliveryCommand(reader.readLine()))
+                        .isEqualTo(command);
+            }
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @Test
     void invalidFirstMessageClosesAndRepeatedIdentityStaysLocal()
             throws Exception {
         int port = availablePort();
@@ -483,6 +540,32 @@ class SocketWorkerDeliveryAdapterTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Worker channel was not tracked");
+    }
+
+    private static void awaitInactive(SocketWorkerDeliveryAdapter adapter)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adapter.activeConnectionCount() == 0) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker connection remained active");
+    }
+
+    private static void awaitCommandConsumed(FakeGateway gateway)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (gateway.batches.isEmpty()) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Command was not cached by the Adapter");
     }
 
     private static int availablePort() {

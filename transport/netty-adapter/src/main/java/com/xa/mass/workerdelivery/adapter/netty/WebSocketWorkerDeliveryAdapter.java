@@ -10,8 +10,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
-import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketBoundWorkerDirectory;
 import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketNettyServer;
+import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketWorkerRouteDirectory;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
 import java.util.Objects;
@@ -32,7 +32,7 @@ final class WebSocketWorkerDeliveryAdapter
     private final Duration commandPumpInterval;
     private final Duration reportSubmitInterval;
     private final Duration shutdownTimeout;
-    private final WebSocketBoundWorkerDirectory connections;
+    private final WebSocketWorkerRouteDirectory routes;
     private final DeliveryCommandPump commandPump;
     private final DeliveryReportPump reportPump;
     private final WebSocketNettyServer networkServer;
@@ -74,10 +74,10 @@ final class WebSocketWorkerDeliveryAdapter
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         BoundedDeliveryReportQueue reportQueue =
                 new BoundedDeliveryReportQueue(reportQueueCapacity);
-        connections = new WebSocketBoundWorkerDirectory(codec);
+        routes = new WebSocketWorkerRouteDirectory(codec);
         commandPump = new DeliveryCommandPump(
                 requiredGateway,
-                connections,
+                routes,
                 reportQueue,
                 adapterId,
                 commandConsumeLimit,
@@ -94,7 +94,7 @@ final class WebSocketWorkerDeliveryAdapter
                 listenPort,
                 sendTimeLimit,
                 shutdownTimeout,
-                connections,
+                routes,
                 codec,
                 reportQueue,
                 requiredGateway,
@@ -124,7 +124,7 @@ final class WebSocketWorkerDeliveryAdapter
     }
 
     int activeConnectionCount() {
-        return connections.activeConnectionCount();
+        return routes.activeConnectionCount();
     }
 
     int trackedConnectionCount() {
@@ -209,6 +209,8 @@ final class WebSocketWorkerDeliveryAdapter
             networkServer.close();
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
+        } finally {
+            routes.clear();
         }
         cancel(stoppingReportTask);
         failure = stopScheduler(stoppingScheduler, failure);

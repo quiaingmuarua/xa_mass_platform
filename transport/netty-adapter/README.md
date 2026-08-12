@@ -19,7 +19,8 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one concrete WebSocket or line-Socket Network Server
 one Netty listener and EventLoop
-all physical child Channels, including UNBOUND and VERIFYING Channels
+all physical child Channels, including pre-identity, pending-verification,
+and bound Channels
 one current Channel per workerId
 one bounded DeliveryCommand queue
 one scheduled DeliveryCommand Pump
@@ -43,9 +44,9 @@ netty/
 netty/internal/gateway/
   DeliveryCommand target port, Result ingress buffer, and both Gateway Pumps
 netty/internal/websocket/
-  WebSocket listener, identity/bound handlers, bound directory, and close rules
+  WebSocket listener, identity/bound handlers, route directory, and close rules
 netty/internal/socket/
-  line-Socket listener, identity/bound handlers, bound directory, and close rules
+  line-Socket listener, identity/bound handlers, route directory, and close rules
 ```
 
 Java collaborators crossing those owner packages are `public` only for module
@@ -88,23 +89,36 @@ Adapter-directed identity Report:
 }
 ```
 
-A new Channel pauses reads while the Adapter asks Server whether the persisted
-Endpoint Binding for `workerId` points to this Adapter's `endpointManagerId`.
-Adapter requires `src=WORKER` and a non-blank `sourceId`, but does not parse
-the workerId format. The identity payload is exactly `"null"`.
-Successful route verification activates `workerId -> current Channel` and
-resumes reads without an identity ACK. A definite Server 4xx rejection causes
-the Adapter to write
+Every physical connection sends this identity first. Adapter requires
+`src=WORKER` and a non-blank `sourceId`, but does not parse the workerId format.
+The identity payload is exactly `"null"`.
+
+Each Adapter process verifies a workerId remotely only the first time its route
+directory sees that identity. The first Channel becomes the one pending
+verification owner; another initial Channel for the same workerId is physically
+closed. Server confirms that the persisted Endpoint Binding points to this
+Adapter's `endpointManagerId`. Successful verification atomically records the
+workerId in the process-local verified set and activates
+`workerId -> current Channel` without an identity ACK. A definite Server 4xx
+rejection causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
 and close the physical Channel after the write flushes. Gateway unavailability
 or a 5xx response only closes the physical Channel, allowing the Worker Client
-to consume its current-Endpoint reconnect budget. Verification happens for
-every new connection. The Adapter has no identity or Binding cache and does
-not refresh Worker Properties.
+to consume its current-Endpoint reconnect budget.
 
-An unverified Channel is never visible to the DeliveryCommand Pump. Any message that
-arrives while identity verification is in progress is a protocol violation and
-closes the physical Channel. There is no pre-verification message buffer.
+An unverified Channel is never visible to the DeliveryCommand Pump. Reads stay
+enabled during asynchronous verification, but every later frame is released and
+dropped until verification completes; there is no pre-verification message
+buffer. If that Channel disconnects, its exact pending entry is cancelled and a
+later connection may start verification again. A late callback cannot activate
+the cancelled Channel.
+
+Ordinary disconnect removes only the exact active Channel. The verified workerId
+remains cached, so a later identity for the same workerId skips Server
+verification and atomically replaces the current Channel. This verified set is
+not persistent Endpoint Binding, authentication, authorization, Worker online
+truth, or a Property cache. It has no TTL or implicit recheck and is cleared
+only when the Adapter closes or restarts. There is currently no unbind operation.
 
 After connection activation:
 
@@ -116,16 +130,17 @@ Worker  -> Adapter: direct DeliveryReport JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-Each protocol pipeline starts with its own identity Handler. That Handler owns
-the awaiting-identity and verifying phases, pauses reads during route
-verification, and replaces itself with a protocol-specific bound Handler after
-verification succeeds. The fixed identity Report is not routed through an
+Each protocol pipeline starts with its own identity Handler. It validates the
+first Report, coordinates the optional first verification with its protocol
+route directory, and replaces itself with a protocol-specific bound Handler
+after activation. It does not own a lifecycle phase state machine. The fixed
+identity Report is not routed through an
 event registry or plugin dispatcher. Adapter-directed Reports never enter the
 Server Result queue. Repeated identity and unknown Adapter events on an
 established connection are logged and dropped. Before identity, a malformed,
 invalid, or non-identity Report closes the physical Channel.
 
-After identity, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
+Once bound, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
 events, mismatched `src/sourceId`, and Worker-originated `2...` outcomes are
 logged and dropped without closing the Channel. Only `TASK` Reports with
 `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` outcomes
@@ -133,13 +148,14 @@ enter the bounded Result queue, preserving their original JSON. A
 full or closed Result queue drops the current Result and physically closes the
 Channel as process-local backpressure.
 
-Each Adapter constructs one protocol-specific bound Worker directory. The
-directory stores the actual current Netty `Channel` for each workerId and owns
-that protocol's physical write and close semantics directly. A newly activated
-connection replaces the current Channel for that workerId. Deactivation
-compares workerId and Channel identity, so a delayed close from an old Channel
-cannot remove its replacement. WebSocket and line-Socket directories share no
-Session or Channel registry.
+Each Adapter constructs one protocol-specific Worker route directory. It owns
+the process-local verified worker IDs, first-verification pending Channels,
+active `workerId -> Channel` routes, and that protocol's physical write and
+close semantics. A verified reconnect replaces the current Channel for that
+workerId. Deactivation compares workerId and Channel identity, so a delayed
+close from an old Channel cannot remove its replacement or its verified route.
+WebSocket and line-Socket directories share no Session, cache, or Channel
+registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
@@ -225,7 +241,8 @@ Close:
 ```text
 state STOPPING
 -> stop DeliveryCommand Pump
--> close listener and every child Channel in identity/verifying/bound phases
+-> close listener and every pre-identity, pending-verification, or bound Channel
+-> clear verified, pending, and active route-directory state
 -> stop DeliveryReport Pump
 -> stop accepting Worker results
 -> bounded final result flush

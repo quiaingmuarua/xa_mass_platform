@@ -2,17 +2,20 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
+import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -24,15 +27,17 @@ class WebSocketWorkerPipelineTest {
     @Test
     void successfulVerificationReplacesIdentityWithBoundHandler() {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        WebSocketBoundWorkerDirectory connections =
-                new WebSocketBoundWorkerDirectory(codec);
+        WebSocketWorkerRouteDirectory routes =
+                new WebSocketWorkerRouteDirectory(codec);
         PendingVerificationGateway gateway =
                 new PendingVerificationGateway();
+        BoundedDeliveryReportQueue reportQueue =
+                new BoundedDeliveryReportQueue(4);
         WebSocketWorkerIdentityHandler identity =
                 new WebSocketWorkerIdentityHandler(
-                        connections,
+                        routes,
                         codec,
-                        new BoundedDeliveryReportQueue(4),
+                        reportQueue,
                         gateway,
                         "websocket-1",
                         Duration.ofSeconds(1),
@@ -44,7 +49,7 @@ class WebSocketWorkerPipelineTest {
                     encodeIdentity(codec, "worker-1")
             ));
 
-            assertThat(channel.config().isAutoRead()).isFalse();
+            assertThat(channel.config().isAutoRead()).isTrue();
             assertThat(channel.pipeline().context(
                     WebSocketWorkerIdentityHandler.class
             )).isNotNull();
@@ -58,12 +63,255 @@ class WebSocketWorkerPipelineTest {
             assertThat(channel.pipeline().context(
                     WebSocketBoundWorkerHandler.class
             )).isNotNull();
-            assertThat(channel.config().isAutoRead()).isTrue();
-            assertThat(connections.activeConnectionCount()).isEqualTo(1);
+            assertThat(routes.activeConnectionCount()).isEqualTo(1);
+            assertThat(routes.verifiedWorkerCount()).isEqualTo(1);
         } finally {
             channel.finishAndReleaseAll();
         }
-        assertThat(connections.activeConnectionCount()).isZero();
+        assertThat(routes.activeConnectionCount()).isZero();
+    }
+
+    @Test
+    void messagesDuringVerificationAreDroppedInsteadOfBuffered() {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        WebSocketWorkerRouteDirectory routes =
+                new WebSocketWorkerRouteDirectory(codec);
+        PendingVerificationGateway gateway =
+                new PendingVerificationGateway();
+        BoundedDeliveryReportQueue reportQueue =
+                new BoundedDeliveryReportQueue(4);
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new WebSocketWorkerIdentityHandler(
+                        routes,
+                        codec,
+                        reportQueue,
+                        gateway,
+                        "websocket-1",
+                        Duration.ofSeconds(1),
+                        () -> true
+                )
+        );
+        try {
+            channel.writeInbound(new TextWebSocketFrame(
+                    encodeIdentity(codec, "worker-1")
+            ));
+            channel.writeInbound(new TextWebSocketFrame(
+                    encodeTaskResult(codec, "worker-1")
+            ));
+
+            gateway.verification.complete(null);
+            channel.runPendingTasks();
+            new DeliveryReportPump(
+                    gateway,
+                    "websocket-1",
+                    reportQueue
+            ).run();
+
+            assertThat(gateway.appendedResults).isEmpty();
+            assertThat(routes.activeConnectionCount()).isEqualTo(1);
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void verifiedRouteSurvivesDisconnectAndNewDirectoryVerifiesAgain() {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        PendingVerificationGateway gateway =
+                new PendingVerificationGateway();
+        BoundedDeliveryReportQueue reportQueue =
+                new BoundedDeliveryReportQueue(4);
+        WebSocketWorkerRouteDirectory routes =
+                new WebSocketWorkerRouteDirectory(codec);
+        EmbeddedChannel first = identityChannel(
+                routes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        first.writeInbound(new TextWebSocketFrame(
+                encodeIdentity(codec, "worker-1")
+        ));
+        gateway.verification.complete(null);
+        first.runPendingTasks();
+        assertThat(gateway.verificationCalls).isEqualTo(1);
+        first.finishAndReleaseAll();
+        assertThat(routes.activeConnectionCount()).isZero();
+        assertThat(routes.verifiedWorkerCount()).isEqualTo(1);
+
+        EmbeddedChannel reconnect = identityChannel(
+                routes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        try {
+            reconnect.writeInbound(new TextWebSocketFrame(
+                    encodeIdentity(codec, "worker-1")
+            ));
+            assertThat(gateway.verificationCalls).isEqualTo(1);
+            assertThat(reconnect.pipeline().context(
+                    WebSocketBoundWorkerHandler.class
+            )).isNotNull();
+        } finally {
+            reconnect.finishAndReleaseAll();
+        }
+
+        WebSocketWorkerRouteDirectory restartedRoutes =
+                new WebSocketWorkerRouteDirectory(codec);
+        EmbeddedChannel afterRestart = identityChannel(
+                restartedRoutes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        try {
+            afterRestart.writeInbound(new TextWebSocketFrame(
+                    encodeIdentity(codec, "worker-1")
+            ));
+            afterRestart.runPendingTasks();
+            assertThat(gateway.verificationCalls).isEqualTo(2);
+            assertThat(restartedRoutes.activeConnectionCount())
+                    .isEqualTo(1);
+        } finally {
+            afterRestart.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void firstPendingConnectionWinsAndDisconnectAllowsRetry() {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        PendingVerificationGateway gateway =
+                new PendingVerificationGateway();
+        BoundedDeliveryReportQueue reportQueue =
+                new BoundedDeliveryReportQueue(4);
+        WebSocketWorkerRouteDirectory routes =
+                new WebSocketWorkerRouteDirectory(codec);
+        EmbeddedChannel first = identityChannel(
+                routes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        EmbeddedChannel second = identityChannel(
+                routes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        first.writeInbound(new TextWebSocketFrame(
+                encodeIdentity(codec, "worker-1")
+        ));
+        second.writeInbound(new TextWebSocketFrame(
+                encodeIdentity(codec, "worker-1")
+        ));
+
+        assertThat(gateway.verificationCalls).isEqualTo(1);
+        assertThat(second.isActive()).isFalse();
+        assertThat(routes.pendingVerificationCount()).isEqualTo(1);
+        second.finishAndReleaseAll();
+        first.finishAndReleaseAll();
+        assertThat(routes.pendingVerificationCount()).isZero();
+
+        EmbeddedChannel retry = identityChannel(
+                routes,
+                codec,
+                reportQueue,
+                gateway
+        );
+        try {
+            retry.writeInbound(new TextWebSocketFrame(
+                    encodeIdentity(codec, "worker-1")
+            ));
+            assertThat(gateway.verificationCalls).isEqualTo(2);
+
+            gateway.verification.complete(null);
+            first.runPendingTasks();
+            retry.runPendingTasks();
+
+            assertThat(routes.activeConnectionCount()).isEqualTo(1);
+            assertThat(routes.verifiedWorkerCount()).isEqualTo(1);
+        } finally {
+            retry.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void resultAcceptedBeforeReplacementRemainsEligibleEvidence() {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        PendingVerificationGateway gateway =
+                new PendingVerificationGateway();
+        BoundedDeliveryReportQueue reportQueue =
+                new BoundedDeliveryReportQueue(4);
+        WebSocketWorkerRouteDirectory routes =
+                new WebSocketWorkerRouteDirectory(codec);
+        EmbeddedChannel oldChannel = new EmbeddedChannel(
+                new WebSocketBoundWorkerHandler(
+                        routes,
+                        codec,
+                        reportQueue,
+                        "worker-1"
+                )
+        );
+        EmbeddedChannel replacement = new EmbeddedChannel();
+        String encodedResult = encodeTaskResult(codec, "worker-1");
+        try {
+            assertThat(routes.beginVerification("worker-1", oldChannel))
+                    .isTrue();
+            assertThat(routes.completeVerificationAndActivate(
+                    "worker-1",
+                    oldChannel
+            )).isTrue();
+            oldChannel.writeInbound(new TextWebSocketFrame(encodedResult));
+
+            assertThat(routes.activateIfVerified(
+                    "worker-1",
+                    replacement
+            )).isTrue();
+            new DeliveryReportPump(
+                    gateway,
+                    "websocket-1",
+                    reportQueue
+            ).run();
+
+            assertThat(gateway.appendedResults)
+                    .containsExactly(List.of(encodedResult));
+        } finally {
+            oldChannel.finishAndReleaseAll();
+            replacement.finishAndReleaseAll();
+        }
+    }
+
+    private static EmbeddedChannel identityChannel(
+            WebSocketWorkerRouteDirectory routes,
+            WorkerDeliveryCodec codec,
+            BoundedDeliveryReportQueue reportQueue,
+            WorkerDeliveryGatewayClient gateway
+    ) {
+        return new EmbeddedChannel(new WebSocketWorkerIdentityHandler(
+                routes,
+                codec,
+                reportQueue,
+                gateway,
+                "websocket-1",
+                Duration.ofSeconds(1),
+                () -> true
+        ));
+    }
+
+    private static String encodeTaskResult(
+            WorkerDeliveryCodec codec,
+            String workerId
+    ) {
+        return codec.encodeDeliveryReport(DeliveryReport.create(
+                WORKER,
+                workerId,
+                TASK,
+                "test.observe",
+                "200",
+                "null",
+                "context"
+        ));
     }
 
     private static String encodeIdentity(
@@ -86,6 +334,8 @@ class WebSocketWorkerPipelineTest {
 
         private final CompletableFuture<Void> verification =
                 new CompletableFuture<>();
+        private final List<List<String>> appendedResults = new ArrayList<>();
+        private int verificationCalls;
 
         @Override
         public Map<String, DeliveryCommand> consumeWorkerCommands(
@@ -100,6 +350,7 @@ class WebSocketWorkerPipelineTest {
                 String endpointManagerId,
                 List<String> encodedDeliveryReports
         ) {
+            appendedResults.add(List.copyOf(encodedDeliveryReports));
         }
 
         @Override
@@ -107,6 +358,7 @@ class WebSocketWorkerPipelineTest {
                 String endpointManagerId,
                 String workerId
         ) {
+            verificationCalls++;
             return verification;
         }
     }
