@@ -34,6 +34,10 @@ public final class WorkerCapabilityRpcMain {
                 "result-dir",
                 "results"
         ));
+        Path scenarioWorkerLabRoot = absolutePath(options.path(
+                "scenario-worker-lab-root",
+                "../../data/scenario-workers"
+        ));
         Path scenarioResultDirectory = resultDirectory.resolve(
                 scenarioId
         );
@@ -107,7 +111,8 @@ public final class WorkerCapabilityRpcMain {
         }
 
         WorkerCapabilityScenarioVerifier.verify(
-                scenarioResultDirectory
+                scenarioResultDirectory,
+                scenarioWorkerLabRoot
         );
 
         LOG.log(

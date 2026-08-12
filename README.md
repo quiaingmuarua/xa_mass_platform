@@ -22,9 +22,9 @@ The repository contains seven active areas:
   public Identity and Worker transport paths.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
-  string-utility event definitions, strict JSON deployment manifest,
-  public-HTTP Register/Bind control, Adapter identity Report construction, and
-  aggregate WebSocket Worker lifecycle
+  string-utility event definitions, configured-Group Lab directory discovery,
+  one persistent JSON per Worker, public-HTTP Register/Bind control, Adapter
+  identity Report construction, and aggregate WebSocket Worker lifecycle
   without owning WorkerGroup catalog initialization, Server profiles, or
   Adapters.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
@@ -96,8 +96,9 @@ Real Redis and cross-process proofs use separate entrypoints:
 ./gradlew :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The Scenario command self-verifies 20 canonical Worker IDs and all 60 targeted
-Worker/event combinations. See its owning README for process startup.
+The Scenario command self-verifies 20 canonical Worker IDs against their
+persistent Lab files and all 60 targeted Worker/event combinations. See its
+owning README for process startup.
 
 See
 [`integrations/android-websocket-worker/README.md`](integrations/android-websocket-worker/README.md)

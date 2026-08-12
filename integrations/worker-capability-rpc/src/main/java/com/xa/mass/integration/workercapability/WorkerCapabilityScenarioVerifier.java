@@ -42,13 +42,17 @@ final class WorkerCapabilityScenarioVerifier {
     private WorkerCapabilityScenarioVerifier() {
     }
 
-    static void verify(Path scenarioResultDirectory) throws IOException {
+    static void verify(
+            Path scenarioResultDirectory,
+            Path scenarioWorkerLabRoot
+    ) throws IOException {
         Set<String> allWorkerIds = new HashSet<>();
         int totalResults = 0;
         for (FileContract contract : CONTRACTS) {
             FileProof proof = verifyFile(
                     scenarioResultDirectory.resolve(contract.filename()),
-                    contract
+                    contract,
+                    scenarioWorkerLabRoot
             );
             allWorkerIds.addAll(proof.workerIds());
             totalResults += proof.resultCount();
@@ -67,7 +71,8 @@ final class WorkerCapabilityScenarioVerifier {
 
     private static FileProof verifyFile(
             Path path,
-            FileContract contract
+            FileContract contract,
+            Path scenarioWorkerLabRoot
     ) throws IOException {
         List<Map<String, Object>> rows = readRows(path);
         if (rows.size() != 30) {
@@ -169,7 +174,39 @@ final class WorkerCapabilityScenarioVerifier {
                             + " has incomplete Worker/event coverage"
             );
         }
+        verifyPersistedWorkerIds(
+                scenarioWorkerLabRoot,
+                contract,
+                workerIdsByKey
+        );
         return new FileProof(rows.size(), workerIds);
+    }
+
+    private static void verifyPersistedWorkerIds(
+            Path scenarioWorkerLabRoot,
+            FileContract contract,
+            Map<String, String> workerIdsByKey
+    ) throws IOException {
+        Path groupDirectory = scenarioWorkerLabRoot.resolve(
+                contract.workerGroupId()
+        );
+        for (Map.Entry<String, String> worker
+                : workerIdsByKey.entrySet()) {
+            Path stateFile = groupDirectory.resolve(
+                    worker.getKey() + ".json"
+            );
+            Map<String, Object> state = Jsons.parseObject(
+                    Files.readString(stateFile, StandardCharsets.UTF_8)
+            );
+            if (!(state.get("schemaVersion") instanceof Long)
+                    || ((Long) state.get("schemaVersion")) != 1L
+                    || !worker.getValue().equals(state.get("workerId"))) {
+                throw invalid(
+                        stateFile
+                                + " does not persist the verified Worker ID"
+                );
+            }
+        }
     }
 
     private static List<Map<String, Object>> readRows(Path path)

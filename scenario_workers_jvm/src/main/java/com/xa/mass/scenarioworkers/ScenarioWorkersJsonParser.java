@@ -3,11 +3,8 @@ package com.xa.mass.scenarioworkers;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,21 +16,13 @@ final class ScenarioWorkersJsonParser {
             "eventCodes",
             "requestTimeoutMillis",
             "reconnectPolicy",
-            "connectTimeoutMillis",
-            "workers"
+            "connectTimeoutMillis"
     );
     private static final Set<String> RECONNECT_POLICY_FIELDS = Set.of(
             "maxUnstableAttempts",
             "reconnectIntervalMillis",
             "stableConnectionDurationMillis"
     );
-    private static final Set<String> WORKER_FIELDS = Set.of(
-            "clientWorkerKey",
-            "workerProperties",
-            "indexedPropertyUpdates",
-            "sandboxDirectory"
-    );
-
     private ScenarioWorkersJsonParser() {
     }
 
@@ -41,7 +30,6 @@ final class ScenarioWorkersJsonParser {
         Map<String, Object> root = Jsons.parseObject(configJson);
         List<ScenarioWorkerGroupConfig> configs =
                 new ArrayList<>(root.size());
-        Set<Path> sandboxDirectories = new HashSet<>();
         root.forEach((workerGroupId, rawGroup) -> {
             ScenarioWorkerGroupConfig.requireNonBlank(
                     workerGroupId,
@@ -56,15 +44,9 @@ final class ScenarioWorkersJsonParser {
                     GROUP_FIELDS,
                     "workerGroup " + workerGroupId
             );
-            List<ScenarioWorkerConfig> workers = parseWorkers(
-                    workerGroupId,
-                    requireList(group, "workers"),
-                    sandboxDirectories
-            );
             configs.add(new ScenarioWorkerGroupConfig(
                     workerGroupId,
                     requireStringList(group, "eventCodes"),
-                    workers,
                     Duration.ofMillis(optionalPositiveLong(
                             group,
                             "requestTimeoutMillis",
@@ -142,53 +124,6 @@ final class ScenarioWorkersJsonParser {
         return optionalPositiveLong(value, field, 0L);
     }
 
-    private static List<ScenarioWorkerConfig> parseWorkers(
-            String workerGroupId,
-            List<?> rawWorkers,
-            Set<Path> sandboxDirectories
-    ) {
-        List<ScenarioWorkerConfig> workers =
-                new ArrayList<>(rawWorkers.size());
-        Set<String> clientWorkerKeys = new HashSet<>();
-        for (int index = 0; index < rawWorkers.size(); index++) {
-            String owner = "workerGroup "
-                    + workerGroupId
-                    + " worker "
-                    + index;
-            Map<String, Object> worker = requireObject(
-                    rawWorkers.get(index),
-                    owner
-            );
-            requireExactFields(worker, WORKER_FIELDS, owner);
-            String clientWorkerKey = requireString(
-                    worker,
-                    "clientWorkerKey"
-            );
-            if (!clientWorkerKeys.add(clientWorkerKey)) {
-                throw new IllegalArgumentException(
-                        "clientWorkerKey must be unique within WorkerGroup: "
-                                + clientWorkerKey
-                );
-            }
-            ScenarioWorkerConfig config = new ScenarioWorkerConfig(
-                    clientWorkerKey,
-                    optionalObject(worker, "workerProperties"),
-                    optionalObject(worker, "indexedPropertyUpdates"),
-                    optionalPath(worker, "sandboxDirectory")
-            );
-            if (config.sandboxDirectory() != null
-                    && !sandboxDirectories.add(
-                    config.sandboxDirectory())) {
-                throw new IllegalArgumentException(
-                        "sandboxDirectory must be unique: "
-                                + config.sandboxDirectory()
-                );
-            }
-            workers.add(config);
-        }
-        return List.copyOf(workers);
-    }
-
     private static long optionalPositiveLong(
             Map<String, Object> value,
             String field,
@@ -223,19 +158,6 @@ final class ScenarioWorkersJsonParser {
         return parsed;
     }
 
-    private static String requireString(
-            Map<String, Object> value,
-            String field
-    ) {
-        Object raw = value.get(field);
-        if (!(raw instanceof String) || ((String) raw).isBlank()) {
-            throw new IllegalArgumentException(
-                    field + " must be a non-blank string"
-            );
-        }
-        return (String) raw;
-    }
-
     private static List<?> requireList(
             Map<String, Object> value,
             String field
@@ -264,41 +186,6 @@ final class ScenarioWorkersJsonParser {
             result.add((String) item);
         }
         return List.copyOf(result);
-    }
-
-    private static Map<String, Object> optionalObject(
-            Map<String, Object> value,
-            String field
-    ) {
-        if (!value.containsKey(field)) {
-            return Map.of();
-        }
-        return requireObject(value.get(field), field);
-    }
-
-    private static Path optionalPath(
-            Map<String, Object> value,
-            String field
-    ) {
-        if (!value.containsKey(field)) {
-            return null;
-        }
-        Object raw = value.get(field);
-        if (!(raw instanceof String) || ((String) raw).isBlank()) {
-            throw new IllegalArgumentException(
-                    field + " must be a non-blank string"
-            );
-        }
-        try {
-            return Path.of((String) raw)
-                    .toAbsolutePath()
-                    .normalize();
-        } catch (InvalidPathException error) {
-            throw new IllegalArgumentException(
-                    field + " must be a valid path",
-                    error
-            );
-        }
     }
 
     @SuppressWarnings("unchecked")

@@ -5,8 +5,8 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
-
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+        .DeliveryEndpoint;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,17 +21,17 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     private final URI runtimeApiBaseUrl;
     private final List<GroupAssembly> groups;
+    private final ScenarioWorkerLab lab;
     private final ScenarioWorkerIndexUpdater indexUpdater;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
-    private final List<ScenarioWorkerSandbox> sandboxes =
-            new ArrayList<>();
 
     private boolean started;
     private boolean closed;
 
     ScenarioWorkers(
             URI runtimeApiBaseUrl,
+            String sandboxRoot,
             List<ScenarioWorkerGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>>
                     availableExtensionsByEventCode,
@@ -48,6 +48,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                         availableExtensionsByEventCode
                 )
         );
+        lab = new ScenarioWorkerLab(sandboxRoot);
         indexUpdater = new ScenarioWorkerIndexUpdater(indexClient);
         this.groupManagerFactory = Objects.requireNonNull(
                 groupManagerFactory,
@@ -57,6 +58,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     public static ScenarioWorkers fromJson(
             String workerConfigJson,
+            String sandboxRoot,
             URI runtimeApiBaseUrl
     ) {
         try {
@@ -66,6 +68,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     new HttpScenarioWorkerIndexClient(runtimeApiBaseUrl);
             return new ScenarioWorkers(
                     runtimeApiBaseUrl,
+                    sandboxRoot,
                     configs,
                     availableDefinitionExtensions(),
                     indexClient,
@@ -103,7 +106,10 @@ public final class ScenarioWorkers implements AutoCloseable {
             started = true;
         } catch (RuntimeException failure) {
             closed = true;
-            closeResourcesAndSuppress(failure);
+            RuntimeException closeFailure = closeManagers(null);
+            if (closeFailure != null) {
+                failure.addSuppressed(closeFailure);
+            }
             if (failure instanceof ScenarioWorkerAssemblyException) {
                 throw failure;
             }
@@ -123,37 +129,47 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
         closed = true;
         RuntimeException failure = closeManagers(null);
-        failure = closeSandboxes(failure);
         if (failure != null) {
             throw failure;
         }
     }
 
     private List<PreparedGroup> prepareGroups() {
+        if (groups.isEmpty()) {
+            return List.of();
+        }
+        List<ScenarioWorkerGroupConfig> configs = groups.stream()
+                .map(GroupAssembly::config)
+                .toList();
+        List<ScenarioWorkerLab.DiscoveredGroup> discovered =
+                lab.prepare(configs);
+        if (discovered.size() != groups.size()) {
+            throw new IllegalStateException(
+                    "Scenario Worker Lab returned incomplete groups"
+            );
+        }
+
         List<PreparedGroup> preparedGroups = new ArrayList<>();
-        for (GroupAssembly group : groups) {
+        for (int index = 0; index < groups.size(); index++) {
+            GroupAssembly group = groups.get(index);
+            ScenarioWorkerLab.DiscoveredGroup discoveredGroup =
+                    discovered.get(index);
+            if (!group.config().equals(discoveredGroup.config())) {
+                throw new IllegalStateException(
+                        "Scenario Worker Lab changed WorkerGroup order"
+                );
+            }
+            if (discoveredGroup.workers().isEmpty()) {
+                continue;
+            }
             List<PreparedReplica> replicas = new ArrayList<>();
-            for (ScenarioWorkerConfig worker : group.config().workers()) {
-                Map<String, Object> workerProperties =
-                        worker.workerProperties();
-                WorkerIdentityStore identityStore =
-                        WorkerIdentityStore.noCache();
-                if (worker.sandboxDirectory() != null) {
-                    ScenarioWorkerSandbox sandbox =
-                            ScenarioWorkerSandbox.open(
-                                    worker.sandboxDirectory(),
-                                    group.config().workerGroupId(),
-                                    worker.clientWorkerKey(),
-                                    worker.workerProperties()
-                            );
-                    sandboxes.add(sandbox);
-                    workerProperties = sandbox.workerProperties();
-                    identityStore = sandbox;
-                }
+            for (ScenarioWorkerStateFile worker
+                    : discoveredGroup.workers()) {
                 replicas.add(new PreparedReplica(
                         worker.clientWorkerKey(),
-                        workerProperties,
-                        identityStore
+                        worker.workerProperties(),
+                        worker.indexedPropertyUpdates(),
+                        worker
                 ));
             }
             preparedGroups.add(new PreparedGroup(
@@ -174,7 +190,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     "groupManager"
             );
             managedGroups.add(new ManagedGroup(
-                    preparedGroup.group().config(),
+                    preparedGroup,
                     manager
             ));
         }
@@ -195,7 +211,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private void updateIndexes() {
         for (ManagedGroup managedGroup : managedGroups) {
             indexUpdater.update(
-                    managedGroup.config(),
+                    managedGroup.preparedGroup().group().config(),
+                    managedGroup.preparedGroup().replicas(),
                     managedGroup.manager()
             );
         }
@@ -213,29 +230,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             }
         }
         return failure;
-    }
-
-    private RuntimeException closeSandboxes(RuntimeException failure) {
-        List<ScenarioWorkerSandbox> closing =
-                new ArrayList<>(sandboxes);
-        sandboxes.clear();
-        Collections.reverse(closing);
-        for (ScenarioWorkerSandbox sandbox : closing) {
-            try {
-                sandbox.close();
-            } catch (RuntimeException error) {
-                failure = accumulate(failure, error);
-            }
-        }
-        return failure;
-    }
-
-    private void closeResourcesAndSuppress(RuntimeException failure) {
-        RuntimeException closeFailure = closeManagers(null);
-        closeFailure = closeSandboxes(closeFailure);
-        if (closeFailure != null) {
-            failure.addSuppressed(closeFailure);
-        }
     }
 
     private static JavaWorkerManager createManager(
@@ -392,6 +386,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     record PreparedReplica(
             String clientWorkerKey,
             Map<String, Object> workerProperties,
+            Map<String, Object> indexedPropertyUpdates,
             WorkerIdentityStore identityStore
     ) {
     }
@@ -403,7 +398,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     private record ManagedGroup(
-            ScenarioWorkerGroupConfig config,
+            PreparedGroup preparedGroup,
             JavaWorkerManager manager
     ) {
     }

@@ -3,6 +3,7 @@ package com.xa.mass.scenarioworkers;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -27,16 +28,17 @@ final class ScenarioWorkerIndexUpdater {
 
     void update(
             ScenarioWorkerGroupConfig group,
+            List<ScenarioWorkers.PreparedReplica> workers,
             JavaWorkerManager manager
     ) {
-        for (ScenarioWorkerConfig worker : group.workers()) {
+        for (ScenarioWorkers.PreparedReplica worker : workers) {
             update(group, worker, manager);
         }
     }
 
     private void update(
             ScenarioWorkerGroupConfig group,
-            ScenarioWorkerConfig worker,
+            ScenarioWorkers.PreparedReplica worker,
             JavaWorkerManager manager
     ) {
         if (worker.indexedPropertyUpdates().isEmpty()) {

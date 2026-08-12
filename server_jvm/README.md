@@ -491,8 +491,8 @@ and submits at most one pending or buffered batch per
 
 Built-in business Workers are opt-in. The Server profile owns advisory
 WorkerGroup directory metadata, while `scenario_workers_jvm` owns its local
-Definitions and Worker execution. The two JSON documents are deliberately
-independent:
+Definitions, persistent Lab files, and Worker execution. The two JSON documents
+remain deliberately independent:
 
 ```yaml
 xa:
@@ -511,6 +511,7 @@ xa:
           public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
     worker-assembly:
       runtime-api-base-url: http://127.0.0.1:18082
+      sandbox-root: data/scenario-workers
       group-config-json: |
         {
           "scenario-phone-number-workers": {
@@ -529,14 +530,7 @@ xa:
               "phonenumber.e164",
               "phonenumber.country",
               "phonenumber.original-carrier"
-            ],
-            "workers": [{
-              "clientWorkerKey": "scenario-phone-number-worker-001",
-              "sandboxDirectory":
-                "data/scenario-workers/scenario-phone-number-worker-001",
-              "workerProperties": {"runtime":"java","region":"local"},
-              "indexedPropertyUpdates": {"index.worker.region":"local"}
-            }]
+            ]
           }
         }
 ```
@@ -545,40 +539,49 @@ Both JSON values default to `{}`. The checked-in
 `scenario-workers` profile declares one WebSocket Adapter and two independent
 Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
-groups explicitly list 10 Workers. The `worker-001` entry in each group owns a
-local sandbox under `data/scenario-workers`; the other 18 Workers remain
-ephemeral. Omitted timeout and retry fields use a 10 second request timeout, a
-10-attempt prepare budget at one-second intervals, a 20-attempt connection
-budget at 500-millisecond intervals with a 10-second stable window, and a 15
-second initial-connect timeout. A sandbox Worker registers only when its local
-`identity.json` is absent. Later starts reuse the persisted Worker ID, load the
-complete snapshot from `worker-properties.json`, and Bind again. An ephemeral
-Worker continues to register on each start. Scenario then builds each
-WebSocket Client from the public URI returned by Bind; the Worker manifest does
-not contain an endpoint-manager ID or Adapter URI.
+groups discover their replicas from the fixed local Lab root
+`data/scenario-workers`; `worker-config-json` contains no Worker entries.
+Omitted runtime fields use a 10-second request timeout, the default bounded
+connection policy, and a 15-second initial-connect timeout.
+
+The Lab applies one rule independently to each configured WorkerGroup. A
+missing `data/scenario-workers/{workerGroupId}` directory is initialized from
+that Group's checked-in defaults through a validated staged directory. An
+existing Group directory is never seeded, merged, repaired, or upgraded; its
+exact direct JSON contents are loaded, and an empty directory means zero local
+Workers. Delete one Group directory to reset that Group on the next start, or
+delete the Lab root to reset all configured Groups. Unconfigured directories
+are ignored.
 
 ```text
 ./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
 ```
 
+The `bootRun` task resolves the Lab to the repository-level
+`data/scenario-workers` directory. When running the boot JAR directly, launch
+it from the repository root so the same relative path is used.
+
 During startup the Server initializes WorkerGroup directory entries through the
 WorkerGroup owner, then starts configured Adapters, then invokes one aggregate
-`ScenarioWorkers` handle. Scenario resolves each Worker ID from its sandbox or
-the Identity API, binds it with complete Worker Properties,
-starts every real WebSocket transport against the returned URI, waits for
-initial network connections, and applies best-effort Index updates through the
-public Runtime Resource HTTP API. Adapter route verification only compares the
-persisted Endpoint Binding; successful verification is followed by process-local
-connection activation.
+`ScenarioWorkers` handle. Scenario preflights the configured Group directories,
+loads or registers each persistent Worker ID, binds it with its complete Worker
+Properties, starts every real WebSocket transport against the returned URI, and
+applies best-effort Index updates through the public Runtime Resource HTTP API.
+Aggregate start does not wait for initial Adapter verification. Adapter route
+verification only compares the persisted Endpoint Binding; successful
+verification is followed by process-local connection activation.
 Shutdown closes Scenario transports before Adapters;
 WorkerGroup directory entries are not rolled back or removed.
 
-The sandbox is a writable local state directory, not a security boundary.
-Profile Properties only initialize a missing `worker-properties.json`; later
-file edits are submitted on the next process start. Property Index updates
-remain separate and are never derived from that file. If the Server Identity
-registry is reset, remove the affected sandbox explicitly before allowing a
-new long-lived Worker ID to be issued.
+Every Worker owns one file named `{clientWorkerKey}.json` under its configured
+Group directory. It contains schema version 1, optional persisted `workerId`,
+the complete `workerProperties`, and explicit `indexedPropertyUpdates`.
+Register writes the first Worker ID back to that same file atomically; later
+starts reuse it and Bind again. File edits take effect on the next Server start.
+The Lab is writable local test state, not a security boundary or multi-process
+store. If the Identity registry is reset, remove `workerId` from the affected
+Worker JSON files, or delete the affected Group directory when restoring that
+Group's checked-in defaults is intended.
 
 The phone-number group references `phonenumber.e164`,
 `phonenumber.country`, and `phonenumber.original-carrier`. The string-utils
@@ -598,7 +601,7 @@ second scheduler, or bypass the Adapter through an in-process path.
 implementation SPI or plugin system. Server does not import Scenario business
 Definitions or Handlers. Scenario does not import Kernel or Server
 implementation types. Closing the handle
-only releases local network resources and does not change Kernel Worker truth.
+only releases local network resources and preserves the Worker JSON files.
 The profile and Adapter remain Server-owned, while capabilities and concrete
 Worker resource lifecycle belong to `scenario_workers_jvm`.
 External Worker applications remain supported. They persist a client key,

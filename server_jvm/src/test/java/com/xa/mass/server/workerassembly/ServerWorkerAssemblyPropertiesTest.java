@@ -55,6 +55,9 @@ class ServerWorkerAssemblyPropertiesTest {
                     ServerWorkerAssemblyProperties.class
             ).runtimeApiBaseUrl().toString())
                     .isEqualTo("http://127.0.0.1:18082");
+            assertThat(context.getBean(
+                    ServerWorkerAssemblyProperties.class
+            ).sandboxRoot()).isEqualTo("data/scenario-workers");
             assertThat(context).hasSingleBean(ScenarioWorkers.class);
         });
     }
@@ -90,14 +93,11 @@ class ServerWorkerAssemblyPropertiesTest {
                     .doesNotContain("\"type\"")
                     .doesNotContain("\"workerGroupId\"")
                     .doesNotContain("\"attributes\"")
-                    .contains("scenario-phone-number-worker-001")
-                    .contains("scenario-phone-number-worker-010")
-                    .contains("scenario-string-utils-worker-001")
-                    .contains("scenario-string-utils-worker-010")
-                    .contains("data/scenario-workers/"
-                            + "scenario-phone-number-worker-001")
-                    .contains("data/scenario-workers/"
-                            + "scenario-string-utils-worker-001");
+                    .doesNotContain("\"workers\"")
+                    .doesNotContain("clientWorkerKey")
+                    .doesNotContain("sandboxDirectory");
+            assertThat(properties.sandboxRoot())
+                    .isEqualTo("data/scenario-workers");
         });
     }
 
@@ -146,9 +146,7 @@ class ServerWorkerAssemblyPropertiesTest {
                 "xa.mass.worker-assembly.group-config-json="
                         + "{\"group\":{\"eventCodes\":[\"catalog.old\"]}}",
                 "xa.mass.worker-assembly.worker-config-json="
-                        + "{\"group\":{\"eventCodes\":[\"string.md5\"],"
-                        + "\"workers\":[{\"clientWorkerKey\":"
-                        + "\"worker-1\"}]}}"
+                        + "{\"group\":{\"eventCodes\":[\"string.md5\"]}}"
         ).run(context -> assertThat(context).hasNotFailed());
     }
 
@@ -156,6 +154,13 @@ class ServerWorkerAssemblyPropertiesTest {
     void unknownServerConfigurationFieldIsRejected() {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.legacy=true"
+        ).run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void blankSandboxRootIsRejected() {
+        contextRunner.withPropertyValues(
+                "xa.mass.worker-assembly.sandbox-root= "
         ).run(context -> assertThat(context).hasFailed());
     }
 }

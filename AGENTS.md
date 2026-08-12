@@ -17,16 +17,19 @@ Status: current repository handoff.
   delivery operations to Java Redis providers; it does not define a second set
   of Kernel runtime ports. It may
   initialize advisory WorkerGroup catalog metadata, start configured Adapters,
-  and pass an opaque Worker manifest plus the public Runtime API base URL to
-  the Scenario Worker module. It does not implement Scenario handlers or own
-  individual Worker resource lifecycle.
+  and pass an opaque Scenario Group manifest, the fixed local Lab root, and the
+  public Runtime API base URL to the Scenario Worker module. It does not parse
+  Lab Worker files, implement Scenario handlers, or own individual Worker
+  resource lifecycle.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
-  strict Worker JSON parsing, real WebSocket Worker construction, public-HTTP
-  identity registration, explicit best-effort Property Index updates, and
-  aggregate resource cleanup. Its aggregate start does not wait for an initial
-  WebSocket connection. It is not a Kernel owner, Server profile, Adapter,
-  plugin SPI, or independently deployed application.
+  strict configured-Group directory discovery, per-Group initialization based
+  only on directory existence, one persistent JSON per Lab Worker, real
+  WebSocket Worker construction, public-HTTP identity registration, explicit
+  best-effort Property Index updates, and aggregate resource cleanup. Its
+  aggregate start does not wait for an initial WebSocket connection. It is not
+  a Kernel owner, Server profile, Adapter, plugin SPI, or independently
+  deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   DeliveryCommand/DeliveryReport contract shared by Server, Adapter, and Worker.
   DeliveryReport carries required producer `src + sourceId`; DeliveryCommand
@@ -283,7 +286,8 @@ tag.
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
   initialize explicitly configured WorkerGroup catalog metadata, bind one
-  opaque Scenario Worker JSON string plus a Runtime API base URL, and sequence
+  opaque Scenario Group JSON string plus a Lab root and Runtime API base URL,
+  and sequence
   WorkerGroup initialization before Adapter and Scenario startup. It also owns
   the Worker Identity registry, persistent Endpoint Binding, and Adapter route
   verification, which are separate from Kernel Worker Runtime. It must not
@@ -296,7 +300,7 @@ tag.
   handling, result buffering, or trusted rejection policy.
 - `scenario_workers_jvm` may expose the final `ScenarioWorkers` aggregate
   lifecycle handle and its
-  `fromJson(workerConfigJson, runtimeApiBaseUrl)`
+  `fromJson(workerConfigJson, sandboxRoot, runtimeApiBaseUrl)`
   composition entry. Finite capability providers, parsed configuration, and
   Worker factories stay module-internal.
   Definitions and Handler instances are shared by all Workers that reference
@@ -305,15 +309,18 @@ tag.
   `transport:java-worker`; it must not depend on `kernel_jvm`, Spring,
   `server_jvm`, `transport:netty-adapter`, Redis, scores, Pacers, HTTP
   controller types, reflection, `ServiceLoader`, or configurable class names.
-  The aggregate creates one `JavaWorkerManager` per configured WorkerGroup;
+  The aggregate creates one `JavaWorkerManager` per non-empty configured
+  WorkerGroup;
   every Manager owns one bounded daemon Platform shared only by its replicas.
-  Scenario retains Sandbox and Property Index ownership; it closes Managers,
-  then sandboxes. Aggregate `start()` never waits
+  Scenario owns the local Lab and Property Index requests; closing Managers
+  preserves every Worker JSON. Aggregate `start()` never waits
   for first Bind and does not expose Manager reconciliation. A configured
   Property Index update may wait for the Worker ID within the existing
   connection-timeout budget, then logs `14010` and skips when identity is
-  still unavailable. Changing replica count requires configuration change and
-  process restart.
+  still unavailable. The Lab scans only direct JSON children of configured
+  Group directories, supports at most 100 Workers per Group, and has no file
+  watcher or multi-process lock. Changing replica topology requires editing
+  files and restarting the process.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
@@ -321,8 +328,12 @@ tag.
   may declare WorkerGroups referencing the finite phone-number and string
   utility event codes, but it must
   not create Tasks or bind those Workers to RPC, Task type, or scheduling
-  policy. WorkerGroup `eventCodes` are an advisory catalog summary and may lag
-  the package-private Definition set resolved by Scenario Workers.
+  policy. Individual Workers come only from the profile-owned
+  `data/scenario-workers` Lab, never from an inline config array. A missing
+  configured Group directory initializes only that Group's checked-in
+  defaults; an existing directory receives no default mutation. WorkerGroup
+  `eventCodes` are an advisory catalog summary and may lag the package-private
+  Definition set resolved by Scenario Workers.
 
 ## JVM Incremental Assembly
 
@@ -364,11 +375,13 @@ WorkerDeliveryConfiguration
 
 ServerWorkerAssemblyConfiguration
   -> WorkerGroup catalog JSON -> WorkerResourceCatalog
-  -> opaque Scenario Worker JSON + Runtime API base URL
+  -> opaque Scenario Group JSON + fixed Lab root + Runtime API base URL
   -> ScenarioWorkers.fromJson
 
 scenario_workers_jvm
-  -> strict Worker JSON parsing and internal Definition resolution
+  -> missing configured Group directory: materialize that Group's defaults
+  -> configured WorkerGroup directory -> sorted direct Worker JSON files
+  -> strict single-file Worker state and internal Definition resolution
   -> public Worker Register and Bind plus platform-issued WorkerId recovery
   -> Adapter-directed worker.connection.identify Report carrying
      WORKER + workerId source identity through the returned Adapter URI

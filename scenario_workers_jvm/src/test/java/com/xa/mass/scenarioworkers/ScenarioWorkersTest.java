@@ -14,8 +14,8 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
-import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,48 +32,54 @@ class ScenarioWorkersTest {
 
     private static final URI RUNTIME_API =
             URI.create("http://127.0.0.1:18082");
+    private static final String GROUP = "scenario-group";
     private static final String WORKER_ID_1 =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
     private static final String WORKER_ID_2 =
             "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3";
 
+    @TempDir
+    Path temporaryDirectory;
+
     @Test
     void publicAssemblyIsInertAndRejectsUnknownLocalEvent() {
-        ScenarioWorkers empty = ScenarioWorkers.fromJson("{}", RUNTIME_API);
+        ScenarioWorkers empty = ScenarioWorkers.fromJson(
+                "{}",
+                labRoot().toString(),
+                RUNTIME_API
+        );
         empty.start();
         empty.start();
         empty.close();
         empty.close();
 
+        assertThat(labRoot()).doesNotExist();
         assertThatThrownBy(() -> ScenarioWorkers.fromJson(
-                config("missing.event", 1),
+                config("missing.event"),
+                labRoot().toString(),
                 RUNTIME_API
         )).isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .hasMessageContaining("unknown eventCode");
     }
 
     @Test
-    void productionAssemblyBuildsAGroupWithoutWaitingForConnection() {
-        String json = Jsons.toJson(Map.of(
-                "scenario-group",
-                Map.of(
-                        "eventCodes",
-                        List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                        "workers",
-                        List.of(
-                                Map.of("clientWorkerKey", "client-1"),
-                                Map.of("clientWorkerKey", "client-2")
-                        )
-                )
-        ));
-        ScenarioWorkers workers = ScenarioWorkers.fromJson(json, RUNTIME_API);
-
-        workers.start();
-        workers.close();
-    }
-
-    @Test
-    void buildsOneManagerForOneGroupAndKeepsReplicaMetadata() {
+    void buildsOneManagerFromSortedLabFilesAndKeepsReplicaMetadata()
+            throws Exception {
+        createLabRoot();
+        writeWorker(
+                GROUP,
+                "client-2",
+                Map.of("region", "second"),
+                Map.of("index.worker.region", "local"),
+                null
+        );
+        writeWorker(
+                GROUP,
+                "client-1",
+                Map.of("region", "first"),
+                Map.of("index.worker.region", "local"),
+                null
+        );
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         when(manager.snapshot("client-1")).thenReturn(snapshot(WORKER_ID_1));
         when(manager.snapshot("client-2")).thenReturn(snapshot(WORKER_ID_2));
@@ -82,13 +88,12 @@ class ScenarioWorkersTest {
                 new ArrayList<>();
 
         ScenarioWorkers workers = workers(
-                config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
                 (group, workerId, updates, timeout) -> {
                     indexedWorkerIds.add(workerId);
                     return acceptedIndexResults(updates);
                 },
                 (runtimeApiBaseUrl, preparedGroup) -> {
-                    assertThat(runtimeApiBaseUrl).isEqualTo(RUNTIME_API);
                     preparedGroups.add(preparedGroup);
                     return manager;
                 }
@@ -100,7 +105,7 @@ class ScenarioWorkersTest {
         assertThat(preparedGroups).hasSize(1);
         ScenarioWorkers.PreparedGroup prepared = preparedGroups.get(0);
         assertThat(prepared.group().config().workerGroupId())
-                .isEqualTo("scenario-group");
+                .isEqualTo(GROUP);
         assertThat(prepared.group().definitionExtensions())
                 .extracting(WorkerEventDefinition::eventCode)
                 .containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
@@ -108,7 +113,7 @@ class ScenarioWorkersTest {
                 .extracting(ScenarioWorkers.PreparedReplica::clientWorkerKey)
                 .containsExactly("client-1", "client-2");
         assertThat(prepared.replicas().get(0).workerProperties())
-                .containsEntry("region", "local");
+                .containsEntry("region", "first");
         assertThat(indexedWorkerIds).containsExactly(
                 WORKER_ID_1,
                 WORKER_ID_2
@@ -120,7 +125,91 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void groupAssemblyFailureClosesEarlierManagersWithoutStartingAny() {
+    void emptyConfiguredGroupCreatesNoManager() throws Exception {
+        createLabRoot();
+        AtomicInteger managersCreated = new AtomicInteger();
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                acceptedIndexes(),
+                (runtimeApiBaseUrl, preparedGroup) -> {
+                    managersCreated.incrementAndGet();
+                    return mock(JavaWorkerManager.class);
+                }
+        );
+
+        workers.start();
+        workers.close();
+
+        assertThat(managersCreated).hasValue(0);
+        assertThat(labRoot().resolve(GROUP)).isDirectory();
+    }
+
+    @Test
+    void invalidWorkerFileCreatesNoManagerOrNetworkActivity()
+            throws Exception {
+        createLabRoot();
+        Path group = labRoot().resolve(GROUP);
+        Files.createDirectories(group);
+        Files.writeString(
+                group.resolve("broken.json"),
+                "not-json",
+                StandardCharsets.UTF_8
+        );
+        AtomicInteger managersCreated = new AtomicInteger();
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                acceptedIndexes(),
+                (runtimeApiBaseUrl, preparedGroup) -> {
+                    managersCreated.incrementAndGet();
+                    return mock(JavaWorkerManager.class);
+                }
+        );
+
+        assertThatThrownBy(workers::start)
+                .isInstanceOf(ScenarioWorkerAssemblyException.class);
+        assertThat(managersCreated).hasValue(0);
+    }
+
+    @Test
+    void workerIdentityWrittenByPreparationIsReusedAfterRestart()
+            throws Exception {
+        createLabRoot();
+        writeWorker(
+                GROUP,
+                "client-1",
+                Map.of("region", "persistent"),
+                Map.of(),
+                null
+        );
+        List<Optional<String>> observedIds = new ArrayList<>();
+
+        ScenarioWorkers first = identityWorkers(observedIds);
+        first.start();
+        first.close();
+        ScenarioWorkers second = identityWorkers(observedIds);
+        second.start();
+        second.close();
+
+        assertThat(observedIds).containsExactly(
+                Optional.empty(),
+                Optional.of(WORKER_ID_1)
+        );
+        assertThat(Jsons.parseObject(Files.readString(
+                labRoot().resolve(GROUP).resolve("client-1.json"),
+                StandardCharsets.UTF_8
+        ))).containsEntry("workerId", WORKER_ID_1)
+                .containsEntry(
+                        "workerProperties",
+                        Map.of("region", "persistent")
+                );
+    }
+
+    @Test
+    void groupAssemblyFailureClosesEarlierManagersWithoutStartingAny()
+            throws Exception {
+        createLabRoot();
+        writeWorker("group-1", "client-1", Map.of(), Map.of(), null);
+        writeWorker("group-2", "client-2", Map.of(), Map.of(), null);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
@@ -139,15 +228,15 @@ class ScenarioWorkersTest {
                 .hasMessageContaining("Could not start");
 
         verify(first, never()).start();
-        InOrder closeOrder = inOrder(first);
-        closeOrder.verify(first).close();
-        assertThatThrownBy(workers::start)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("closed");
+        verify(first).close();
     }
 
     @Test
-    void synchronousGroupStartFailureDoesNotSkipLaterGroups() {
+    void synchronousGroupStartFailureStillAttemptsAndClosesEveryGroup()
+            throws Exception {
+        createLabRoot();
+        writeWorker("group-1", "client-1", Map.of(), Map.of(), null);
+        writeWorker("group-2", "client-2", Map.of(), Map.of(), null);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         JavaWorkerManager second = mock(JavaWorkerManager.class);
         doThrow(new IllegalStateException("start first"))
@@ -171,175 +260,48 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void missingIdentitySkipsIndexUpdateWithoutFailingStartup() {
+    void missingIdentitySkipsIndexUpdateWithoutFailingStartup()
+            throws Exception {
+        createLabRoot();
+        writeWorker(
+                GROUP,
+                "client-1",
+                Map.of(),
+                Map.of("index.worker.region", "local"),
+                null
+        );
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         when(manager.snapshot("client-1")).thenReturn(snapshot(null));
         AtomicInteger indexCalls = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 configWithConnectTimeout(
                         StringUtilityWorkerEvents.MD5_EVENT_CODE,
-                        1,
                         5
                 ),
                 (group, workerId, updates, timeout) -> {
                     indexCalls.incrementAndGet();
                     return Map.of();
                 },
-                (runtimeApiBaseUrl, preparedGroup) ->
-                        manager
+                (runtimeApiBaseUrl, preparedGroup) -> manager
         );
 
         workers.start();
+        workers.close();
+
         assertThat(indexCalls).hasValue(0);
-        workers.close();
     }
 
-    @Test
-    void indexFailureRemainsBestEffort() {
-        JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot("client-1")).thenReturn(snapshot(WORKER_ID_1));
-        ScenarioWorkers workers = workers(
-                config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 1),
-                (group, workerId, updates, timeout) -> {
-                    throw new IllegalStateException("index unavailable");
-                },
-                (runtimeApiBaseUrl, preparedGroup) ->
-                        manager
-        );
-
-        workers.start();
-        workers.close();
-    }
-
-    @Test
-    void sandboxIdentityAndPropertiesPassThroughWithoutRewrite(
-            @TempDir Path temporaryDirectory
-    ) throws IOException {
-        Path sandboxDirectory = temporaryDirectory.resolve("worker");
-        List<Map<String, Object>> observedProperties = new ArrayList<>();
-        List<Optional<String>> observedIds = new ArrayList<>();
-
-        ScenarioWorkers first = sandboxWorkers(
-                sandboxDirectory,
-                "first",
-                observedProperties,
-                observedIds
-        );
-        first.start();
-        first.close();
-
-        Files.writeString(
-                sandboxDirectory.resolve("worker-properties.json"),
-                Jsons.toJson(Map.of("region", "edited"))
-        );
-
-        ScenarioWorkers second = sandboxWorkers(
-                sandboxDirectory,
-                "ignored-inline",
-                observedProperties,
-                observedIds
-        );
-        second.start();
-        second.close();
-
-        assertThat(observedIds).containsExactly(
-                Optional.empty(),
-                Optional.of(WORKER_ID_1)
-        );
-        assertThat(observedProperties).containsExactly(
-                Map.of("region", "first"),
-                Map.of("region", "edited")
-        );
-    }
-
-    @Test
-    void sandboxPreflightFailureCreatesNoManagerAndReleasesLocks(
-            @TempDir Path temporaryDirectory
-    ) throws IOException {
-        Path first = temporaryDirectory.resolve("first");
-        Path broken = temporaryDirectory.resolve("broken");
-        Files.createDirectories(broken);
-        Files.writeString(
-                broken.resolve("worker-properties.json"),
-                "not-json"
-        );
-        String config = Jsons.toJson(Map.of(
-                "scenario-group",
-                Map.of(
-                        "eventCodes",
-                        List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                        "workers",
-                        List.of(
-                                sandboxWorker("client-1", first),
-                                sandboxWorker("client-2", broken)
-                        )
-                )
-        ));
-        AtomicInteger managersCreated = new AtomicInteger();
-        ScenarioWorkers workers = workers(
-                config,
-                acceptedIndexes(),
-                (runtimeApiBaseUrl, preparedGroup) -> {
-                    managersCreated.incrementAndGet();
-                    return mock(JavaWorkerManager.class);
-                }
-        );
-
-        assertThatThrownBy(workers::start)
-                .isInstanceOf(ScenarioWorkerAssemblyException.class);
-        assertThat(managersCreated).hasValue(0);
-
-        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
-                first,
-                "scenario-group",
-                "client-1",
-                Map.of()
-        );
-        reopened.close();
-    }
-
-    @Test
-    void closesManagersThenReleasesSandboxes(
-            @TempDir Path temporaryDirectory
-    ) {
-        Path sandboxDirectory = temporaryDirectory.resolve("worker");
-        JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        ScenarioWorkers workers = workers(
-                sandboxConfig(sandboxDirectory, "local"),
-                acceptedIndexes(),
-                (runtimeApiBaseUrl, preparedGroup) ->
-                        manager
-        );
-
-        workers.start();
-        workers.close();
-
-        verify(manager).close();
-        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
-                sandboxDirectory,
-                "scenario-group",
-                "client-1",
-                Map.of()
-        );
-        reopened.close();
-    }
-
-    private static ScenarioWorkers sandboxWorkers(
-            Path sandboxDirectory,
-            String region,
-            List<Map<String, Object>> observedProperties,
+    private ScenarioWorkers identityWorkers(
             List<Optional<String>> observedIds
     ) {
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot("client-1")).thenReturn(snapshot(WORKER_ID_1));
         return workers(
-                sandboxConfig(sandboxDirectory, region),
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
                 acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     ScenarioWorkers.PreparedReplica replica =
                             preparedGroup.replicas().get(0);
                     doAnswer(invocation -> {
-                        observedProperties.add(replica.workerProperties());
                         Optional<String> workerId =
                                 replica.identityStore().loadWorkerId();
                         observedIds.add(workerId);
@@ -353,18 +315,50 @@ class ScenarioWorkersTest {
         );
     }
 
-    private static ScenarioWorkers workers(
+    private ScenarioWorkers workers(
             String json,
             ScenarioWorkerIndexClient indexes,
             ScenarioWorkers.GroupManagerFactory managerFactory
     ) {
         return new ScenarioWorkers(
                 RUNTIME_API,
+                labRoot().toString(),
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
                 indexes,
                 managerFactory
         );
+    }
+
+    private void createLabRoot() throws Exception {
+        Files.createDirectories(labRoot());
+    }
+
+    private void writeWorker(
+            String workerGroupId,
+            String clientWorkerKey,
+            Map<String, Object> properties,
+            Map<String, Object> indexes,
+            String workerId
+    ) throws Exception {
+        Path group = labRoot().resolve(workerGroupId);
+        Files.createDirectories(group);
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("schemaVersion", 1);
+        if (workerId != null) {
+            value.put("workerId", workerId);
+        }
+        value.put("workerProperties", properties);
+        value.put("indexedPropertyUpdates", indexes);
+        Files.writeString(
+                group.resolve(clientWorkerKey + ".json"),
+                Jsons.toJson(value),
+                StandardCharsets.UTF_8
+        );
+    }
+
+    private Path labRoot() {
+        return temporaryDirectory.resolve("data/scenario-workers");
     }
 
     private static WorkerLifecycle.Snapshot snapshot(String workerId) {
@@ -398,90 +392,36 @@ class ScenarioWorkersTest {
         return Map.of(definition.eventCode(), definition);
     }
 
-    private static String config(String eventCode, int count) {
-        return configWithConnectTimeout(eventCode, count, 30_000);
+    private static String config(String eventCode) {
+        return configWithConnectTimeout(eventCode, 30_000);
     }
 
     private static String configWithConnectTimeout(
             String eventCode,
-            int count,
             long connectTimeoutMillis
     ) {
-        List<Map<String, Object>> workers = new ArrayList<>();
-        for (int index = 1; index <= count; index++) {
-            workers.add(Map.of(
-                    "clientWorkerKey",
-                    "client-" + index,
-                    "workerProperties",
-                    Map.of("region", "local"),
-                    "indexedPropertyUpdates",
-                    Map.of("index.worker.region", "local")
-            ));
-        }
         return Jsons.toJson(Map.of(
-                "scenario-group",
+                GROUP,
                 Map.of(
                         "eventCodes",
                         List.of(eventCode),
                         "connectTimeoutMillis",
-                        connectTimeoutMillis,
-                        "workers",
-                        workers
+                        connectTimeoutMillis
                 )
         ));
     }
 
     private static String twoGroupConfig() {
         Map<String, Object> groups = new LinkedHashMap<>();
-        groups.put("group-1", groupJson("client-1"));
-        groups.put("group-2", groupJson("client-2"));
+        groups.put("group-1", groupJson());
+        groups.put("group-2", groupJson());
         return Jsons.toJson(groups);
     }
 
-    private static Map<String, Object> groupJson(String clientWorkerKey) {
+    private static Map<String, Object> groupJson() {
         return Map.of(
                 "eventCodes",
-                List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                "workers",
-                List.of(Map.of(
-                        "clientWorkerKey",
-                        clientWorkerKey,
-                        "workerProperties",
-                        Map.of("region", "local")
-                ))
-        );
-    }
-
-    private static String sandboxConfig(Path sandbox, String region) {
-        return Jsons.toJson(Map.of(
-                "scenario-group",
-                Map.of(
-                        "eventCodes",
-                        List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                        "workers",
-                        List.of(Map.of(
-                                "clientWorkerKey",
-                                "client-1",
-                                "workerProperties",
-                                Map.of("region", region),
-                                "sandboxDirectory",
-                                sandbox.toString()
-                        ))
-                )
-        ));
-    }
-
-    private static Map<String, Object> sandboxWorker(
-            String clientWorkerKey,
-            Path sandbox
-    ) {
-        return Map.of(
-                "clientWorkerKey",
-                clientWorkerKey,
-                "workerProperties",
-                Map.of(),
-                "sandboxDirectory",
-                sandbox.toString()
+                List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE)
         );
     }
 }

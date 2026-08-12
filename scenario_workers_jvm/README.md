@@ -1,32 +1,31 @@
 # XA Mass Scenario Workers JVM
 
 `scenario_workers_jvm` is the finite Java 21 capability assembly used by the
-checked-in `scenario-workers` Server profile. It demonstrates ordinary Workers;
-it is not a Kernel owner, privileged Server extension, Adapter, plugin SPI, or
-independently deployed application.
+checked-in `scenario-workers` Server profile. It is a local Worker Lab, not a
+Kernel owner, privileged Server extension, Adapter, plugin SPI, or independently
+deployed application.
 
-The module owns checked-in phone-number and string-utility business
-`WorkerEventDefinition` extensions. Those extensions are package-private and are
-selected by each worker-config group's local `eventCodes`. This field is local
-assembly input, not the WorkerGroup catalog projection. Every Worker in the
-same configured group receives the same immutable extension list and shared
-Handler instances, so Scenario Handlers must be stateless or thread-safe.
-Core owns the final Dispatcher registry; its built-in set is currently empty,
-and Scenario contributes only the listed business extensions. Adapter-directed
-connection close remains a Transport lifecycle instruction.
+The module owns the checked-in phone-number and string-utility
+`WorkerEventDefinition` extensions. A configured WorkerGroup selects one
+immutable extension list through its local `eventCodes`; every discovered
+Worker in that group shares the same stateless or thread-safe Handler instances.
+The WorkerGroup catalog projection remains a separate Server-owned value and
+may lag this local list.
 
 The only public assembly surface is:
 
 ```java
 ScenarioWorkers workers = ScenarioWorkers.fromJson(
         workerConfigJson,
+        "data/scenario-workers",
         URI.create("http://127.0.0.1:18082")
 );
 workers.start();
 workers.close();
 ```
 
-The worker JSON is keyed by WorkerGroup ID:
+The JSON config declares groups and local runtime options only. It never lists
+individual Workers:
 
 ```json
 {
@@ -40,100 +39,120 @@ The worker JSON is keyed by WorkerGroup ID:
       "maxUnstableAttempts": 20,
       "reconnectIntervalMillis": 500,
       "stableConnectionDurationMillis": 10000
-    },
-    "workers": [{
-      "clientWorkerKey": "scenario-phone-number-worker-001",
-      "sandboxDirectory":
-        "data/scenario-workers/scenario-phone-number-worker-001",
-      "workerProperties": {"runtime":"java","region":"local"},
-      "indexedPropertyUpdates": {"index.worker.region":"local"}
-    }]
+    }
   }
 }
 ```
 
 `reconnectPolicy` is optional as a whole and otherwise strict: all three fields
-are required and unknown fields are rejected. When omitted, the Client uses 20
-unstable connection attempts. The old `retryPolicy`, Preparation retry fields,
-and legacy top-level `reconnectIntervalMillis` field are rejected.
+are required and unknown fields are rejected. Omitted request and connect
+timeouts use 10 and 15 seconds. The old inline `workers`, `sandboxDirectory`,
+retry-policy, and Adapter URI fields are rejected.
 
-`sandboxDirectory` is optional. Without it, the Worker remains ephemeral and
-uses `WorkerIdentityStore.noCache()`, so each process start repeats the
-idempotent Register call with its fixed client key. With a sandbox, the directory
-is a local Worker state home containing `identity.json`,
-`worker-properties.json`, and an exclusive `worker.lock`. The configured
-`workerProperties` initialize the file once; after that the file is the sole
-source of the complete Worker Properties snapshot. Scenario does not persist
-Endpoint URI, Binding, Index values, Channels, or pending Results.
+## Persistent Worker Lab
 
-`fromJson` only parses and assembles local state. `start()` first opens and
-validates every configured sandbox before network activity, then performs:
+The checked-in profile exclusively owns this writable local directory:
 
 ```text
-build one fixed JavaWorkerManager replica set per configured WorkerGroup
--> start every Group Manager
--> load the persisted workerId, or Register when it is absent
--> always Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
--> receive the configured Adapter public URI
--> start each JavaWorker's shared text-message Transport
--> return without waiting for Adapter identity verification
--> for configured indexes only, wait for workerId within connectTimeoutMillis
--> submit explicit Property Index updates as best effort
+data/scenario-workers/
+├── scenario-phone-number-workers/
+│   ├── scenario-phone-number-worker-001.json
+│   └── ...
+└── scenario-string-utils-workers/
+    ├── scenario-string-utils-worker-001.json
+    └── ...
 ```
 
-The aggregate creates one `JavaWorkerManager` per configured WorkerGroup.
-Each Manager owns one internal daemon Platform shared by only that group's
-fixed replicas. Its Control pool is capped at four threads; replicas share one
-network scheduler and OkHttp infrastructure, and Commands execute
-synchronously on each Client's serialized OkHttp callback. Different groups
-do not share platform resources. There is no Core or per-Worker Command thread
-pool.
+Initialization is decided independently for each configured WorkerGroup:
 
-Malformed local assembly, duplicate sandbox use, or Worker construction/start
-submission failure closes all local transports, releases sandbox locks, and
-fails aggregate startup. Each Group Manager submits every stopped Worker's
-Register/Bind Preparation to its internal Control pool; the initial connection
-remains asynchronous. Preparation or reconnect failure
-leads that Worker to `STOPPED` and does not close the aggregate. A persisted identity
-is never silently replaced; an operator must clear the sandbox explicitly when
-the Server Identity registry has been reset.
-Editing `worker-properties.json` takes effect on the next Scenario start; there
-is no file watcher. Each
-long-lived Worker sends an Adapter-directed
-`worker.connection.identify` Report with `WORKER + workerId` source identity to
-its returned Adapter URI; the Adapter
-verifies the persisted endpoint route before exposing the Channel and sends no
-ACK. Scenario has no connection query and does not expose an identity
-startup barrier. For a configured Index update it waits for `workerId`, then
-may retry `NOT_FOUND`, within the existing `connectTimeoutMillis` budget. A
-missing identity or remaining Index failure is logged as `14010` and skipped.
-`close()` closes Group Managers in reverse group order, which also closes each
-Manager Platform, then releases sandbox locks. Startup failure performs the
-same cleanup; it preserves sandbox files and does not mutate WorkerGroup,
-Worker metadata, score, identity, Binding, or Property Index truth. Scenario
-does not expose Manager reconciliation; terminal Workers are not restarted
-automatically. Replica topology is configuration-time state: changing the
-number of Workers requires updating the manifest and restarting the process.
+```text
+missing data/scenario-workers/{workerGroupId}/
+  -> stage that Group's checked-in default Worker files
+  -> validate every staged Worker file
+  -> move the complete staged directory into place
 
-WorkerGroup directory metadata is initialized separately by the Server profile.
-The profile's catalog `eventCodes` may intentionally lag this module's local
-Definition selection; Scenario Workers never compare or update the two values.
+existing data/scenario-workers/{workerGroupId}/
+  -> never seed, merge, repair, or upgrade defaults
+  -> load that directory's exact current contents
+```
 
-The module depends internally on Worker Core, `JavaWorker`, and the transport
-wire contract. `JavaWorker` injects each configured client key into the final
-Properties and delegates one Preparation plus text protocol handling to the
-shared Core Transport; transparent reconnect remains inside the concrete Client
-and Index update uses a private HTTP client. It has no dependency
-on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
-Redis, scores, or Pacers. The Worker does not configure or know an
-`endpointManagerId`; Bind returns the selected public WebSocket URI.
+An existing empty Group directory intentionally starts zero Workers. Deleting
+one configured Group directory resets only that Group to its defaults on the
+next start; deleting the complete Lab root resets every configured Group. A
+newly configured Group is initialized only when its directory is absent.
+Unconfigured directories, including older top-level sandbox directories, are
+ignored. There is no flag file, template version, migration, compatibility
+reader, file watcher, or multi-process lock.
+
+The Lab root must end in `data/scenario-workers` and must not pass through a
+symbolic link. Only direct, non-symlink lowercase `*.json` children of configured
+Group directories are discovered. Files are sorted by name; each group is
+bounded to 100 Workers. Any discovered invalid file fails aggregate startup
+before a Manager or network Client is created.
+
+Each filename without `.json` is its `clientWorkerKey`; its parent directory is
+the configured `workerGroupId`. One file owns the complete persistent local
+snapshot:
+
+```json
+{
+  "schemaVersion": 1,
+  "workerId": "optional-platform-issued-id",
+  "workerProperties": {
+    "runtime": "java",
+    "region": "local"
+  },
+  "indexedPropertyUpdates": {
+    "index.worker.region": "local"
+  }
+}
+```
+
+`schemaVersion` must be integer `1`; `workerId` is optional until first
+Register; both map fields default to `{}`; unknown fields are rejected. The
+filename and parent directory are the only client-key and group coordinates,
+so those values are not duplicated inside the JSON. The first platform-issued
+Worker ID is written back through a temporary file and atomic replacement. A
+different existing ID is never silently replaced.
+
+## Runtime lifecycle
+
+`start()` initializes or opens the Lab, preflights every configured Group, and
+then performs:
+
+```text
+one JavaWorkerManager for each non-empty configured WorkerGroup
+-> start its fixed replica set
+-> load persisted workerId, or Register and persist it
+-> Bind workerId as WEBSOCKET with the complete Properties snapshot
+-> connect through the public Adapter URI returned by Bind
+-> return without waiting for initial Adapter verification
+-> apply configured Property Index updates as best effort
+```
+
+An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
+shared only by its replicas. Preparation or endpoint termination stops that
+Worker until an explicit later Host start; Scenario does not expose Manager
+reconciliation. Index updates may wait for Worker identity within the existing
+connect timeout and otherwise log `14010` and skip.
+
+`close()` closes Managers in reverse group order and leaves every Worker JSON
+unchanged. Persistent Worker means stable identity, Properties, index requests,
+and replica topology across Server restarts; it does not persist Endpoint URI,
+Binding, Channels, connection state, Commands, Results, Tasks, or scores. File
+edits take effect only on the next process start. One Lab root supports one
+Scenario Server process.
+
+The module depends only on Worker Core, Java Worker, the shared transport
+contract, and its finite capability libraries. It has no Kernel, Spring,
+Server, Adapter implementation, Redis, score, Pacer, reflection, or
+`ServiceLoader` dependency.
 
 ```text
 ./gradlew :scenario_workers_jvm:test
 ```
 
-The repository-level cross-process acceptance is owned by
-[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
-CI starts Redis, the Python Kernel, and the Server `scenario-workers` profile,
-then proves Register, Bind, route verification, all 20 WebSocket connections,
-and 60 targeted RPC results. Module tests do not replace that process proof.
+The repository-level acceptance in
+[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/)
+starts Redis, Python Kernel, Server, Adapter, and the Lab Workers, then proves
+the persisted identities for 20 Workers and all 60 targeted RPC results.

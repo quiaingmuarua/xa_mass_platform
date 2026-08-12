@@ -1,0 +1,106 @@
+{
+  "scenario-phone-number-workers": {
+    "scenario-phone-number-worker-001": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":1},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-002": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":2},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-003": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":3},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-004": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":4},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-005": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":5},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-006": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":6},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-007": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":7},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-008": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":8},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-009": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":9},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-phone-number-worker-010": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"libphonenumber","region":"local","labSlot":10},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    }
+  },
+  "scenario-string-utils-workers": {
+    "scenario-string-utils-worker-001": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":1},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-002": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":2},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-003": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":3},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-004": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":4},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-005": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":5},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-006": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":6},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-007": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":7},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-008": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":8},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-009": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":9},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    },
+    "scenario-string-utils-worker-010": {
+      "schemaVersion": 1,
+      "workerProperties": {"runtime":"java","capability":"string-utils","region":"local","labSlot":10},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    }
+  }
+}

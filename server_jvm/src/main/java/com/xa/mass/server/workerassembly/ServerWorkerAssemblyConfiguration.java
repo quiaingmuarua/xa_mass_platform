@@ -30,6 +30,7 @@ public class ServerWorkerAssemblyConfiguration {
     ) {
         return ScenarioWorkers.fromJson(
                 properties.workerConfigJson(),
+                properties.sandboxRoot(),
                 properties.runtimeApiBaseUrl()
         );
     }

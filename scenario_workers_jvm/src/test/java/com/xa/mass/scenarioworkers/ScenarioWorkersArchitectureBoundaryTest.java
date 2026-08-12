@@ -44,6 +44,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
         assertThat(fromJson.getParameterTypes())
                 .containsExactly(
                         String.class,
+                        String.class,
                         java.net.URI.class
                 );
     }
@@ -60,6 +61,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains(".extendEventDefinitions(")
                 .contains(".replica(")
                 .contains("WorkerIdentityStore")
+                .contains("ScenarioWorkerLab")
+                .contains("ScenarioWorkerStateFile")
                 .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
         assertThat(sources)
@@ -69,6 +72,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("Executors.new")
                 .doesNotContain("interface WorkerHost")
                 .doesNotContain("interface WorkerReference")
+                .doesNotContain("FileLock")
+                .doesNotContain("worker.lock")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)

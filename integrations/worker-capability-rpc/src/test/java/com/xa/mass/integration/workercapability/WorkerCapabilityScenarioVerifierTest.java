@@ -43,9 +43,13 @@ class WorkerCapabilityScenarioVerifierTest {
 
     @TempDir
     Path resultDirectory;
+    private Path labRoot;
 
     @BeforeEach
     void writeCompleteProof() throws IOException {
+        Files.createDirectories(resultDirectory);
+        labRoot = resultDirectory.resolve("data/scenario-workers");
+        Files.createDirectories(labRoot);
         writeRows(
                 PHONE_FILE,
                 validRows(PHONE_GROUP, PHONE_PREFIX, PHONE_EVENTS)
@@ -54,13 +58,22 @@ class WorkerCapabilityScenarioVerifierTest {
                 STRING_FILE,
                 validRows(STRING_GROUP, STRING_PREFIX, STRING_EVENTS)
         );
+        writeWorkerFiles(
+                PHONE_GROUP,
+                validRows(PHONE_GROUP, PHONE_PREFIX, PHONE_EVENTS)
+        );
+        writeWorkerFiles(
+                STRING_GROUP,
+                validRows(STRING_GROUP, STRING_PREFIX, STRING_EVENTS)
+        );
     }
 
     @Test
     void acceptsCompleteTwentyWorkerSixtyCallProof() {
         assertDoesNotThrow(
                 () -> WorkerCapabilityScenarioVerifier.verify(
-                        resultDirectory
+                        resultDirectory,
+                        labRoot
                 )
         );
     }
@@ -127,13 +140,61 @@ class WorkerCapabilityScenarioVerifierTest {
         assertInvalidProof();
     }
 
+    @Test
+    void rejectsAResultIdentityThatDiffersFromTheWorkerFile()
+            throws IOException {
+        Path stateFile = labRoot.resolve(PHONE_GROUP).resolve(
+                PHONE_PREFIX + "001.json"
+        );
+        Map<String, Object> state = new LinkedHashMap<>(
+                Jsons.parseObject(Files.readString(
+                        stateFile,
+                        StandardCharsets.UTF_8
+                ))
+        );
+        state.put("workerId", UUID.randomUUID().toString());
+        Files.writeString(
+                stateFile,
+                Jsons.toJson(state),
+                StandardCharsets.UTF_8
+        );
+
+        assertInvalidProof();
+    }
+
     private void assertInvalidProof() {
         assertThrows(
                 IllegalStateException.class,
                 () -> WorkerCapabilityScenarioVerifier.verify(
-                        resultDirectory
+                        resultDirectory,
+                        labRoot
                 )
         );
+    }
+
+    private void writeWorkerFiles(
+            String workerGroupId,
+            List<Map<String, Object>> rows
+    ) throws IOException {
+        Path group = labRoot.resolve(workerGroupId);
+        Files.createDirectories(group);
+        Map<String, String> workerIds = new LinkedHashMap<>();
+        rows.forEach(row -> workerIds.putIfAbsent(
+                (String) row.get("clientWorkerKey"),
+                (String) row.get("workerId")
+        ));
+        for (Map.Entry<String, String> worker : workerIds.entrySet()) {
+            Files.writeString(
+                    group.resolve(worker.getKey() + ".json"),
+                    Jsons.toJson(Map.of(
+                            "schemaVersion",
+                            1,
+                            "workerId",
+                            worker.getValue()
+                    )),
+                    StandardCharsets.UTF_8
+            );
+        }
     }
 
     private void mutateRow(

@@ -34,6 +34,7 @@ class ServerWorkerAssemblyArchitectureTest {
                 .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
                 .contains("properties.workerConfigJson()")
+                .contains("properties.sandboxRoot()")
                 .contains("properties.runtimeApiBaseUrl()")
                 .contains("WorkerResourceCatalog")
                 .contains("groupInitializer.initialize()")

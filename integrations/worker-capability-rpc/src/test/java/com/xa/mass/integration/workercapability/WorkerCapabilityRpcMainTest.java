@@ -26,6 +26,15 @@ import org.junit.jupiter.api.io.TempDir;
 
 class WorkerCapabilityRpcMainTest {
 
+    private static final String PHONE_GROUP =
+            "scenario-phone-number-workers";
+    private static final String PHONE_PREFIX =
+            "scenario-phone-number-worker-";
+    private static final String STRING_GROUP =
+            "scenario-string-utils-workers";
+    private static final String STRING_PREFIX =
+            "scenario-string-utils-worker-";
+
     @TempDir
     Path temporaryDirectory;
 
@@ -148,12 +157,18 @@ class WorkerCapabilityRpcMainTest {
         Files.write(phoneSeed, phoneInputs, StandardCharsets.UTF_8);
         Files.write(stringSeed, stringInputs, StandardCharsets.UTF_8);
         Path resultRoot = temporaryDirectory.resolve("results");
+        Path labRoot = temporaryDirectory.resolve(
+                "data/scenario-workers"
+        );
+        writeWorkerLab(labRoot, PHONE_GROUP, PHONE_PREFIX);
+        writeWorkerLab(labRoot, STRING_GROUP, STRING_PREFIX);
         return new ScenarioFiles(
                 scenarioId,
                 phoneSeed,
                 stringSeed,
                 resultRoot,
-                resultRoot.resolve(scenarioId)
+                resultRoot.resolve(scenarioId),
+                labRoot
         );
     }
 
@@ -167,6 +182,7 @@ class WorkerCapabilityRpcMainTest {
                 "--phone-seed-path=" + files.phoneSeed(),
                 "--string-seed-path=" + files.stringSeed(),
                 "--result-dir=" + files.resultRoot(),
+                "--scenario-worker-lab-root=" + files.labRoot(),
                 "--wait-timeout-millis=1000",
                 "--request-timeout-millis=5000"
         };
@@ -189,12 +205,46 @@ class WorkerCapabilityRpcMainTest {
         return Set.copyOf(values);
     }
 
+    private static void writeWorkerLab(
+            Path labRoot,
+            String workerGroupId,
+            String workerKeyPrefix
+    ) throws IOException {
+        Files.createDirectories(labRoot);
+        Files.createDirectories(labRoot.resolve(workerGroupId));
+        for (int index = 1; index <= 10; index++) {
+            String clientWorkerKey = workerKeyPrefix
+                    + "%03d".formatted(index);
+            String registrationPath = "/api/v1/worker-groups/"
+                    + workerGroupId
+                    + "/workers:register";
+            String workerId = UUID.nameUUIDFromBytes(
+                    (registrationPath + ":" + clientWorkerKey).getBytes(
+                            StandardCharsets.UTF_8
+                    )
+            ).toString();
+            Files.writeString(
+                    labRoot.resolve(workerGroupId).resolve(
+                            clientWorkerKey + ".json"
+                    ),
+                    Jsons.toJson(Map.of(
+                            "schemaVersion",
+                            1,
+                            "workerId",
+                            workerId
+                    )),
+                    StandardCharsets.UTF_8
+            );
+        }
+    }
+
     private record ScenarioFiles(
             String scenarioId,
             Path phoneSeed,
             Path stringSeed,
             Path resultRoot,
-            Path scenarioResults
+            Path scenarioResults,
+            Path labRoot
     ) {
     }
 

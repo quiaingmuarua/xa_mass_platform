@@ -20,9 +20,9 @@ boundary named below.
 | Frontend | The basic Runtime Viewer remains lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
 The `Scenario RPC` command validates its own JSONL output before returning
-success. It requires exactly 20 canonical Worker IDs and all 60 configured
-Worker/event combinations. CI does not duplicate this contract in workflow
-shell code.
+success. It requires exactly 20 canonical Worker IDs, an exact match with the
+persistent Scenario Lab JSON files, and all 60 configured Worker/event
+combinations. CI does not duplicate this contract in workflow shell code.
 
 ## Local Commands
 

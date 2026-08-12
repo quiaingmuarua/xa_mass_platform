@@ -43,6 +43,13 @@ tasks.named('test') {
     }
 }
 
+tasks.named('bootRun') {
+    systemProperty(
+            'xa.mass.worker-assembly.sandbox-root',
+            rootProject.file('data/scenario-workers').absolutePath
+    )
+}
+
 def registerStrictIntegrationTest = {
     String taskName,
     String descriptionText,

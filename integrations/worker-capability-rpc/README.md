@@ -6,6 +6,7 @@ assembly. The profile is not RPC-specific and does not create Tasks:
 ```text
 Server scenario-workers profile
   -> scenario-websocket Adapter
+  -> data/scenario-workers persistent Lab
   -> scenario-phone-number-workers / 10 Workers / 3 events
   -> scenario-string-utils-workers / 10 Workers / 3 events
 
@@ -93,11 +94,18 @@ Start the Runtime API Server with the reusable Worker scenario:
 
 The default Server profile has no Adapter and no built-in Worker. The explicit
 profile initializes two advisory WorkerGroup catalog entries and starts one
-real WebSocket Adapter. Scenario assembly then registers each client Worker
-key, binds the returned platform Worker ID and complete Properties snapshot,
-starts and connects 20 real WebSocket Worker transports, and finally attempts
-the explicit Property Index updates through the public Runtime API.
+real WebSocket Adapter. Scenario initializes defaults only for configured
+WorkerGroup directories that do not yet exist, discovers the exact Worker
+files in both Group directories, registers or restores each client Worker
+identity, binds the complete Properties snapshot, starts 20 real WebSocket
+Worker transports, and finally attempts the explicit Property Index updates
+through the public Runtime API.
 There is no separate Worker launcher or in-process delivery shortcut.
+
+The first start creates both configured Group directories and 20 JSON files.
+Later starts never replace, repair, or supplement an existing Group directory.
+Delete one Group directory to reset only that Group, or delete the Lab root to
+restore both checked-in default sets.
 
 Run the external RPC proof:
 
@@ -124,8 +132,9 @@ business result payloads do not repeat Worker identity.
 
 Before returning success, the runner verifies both files as one acceptance
 proof: 20 canonical and globally unique Worker IDs, stable Worker-key mapping,
-and exactly one result for every configured Worker/event combination. CI uses
-the same runner and does not duplicate these assertions in workflow code.
+exactly one result for every configured Worker/event combination, and an exact
+match between each result Worker ID and its persistent Lab JSON. CI uses the
+same runner and does not duplicate these assertions in workflow code.
 
 Options:
 
@@ -135,6 +144,7 @@ Options:
 --phone-seed-path=phone-seed.txt
 --string-seed-path=string-seed.txt
 --result-dir=results
+--scenario-worker-lab-root=../../data/scenario-workers
 --wait-timeout-millis=30000
 --request-timeout-millis=35000
 --task-close-after-millis=3600000

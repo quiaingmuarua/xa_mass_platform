@@ -2,20 +2,15 @@ package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 record ScenarioWorkerGroupConfig(
         String workerGroupId,
         List<String> eventCodes,
-        List<ScenarioWorkerConfig> workers,
         Duration requestTimeout,
         TextMessageReconnectPolicy reconnectPolicy,
         Duration connectTimeout
@@ -42,13 +37,6 @@ record ScenarioWorkerGroupConfig(
             copiedEventCodes.add(eventCode);
         }
         eventCodes = List.copyOf(copiedEventCodes);
-        Objects.requireNonNull(workers, "workers");
-        if (workers.isEmpty() || workers.size() > 100) {
-            throw new IllegalArgumentException(
-                    "workers must contain between 1 and 100 entries"
-            );
-        }
-        workers = List.copyOf(new ArrayList<>(workers));
         requirePositive(requestTimeout, "requestTimeout");
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
         requirePositive(connectTimeout, "connectTimeout");
@@ -68,61 +56,5 @@ record ScenarioWorkerGroupConfig(
                     name + " must be positive"
             );
         }
-    }
-
-    private static Map<String, Object> immutableJsonMap(
-            Map<String, Object> value,
-            String name
-    ) {
-        Objects.requireNonNull(value, name);
-        return Collections.unmodifiableMap(
-                new LinkedHashMap<>(value)
-        );
-    }
-}
-
-record ScenarioWorkerConfig(
-        String clientWorkerKey,
-        Map<String, Object> workerProperties,
-        Map<String, Object> indexedPropertyUpdates,
-        Path sandboxDirectory
-) {
-
-    ScenarioWorkerConfig {
-        ScenarioWorkerGroupConfig.requireNonBlank(
-                clientWorkerKey,
-                "clientWorkerKey"
-        );
-        workerProperties = immutableJsonMap(
-                workerProperties,
-                "workerProperties"
-        );
-        indexedPropertyUpdates = immutableJsonMap(
-                indexedPropertyUpdates,
-                "indexedPropertyUpdates"
-        );
-        indexedPropertyUpdates.keySet().forEach(field -> {
-            if (!field.startsWith("index.")
-                    || field.length() == "index.".length()) {
-                throw new IllegalArgumentException(
-                        "indexedPropertyUpdates fields must use index.*"
-                );
-            }
-        });
-        if (sandboxDirectory != null) {
-            sandboxDirectory = sandboxDirectory
-                    .toAbsolutePath()
-                    .normalize();
-        }
-    }
-
-    private static Map<String, Object> immutableJsonMap(
-            Map<String, Object> value,
-            String name
-    ) {
-        Objects.requireNonNull(value, name);
-        return Collections.unmodifiableMap(
-                new LinkedHashMap<>(value)
-        );
     }
 }

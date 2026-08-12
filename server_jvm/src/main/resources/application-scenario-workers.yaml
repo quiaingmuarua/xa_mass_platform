@@ -14,6 +14,7 @@ xa:
           public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
     worker-assembly:
       runtime-api-base-url: http://127.0.0.1:18082
+      sandbox-root: data/scenario-workers
       group-config-json: |
         {
           "scenario-phone-number-workers": {
@@ -40,18 +41,6 @@ xa:
               "phonenumber.e164",
               "phonenumber.country",
               "phonenumber.original-carrier"
-            ],
-            "workers": [
-              {"clientWorkerKey":"scenario-phone-number-worker-001","sandboxDirectory":"data/scenario-workers/scenario-phone-number-worker-001","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-002","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-003","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-004","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-005","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-006","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-007","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-008","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-009","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-phone-number-worker-010","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}}
             ]
           },
           "scenario-string-utils-workers": {
@@ -59,18 +48,6 @@ xa:
               "string.md5",
               "string.sha1",
               "string.base64.encode"
-            ],
-            "workers": [
-              {"clientWorkerKey":"scenario-string-utils-worker-001","sandboxDirectory":"data/scenario-workers/scenario-string-utils-worker-001","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-002","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-003","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-004","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-005","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-006","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-007","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-008","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-009","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
-              {"clientWorkerKey":"scenario-string-utils-worker-010","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}}
             ]
           }
         }
