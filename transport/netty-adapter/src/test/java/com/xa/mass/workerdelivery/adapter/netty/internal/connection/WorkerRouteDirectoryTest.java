@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.websocket;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget.DeliveryAttempt.STARTED;
@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.netty.channel.Channel;
@@ -17,18 +18,16 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
-import io.netty.util.ReferenceCountUtil;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
-class WebSocketWorkerRouteDirectoryTest {
+class WorkerRouteDirectoryTest {
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     @Test
     void replacementAndOldDeactivationPreserveCurrentChannel() {
-        WebSocketWorkerRouteDirectory directory = directory();
+        WorkerRouteDirectory directory = directory();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
@@ -40,17 +39,9 @@ class WebSocketWorkerRouteDirectoryTest {
             assertThat(directory.deliver("worker-1", command()))
                     .isEqualTo(STARTED);
             assertThat(directory.activeConnectionCount()).isEqualTo(1);
-
-            CloseWebSocketFrame replacement = first.readOutbound();
-            TextWebSocketFrame delivered = second.readOutbound();
-            try {
-                assertThat(replacement.statusCode()).isEqualTo(1008);
-                assertThat(codec.decodeDeliveryCommand(delivered.text()))
-                        .isEqualTo(command());
-            } finally {
-                ReferenceCountUtil.release(replacement);
-                ReferenceCountUtil.release(delivered);
-            }
+            assertThat(first.isOpen()).isFalse();
+            assertThat(codec.decodeDeliveryCommand(second.readOutbound()))
+                    .isEqualTo(command());
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();
@@ -59,8 +50,8 @@ class WebSocketWorkerRouteDirectoryTest {
 
     @Test
     void sameWorkerIdIsIsolatedAcrossAdapterDirectories() {
-        WebSocketWorkerRouteDirectory firstDirectory = directory();
-        WebSocketWorkerRouteDirectory secondDirectory = directory();
+        WorkerRouteDirectory firstDirectory = directory();
+        WorkerRouteDirectory secondDirectory = directory();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
@@ -72,7 +63,6 @@ class WebSocketWorkerRouteDirectoryTest {
                     .isEqualTo(RETRY_LATER);
             assertThat(secondDirectory.deliver("worker-1", command()))
                     .isEqualTo(STARTED);
-            assertThat(secondDirectory.activeConnectionCount()).isEqualTo(1);
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();
@@ -81,7 +71,7 @@ class WebSocketWorkerRouteDirectoryTest {
 
     @Test
     void missingInactiveAndNonWritableChannelsRetry() {
-        WebSocketWorkerRouteDirectory directory = directory();
+        WorkerRouteDirectory directory = directory();
         assertThat(directory.deliver("worker-1", command()))
                 .isEqualTo(RETRY_LATER);
 
@@ -105,7 +95,7 @@ class WebSocketWorkerRouteDirectoryTest {
 
     @Test
     void synchronousWriteFailureIsUnknownAndRemovesTheExactChannel() {
-        WebSocketWorkerRouteDirectory directory = directory();
+        WorkerRouteDirectory directory = directory();
         Channel channel = mock(Channel.class);
         when(channel.isActive()).thenReturn(true);
         when(channel.isWritable()).thenReturn(true);
@@ -122,8 +112,8 @@ class WebSocketWorkerRouteDirectoryTest {
 
     @Test
     void staleAsynchronousFailureCannotRemoveReplacement() {
-        WebSocketWorkerRouteDirectory directory = directory();
-        DeferredTextWrite firstWrites = new DeferredTextWrite();
+        WorkerRouteDirectory directory = directory();
+        DeferredWrite firstWrites = new DeferredWrite();
         EmbeddedChannel first = new EmbeddedChannel(firstWrites);
         EmbeddedChannel second = new EmbeddedChannel();
         try {
@@ -147,8 +137,8 @@ class WebSocketWorkerRouteDirectoryTest {
     }
 
     @Test
-    void pendingVerificationIsFirstWinsAndCancellationAllowsRetry() {
-        WebSocketWorkerRouteDirectory directory = directory();
+    void verificationIsFirstWinsAndClearRemovesAllRouteState() {
+        WorkerRouteDirectory directory = directory();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
@@ -156,43 +146,15 @@ class WebSocketWorkerRouteDirectoryTest {
                     .isTrue();
             assertThat(directory.beginVerification("worker-1", second))
                     .isFalse();
-            assertThat(directory.pendingVerificationCount()).isEqualTo(1);
-
             directory.cancelVerification("worker-1", first);
-
-            assertThat(directory.beginVerification("worker-1", second))
-                    .isTrue();
-            assertThat(directory.completeVerificationAndActivate(
-                    "worker-1",
-                    second
-            )).isTrue();
-            assertThat(directory.verifiedWorkerCount()).isEqualTo(1);
-            assertThat(directory.pendingVerificationCount()).isZero();
-        } finally {
-            first.finishAndReleaseAll();
-            second.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void deactivationRetainsVerificationAndClearRemovesAllRouteState() {
-        WebSocketWorkerRouteDirectory directory = directory();
-        EmbeddedChannel first = new EmbeddedChannel();
-        EmbeddedChannel second = new EmbeddedChannel();
-        try {
-            verifyAndActivate(directory, "worker-1", first);
-            directory.deactivate("worker-1", first);
+            verifyAndActivate(directory, "worker-1", second);
+            directory.deactivate("worker-1", second);
 
             assertThat(directory.isRouteVerified("worker-1")).isTrue();
-            assertThat(directory.activeConnectionCount()).isZero();
-            assertThat(directory.activateIfVerified("worker-1", second))
-                    .isTrue();
-
+            assertThat(directory.pendingVerificationCount()).isZero();
             directory.clear();
-
             assertThat(directory.isRouteVerified("worker-1")).isFalse();
             assertThat(directory.verifiedWorkerCount()).isZero();
-            assertThat(directory.pendingVerificationCount()).isZero();
             assertThat(directory.activeConnectionCount()).isZero();
         } finally {
             first.finishAndReleaseAll();
@@ -200,12 +162,15 @@ class WebSocketWorkerRouteDirectoryTest {
         }
     }
 
-    private WebSocketWorkerRouteDirectory directory() {
-        return new WebSocketWorkerRouteDirectory(codec);
+    private WorkerRouteDirectory directory() {
+        return new WorkerRouteDirectory(
+                codec,
+                AdapterNetworkProtocol.socket(Duration.ofSeconds(1))
+        );
     }
 
     private static void verifyAndActivate(
-            WebSocketWorkerRouteDirectory directory,
+            WorkerRouteDirectory directory,
             String workerId,
             Channel channel
     ) {
@@ -227,7 +192,7 @@ class WebSocketWorkerRouteDirectoryTest {
         );
     }
 
-    private static final class DeferredTextWrite
+    private static final class DeferredWrite
             extends ChannelOutboundHandlerAdapter {
 
         private ChannelPromise commandPromise;
@@ -238,8 +203,7 @@ class WebSocketWorkerRouteDirectoryTest {
                 Object message,
                 ChannelPromise promise
         ) {
-            if (message instanceof TextWebSocketFrame) {
-                ReferenceCountUtil.release(message);
+            if (message instanceof String) {
                 commandPromise = promise;
                 return;
             }

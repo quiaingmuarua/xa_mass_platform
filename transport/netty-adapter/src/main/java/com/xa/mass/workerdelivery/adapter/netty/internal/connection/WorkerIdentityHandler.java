@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.socket;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
@@ -7,86 +7,58 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.function.BooleanSupplier;
 
-final class SocketWorkerIdentityHandler
-        extends SimpleChannelInboundHandler<String> {
+final class WorkerIdentityHandler extends SimpleChannelInboundHandler<String> {
 
-    private final SocketWorkerRouteDirectory routes;
-    private final WorkerDeliveryCodec codec;
-    private final BoundedDeliveryReportQueue reportQueue;
-    private final WorkerDeliveryGatewayClient gateway;
-    private final String endpointManagerId;
-    private final Duration sendTimeLimit;
-    private final BooleanSupplier acceptingConnections;
+    private final WorkerConnectionHandlerFactory handlers;
     private String verifyingWorkerId;
 
-    SocketWorkerIdentityHandler(
-            SocketWorkerRouteDirectory routes,
-            WorkerDeliveryCodec codec,
-            BoundedDeliveryReportQueue reportQueue,
-            WorkerDeliveryGatewayClient gateway,
-            String endpointManagerId,
-            Duration sendTimeLimit,
-            BooleanSupplier acceptingConnections
+    WorkerIdentityHandler(WorkerConnectionHandlerFactory handlers) {
+        this.handlers = Objects.requireNonNull(handlers, "handlers");
+    }
+
+    @Override
+    protected void channelRead0(
+            ChannelHandlerContext context,
+            String encodedReport
     ) {
-        this.routes = Objects.requireNonNull(routes, "routes");
-        this.codec = Objects.requireNonNull(codec, "codec");
-        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
-        this.gateway = Objects.requireNonNull(gateway, "gateway");
-        this.endpointManagerId = requireEndpointManagerId(endpointManagerId);
-        this.sendTimeLimit = Objects.requireNonNull(
-                sendTimeLimit,
-                "sendTimeLimit"
-        );
-        this.acceptingConnections = Objects.requireNonNull(
-                acceptingConnections,
-                "acceptingConnections"
-        );
-    }
-
-    @Override
-    public void channelActive(ChannelHandlerContext context) {
-        if (acceptingConnections.getAsBoolean()) {
-            context.fireChannelActive();
-        } else {
-            terminate(context.channel());
-        }
-    }
-
-    @Override
-    protected void channelRead0(ChannelHandlerContext context, String line) {
         if (verifyingWorkerId != null) {
             return;
         }
-
-        DeliveryReport report = codec.decodeDeliveryReport(line);
+        DeliveryReport report = handlers.codec().decodeDeliveryReport(
+                encodedReport
+        );
         if (report == null) {
-            terminate(context.channel());
+            terminate(
+                    context.channel(),
+                    AdapterConnectionCloseReason.INVALID_REPORT
+            );
             return;
         }
         if (report.dst() != ADAPTER
                 || !WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                 report.messageType()
         )) {
-            terminate(context.channel());
+            terminate(
+                    context.channel(),
+                    AdapterConnectionCloseReason.IDENTITY_REQUIRED
+            );
             return;
         }
         if (!isValidIdentity(report)) {
-            terminate(context.channel());
+            terminate(
+                    context.channel(),
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            );
             return;
         }
         identifyAndBind(context, report.sourceId());
@@ -100,27 +72,39 @@ final class SocketWorkerIdentityHandler
 
     @Override
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-        terminate(context.channel());
+        terminate(
+                context.channel(),
+                AdapterConnectionCloseReason.TRANSPORT_ERROR
+        );
     }
 
     private void identifyAndBind(
             ChannelHandlerContext context,
             String identifyingWorkerId
     ) {
-        if (!acceptingConnections.getAsBoolean()) {
-            terminate(context.channel());
+        if (!handlers.acceptingConnections().getAsBoolean()) {
+            terminate(
+                    context.channel(),
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            );
             return;
         }
         Channel channel = context.channel();
-        if (routes.isRouteVerified(identifyingWorkerId)) {
+        if (handlers.routes().isRouteVerified(identifyingWorkerId)) {
             bindVerified(context, identifyingWorkerId);
             return;
         }
-        if (!routes.beginVerification(identifyingWorkerId, channel)) {
-            if (routes.isRouteVerified(identifyingWorkerId)) {
+        if (!handlers.routes().beginVerification(
+                identifyingWorkerId,
+                channel
+        )) {
+            if (handlers.routes().isRouteVerified(identifyingWorkerId)) {
                 bindVerified(context, identifyingWorkerId);
             } else {
-                terminate(channel);
+                terminate(
+                        channel,
+                        AdapterConnectionCloseReason.VERIFICATION_IN_PROGRESS
+                );
             }
             return;
         }
@@ -129,8 +113,8 @@ final class SocketWorkerIdentityHandler
         CompletionStage<Void> verification;
         try {
             verification = Objects.requireNonNull(
-                    gateway.verifyWorkerRoute(
-                            endpointManagerId,
+                    handlers.gateway().verifyWorkerRoute(
+                            handlers.endpointManagerId(),
                             identifyingWorkerId
                     ),
                     "Worker route verification returned null"
@@ -155,58 +139,77 @@ final class SocketWorkerIdentityHandler
     ) {
         Channel channel = context.channel();
         if (!channel.isActive()
-                || !routes.isVerificationPending(
+                || !handlers.routes().isVerificationPending(
                 identifyingWorkerId,
                 channel
         )) {
             return;
         }
         if (failure != null) {
-            routes.cancelVerification(identifyingWorkerId, channel);
+            handlers.routes().cancelVerification(
+                    identifyingWorkerId,
+                    channel
+            );
             Throwable cause = unwrap(failure);
             if (cause instanceof WorkerDeliveryAdapterException classified
                     && classified.errorCode()
                     == WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED) {
                 sendCloseCommand(channel);
             } else {
-                terminate(channel);
+                terminate(
+                        channel,
+                        AdapterConnectionCloseReason.VERIFICATION_FAILED
+                );
             }
             return;
         }
-        if (!acceptingConnections.getAsBoolean()) {
-            routes.cancelVerification(identifyingWorkerId, channel);
-            terminate(channel);
+        if (!handlers.acceptingConnections().getAsBoolean()) {
+            handlers.routes().cancelVerification(
+                    identifyingWorkerId,
+                    channel
+            );
+            terminate(
+                    channel,
+                    AdapterConnectionCloseReason.ADAPTER_STOPPING
+            );
             return;
         }
 
-        SocketBoundWorkerHandler boundHandler = new SocketBoundWorkerHandler(
-                routes,
-                codec,
-                reportQueue,
-                identifyingWorkerId
-        );
         try {
             context.pipeline().replace(
                     this,
-                    "socket-bound-worker",
-                    boundHandler
+                    "bound-worker",
+                    handlers.newBoundHandler(identifyingWorkerId)
             );
             if (!channel.isActive()
-                    || !routes.completeVerificationAndActivate(
+                    || !handlers.routes().completeVerificationAndActivate(
                     identifyingWorkerId,
                     channel
             )) {
-                terminate(channel);
+                terminate(
+                        channel,
+                        AdapterConnectionCloseReason.VERIFICATION_FAILED
+                );
                 return;
             }
         } catch (RuntimeException error) {
-            routes.cancelVerification(identifyingWorkerId, channel);
-            routes.deactivate(identifyingWorkerId, channel);
-            SocketWorkerRouteDirectory.closeBestEffort(channel);
+            handlers.routes().cancelVerification(
+                    identifyingWorkerId,
+                    channel
+            );
+            handlers.routes().deactivate(identifyingWorkerId, channel);
+            handlers.routes().closeUnbound(
+                    channel,
+                    AdapterConnectionCloseReason.TRANSPORT_ERROR
+            );
             return;
         }
-        if (!acceptingConnections.getAsBoolean()) {
-            routes.close(identifyingWorkerId, channel);
+        if (!handlers.acceptingConnections().getAsBoolean()) {
+            handlers.routes().close(
+                    identifyingWorkerId,
+                    channel,
+                    AdapterConnectionCloseReason.ADAPTER_STOPPING
+            );
         }
     }
 
@@ -215,31 +218,35 @@ final class SocketWorkerIdentityHandler
             String identifyingWorkerId
     ) {
         Channel channel = context.channel();
-        if (!channel.isActive() || !acceptingConnections.getAsBoolean()) {
-            terminate(channel);
+        if (!channel.isActive()
+                || !handlers.acceptingConnections().getAsBoolean()) {
+            terminate(
+                    channel,
+                    AdapterConnectionCloseReason.ADAPTER_STOPPING
+            );
             return;
         }
-        SocketBoundWorkerHandler boundHandler = new SocketBoundWorkerHandler(
-                routes,
-                codec,
-                reportQueue,
-                identifyingWorkerId
-        );
         try {
             context.pipeline().replace(
                     this,
-                    "socket-bound-worker",
-                    boundHandler
+                    "bound-worker",
+                    handlers.newBoundHandler(identifyingWorkerId)
             );
-            if (!routes.activateIfVerified(
+            if (!handlers.routes().activateIfVerified(
                     identifyingWorkerId,
                     channel
             )) {
-                terminate(channel);
+                terminate(
+                        channel,
+                        AdapterConnectionCloseReason.VERIFICATION_FAILED
+                );
             }
         } catch (RuntimeException error) {
-            routes.deactivate(identifyingWorkerId, channel);
-            SocketWorkerRouteDirectory.closeBestEffort(channel);
+            handlers.routes().deactivate(identifyingWorkerId, channel);
+            handlers.routes().closeUnbound(
+                    channel,
+                    AdapterConnectionCloseReason.TRANSPORT_ERROR
+            );
         }
     }
 
@@ -252,28 +259,37 @@ final class SocketWorkerIdentityHandler
                     WORKER_CONNECTION_CLOSE_EVENT_CODE,
                     Math.addExact(
                             System.currentTimeMillis(),
-                            sendTimeLimit.toMillis()
+                            handlers.sendTimeLimit().toMillis()
                     ),
                     "null",
                     ""
             );
             channel.writeAndFlush(
-                    codec.encodeDeliveryCommand(command) + "\n"
-            ).addListener(ChannelFutureListener.CLOSE);
+                    handlers.codec().encodeDeliveryCommand(command)
+            ).addListener(ignored -> handlers.routes().closeUnbound(
+                    channel,
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            ));
         } catch (RuntimeException error) {
-            SocketWorkerRouteDirectory.closeBestEffort(channel);
+            handlers.routes().closeUnbound(
+                    channel,
+                    AdapterConnectionCloseReason.VERIFICATION_FAILED
+            );
         }
     }
 
-    private void terminate(Channel channel) {
+    private void terminate(
+            Channel channel,
+            AdapterConnectionCloseReason reason
+    ) {
         cancelCurrentVerification(channel);
-        SocketWorkerRouteDirectory.closeBestEffort(channel);
+        handlers.routes().closeUnbound(channel, reason);
     }
 
     private void cancelCurrentVerification(Channel channel) {
         String workerId = verifyingWorkerId;
         if (workerId != null) {
-            routes.cancelVerification(workerId, channel);
+            handlers.routes().cancelVerification(workerId, channel);
         }
     }
 
@@ -295,14 +311,5 @@ final class SocketWorkerIdentityHandler
             current = current.getCause();
         }
         return current;
-    }
-
-    private static String requireEndpointManagerId(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(
-                    "endpointManagerId must be non-blank"
-            );
-        }
-        return value;
     }
 }

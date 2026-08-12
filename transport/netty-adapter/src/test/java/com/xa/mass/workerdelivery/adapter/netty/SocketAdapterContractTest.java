@@ -12,6 +12,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManag
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -33,7 +34,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
-class SocketWorkerDeliveryAdapterTest {
+class SocketAdapterContractTest {
 
     private static final String WORKER_ID = "server-issued-worker-id";
 
@@ -42,7 +43,7 @@ class SocketWorkerDeliveryAdapterTest {
     @Test
     void closeTerminatesAnUnboundSocketChannel() throws Exception {
         int port = availablePort();
-        SocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
                 new FakeGateway()
         );
@@ -66,7 +67,7 @@ class SocketWorkerDeliveryAdapterTest {
             throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
         manager.register(adapter);
@@ -127,7 +128,7 @@ class SocketWorkerDeliveryAdapterTest {
             throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
         adapter.start();
         try {
             try (Socket first = new Socket("127.0.0.1", port);
@@ -184,7 +185,7 @@ class SocketWorkerDeliveryAdapterTest {
             throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        SocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
                 gateway
         );
@@ -286,7 +287,7 @@ class SocketWorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway(failedVerification(
                 WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED
         ));
-        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port);
                 BufferedReader reader = new BufferedReader(
@@ -330,7 +331,7 @@ class SocketWorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway(failedVerification(
                 WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE
         ));
-        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port);
                 BufferedReader reader = new BufferedReader(
@@ -361,7 +362,8 @@ class SocketWorkerDeliveryAdapterTest {
     void fullResultQueueClosesTheBoundChannel() throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        SocketWorkerDeliveryAdapter adapter = new SocketWorkerDeliveryAdapter(
+        NettyWorkerDeliveryAdapter adapter = new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.socket(Duration.ofSeconds(1)),
                 "socket-1",
                 gateway,
                 "127.0.0.1",
@@ -439,11 +441,12 @@ class SocketWorkerDeliveryAdapterTest {
         }
     }
 
-    private SocketWorkerDeliveryAdapter adapter(
+    private NettyWorkerDeliveryAdapter adapter(
             int port,
             WorkerDeliveryGatewayClient gateway
     ) {
-        return new SocketWorkerDeliveryAdapter(
+        return new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.socket(Duration.ofSeconds(1)),
                 "socket-1",
                 gateway,
                 "127.0.0.1",
@@ -516,7 +519,7 @@ class SocketWorkerDeliveryAdapterTest {
         );
     }
 
-    private static void awaitActive(SocketWorkerDeliveryAdapter adapter)
+    private static void awaitActive(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -529,7 +532,7 @@ class SocketWorkerDeliveryAdapterTest {
         throw new AssertionError("Worker connection was not bound");
     }
 
-    private static void awaitTracked(SocketWorkerDeliveryAdapter adapter)
+    private static void awaitTracked(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -542,7 +545,7 @@ class SocketWorkerDeliveryAdapterTest {
         throw new AssertionError("Worker channel was not tracked");
     }
 
-    private static void awaitInactive(SocketWorkerDeliveryAdapter adapter)
+    private static void awaitInactive(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();

@@ -148,12 +148,14 @@ Other scheduling pacers
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
-  result ingress; a finite factory creates separate package-private WebSocket
-  and Socket Adapter aggregates. Each aggregate owns start/close, the
-  protocol-specific Worker route directory with process-local
-  verified/pending/active state, scheduled Command/Report pumps, bounded
-  non-blocking delivery, and Report buffering, while its exact Network Server owns the
-  listener, pipeline, EventLoop, and all physical child Channels. Server only
+  result ingress; a finite factory creates independently isolated Adapter
+  instances using one package-private scheduling mechanism and one selected
+  WebSocket or line-Socket physical protocol. Each instance owns start/close,
+  one Worker route directory with process-local verified/pending/active state,
+  scheduled Command/Report pumps, bounded non-blocking delivery, Report
+  buffering, and one Netty Server lifecycle that owns the listener, EventLoop,
+  and all physical child Channels. The protocol owns only handshake/framing,
+  String normalization, protocol errors, and physical close. Server only
   binds instance config and invokes lifecycle; neither path selects Workers
   nor mutates score
 ```
@@ -227,9 +229,10 @@ never scans a bucket. Each locally registered Adapter instance may
 consume one bounded random batch from its sparse bucket through the Server
 batch HTTP API and
 serve Workers through an independent Netty listener. The Adapter runtime owns
-its scheduler, command consume bound, every child Channel, current bound-route
-selection, bounded delivery, Adapter-rejection/`UNKNOWN`, and Report-buffer
-policy. The Server host only binds
+its scheduler, command consume bound, common route/connection mechanism, every
+child Channel, current bound-route selection, bounded delivery,
+Adapter-rejection/`UNKNOWN`, and Report-buffer policy. Its selected network
+protocol owns only physical framing and close. The Server host only binds
 configuration and forwards process lifecycle events.
 Destructive prefetch failure remains `UNKNOWN` without pending/ack.
 

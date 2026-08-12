@@ -14,6 +14,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -22,6 +23,7 @@ import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +36,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
-class WebSocketWorkerDeliveryAdapterTest {
+class WebSocketAdapterContractTest {
 
     private static final String WORKER_PATH =
             "/api/v1/worker-delivery/websocket";
@@ -44,7 +46,7 @@ class WebSocketWorkerDeliveryAdapterTest {
     @Test
     void closeTerminatesAnUnboundWebSocketChannel() throws Exception {
         int port = availablePort();
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 new FakeGateway()
@@ -68,12 +70,36 @@ class WebSocketWorkerDeliveryAdapterTest {
     }
 
     @Test
+    void binaryFrameIsRejectedByTheWebSocketProtocolBoundary()
+            throws Exception {
+        int port = availablePort();
+        NettyWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                new FakeGateway()
+        );
+        adapter.start();
+        Probe probe = new Probe();
+        WebSocket socket = connect(port, probe);
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            socket.sendBinary(ByteBuffer.wrap(new byte[]{1}), true).join();
+
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(probe.closeStatusCode).isEqualTo(1003);
+        } finally {
+            socket.abort();
+            adapter.close();
+        }
+    }
+
+    @Test
     void closeTerminatesAChannelWaitingForRouteVerification()
             throws Exception {
         int port = availablePort();
         CompletableFuture<Void> verification = new CompletableFuture<>();
         FakeGateway gateway = new FakeGateway(verification);
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
@@ -103,7 +129,7 @@ class WebSocketWorkerDeliveryAdapterTest {
             throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
@@ -166,12 +192,12 @@ class WebSocketWorkerDeliveryAdapterTest {
         }
         FakeGateway firstGateway = new FakeGateway();
         FakeGateway secondGateway = new FakeGateway();
-        WebSocketWorkerDeliveryAdapter first = adapter(
+        NettyWorkerDeliveryAdapter first = adapter(
                 "websocket-1",
                 firstPort,
                 firstGateway
         );
-        WebSocketWorkerDeliveryAdapter second = adapter(
+        NettyWorkerDeliveryAdapter second = adapter(
                 "websocket-2",
                 secondPort,
                 secondGateway
@@ -265,12 +291,12 @@ class WebSocketWorkerDeliveryAdapterTest {
     @Test
     void secondPortConflictRollsBackEveryRegisteredAdapter() {
         int port = availablePort();
-        WebSocketWorkerDeliveryAdapter first = adapter(
+        NettyWorkerDeliveryAdapter first = adapter(
                 "websocket-1",
                 port,
                 new FakeGateway()
         );
-        WebSocketWorkerDeliveryAdapter second = adapter(
+        NettyWorkerDeliveryAdapter second = adapter(
                 "websocket-2",
                 port,
                 new FakeGateway()
@@ -289,7 +315,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                                             .LISTENER_START_FAILED
                             );
                             assertThat(error.operation())
-                                    .isEqualTo("websocket.startListener");
+                                    .isEqualTo("netty.startListener");
                             assertThat(error.getMessage())
                                     .contains("websocket-2");
                         }
@@ -305,7 +331,7 @@ class WebSocketWorkerDeliveryAdapterTest {
     void interruptedShutdownUsesTheOwnerErrorCode()
             throws InterruptedException {
         BlockingGateway gateway = new BlockingGateway();
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 availablePort(),
                 gateway
@@ -332,7 +358,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                 WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED
         );
         assertThat(failure.operation())
-                .isEqualTo("websocket.stopScheduler");
+                .isEqualTo("netty.stopScheduler");
         assertThat(adapter.state())
                 .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
     }
@@ -341,7 +367,7 @@ class WebSocketWorkerDeliveryAdapterTest {
     void requiresIdentityResultAndRejectsNonIdentityFirstMessage()
             throws Exception {
         int port = availablePort();
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 new FakeGateway()
@@ -412,7 +438,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway(failedVerification(
                 WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED
         ));
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
@@ -448,7 +474,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway(failedVerification(
                 WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE
         ));
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
@@ -472,7 +498,7 @@ class WebSocketWorkerDeliveryAdapterTest {
             throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        WebSocketWorkerDeliveryAdapter adapter = adapter(
+        NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 port,
                 gateway
@@ -540,7 +566,8 @@ class WebSocketWorkerDeliveryAdapterTest {
     void fullResultQueueClosesTheBoundChannel() throws Exception {
         int port = availablePort();
         FakeGateway gateway = new FakeGateway();
-        WebSocketWorkerDeliveryAdapter adapter = new WebSocketWorkerDeliveryAdapter(
+        NettyWorkerDeliveryAdapter adapter = new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.webSocket(Duration.ofSeconds(1)),
                 "websocket-1",
                 gateway,
                 "127.0.0.1",
@@ -582,12 +609,13 @@ class WebSocketWorkerDeliveryAdapterTest {
         }
     }
 
-    private static WebSocketWorkerDeliveryAdapter adapter(
+    private static NettyWorkerDeliveryAdapter adapter(
             String adapterId,
             int port,
             WorkerDeliveryGatewayClient gateway
     ) {
-        return new WebSocketWorkerDeliveryAdapter(
+        return new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.webSocket(Duration.ofSeconds(1)),
                 adapterId,
                 gateway,
                 "127.0.0.1",
@@ -670,7 +698,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         );
     }
 
-    private static void awaitActive(WebSocketWorkerDeliveryAdapter adapter)
+    private static void awaitActive(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -683,7 +711,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         throw new AssertionError("Worker connection was not bound");
     }
 
-    private static void awaitTracked(WebSocketWorkerDeliveryAdapter adapter)
+    private static void awaitTracked(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -696,7 +724,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         throw new AssertionError("Worker channel was not tracked");
     }
 
-    private static void awaitInactive(WebSocketWorkerDeliveryAdapter adapter)
+    private static void awaitInactive(NettyWorkerDeliveryAdapter adapter)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
@@ -847,6 +875,7 @@ class WebSocketWorkerDeliveryAdapterTest {
         private final CountDownLatch closed = new CountDownLatch(1);
         private final List<String> messages = new ArrayList<>();
         private final StringBuilder fragments = new StringBuilder();
+        private volatile int closeStatusCode;
 
         private Probe(String workerId) {
             this.workerId = workerId;
@@ -897,6 +926,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                 int statusCode,
                 String reason
         ) {
+            closeStatusCode = statusCode;
             closed.countDown();
             return CompletableFuture.completedFuture(null);
         }

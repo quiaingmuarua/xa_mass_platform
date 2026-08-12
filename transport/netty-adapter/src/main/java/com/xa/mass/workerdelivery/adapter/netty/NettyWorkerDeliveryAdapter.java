@@ -7,11 +7,13 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionHandlerFactory;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteDirectory;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
-import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketNettyServer;
-import com.xa.mass.workerdelivery.adapter.netty.internal.websocket.WebSocketWorkerRouteDirectory;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyServerLifecycle;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
 import java.util.Objects;
@@ -21,28 +23,28 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-final class WebSocketWorkerDeliveryAdapter
-        implements WorkerDeliveryAdapter {
+final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
 
     private static final System.Logger LOGGER = System.getLogger(
-            WebSocketWorkerDeliveryAdapter.class.getName()
+            NettyWorkerDeliveryAdapter.class.getName()
     );
 
     private final String adapterId;
     private final Duration commandPumpInterval;
     private final Duration reportSubmitInterval;
     private final Duration shutdownTimeout;
-    private final WebSocketWorkerRouteDirectory routes;
+    private final WorkerRouteDirectory routes;
     private final DeliveryCommandPump commandPump;
     private final DeliveryReportPump reportPump;
-    private final WebSocketNettyServer networkServer;
+    private final NettyServerLifecycle networkServer;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> commandTask;
     private ScheduledFuture<?> reportTask;
 
-    WebSocketWorkerDeliveryAdapter(
+    NettyWorkerDeliveryAdapter(
+            AdapterNetworkProtocol networkProtocol,
             String adapterId,
             WorkerDeliveryGatewayClient gateway,
             String listenHost,
@@ -55,6 +57,10 @@ final class WebSocketWorkerDeliveryAdapter
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
+        AdapterNetworkProtocol requiredProtocol = Objects.requireNonNull(
+                networkProtocol,
+                "networkProtocol"
+        );
         this.adapterId = requireAdapterId(adapterId);
         requireListener(listenHost, listenPort);
         requirePositive(commandLoopInterval, "commandLoopInterval");
@@ -74,7 +80,7 @@ final class WebSocketWorkerDeliveryAdapter
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         BoundedDeliveryReportQueue reportQueue =
                 new BoundedDeliveryReportQueue(reportQueueCapacity);
-        routes = new WebSocketWorkerRouteDirectory(codec);
+        routes = new WorkerRouteDirectory(codec, requiredProtocol);
         commandPump = new DeliveryCommandPump(
                 requiredGateway,
                 routes,
@@ -88,16 +94,23 @@ final class WebSocketWorkerDeliveryAdapter
                 adapterId,
                 reportQueue
         );
-        networkServer = new WebSocketNettyServer(
+        WorkerConnectionHandlerFactory handlers =
+                new WorkerConnectionHandlerFactory(
+                        routes,
+                        codec,
+                        reportQueue,
+                        requiredGateway,
+                        adapterId,
+                        sendTimeLimit,
+                        this::acceptingConnections
+                );
+        networkServer = new NettyServerLifecycle(
                 adapterId,
                 listenHost,
                 listenPort,
-                sendTimeLimit,
                 shutdownTimeout,
-                routes,
-                codec,
-                reportQueue,
-                requiredGateway,
+                requiredProtocol,
+                handlers,
                 this::acceptingConnections
         );
         commandPumpInterval = commandLoopInterval;
@@ -164,8 +177,8 @@ final class WebSocketWorkerDeliveryAdapter
             RuntimeException failure = classify(
                     error,
                     WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
-                    "websocket.start",
-                    "WebSocket Adapter could not start"
+                    "netty.start",
+                    "Netty Adapter could not start"
             );
             try {
                 close();
@@ -198,7 +211,7 @@ final class WebSocketWorkerDeliveryAdapter
         RuntimeException failure = interruptedOnEntry
                 ? new WorkerDeliveryAdapterException(
                         WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
-                        "websocket.stopScheduler",
+                        "netty.stopScheduler",
                         "Adapter shutdown was already interrupted",
                         null
                 )
@@ -231,8 +244,8 @@ final class WebSocketWorkerDeliveryAdapter
             throw classify(
                     failure,
                     WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
-                    "websocket.close",
-                    "WebSocket Adapter could not close cleanly"
+                    "netty.close",
+                    "Netty Adapter could not close cleanly"
             );
         }
     }
@@ -271,8 +284,8 @@ final class WebSocketWorkerDeliveryAdapter
         WorkerDeliveryAdapterException failure = classify(
                 error,
                 WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
-                "websocket." + action,
-                "WebSocket Adapter " + description + " failed"
+                "netty." + action,
+                "Netty Adapter " + description + " failed"
         );
         LOGGER.log(
                 System.Logger.Level.WARNING,
@@ -312,7 +325,7 @@ final class WebSocketWorkerDeliveryAdapter
                     new WorkerDeliveryAdapterException(
                             WorkerDeliveryAdapterErrorCode
                                     .SHUTDOWN_INTERRUPTED,
-                            "websocket.stopScheduler",
+                            "netty.stopScheduler",
                             "Adapter scheduler shutdown was interrupted",
                             error
                     )

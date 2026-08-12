@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterNetworkProtocol;
 import java.time.Duration;
 
 /** Finite construction boundary for the built-in Netty Adapter types. */
@@ -23,7 +24,8 @@ public final class NettyWorkerDeliveryAdapters {
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
-        return new WebSocketWorkerDeliveryAdapter(
+        return new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.webSocket(sendTimeLimit),
                 adapterId,
                 gateway,
                 listenHost,
@@ -51,7 +53,8 @@ public final class NettyWorkerDeliveryAdapters {
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
-        return new SocketWorkerDeliveryAdapter(
+        return new NettyWorkerDeliveryAdapter(
+                AdapterNetworkProtocol.socket(sendTimeLimit),
                 adapterId,
                 gateway,
                 listenHost,

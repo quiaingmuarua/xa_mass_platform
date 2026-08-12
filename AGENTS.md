@@ -38,17 +38,18 @@ Status: current repository handoff.
   or generic connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances. Server constructs
   the finite WebSocket/Socket choices through one public factory returning
-  `WorkerDeliveryAdapter`. The two package-private concrete Adapter aggregates
-  separately own lifecycle, scheduled Gateway Pumps, current bound routes, and
-  bounded Command/Report queues. Their concrete Network Servers separately own
-  physical listeners, pipelines, EventLoops, all child Channels, and
-  transport-specific close behavior. There is no shared Network Server SPI,
-  abstract Adapter base, or transport-kind runtime. Cross-package Netty
-  collaborators are classified under `netty.internal.gateway`,
-  `netty.internal.websocket`, and `netty.internal.socket`; Server may depend
-  only on the finite factory. WebSocket and line-Socket each own their Worker
-  route directory, including process-local verified worker IDs, pending first
-  verification, active Channels, and identity/bound Pipeline Handlers.
+  `WorkerDeliveryAdapter`. One package-private Adapter mechanism is instantiated
+  independently for every configured endpoint and owns that instance's
+  lifecycle, scheduled Gateway Pumps, bounded Command/Report queues, Worker
+  route directory, and Netty Server lifecycle. The selected finite network
+  protocol owns only handshake/framing, String normalization, protocol errors,
+  and physical close behavior. Common identity/bound Pipeline Handlers and the
+  instance-local route directory own process-local verified Worker IDs, pending
+  first verification, and active Channels. There is no public protocol SPI,
+  abstract Adapter base, transport-kind runtime, shared mutable state, or fat
+  connection Session. Cross-package Netty collaborators are classified under
+  `netty.internal.gateway`, `netty.internal.connection`, and
+  `netty.internal.network`; Server may depend only on the finite factory.
   Adapter-directed payloads are consumed locally;
   only bound TASK results with Worker-owned outcomes enter the Result queue,
   preserving their original JSON.
@@ -148,14 +149,17 @@ tag.
   contract.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
-  its complete instances, Netty listeners, scheduled Command/Report pumps,
-  every accepted child Channel, current bound routes, and bounded queues. Each
-  protocol Pipeline starts with an identity Handler that requires the strict
-  identity first frame and coordinates optional first-seen route verification,
-  then replaces itself with a bound Handler without a phase state machine.
-  Each complete Adapter owns its protocol-specific verified worker-ID set,
-  pending-verification map, and `workerId -> current Channel` map; WebSocket and
-  line-Socket share no Session, route cache, or Channel registry. Verification
+  its complete instances, one shared Adapter lifecycle mechanism, scheduled
+  Command/Report pumps, current bound routes, bounded queues, and one
+  `NettyServerLifecycle` per instance. That network owner maintains the
+  listener, EventLoop, and every accepted child Channel. A finite physical
+  protocol normalizes WebSocket text frames or UTF-8 lines to `String`; the
+  shared identity Handler then requires the strict identity first value,
+  coordinates optional first-seen route verification, and replaces itself
+  with the shared bound Handler without a phase state machine. Each complete
+  Adapter instance owns one verified worker-ID set, pending-verification map,
+  and `workerId -> current Channel` map; instances share implementation but no
+  Session, route state, or Channel registry. Verification
   success is cached only for that Adapter process. Ordinary disconnect removes
   the exact active Channel but retains verified identity; Adapter close/restart
   clears verified, pending, and active state. This cache is not persistent
@@ -365,9 +369,10 @@ transport/netty-adapter
   -> Adapter batch HTTP client
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
-  -> separate package-private WebSocket/Socket Adapter lifecycle aggregates
-  -> separate physical WebSocket/Socket Network Server owners
-  -> per-endpoint Command/Report pumps and protocol-specific Worker route directory
+  -> one package-private Adapter lifecycle mechanism per configured instance
+  -> one shared listener/EventLoop/child-Channel lifecycle owner per instance
+  -> finite WebSocket/Socket Pipeline and physical-close protocols
+  -> per-endpoint Command/Report pumps and one Worker route directory
   -> process-local verified/pending/active route ownership without a phase state machine
   -> all-child Channel lifecycle plus strict first-frame identity routing
   -> direct fixed Adapter-local identity Report handshake

@@ -258,11 +258,12 @@ Adapter -> Worker : DeliveryCommand
 Worker  -> Adapter: DeliveryReport
 ```
 
-The Adapter forwards Task/System commands unchanged. Each protocol Pipeline
-starts with an identity Handler that validates the first Report and coordinates
-optional first verification with that Adapter's protocol-specific route
-directory. After activation it replaces itself with a bound Handler. There is
-no identity phase state machine. WebSocket and line-Socket share no connection
+The Adapter forwards Task/System commands unchanged. The selected physical
+protocol normalizes inbound text to `String`, then installs the common identity
+Handler. That Handler validates the first Report and coordinates optional first
+verification with the Adapter instance's common route directory. After
+activation it replaces itself with the common bound Handler. There is no
+identity phase state machine. Different Adapter instances share no connection
 Session, verified cache, or Channel directory. The fixed identity Report is handled directly;
 there is no Adapter event registry or plugin dispatcher. Reports whose
 `dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
@@ -291,16 +292,18 @@ queue directly from the DeliveryCommand Pump rather than through Worker
 ingress. A timed DeliveryReport Pump batches the queue to Server. There is no command/result
 coupling, ACK, durable Adapter queue, or exactly-once promise.
 
-One finite construction factory returns only the public Adapter contract. The
-package-private WebSocket and Socket Adapter aggregates each own lifecycle,
-their protocol-specific Worker route directory, both bounded pumps, and
-shutdown sequencing.
-Their exact Network Server separately owns its listener, pipeline, EventLoop,
-and every accepted child Channel, including pre-identity,
-pending-verification, and bound Channels.
+One finite construction factory returns only the public Adapter contract. It
+instantiates one package-private Adapter scheduling mechanism per endpoint and
+selects one finite WebSocket or line-Socket network protocol. Every instance
+independently owns lifecycle, its Worker route directory, both bounded pumps,
+shutdown sequencing, and a Netty Server lifecycle. That Server lifecycle owns
+its listener, EventLoop, and every accepted child Channel, including
+pre-identity, pending-verification, and bound Channels. The selected protocol
+owns only handshake/framing, String normalization, protocol errors, and
+physical close; it owns no Gateway, queue, route, or verification state.
 Closing an Adapter therefore closes all physical child Channels, not only
-routes that reached BOUND. The two physical servers do not share a transport
-kind branch or Network Server SPI.
+routes that reached BOUND. The finite protocols do not form a public SPI or a
+transport-kind branch.
 
 Physical disconnect is a reconnectable network fact. Only
 `ADAPTER/worker.connection.close` instructs the Worker to end its current run.

@@ -155,9 +155,10 @@ kernel_jvm delivery contracts/providers
   DeliveryCommand consume and DeliveryReport append owner operations
 
 transport/netty-adapter
-  finite Adapter construction factory, package-private WebSocket/Socket
-  Adapter aggregates, independently owned physical Network Servers, mailbox
-  pumps, child Channels, bound routes, and bounded non-blocking delivery
+  finite Adapter construction factory, one package-private scheduling
+  mechanism per isolated instance, one Netty resource-lifecycle owner per
+  instance, finite WebSocket/line-Socket framing protocols, mailbox pumps,
+  child Channels, bound routes, and bounded non-blocking delivery
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch

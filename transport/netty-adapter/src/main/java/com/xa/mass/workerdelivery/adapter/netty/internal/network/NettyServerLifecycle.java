@@ -1,10 +1,8 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.socket;
+package com.xa.mass.workerdelivery.adapter.netty.internal.network;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionHandlerFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -14,12 +12,7 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.LineBasedFrameDecoder;
-import io.netty.handler.codec.string.StringDecoder;
-import io.netty.handler.codec.string.StringEncoder;
-import io.netty.handler.timeout.WriteTimeoutHandler;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Set;
@@ -28,53 +21,42 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
-public final class SocketNettyServer implements AutoCloseable {
-
-    private static final int MAX_FRAME_BYTES = 1_048_576;
+/** Owns one Adapter listener, EventLoop, and all accepted physical Channels. */
+public final class NettyServerLifecycle implements AutoCloseable {
 
     private final String adapterId;
     private final String listenHost;
     private final int listenPort;
-    private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
-    private final SocketWorkerRouteDirectory routes;
-    private final WorkerDeliveryCodec codec;
-    private final BoundedDeliveryReportQueue reportQueue;
-    private final WorkerDeliveryGatewayClient gateway;
+    private final AdapterNetworkProtocol networkProtocol;
+    private final WorkerConnectionHandlerFactory handlers;
     private final BooleanSupplier acceptingConnections;
-    private final Set<Channel> childChannels =
-            ConcurrentHashMap.newKeySet();
+    private final Set<Channel> childChannels = ConcurrentHashMap.newKeySet();
     private EventLoopGroup eventLoopGroup;
     private Channel listener;
     private boolean closed;
 
-    public SocketNettyServer(
+    public NettyServerLifecycle(
             String adapterId,
             String listenHost,
             int listenPort,
-            Duration sendTimeLimit,
             Duration shutdownTimeout,
-            SocketWorkerRouteDirectory routes,
-            WorkerDeliveryCodec codec,
-            BoundedDeliveryReportQueue reportQueue,
-            WorkerDeliveryGatewayClient gateway,
+            AdapterNetworkProtocol networkProtocol,
+            WorkerConnectionHandlerFactory handlers,
             BooleanSupplier acceptingConnections
     ) {
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
         this.listenHost = Objects.requireNonNull(listenHost, "listenHost");
         this.listenPort = listenPort;
-        this.sendTimeLimit = Objects.requireNonNull(
-                sendTimeLimit,
-                "sendTimeLimit"
-        );
         this.shutdownTimeout = Objects.requireNonNull(
                 shutdownTimeout,
                 "shutdownTimeout"
         );
-        this.routes = Objects.requireNonNull(routes, "routes");
-        this.codec = Objects.requireNonNull(codec, "codec");
-        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
-        this.gateway = Objects.requireNonNull(gateway, "gateway");
+        this.networkProtocol = Objects.requireNonNull(
+                networkProtocol,
+                "networkProtocol"
+        );
+        this.handlers = Objects.requireNonNull(handlers, "handlers");
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
                 "acceptingConnections"
@@ -84,7 +66,7 @@ public final class SocketNettyServer implements AutoCloseable {
     public void start() {
         if (eventLoopGroup != null || listener != null || closed) {
             throw new IllegalStateException(
-                    "Socket network server cannot be started again"
+                    "Netty network server cannot be started again"
             );
         }
         eventLoopGroup = new MultiThreadIoEventLoopGroup(
@@ -101,31 +83,11 @@ public final class SocketNettyServer implements AutoCloseable {
                     @Override
                     protected void initChannel(SocketChannel channel) {
                         track(channel);
-                        channel.pipeline()
-                                .addLast(new LineBasedFrameDecoder(
-                                        MAX_FRAME_BYTES,
-                                        true,
-                                        true
-                                ))
-                                .addLast(new StringDecoder(
-                                        StandardCharsets.UTF_8
-                                ))
-                                .addLast(new StringEncoder(
-                                        StandardCharsets.UTF_8
-                                ))
-                                .addLast(new WriteTimeoutHandler(
-                                        sendTimeLimit.toMillis(),
-                                        TimeUnit.MILLISECONDS
-                                ))
-                                .addLast(new SocketWorkerIdentityHandler(
-                                        routes,
-                                        codec,
-                                        reportQueue,
-                                        gateway,
-                                        adapterId,
-                                        sendTimeLimit,
-                                        acceptingConnections
-                                ));
+                        networkProtocol.installPipeline(
+                                channel,
+                                handlers,
+                                acceptingConnections
+                        );
                     }
                 });
         try {
@@ -137,15 +99,15 @@ public final class SocketNettyServer implements AutoCloseable {
             Thread.currentThread().interrupt();
             throw new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
-                    "socket.startListener",
-                    "Socket listener start was interrupted",
+                    "netty.startListener",
+                    "Adapter listener start was interrupted",
                     error
             );
         } catch (Exception error) {
             throw new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
-                    "socket.startListener",
-                    "Could not bind Socket Adapter " + adapterId,
+                    "netty.startListener",
+                    "Could not bind Adapter " + adapterId,
                     error
             );
         }
@@ -191,7 +153,10 @@ public final class SocketNettyServer implements AutoCloseable {
     private RuntimeException closeChildChannels(RuntimeException failure) {
         try {
             for (Channel channel : Set.copyOf(childChannels)) {
-                SocketWorkerRouteDirectory.closeBestEffort(channel);
+                networkProtocol.close(
+                        channel,
+                        AdapterConnectionCloseReason.ADAPTER_STOPPING
+                );
             }
             long deadline = System.nanoTime() + shutdownTimeout.toNanos();
             for (Channel channel : Set.copyOf(childChannels)) {

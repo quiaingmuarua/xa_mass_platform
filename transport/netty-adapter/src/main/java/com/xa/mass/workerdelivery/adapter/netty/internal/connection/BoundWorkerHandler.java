@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.socket;
+package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
@@ -10,26 +10,26 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import java.util.Objects;
 
-final class SocketBoundWorkerHandler
-        extends SimpleChannelInboundHandler<String> {
+final class BoundWorkerHandler extends SimpleChannelInboundHandler<String> {
 
     private static final System.Logger LOGGER = System.getLogger(
-            SocketBoundWorkerHandler.class.getName()
+            BoundWorkerHandler.class.getName()
     );
 
-    private final SocketWorkerRouteDirectory routes;
+    private final WorkerRouteDirectory routes;
     private final WorkerDeliveryCodec codec;
     private final BoundedDeliveryReportQueue reportQueue;
     private final String workerId;
 
-    SocketBoundWorkerHandler(
-            SocketWorkerRouteDirectory routes,
+    BoundWorkerHandler(
+            WorkerRouteDirectory routes,
             WorkerDeliveryCodec codec,
             BoundedDeliveryReportQueue reportQueue,
             String workerId
@@ -44,8 +44,11 @@ final class SocketBoundWorkerHandler
     }
 
     @Override
-    protected void channelRead0(ChannelHandlerContext context, String line) {
-        DeliveryReport report = codec.decodeDeliveryReport(line);
+    protected void channelRead0(
+            ChannelHandlerContext context,
+            String encodedReport
+    ) {
+        DeliveryReport report = codec.decodeDeliveryReport(encodedReport);
         if (report == null) {
             logDrop("dropMalformedWorkerResult", null);
             return;
@@ -75,12 +78,18 @@ final class SocketBoundWorkerHandler
             logDrop("dropWorkerOutcome", report);
             return;
         }
-        switch (reportQueue.offer(line)) {
+        switch (reportQueue.offer(encodedReport)) {
             case ACCEPTED -> {
             }
-            case FULL, CLOSED -> routes.close(
+            case FULL -> routes.close(
                     workerId,
-                    context.channel()
+                    context.channel(),
+                    AdapterConnectionCloseReason.RESULT_BUFFER_FULL
+            );
+            case CLOSED -> routes.close(
+                    workerId,
+                    context.channel(),
+                    AdapterConnectionCloseReason.ADAPTER_STOPPING
             );
         }
     }
@@ -93,7 +102,11 @@ final class SocketBoundWorkerHandler
 
     @Override
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-        routes.close(workerId, context.channel());
+        routes.close(
+                workerId,
+                context.channel(),
+                AdapterConnectionCloseReason.TRANSPORT_ERROR
+        );
     }
 
     private void logDrop(String action, DeliveryReport report) {
@@ -101,7 +114,7 @@ final class SocketBoundWorkerHandler
                 System.Logger.Level.WARNING,
                 "errorCode={0} operation={1} phase=BOUND messageType={2}",
                 WorkerDeliveryAdapterErrorCode.WORKER_MESSAGE_INVALID.code(),
-                "socket." + action,
+                "netty." + action,
                 report == null ? "<malformed>" : report.messageType()
         );
     }

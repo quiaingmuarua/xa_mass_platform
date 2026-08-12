@@ -624,10 +624,10 @@ no hidden compatibility path or second mainline remains
     identity Register, persistent Endpoint Bind and Worker upsert, TaskItem
     append/last-success query, point polling, and Adapter batch HTTP API.
 - [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
-  - finite construction factory, separate package-private WebSocket/Socket
-    lifecycle aggregates and physical Network Server owners, all-child Channel
-    ownership, bounded mailbox pumps, bound connections, and Server batch HTTP
-    client.
+  - finite construction factory, one package-private Adapter mechanism per
+    isolated instance, one shared Netty resource-lifecycle owner, finite
+    WebSocket/line-Socket framing protocols, all-child Channel ownership,
+    bounded mailbox pumps, bound connections, and Server batch HTTP client.
 - [Worker Core](../transport/worker-core/README.md)
   - Java 11 compatible Worker execution, event dispatch, and
     Polling/WebSocket/Socket protocol state machines shared by JVM and Android
