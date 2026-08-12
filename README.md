@@ -69,40 +69,35 @@ compatibility targets.
 
 ## Verification
 
-Python executable specification:
+The current verification contract is organized by proof boundary rather than
+coverage percentage. See [`TESTING.md`](TESTING.md) for lane ownership,
+path selection, exact local commands, and the stable CI `Proof Gate`.
+
+Python executable specification and real Redis oracle (set
+`KERNEL_DESIGN_REDIS_URL` to enable the Redis-backed proofs):
 
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
 ```
 
-Real Redis proof:
+Deterministic JVM contracts:
 
 ```text
-KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
-  python -m unittest discover -s kernel_design/executable_spec/tests
+./gradlew :server_jvm:test
+./gradlew :integrations:worker-capability-rpc:test
 ```
 
-JVM modules:
+Real Redis and cross-process proofs use separate entrypoints:
 
 ```text
-./gradlew build
-```
-
-Cross-process proofs use a real Redis service and Python Kernel process. The
-Server integration suite proves the Java/Python owner boundary; the external
-Scenario proof additionally starts the `scenario-workers` profile and executes
-60 targeted single-Item RPC calls through 20 real WebSocket Workers:
-
-```text
-./gradlew :server_jvm:integrationTest
+./gradlew :server_jvm:redisOwnerIntegrationTest
+./gradlew :server_jvm:runtimeBoundaryIntegrationTest
 ./gradlew :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-See
-[`integrations/worker-capability-rpc/README.md`](integrations/worker-capability-rpc/README.md)
-for the required process startup sequence. CI performs both cross-process
-proofs with isolated Redis services.
+The Scenario command self-verifies 20 canonical Worker IDs and all 60 targeted
+Worker/event combinations. See its owning README for process startup.
 
 See
 [`integrations/android-websocket-worker/README.md`](integrations/android-websocket-worker/README.md)

@@ -119,5 +119,8 @@ repository demo excludes the Android Worker preference file from backup.
 ```text
 ./gradlew :transport:android-worker:testDebugUnitTest
 ./gradlew :transport:android-worker:assembleDebug
-./gradlew :transport:android-worker:assembleDebugAndroidTest
 ```
+
+There is currently no instrumentation source set. Real-device Task RPC
+acceptance belongs to `integrations/android-websocket-worker` and remains
+manual; hosted CI proves only the Debug host and local protocol boundary.

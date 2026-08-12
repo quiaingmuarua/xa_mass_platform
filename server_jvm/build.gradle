@@ -39,18 +39,73 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform {
-        excludeTags 'integration'
+        excludeTags 'redis-owner', 'runtime-boundary'
     }
 }
 
-tasks.register('integrationTest', Test) {
-    description = 'Runs Redis and cross-process tests against the Python Kernel Control API.'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
-    useJUnitPlatform {
-        includeTags 'integration'
+def registerStrictIntegrationTest = {
+    String taskName,
+    String descriptionText,
+    String tag,
+    List<String> requiredEnvironment ->
+    tasks.register(taskName, Test) {
+        description = descriptionText
+        group = 'verification'
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags tag
+        }
+        shouldRunAfter tasks.named('test')
+        outputs.upToDateWhen { false }
+
+        doFirst {
+            requiredEnvironment.each { variableName ->
+                String value = System.getenv(variableName)
+                if (value == null || value.isBlank()) {
+                    throw new GradleException(
+                            taskName
+                                    + ' requires environment variable '
+                                    + variableName
+                    )
+                }
+            }
+        }
+
+        afterSuite { descriptor, result ->
+            if (descriptor.parent != null) {
+                return
+            }
+            if (result.testCount == 0) {
+                throw new GradleException(
+                        taskName + ' did not execute any tests'
+                )
+            }
+            if (result.skippedTestCount != 0) {
+                throw new GradleException(
+                        taskName
+                                + ' skipped '
+                                + result.skippedTestCount
+                                + ' tests'
+                )
+            }
+        }
     }
-    shouldRunAfter tasks.named('test')
-    outputs.upToDateWhen { false }
 }
+
+registerStrictIntegrationTest(
+        'redisOwnerIntegrationTest',
+        'Runs Server-owned and Kernel-owner Redis contract proofs.',
+        'redis-owner',
+        ['KERNEL_DESIGN_REDIS_URL']
+)
+
+registerStrictIntegrationTest(
+        'runtimeBoundaryIntegrationTest',
+        'Runs the Java Server boundary against Redis and the Python Kernel.',
+        'runtime-boundary',
+        [
+                'KERNEL_DESIGN_REDIS_URL',
+                'KERNEL_COMMAND_INTEGRATION_URL'
+        ]
+)

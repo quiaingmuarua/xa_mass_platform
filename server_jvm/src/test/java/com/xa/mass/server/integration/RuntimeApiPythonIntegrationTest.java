@@ -39,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
-@Tag("integration")
+@Tag("runtime-boundary")
 class RuntimeApiPythonIntegrationTest {
 
     private static final String KERNEL_URL =

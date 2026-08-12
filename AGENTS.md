@@ -412,7 +412,8 @@ boundary.
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
-./gradlew build
+./gradlew :server_jvm:test
+./gradlew :integrations:worker-capability-rpc:test
 git diff --check
 ```
 
@@ -420,7 +421,9 @@ For real Redis proof, set
 `KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15` before running the Python
 suite.
 
-The JVM workflow additionally runs `:server_jvm:integrationTest` and the
-external `:integrations:worker-capability-rpc:runRpcScenario` proof with
-isolated Redis services and real Python Kernel / Java Server processes. A
-Scenario or integration-only change must continue to trigger that workflow.
+The repository proof registry is [`TESTING.md`](TESTING.md). `Proof CI`
+separates `:server_jvm:redisOwnerIntegrationTest`,
+`:server_jvm:runtimeBoundaryIntegrationTest`, and the external
+`:integrations:worker-capability-rpc:runRpcScenario` acceptance proof. A
+Scenario or integration-only change must continue to select its owning lane
+and reach the stable `Proof Gate`.

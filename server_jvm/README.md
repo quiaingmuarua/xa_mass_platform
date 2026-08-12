@@ -666,20 +666,22 @@ same canonical registry fingerprint; no registry is stored in Redis.
 
 ```text
 ./gradlew :server_jvm:test
+KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
+  ./gradlew :server_jvm:redisOwnerIntegrationTest
 KERNEL_COMMAND_INTEGRATION_URL=http://127.0.0.1:18080 \
 KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
-  ./gradlew :server_jvm:integrationTest
+  ./gradlew :server_jvm:runtimeBoundaryIntegrationTest
 ```
 
-The cross-process integration proves `TASK_DRIVEN` through the real Java
-polling Worker and `ITEM_DRIVEN` through Netty WebSocket and Socket Adapter
-endpoints. All paths use the Server HTTP
-boundary, Python scheduling/ResultRouting, Java last-success query, and exact
-Worker release.
+The Redis Owner proof runs without Python. The Runtime Boundary proof runs
+against an already healthy Python Kernel and proves `TASK_DRIVEN` through the
+real Java polling Worker and `ITEM_DRIVEN` through Netty WebSocket and Socket
+Adapter endpoints. All paths use the Server HTTP boundary, Python
+scheduling/ResultRouting, Java last-success query, and exact Worker release.
 
 The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
-The repository JVM workflow starts this Server with the `scenario-workers`
+The repository Scenario RPC lane starts this Server with the `scenario-workers`
 profile and proves Identity Register, Endpoint Bind, Adapter route validation,
 20 WebSocket Worker connections, and 60 targeted single-Item RPC results. This
 cross-process proof complements rather than replaces the Server integration

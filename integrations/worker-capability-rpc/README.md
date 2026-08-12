@@ -122,6 +122,11 @@ Phone Group completes before the String Group fails, the completed Phone file
 remains available. The report records the explicitly targeted Worker ID;
 business result payloads do not repeat Worker identity.
 
+Before returning success, the runner verifies both files as one acceptance
+proof: 20 canonical and globally unique Worker IDs, stable Worker-key mapping,
+and exactly one result for every configured Worker/event combination. CI uses
+the same runner and does not duplicate these assertions in workflow code.
+
 Options:
 
 ```text
@@ -146,12 +151,11 @@ without changing these Worker identities or capabilities.
 ```powershell
 .\gradlew.bat :integrations:worker-capability-rpc:test
 .\gradlew.bat :server_jvm:test
-.\gradlew.bat build
 git diff --check
 ```
 
-The repository JVM workflow also runs this complete scenario against an
+The repository Scenario RPC lane also runs this complete scenario against an
 ephemeral Redis service, a real Python Kernel process, and a real Server using
 the `scenario-workers` profile. Changes confined to `scenario_workers_jvm/` or
-`integrations/` therefore still trigger the JVM workflow and the 60-call
+this integration therefore still select the 60-call
 cross-process proof.

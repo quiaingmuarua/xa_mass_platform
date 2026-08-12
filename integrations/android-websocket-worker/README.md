@@ -145,7 +145,6 @@ control never runs inside the Worker App.
 ```powershell
 .\gradlew.bat :integrations:android-websocket-worker:testDebugUnitTest
 .\gradlew.bat :integrations:android-websocket-worker:assembleDebug
-.\gradlew.bat :integrations:android-websocket-worker:assembleDebugAndroidTest
 python -m unittest discover `
   -s integrations/android-websocket-worker/host `
   -p "test_*.py"
@@ -154,4 +153,5 @@ git diff --check
 
 `minSdk 24` is the build baseline. The checked real-device proof currently
 targets an Android 13 / API 33 device; a successful DEX build alone is not an
-API 24 runtime proof.
+API 24 runtime proof. Hosted CI runs the Debug host proof above; the real-device
+`runDemoRpc` procedure remains a manual acceptance proof.

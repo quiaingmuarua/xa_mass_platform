@@ -106,11 +106,15 @@ public final class WorkerCapabilityRpcMain {
             throw error;
         }
 
+        WorkerCapabilityScenarioVerifier.verify(
+                scenarioResultDirectory
+        );
+
         LOG.log(
                 System.Logger.Level.INFO,
-                "Wrote "
+                "Verified "
                         + (phoneResultCount + stringResultCount)
-                        + " results to "
+                        + " targeted results across 20 Workers in "
                         + scenarioResultDirectory
         );
     }
