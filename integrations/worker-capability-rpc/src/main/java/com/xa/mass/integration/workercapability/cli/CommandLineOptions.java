@@ -1,11 +1,11 @@
-package com.xa.mass.integration.workercapability;
+package com.xa.mass.integration.workercapability.cli;
 
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class CommandLineOptions {
+public final class CommandLineOptions {
 
     private final Map<String, String> values;
 
@@ -13,7 +13,7 @@ final class CommandLineOptions {
         this.values = Map.copyOf(values);
     }
 
-    static CommandLineOptions parse(String[] arguments) {
+    public static CommandLineOptions parse(String[] arguments) {
         Map<String, String> values = new LinkedHashMap<>();
         for (String argument : arguments) {
             if (argument == null || !argument.startsWith("--")) {
@@ -38,11 +38,11 @@ final class CommandLineOptions {
         return new CommandLineOptions(values);
     }
 
-    String string(String name, String defaultValue) {
+    public String string(String name, String defaultValue) {
         return values.getOrDefault(name, defaultValue);
     }
 
-    long positiveLong(String name, long defaultValue) {
+    public long positiveLong(String name, long defaultValue) {
         String value = values.get(name);
         long parsed = value == null
                 ? defaultValue
@@ -55,11 +55,11 @@ final class CommandLineOptions {
         return parsed;
     }
 
-    URI uri(String name, String defaultValue) {
+    public URI uri(String name, String defaultValue) {
         return URI.create(string(name, defaultValue));
     }
 
-    Path path(String name, String defaultValue) {
+    public Path path(String name, String defaultValue) {
         return Path.of(string(name, defaultValue));
     }
 }

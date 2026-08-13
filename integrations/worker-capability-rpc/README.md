@@ -13,17 +13,52 @@ Server scenario-workers profile
      -> scenario-string-utils-workers / 10 Workers / 3 events
 
 WorkerCapabilityRpcMain
+  -> read current example files into List<String>
+  -> RpcProcess: parse each line once and combine it with configured events
+  -> bounded concurrent WorkerGroup calls
   -> POST /api/v1/worker-groups/{workerGroupId}/items:call
   -> 30 Phone calls and 30 String calls with allocationRule={}
-  -> verify RPC evidence independently from persistent Worker identities
+  -> optional validation and JSONL middleware
+  -> verify in-memory RPC results independently from persistent Worker identities
 ```
 
-The caller knows only the Runtime API, WorkerGroup ID, and standard
-`TaskItemRequest`. It does not create, approve, close, or receive the internal
-Task; it does not register identities or select Worker IDs. The Server profile
-owns the deterministic long-lived Task coordinate. `scenario_workers_jvm` owns
-the handlers, persistent Lab Worker files, public Register/Bind flow, and real
-WebSocket Worker construction.
+The Process caller supplies only string lines and a Payload parser. The
+integration's HTTP boundary knows the Runtime API and WorkerGroup ID and builds
+the standard `TaskItemRequest`; it does not create, approve, close, or receive
+the internal Task, register identities, or select Worker IDs. The Server
+profile owns the deterministic long-lived Task coordinate.
+`scenario_workers_jvm` owns the handlers, persistent Lab Worker files, public
+Register/Bind flow, and real WebSocket Worker construction.
+
+## RPC process model
+
+`RpcProcess` is a finite in-memory batch processor. It accepts a `List<String>`,
+one `line -> payload` parser, configured event codes, and optional batch result
+middleware. It parses every line once, produces the line/event cross product,
+and executes Group RPC calls with a caller-bounded concurrency limit. Results
+are returned in seed order even when calls finish in another order.
+
+The Process has no file, Task, Worker, retry, checkpoint, or chained-request
+contract. The current Main happens to read two files and installs validation
+plus atomic JSONL middleware. Another integration scenario may instead pass an
+inline or generated string list and consume only the returned results:
+
+```java
+List<RpcResult> results = RpcProcess.builder(rpcClient)
+        .scenarioId("integration-run")
+        .processName("example")
+        .workerGroupId("example-workers")
+        .lines(List.of("first", "second"))
+        .eventCodes(List.of("example.transform"))
+        .parseLine(line -> Map.of("value", line))
+        .maxWorkers(10)
+        .build()
+        .start();
+```
+
+Adding a finite scenario therefore requires explicit Java assembly of the
+Group, event list, input strings, payload parser, and only the middleware that
+scenario needs. There is no reflection, `ServiceLoader`, or configuration DSL.
 
 ## Scenario capabilities
 
@@ -95,9 +130,10 @@ Run the acceptance proof:
 .\gradlew.bat :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The two Group batches are internally concurrent. Each request carries a normal
-Item with `allocationRule: {}`; the Kernel selects an available Worker in that
-Task's WorkerGroup. No result claims which Worker executed it.
+The Phone and String Processes run sequentially; calls within each Process are
+bounded and concurrent. Each request carries a normal Item with
+`allocationRule: {}`; the Kernel selects an available Worker in that Task's
+WorkerGroup. No result claims which Worker executed it.
 
 Results are written to:
 
@@ -111,9 +147,13 @@ Each file contains exactly 30 JSON lines for its own Group. A row contains only
 pending`, invalid domain result, missing event-specific field, or failed call
 fails that Group. Completed partial output is preserved for diagnosis.
 
+JSONL is diagnostic middleware for this checked-in run, not an output contract
+of `RpcProcess`. All calls must complete before that Process runs validation or
+publishes its file.
+
 Before success, the runner proves two independent facts:
 
-- the two JSONL files contain all 60 distinct configured Group/event calls;
+- the returned in-memory batches contain all 60 configured Group/event calls;
 - the two Lab directories contain 20 canonical, persistent, globally unique
   Worker IDs.
 

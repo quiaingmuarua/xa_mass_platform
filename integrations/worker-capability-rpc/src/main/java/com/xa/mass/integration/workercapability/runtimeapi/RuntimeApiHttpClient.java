@@ -1,4 +1,4 @@
-package com.xa.mass.integration.workercapability;
+package com.xa.mass.integration.workercapability.runtimeapi;
 
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
@@ -10,13 +10,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 
-final class RuntimeApiHttpClient {
+public final class RuntimeApiHttpClient {
 
     private final URI baseUrl;
     private final Duration requestTimeout;
     private final HttpClient http;
 
-    RuntimeApiHttpClient(
+    public RuntimeApiHttpClient(
             URI baseUrl,
             Duration requestTimeout
     ) {
@@ -105,7 +105,7 @@ final class RuntimeApiHttpClient {
         }
     }
 
-    static String identifier(String value) {
+    public static String identifier(String value) {
         if (value == null
                 || !value.matches("[A-Za-z0-9._-]+")) {
             throw new IllegalArgumentException(

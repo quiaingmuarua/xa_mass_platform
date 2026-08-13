@@ -1,18 +1,21 @@
-package com.xa.mass.integration.workercapability;
+package com.xa.mass.integration.workercapability.runtimeapi;
 
+import com.xa.mass.integration.workercapability.process.RpcProcess;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class WorkerGroupRpcClient {
+public final class WorkerGroupRpcClient implements RpcProcess.RpcCall {
 
     private final RuntimeApiHttpClient http;
 
-    WorkerGroupRpcClient(RuntimeApiHttpClient http) {
+    public WorkerGroupRpcClient(RuntimeApiHttpClient http) {
         this.http = http;
     }
 
-    Map<String, Object> call(
+    @Override
+    public Map<String, Object> call(
             String workerGroupId,
             String messageId,
             String eventCode,
@@ -26,7 +29,10 @@ final class WorkerGroupRpcClient {
         );
         item.put("eventCode", eventCode);
         item.put("createdAtMillis", System.currentTimeMillis());
-        item.put("payload", Map.copyOf(payload));
+        item.put(
+                "payload",
+                Collections.unmodifiableMap(new LinkedHashMap<>(payload))
+        );
         item.put("allocationRule", Map.of());
 
         RuntimeApiHttpClient.ApiResponse response = http.send(

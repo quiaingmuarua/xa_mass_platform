@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpServer;
+import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
+import com.xa.mass.integration.workercapability.runtimeapi.WorkerGroupRpcClient;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.InetSocketAddress;

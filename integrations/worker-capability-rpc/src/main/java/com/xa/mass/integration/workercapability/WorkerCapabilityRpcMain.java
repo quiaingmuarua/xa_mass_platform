@@ -1,9 +1,19 @@
 package com.xa.mass.integration.workercapability;
 
+import com.xa.mass.integration.workercapability.cli.CommandLineOptions;
+import com.xa.mass.integration.workercapability.cli.WorkerCapabilityIntegrationDefaults;
+import com.xa.mass.integration.workercapability.process.RpcResult;
+import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
+import com.xa.mass.integration.workercapability.runtimeapi.WorkerGroupRpcClient;
+import com.xa.mass.integration.workercapability.scenario.PhoneNumberProcess;
+import com.xa.mass.integration.workercapability.scenario.StringUtilityProcess;
+import com.xa.mass.integration.workercapability.scenario.WorkerCapabilityAcceptance;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 
 public final class WorkerCapabilityRpcMain {
 
@@ -67,29 +77,23 @@ public final class WorkerCapabilityRpcMain {
                 resultDirectory,
                 scenarioResultDirectory
         );
-        int phoneResultCount;
-        int stringResultCount;
+        List<RpcResult> phoneResults;
+        List<RpcResult> stringResults;
         try {
-            phoneResultCount = new PhoneNumberRpcScenario(
-                    rpc
-            ).run(
+            phoneResults = PhoneNumberProcess.create(
+                    rpc,
                     scenarioId,
-                    phoneSeedPath,
-                    scenarioResultDirectory.resolve(
-                            "phone-number.jsonl"
-                    ),
+                    readFirstTenLines(phoneSeedPath, "phone-seed.txt"),
+                    scenarioResultDirectory.resolve("phone-number.jsonl"),
                     waitTimeoutMillis
-            );
-            stringResultCount = new StringUtilityRpcScenario(
-                    rpc
-            ).run(
+            ).start();
+            stringResults = StringUtilityProcess.create(
+                    rpc,
                     scenarioId,
-                    stringSeedPath,
-                    scenarioResultDirectory.resolve(
-                            "string-utils.jsonl"
-                    ),
+                    readFirstTenLines(stringSeedPath, "string-seed.txt"),
+                    scenarioResultDirectory.resolve("string-utils.jsonl"),
                     waitTimeoutMillis
-            );
+            ).start();
         } catch (IOException | RuntimeException error) {
             removeEmptyScenarioResultDirectory(
                     scenarioResultDirectory,
@@ -98,19 +102,36 @@ public final class WorkerCapabilityRpcMain {
             throw error;
         }
 
-        WorkerCapabilityScenarioVerifier.verify(
-                scenarioResultDirectory,
+        WorkerCapabilityAcceptance.verify(
+                phoneResults,
+                stringResults,
                 scenarioWorkerLabRoot
         );
 
         LOG.log(
                 System.Logger.Level.INFO,
                 "Verified "
-                        + (phoneResultCount + stringResultCount)
+                        + (phoneResults.size() + stringResults.size())
                         + " WorkerGroup RPC results and 20 persistent "
                         + "Worker identities in "
                         + scenarioResultDirectory
         );
+    }
+
+    private static List<String> readFirstTenLines(
+            Path path,
+            String label
+    ) throws IOException {
+        List<String> lines = Files.readAllLines(
+                path,
+                StandardCharsets.UTF_8
+        );
+        if (lines.size() < 10) {
+            throw new IllegalArgumentException(
+                    label + " must contain at least 10 lines"
+            );
+        }
+        return List.copyOf(lines.subList(0, 10));
     }
 
     private static Path absolutePath(Path path) {

@@ -90,6 +90,14 @@ Status: current repository handoff.
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
   Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
+- `integrations/worker-capability-rpc/` is a Java 21 external acceptance
+  assembly. Its lightweight `RpcProcess` accepts caller-supplied string lines,
+  parses each line once into a Payload, combines it with an explicitly assembled
+  finite event list, and performs bounded concurrent calls through the public
+  WorkerGroup Runtime API. It returns ordered in-memory results; validation and
+  JSONL output are optional batch middleware of the checked-in scenario. It is
+  not a Task or Worker owner, file-processing framework, plugin SPI, retry
+  engine, persistent queue, or chained-request scheduler.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis

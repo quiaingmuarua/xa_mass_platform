@@ -49,9 +49,10 @@ The repository contains seven active areas:
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns
-  Worker identity resolution, Task creation, and single-Item RPC invocation
-  through the public Runtime API, with independent JSONL evidence for each
-  WorkerGroup. The `scenario-workers`
+  a lightweight Java batch Process that turns caller-supplied string lines
+  into Payloads, performs bounded concurrent WorkerGroup RPC through the public
+  Runtime API, and optionally records JSONL diagnostics. Task assembly and
+  Worker identity remain outside the integration. The `scenario-workers`
   Server profile composes one real WebSocket Adapter, two reusable JVM
   Scenario WorkerGroups with six capabilities, and the advisory Android demo
   WorkerGroup. The installable

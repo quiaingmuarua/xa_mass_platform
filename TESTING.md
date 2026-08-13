@@ -19,12 +19,13 @@ boundary named below.
 | Android Host | Android assembly, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The basic Runtime Viewer remains lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
-The `Scenario RPC` command validates its own JSONL output before returning
-success. The Lab proof requires exactly 20 persistent, globally unique
-canonical Worker IDs. Separately, the RPC proof requires all 60 configured
-Group/event calls to complete through the WorkerGroup path. A call result is
-not attributed to a particular Worker. CI does not duplicate this contract in
-workflow shell code.
+The `Scenario RPC` command validates its returned in-memory Process batches
+before returning success. The Lab proof requires exactly 20 persistent,
+globally unique canonical Worker IDs. Separately, the RPC proof requires all 60
+configured Group/event calls to complete through the WorkerGroup path. JSONL is
+optional diagnostic middleware for the checked-in run, not the Process result
+contract. A call result is not attributed to a particular Worker. CI does not
+duplicate this contract in workflow shell code.
 
 ## Local Commands
 

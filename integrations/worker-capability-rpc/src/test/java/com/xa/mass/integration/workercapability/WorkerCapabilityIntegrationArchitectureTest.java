@@ -62,4 +62,33 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 root.resolve("PhoneNumberWorkerMain.java")
         ));
     }
+
+    @Test
+    void processDoesNotGrowIntoAPluginOrChainedRequestFramework()
+            throws Exception {
+        Path root = Path.of(
+                "src/main/java/com/xa/mass/integration"
+                        + "/workercapability/process"
+        );
+        StringBuilder processSources = new StringBuilder();
+        try (var files = Files.walk(root)) {
+            for (Path file : files.filter(path ->
+                    path.toString().endsWith(".java")
+            ).toList()) {
+                processSources.append(Files.readString(file));
+            }
+        }
+        for (String forbidden : new String[]{
+                "ServiceLoader",
+                "Class.forName",
+                "startRequests",
+                "followRequest",
+                "Checkpoint"
+        }) {
+            assertFalse(
+                    processSources.toString().contains(forbidden),
+                    forbidden
+            );
+        }
+    }
 }
