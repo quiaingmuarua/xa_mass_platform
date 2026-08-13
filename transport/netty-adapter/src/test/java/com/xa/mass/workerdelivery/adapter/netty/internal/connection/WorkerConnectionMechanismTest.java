@@ -22,6 +22,8 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -203,6 +206,46 @@ class WorkerConnectionMechanismTest {
         }
     }
 
+    @Test
+    void inactiveCallbackCleansRouteAndPropagatesThroughPipeline() {
+        Fixture fixture = new Fixture();
+        AtomicInteger inactiveEvents = new AtomicInteger();
+        EmbeddedChannel channel = fixture.channel(new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelInactive(ChannelHandlerContext context) {
+                inactiveEvents.incrementAndGet();
+                context.fireChannelInactive();
+            }
+        });
+        channel.writeInbound(fixture.identity("worker-1"));
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, channel);
+
+        channel.finishAndReleaseAll();
+
+        assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+        assertThat(inactiveEvents).hasValue(1);
+    }
+
+    @Test
+    void failureCallbackCleansRouteAndUsesPhysicalServerClose() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        channel.writeInbound(fixture.identity("worker-1"));
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, channel);
+
+        IllegalStateException failure = new IllegalStateException("boom");
+        channel.pipeline().fireExceptionCaught(failure);
+
+        assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+        assertThat(fixture.network.closedChannels).containsExactly(channel);
+        assertThat(fixture.network.closeReasons).containsExactly(
+                AdapterConnectionCloseReason.TRANSPORT_ERROR
+        );
+        channel.finishAndReleaseAll();
+    }
+
     private static void awaitBound(
             Fixture fixture,
             EmbeddedChannel channel
@@ -259,9 +302,15 @@ class WorkerConnectionMechanismTest {
                         "adapter-1",
                         Duration.ofSeconds(1)
                 );
+        private final WorkerConnectionInboundHandler inboundHandler =
+                new WorkerConnectionInboundHandler(mechanism);
 
         private EmbeddedChannel channel() {
-            return new EmbeddedChannel(mechanism);
+            return new EmbeddedChannel(inboundHandler);
+        }
+
+        private EmbeddedChannel channel(ChannelHandler nextHandler) {
+            return new EmbeddedChannel(inboundHandler, nextHandler);
         }
 
         private ScriptedHttpServer reportServer() {
@@ -354,6 +403,9 @@ class WorkerConnectionMechanismTest {
             implements NettyWorkerServer {
 
         private final List<String> writtenMessages = new ArrayList<>();
+        private final List<Channel> closedChannels = new ArrayList<>();
+        private final List<AdapterConnectionCloseReason> closeReasons =
+                new ArrayList<>();
 
         @Override
         public void start(ChannelHandler sharedConnectionHandler) {
@@ -383,6 +435,8 @@ class WorkerConnectionMechanismTest {
                 Channel channel,
                 AdapterConnectionCloseReason reason
         ) {
+            closedChannels.add(channel);
+            closeReasons.add(reason);
             if (reason != AdapterConnectionCloseReason.REPLACED) {
                 channel.close();
             }

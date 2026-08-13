@@ -19,11 +19,16 @@ import java.util.function.LongSupplier;
 /** Scheduled Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
 
+    private record TargetedCommand(
+            String workerId,
+            DeliveryCommand command
+    ) {}
+
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryCommandProcess.class.getName()
     );
 
-    private final FiniteQueue<TargetedDeliveryCommand> commandQueue;
+    private final FiniteQueue<TargetedCommand> commandQueue;
     private final DeliveryCommandRemoteApi remoteApi;
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
@@ -104,15 +109,15 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             return;
         }
 
-        List<TargetedDeliveryCommand> observed = commandQueue.consume(
+        List<TargetedCommand> observed = commandQueue.consume(
                 commandQueue.capacity()
         );
         if (observed.isEmpty()) {
             return;
         }
         long currentTimeMillis = nowMillis.getAsLong();
-        ArrayList<TargetedDeliveryCommand> retryLater = new ArrayList<>();
-        for (TargetedDeliveryCommand queued : observed) {
+        ArrayList<TargetedCommand> retryLater = new ArrayList<>();
+        for (TargetedCommand queued : observed) {
             if (roundsStopped) {
                 return;
             }
@@ -173,11 +178,11 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         if (acquired.isEmpty() || roundsStopped) {
             return;
         }
-        ArrayList<TargetedDeliveryCommand> batch = new ArrayList<>(
+        ArrayList<TargetedCommand> batch = new ArrayList<>(
                 acquired.size()
         );
         acquired.forEach((workerId, command) -> batch.add(
-                new TargetedDeliveryCommand(workerId, command)
+                new TargetedCommand(workerId, command)
         ));
         if (commandQueue.ingress(batch)
                 != FiniteQueue.QueueIngressStatus.ACCEPTED) {
@@ -195,7 +200,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         return remoteApi.consume(adapterId, commandConsumeLimit);
     }
 
-    private void offerExpiredResult(TargetedDeliveryCommand queued) {
+    private void offerExpiredResult(TargetedCommand queued) {
         DeliveryCommand command = queued.command();
         if (command == null) {
             return;

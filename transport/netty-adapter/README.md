@@ -25,6 +25,7 @@ owns:
 adapterId = endpointManagerId
 listenHost + listenPort
 one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
+one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
 one `DeliveryCommandProcess` with its private Command `FiniteQueue` and Command Remote API
 one `DeliveryReportProcess` with its private Result `FiniteQueue` and Report Remote API
@@ -41,8 +42,9 @@ owns remote consumption, delivery/rotation, expiry, and exactly one local
 Command queue. The Report Process owns local Result acceptance, remote ingress,
 pending-batch retry, and exactly one local Result queue. Each `FiniteQueue` is
 business-neutral process infrastructure and owns only thread-safe FIFO storage
-with soft-capacity ingress; it is never passed between owners. The shared
-connection mechanism owns identity
+with soft-capacity ingress; it is never passed between owners. The stateless
+inbound Handler only forwards normalized text, inactive, and failure callbacks.
+The shared connection mechanism owns identity
 interpretation, first-seen route
 verification, Command routing, and Result ingress; its Registry alone owns
 verified, pending, active, and Channel-correlation truth. The selected physical
@@ -66,7 +68,7 @@ netty/
 netty/internal/process/
   DeliveryCommandProcess, DeliveryReportProcess, and private FiniteQueues
 netty/internal/connection/
-  pure Worker route truth + one shared Netty connection mechanism
+  one Netty callback adapter + shared connection semantics + pure route truth
 netty/internal/remote/
   three owner-local Remote APIs + one Adapter-private mechanical HTTP client
 netty/internal/network/
@@ -75,8 +77,11 @@ netty/internal/network/
 
 Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
-contracts, and Server is guarded from importing them. The shared connection
-mechanism exposes a concrete `deliver(...)` owner operation and depends only
+contracts, and Server is guarded from importing them.
+`WorkerConnectionInboundHandler` has only one dependency: the connection
+mechanism. It owns no codec, route, verification, Result, or physical network
+behavior. The shared connection mechanism exposes a concrete `deliver(...)`
+owner operation and depends only
 on `WorkerRouteRemoteApi` plus the concrete `DeliveryReportProcess`. It sees normalized
 strings and Netty Channels as route addresses, but all physical write/close
 operations return through `NettyWorkerServer`; it does not see WebSocket
@@ -171,11 +176,13 @@ Worker  -> Adapter: direct DeliveryReport JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-After the physical Pipeline normalizes input to `String`, the one sharable
-`WorkerConnectionMechanism` validates the first Report, coordinates optional
-first verification, and dynamically derives each inbound Channel's phase from
-`WorkerRouteRegistry`. The same Handler remains installed for the full physical
-connection; there is no phase enum, Session, or Pipeline replacement. The fixed
+After the physical Pipeline normalizes input to `String`, one sharable
+`WorkerConnectionInboundHandler` forwards Netty callbacks to the instance's
+`WorkerConnectionMechanism`. The Handler stores no connection-local state. The
+mechanism validates the first Report, coordinates optional first verification,
+and dynamically derives each inbound Channel's phase from
+`WorkerRouteRegistry`. The callback Handler remains installed for the full
+physical connection; there is no phase enum, Session, or Pipeline replacement. The fixed
 identity Report is not routed through an
 event registry or plugin dispatcher. Adapter-directed Reports never enter the
 Server Result queue. Repeated identity and unknown Adapter events on an
@@ -209,9 +216,9 @@ Result Routing decides whether their `forward` context remains valid.
 ### Command consumption round
 
 `DeliveryCommandProcess` calls the Server Command HTTP endpoint and decodes its
-response into its own `FiniteQueue<TargetedDeliveryCommand>`. The tuple is
+response into its own `FiniteQueue` of private targeted-command tuples. The tuple is
 Adapter-local; the current Server HTTP contract continues to use
-`Map<workerId, DeliveryCommand>` and are converted immediately after consume.
+`Map<workerId, DeliveryCommand>`, converted immediately after consume.
 
 ```text
 while estimated queue size is below its soft capacity
@@ -246,7 +253,8 @@ rejection evidence.
 
 ### Result ingress round
 
-Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
+`WorkerConnectionMechanism` strictly decodes every direct `DeliveryReport`.
+Results targeting
 `ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
 `3...` are queued, using their original encoded JSON so Adapter does not
 rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and

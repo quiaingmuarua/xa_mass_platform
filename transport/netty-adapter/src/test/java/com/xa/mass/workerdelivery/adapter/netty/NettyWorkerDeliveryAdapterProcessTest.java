@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
@@ -53,6 +54,9 @@ class NettyWorkerDeliveryAdapterProcessTest {
             );
 
             adapter.start();
+            assertThat(network.startedHandler)
+                    .isInstanceOf(WorkerConnectionInboundHandler.class)
+                    .isNotInstanceOf(WorkerConnectionMechanism.class);
             adapter.close();
 
             assertThat(events).containsSubsequence(
@@ -138,9 +142,12 @@ class NettyWorkerDeliveryAdapterProcessTest {
                 "adapter-1",
                 Duration.ofSeconds(1)
         );
+        WorkerConnectionInboundHandler inboundHandler =
+                new WorkerConnectionInboundHandler(connection);
         return new NettyWorkerDeliveryAdapter(
                 "adapter-1",
                 network,
+                inboundHandler,
                 connection,
                 new AdapterProcessManager(
                         "adapter-1",
@@ -226,6 +233,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
             implements NettyWorkerServer {
 
         private final List<String> events;
+        private volatile ChannelHandler startedHandler;
 
         private RecordingNetworkServer(List<String> events) {
             this.events = events;
@@ -233,6 +241,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
 
         @Override
         public void start(ChannelHandler sharedConnectionHandler) {
+            startedHandler = sharedConnectionHandler;
             events.add("network-start");
         }
 

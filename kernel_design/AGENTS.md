@@ -233,9 +233,10 @@ paths, wire contracts, expected statuses, and failure policy. The Command
 Process, Report Process, and connection mechanism depend only on their matching
 Remote API and concrete neighboring owner operations; none receives the HTTP
 client, URL, status, or HTTP JSON contract.
-One shared connection mechanism plus pure route
-Registry owns identity, first verification, current route selection, and Result
-ingress. One complete WebSocket or line-Socket physical Server owns listener,
+One stateless sharable inbound Handler only adapts Netty callbacks to the
+shared connection mechanism. That mechanism plus the pure route Registry owns
+identity, first verification, current route selection, and Result ingress. One
+complete WebSocket or line-Socket physical Server owns listener,
 EventLoop, every child Channel, full Pipeline, framing, writes, asynchronous
 write failure, and close behavior.
 The finite Netty factory is the only supported construction entry;

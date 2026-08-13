@@ -49,8 +49,9 @@ Status: current repository handoff.
   Result acceptance, pending-batch retry, and remote ingress; one private
   soft-capacity `FiniteQueue` owned by each Process; three owner-local Remote
   APIs for Command consumption, Report ingress, and route verification; one
-  Adapter-private concrete HTTP client shared only by those Remote APIs;
-  connection mechanism plus route Registry for identity, first verification,
+  Adapter-private concrete HTTP client shared only by those Remote APIs; one
+  stateless inbound Handler that only adapts Netty callbacks; one connection
+  mechanism plus route Registry for identity, first verification,
   Command routing, and Result ingress; and one complete WebSocket or Socket
   physical Server for listener, EventLoop, every child Channel, full Pipeline,
   writes, and close behavior. The common mechanism derives connection phase
@@ -205,6 +206,10 @@ tag.
   retain `Channel` only as an address; it must return every physical write or
   close to the selected Server. Connection phase is derived from Registry
   truth rather than a phase enum, Session, or Pipeline Handler replacement.
+  One sharable `WorkerConnectionInboundHandler` is the only Netty callback
+  adapter in the connection layer. It depends only on the Mechanism, forwards
+  normalized text/inactive/failure callbacks, owns no connection state or
+  semantics, and is the Handler installed into the physical Server.
   Adapter instances share implementation but no route state or Channel
   registry. Verification
   success is cached only for that Adapter process. Ordinary disconnect removes
@@ -221,7 +226,7 @@ tag.
   close the Channel. Physical close is reconnectable network evidence; only
   `ADAPTER/worker.connection.close` terminates the current Worker run.
   Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. The private
-  owner-local HTTP contracts are
+  owner-local Remote API contracts are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path. `shutdownTimeout` is separately budgeted by each
   physical Server and by the Adapter Process scheduler; no close path may reset a

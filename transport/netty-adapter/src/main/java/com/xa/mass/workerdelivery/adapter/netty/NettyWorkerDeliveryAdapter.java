@@ -7,6 +7,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
@@ -16,6 +17,7 @@ import java.util.Objects;
 final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
 
     private final String adapterId;
+    private final WorkerConnectionInboundHandler connectionInboundHandler;
     private final WorkerConnectionMechanism connectionMechanism;
     private final AdapterProcessManager processManager;
     private final NettyWorkerServer networkServer;
@@ -25,6 +27,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     NettyWorkerDeliveryAdapter(
             String adapterId,
             NettyWorkerServer networkServer,
+            WorkerConnectionInboundHandler connectionInboundHandler,
             WorkerConnectionMechanism connectionMechanism,
             AdapterProcessManager processManager
     ) {
@@ -32,6 +35,10 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"
+        );
+        this.connectionInboundHandler = Objects.requireNonNull(
+                connectionInboundHandler,
+                "connectionInboundHandler"
         );
         this.connectionMechanism = Objects.requireNonNull(
                 connectionMechanism,
@@ -64,7 +71,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             );
         }
         try {
-            networkServer.start(connectionMechanism);
+            networkServer.start(connectionInboundHandler);
             state = WorkerDeliveryAdapterState.RUNNING;
             processManager.start();
         } catch (RuntimeException error) {

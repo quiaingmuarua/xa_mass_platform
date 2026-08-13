@@ -5,6 +5,7 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiesceP
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
@@ -21,11 +22,8 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemot
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /** Finite construction boundary for the built-in Netty Adapter types. */
 public final class NettyWorkerDeliveryAdapters {
@@ -119,17 +117,9 @@ public final class NettyWorkerDeliveryAdapters {
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
-        NettyAdapterProcessConfig.TaskCommand commandConfig = null;
-        NettyAdapterProcessConfig.TaskReport reportConfig = null;
-        for (NettyAdapterProcessConfig processConfig : processConfigs) {
-            if (processConfig instanceof NettyAdapterProcessConfig.TaskCommand
-                    taskCommand) {
-                commandConfig = taskCommand;
-            } else if (processConfig
-                    instanceof NettyAdapterProcessConfig.TaskReport taskReport) {
-                reportConfig = taskReport;
-            }
-        }
+        ProcessConfigs configs = requireProcessConfigs(processConfigs);
+        NettyAdapterProcessConfig.TaskCommand commandConfig = configs.command();
+        NettyAdapterProcessConfig.TaskReport reportConfig = configs.report();
 
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerDeliveryHttpClient httpClient = new WorkerDeliveryHttpClient(
@@ -145,8 +135,7 @@ public final class NettyWorkerDeliveryAdapters {
         DeliveryReportProcess reportProcess = new DeliveryReportProcess(
                 reportRemoteApi,
                 adapterId,
-                Objects.requireNonNull(reportConfig, "reportConfig")
-                        .queueCapacity()
+                reportConfig.queueCapacity()
         );
         WorkerRouteRegistry routes = new WorkerRouteRegistry();
         WorkerConnectionMechanism connectionMechanism =
@@ -159,49 +148,49 @@ public final class NettyWorkerDeliveryAdapters {
                         adapterId,
                         sendTimeLimit
                 );
+        WorkerConnectionInboundHandler connectionInboundHandler =
+                new WorkerConnectionInboundHandler(connectionMechanism);
         DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
                 commandRemoteApi,
                 connectionMechanism,
                 reportProcess,
                 codec,
                 adapterId,
-                Objects.requireNonNull(commandConfig, "commandConfig")
-                        .consumeLimit(),
+                commandConfig.consumeLimit(),
                 commandConfig.queueCapacity()
         );
 
-        ArrayList<ScheduledAdapterProcess> scheduledProcesses =
-                new ArrayList<>(processConfigs.size());
-        for (NettyAdapterProcessConfig processConfig : processConfigs) {
-            if (processConfig instanceof NettyAdapterProcessConfig.TaskCommand
-                    taskCommand) {
-                scheduledProcesses.add(new ScheduledAdapterProcess(
+        List<ScheduledAdapterProcess> scheduledProcesses = processConfigs
+                .stream()
+                .map(processConfig -> switch (processConfig) {
+                    case NettyAdapterProcessConfig.TaskCommand taskCommand ->
+                            new ScheduledAdapterProcess(
                         TASK_COMMAND_PROCESS_ID,
                         Duration.ZERO,
                         taskCommand.interval(),
                         BEFORE_NETWORK_CLOSE,
                         commandProcess
-                ));
-            } else if (processConfig
-                    instanceof NettyAdapterProcessConfig.TaskReport taskReport) {
-                scheduledProcesses.add(new ScheduledAdapterProcess(
+                    );
+                    case NettyAdapterProcessConfig.TaskReport taskReport ->
+                            new ScheduledAdapterProcess(
                         TASK_REPORT_PROCESS_ID,
                         taskReport.interval(),
                         taskReport.interval(),
                         AFTER_NETWORK_CLOSE,
                         reportProcess
-                ));
-            }
-        }
+                    );
+                })
+                .toList();
 
         AdapterProcessManager processManager = new AdapterProcessManager(
                 adapterId,
                 shutdownTimeout,
-                List.copyOf(scheduledProcesses)
+                scheduledProcesses
         );
         return new NettyWorkerDeliveryAdapter(
                 adapterId,
                 networkServer,
+                connectionInboundHandler,
                 connectionMechanism,
                 processManager
         );
@@ -239,33 +228,50 @@ public final class NettyWorkerDeliveryAdapters {
         }
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");
-        requireProcessConfigs(processConfigs);
+        Objects.requireNonNull(processConfigs, "processConfigs");
     }
 
-    private static void requireProcessConfigs(
+    private static ProcessConfigs requireProcessConfigs(
             List<NettyAdapterProcessConfig> processConfigs
     ) {
         Objects.requireNonNull(processConfigs, "processConfigs");
-        Set<Class<?>> observedTypes = new HashSet<>();
+        NettyAdapterProcessConfig.TaskCommand command = null;
+        NettyAdapterProcessConfig.TaskReport report = null;
         for (NettyAdapterProcessConfig processConfig : processConfigs) {
             Objects.requireNonNull(processConfig, "processConfig");
-            if (!observedTypes.add(processConfig.getClass())) {
-                throw new IllegalArgumentException(
-                        "Adapter process types must be unique"
-                );
+            if (processConfig instanceof NettyAdapterProcessConfig.TaskCommand
+                    value) {
+                if (command != null) {
+                    throw duplicateProcess();
+                }
+                command = value;
+            } else if (processConfig
+                    instanceof NettyAdapterProcessConfig.TaskReport value) {
+                if (report != null) {
+                    throw duplicateProcess();
+                }
+                report = value;
             }
         }
-        if (observedTypes.size() != 2
-                || !observedTypes.contains(
-                NettyAdapterProcessConfig.TaskCommand.class)
-                || !observedTypes.contains(
-                NettyAdapterProcessConfig.TaskReport.class)) {
+        if (command == null || report == null || processConfigs.size() != 2) {
             throw new IllegalArgumentException(
                     "Adapter requires exactly one TASK_COMMAND and one "
                             + "TASK_REPORT process"
             );
         }
+        return new ProcessConfigs(command, report);
     }
+
+    private static IllegalArgumentException duplicateProcess() {
+        return new IllegalArgumentException(
+                "Adapter process types must be unique"
+        );
+    }
+
+    private record ProcessConfigs(
+            NettyAdapterProcessConfig.TaskCommand command,
+            NettyAdapterProcessConfig.TaskReport report
+    ) {}
 
     private static void requirePositive(Duration value, String name) {
         if (value == null

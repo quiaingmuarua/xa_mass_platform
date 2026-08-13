@@ -20,9 +20,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -35,9 +33,7 @@ import java.util.concurrent.CompletionException;
  * and Result ingress. Physical framing, writes, and closes always return to
  * the selected {@link NettyWorkerServer} owner.
  */
-@ChannelHandler.Sharable
-public final class WorkerConnectionMechanism
-        extends SimpleChannelInboundHandler<String> {
+public final class WorkerConnectionMechanism {
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionMechanism.class.getName()
@@ -84,8 +80,7 @@ public final class WorkerConnectionMechanism
         );
     }
 
-    @Override
-    protected void channelRead0(
+    void receive(
             ChannelHandlerContext context,
             String encodedReport
     ) {
@@ -108,17 +103,15 @@ public final class WorkerConnectionMechanism
         }
     }
 
-    @Override
-    public void channelInactive(ChannelHandlerContext context) {
-        routes.onChannelClosed(context.channel());
-        context.fireChannelInactive();
+    void channelInactive(Channel channel) {
+        routes.onChannelClosed(channel);
     }
 
-    @Override
-    public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
-        routes.onChannelClosed(context.channel());
+    void channelFailed(Channel channel, Throwable failure) {
+        Objects.requireNonNull(failure, "failure");
+        routes.onChannelClosed(channel);
         networkServer.closeConnection(
-                context.channel(),
+                channel,
                 AdapterConnectionCloseReason.TRANSPORT_ERROR
         );
     }
