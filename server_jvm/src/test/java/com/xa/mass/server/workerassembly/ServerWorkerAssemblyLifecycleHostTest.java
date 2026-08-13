@@ -22,6 +22,9 @@ class ServerWorkerAssemblyLifecycleHostTest {
         ServerWorkerGroupInitializer groupInitializer = mock(
                 ServerWorkerGroupInitializer.class
         );
+        ServerWorkerTaskInitializer taskInitializer = mock(
+                ServerWorkerTaskInitializer.class
+        );
         WorkerDeliveryAdapterManager adapterManager = mock(
                 WorkerDeliveryAdapterManager.class
         );
@@ -31,6 +34,7 @@ class ServerWorkerAssemblyLifecycleHostTest {
         ServerWorkerAssemblyLifecycleHost host =
                 new ServerWorkerAssemblyLifecycleHost(
                         groupInitializer,
+                        taskInitializer,
                         adapterManager,
                         scenarioWorkers
                 );
@@ -42,10 +46,12 @@ class ServerWorkerAssemblyLifecycleHostTest {
 
         InOrder order = inOrder(
                 groupInitializer,
+                taskInitializer,
                 adapterManager,
                 scenarioWorkers
         );
         order.verify(groupInitializer).initialize();
+        order.verify(taskInitializer).initialize();
         order.verify(adapterManager).start();
         order.verify(scenarioWorkers).start();
         order.verify(scenarioWorkers).close();
@@ -53,12 +59,16 @@ class ServerWorkerAssemblyLifecycleHostTest {
         verify(adapterManager, times(1)).start();
         verify(scenarioWorkers, times(1)).start();
         verify(groupInitializer, times(1)).initialize();
+        verify(taskInitializer, times(1)).initialize();
     }
 
     @Test
     void bundleFailureClosesBundlesAndAdapterBeforeRethrow() {
         ServerWorkerGroupInitializer groupInitializer = mock(
                 ServerWorkerGroupInitializer.class
+        );
+        ServerWorkerTaskInitializer taskInitializer = mock(
+                ServerWorkerTaskInitializer.class
         );
         WorkerDeliveryAdapterManager adapterManager = mock(
                 WorkerDeliveryAdapterManager.class
@@ -71,6 +81,7 @@ class ServerWorkerAssemblyLifecycleHostTest {
         ServerWorkerAssemblyLifecycleHost host =
                 new ServerWorkerAssemblyLifecycleHost(
                         groupInitializer,
+                        taskInitializer,
                         adapterManager,
                         scenarioWorkers
                 );
@@ -79,10 +90,12 @@ class ServerWorkerAssemblyLifecycleHostTest {
 
         InOrder order = inOrder(
                 groupInitializer,
+                taskInitializer,
                 adapterManager,
                 scenarioWorkers
         );
         order.verify(groupInitializer).initialize();
+        order.verify(taskInitializer).initialize();
         order.verify(adapterManager).start();
         order.verify(scenarioWorkers).start();
         order.verify(scenarioWorkers).close();
@@ -94,6 +107,9 @@ class ServerWorkerAssemblyLifecycleHostTest {
         ServerWorkerGroupInitializer groupInitializer = mock(
                 ServerWorkerGroupInitializer.class
         );
+        ServerWorkerTaskInitializer taskInitializer = mock(
+                ServerWorkerTaskInitializer.class
+        );
         WorkerDeliveryAdapterManager adapterManager = mock(
                 WorkerDeliveryAdapterManager.class
         );
@@ -103,6 +119,7 @@ class ServerWorkerAssemblyLifecycleHostTest {
         ServerWorkerAssemblyLifecycleHost host =
                 new ServerWorkerAssemblyLifecycleHost(
                         groupInitializer,
+                        taskInitializer,
                         adapterManager,
                         scenarioWorkers
                 );
@@ -113,5 +130,35 @@ class ServerWorkerAssemblyLifecycleHostTest {
         verify(scenarioWorkers, never()).start();
         verify(adapterManager, never()).close();
         verify(scenarioWorkers, never()).close();
+        verify(taskInitializer, never()).initialize();
+    }
+
+    @Test
+    void taskInitializationFailurePreventsAdapterAndScenarioStartup() {
+        ServerWorkerGroupInitializer groupInitializer = mock(
+                ServerWorkerGroupInitializer.class
+        );
+        ServerWorkerTaskInitializer taskInitializer = mock(
+                ServerWorkerTaskInitializer.class
+        );
+        WorkerDeliveryAdapterManager adapterManager = mock(
+                WorkerDeliveryAdapterManager.class
+        );
+        ScenarioWorkers scenarioWorkers = mock(ScenarioWorkers.class);
+        RuntimeException failure = new RuntimeException("task failed");
+        doThrow(failure).when(taskInitializer).initialize();
+        ServerWorkerAssemblyLifecycleHost host =
+                new ServerWorkerAssemblyLifecycleHost(
+                        groupInitializer,
+                        taskInitializer,
+                        adapterManager,
+                        scenarioWorkers
+                );
+
+        assertThatThrownBy(host::start).isSameAs(failure);
+
+        verify(groupInitializer).initialize();
+        verify(adapterManager, never()).start();
+        verify(scenarioWorkers, never()).start();
     }
 }

@@ -15,11 +15,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,18 +28,14 @@ class WorkerCapabilityRpcMainTest {
 
     private static final String PHONE_GROUP =
             "scenario-phone-number-workers";
-    private static final String PHONE_PREFIX =
-            "scenario-phone-number-worker-";
     private static final String STRING_GROUP =
             "scenario-string-utils-workers";
-    private static final String STRING_PREFIX =
-            "scenario-string-utils-worker-";
 
     @TempDir
     Path temporaryDirectory;
 
     @Test
-    void writesIndependentGroupResultsUsingRegisteredWorkerIds()
+    void writesSixtyGroupScopedResultsWithoutInternalCoordinates()
             throws Exception {
         try (FakeRuntimeApi api = FakeRuntimeApi.start(false)) {
             ScenarioFiles files = scenarioFiles("complete");
@@ -54,28 +50,25 @@ class WorkerCapabilityRpcMainTest {
             );
             assertEquals(30, phone.size());
             assertEquals(30, strings.size());
-            assertEquals(
-                    Set.of("scenario-phone-number-workers"),
-                    values(phone, "workerGroupId")
-            );
-            assertEquals(
-                    Set.of("scenario-string-utils-workers"),
-                    values(strings, "workerGroupId")
-            );
-            assertEquals(10, values(phone, "workerId").size());
-            assertEquals(10, values(strings, "workerId").size());
-            assertEquals(20, api.registeredWorkerIds.size());
-            assertEquals(
-                    api.registeredWorkerIds,
-                    api.allocatedWorkerIds
-            );
-            assertEquals(2, api.closedTaskCount.get());
-            assertTrue(phone.stream().allMatch(result ->
-                    result.containsKey("clientWorkerKey")
+            assertTrue(phone.stream().allMatch(row ->
+                    PHONE_GROUP.equals(row.get("workerGroupId"))
             ));
-            assertTrue(strings.stream().allMatch(result ->
-                    result.containsKey("clientWorkerKey")
+            assertTrue(strings.stream().allMatch(row ->
+                    STRING_GROUP.equals(row.get("workerGroupId"))
             ));
+            assertTrue(phone.stream().allMatch(
+                    WorkerCapabilityRpcMainTest::hasOnlyPublicResultFields
+            ));
+            assertTrue(strings.stream().allMatch(
+                    WorkerCapabilityRpcMainTest::hasOnlyPublicResultFields
+            ));
+            assertEquals(60, api.callCount.get());
+            assertEquals(
+                    Set.of(PHONE_GROUP, STRING_GROUP),
+                    api.calledWorkerGroups
+            );
+            assertTrue(api.allocationRulesWereEmpty);
+            assertFalse(api.sawTaskOrWorkerCoordinate);
         }
     }
 
@@ -104,7 +97,6 @@ class WorkerCapabilityRpcMainTest {
             assertFalse(Files.exists(files.scenarioResults().resolve(
                     "string-utils.jsonl.tmp"
             )));
-            assertEquals(2, api.closedTaskCount.get());
         }
     }
 
@@ -160,8 +152,8 @@ class WorkerCapabilityRpcMainTest {
         Path labRoot = temporaryDirectory.resolve(
                 "data/scenario-workers"
         );
-        writeWorkerLab(labRoot, PHONE_GROUP, PHONE_PREFIX);
-        writeWorkerLab(labRoot, STRING_GROUP, STRING_PREFIX);
+        writeWorkerLab(labRoot, PHONE_GROUP, "phone-worker-");
+        writeWorkerLab(labRoot, STRING_GROUP, "string-worker-");
         return new ScenarioFiles(
                 scenarioId,
                 phoneSeed,
@@ -188,6 +180,18 @@ class WorkerCapabilityRpcMainTest {
         };
     }
 
+    private static boolean hasOnlyPublicResultFields(
+            Map<String, Object> row
+    ) {
+        return row.keySet().equals(Set.of(
+                "workerGroupId",
+                "messageId",
+                "eventCode",
+                "input",
+                "result"
+        ));
+    }
+
     private static List<Map<String, Object>> readJsonLines(Path path)
             throws IOException {
         return Files.readAllLines(path, StandardCharsets.UTF_8)
@@ -196,42 +200,26 @@ class WorkerCapabilityRpcMainTest {
                 .toList();
     }
 
-    private static Set<String> values(
-            List<Map<String, Object>> rows,
-            String field
-    ) {
-        Set<String> values = new HashSet<>();
-        rows.forEach(row -> values.add((String) row.get(field)));
-        return Set.copyOf(values);
-    }
-
     private static void writeWorkerLab(
             Path labRoot,
             String workerGroupId,
             String workerKeyPrefix
     ) throws IOException {
-        Files.createDirectories(labRoot);
-        Files.createDirectories(labRoot.resolve(workerGroupId));
+        Path groupDirectory = labRoot.resolve(workerGroupId);
+        Files.createDirectories(groupDirectory);
         for (int index = 1; index <= 10; index++) {
             String clientWorkerKey = workerKeyPrefix
                     + "%03d".formatted(index);
-            String registrationPath = "/api/v1/worker-groups/"
-                    + workerGroupId
-                    + "/workers:register";
             String workerId = UUID.nameUUIDFromBytes(
-                    (registrationPath + ":" + clientWorkerKey).getBytes(
+                    (workerGroupId + ":" + clientWorkerKey).getBytes(
                             StandardCharsets.UTF_8
                     )
             ).toString();
             Files.writeString(
-                    labRoot.resolve(workerGroupId).resolve(
-                            clientWorkerKey + ".json"
-                    ),
+                    groupDirectory.resolve(clientWorkerKey + ".json"),
                     Jsons.toJson(Map.of(
-                            "schemaVersion",
-                            1,
-                            "workerId",
-                            workerId
+                            "schemaVersion", 1,
+                            "workerId", workerId
                     )),
                     StandardCharsets.UTF_8
             );
@@ -251,9 +239,11 @@ class WorkerCapabilityRpcMainTest {
     private static final class FakeRuntimeApi implements AutoCloseable {
         private final HttpServer server;
         private final boolean failStringCalls;
-        private final Set<String> registeredWorkerIds = new HashSet<>();
-        private final Set<String> allocatedWorkerIds = new HashSet<>();
-        private final AtomicInteger closedTaskCount = new AtomicInteger();
+        private final Set<String> calledWorkerGroups =
+                ConcurrentHashMap.newKeySet();
+        private final AtomicInteger callCount = new AtomicInteger();
+        private volatile boolean allocationRulesWereEmpty = true;
+        private volatile boolean sawTaskOrWorkerCoordinate;
 
         private FakeRuntimeApi(
                 HttpServer server,
@@ -284,73 +274,47 @@ class WorkerCapabilityRpcMainTest {
             );
         }
 
+        @SuppressWarnings("unchecked")
         private void handle(HttpExchange exchange) throws IOException {
             try {
                 String path = exchange.getRequestURI().getPath();
-                Map<String, Object> body = readBody(exchange);
-                if (path.endsWith("/workers:register")) {
-                    handleRegister(exchange, path, body);
-                } else if ("/api/v1/tasks".equals(path)) {
-                    respond(exchange, 201, Map.of());
-                } else if (path.endsWith("/approve")) {
-                    respond(exchange, 200, Map.of());
-                } else if (path.endsWith("/close")) {
-                    closedTaskCount.incrementAndGet();
-                    respond(exchange, 200, Map.of());
-                } else if (path.endsWith("/items:call")) {
-                    handleCall(exchange, path, body);
-                } else {
+                if (!path.startsWith("/api/v1/worker-groups/")
+                        || !path.endsWith("/items:call")) {
                     respond(exchange, 404, Map.of());
+                    return;
                 }
+                String workerGroupId = path.substring(
+                        "/api/v1/worker-groups/".length(),
+                        path.length() - "/items:call".length()
+                );
+                Map<String, Object> body = readBody(exchange);
+                Map<String, Object> item =
+                        (Map<String, Object>) body.get("item");
+                String eventCode = (String) item.get("eventCode");
+                calledWorkerGroups.add(workerGroupId);
+                callCount.incrementAndGet();
+                allocationRulesWereEmpty &= Map.of().equals(
+                        item.get("allocationRule")
+                );
+                sawTaskOrWorkerCoordinate |= body.containsKey("taskId")
+                        || body.containsKey("workerId")
+                        || item.containsKey("taskId")
+                        || item.containsKey("workerId")
+                        || item.containsKey("workerGroupId");
+                if (failStringCalls && eventCode.startsWith("string.")) {
+                    respond(exchange, 500, Map.of("code", 1));
+                    return;
+                }
+                respond(exchange, 200, Map.of(
+                        "status", "succeeded",
+                        "messageId", item.get("messageId"),
+                        "opaqueResultPayload", Jsons.toJson(
+                                resultFor(eventCode)
+                        )
+                ));
             } catch (RuntimeException error) {
                 respond(exchange, 500, Map.of("error", "test failure"));
             }
-        }
-
-        private void handleRegister(
-                HttpExchange exchange,
-                String path,
-                Map<String, Object> body
-        ) throws IOException {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> workerProperties =
-                    (Map<String, Object>) body.get("workerProperties");
-            String clientWorkerKey = (String) workerProperties.get(
-                    "clientWorkerKey"
-            );
-            String workerId = UUID.nameUUIDFromBytes(
-                    (path + ":" + clientWorkerKey).getBytes(
-                            StandardCharsets.UTF_8
-                    )
-            ).toString();
-            registeredWorkerIds.add(workerId);
-            respond(exchange, 200, Map.of("workerId", workerId));
-        }
-
-        @SuppressWarnings("unchecked")
-        private void handleCall(
-                HttpExchange exchange,
-                String path,
-                Map<String, Object> body
-        ) throws IOException {
-            Map<String, Object> item =
-                    (Map<String, Object>) body.get("item");
-            String eventCode = (String) item.get("eventCode");
-            if (failStringCalls && eventCode.startsWith("string.")) {
-                respond(exchange, 500, Map.of("code", 1));
-                return;
-            }
-            Map<String, Object> allocationRule =
-                    (Map<String, Object>) item.get("allocationRule");
-            Map<String, Object> workerRule =
-                    (Map<String, Object>) allocationRule.get("workerId");
-            allocatedWorkerIds.add((String) workerRule.get("$eq"));
-
-            Map<String, Object> result = resultFor(eventCode);
-            respond(exchange, 200, Map.of(
-                    "status", "succeeded",
-                    "opaqueResultPayload", Jsons.toJson(result)
-            ));
         }
 
         private static Map<String, Object> resultFor(String eventCode) {

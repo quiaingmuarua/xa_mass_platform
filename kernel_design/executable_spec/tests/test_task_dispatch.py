@@ -447,7 +447,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             due_time_millis=self.NOW_MILLIS,
         )
 
-    def test_item_driven_task_uses_targeted_requests_without_flattening(self) -> None:
+    def test_item_driven_task_uses_direct_requests_without_flattening(self) -> None:
         self._prepare_task(
             "task-1",
             task_type=TaskType.ITEM_DRIVEN,
@@ -493,13 +493,13 @@ class TaskDispatchPacerTest(unittest.TestCase):
         self.assertEqual(2, appended)
         acquisition_call = self.candidate_acquirer.acquire_worker_candidates.call_args
         self.assertIs(
-            WorkerCandidateAcquisitionStrategy.TARGETED,
+            WorkerCandidateAcquisitionStrategy.DIRECT,
             acquisition_call.kwargs["strategy"],
         )
-        targeted_request = acquisition_call.kwargs["candidate_requests"]["message-2"]
+        direct_request = acquisition_call.kwargs["candidate_requests"]["message-2"]
         self.assertEqual(
             {"workerId": {"$eq": "worker-2"}},
-            targeted_request.allocation_rule,
+            direct_request.allocation_rule,
         )
         published = {
             json.loads(command.payload)["value"]: worker_id

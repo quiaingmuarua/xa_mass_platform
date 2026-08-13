@@ -155,4 +155,5 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 The repository-level acceptance in
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/)
 starts Redis, Python Kernel, Server, Adapter, and the Lab Workers, then proves
-the persisted identities for 20 Workers and all 60 targeted RPC results.
+20 persistent, globally unique identities and 60 successful Group-scoped RPC
+results. RPC rows deliberately do not claim which Worker executed them.

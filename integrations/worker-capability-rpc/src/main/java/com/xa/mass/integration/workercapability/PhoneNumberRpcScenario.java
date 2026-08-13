@@ -8,23 +8,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 final class PhoneNumberRpcScenario {
 
     private static final String WORKER_GROUP_ID =
             "scenario-phone-number-workers";
-    private static final List<String> CLIENT_WORKER_KEYS = List.of(
-            "scenario-phone-number-worker-001",
-            "scenario-phone-number-worker-002",
-            "scenario-phone-number-worker-003",
-            "scenario-phone-number-worker-004",
-            "scenario-phone-number-worker-005",
-            "scenario-phone-number-worker-006",
-            "scenario-phone-number-worker-007",
-            "scenario-phone-number-worker-008",
-            "scenario-phone-number-worker-009",
-            "scenario-phone-number-worker-010"
-    );
     private static final List<EventContract> EVENTS = List.of(
             new EventContract("phonenumber.e164", "e164"),
             new EventContract(
@@ -37,139 +26,68 @@ final class PhoneNumberRpcScenario {
             )
     );
 
-    private final WorkerIdentityRegistrationClient identities;
-    private final WorkerCapabilityTaskClient tasks;
+    private final WorkerGroupRpcClient rpc;
 
-    PhoneNumberRpcScenario(
-            WorkerIdentityRegistrationClient identities,
-            WorkerCapabilityTaskClient tasks
-    ) {
-        this.identities = identities;
-        this.tasks = tasks;
+    PhoneNumberRpcScenario(WorkerGroupRpcClient rpc) {
+        this.rpc = rpc;
     }
 
     int run(
             String scenarioId,
             Path seedPath,
             Path outputPath,
-            long waitTimeoutMillis,
-            long taskCloseAfterMillis
+            long waitTimeoutMillis
     ) throws IOException {
         List<String> inputs = WorkerCapabilityInputs.readDistinct(
                 seedPath,
                 "phone-seed.txt",
-                CLIENT_WORKER_KEYS.size()
+                10
         );
-        List<WorkerTarget> targets = resolveTargets();
-        String taskId = scenarioId + "-phone";
-        boolean taskCreated = false;
-        Throwable primaryFailure = null;
-        try {
-            tasks.createItemDrivenTask(
-                    taskId,
-                    WORKER_GROUP_ID,
-                    taskCloseAfterMillis
-            );
-            taskCreated = true;
-            tasks.approveTask(taskId);
-
-            List<String> results = executeCalls(
-                    taskId,
-                    inputs,
-                    targets,
-                    waitTimeoutMillis
-            );
-            WorkerCapabilityResultWriter.writeAtomically(
-                    outputPath,
-                    results
-            );
-            return results.size();
-        } catch (IOException | RuntimeException error) {
-            primaryFailure = error;
-            throw error;
-        } finally {
-            closeTask(taskId, taskCreated, primaryFailure);
-        }
-    }
-
-    private List<WorkerTarget> resolveTargets() {
-        List<WorkerTarget> targets = new ArrayList<>(
-                CLIENT_WORKER_KEYS.size()
-        );
-        for (String clientWorkerKey : CLIENT_WORKER_KEYS) {
-            targets.add(new WorkerTarget(
-                    clientWorkerKey,
-                    identities.registerOrRecoverWorkerId(
-                            WORKER_GROUP_ID,
-                            clientWorkerKey
-                    )
-            ));
-        }
-        return List.copyOf(targets);
-    }
-
-    private List<String> executeCalls(
-            String taskId,
-            List<String> inputs,
-            List<WorkerTarget> targets,
-            long waitTimeoutMillis
-    ) {
-        List<String> results = new ArrayList<>(
-                EVENTS.size() * targets.size()
+        List<Callable<String>> calls = new ArrayList<>(
+                EVENTS.size() * inputs.size()
         );
         for (EventContract event : EVENTS) {
-            for (int index = 0; index < targets.size(); index++) {
-                WorkerTarget target = targets.get(index);
-                Map<String, Object> input = Map.of(
-                        "rawNumber",
-                        inputs.get(index)
-                );
-                results.add(callAndEncode(
-                        taskId,
-                        target,
+            for (int index = 0; index < inputs.size(); index++) {
+                int inputIndex = index;
+                calls.add(() -> callAndEncode(
+                        scenarioId,
                         event,
-                        input,
+                        inputs.get(inputIndex),
                         waitTimeoutMillis,
-                        index + 1
+                        inputIndex + 1
                 ));
             }
         }
-        int expectedCount = EVENTS.size() * targets.size();
-        if (results.size() != expectedCount) {
-            throw new IllegalStateException(
-                    "Phone scenario expected "
-                            + expectedCount
-                            + " results but received "
-                            + results.size()
-            );
-        }
-        return List.copyOf(results);
+        List<String> results = WorkerCapabilityCallBatch.invoke(calls);
+        WorkerCapabilityResultWriter.writeAtomically(outputPath, results);
+        return results.size();
     }
 
     private String callAndEncode(
-            String taskId,
-            WorkerTarget target,
+            String scenarioId,
             EventContract event,
-            Map<String, Object> input,
+            String rawNumber,
             long waitTimeoutMillis,
-            int workerIndex
+            int inputIndex
     ) {
-        String messageId = messageId(taskId, event.eventCode(), workerIndex);
-        Map<String, Object> result = tasks.call(
-                taskId,
+        String messageId = messageId(
+                scenarioId,
+                event.eventCode(),
+                inputIndex
+        );
+        Map<String, Object> input = Map.of("rawNumber", rawNumber);
+        Map<String, Object> result = rpc.call(
+                WORKER_GROUP_ID,
                 messageId,
                 event.eventCode(),
-                target.workerId(),
                 input,
                 waitTimeoutMillis
         );
         requireValidResult(messageId, event, result);
 
         Map<String, Object> output = new LinkedHashMap<>();
-        output.put("taskId", taskId);
         output.put("workerGroupId", WORKER_GROUP_ID);
-        output.put("clientWorkerKey", target.clientWorkerKey());
-        output.put("workerId", target.workerId());
+        output.put("messageId", messageId);
         output.put("eventCode", event.eventCode());
         output.put("input", input);
         output.put("result", result);
@@ -196,35 +114,16 @@ final class PhoneNumberRpcScenario {
         }
     }
 
-    private void closeTask(
-            String taskId,
-            boolean taskCreated,
-            Throwable primaryFailure
-    ) {
-        if (!taskCreated) {
-            return;
-        }
-        try {
-            tasks.closeTask(taskId);
-        } catch (RuntimeException closeFailure) {
-            if (primaryFailure != null) {
-                primaryFailure.addSuppressed(closeFailure);
-            } else {
-                throw closeFailure;
-            }
-        }
-    }
-
     private static String messageId(
-            String taskId,
+            String scenarioId,
             String eventCode,
-            int workerIndex
+            int inputIndex
     ) {
-        return taskId
-                + "-"
+        return scenarioId
+                + "-phone-"
                 + eventCode.replace('.', '-')
                 + "-"
-                + String.format(Locale.ROOT, "%03d", workerIndex);
+                + String.format(Locale.ROOT, "%03d", inputIndex);
     }
 
     private record EventContract(

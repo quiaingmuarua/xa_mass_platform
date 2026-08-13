@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
+import com.xa.mass.server.api.v1.WorkerGroupTaskController;
 import com.xa.mass.server.api.v1.runtimeview.RuntimeViewController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
@@ -27,6 +28,8 @@ import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelbinding.WorkerPropertyIndexProperties;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
@@ -90,6 +93,15 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerGroupTaskController.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerGroupTaskCallService.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerGroupTaskCatalog.class
+        )).isNotNull();
         assertThat(applicationContext.getBean(RuntimeViewController.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(RuntimeViewService.class))

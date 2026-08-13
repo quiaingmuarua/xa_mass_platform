@@ -130,18 +130,20 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "payload": {},
                 "expire_at_millis": 1,
             },
-            {
-                "message_id": "message-1",
-                "event_code": "event",
-                "created_at_millis": 1,
-                "payload": {},
-                "allocation_rule": {},
-            },
         )
 
         for item in invalid_items:
             with self.subTest(item=item), self.assertRaises((TypeError, ValueError)):
                 TaskItem(**item)
+
+        unrestricted = TaskItem(
+            message_id="message-1",
+            event_code="event",
+            created_at_millis=1,
+            payload={},
+            allocation_rule={},
+        )
+        self.assertEqual({}, unrestricted.allocation_rule)
 
     def test_task_item_append_result_is_narrow(self) -> None:
         result = TaskItemAppendResult(TaskItemAppendStatus.RETRYABLE, "retry")

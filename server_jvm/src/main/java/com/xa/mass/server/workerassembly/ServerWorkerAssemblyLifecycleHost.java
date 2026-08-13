@@ -12,6 +12,7 @@ public final class ServerWorkerAssemblyLifecycleHost
         implements ApplicationRunner, DisposableBean {
 
     private final ServerWorkerGroupInitializer groupInitializer;
+    private final ServerWorkerTaskInitializer taskInitializer;
     private final WorkerDeliveryAdapterManager adapterManager;
     private final ScenarioWorkers scenarioWorkers;
     private boolean started;
@@ -19,12 +20,17 @@ public final class ServerWorkerAssemblyLifecycleHost
 
     public ServerWorkerAssemblyLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
+            ServerWorkerTaskInitializer taskInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             ScenarioWorkers scenarioWorkers
     ) {
         this.groupInitializer = Objects.requireNonNull(
                 groupInitializer,
                 "groupInitializer"
+        );
+        this.taskInitializer = Objects.requireNonNull(
+                taskInitializer,
+                "taskInitializer"
         );
         this.adapterManager = Objects.requireNonNull(
                 adapterManager,
@@ -53,6 +59,7 @@ public final class ServerWorkerAssemblyLifecycleHost
 
         try {
             groupInitializer.initialize();
+            taskInitializer.initialize();
         } catch (RuntimeException failure) {
             closed = true;
             throw failure;

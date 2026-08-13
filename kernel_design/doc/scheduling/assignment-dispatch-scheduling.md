@@ -73,11 +73,12 @@ uses globally unique `taskId`. One Worker may satisfy at most one CandidateId
 in one call.
 
 `allocation_rule` is the same constraint DSL used by Task and TaskItem
-metadata. TARGETED derives its bounded Worker universe only from the rule's
-`workerId` condition. Property indexes do not propose or filter Worker IDs;
-explicit `index.*` fields point-load projections while the complete rule is
-matched. Exact score lease and complete rematch remain the scheduling truth
-checks.
+metadata. For DIRECT, `{}` derives one bounded Worker universe from the
+WorkerGroup's due-HOT score query. A non-empty rule derives it only from the
+rule's `workerId` condition; without that condition it fails closed. Property
+indexes do not propose Worker IDs. Explicit `index.*` fields point-load
+projections for bounded candidates while the complete rule is matched. Exact
+score lease and complete rematch remain the scheduling truth checks.
 
 ## Acquisition Strategies
 
@@ -90,11 +91,12 @@ PRECOMPUTED
   rematch the current allocation rule
   return partial or empty on miss/stale/mismatch
 
-TARGETED
-  require bounded workerId $eq/$equal/$in candidates
+DIRECT
+  for any empty rule, issue one bounded due-HOT Group query shared by the round
+  otherwise require bounded workerId $eq/$equal/$in candidates
   admit at most 100 unique WorkerIds across the round in priority order
-  pre-match the complete rule for those explicit WorkerIds
-  observe due HOT scores only for pre-matched WorkerIds
+  pre-match complete non-empty rules for explicit WorkerIds
+  use Group-query scores for empty rules; point-observe explicit matches
   choose at most requestedCount due Workers
   exact lease only the chosen Workers
   rematch the complete allocation rule after lease
@@ -103,8 +105,8 @@ TARGETED
 ```
 
 The cache warmer calls `acquire_hot_pool_candidates(...)` explicitly. It is not
-a third strategy and does not disguise a HOT scan as TARGETED. Neither strategy
-invokes the other; a PRECOMPUTED miss never becomes a TARGETED scan.
+a third strategy and does not disguise a HOT scan as DIRECT. Neither strategy
+invokes the other; a PRECOMPUTED miss never becomes a DIRECT scan.
 
 The acquirer, request, and acquisition-strategy types are internal to the
 `scheduling.worker_candidate` mechanism package. They are not exported through
@@ -117,12 +119,13 @@ workerId -> opaqueLeaseScore
 ```
 
 The selected acquirer deduplicates its bounded Worker source before the matcher
-call. PRECOMPUTED consumes Task-local cache entries. TARGETED currently derives
-request-local candidates only from the Item rule's `workerId` condition and
-never touches the cache. Across one TARGETED call, `(priority, candidateId)`
+call. PRECOMPUTED consumes Task-local cache entries. DIRECT uses one bounded
+Group score query when the round contains empty rules, or the Item rule's
+explicit `workerId` condition for a non-empty rule, and never touches the
+cache. Across one DIRECT call, `(priority, candidateId)`
 ordering admits at most 100 unique WorkerIds. Later candidates may reuse an
 already admitted id, but cannot add new ids after the budget is exhausted. The
-matcher therefore reads at most 100 descriptors for that TARGETED round,
+matcher therefore reads at most 100 descriptors for that DIRECT round,
 batches projection reads only for candidates that reference each `index.*`
 field, evaluates the complete rule in priority order, and assigns each Worker
 to at most one CandidateId.
@@ -176,7 +179,7 @@ ad:{prefix}:candidate:{candidateId}:workers
 
 The ZSET score is cache expiry and matches the Worker lease deadline. The cache
 does not own rules, limits, Worker validity, lifecycle truth, or fallback.
-TARGETED Item results never enter this cache.
+DIRECT Item results never enter this cache.
 
 `CandidateWarmupSchedule` is a separate derived ZSET of `taskId -> dueMillis`.
 It is only a cache-replenishment hint. A successful TASK_DRIVEN activation and
@@ -205,7 +208,7 @@ dispatch-visible RUNNING Tasks
   -> suffix 0: observe due Item scores and load existing records
   -> TaskItemDispatcher
      -> TASK_DRIVEN: one TaskId PRECOMPUTED request
-     -> ITEM_DRIVEN: one messageId TARGETED request per Item
+     -> ITEM_DRIVEN: one messageId DIRECT request per Item
      -> preserve CandidateId-to-messageId binding
      -> exact claim only Worker-backed Items
      -> encode one DeliveryCommand in each DeliveryCommand
@@ -288,7 +291,7 @@ the dispatch round does not infer type or strategy from Item contents.
 
 - Do not collapse activation, cache warming, and Item dispatch into one Pacer.
 - Do not turn CandidateWorker cache into the universal dispatch mechanism.
-- Do not add PRECOMPUTED-miss TARGETED fallback.
+- Do not add PRECOMPUTED-miss DIRECT fallback.
 - Do not expose acquisition strategy, cache flags, or rule owner as independent
   Task configuration.
 - Do not add a TaskType for a parameter variation or an imagined policy

@@ -288,24 +288,24 @@ class TaskItemDispatcher:
                 for item, candidate_worker in zip(task_items, precomputed)
             }
 
-        targeted_requests: dict[MessageId, WorkerCandidateRequest] = {}
+        direct_requests: dict[MessageId, WorkerCandidateRequest] = {}
         for item in task_items:
             item_rule = cast(Mapping[str, object], item.allocation_rule)
-            targeted_requests[item.message_id] = WorkerCandidateRequest(
+            direct_requests[item.message_id] = WorkerCandidateRequest(
                 priority=priority,
                 requested_count=1,
                 allocation_rule=item_rule,
             )
-        targeted = self.candidate_acquirer.acquire_worker_candidates(
+        direct = self.candidate_acquirer.acquire_worker_candidates(
             strategy=profile.dispatch_acquisition_strategy,
             worker_group_id=descriptor.worker_group_id,
-            candidate_requests=targeted_requests,
+            candidate_requests=direct_requests,
             lease_until_millis=lease_until_millis,
         )
         return {
             item.message_id: entries[0]
             for item in task_items
-            if (entries := targeted.get(item.message_id, ()))
+            if (entries := direct.get(item.message_id, ()))
         }
 
     def _claim_task_items(

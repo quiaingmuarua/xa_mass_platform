@@ -912,7 +912,8 @@ Worker score-band participates in assignment-dispatch like this:
 ```text
 task score acquires due task candidate
 assignment-dispatch builds WorkerCandidateRequests from the TaskType-owned rule location
-cache warming scans HOT; TARGETED point-observes rule-supplied Worker ids
+cache warming scans HOT; DIRECT uses one bounded Group HOT query for `{}` or
+point-observes rule-supplied Worker ids
 candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
 allocation pacer may publish Task-rule results into CandidateWorkerCache
 PRECOMPUTED acquisition exact-validates/renews and rematches Task rules

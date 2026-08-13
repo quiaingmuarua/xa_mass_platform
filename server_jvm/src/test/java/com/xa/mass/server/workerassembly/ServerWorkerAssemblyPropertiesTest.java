@@ -3,8 +3,11 @@ package com.xa.mass.server.workerassembly;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.adapter
@@ -28,6 +31,18 @@ class ServerWorkerAssemblyPropertiesTest {
                     .withBean(
                             WorkerResourceCatalog.class,
                             () -> mock(WorkerResourceCatalog.class)
+                    )
+                    .withBean(
+                            TaskResourceCatalog.class,
+                            () -> mock(TaskResourceCatalog.class)
+                    )
+                    .withBean(
+                            TaskRuntime.class,
+                            () -> mock(TaskRuntime.class)
+                    )
+                    .withBean(
+                            TaskLifecycleCommands.class,
+                            () -> mock(TaskLifecycleCommands.class)
                     )
                     .withBean(WorkerEndpointDirectory.class, () -> {
                         WorkerEndpointDirectory directory = mock(

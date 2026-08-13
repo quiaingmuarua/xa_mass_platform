@@ -38,11 +38,11 @@ class TaskItem:
             raise ValueError("event code must be non-empty")
         if not isinstance(self.payload, MappingABC):
             raise ValueError("task item payload must be a mapping")
-        if self.allocation_rule is not None and (
-            not isinstance(self.allocation_rule, MappingABC)
-            or not self.allocation_rule
+        if self.allocation_rule is not None and not isinstance(
+            self.allocation_rule,
+            MappingABC,
         ):
-            raise ValueError("task item allocation rule must be a non-empty mapping")
+            raise ValueError("task item allocation rule must be a mapping")
         if (
             not isinstance(self.priority, int)
             or isinstance(self.priority, bool)

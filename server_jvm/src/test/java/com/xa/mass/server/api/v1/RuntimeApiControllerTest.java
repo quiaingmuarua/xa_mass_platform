@@ -44,6 +44,8 @@ import com.xa.mass.server.taskdata.TaskDispatchWakeSink;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointBinding;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
@@ -137,15 +139,23 @@ class RuntimeApiControllerTest {
                     ));
                     return descriptors;
                 });
-        when(taskRuntime.appendItems(eq("task-1"), anyList()))
-                .thenReturn(Map.of(
-                        "message-1",
-                        new TaskItemAppendResult(
-                                TaskItemAppendStatus.APPENDED
-                        )
-                ));
+        when(taskRuntime.appendItems(any(), anyList()))
+                .thenAnswer(invocation -> {
+                    List<TaskItem> items = invocation.getArgument(1);
+                    var results = new LinkedHashMap<
+                            String,
+                            TaskItemAppendResult
+                            >();
+                    items.forEach(item -> results.put(
+                            item.messageId(),
+                            new TaskItemAppendResult(
+                                    TaskItemAppendStatus.APPENDED
+                            )
+                    ));
+                    return results;
+                });
         when(taskRuntime.loadTaskItemSuccessResults(
-                eq("task-1"),
+                any(),
                 anyList()
         )).thenAnswer(invocation -> {
             List<String> ids = invocation.getArgument(1);
@@ -161,6 +171,22 @@ class RuntimeApiControllerTest {
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
+        TaskDataService taskData = new TaskDataService(
+                taskRuntime,
+                taskCatalog,
+                dispatchWake
+        );
+        TaskRpcProperties rpcProperties = rpcProperties();
+        TaskRpcCallService taskRpc = new TaskRpcCallService(
+                taskData,
+                taskRuntime,
+                new TaskRpcWaitRegistry(rpcProperties),
+                rpcProperties
+        );
+        WorkerGroupTaskCatalog groupTasks = workerGroupId ->
+                "phone-tools".equals(workerGroupId)
+                        ? "scenario-rpc-phone-tools"
+                        : null;
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 workerCatalog,
@@ -172,30 +198,18 @@ class RuntimeApiControllerTest {
                                 taskRuntime,
                                 taskLifecycle
                         ),
-                        taskDataController()
+                        new TaskDataController(taskData),
+                        new WorkerGroupTaskController(
+                                new WorkerGroupTaskCallService(
+                                        groupTasks,
+                                        taskRpc
+                                )
+                        )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
-    }
-
-    private TaskDataController taskDataController() {
-        TaskDataService taskData = new TaskDataService(
-                taskRuntime,
-                taskCatalog,
-                dispatchWake
-        );
-        TaskRpcProperties properties = rpcProperties();
-        return new TaskDataController(
-                taskData,
-                new TaskRpcCallService(
-                        taskData,
-                        taskRuntime,
-                        new TaskRpcWaitRegistry(properties),
-                        properties
-                )
-        );
     }
 
     private static TaskRpcProperties rpcProperties() {
@@ -418,7 +432,7 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void itemDrivenAppendPassesOpaqueNonEmptyRulesToTheKernelMatcher()
+    void itemDrivenAppendPassesOpaqueRulesToTheKernelMatcher()
             throws Exception {
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("item-task")))
                 .thenReturn(Map.of(
@@ -489,6 +503,21 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.results.message-2.status")
                         .value("appended"));
 
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-empty",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{},
+                                  "allocationRule":{}
+                                }]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-empty.status")
+                        .value("appended"));
+
         String tooManyWorkerIds = IntStream.range(0, 101)
                 .mapToObj(index -> "\"worker-" + index + "\"")
                 .collect(Collectors.joining(","));
@@ -541,7 +570,7 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.results.message-5.status")
                         .value("invalid"));
 
-        verify(taskRuntime, times(4))
+        verify(taskRuntime, times(5))
                 .appendItems(eq("item-task"), anyList());
         verify(workerCatalog, times(0))
                 .getWorkerGroupDescriptors(anyList());
@@ -551,7 +580,7 @@ class RuntimeApiControllerTest {
     void rpcCallReturnsAnExistingSuccessWithoutReadingItemState()
             throws Exception {
         MvcResult async = mockMvc.perform(
-                        post("/api/v1/tasks/task-1/items:call")
+                        post("/api/v1/worker-groups/phone-tools/items:call")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
@@ -559,7 +588,8 @@ class RuntimeApiControllerTest {
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
                                             "createdAtMillis": 1000,
-                                            "payload": {"phoneNumber": "+14155552671"}
+                                            "payload": {"phoneNumber": "+14155552671"},
+                                            "allocationRule": {}
                                           },
                                           "waitTimeoutMillis": 1000
                                         }
@@ -571,17 +601,40 @@ class RuntimeApiControllerTest {
         mockMvc.perform(asyncDispatch(async))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("succeeded"))
-                .andExpect(jsonPath("$.taskId").value("task-1"))
+                .andExpect(jsonPath("$.taskId").doesNotExist())
                 .andExpect(jsonPath("$.messageId").value("message-1"))
                 .andExpect(jsonPath("$.opaqueResultPayload")
                         .value("{\"valid\":true}"));
 
         verify(taskRuntime).loadTaskItemSuccessResults(
-                "task-1",
+                "scenario-rpc-phone-tools",
                 List.of("message-1")
         );
         verify(taskRuntime, org.mockito.Mockito.never())
                 .loadTaskItems(any(), anyList());
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/missing/items:call"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "item": {
+                                    "messageId": "message-2",
+                                    "eventCode": "event",
+                                    "createdAtMillis": 1000,
+                                    "payload": {},
+                                    "allocationRule": {}
+                                  }
+                                }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(15001));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/items:call")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -673,11 +726,12 @@ class RuntimeApiControllerTest {
     }
 
     private static TaskDescriptor descriptor(String taskId) {
+        boolean scenarioRpc = taskId.startsWith("scenario-rpc-");
         return new TaskDescriptor(
                 taskId,
                 "phone-tools",
-                TaskType.TASK_DRIVEN,
-                Map.of(),
+                scenarioRpc ? TaskType.ITEM_DRIVEN : TaskType.TASK_DRIVEN,
+                scenarioRpc ? null : Map.of(),
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",

@@ -49,7 +49,7 @@ TaskDispatchPacer
 TaskItemDispatcher
   TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
   TaskRuntime             canonical Item records
-  WorkerCandidateAcquirer PRECOMPUTED or TARGETED Worker acquisition
+  WorkerCandidateAcquirer PRECOMPUTED or DIRECT Worker acquisition
   CandidateWarmupSchedule TASK_DRIVEN replenishment hints
   delivery item encoder   opaque Worker command payload
 ```
@@ -155,7 +155,7 @@ TASK_DRIVEN
   -> Task allocationRule
 
 ITEM_DRIVEN
-  -> one messageId-correlated TARGETED request per Item
+  -> one messageId-correlated DIRECT request per Item
   -> TaskItem allocationRule
 ```
 
@@ -210,7 +210,7 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 - Do not acquire Workers during the empty-recheck lane.
 - Do not interpret TaskType as an empty-close policy.
 - Do not access CandidateWorker cache or Worker score directly.
-- Do not add PRECOMPUTED-miss TARGETED fallback.
+- Do not add PRECOMPUTED-miss DIRECT fallback.
 - Do not expose the max empty count or recheck interval through TaskDescriptor.
 - Do not call Worker Delivery Dispatch or Result Routing directly.
 - Group only by the endpointManagerId snapshot in `CandidateWorkerEntry`; do

@@ -324,12 +324,13 @@ tag.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
-- The checked-in `scenario-workers` profile is capability assembly only. It
-  declares advisory WorkerGroup catalogs for the finite phone-number and
-  string-utility Scenario capabilities plus the externally hosted Android demo
-  capability, but it must not create Tasks or bind those Workers to RPC, Task
-  type, or scheduling policy. Individual JVM Scenario Workers come only from
-  the profile-owned
+- The checked-in `scenario-workers` profile is local Lab capability and RPC
+  assembly. It declares advisory WorkerGroup catalogs for the finite
+  phone-number and string-utility Scenario capabilities plus the externally
+  hosted Android demo capability. For every configured Group, Server creates or
+  reuses one deterministic long-lived `ITEM_DRIVEN` Task and exposes it only
+  through the WorkerGroup-scoped call route; Profile shutdown does not close
+  those Tasks. Individual JVM Scenario Workers come only from the profile-owned
   `data/scenario-workers` Lab, never from an inline config array. A missing
   configured Group directory initializes only that Group's checked-in
   defaults; an existing directory receives no default mutation. WorkerGroup
@@ -376,6 +377,8 @@ WorkerDeliveryConfiguration
 
 ServerWorkerAssemblyConfiguration
   -> WorkerGroup catalog JSON -> WorkerResourceCatalog
+  -> deterministic scenario RPC Task per configured WorkerGroup
+  -> WorkerGroup path -> internal Task catalog for Group RPC
   -> opaque Scenario Group JSON + fixed Lab root + Runtime API base URL
   -> ScenarioWorkers.fromJson
 

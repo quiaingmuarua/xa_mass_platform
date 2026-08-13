@@ -33,6 +33,13 @@ parity slice.
   and future Server recommendation, not a scheduling predicate or current
   Worker capability truth. Kernel append, matching, and dispatch must not add
   per-Item EventCode checks or require equality with local Worker definitions.
+- For `ITEM_DRIVEN`, an empty TaskItem allocation rule is the explicit
+  no-Worker-restriction form. DIRECT acquisition uses one caller-bounded
+  due-HOT score query inside the Task's WorkerGroup, then exact score CAS and a
+  bounded descriptor point read for selected IDs. An explicit `workerId` rule
+  keeps the point-source path; another non-empty rule cannot discover a Group
+  and fails closed. Neither path scans Worker descriptors or uses candidate
+  cache fallback.
 
 Core kernel shape:
 
@@ -40,7 +47,7 @@ Core kernel shape:
 Task score admission and visibility
   -> TaskType profile
      -> TASK_DRIVEN: Task rule, candidate warmup/cache, PRECOMPUTED acquisition
-     -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
+     -> ITEM_DRIVEN: TaskItem rule, no cache, DIRECT acquisition
   -> Task Dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
                      -> DeliveryCommand mailbox append
@@ -95,8 +102,8 @@ defensive tests for policy combinations that no supported scenario can create.
 Do not infer priority, latency class, RPC versus batch behavior, arrival
 density, Worker exclusivity, or preemption rights from TaskType. The stable
 type distinction is Task-owned reusable Worker rules with candidate
-precomputation versus Item-owned complete Worker rules with targeted
-acquisition. Identical Item rules remain valid for `ITEM_DRIVEN`.
+precomputation versus Item-owned Worker rules with DIRECT acquisition.
+Identical or empty Item rules remain valid for `ITEM_DRIVEN`.
 
 ## 2. First Read
 

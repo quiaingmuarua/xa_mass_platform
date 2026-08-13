@@ -15,14 +15,16 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Scenario RPC | The checked scenario profile runs 20 Workers and 60 targeted capability calls | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Scenario RPC | The checked scenario profile preserves 20 Worker identities and completes 60 Group-scoped capability calls | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The basic Runtime Viewer remains lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
 The `Scenario RPC` command validates its own JSONL output before returning
-success. It requires exactly 20 canonical Worker IDs, an exact match with the
-persistent Scenario Lab JSON files, and all 60 configured Worker/event
-combinations. CI does not duplicate this contract in workflow shell code.
+success. The Lab proof requires exactly 20 persistent, globally unique
+canonical Worker IDs. Separately, the RPC proof requires all 60 configured
+Group/event calls to complete through the WorkerGroup path. A call result is
+not attributed to a particular Worker. CI does not duplicate this contract in
+workflow shell code.
 
 ## Local Commands
 
@@ -122,5 +124,5 @@ automatically retried.
 
 There is no coverage threshold, multi-JDK or multi-OS matrix, flaky-test retry,
 browser visual regression, Android emulator gate, performance test, or soak
-lane. The Android real-device Task RPC is a manual acceptance proof and must
+lane. The Android real-device WorkerGroup RPC is a manual acceptance proof and must
 not be represented as a normal hosted-runner E2E test.

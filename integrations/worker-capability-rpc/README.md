@@ -1,37 +1,33 @@
 # Worker Capability RPC Integration
 
-This module proves one external use of the reusable `scenario-workers`
-assembly. The profile is not RPC-specific and does not create Tasks:
+This module proves the WorkerGroup-scoped RPC surface supplied by the local
+`scenario-workers` Lab profile:
 
 ```text
 Server scenario-workers profile
+  -> three configured WorkerGroup catalog entries
+  -> one persistent ITEM_DRIVEN Task per configured Group
   -> scenario-websocket Adapter
   -> data/scenario-workers persistent Lab
-  -> scenario-phone-number-workers / 10 Workers / 3 events
-  -> scenario-string-utils-workers / 10 Workers / 3 events
+     -> scenario-phone-number-workers / 10 Workers / 3 events
+     -> scenario-string-utils-workers / 10 Workers / 3 events
 
 WorkerCapabilityRpcMain
-  -> resolve platform Worker IDs through idempotent Register calls
-  -> run the Phone WorkerGroup Task and write phone-number.jsonl
-  -> close the Phone Task
-  -> run the String WorkerGroup Task and write string-utils.jsonl
-  -> close the String Task
+  -> POST /api/v1/worker-groups/{workerGroupId}/items:call
+  -> 30 Phone calls and 30 String calls with allocationRule={}
+  -> verify RPC evidence independently from persistent Worker identities
 ```
 
-The integration depends only on the shared JSON facade and the external
-Runtime API. It recovers each platform-issued Worker ID through the public,
-idempotent Register API before constructing explicit Worker allocation rules.
-The Server profile owns deployment composition, while
-`scenario_workers_jvm` owns business handlers, transport construction, and
-public-HTTP Register/Bind plus Adapter-directed Identify Report construction.
-Server initializes the advisory WorkerGroup directory before starting Adapters
-and Scenario Workers. The caller does not depend on
-`server_jvm`, `scenario_workers_jvm`, `kernel_jvm`, the Adapter Runtime, Worker
-Core, a network client, or Redis.
+The caller knows only the Runtime API, WorkerGroup ID, and standard
+`TaskItemRequest`. It does not create, approve, close, or receive the internal
+Task; it does not register identities or select Worker IDs. The Server profile
+owns the deterministic long-lived Task coordinate. `scenario_workers_jvm` owns
+the handlers, persistent Lab Worker files, public Register/Bind flow, and real
+WebSocket Worker construction.
 
 ## Scenario capabilities
 
-The profile's phone-number Scenario Workers implement:
+The phone-number Group implements:
 
 ```text
 phonenumber.e164
@@ -45,19 +41,13 @@ All three accept:
 {"rawNumber":"+41798765432","defaultRegion":"CH"}
 ```
 
-Every result contains `input`, `possible`, and `valid`. A valid
-result adds the event-specific field:
+Every result contains `input`, `possible`, and `valid`. A valid result adds the
+event-specific field. Invalid input is a successful domain result with
+`valid=false` and `error`. `originalCarrier` is the carrier originally assigned
+to the number range, not necessarily its current carrier. The checked-in
+`phone-seed.txt` contains example data, not user data.
 
-- `e164`;
-- `countryCallingCode`, `regionCode`, and `country`;
-- `originalCarrier`.
-
-Invalid input is a successful domain result with `valid=false` and `error`;
-it is not converted into Worker failure. `originalCarrier` is the carrier
-originally assigned to the number range, not necessarily its current carrier.
-The checked-in `phone-seed.txt` contains example data, not user data.
-
-The profile's string-utils Scenario Workers implement:
+The string-utils Group implements:
 
 ```text
 string.md5
@@ -65,13 +55,13 @@ string.sha1
 string.base64.encode
 ```
 
-All three accept `{"value":"hello"}` and return `input`, `valid`,
-plus `md5`, `sha1`, or `base64`. Operations use UTF-8; digests are lowercase
-hex and Base64 is standard padded encoding. Empty strings are valid. Missing
-or non-string values return a successful domain error.
+All three accept `{"value":"hello"}` and return `input`, `valid`, plus the
+event-specific `md5`, `sha1`, or `base64` value. Operations use UTF-8; digests
+are lowercase hex and Base64 is standard padded encoding. Empty strings are
+valid. Missing or non-string values return a successful domain error.
 
-MD5 and SHA-1 exist only to demonstrate capability routing. Do not use them
-for passwords or security signatures.
+MD5 and SHA-1 exist only to demonstrate capability routing. Do not use them for
+passwords or security signatures.
 
 ## Run the full path
 
@@ -85,57 +75,49 @@ python -m kernel_design.runtime_server `
   --config integrations/worker-capability-rpc/kernel-config.json
 ```
 
-Start the Runtime API Server with the reusable Worker scenario:
+Start the Runtime API Server with the Lab profile:
 
 ```powershell
 .\gradlew.bat :server_jvm:bootRun `
   --args="--spring.profiles.active=scenario-workers"
 ```
 
-The default Server profile has no Adapter and no built-in Worker. The explicit
-profile initializes three advisory WorkerGroup catalog entries and starts one
-real WebSocket Adapter. Two entries belong to the JVM Scenario assembly; the
-third is reserved for the externally hosted Android demo. Scenario initializes
-defaults only for configured JVM Group directories that do not yet exist,
-discovers the exact Worker files in both directories, registers or restores
-each client Worker identity, binds the complete Properties snapshot, starts 20
-real WebSocket Worker transports, and finally attempts the explicit Property
-Index updates through the public Runtime API.
-There is no separate Worker launcher or in-process delivery shortcut.
+Startup initializes the three configured WorkerGroup catalog entries, creates
+or validates and approves their persistent Tasks, starts the Adapter, and then
+starts the two JVM Scenario Groups. The Android Group receives a Task but its
+Worker remains externally hosted. Missing JVM Group directories receive their
+checked-in ten-Worker defaults; existing directories are never supplemented or
+repaired.
 
-The first start creates both configured Group directories and 20 JSON files.
-Later starts never replace, repair, or supplement an existing Group directory.
-Delete one Group directory to reset only that Group, or delete the Lab root to
-restore both checked-in default sets.
-
-Run the external RPC proof:
+Run the acceptance proof:
 
 ```powershell
 .\gradlew.bat :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The runner resolves the 20 configured client Worker keys to their stable
-platform UUIDs. It then executes the two WorkerGroups independently. Results
-are written to:
+The two Group batches are internally concurrent. Each request carries a normal
+Item with `allocationRule: {}`; the Kernel selects an available Worker in that
+Task's WorkerGroup. No result claims which Worker executed it.
+
+Results are written to:
 
 ```text
 results/<scenarioId>/phone-number.jsonl
 results/<scenarioId>/string-utils.jsonl
 ```
 
-Each file contains 30 JSON lines for only its own WorkerGroup. Every line
-includes `taskId`, `workerGroupId`, `clientWorkerKey`, `workerId`, `eventCode`,
-the original input, and the parsed result. A `202 pending`, invalid domain
-result, missing event-specific field, or failed call fails that Group. If the
-Phone Group completes before the String Group fails, the completed Phone file
-remains available. The report records the explicitly targeted Worker ID;
-business result payloads do not repeat Worker identity.
+Each file contains exactly 30 JSON lines for its own Group. A row contains only
+`workerGroupId`, `messageId`, `eventCode`, `input`, and `result`. A `202
+pending`, invalid domain result, missing event-specific field, or failed call
+fails that Group. Completed partial output is preserved for diagnosis.
 
-Before returning success, the runner verifies both files as one acceptance
-proof: 20 canonical and globally unique Worker IDs, stable Worker-key mapping,
-exactly one result for every configured Worker/event combination, and an exact
-match between each result Worker ID and its persistent Lab JSON. CI uses the
-same runner and does not duplicate these assertions in workflow code.
+Before success, the runner proves two independent facts:
+
+- the two JSONL files contain all 60 distinct configured Group/event calls;
+- the two Lab directories contain 20 canonical, persistent, globally unique
+  Worker IDs.
+
+It intentionally does not correlate RPC rows with Worker files.
 
 Options:
 
@@ -148,14 +130,10 @@ Options:
 --scenario-worker-lab-root=../../data/scenario-workers
 --wait-timeout-millis=30000
 --request-timeout-millis=35000
---task-close-after-millis=3600000
 ```
 
-The scenario is intentionally sequential because it proves the synchronous
-single-TaskItem wait path. A scenario result directory must not already exist,
-which prevents stale output from being mistaken for a new run. The same
-profile can support later non-RPC, TASK_DRIVEN, or PRECOMPUTED integrations
-without changing these Worker identities or capabilities.
+A scenario result directory must not already exist, preventing stale output
+from being mistaken for a new run.
 
 ## Verification
 
@@ -165,8 +143,7 @@ without changing these Worker identities or capabilities.
 git diff --check
 ```
 
-The repository Scenario RPC lane also runs this complete scenario against an
-ephemeral Redis service, a real Python Kernel process, and a real Server using
-the `scenario-workers` profile. Changes confined to `scenario_workers_jvm/` or
-this integration therefore still select the 60-call
-cross-process proof.
+The repository Scenario RPC lane runs the same command against real Redis, a
+real Python Kernel, the Java Server, Adapter, and Scenario Workers. CI relies on
+the runner's self-verification rather than duplicating its assertions in shell
+code.

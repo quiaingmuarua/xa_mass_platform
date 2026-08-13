@@ -1,7 +1,10 @@
 package com.xa.mass.server.workerassembly;
 
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.springframework.boot.context.properties
@@ -14,13 +17,37 @@ import org.springframework.context.annotation.Configuration;
 public class ServerWorkerAssemblyConfiguration {
 
     @Bean
+    ServerWorkerAssemblyManifest serverWorkerAssemblyManifest(
+            ServerWorkerAssemblyProperties properties
+    ) {
+        return ServerWorkerAssemblyManifest.fromJson(
+                properties.groupConfigJson()
+        );
+    }
+
+    @Bean
     ServerWorkerGroupInitializer serverWorkerGroupInitializer(
-            ServerWorkerAssemblyProperties properties,
+            ServerWorkerAssemblyManifest manifest,
             WorkerResourceCatalog workerCatalog
     ) {
-        return ServerWorkerGroupInitializer.fromJson(
-                properties.groupConfigJson(),
+        return new ServerWorkerGroupInitializer(
+                manifest,
                 workerCatalog
+        );
+    }
+
+    @Bean
+    ServerWorkerTaskInitializer serverWorkerTaskInitializer(
+            ServerWorkerAssemblyManifest manifest,
+            TaskResourceCatalog taskCatalog,
+            TaskRuntime taskRuntime,
+            TaskLifecycleCommands taskLifecycle
+    ) {
+        return new ServerWorkerTaskInitializer(
+                manifest,
+                taskCatalog,
+                taskRuntime,
+                taskLifecycle
         );
     }
 
@@ -39,11 +66,13 @@ public class ServerWorkerAssemblyConfiguration {
     ServerWorkerAssemblyLifecycleHost
     serverWorkerAssemblyLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
+            ServerWorkerTaskInitializer taskInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             ScenarioWorkers scenarioWorkers
     ) {
         return new ServerWorkerAssemblyLifecycleHost(
                 groupInitializer,
+                taskInitializer,
                 adapterManager,
                 scenarioWorkers
         );

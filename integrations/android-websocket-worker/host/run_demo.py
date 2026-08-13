@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -91,114 +90,56 @@ def require_status(
 def run_demo(
     *,
     server_base_url: str,
-    worker_id: str,
     request_timeout_seconds: float,
     wait_timeout_millis: int,
 ) -> dict[str, Any]:
-    if not isinstance(worker_id, str) or not worker_id.strip():
-        raise ValueError("worker ID must be non-blank")
     if wait_timeout_millis <= 0 or wait_timeout_millis > 60_000:
         raise ValueError("wait timeout must be in 1..60000 milliseconds")
 
     client = RuntimeApiClient(server_base_url, request_timeout_seconds)
-    task_id = "android-worker-demo-" + uuid.uuid4().hex[:12]
     message_id = str(uuid.uuid4())
-    task_created = False
-    primary_failure: BaseException | None = None
+    call = client.send(
+        "POST",
+        "/api/v1/worker-groups/"
+        f"{quote(WORKER_GROUP_ID, safe='')}/items:call",
+        {
+            "item": {
+                "messageId": message_id,
+                "eventCode": EVENT_CODE,
+                "createdAtMillis": int(time.time() * 1000),
+                "payload": {},
+                "allocationRule": {},
+            },
+            "waitTimeoutMillis": wait_timeout_millis,
+        },
+        "workerGroupItem.call",
+    )
+    response_body = require_status(call, 200, "workerGroupItem.call")
+    if response_body.get("status") != "succeeded":
+        raise RuntimeError("workerGroupItem.call did not return succeeded")
+    encoded_result = response_body.get("opaqueResultPayload")
+    if not isinstance(encoded_result, str) or not encoded_result:
+        raise RuntimeError("workerGroupItem.call result payload is missing")
     try:
-        create = client.send(
-            "POST",
-            "/api/v1/tasks",
-            {
-                "taskId": task_id,
-                "workerGroupId": WORKER_GROUP_ID,
-                "taskType": "ITEM_DRIVEN",
-                "config": {
-                    "priority": "0",
-                    "maximumCandidateWorkers": "1",
-                    "maxRetryTimes": "3",
-                },
-                "emptyCloseAtMillis": int(time.time() * 1000) + 3_600_000,
-            },
-            "task.create",
-        )
-        require_status(create, 201, "task.create")
-        task_created = True
-
-        approve = client.send(
-            "POST",
-            f"/api/v1/tasks/{quote(task_id, safe='')}/approve",
-            None,
-            "task.approve",
-        )
-        require_status(approve, 200, "task.approve")
-
-        call = client.send(
-            "POST",
-            f"/api/v1/tasks/{quote(task_id, safe='')}/items:call",
-            {
-                "item": {
-                    "messageId": message_id,
-                    "eventCode": EVENT_CODE,
-                    "createdAtMillis": int(time.time() * 1000),
-                    "payload": {},
-                    "allocationRule": {
-                        "workerId": {"$eq": worker_id}
-                    },
-                },
-                "waitTimeoutMillis": wait_timeout_millis,
-            },
-            "taskItem.call",
-        )
-        response_body = require_status(call, 200, "taskItem.call")
-        if response_body.get("status") != "succeeded":
-            raise RuntimeError("taskItem.call did not return succeeded")
-        encoded_result = response_body.get("opaqueResultPayload")
-        if not isinstance(encoded_result, str) or not encoded_result:
-            raise RuntimeError("taskItem.call result payload is missing")
-        try:
-            result = json.loads(encoded_result)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                "Android Worker returned invalid JSON"
-            ) from error
-        if not isinstance(result, dict):
-            raise RuntimeError("Android Worker result must be a JSON object")
-        return {
-            "taskId": task_id,
-            "messageId": message_id,
-            "workerGroupId": WORKER_GROUP_ID,
-            "workerId": worker_id,
-            "eventCode": EVENT_CODE,
-            "result": result,
-        }
-    except BaseException as error:
-        primary_failure = error
-        raise
-    finally:
-        if task_created:
-            try:
-                close = client.send(
-                    "POST",
-                    f"/api/v1/tasks/{quote(task_id, safe='')}/close",
-                    None,
-                    "task.close",
-                )
-                require_status(close, 200, "task.close")
-            except Exception as close_error:
-                if primary_failure is None:
-                    raise
-                print(
-                    f"task.close also failed: {close_error}",
-                    file=sys.stderr,
-                )
+        result = json.loads(encoded_result)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            "Android Worker returned invalid JSON"
+        ) from error
+    if not isinstance(result, dict):
+        raise RuntimeError("Android Worker result must be a JSON object")
+    return {
+        "messageId": message_id,
+        "workerGroupId": WORKER_GROUP_ID,
+        "eventCode": EVENT_CODE,
+        "result": result,
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run one RPC through the Android WebSocket Worker."
     )
-    parser.add_argument("--worker-id", required=True)
     parser.add_argument(
         "--server-base-url",
         default="http://127.0.0.1:18082",
@@ -216,7 +157,6 @@ def main() -> None:
     args = parser.parse_args()
     result = run_demo(
         server_base_url=args.server_base_url,
-        worker_id=args.worker_id,
         request_timeout_seconds=args.request_timeout_seconds,
         wait_timeout_millis=args.wait_timeout_millis,
     )

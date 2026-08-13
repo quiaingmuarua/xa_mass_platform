@@ -245,7 +245,6 @@ public final class TaskRpcWaitRegistry {
         public boolean completeSuccess(String payload) {
             return complete(ResponseEntity.ok(
                     TaskRpcCallResponse.succeeded(
-                            key.taskId,
                             key.messageId,
                             payload
                     )
@@ -255,7 +254,6 @@ public final class TaskRpcWaitRegistry {
         public boolean completePending() {
             return complete(ResponseEntity.accepted().body(
                     TaskRpcCallResponse.pending(
-                            key.taskId,
                             key.messageId
                     )
             ));

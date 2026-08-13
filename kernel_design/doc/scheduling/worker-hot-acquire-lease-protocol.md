@@ -39,7 +39,7 @@ a business batch operation receives the batch as a bounded collection inside
 that TaskItem payload. The kernel does not merge multiple TaskItems, create
 multiple Item claim fences behind one Worker lease, or release the slot early.
 
-## HOT-Pool And TARGETED Acquisition Lease
+## HOT-Pool And DIRECT Acquisition Lease
 
 ```text
 acquire_hot_acquire_candidates(workerGroupId, limit)
@@ -66,15 +66,17 @@ may observe the same Worker, but only one exact observed-score CAS succeeds.
 acquire_hot_pool_candidates
   bounded HOT scan for Task-level cache warming
 
-TARGETED with a complete Item-owned rule
-  bounded Worker ids from workerId $eq/$equal/$in
-  complete pre-match over snapshots and explicit index.* projections
-  observe only the pre-matched Workers' due HOT scores
+DIRECT with an Item-owned rule
+  empty rule: one bounded due-HOT WorkerGroup score query
+  non-empty rule: bounded Worker ids from workerId $eq/$equal/$in
+  non-empty rule without a Worker-id source fails closed
+  complete point pre-match over explicit ids and index.* projections
+  use Group-query scores or observe only pre-matched explicit Workers
   exact lease at most requestedCount Workers per request
   complete post-lease rematch
 ```
 
-Neither HOT-pool nor TARGETED acquisition reads or writes candidate cache; the
+Neither HOT-pool nor DIRECT acquisition reads or writes candidate cache; the
 allocation Pacer owns publication. Each call is scoped to one explicit
 WorkerGroup and one score ZSET. Every accepted Worker still passes exact lease
 and full allocation-rule matching; explicit index fields are point-loaded only
@@ -117,9 +119,9 @@ against the current request. A successful rematch may proceed to Item claim.
 The returned fence, unchanged or renewed, is written into
 `forward`.
 
-PRECOMPUTED miss or rejected evidence never falls back to TARGETED acquisition.
+PRECOMPUTED miss or rejected evidence never falls back to DIRECT acquisition.
 `TaskItemDispatcher` never calls Worker score directly. It chooses one path
-from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or TARGETED
+from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or DIRECT
 for Item-owned rules. Neither the Dispatcher nor PRECOMPUTED acquisition
 decodes scores, clears dirty, or releases rejected candidates.
 
@@ -255,10 +257,10 @@ cross-owner transaction.
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
 | WorkerCandidateAcquirer HOT pool | bounded due-HOT scan, exact lease and full match for precomputation | no cache read/write |
-| WorkerCandidateAcquirer TARGETED | request-local WorkerId source, pre-match, bounded exact lease and post-lease rematch | no index discovery, cache read/write or fallback |
+| WorkerCandidateAcquirer DIRECT | bounded Group score source for `{}` or request-local WorkerId source for explicit rules, point pre-match, exact lease and post-lease rematch | no descriptor scan, index discovery, cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
+| TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable TaskType, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Future trusted Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
@@ -276,7 +278,7 @@ payload.
 - Do not lease negative `RECOVERY_RECHECK` scores through HOT primitives.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
-- Do not let PRECOMPUTED acquisition fall back to TARGETED acquisition.
+- Do not let PRECOMPUTED acquisition fall back to DIRECT acquisition.
 - Do not let TaskItemDispatcher or TaskDispatchPacer call WorkerScoreCore
   directly.
 - Do not release rejected dispatch candidates as compensation.

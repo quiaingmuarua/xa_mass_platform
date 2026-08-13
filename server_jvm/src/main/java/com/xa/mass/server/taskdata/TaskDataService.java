@@ -175,10 +175,9 @@ public final class TaskDataService {
             }
             return;
         }
-        if (rule == null || rule.isEmpty()) {
+        if (rule == null) {
             throw new IllegalArgumentException(
-                    "ITEM_DRIVEN requires a non-empty "
-                            + "TaskItem allocationRule"
+                    "ITEM_DRIVEN requires a TaskItem allocationRule"
             );
         }
     }

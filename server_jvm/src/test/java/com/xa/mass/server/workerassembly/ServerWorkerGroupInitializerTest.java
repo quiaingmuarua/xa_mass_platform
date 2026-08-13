@@ -26,7 +26,8 @@ class ServerWorkerGroupInitializerTest {
                 .thenReturn(result(WorkerRuntimeStatus.OK))
                 .thenReturn(result(WorkerRuntimeStatus.NOOP));
         ServerWorkerGroupInitializer initializer =
-                ServerWorkerGroupInitializer.fromJson("""
+                new ServerWorkerGroupInitializer(
+                        ServerWorkerAssemblyManifest.fromJson("""
                         {
                           "phone-group": {
                             "attributes":{"capability":"phone"},
@@ -36,7 +37,9 @@ class ServerWorkerGroupInitializerTest {
                             "eventCodes":["string.hash"]
                           }
                         }
-                        """, catalog);
+                        """),
+                        catalog
+                );
 
         initializer.initialize();
         initializer.initialize();
@@ -64,18 +67,16 @@ class ServerWorkerGroupInitializerTest {
     @Test
     void rejectsInvalidConfigurationAndOwnerFailure() {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        assertThatThrownBy(() -> ServerWorkerGroupInitializer.fromJson(
+        assertThatThrownBy(() -> ServerWorkerAssemblyManifest.fromJson(
                 """
                         {"group":{"eventCodes":[],"workers":[]}}
-                        """,
-                catalog
+                        """
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unknown field workers");
-        assertThatThrownBy(() -> ServerWorkerGroupInitializer.fromJson(
+        assertThatThrownBy(() -> ServerWorkerAssemblyManifest.fromJson(
                 """
                         {"group":{"eventCodes":["a","a"]}}
-                        """,
-                catalog
+                        """
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duplicates");
 
@@ -86,8 +87,10 @@ class ServerWorkerGroupInitializerTest {
                 )
         );
         ServerWorkerGroupInitializer initializer =
-                ServerWorkerGroupInitializer.fromJson(
-                        "{\"group\":{\"eventCodes\":[]}}",
+                new ServerWorkerGroupInitializer(
+                        ServerWorkerAssemblyManifest.fromJson(
+                                "{\"group\":{\"eventCodes\":[]}}"
+                        ),
                         catalog
                 );
 

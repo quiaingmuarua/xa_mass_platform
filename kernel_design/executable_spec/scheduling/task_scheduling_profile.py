@@ -35,7 +35,7 @@ _TASK_SCHEDULING_PROFILES = MappingProxyType(
             allocation_rule_owner=TaskAllocationRuleOwner.TASK_ITEM,
             candidate_precomputation_enabled=False,
             dispatch_acquisition_strategy=(
-                WorkerCandidateAcquisitionStrategy.TARGETED
+                WorkerCandidateAcquisitionStrategy.DIRECT
             ),
         ),
     }

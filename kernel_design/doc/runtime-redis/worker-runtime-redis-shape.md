@@ -234,7 +234,7 @@ bounded eventual convergence.
   Properties HASH values.
 - Do not put property-index values inside Worker metadata or Properties.
 - Do not auto-copy Properties to index keys.
-- Do not scan Worker descriptors for TARGETED matching.
+- Do not scan Worker descriptors for DIRECT matching.
 - Do not use `worker-id-owners` for global enumeration.
 - Do not interpret index absence as transport unavailability.
 - Do not let Adapter, Worker, or Server controller code write Worker score

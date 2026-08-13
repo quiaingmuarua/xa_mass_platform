@@ -128,17 +128,17 @@ adb shell am start -n `
   com.xa.mass.integration.androidworker/.MainActivity
 ```
 
-Wait for `RUNNING` and a displayed Worker ID, then run one real Task RPC:
+Wait for `RUNNING`, then run one real WorkerGroup RPC:
 
 ```powershell
-.\gradlew.bat :integrations:android-websocket-worker:runDemoRpc `
-  -PworkerId=<worker-id>
+.\gradlew.bat :integrations:android-websocket-worker:runDemoRpc
 ```
 
-The Gradle task launches the small standard-library Python host driver. The
-driver creates and approves an ITEM_DRIVEN Task, targets the displayed Worker
-ID, prints the decoded Android result, and closes the Task in `finally`. Task
-control never runs inside the Worker App.
+The Gradle task launches the small standard-library Python host driver. It
+calls the persistent Task behind the `android-demo-workers` Group path with a
+standard Item and `allocationRule: {}`, then prints the decoded Android result.
+It neither creates nor closes a Task and does not select a Worker ID. Task control never
+runs inside the Worker App.
 
 ## Verification
 

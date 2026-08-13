@@ -23,7 +23,7 @@ due candidate-warmup TaskId
 
 It uses Task score only as a bounded read-only eligibility truth. It does not
 acquire, lease, rotate, or rewrite Task score, process ADMISSION Tasks,
-decide Task activation, or serve Item-directed TARGETED requests.
+decide Task activation, or serve Item-directed DIRECT requests.
 
 Warmup participation is not a priority class. `TASK_DRIVEN` enables reusable
 Task-level candidate computation; it does not make the Task more or less urgent

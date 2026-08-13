@@ -30,7 +30,7 @@ class TaskSchedulingProfileTest(unittest.TestCase):
         )
         self.assertFalse(item_driven.candidate_precomputation_enabled)
         self.assertIs(
-            WorkerCandidateAcquisitionStrategy.TARGETED,
+            WorkerCandidateAcquisitionStrategy.DIRECT,
             item_driven.dispatch_acquisition_strategy,
         )
 

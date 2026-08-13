@@ -140,7 +140,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void targetedSchedulingUsesWorkerIdThenMatchesPropertyProjections()
+    void explicitWorkerSchedulingUsesWorkerIdThenMatchesPropertyProjections()
             throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
@@ -198,16 +198,18 @@ class RuntimeApiPythonIntegrationTest {
                     + "\"index.worker.region\":{\"$eq\":\"cn-east\"},"
                     + "\"index.platform.pool\":{\"$in\":[\"batch\"]}"
                     + "}";
-            callItemWithAllocationRule(
+            appendItemWithAllocationRule(
                     taskId,
                     "indexed-message-1-" + suffix,
                     indexedRule
             );
-            callItemWithAllocationRule(
+            awaitStoredResult(taskId, "indexed-message-1-" + suffix);
+            appendItemWithAllocationRule(
                     taskId,
                     "indexed-message-2-" + suffix,
                     indexedRule
             );
+            awaitStoredResult(taskId, "indexed-message-2-" + suffix);
 
             assertThat(send(
                     "POST",
@@ -290,12 +292,13 @@ class RuntimeApiPythonIntegrationTest {
                     null
             ).statusCode()).isEqualTo(200);
 
-            callItem(
+            appendItem(
                     taskId,
                     firstMessageId,
                     workerId,
                     "ITEM_DRIVEN".equals(taskType)
             );
+            awaitStoredResult(taskId, firstMessageId);
 
             appendItem(
                     taskId,
@@ -315,53 +318,33 @@ class RuntimeApiPythonIntegrationTest {
         }
     }
 
-    private void callItem(
-            String taskId,
-            String messageId,
-            String workerId,
-            boolean itemDriven
-    ) throws Exception {
-        String allocationRule = itemDriven
-                ? "{\"workerId\":{\"$eq\":\"" + workerId + "\"}}"
-                : null;
-        callItemWithAllocationRule(taskId, messageId, allocationRule);
-    }
-
-    private void callItemWithAllocationRule(
+    private void appendItemWithAllocationRule(
             String taskId,
             String messageId,
             String allocationRule
     ) throws Exception {
-        String encodedAllocationRule = allocationRule == null
-                ? ""
-                : ",\"allocationRule\":" + allocationRule;
         HttpResponse<String> response = send(
                 "POST",
-                "/api/v1/tasks/" + taskId + "/items:call",
+                "/api/v1/tasks/" + taskId + "/items",
                 """
                         {
-                          "item": {
+                          "items": [{
                             "messageId": "%s",
                             "eventCode": "%s",
                             "createdAtMillis": %d,
-                            "payload": {"value": "input"}%s
-                          },
-                          "waitTimeoutMillis": 8000
+                            "payload": {"value": "input"},
+                            "allocationRule": %s
+                          }]
                         }
                         """.formatted(
                         messageId,
                         TEST_EVENT_CODE,
                         System.currentTimeMillis() - 1_000,
-                        encodedAllocationRule
+                        allocationRule
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(JSON.readTree(response.body()).get("status").stringValue())
-                .isEqualTo("succeeded");
-        assertThat(JSON.readTree(response.body())
-                .get("opaqueResultPayload")
-                .stringValue()).isEqualTo(TEST_RESULT);
-        assertStoredItemAndFinalSuccess(taskId, messageId);
+        assertThat(response.body()).contains("\"status\":\"appended\"");
     }
 
     private void assertStoredItemAndFinalSuccess(

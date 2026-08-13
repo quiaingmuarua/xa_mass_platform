@@ -142,8 +142,10 @@ fixed Task types through the internal task scheduling profile resolver.
 The Server exposes one explicit indexed-property update command.
 Properties and index projections are independent and no assembly operation
 automatically writes both. Each configured field owns one property-index
-instance. The Redis HASH implementation stores JSON-compatible point values;
-`workerId` remains the only built-in TARGETED candidate coordinate.
+instance. The Redis HASH implementation stores JSON-compatible point values.
+DIRECT obtains candidates from either an empty rule's bounded Group score
+query or an explicit `workerId` condition; Property indexes never discover
+candidates.
 
 ## Zero Configuration
 
@@ -360,7 +362,7 @@ PUT  /api/v1/worker-groups/{workerGroupId}
 POST /api/v1/worker-groups/{workerGroupId}/workers:register
 POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:bind
 POST /api/v1/tasks/{taskId}/items
-POST /api/v1/tasks/{taskId}/items:call
+POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
@@ -371,6 +373,11 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
+
+The Group call route resolves a Server profile-owned persistent Task and sends
+the standard Item unchanged through Task data. WorkerGroup is the URL
+coordinate; it is not copied into the Item, and the response exposes neither
+the internal Task ID nor the selected Worker.
 
 Identity registration receives complete Worker Properties and maps
 `workerGroupId + workerProperties.clientWorkerKey` to a long-lived

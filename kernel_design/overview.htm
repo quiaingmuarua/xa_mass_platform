@@ -1232,7 +1232,7 @@
               </div>
               <div class="stage-step">
                 <strong>Bind Worker</strong>
-                PRECOMPUTED / TARGETED
+                PRECOMPUTED / DIRECT
               </div>
               <div class="stage-step">
                 <strong>Claim Item</strong>
@@ -1686,7 +1686,7 @@
           <ul>
             <li>Task admission、RUNNING soft limit 与 priority window</li>
             <li>TASK_DRIVEN PRECOMPUTED cache/warmup</li>
-            <li>ITEM_DRIVEN TARGETED point/index acquisition</li>
+            <li>ITEM_DRIVEN DIRECT bounded Group/point acquisition</li>
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>direct WorkerCommand / WorkerResult 与 Adapter-partitioned mailbox</li>
             <li>Java Server delivery point/batch HTTP owner</li>
@@ -1806,17 +1806,17 @@
           ]
         },
         item: {
-          title: "ITEM_DRIVEN · TARGETED",
+          title: "ITEM_DRIVEN · DIRECT",
           summary:
-            "长期、稀疏或 Item 级目标不同的任务只在真实 Item 到来时付出 Worker 选择成本。规则必须具备 bounded candidate source。",
+            "长期、稀疏或 Item 级目标不同的任务只在真实 Item 到来时付出 Worker 选择成本。空规则在 Group 内选择，非空规则必须给出 workerId candidate source。",
           ruleOwner: "TaskItem",
-          acquisition: "TARGETED",
+          acquisition: "DIRECT",
           cache: "forbidden",
           warmer: "does not participate",
           rows: [
-            ["Observe Item", "每个 Item 携带完整 allocationRule。"],
-            ["Bounded source", "workerId 或 dynamic candidate index 获取 IDs。"],
-            ["Point acquisition", "observe due HOT → exact lease → full rematch。"],
+            ["Observe Item", "每个 Item 携带 allocationRule；{} 表示 Group 内不限制 Worker。"],
+            ["Bounded source", "{} 使用一次 bounded Group HOT query；非空规则从 workerId 获取 IDs。"],
+            ["Lease and match", "bounded score evidence → exact lease → full rematch。"],
             ["Direct dispatch", "按 messageId 绑定 Worker 后 exact Item claim；不写 cache。"]
           ]
         }

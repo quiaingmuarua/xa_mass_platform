@@ -27,8 +27,8 @@ from .matching import (
 )
 
 
-MAX_TARGETED_UNIQUE_WORKERS_PER_ROUND = 100
-_MAX_TARGETED_EXPLICIT_WORKER_IDS = 100
+MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND = 100
+_MAX_DIRECT_EXPLICIT_WORKER_IDS = 100
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class WorkerCandidateRequest:
 
 class WorkerCandidateAcquisitionStrategy(Enum):
     PRECOMPUTED = "PRECOMPUTED"
-    TARGETED = "TARGETED"
+    DIRECT = "DIRECT"
 
 
 class WorkerCandidateAcquirer:
@@ -97,8 +97,8 @@ class WorkerCandidateAcquirer:
                 requests=requests,
                 lease_until_millis=lease_until_millis,
             )
-        if strategy is WorkerCandidateAcquisitionStrategy.TARGETED:
-            return self._acquire_targeted(
+        if strategy is WorkerCandidateAcquisitionStrategy.DIRECT:
+            return self._acquire_direct(
                 worker_group_id=worker_group_id,
                 requests=requests,
                 lease_until_millis=lease_until_millis,
@@ -183,7 +183,7 @@ class WorkerCandidateAcquirer:
             },
         )
 
-    def _acquire_targeted(
+    def _acquire_direct(
         self,
         *,
         worker_group_id: WorkerGroupId,
@@ -195,24 +195,46 @@ class WorkerCandidateAcquirer:
             return empty
 
         ordered_requests = _ordered_requests(requests)
-        point_worker_ids_by_candidate: dict[CandidateId, tuple[WorkerId, ...]] = {}
+        unrestricted = {
+            candidate_id
+            for candidate_id, request in ordered_requests
+            if not request.allocation_rule
+        }
+        broad_scores = (
+            self.worker_score.acquire_hot_acquire_candidates(
+                home_bucket_id=worker_group_id,
+                limit=min(
+                    self.worker_scan_limit,
+                    MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND,
+                ),
+            )
+            if unrestricted
+            else {}
+        )
+
+        candidate_worker_ids: dict[CandidateId, tuple[WorkerId, ...]] = {}
         admitted_worker_ids: set[WorkerId] = set()
         for candidate_id, request in ordered_requests:
             admitted_for_candidate: list[WorkerId] = []
-            for worker_id in self._worker_id_candidates(
-                allocation_rule=request.allocation_rule,
-            ):
+            requested_worker_ids = (
+                tuple(broad_scores)
+                if candidate_id in unrestricted
+                else self._worker_id_candidates(
+                    allocation_rule=request.allocation_rule,
+                )
+            )
+            for worker_id in requested_worker_ids:
                 if worker_id in admitted_worker_ids:
                     admitted_for_candidate.append(worker_id)
                     continue
                 if (
                     len(admitted_worker_ids)
-                    >= MAX_TARGETED_UNIQUE_WORKERS_PER_ROUND
+                    >= MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
                 ):
                     continue
                 admitted_worker_ids.add(worker_id)
                 admitted_for_candidate.append(worker_id)
-            point_worker_ids_by_candidate[candidate_id] = tuple(
+            candidate_worker_ids[candidate_id] = tuple(
                 admitted_for_candidate
             )
 
@@ -220,20 +242,42 @@ class WorkerCandidateAcquirer:
             candidate_id: _matcher_constraint(request)
             for candidate_id, request in requests.items()
         }
-        matched_worker_ids = self.worker_matcher.filter_candidate_worker_ids(
-            worker_group_id=worker_group_id,
-            candidate_worker_ids=point_worker_ids_by_candidate,
-            candidate_constraints=constraints,
+        explicit_candidate_worker_ids = {
+            candidate_id: worker_ids
+            for candidate_id, worker_ids in candidate_worker_ids.items()
+            if candidate_id not in unrestricted
+        }
+        explicit_constraints = {
+            candidate_id: constraints[candidate_id]
+            for candidate_id in explicit_candidate_worker_ids
+        }
+        prefiltered_explicit_worker_ids = (
+            self.worker_matcher.filter_candidate_worker_ids(
+                worker_group_id=worker_group_id,
+                candidate_worker_ids=explicit_candidate_worker_ids,
+                candidate_constraints=explicit_constraints,
+            )
+            if explicit_candidate_worker_ids
+            else {}
         )
+        matched_worker_ids = {
+            candidate_id: (
+                worker_ids
+                if candidate_id in unrestricted
+                else prefiltered_explicit_worker_ids.get(candidate_id, ())
+            )
+            for candidate_id, worker_ids in candidate_worker_ids.items()
+        }
         point_worker_ids = tuple(
             dict.fromkeys(
                 worker_id
                 for candidate_id, _ in ordered_requests
                 for worker_id in matched_worker_ids.get(candidate_id, ())
+                if worker_id not in broad_scores
             )
         )
 
-        observed_scores = (
+        point_observed_scores = (
             self.worker_score.observe_due_hot_scores(
                 home_bucket_id=worker_group_id,
                 worker_ids=point_worker_ids,
@@ -241,6 +285,7 @@ class WorkerCandidateAcquirer:
             if point_worker_ids
             else {}
         )
+        observed_scores = {**broad_scores, **point_observed_scores}
         if not observed_scores:
             return empty
 
@@ -295,7 +340,7 @@ class WorkerCandidateAcquirer:
                 return ()
             return _worker_ids_from_operator_rule(worker_id_rule)
         except Exception:
-            # ITEM_DRIVEN has no scan, index discovery, or cache fallback.
+            # DIRECT has no descriptor scan, index discovery, or cache fallback.
             return ()
 
     def _lease_and_match(
@@ -347,7 +392,7 @@ def _worker_ids_from_operator_rule(
         and isinstance(operand, SequenceABC)
         and 0
         < len(operand)
-        <= _MAX_TARGETED_EXPLICIT_WORKER_IDS
+        <= _MAX_DIRECT_EXPLICIT_WORKER_IDS
     ):
         values = tuple(operand)
     else:

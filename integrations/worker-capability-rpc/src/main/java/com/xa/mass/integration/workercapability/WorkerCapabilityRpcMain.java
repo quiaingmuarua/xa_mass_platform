@@ -51,11 +51,6 @@ public final class WorkerCapabilityRpcMain {
                     "--wait-timeout-millis must not exceed 60000"
             );
         }
-        long taskCloseAfterMillis = options.positiveLong(
-                "task-close-after-millis",
-                WorkerCapabilityIntegrationDefaults
-                        .TASK_CLOSE_AFTER_MILLIS
-        );
         RuntimeApiHttpClient runtimeApi = new RuntimeApiHttpClient(
                 options.uri(
                         "server-base-url",
@@ -66,10 +61,7 @@ public final class WorkerCapabilityRpcMain {
                         waitTimeoutMillis + 5_000
                 ))
         );
-        WorkerIdentityRegistrationClient identities =
-                new WorkerIdentityRegistrationClient(runtimeApi);
-        WorkerCapabilityTaskClient tasks =
-                new WorkerCapabilityTaskClient(runtimeApi);
+        WorkerGroupRpcClient rpc = new WorkerGroupRpcClient(runtimeApi);
 
         createScenarioResultDirectory(
                 resultDirectory,
@@ -79,28 +71,24 @@ public final class WorkerCapabilityRpcMain {
         int stringResultCount;
         try {
             phoneResultCount = new PhoneNumberRpcScenario(
-                    identities,
-                    tasks
+                    rpc
             ).run(
                     scenarioId,
                     phoneSeedPath,
                     scenarioResultDirectory.resolve(
                             "phone-number.jsonl"
                     ),
-                    waitTimeoutMillis,
-                    taskCloseAfterMillis
+                    waitTimeoutMillis
             );
             stringResultCount = new StringUtilityRpcScenario(
-                    identities,
-                    tasks
+                    rpc
             ).run(
                     scenarioId,
                     stringSeedPath,
                     scenarioResultDirectory.resolve(
                             "string-utils.jsonl"
                     ),
-                    waitTimeoutMillis,
-                    taskCloseAfterMillis
+                    waitTimeoutMillis
             );
         } catch (IOException | RuntimeException error) {
             removeEmptyScenarioResultDirectory(
@@ -119,7 +107,8 @@ public final class WorkerCapabilityRpcMain {
                 System.Logger.Level.INFO,
                 "Verified "
                         + (phoneResultCount + stringResultCount)
-                        + " targeted results across 20 Workers in "
+                        + " WorkerGroup RPC results and 20 persistent "
+                        + "Worker identities in "
                         + scenarioResultDirectory
         );
     }

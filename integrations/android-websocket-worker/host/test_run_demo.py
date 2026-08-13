@@ -7,9 +7,6 @@ from unittest.mock import patch
 import run_demo
 
 
-WORKER_ID = "server-issued-worker-id"
-
-
 class FakeRuntimeApiClient:
     last_instance: "FakeRuntimeApiClient | None" = None
     fail_call = False
@@ -22,25 +19,19 @@ class FakeRuntimeApiClient:
 
     def send(self, method: str, path: str, body: object, operation: str):
         self.requests.append((method, path, body, operation))
-        if operation == "task.create":
-            return run_demo.ApiResponse(201, {"status": "created"})
-        if operation == "task.approve":
-            return run_demo.ApiResponse(200, {"status": "approved"})
-        if operation == "taskItem.call":
-            if self.fail_call:
-                raise RuntimeError("scripted call failure")
-            return run_demo.ApiResponse(
-                200,
-                {
-                    "status": "succeeded",
-                    "opaqueResultPayload": json.dumps(
-                        {"counter": 7, "sdkInt": 33}
-                    ),
-                },
-            )
-        if operation == "task.close":
-            return run_demo.ApiResponse(200, {"status": "closed"})
-        raise AssertionError(operation)
+        if operation != "workerGroupItem.call":
+            raise AssertionError(operation)
+        if self.fail_call:
+            raise RuntimeError("scripted call failure")
+        return run_demo.ApiResponse(
+            200,
+            {
+                "status": "succeeded",
+                "opaqueResultPayload": json.dumps(
+                    {"counter": 7, "sdkInt": 33}
+                ),
+            },
+        )
 
 
 class RunDemoTest(unittest.TestCase):
@@ -48,7 +39,7 @@ class RunDemoTest(unittest.TestCase):
         FakeRuntimeApiClient.last_instance = None
         FakeRuntimeApiClient.fail_call = False
 
-    def test_targets_worker_and_closes_task(self) -> None:
+    def test_calls_the_group_with_an_unrestricted_item(self) -> None:
         with patch.object(
             run_demo,
             "RuntimeApiClient",
@@ -56,27 +47,30 @@ class RunDemoTest(unittest.TestCase):
         ):
             result = run_demo.run_demo(
                 server_base_url="http://127.0.0.1:18082",
-                worker_id=WORKER_ID,
                 request_timeout_seconds=2,
                 wait_timeout_millis=1_000,
             )
 
         client = FakeRuntimeApiClient.last_instance
         self.assertIsNotNone(client)
-        operations = [request[3] for request in client.requests]
+        self.assertEqual(1, len(client.requests))
+        method, path, call_body, operation = client.requests[0]
+        self.assertEqual("POST", method)
         self.assertEqual(
-            ["task.create", "task.approve", "taskItem.call", "task.close"],
-            operations,
+            "/api/v1/worker-groups/android-demo-workers/items:call",
+            path,
         )
-        call_body = client.requests[2][2]
-        self.assertEqual(
-            WORKER_ID,
-            call_body["item"]["allocationRule"]["workerId"]["$eq"],
-        )
+        self.assertEqual("workerGroupItem.call", operation)
+        self.assertEqual({}, call_body["item"]["allocationRule"])
+        self.assertNotIn("workerId", call_body["item"])
+        self.assertNotIn("workerGroupId", call_body["item"])
+        self.assertNotIn("taskId", call_body)
         self.assertEqual("android.demo.state.read", result["eventCode"])
         self.assertEqual(7, result["result"]["counter"])
+        self.assertNotIn("workerId", result)
+        self.assertNotIn("taskId", result)
 
-    def test_closes_task_when_rpc_fails(self) -> None:
+    def test_propagates_rpc_failure_without_task_cleanup(self) -> None:
         FakeRuntimeApiClient.fail_call = True
         with patch.object(
             run_demo,
@@ -89,24 +83,24 @@ class RunDemoTest(unittest.TestCase):
             ):
                 run_demo.run_demo(
                     server_base_url="http://127.0.0.1:18082",
-                    worker_id=WORKER_ID,
                     request_timeout_seconds=2,
                     wait_timeout_millis=1_000,
                 )
 
-        operations = [
-            request[3]
-            for request in FakeRuntimeApiClient.last_instance.requests
-        ]
-        self.assertEqual("task.close", operations[-1])
+        self.assertEqual(
+            ["workerGroupItem.call"],
+            [
+                request[3]
+                for request in FakeRuntimeApiClient.last_instance.requests
+            ],
+        )
 
-    def test_rejects_blank_worker_id(self) -> None:
+    def test_rejects_invalid_wait_timeout(self) -> None:
         with self.assertRaises(ValueError):
             run_demo.run_demo(
                 server_base_url="http://127.0.0.1:18082",
-                worker_id=" ",
                 request_timeout_seconds=2,
-                wait_timeout_millis=1_000,
+                wait_timeout_millis=0,
             )
 
 

@@ -107,11 +107,6 @@ public interface TaskRuntime {
                         "expireAtMillis must be after createdAtMillis"
                 );
             }
-            if (allocationRule != null && allocationRule.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "allocationRule must be non-empty when present"
-                );
-            }
             payload = immutableObjectMap(payload);
             allocationRule = allocationRule == null
                     ? null

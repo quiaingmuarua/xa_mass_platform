@@ -13,28 +13,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Consumer;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class WorkerCapabilityScenarioVerifierTest {
 
-    private static final String PHONE_FILE = "phone-number.jsonl";
     private static final String PHONE_GROUP =
             "scenario-phone-number-workers";
-    private static final String PHONE_PREFIX =
-            "scenario-phone-number-worker-";
+    private static final String STRING_GROUP =
+            "scenario-string-utils-workers";
     private static final List<String> PHONE_EVENTS = List.of(
             "phonenumber.e164",
             "phonenumber.country",
             "phonenumber.original-carrier"
     );
-    private static final String STRING_FILE = "string-utils.jsonl";
-    private static final String STRING_GROUP =
-            "scenario-string-utils-workers";
-    private static final String STRING_PREFIX =
-            "scenario-string-utils-worker-";
     private static final List<String> STRING_EVENTS = List.of(
             "string.md5",
             "string.sha1",
@@ -42,222 +34,186 @@ class WorkerCapabilityScenarioVerifierTest {
     );
 
     @TempDir
-    Path resultDirectory;
-    private Path labRoot;
+    Path temporaryDirectory;
 
-    @BeforeEach
-    void writeCompleteProof() throws IOException {
-        Files.createDirectories(resultDirectory);
-        labRoot = resultDirectory.resolve("data/scenario-workers");
-        Files.createDirectories(labRoot);
-        writeRows(
-                PHONE_FILE,
-                validRows(PHONE_GROUP, PHONE_PREFIX, PHONE_EVENTS)
-        );
-        writeRows(
-                STRING_FILE,
-                validRows(STRING_GROUP, STRING_PREFIX, STRING_EVENTS)
-        );
-        writeWorkerFiles(
-                PHONE_GROUP,
-                validRows(PHONE_GROUP, PHONE_PREFIX, PHONE_EVENTS)
-        );
-        writeWorkerFiles(
-                STRING_GROUP,
-                validRows(STRING_GROUP, STRING_PREFIX, STRING_EVENTS)
-        );
+    @Test
+    void acceptsSixtyGroupResultsAndTwentyPersistentIdentities()
+            throws Exception {
+        Fixture fixture = fixture();
+
+        assertDoesNotThrow(() -> WorkerCapabilityScenarioVerifier.verify(
+                fixture.results(),
+                fixture.lab()
+        ));
     }
 
     @Test
-    void acceptsCompleteTwentyWorkerSixtyCallProof() {
-        assertDoesNotThrow(
-                () -> WorkerCapabilityScenarioVerifier.verify(
-                        resultDirectory,
-                        labRoot
-                )
+    void rejectsMissingGroupResults() throws Exception {
+        Fixture fixture = fixture();
+        List<String> phone = Files.readAllLines(
+                fixture.results().resolve("phone-number.jsonl"),
+                StandardCharsets.UTF_8
         );
-    }
-
-    @Test
-    void rejectsMissingResult() throws IOException {
-        List<Map<String, Object>> rows = readRows(PHONE_FILE);
-        rows.remove(rows.size() - 1);
-        writeRows(PHONE_FILE, rows);
-
-        assertInvalidProof();
-    }
-
-    @Test
-    void rejectsUnexpectedWorkerGroup() throws IOException {
-        mutateRow(
-                PHONE_FILE,
-                0,
-                row -> row.put("workerGroupId", "wrong-group")
-        );
-
-        assertInvalidProof();
-    }
-
-    @Test
-    void rejectsDuplicateWorkerId() throws IOException {
-        List<Map<String, Object>> rows = readRows(PHONE_FILE);
-        String firstWorkerId = (String) rows.get(0).get("workerId");
-        rows.stream()
-                .filter(row -> (PHONE_PREFIX + "002").equals(
-                        row.get("clientWorkerKey")
-                ))
-                .forEach(row -> row.put("workerId", firstWorkerId));
-        writeRows(PHONE_FILE, rows);
-
-        assertInvalidProof();
-    }
-
-    @Test
-    void rejectsWorkerKeyIdentityDrift() throws IOException {
-        mutateRow(
-                PHONE_FILE,
-                10,
-                row -> row.put("workerId", UUID.randomUUID().toString())
-        );
-
-        assertInvalidProof();
-    }
-
-    @Test
-    void rejectsIncompleteWorkerEventCoverage() throws IOException {
-        List<Map<String, Object>> rows = readRows(STRING_FILE);
-        Map<String, Object> workerNine = rows.stream()
-                .filter(row -> (STRING_PREFIX + "009").equals(
-                        row.get("clientWorkerKey")
-                ))
-                .findFirst()
-                .orElseThrow();
-        Map<String, Object> last = rows.get(rows.size() - 1);
-        last.put("clientWorkerKey", STRING_PREFIX + "009");
-        last.put("workerId", workerNine.get("workerId"));
-        writeRows(STRING_FILE, rows);
-
-        assertInvalidProof();
-    }
-
-    @Test
-    void rejectsAResultIdentityThatDiffersFromTheWorkerFile()
-            throws IOException {
-        Path stateFile = labRoot.resolve(PHONE_GROUP).resolve(
-                PHONE_PREFIX + "001.json"
-        );
-        Map<String, Object> state = new LinkedHashMap<>(
-                Jsons.parseObject(Files.readString(
-                        stateFile,
-                        StandardCharsets.UTF_8
-                ))
-        );
-        state.put("workerId", UUID.randomUUID().toString());
-        Files.writeString(
-                stateFile,
-                Jsons.toJson(state),
+        Files.write(
+                fixture.results().resolve("phone-number.jsonl"),
+                phone.subList(0, 29),
                 StandardCharsets.UTF_8
         );
 
-        assertInvalidProof();
-    }
-
-    private void assertInvalidProof() {
         assertThrows(
                 IllegalStateException.class,
                 () -> WorkerCapabilityScenarioVerifier.verify(
-                        resultDirectory,
-                        labRoot
+                        fixture.results(),
+                        fixture.lab()
                 )
         );
     }
 
-    private void writeWorkerFiles(
+    @Test
+    void rejectsOldTaskAndWorkerCoordinates() throws Exception {
+        Fixture fixture = fixture();
+        Path file = fixture.results().resolve("phone-number.jsonl");
+        List<Map<String, Object>> rows = readRows(file);
+        rows.get(0).put("taskId", "old-task");
+        rows.get(0).put("workerId", UUID.randomUUID().toString());
+        writeRows(file, rows);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> WorkerCapabilityScenarioVerifier.verify(
+                        fixture.results(),
+                        fixture.lab()
+                )
+        );
+    }
+
+    @Test
+    void rejectsDuplicateMessageIds() throws Exception {
+        Fixture fixture = fixture();
+        Path file = fixture.results().resolve("phone-number.jsonl");
+        List<Map<String, Object>> rows = readRows(file);
+        rows.get(1).put("messageId", rows.get(0).get("messageId"));
+        writeRows(file, rows);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> WorkerCapabilityScenarioVerifier.verify(
+                        fixture.results(),
+                        fixture.lab()
+                )
+        );
+    }
+
+    @Test
+    void rejectsWorkerIdentityReuseAcrossGroups() throws Exception {
+        Fixture fixture = fixture();
+        Path phoneFile = firstFile(fixture.lab().resolve(PHONE_GROUP));
+        Path stringFile = firstFile(fixture.lab().resolve(STRING_GROUP));
+        Map<String, Object> phoneState = Jsons.parseObject(
+                Files.readString(phoneFile, StandardCharsets.UTF_8)
+        );
+        Map<String, Object> stringState = Jsons.parseObject(
+                Files.readString(stringFile, StandardCharsets.UTF_8)
+        );
+        stringState.put("workerId", phoneState.get("workerId"));
+        Files.writeString(
+                stringFile,
+                Jsons.toJson(stringState),
+                StandardCharsets.UTF_8
+        );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> WorkerCapabilityScenarioVerifier.verify(
+                        fixture.results(),
+                        fixture.lab()
+                )
+        );
+    }
+
+    private Fixture fixture() throws IOException {
+        Path results = temporaryDirectory.resolve("results");
+        Path lab = temporaryDirectory.resolve("data/scenario-workers");
+        Files.createDirectories(results);
+        writeRows(
+                results.resolve("phone-number.jsonl"),
+                rows(PHONE_GROUP, PHONE_EVENTS)
+        );
+        writeRows(
+                results.resolve("string-utils.jsonl"),
+                rows(STRING_GROUP, STRING_EVENTS)
+        );
+        writeLab(lab, PHONE_GROUP);
+        writeLab(lab, STRING_GROUP);
+        return new Fixture(results, lab);
+    }
+
+    private static List<Map<String, Object>> rows(
             String workerGroupId,
-            List<Map<String, Object>> rows
-    ) throws IOException {
-        Path group = labRoot.resolve(workerGroupId);
+            List<String> events
+    ) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (String event : events) {
+            for (int index = 1; index <= 10; index++) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("workerGroupId", workerGroupId);
+                row.put("messageId", workerGroupId + "-" + event + "-" + index);
+                row.put("eventCode", event);
+                row.put("input", Map.of("value", "input-" + index));
+                row.put("result", Map.of("valid", true));
+                rows.add(row);
+            }
+        }
+        return rows;
+    }
+
+    private static void writeLab(Path lab, String workerGroupId)
+            throws IOException {
+        Path group = lab.resolve(workerGroupId);
         Files.createDirectories(group);
-        Map<String, String> workerIds = new LinkedHashMap<>();
-        rows.forEach(row -> workerIds.putIfAbsent(
-                (String) row.get("clientWorkerKey"),
-                (String) row.get("workerId")
-        ));
-        for (Map.Entry<String, String> worker : workerIds.entrySet()) {
+        for (int index = 1; index <= 10; index++) {
             Files.writeString(
-                    group.resolve(worker.getKey() + ".json"),
+                    group.resolve("worker-%03d.json".formatted(index)),
                     Jsons.toJson(Map.of(
-                            "schemaVersion",
-                            1,
-                            "workerId",
-                            worker.getValue()
+                            "schemaVersion", 1,
+                            "workerId", UUID.nameUUIDFromBytes(
+                                    (workerGroupId + ":" + index).getBytes(
+                                            StandardCharsets.UTF_8
+                                    )
+                            ).toString()
                     )),
                     StandardCharsets.UTF_8
             );
         }
     }
 
-    private void mutateRow(
-            String filename,
-            int index,
-            Consumer<Map<String, Object>> mutation
-    ) throws IOException {
-        List<Map<String, Object>> rows = readRows(filename);
-        mutation.accept(rows.get(index));
-        writeRows(filename, rows);
-    }
-
-    private List<Map<String, Object>> readRows(String filename)
+    private static List<Map<String, Object>> readRows(Path path)
             throws IOException {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (String line : Files.readAllLines(
-                resultDirectory.resolve(filename),
-                StandardCharsets.UTF_8
-        )) {
-            rows.add(new LinkedHashMap<>(Jsons.parseObject(line)));
-        }
-        return rows;
+        return Files.readAllLines(path, StandardCharsets.UTF_8)
+                .stream()
+                .<Map<String, Object>>map(line ->
+                        new LinkedHashMap<>(Jsons.parseObject(line))
+                )
+                .toList();
     }
 
-    private void writeRows(
-            String filename,
+    private static Path firstFile(Path directory) throws IOException {
+        try (var files = Files.list(directory)) {
+            return files.findFirst().orElseThrow();
+        }
+    }
+
+    private static void writeRows(
+            Path path,
             List<Map<String, Object>> rows
     ) throws IOException {
         Files.write(
-                resultDirectory.resolve(filename),
+                path,
                 rows.stream().map(Jsons::toJson).toList(),
                 StandardCharsets.UTF_8
         );
     }
 
-    private static List<Map<String, Object>> validRows(
-            String workerGroupId,
-            String workerKeyPrefix,
-            List<String> eventCodes
-    ) {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (String eventCode : eventCodes) {
-            for (int index = 1; index <= 10; index++) {
-                String clientWorkerKey = workerKeyPrefix
-                        + "%03d".formatted(index);
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("taskId", "task-" + workerGroupId);
-                row.put("workerGroupId", workerGroupId);
-                row.put("clientWorkerKey", clientWorkerKey);
-                row.put(
-                        "workerId",
-                        UUID.nameUUIDFromBytes(
-                                clientWorkerKey.getBytes(
-                                        StandardCharsets.UTF_8
-                                )
-                        ).toString()
-                );
-                row.put("eventCode", eventCode);
-                row.put("input", Map.of("value", index));
-                row.put("result", Map.of("valid", true));
-                rows.add(row);
-            }
-        }
-        return rows;
+    private record Fixture(Path results, Path lab) {
     }
 }

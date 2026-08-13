@@ -41,17 +41,11 @@ dependencies {
 }
 
 tasks.register('runDemoRpc', Exec) {
-    description = 'Runs one Task RPC against the Android WebSocket Worker.'
+    description = 'Runs one WorkerGroup RPC through the Android Worker.'
     group = 'application'
     workingDir = project.projectDir
 
     doFirst {
-        String workerId = providers.gradleProperty('workerId').orNull
-        if (workerId == null || workerId.isBlank()) {
-            throw new GradleException(
-                    'runDemoRpc requires -PworkerId=<non-blank worker ID>'
-            )
-        }
         String serverBaseUrl = providers.gradleProperty('serverBaseUrl')
                 .getOrElse('http://127.0.0.1:18082')
         String pythonCommand = providers.gradleProperty('pythonCommand')
@@ -59,8 +53,6 @@ tasks.register('runDemoRpc', Exec) {
         commandLine(
                 pythonCommand,
                 'host/run_demo.py',
-                '--worker-id',
-                workerId,
                 '--server-base-url',
                 serverBaseUrl
         )

@@ -37,7 +37,10 @@ class ServerWorkerAssemblyArchitectureTest {
                 .contains("properties.sandboxRoot()")
                 .contains("properties.runtimeApiBaseUrl()")
                 .contains("WorkerResourceCatalog")
+                .contains("TaskResourceCatalog")
+                .contains("TaskRuntime")
                 .contains("groupInitializer.initialize()")
+                .contains("taskInitializer.initialize()")
                 .contains("adapterManager.start()")
                 .contains("adapterManager.close()");
         assertThat(sources)

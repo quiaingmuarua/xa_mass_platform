@@ -6,9 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,11 +16,17 @@ import java.util.UUID;
 
 final class WorkerCapabilityScenarioVerifier {
 
+    private static final Set<String> RESULT_FIELDS = Set.of(
+            "workerGroupId",
+            "messageId",
+            "eventCode",
+            "input",
+            "result"
+    );
     private static final List<FileContract> CONTRACTS = List.of(
             new FileContract(
                     "phone-number.jsonl",
                     "scenario-phone-number-workers",
-                    "scenario-phone-number-worker-",
                     Set.of(
                             "phonenumber.e164",
                             "phonenumber.country",
@@ -30,7 +36,6 @@ final class WorkerCapabilityScenarioVerifier {
             new FileContract(
                     "string-utils.jsonl",
                     "scenario-string-utils-workers",
-                    "scenario-string-utils-worker-",
                     Set.of(
                             "string.md5",
                             "string.sha1",
@@ -46,15 +51,20 @@ final class WorkerCapabilityScenarioVerifier {
             Path scenarioResultDirectory,
             Path scenarioWorkerLabRoot
     ) throws IOException {
-        Set<String> allWorkerIds = new HashSet<>();
+        Set<String> allMessageIds = new HashSet<>();
         int totalResults = 0;
         for (FileContract contract : CONTRACTS) {
             FileProof proof = verifyFile(
                     scenarioResultDirectory.resolve(contract.filename()),
-                    contract,
-                    scenarioWorkerLabRoot
+                    contract
             );
-            allWorkerIds.addAll(proof.workerIds());
+            if (!Collections.disjoint(
+                    allMessageIds,
+                    proof.messageIds()
+            )) {
+                throw invalid("messageId values must be globally unique");
+            }
+            allMessageIds.addAll(proof.messageIds());
             totalResults += proof.resultCount();
         }
         if (totalResults != 60) {
@@ -62,17 +72,12 @@ final class WorkerCapabilityScenarioVerifier {
                     "expected 60 results but received " + totalResults
             );
         }
-        if (allWorkerIds.size() != 20) {
-            throw invalid(
-                    "Worker IDs must be unique across both WorkerGroups"
-            );
-        }
+        verifyPersistentWorkerIdentities(scenarioWorkerLabRoot);
     }
 
     private static FileProof verifyFile(
             Path path,
-            FileContract contract,
-            Path scenarioWorkerLabRoot
+            FileContract contract
     ) throws IOException {
         List<Map<String, Object>> rows = readRows(path);
         if (rows.size() != 30) {
@@ -83,10 +88,16 @@ final class WorkerCapabilityScenarioVerifier {
             );
         }
 
-        Set<String> expectedWorkerKeys = expectedWorkerKeys(contract);
-        Map<String, String> workerIdsByKey = new LinkedHashMap<>();
-        Map<WorkerEvent, Integer> combinations = new HashMap<>();
+        Map<String, Integer> eventCounts = new HashMap<>();
+        Map<String, Set<String>> inputsByEvent = new HashMap<>();
+        Set<String> messageIds = new HashSet<>();
         for (Map<String, Object> row : rows) {
+            if (!row.keySet().equals(RESULT_FIELDS)) {
+                throw invalid(
+                        contract.filename()
+                                + " contains an unexpected result field"
+                );
+            }
             String workerGroupId = requireString(
                     row,
                     "workerGroupId",
@@ -99,35 +110,18 @@ final class WorkerCapabilityScenarioVerifier {
                                 + workerGroupId
                 );
             }
-
-            String clientWorkerKey = requireString(
+            String messageId = requireString(
                     row,
-                    "clientWorkerKey",
+                    "messageId",
                     contract.filename()
             );
-            if (!expectedWorkerKeys.contains(clientWorkerKey)) {
+            if (!messageIds.add(messageId)) {
                 throw invalid(
                         contract.filename()
-                                + " contains unexpected Worker key "
-                                + clientWorkerKey
+                                + " contains duplicate messageId "
+                                + messageId
                 );
             }
-            String workerId = requireCanonicalWorkerId(
-                    row,
-                    contract.filename()
-            );
-            String existing = workerIdsByKey.putIfAbsent(
-                    clientWorkerKey,
-                    workerId
-            );
-            if (existing != null && !existing.equals(workerId)) {
-                throw invalid(
-                        contract.filename()
-                                + " changed Worker ID for "
-                                + clientWorkerKey
-                );
-            }
-
             String eventCode = requireString(
                     row,
                     "eventCode",
@@ -140,147 +134,163 @@ final class WorkerCapabilityScenarioVerifier {
                                 + eventCode
                 );
             }
-            if (!row.containsKey("input") || !row.containsKey("result")) {
-                throw invalid(
-                        contract.filename() + " contains an incomplete result"
-                );
-            }
-            combinations.merge(
-                    new WorkerEvent(clientWorkerKey, eventCode),
-                    1,
-                    Integer::sum
+            Map<String, Object> input = requireObject(
+                    row,
+                    "input",
+                    contract.filename()
             );
+            requireObject(row, "result", contract.filename());
+            eventCounts.merge(eventCode, 1, Integer::sum);
+            inputsByEvent.computeIfAbsent(
+                    eventCode,
+                    ignored -> new HashSet<>()
+            ).add(Jsons.toJson(input));
         }
 
-        if (!workerIdsByKey.keySet().equals(expectedWorkerKeys)) {
-            throw invalid(
-                    contract.filename()
-                            + " does not contain the configured Worker keys"
-            );
+        for (String eventCode : contract.eventCodes()) {
+            if (eventCounts.getOrDefault(eventCode, 0) != 10) {
+                throw invalid(
+                        contract.filename()
+                                + " must contain 10 results for "
+                                + eventCode
+                );
+            }
+            if (inputsByEvent.getOrDefault(eventCode, Set.of()).size() != 10) {
+                throw invalid(
+                        contract.filename()
+                                + " must contain 10 distinct inputs for "
+                                + eventCode
+                );
+            }
         }
-        Set<String> workerIds = Set.copyOf(workerIdsByKey.values());
-        if (workerIds.size() != 10) {
-            throw invalid(
-                    contract.filename()
-                            + " must contain 10 distinct Worker IDs"
-            );
-        }
-        if (!combinations.equals(expectedCombinations(
-                expectedWorkerKeys,
-                contract.eventCodes()
-        ))) {
-            throw invalid(
-                    contract.filename()
-                            + " has incomplete Worker/event coverage"
-            );
-        }
-        verifyPersistedWorkerIds(
-                scenarioWorkerLabRoot,
-                contract,
-                workerIdsByKey
-        );
-        return new FileProof(rows.size(), workerIds);
+        return new FileProof(rows.size(), Set.copyOf(messageIds));
     }
 
-    private static void verifyPersistedWorkerIds(
-            Path scenarioWorkerLabRoot,
-            FileContract contract,
-            Map<String, String> workerIdsByKey
+    private static void verifyPersistentWorkerIdentities(
+            Path scenarioWorkerLabRoot
     ) throws IOException {
-        Path groupDirectory = scenarioWorkerLabRoot.resolve(
-                contract.workerGroupId()
-        );
-        for (Map.Entry<String, String> worker
-                : workerIdsByKey.entrySet()) {
-            Path stateFile = groupDirectory.resolve(
-                    worker.getKey() + ".json"
+        Set<String> allWorkerIds = new HashSet<>();
+        for (FileContract contract : CONTRACTS) {
+            Path groupDirectory = scenarioWorkerLabRoot.resolve(
+                    contract.workerGroupId()
             );
-            Map<String, Object> state = Jsons.parseObject(
-                    Files.readString(stateFile, StandardCharsets.UTF_8)
-            );
-            if (!(state.get("schemaVersion") instanceof Long)
-                    || ((Long) state.get("schemaVersion")) != 1L
-                    || !worker.getValue().equals(state.get("workerId"))) {
+            List<Path> workerFiles;
+            try (var files = Files.list(groupDirectory)) {
+                workerFiles = files
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString()
+                                .endsWith(".json"))
+                        .sorted()
+                        .toList();
+            }
+            if (workerFiles.size() != 10) {
                 throw invalid(
-                        stateFile
-                                + " does not persist the verified Worker ID"
+                        contract.workerGroupId()
+                                + " must contain 10 persistent Worker files"
                 );
             }
+            Set<String> groupWorkerIds = new HashSet<>();
+            for (Path workerFile : workerFiles) {
+                Map<String, Object> state = Jsons.parseObject(
+                        Files.readString(
+                                workerFile,
+                                StandardCharsets.UTF_8
+                        )
+                );
+                Object schemaVersion = state.get("schemaVersion");
+                if (!(schemaVersion instanceof Number)
+                        || ((Number) schemaVersion).intValue() != 1) {
+                    throw invalid(
+                            workerFile + " has an invalid schemaVersion"
+                    );
+                }
+                String workerId = requireCanonicalWorkerId(
+                        state,
+                        workerFile.toString()
+                );
+                if (!groupWorkerIds.add(workerId)) {
+                    throw invalid(
+                            contract.workerGroupId()
+                                    + " contains duplicate Worker IDs"
+                    );
+                }
+                if (!allWorkerIds.add(workerId)) {
+                    throw invalid(
+                            "Worker IDs must be unique across WorkerGroups"
+                    );
+                }
+            }
+        }
+        if (allWorkerIds.size() != 20) {
+            throw invalid("expected 20 persistent Worker IDs");
         }
     }
 
     private static List<Map<String, Object>> readRows(Path path)
             throws IOException {
+        if (!Files.isRegularFile(path)) {
+            throw invalid("result file is missing: " + path);
+        }
         List<Map<String, Object>> rows = new ArrayList<>();
+        int lineNumber = 0;
         for (String line : Files.readAllLines(
                 path,
                 StandardCharsets.UTF_8
         )) {
-            if (!line.isBlank()) {
+            lineNumber++;
+            if (line.isBlank()) {
+                throw invalid(path + " contains a blank line " + lineNumber);
+            }
+            try {
                 rows.add(Jsons.parseObject(line));
+            } catch (RuntimeException error) {
+                throw invalid(
+                        path + " contains invalid JSON at line " + lineNumber,
+                        error
+                );
             }
         }
         return List.copyOf(rows);
     }
 
-    private static Set<String> expectedWorkerKeys(FileContract contract) {
-        Set<String> workerKeys = new HashSet<>();
-        for (int index = 1; index <= 10; index++) {
-            workerKeys.add(
-                    contract.workerKeyPrefix() + "%03d".formatted(index)
-            );
+    private static String requireString(
+            Map<String, Object> value,
+            String field,
+            String owner
+    ) {
+        Object raw = value.get(field);
+        if (!(raw instanceof String) || ((String) raw).isBlank()) {
+            throw invalid(owner + " has invalid " + field);
         }
-        return Set.copyOf(workerKeys);
+        return (String) raw;
     }
 
-    private static Map<WorkerEvent, Integer> expectedCombinations(
-            Set<String> workerKeys,
-            Set<String> eventCodes
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> requireObject(
+            Map<String, Object> value,
+            String field,
+            String owner
     ) {
-        Map<WorkerEvent, Integer> combinations = new HashMap<>();
-        for (String workerKey : workerKeys) {
-            for (String eventCode : eventCodes) {
-                combinations.put(
-                        new WorkerEvent(workerKey, eventCode),
-                        1
-                );
-            }
+        Object raw = value.get(field);
+        if (!(raw instanceof Map<?, ?>)) {
+            throw invalid(owner + " has invalid " + field);
         }
-        return Map.copyOf(combinations);
+        return (Map<String, Object>) raw;
     }
 
     private static String requireCanonicalWorkerId(
-            Map<String, Object> row,
-            String filename
+            Map<String, Object> state,
+            String owner
     ) {
-        String workerId = requireString(row, "workerId", filename);
+        String workerId = requireString(state, "workerId", owner);
         try {
             if (!UUID.fromString(workerId).toString().equals(workerId)) {
-                throw invalid(
-                        filename + " contains non-canonical Worker ID"
-                );
+                throw invalid(owner + " has a non-canonical workerId");
             }
         } catch (IllegalArgumentException error) {
-            throw invalid(
-                    filename + " contains invalid Worker ID " + workerId,
-                    error
-            );
+            throw invalid(owner + " has an invalid workerId", error);
         }
         return workerId;
-    }
-
-    private static String requireString(
-            Map<String, Object> row,
-            String field,
-            String filename
-    ) {
-        Object value = row.get(field);
-        if (!(value instanceof String text) || text.isBlank()) {
-            throw invalid(
-                    filename + " contains invalid field " + field
-            );
-        }
-        return text;
     }
 
     private static IllegalStateException invalid(String message) {
@@ -302,20 +312,13 @@ final class WorkerCapabilityScenarioVerifier {
     private record FileContract(
             String filename,
             String workerGroupId,
-            String workerKeyPrefix,
             Set<String> eventCodes
-    ) {
-    }
-
-    private record WorkerEvent(
-            String clientWorkerKey,
-            String eventCode
     ) {
     }
 
     private record FileProof(
             int resultCount,
-            Set<String> workerIds
+            Set<String> messageIds
     ) {
     }
 }

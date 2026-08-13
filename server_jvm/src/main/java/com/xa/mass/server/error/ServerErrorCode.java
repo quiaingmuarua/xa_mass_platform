@@ -43,7 +43,7 @@ public enum ServerErrorCode {
     ),
     TASK_RPC_CAPACITY_EXCEEDED(
             12004,
-            "Task RPC waiter capacity is exhausted"
+            "WorkerGroup RPC waiter capacity is exhausted"
     ),
     INVALID_WORKER_DELIVERY_REQUEST(
             13001,

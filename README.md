@@ -97,14 +97,14 @@ Real Redis and cross-process proofs use separate entrypoints:
 ./gradlew :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The Scenario command self-verifies 20 canonical Worker IDs against their
-persistent Lab files and all 60 targeted Worker/event combinations. See its
-owning README for process startup.
+The Scenario command separately self-verifies 20 persistent, globally unique
+Worker IDs and 60 successful WorkerGroup/event calls. RPC results are not
+attributed to a particular Worker. See its owning README for process startup.
 
 See
 [`integrations/android-websocket-worker/README.md`](integrations/android-websocket-worker/README.md)
-for the Android 13 device, `adb reverse`, dedicated Server profile, and
-Gradle-launched RPC proof.
+for the Android 13 device, `adb reverse`, shared `scenario-workers` profile,
+and Gradle-launched WorkerGroup RPC proof.
 
 See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and
 [`doc/README.md`](doc/README.md) for the retained historical method assets.

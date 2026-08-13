@@ -78,7 +78,7 @@ The public contract supports exactly two Task types:
 | Task type | Rule owner | Worker acquisition | Candidate cache |
 | --- | --- | --- | --- |
 | `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled |
-| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden |
+| `ITEM_DRIVEN` | TaskItem | `DIRECT` | forbidden |
 
 This table is the canonical external TaskType contract. The rule-shape
 constraints are:
@@ -90,7 +90,8 @@ TASK_DRIVEN
 
 ITEM_DRIVEN
   TaskDescriptor.allocationRule is null
-  every appended TaskItem carries a non-empty allocationRule
+  every appended TaskItem carries an allocationRule object
+  an empty object means no Worker restriction within the Task WorkerGroup
 ```
 
 Callers do not choose rule owner, cache participation, warmer participation, or
@@ -122,7 +123,7 @@ TASK_DRIVEN
   precomputation and cache amortize repeated Worker-selection cost
 
 ITEM_DRIVEN
-  every Item owns its complete bounded Worker target rule
+  every Item owns its complete Worker rule; an empty object is unrestricted
   Item rules may all be equal or may differ
   Worker selection is paid only when that Item is actually dispatched
 ```
@@ -293,13 +294,14 @@ multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
 The public Java TaskData ingress treats an `ITEM_DRIVEN` allocation rule as an
-opaque, non-empty JSON-compatible map. It does not compile operators or require
-a particular candidate-source shape. The Python TARGETED acquirer currently
-derives request-local candidates from bounded `workerId $eq/$equal/$in`; rules
-that cannot provide that source fail closed during scheduling. The remaining
-`worker.*`, `platform.*`, and explicit `index.*` conditions form the complete
-rule. Each `index.*` condition point-loads its configured projection only for
-known Worker IDs. Indexes do not discover candidates or execute operators.
+opaque JSON-compatible map. It does not compile operators. `{}` uses one
+bounded due-HOT Worker Score query within the Task's WorkerGroup; exact score
+CAS chooses at most the requested count. A non-empty rule currently derives
+request-local candidates only from bounded `workerId $eq/$equal/$in`; a
+non-empty rule without that source fails closed. The remaining `worker.*`,
+`platform.*`, and explicit `index.*` conditions form the complete rule.
+Descriptor and `index.*` data are point-loaded only for the bounded candidate
+IDs. They do not discover candidates or execute operators.
 TaskRuntime owns canonical persistence, while the matcher owns DSL syntax and
 evaluation.
 
@@ -368,7 +370,7 @@ Task dispatch:
 ```text
 due record-backed Items
   -> TASK_DRIVEN: PRECOMPUTED request using Task rule
-  -> ITEM_DRIVEN: messageId-local TARGETED requests
+  -> ITEM_DRIVEN: messageId-local DIRECT requests
   -> exact claim only after CandidateId-correlated acquisition results
 ```
 
@@ -392,7 +394,7 @@ maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
 emptyCloseAtMillis is a resolved non-negative absolute millisecond value
 TASK_DRIVEN forbids TaskItem allocationRule
-ITEM_DRIVEN requires a non-empty valid TaskItem allocationRule
+ITEM_DRIVEN requires a valid TaskItem allocationRule object; `{}` is unrestricted
 ```
 
 WorkerGroup existence is a cross-owner command/admission check. The Task

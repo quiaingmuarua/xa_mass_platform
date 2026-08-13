@@ -45,7 +45,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
                 strategy.value
                 for strategy in WorkerCandidateAcquisitionStrategy
             ),
-            ("PRECOMPUTED", "TARGETED"),
+            ("PRECOMPUTED", "DIRECT"),
         )
         self.assertEqual(
             set(
@@ -97,7 +97,58 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             WorkerCandidateRequest(0, 1, None)  # type: ignore[arg-type]
 
-    def test_targeted_uses_worker_id_candidates_then_full_match(self) -> None:
+    def test_direct_empty_rules_share_one_bounded_hot_score_query(self) -> None:
+        self.score.acquire_hot_acquire_candidates.return_value = {
+            "worker-1": 101,
+            "worker-2": 102,
+        }
+        self.score.acquire_observed_hot_score_leases.return_value = {
+            "worker-1": WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                score=201,
+            ),
+            "worker-2": WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                score=202,
+            ),
+        }
+        expected = {
+            "item-1": (self.entry("worker-1", 201),),
+            "item-2": (self.entry("worker-2", 202),),
+        }
+        self.matcher.match_explicit_worker_candidates.return_value = expected
+
+        actual = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
+            worker_group_id="group-1",
+            candidate_requests={
+                "item-2": WorkerCandidateRequest(20, 1, {}),
+                "item-1": WorkerCandidateRequest(10, 1, {}),
+            },
+            lease_until_millis=5000,
+        )
+
+        self.assertEqual(actual, expected)
+        self.score.acquire_hot_acquire_candidates.assert_called_once_with(
+            home_bucket_id="group-1",
+            limit=25,
+        )
+        self.score.observe_due_hot_scores.assert_not_called()
+        self.matcher.filter_candidate_worker_ids.assert_not_called()
+        self.score.acquire_observed_hot_score_leases.assert_called_once_with(
+            home_bucket_id="group-1",
+            observed_scores={"worker-1": 101, "worker-2": 102},
+            target_time_millis=5000,
+        )
+        self.assertEqual(
+            self.matcher.match_explicit_worker_candidates.call_args.kwargs[
+                "candidate_worker_ids"
+            ],
+            {"item-1": ("worker-1",), "item-2": ("worker-2",)},
+        )
+        self.cache.consume_candidate_workers.assert_not_called()
+
+    def test_direct_uses_worker_id_candidates_then_full_match(self) -> None:
         rule = {
             "workerId": {"$in": ["worker-1", "worker-2", "worker-1"]},
             "index.worker.region": {"$eq": "cn-east"},
@@ -127,7 +178,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.matcher.match_explicit_worker_candidates.return_value = expected
 
         actual = self.acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id="group-1",
             candidate_requests={"item-1": request},
             lease_until_millis=5000,
@@ -157,7 +208,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         )
         self.cache.consume_candidate_workers.assert_not_called()
 
-    def test_targeted_does_not_observe_or_lease_rule_mismatches(self) -> None:
+    def test_direct_does_not_observe_or_lease_rule_mismatches(self) -> None:
         self.matcher.filter_candidate_worker_ids.side_effect = None
         self.matcher.filter_candidate_worker_ids.return_value = {
             "item-1": ("worker-2",)
@@ -174,7 +225,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         }
 
         self.acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id="group-1",
             candidate_requests={
                 "item-1": WorkerCandidateRequest(
@@ -199,9 +250,9 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
             target_time_millis=5000,
         )
 
-    def test_targeted_without_worker_id_does_not_fallback_to_cache(self) -> None:
+    def test_direct_without_worker_id_does_not_fallback_to_cache(self) -> None:
         result = self.acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id="group-1",
             candidate_requests={
                 "item-1": WorkerCandidateRequest(
@@ -217,13 +268,13 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.cache.consume_candidate_workers.assert_not_called()
         self.score.observe_due_hot_scores.assert_not_called()
 
-    def test_targeted_worker_ids_are_not_truncated_by_hot_scan_limit(self) -> None:
+    def test_direct_worker_ids_are_not_truncated_by_hot_scan_limit(self) -> None:
         worker_ids = [f"worker-{index}" for index in range(30)]
         self.matcher.filter_candidate_worker_ids.side_effect = None
         self.matcher.filter_candidate_worker_ids.return_value = {"item-1": ()}
 
         self.acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id="group-1",
             candidate_requests={
                 "item-1": WorkerCandidateRequest(
@@ -243,7 +294,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         )
         self.score.observe_due_hot_scores.assert_not_called()
 
-    def test_targeted_applies_one_priority_ordered_unique_worker_budget(self) -> None:
+    def test_direct_applies_one_priority_ordered_unique_worker_budget(self) -> None:
         self.matcher.filter_candidate_worker_ids.side_effect = None
         self.matcher.filter_candidate_worker_ids.return_value = {
             "first": (),
@@ -253,7 +304,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         second_worker_ids = [f"worker-{index}" for index in range(50, 125)]
 
         self.acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id="group-1",
             candidate_requests={
                 "second": WorkerCandidateRequest(
@@ -284,14 +335,14 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         )
         self.score.observe_due_hot_scores.assert_not_called()
 
-    def test_targeted_rejects_unbounded_worker_id_candidates(self) -> None:
+    def test_direct_rejects_unbounded_worker_id_candidates(self) -> None:
         for worker_id_rule in (
             {"$in": []},
             {"$in": [f"worker-{index}" for index in range(101)]},
         ):
             with self.subTest(worker_id_rule=worker_id_rule):
                 result = self.acquirer.acquire_worker_candidates(
-                    strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+                    strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
                     worker_group_id="group-1",
                     candidate_requests={
                         "item-1": WorkerCandidateRequest(

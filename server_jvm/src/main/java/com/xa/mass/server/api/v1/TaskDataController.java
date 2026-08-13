@@ -4,10 +4,7 @@ import com.xa.mass.server.api.v1.model.TaskItemResultsLoadRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
-import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
-import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
 import com.xa.mass.server.taskdata.TaskDataService;
-import com.xa.mass.server.taskdata.TaskRpcCallService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +14,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.context.request.async.DeferredResult;
 
 @Validated
 @RestController
@@ -25,22 +21,9 @@ import org.springframework.web.context.request.async.DeferredResult;
 public class TaskDataController {
 
     private final TaskDataService taskData;
-    private final TaskRpcCallService taskRpc;
 
-    public TaskDataController(
-            TaskDataService taskData,
-            TaskRpcCallService taskRpc
-    ) {
+    public TaskDataController(TaskDataService taskData) {
         this.taskData = taskData;
-        this.taskRpc = taskRpc;
-    }
-
-    @PostMapping("/{taskId}/items:call")
-    public DeferredResult<ResponseEntity<TaskRpcCallResponse>> callTaskItem(
-            @PathVariable @NotBlank String taskId,
-            @Valid @RequestBody TaskRpcCallRequest request
-    ) {
-        return taskRpc.call(taskId, request);
     }
 
     @PostMapping("/{taskId}/items")

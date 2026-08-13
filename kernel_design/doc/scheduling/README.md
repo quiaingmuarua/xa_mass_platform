@@ -53,7 +53,7 @@ Task score acquire
   -> optional RUNNING candidate cache warming through HOT-pool acquisition
   -> Task Dispatch
      -> TaskItem observation
-     -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
+     -> Task-scoped PRECOMPUTED or Item-scoped DIRECT candidate acquisition
      -> TaskItem exact claim
      -> direct DeliveryCommand construction
      -> endpointManagerId-partitioned sparse DeliveryCommand mailbox
@@ -73,7 +73,7 @@ The public TaskType split is fixed:
 
 ```text
 TASK_DRIVEN = Task rule + PRECOMPUTED Worker acquisition + candidate cache
-ITEM_DRIVEN = TaskItem rule + TARGETED Worker acquisition + no candidate cache
+ITEM_DRIVEN = TaskItem rule + DIRECT Worker acquisition + no candidate cache
 ```
 
 Both TaskTypes use the same persisted empty-close threshold and bounded empty
@@ -165,11 +165,11 @@ Worker Delivery Dispatch
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, explicit reconciliation primitive, and one-WorkerId/one-slot invariant implemented | Recovery lifecycle evidence, probe cadence, and ranking |
+| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, explicit reconciliation primitive, and one-WorkerId/one-slot invariant implemented | Recovery lifecycle evidence, probe cadence, and ranking |
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with process-local first-seen Worker route verification caches, stateless bounded batch acquisition, fixed system-polling route, and Java 11 Worker Core Polling/WebSocket/Socket state machines | Authentication, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 

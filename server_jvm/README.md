@@ -66,7 +66,8 @@ Task data client
   -> Java owner Redis providers
   -> Python scheduling and ResultRouting
 
-Task RPC client
+WorkerGroup RPC client
+  -> resolve the profile-owned internal Task from the WorkerGroup path
   -> append through the same TaskDataService validation
   -> optional coalesced Task Dispatch wake command
   -> Server DeferredResult waiter
@@ -191,7 +192,7 @@ POST /api/v1/tasks
 POST /api/v1/tasks/{taskId}/approve
 POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
-POST /api/v1/tasks/{taskId}/items:call
+POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
@@ -242,13 +243,14 @@ WorkerGroup upsert and Worker Bind upsert use Java Redis owner providers. Task
 create/approve/close use Python HTTP owner/application providers. Item append
 and result load use Java Redis owner providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
-Item rule. For `ITEM_DRIVEN`, Java requires only a non-empty JSON-compatible
-rule and persists it opaquely. The Python matcher owns the evolving rule DSL.
-Its current TARGETED path derives a bounded request-local candidate set from
-`workerId $eq/$equal/$in`; additional `worker.*`, `platform.*`, and explicit
-`index.*` conditions are evaluated there. Each `index.*` field is loaded from
-its configured point projection only for those known Worker IDs. It is not a
-candidate-discovery or multi-index intersection contract.
+Item rule. For `ITEM_DRIVEN`, Java requires a JSON-compatible object and
+persists it opaquely; `{}` explicitly means no Worker restriction within the
+Task's WorkerGroup, while `null` remains invalid. The Python matcher owns the
+evolving rule DSL. Empty rules use one bounded due-HOT Worker Score query and
+exact score CAS. Rules with explicit `workerId $eq/$equal/$in` retain the
+bounded point path. Other non-empty rules cannot discover a Worker universe and
+fail closed. Descriptor and explicit `index.*` reads are bounded point reads
+for the already selected Worker IDs, never Group scans or index intersections.
 
 Every accepted Bind completely replaces `workerProperties`, preserves
 `platformProperties`, and leaves an existing score unchanged. The Server
@@ -328,7 +330,7 @@ available (`422`). `X-Request-Id` is retained in error responses. The default
 Server bind address is `127.0.0.1`; set `SERVER_ADDRESS` explicitly only when
 the deployment supplies its own access boundary.
 
-TaskItem RPC v1 accepts one existing `TaskItemRequest` plus an optional
+WorkerGroup RPC v1 accepts one existing `TaskItemRequest` plus an optional
 `waitTimeoutMillis` (30 seconds by default, 60 seconds maximum):
 
 ```json
@@ -337,20 +339,25 @@ TaskItem RPC v1 accepts one existing `TaskItemRequest` plus an optional
     "messageId": "call-1",
     "eventCode": "device.rpc",
     "createdAtMillis": 1,
-    "payload": {"method": "status"}
+    "payload": {"method": "status"},
+    "allocationRule": {}
   },
   "waitTimeoutMillis": 30000
 }
 ```
 
-The caller supplies the scheduling identity: a new logical call uses a new
+The `workerGroupId` exists only in the URL. The Server resolves the
+Profile-owned internal Task and sends the Item unchanged through the normal
+Task data path; neither the request Item nor response exposes that Task ID or a
+selected Worker. Unknown configured Groups return `404`. The caller supplies
+the scheduling identity: a new logical call uses a new
 `messageId`, while retrying the same logical call reuses its original
 `messageId`.
 
 A last-success payload observed in the wait window returns `200` with
-`status=succeeded`, `taskId`, `messageId`, and `opaqueResultPayload`.
-Otherwise the request returns `202` with `status=pending`, `taskId`, and
-`messageId`. Pending does not distinguish executing, retrying, Worker failure,
+`status=succeeded`, `messageId`, and `opaqueResultPayload`.
+Otherwise the request returns `202` with `status=pending` and `messageId`.
+Pending does not distinguish executing, retrying, Worker failure,
 FINAL_FAILED, or a delayed success. Callers use `results:load` for later reads.
 The batch `items` API never creates RPC waiters or aggregate completion state;
 batch callers poll `results:load` with their own messageIds.
@@ -537,9 +544,10 @@ xa:
 
 Both JSON values default to `{}`. The checked-in
 `scenario-workers` profile declares one WebSocket Adapter and three advisory
-Worker capability groups. It creates no Task and has no dependency on RPC,
-ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. The two
-JVM Scenario groups discover their replicas from the fixed local Lab root
+Worker capability groups. It creates or reuses one deterministic long-lived
+`ITEM_DRIVEN` RPC Task per configured Group. Those Tasks are internal
+coordinates: clients call the WorkerGroup route and never receive a Task ID.
+The two JVM Scenario groups discover their replicas from the fixed local Lab root
 `data/scenario-workers`; `worker-config-json` contains no Worker entries.
 The third catalog entry, `android-demo-workers`, is reserved for the external
 Android App and is deliberately absent from `worker-config-json`.
@@ -564,16 +572,19 @@ The `bootRun` task resolves the Lab to the repository-level
 it from the repository root so the same relative path is used.
 
 During startup the Server initializes WorkerGroup directory entries through the
-WorkerGroup owner, then starts configured Adapters, then invokes one aggregate
-`ScenarioWorkers` handle. Scenario preflights the configured Group directories,
+WorkerGroup owner, creates or validates and approves each Group's persistent
+RPC Task, starts configured Adapters, then invokes one aggregate
+`ScenarioWorkers` handle. An existing Task is reused only when its descriptor
+exactly matches the Profile contract; a conflict fails startup. Scenario
+preflights the configured Group directories,
 loads or registers each persistent Worker ID, binds it with its complete Worker
 Properties, starts every real WebSocket transport against the returned URI, and
 applies best-effort Index updates through the public Runtime Resource HTTP API.
 Aggregate start does not wait for initial Adapter verification. Adapter route
 verification only compares the persisted Endpoint Binding; successful
 verification is followed by process-local connection activation.
-Shutdown closes Scenario transports before Adapters;
-WorkerGroup directory entries are not rolled back or removed.
+Shutdown closes Scenario transports before Adapters. WorkerGroup directory
+entries and persistent RPC Tasks are not rolled back, closed, or removed.
 
 Every Worker owns one file named `{clientWorkerKey}.json` under its configured
 Group directory. It contains schema version 1, optional persisted `workerId`,
@@ -646,8 +657,8 @@ read timeout             5s
 Kernel Redis              redis://localhost:6379/15
 Kernel Redis prefix        default
 Adapter instances          none by default
-Task RPC wait              30s default / 60s maximum
-Task RPC waiter limit      10000
+WorkerGroup RPC wait       30s default / 60s maximum
+WorkerGroup RPC waiter limit 10000
 ```
 
 The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and
@@ -687,8 +698,10 @@ scheduling/ResultRouting, Java last-success query, and exact Worker release.
 The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
 The repository Scenario RPC lane starts this Server with the `scenario-workers`
-profile and proves Identity Register, Endpoint Bind, Adapter route validation,
-20 WebSocket Worker connections, and 60 targeted single-Item RPC results. This
+profile and proves 20 persistent, globally unique Worker identities plus
+Identity Register, Endpoint Bind, Adapter route validation, and 60 successful
+Group-scoped single-Item RPC results. Results are not attributed to a specific
+Worker. This
 cross-process proof complements rather than replaces the Server integration
 suite above.
 

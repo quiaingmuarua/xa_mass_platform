@@ -15,7 +15,7 @@ final class WorkerCapabilityInputs {
     static List<String> readDistinct(
             Path path,
             String label,
-            int minimumCount
+            int requiredCount
     ) throws IOException {
         LinkedHashSet<String> values = new LinkedHashSet<>();
         for (String line : Files.readAllLines(
@@ -27,11 +27,11 @@ final class WorkerCapabilityInputs {
                 values.add(value);
             }
         }
-        if (values.size() < minimumCount) {
+        if (values.size() < requiredCount) {
             throw new IllegalArgumentException(
                     label
                             + " must contain at least "
-                            + minimumCount
+                            + requiredCount
                             + " distinct values"
             );
         }
@@ -40,6 +40,6 @@ final class WorkerCapabilityInputs {
                     label + " accepts at most 1000 values"
             );
         }
-        return List.copyOf(values);
+        return values.stream().limit(requiredCount).toList();
     }
 }

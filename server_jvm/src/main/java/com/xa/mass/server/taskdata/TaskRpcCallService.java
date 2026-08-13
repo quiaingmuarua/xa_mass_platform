@@ -53,7 +53,6 @@ public final class TaskRpcCallService {
         if (existingResult != null) {
             deferred.setResult(ResponseEntity.ok(
                     TaskRpcCallResponse.succeeded(
-                            taskId,
                             messageId,
                             existingResult
                     )

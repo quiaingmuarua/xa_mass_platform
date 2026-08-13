@@ -194,20 +194,21 @@ Only the first dot separates domain from property name. An indexed field named
 `worker.region` and `index.worker.region` are independent conditions and never
 fall back to one another.
 
-### TARGETED
+### DIRECT
 
-TARGETED currently requires `workerId $eq/$equal/$in`. This identity condition
-produces the bounded, request-local Worker-id set. Other `worker.*` and
-`platform.*` conditions do not generate or filter candidates through indexes;
-they are evaluated by the complete matcher before score observation and again
-after an exact lease.
+For an empty rule, DIRECT uses one bounded due-HOT score query in the explicit
+WorkerGroup. For a non-empty rule, `workerId $eq/$equal/$in` produces the
+bounded request-local Worker-id set; without it, the rule fails closed. Other
+`worker.*` and `platform.*` conditions do not generate candidates through
+indexes. Explicit-ID rules are evaluated before score observation and every
+leased result is fully rematched.
 
-TARGETED does not use `CandidateWorkerCache`, scan Worker descriptors, compose
+DIRECT does not use `CandidateWorkerCache`, scan Worker descriptors, compose
 multiple indexes, or fall back to PRECOMPUTED acquisition. A future low-cost
 candidate source is a separate mechanism addition, not an expansion of the
 Property Index contract.
 
-One TARGETED acquisition round admits at most 100 unique WorkerIds across all
+One DIRECT acquisition round admits at most 100 unique WorkerIds across all
 Item candidates in `(priority, candidateId)` order. A WorkerId already admitted
 may be reused by a later Item without consuming the budget again. New ids after
 the budget is exhausted wait for a later round; they do not trigger a scan or
@@ -236,7 +237,7 @@ call; the log does not contain rule or property values.
 
 Rules currently contain only required conditions. Priority or preference
 terms are a future rule-model change and must not be simulated by unindexed
-TARGETED predicates.
+DIRECT predicates.
 
 ## Lifecycle Boundaries
 
@@ -271,7 +272,7 @@ milestones.
 - Do not use Properties or indexes as connectivity evidence.
 - Do not make index update failure roll back Worker upsert, Dispatch, or
   ResultRouting.
-- Do not scan descriptors to satisfy TARGETED rules.
+- Do not scan descriptors to satisfy DIRECT rules.
 - Do not infer physical truth from the latest accepted scheduling projection.
 - Do not put score, lease, connection, or Task assignment state in a Worker
   descriptor.
