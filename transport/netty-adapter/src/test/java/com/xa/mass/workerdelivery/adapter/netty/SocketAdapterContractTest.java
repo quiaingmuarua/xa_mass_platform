@@ -11,7 +11,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -465,7 +464,8 @@ class SocketAdapterContractTest {
         return (NettyWorkerDeliveryAdapter)
                 NettyWorkerDeliveryAdapters.socket(
                 "socket-1",
-                remoteApi.client,
+                remoteApi.server.baseUri(),
+                Duration.ofSeconds(2),
                 "127.0.0.1",
                 port,
                 List.of(
@@ -593,7 +593,6 @@ class SocketAdapterContractTest {
                 new CountDownLatch(1);
         private final CompletableFuture<Void> routeVerificationResponse;
         private final ScriptedHttpServer server;
-        private final WorkerDeliveryHttpClient client;
 
         private TestRemoteApi() {
             this(CompletableFuture.completedFuture(null));
@@ -605,7 +604,6 @@ class SocketAdapterContractTest {
             this.routeVerificationResponse = routeVerificationResponse;
             server = new ScriptedHttpServer(this::handle);
             httpServers.add(server);
-            client = server.client();
         }
 
         private Response handle(ScriptedHttpServer.Request request) {

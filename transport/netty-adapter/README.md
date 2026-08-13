@@ -10,7 +10,8 @@ Server base, Session, Bridge, or protocol-extension framework.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
-batch API through one shared, concrete `WorkerDeliveryHttpClient`.
+batch API through three owner-local Remote APIs backed by one Adapter-private
+`WorkerDeliveryHttpClient`.
 
 ## Instance Boundary
 
@@ -25,8 +26,8 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
-one `DeliveryCommandProcess` with its private Command `FiniteQueue` and HTTP contract
-one `DeliveryReportProcess` with its private Result `FiniteQueue` and HTTP contract
+one `DeliveryCommandProcess` with its private Command `FiniteQueue` and Command Remote API
+one `DeliveryReportProcess` with its private Result `FiniteQueue` and Report Remote API
 one `AdapterProcessManager` owning the finite Process set and its scheduler
 ```
 
@@ -51,8 +52,7 @@ These are internal owners, not a public SPI or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
-`WorkerDeliveryHttpClient`, `NettyAdapterProcessConfig`, and
-`NettyWorkerDeliveryAdapters`. Java types
+`NettyAdapterProcessConfig`, and `NettyWorkerDeliveryAdapters`. Java types
 under `netty.internal` are `public` only where repository packages must
 collaborate without JPMS; they are repository-internal and carry no external
 compatibility promise.
@@ -67,6 +67,8 @@ netty/internal/process/
   DeliveryCommandProcess, DeliveryReportProcess, and private FiniteQueues
 netty/internal/connection/
   pure Worker route truth + one shared Netty connection mechanism
+netty/internal/remote/
+  three owner-local Remote APIs + one Adapter-private mechanical HTTP client
 netty/internal/network/
   internal Server contract + complete WebSocket and Socket physical owners
 ```
@@ -74,20 +76,21 @@ netty/internal/network/
 Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
 contracts, and Server is guarded from importing them. The shared connection
-mechanism implements only the Command Process target port and receives only the
-Report Process acceptor plus the shared mechanical HTTP client. It owns the
-route-verification path, status interpretation, and failure classification. It sees normalized
+mechanism exposes a concrete `deliver(...)` owner operation and depends only
+on `WorkerRouteRemoteApi` plus the concrete `DeliveryReportProcess`. It sees normalized
 strings and Netty Channels as route addresses, but all physical write/close
 operations return through `NettyWorkerServer`; it does not see WebSocket
 frames, Socket lines, handshake types, listener resources, or Pipeline
 mutation.
 
-`WorkerDeliveryHttpClient` owns only the JDK HTTP client, base URI, request
-timeout, path encoding, and raw POST mechanics. It does not import Delivery
-DTOs, decode JSON, interpret HTTP status, or decide retry. The Command Process,
-Report Process, and connection mechanism each own their remote path, private
-HTTP codec where needed, status interpretation, and failure policy while
-sharing that one thread-safe HTTP resource.
+`DeliveryCommandRemoteApi`, `DeliveryReportRemoteApi`, and
+`WorkerRouteRemoteApi` own their specific path, wire JSON, expected HTTP status,
+and owner failure classification. `WorkerDeliveryHttpClient` is created once
+inside each Adapter and shared only by those three Remote APIs. It owns the JDK
+HTTP client, base URI, request timeout, headers, path encoding, raw request,
+and expected-status enforcement; it imports no Delivery DTO or owner HTTP
+codec. Processes and connection mechanism never see the Client, URL, status,
+or HTTP JSON contract.
 
 WebSocket and Socket keep complete, separately understandable physical Server
 implementations. A test-only parameterized `NettyWorkerServer` behavior
@@ -249,9 +252,10 @@ Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
 is dropped.
 
-Adapter-generated `COMMAND_EXPIRED` enters `DeliveryReportProcess` only through
-its acceptor port, exactly like a valid Result accepted by the connection
-mechanism. Neither caller sees the Result queue. `DeliveryReportProcess` runs
+Adapter-generated `COMMAND_EXPIRED` and valid Results accepted by the
+connection mechanism enter through the concrete
+`DeliveryReportProcess.ingress(...)` owner operation. Neither caller sees the
+Result queue. `DeliveryReportProcess` runs
 the remote ingress round at its configured `TASK_REPORT.interval`:
 
 ```text

@@ -14,7 +14,11 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.ScheduledAdapterProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -116,14 +120,21 @@ class NettyWorkerDeliveryAdapterProcessTest {
             Duration shutdownTimeout,
             List<ScheduledAdapterProcess> processes
     ) {
+        WorkerDeliveryHttpClient client = new WorkerDeliveryHttpClient(
+                http.baseUri(),
+                Duration.ofSeconds(2)
+        );
+        DeliveryReportProcess reports = new DeliveryReportProcess(
+                new DeliveryReportRemoteApi(client),
+                "adapter-1",
+                10
+        );
         WorkerConnectionMechanism connection = new WorkerConnectionMechanism(
                 new WorkerRouteRegistry(),
                 network,
-                http.client(),
+                new WorkerRouteRemoteApi(client),
                 new WorkerDeliveryCodec(),
-                reports -> com.xa.mass.workerdelivery.adapter.netty.internal
-                        .process.DeliveryReportProcess.ReportIngressStatus
-                        .ACCEPTED,
+                reports,
                 "adapter-1",
                 Duration.ofSeconds(1)
         );

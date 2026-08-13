@@ -1,11 +1,12 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -23,10 +24,9 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     );
 
     private final FiniteQueue<TargetedDeliveryCommand> commandQueue;
-    private final WorkerDeliveryHttpClient httpClient;
-    private final DeliveryCommandHttpContract httpContract;
-    private final Target target;
-    private final DeliveryReportProcess.Acceptor reportAcceptor;
+    private final DeliveryCommandRemoteApi remoteApi;
+    private final WorkerConnectionMechanism connectionMechanism;
+    private final DeliveryReportProcess reportProcess;
     private final WorkerDeliveryCodec codec;
     private final String adapterId;
     private final int commandConsumeLimit;
@@ -35,18 +35,18 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     private boolean closeFinished;
 
     public DeliveryCommandProcess(
-            WorkerDeliveryHttpClient httpClient,
-            Target target,
-            DeliveryReportProcess.Acceptor reportAcceptor,
+            DeliveryCommandRemoteApi remoteApi,
+            WorkerConnectionMechanism connectionMechanism,
+            DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
             int commandConsumeLimit,
             int queueCapacity
     ) {
         this(
-                httpClient,
-                target,
-                reportAcceptor,
+                remoteApi,
+                connectionMechanism,
+                reportProcess,
                 codec,
                 adapterId,
                 commandConsumeLimit,
@@ -56,26 +56,28 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     }
 
     DeliveryCommandProcess(
-            WorkerDeliveryHttpClient httpClient,
-            Target target,
-            DeliveryReportProcess.Acceptor reportAcceptor,
+            DeliveryCommandRemoteApi remoteApi,
+            WorkerConnectionMechanism connectionMechanism,
+            DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
             int commandConsumeLimit,
             int queueCapacity,
             LongSupplier nowMillis
     ) {
-        this.httpClient = Objects.requireNonNull(
-                httpClient,
-                "httpClient"
+        this.remoteApi = Objects.requireNonNull(
+                remoteApi,
+                "remoteApi"
         );
-        this.target = Objects.requireNonNull(target, "target");
-        this.reportAcceptor = Objects.requireNonNull(
-                reportAcceptor,
-                "reportAcceptor"
+        this.connectionMechanism = Objects.requireNonNull(
+                connectionMechanism,
+                "connectionMechanism"
+        );
+        this.reportProcess = Objects.requireNonNull(
+                reportProcess,
+                "reportProcess"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        httpContract = new DeliveryCommandHttpContract(codec);
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
@@ -120,7 +122,10 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 offerExpiredResult(queued);
                 continue;
             }
-            if (target.deliver(queued.workerId(), command) == RETRY_LATER) {
+            if (connectionMechanism.deliver(
+                    queued.workerId(),
+                    command
+            ) == RETRY_LATER) {
                 retryLater.add(queued);
             }
         }
@@ -187,29 +192,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     }
 
     private Map<String, DeliveryCommand> consumeRemoteCommands() {
-        String path = "/api/v1/worker-delivery/endpoint-managers/"
-                + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
-                + "/commands:consume";
-        var response = httpClient.postJson(
-                path,
-                httpContract.encodeConsumeRequest(commandConsumeLimit)
-        );
-        if (response.statusCode() != 200) {
-            WorkerDeliveryAdapterErrorCode errorCode =
-                    response.statusCode() >= 500
-                            ? WorkerDeliveryAdapterErrorCode
-                            .REMOTE_API_UNAVAILABLE
-                            : WorkerDeliveryAdapterErrorCode
-                            .REMOTE_API_PROTOCOL_ERROR;
-            throw new WorkerDeliveryAdapterException(
-                    errorCode,
-                    "deliveryCommand.consumeRemote",
-                    "Worker command consume failed with HTTP "
-                            + response.statusCode(),
-                    null
-            );
-        }
-        return httpContract.decodeConsumeResponse(response.body());
+        return remoteApi.consume(adapterId, commandConsumeLimit);
     }
 
     private void offerExpiredResult(TargetedDeliveryCommand queued) {
@@ -226,7 +209,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 ),
                 "null"
         );
-        if (reportAcceptor.ingress(List.of(
+        if (reportProcess.ingress(List.of(
                 codec.encodeDeliveryReport(rejection)
         )) != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
             LOGGER.log(
@@ -261,14 +244,4 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         );
     }
 
-    public interface Target {
-
-        DeliveryAttempt deliver(String workerId, DeliveryCommand command);
-    }
-
-    public enum DeliveryAttempt {
-        STARTED,
-        RETRY_LATER,
-        UNKNOWN
-    }
 }

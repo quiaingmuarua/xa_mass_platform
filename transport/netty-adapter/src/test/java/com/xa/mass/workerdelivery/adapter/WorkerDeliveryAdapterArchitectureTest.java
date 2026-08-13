@@ -15,9 +15,6 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path APPLICATION = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/application"
     );
-    private static final Path HTTP = SOURCE.resolve(
-            "com/xa/mass/workerdelivery/adapter/http"
-    );
     private static final Path NETTY = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/netty"
     );
@@ -26,6 +23,7 @@ class WorkerDeliveryAdapterArchitectureTest {
             "internal/connection"
     );
     private static final Path NETWORK = NETTY.resolve("internal/network");
+    private static final Path REMOTE = NETTY.resolve("internal/remote");
 
     @Test
     void moduleDependsOnlyOnTheWorkerProtocolBoundary()
@@ -56,7 +54,7 @@ class WorkerDeliveryAdapterArchitectureTest {
     @Test
     void adapterAggregateDependsOnOwnerContractsNotPhysicalImplementations()
             throws IOException {
-        String application = readSources(APPLICATION) + readSources(HTTP);
+        String application = readSources(APPLICATION);
         assertThat(application)
                 .contains("interface WorkerDeliveryAdapter")
                 .contains("final class WorkerDeliveryAdapterManager")
@@ -101,12 +99,23 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(connection)
                 .contains("WorkerRouteRegistry")
                 .contains("WorkerConnectionMechanism")
-                .contains("WorkerDeliveryHttpClient httpClient")
-                .contains("DeliveryReportProcess.Acceptor reportAcceptor")
+                .contains("WorkerRouteRemoteApi routeRemoteApi")
+                .contains("DeliveryReportProcess reportProcess")
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("CommandSource")
                 .doesNotContain("ResultIngress")
                 .doesNotContain("WorkerDeliveryGatewayClient")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("java.net.http")
+                .doesNotContain("java.net.URI")
+                .doesNotContain("statusCode")
+                .doesNotContain("commands:consume")
+                .doesNotContain("results:append")
+                .doesNotContain("verify-binding")
+                .doesNotContain("DeliveryCommandHttpContract")
+                .doesNotContain("DeliveryReportHttpContract")
+                .doesNotContain("interface Target")
+                .doesNotContain("interface Acceptor")
                 .doesNotContain("io.netty.bootstrap")
                 .doesNotContain("EventLoopGroup")
                 .doesNotContain("io.netty.handler.codec.http")
@@ -139,11 +148,26 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("record TargetedDeliveryCommand")
                 .contains("FiniteQueue<TargetedDeliveryCommand>")
                 .contains("FiniteQueue<String>")
+                .contains("DeliveryCommandRemoteApi remoteApi")
+                .contains("DeliveryReportRemoteApi remoteApi")
+                .contains("WorkerConnectionMechanism connectionMechanism")
+                .contains("DeliveryReportProcess reportProcess")
                 .doesNotContain("implements Runnable")
                 .doesNotContain("ProcessRegistry")
                 .doesNotContain("DeliveryCommandPump")
                 .doesNotContain("DeliveryReportPump")
                 .doesNotContain("BoundedDeliveryReportQueue")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("java.net.http")
+                .doesNotContain("java.net.URI")
+                .doesNotContain("statusCode")
+                .doesNotContain("commands:consume")
+                .doesNotContain("results:append")
+                .doesNotContain("verify-binding")
+                .doesNotContain("DeliveryCommandHttpContract")
+                .doesNotContain("DeliveryReportHttpContract")
+                .doesNotContain("interface Target")
+                .doesNotContain("interface Acceptor")
                 .doesNotContain("io.netty")
                 .doesNotContain("ServerBootstrap");
 
@@ -177,40 +201,98 @@ class WorkerDeliveryAdapterArchitectureTest {
         String connection = read(CONNECTION.resolve(
                 "WorkerConnectionMechanism.java"
         ));
-        String http = read(HTTP.resolve("WorkerDeliveryHttpClient.java"));
+        String commandRemote = read(REMOTE.resolve(
+                "DeliveryCommandRemoteApi.java"
+        ));
+        String reportRemote = read(REMOTE.resolve(
+                "DeliveryReportRemoteApi.java"
+        ));
+        String routeRemote = read(REMOTE.resolve(
+                "WorkerRouteRemoteApi.java"
+        ));
+        String http = read(REMOTE.resolve("WorkerDeliveryHttpClient.java"));
+        String factory = read(NETTY.resolve(
+                "NettyWorkerDeliveryAdapters.java"
+        ));
 
         assertThat(commands)
                 .contains("FiniteQueue<TargetedDeliveryCommand>")
-                .contains("WorkerDeliveryHttpClient httpClient")
-                .contains("DeliveryCommandHttpContract httpContract")
-                .contains("Target target")
-                .contains("DeliveryReportProcess.Acceptor reportAcceptor")
+                .contains("DeliveryCommandRemoteApi remoteApi")
+                .contains("WorkerConnectionMechanism connectionMechanism")
+                .contains("DeliveryReportProcess reportProcess")
+                .contains("connectionMechanism.deliver(")
+                .contains("reportProcess.ingress(")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("DeliveryCommandHttpContract")
+                .doesNotContain("interface Target")
+                .doesNotContain("interface Acceptor")
                 .doesNotContain("FiniteQueue<String>")
                 .doesNotContain("DeliveryReportHttpContract");
         assertThat(reports)
                 .contains("FiniteQueue<String>")
-                .contains("WorkerDeliveryHttpClient httpClient")
-                .contains("DeliveryReportHttpContract httpContract")
+                .contains("DeliveryReportRemoteApi remoteApi")
+                .contains("remoteApi.append(adapterId, batch)")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("DeliveryReportHttpContract")
+                .doesNotContain("interface Acceptor")
                 .doesNotContain("TargetedDeliveryCommand")
                 .doesNotContain("DeliveryCommandHttpContract");
         assertThat(connection)
-                .contains("WorkerDeliveryHttpClient httpClient")
-                .contains("postEmptyAsync(path)")
+                .contains("WorkerRouteRemoteApi routeRemoteApi")
+                .contains("DeliveryReportProcess reportProcess")
+                .contains("routeRemoteApi.verify(adapterId, workerId)")
+                .contains("reportProcess.ingress(")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("postEmptyAsync(")
                 .doesNotContain("DeliveryCommandHttpContract")
-                .doesNotContain("DeliveryReportHttpContract");
+                .doesNotContain("DeliveryReportHttpContract")
+                .doesNotContain("interface Target")
+                .doesNotContain("interface Acceptor");
+        assertThat(commandRemote)
+                .contains("DeliveryCommandHttpContract httpContract")
+                .contains("commands:consume")
+                .contains("httpClient.postJson(")
+                .contains("200")
+                .contains("REMOTE_API_UNAVAILABLE")
+                .contains("REMOTE_API_PROTOCOL_ERROR");
+        assertThat(reportRemote)
+                .contains("DeliveryReportHttpContract httpContract")
+                .contains("results:append")
+                .contains("httpClient.postJson(")
+                .contains("202")
+                .contains("REMOTE_API_UNAVAILABLE")
+                .contains("REMOTE_API_PROTOCOL_ERROR");
+        assertThat(routeRemote)
+                .contains("verify-binding")
+                .contains("httpClient.postEmptyAsync(")
+                .contains("204")
+                .contains("WORKER_ROUTE_REJECTED")
+                .contains("REMOTE_API_UNAVAILABLE")
+                .contains("REMOTE_API_PROTOCOL_ERROR");
         assertThat(http)
                 .contains("private final HttpClient http")
                 .contains("postJson(")
                 .contains("postEmptyAsync(")
+                .contains("expectedStatus")
+                .contains("UnexpectedStatus")
+                .contains("RequestFailure")
                 .doesNotContain("DeliveryCommand")
                 .doesNotContain("DeliveryReport")
                 .doesNotContain("WorkerDeliveryCodec")
                 .doesNotContain("acceptedCount")
                 .doesNotContain("verify-binding");
+        assertThat(factory)
+                .contains("URI remoteApiBaseUrl")
+                .contains("Duration remoteRequestTimeout")
+                .contains("new WorkerDeliveryHttpClient(")
+                .contains("new DeliveryCommandRemoteApi(httpClient, codec)")
+                .contains("new DeliveryReportRemoteApi(httpClient)")
+                .contains("new WorkerRouteRemoteApi(httpClient)")
+                .doesNotContain("WorkerDeliveryHttpClient httpClient,");
         assertThat(Files.exists(APPLICATION.resolve(
                 "WorkerDeliveryGatewayClient.java"
         ))).isFalse();
-        assertThat(Files.exists(HTTP.resolve(
+        assertThat(Files.exists(REMOTE.resolve(
                 "HttpWorkerDeliveryGatewayClient.java"
         ))).isFalse();
     }

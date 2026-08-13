@@ -2,12 +2,10 @@ package com.xa.mass.workerdelivery.adapter.support;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -40,16 +38,9 @@ public final class ScriptedHttpServer implements AutoCloseable {
         server.start();
     }
 
-    public WorkerDeliveryHttpClient client() {
-        return client(Duration.ofSeconds(2));
-    }
-
-    public WorkerDeliveryHttpClient client(Duration timeout) {
-        return new WorkerDeliveryHttpClient(
-                URI.create(
-                        "http://127.0.0.1:" + server.getAddress().getPort()
-                ),
-                timeout
+    public URI baseUri() {
+        return URI.create(
+                "http://127.0.0.1:" + server.getAddress().getPort()
         );
     }
 

@@ -11,13 +11,11 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -29,7 +27,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 
 /**
  * Shared Netty connection mechanism for one Adapter instance.
@@ -40,8 +37,7 @@ import java.util.concurrent.CompletionStage;
  */
 @ChannelHandler.Sharable
 public final class WorkerConnectionMechanism
-        extends SimpleChannelInboundHandler<String>
-        implements DeliveryCommandProcess.Target {
+        extends SimpleChannelInboundHandler<String> {
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionMechanism.class.getName()
@@ -49,18 +45,18 @@ public final class WorkerConnectionMechanism
 
     private final WorkerRouteRegistry routes;
     private final NettyWorkerServer networkServer;
-    private final WorkerDeliveryHttpClient httpClient;
+    private final WorkerRouteRemoteApi routeRemoteApi;
     private final WorkerDeliveryCodec codec;
-    private final DeliveryReportProcess.Acceptor reportAcceptor;
+    private final DeliveryReportProcess reportProcess;
     private final String adapterId;
     private final Duration sendTimeLimit;
 
     public WorkerConnectionMechanism(
             WorkerRouteRegistry routes,
             NettyWorkerServer networkServer,
-            WorkerDeliveryHttpClient httpClient,
+            WorkerRouteRemoteApi routeRemoteApi,
             WorkerDeliveryCodec codec,
-            DeliveryReportProcess.Acceptor reportAcceptor,
+            DeliveryReportProcess reportProcess,
             String adapterId,
             Duration sendTimeLimit
     ) {
@@ -69,14 +65,14 @@ public final class WorkerConnectionMechanism
                 networkServer,
                 "networkServer"
         );
-        this.httpClient = Objects.requireNonNull(
-                httpClient,
-                "httpClient"
+        this.routeRemoteApi = Objects.requireNonNull(
+                routeRemoteApi,
+                "routeRemoteApi"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.reportAcceptor = Objects.requireNonNull(
-                reportAcceptor,
-                "reportAcceptor"
+        this.reportProcess = Objects.requireNonNull(
+                reportProcess,
+                "reportProcess"
         );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
@@ -127,7 +123,6 @@ public final class WorkerConnectionMechanism
         );
     }
 
-    @Override
     public DeliveryAttempt deliver(
             String workerId,
             DeliveryCommand command
@@ -228,49 +223,20 @@ public final class WorkerConnectionMechanism
             ChannelHandlerContext context,
             String workerId
     ) {
-        CompletionStage<Void> verification;
         try {
-            String path = "/api/v1/worker-delivery/endpoint-managers/"
-                    + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
-                    + "/workers/"
-                    + WorkerDeliveryHttpClient.encodePathSegment(workerId)
-                    + ":verify-binding";
-            verification = httpClient.postEmptyAsync(path)
-                    .thenApply(response -> {
-                        requireVerifiedRoute(response.statusCode());
-                        return null;
-                    });
+            routeRemoteApi.verify(adapterId, workerId)
+                    .whenComplete((ignored, failure) ->
+                            context.executor().execute(() ->
+                                    finishVerification(
+                                            context,
+                                            workerId,
+                                            failure
+                                    )
+                            )
+                    );
         } catch (RuntimeException error) {
             finishVerification(context, workerId, error);
-            return;
         }
-        verification.whenComplete((ignored, failure) ->
-                context.executor().execute(() ->
-                        finishVerification(context, workerId, failure)
-                )
-        );
-    }
-
-    private static void requireVerifiedRoute(int statusCode) {
-        if (statusCode == 204) {
-            return;
-        }
-        WorkerDeliveryAdapterErrorCode errorCode;
-        if (statusCode >= 400 && statusCode < 500) {
-            errorCode = WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED;
-        } else if (statusCode >= 500) {
-            errorCode = WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_UNAVAILABLE;
-        } else {
-            errorCode = WorkerDeliveryAdapterErrorCode
-                    .REMOTE_API_PROTOCOL_ERROR;
-        }
-        throw new WorkerDeliveryAdapterException(
-                errorCode,
-                "workerConnection.verifyRoute",
-                "Worker route verification failed with HTTP " + statusCode,
-                null
-        );
     }
 
     private void finishVerification(
@@ -347,7 +313,7 @@ public final class WorkerConnectionMechanism
             logDrop("dropWorkerOutcome", report);
             return;
         }
-        switch (reportAcceptor.ingress(List.of(encodedReport))) {
+        switch (reportProcess.ingress(List.of(encodedReport))) {
             case ACCEPTED -> {
             }
             case FULL -> closeCurrent(
@@ -458,5 +424,11 @@ public final class WorkerConnectionMechanism
             current = current.getCause();
         }
         return current;
+    }
+
+    public enum DeliveryAttempt {
+        STARTED,
+        RETRY_LATER,
+        UNKNOWN
     }
 }

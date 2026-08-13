@@ -7,7 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,10 +25,10 @@ class DeliveryReportProcessTest {
             peer.responses.add(new Response(503, "{}"));
             DeliveryReportProcess process = process(peer, 4);
 
-            assertThat(process.acceptor().ingress(List.of("report-1")))
+            assertThat(process.ingress(List.of("report-1")))
                     .isEqualTo(ACCEPTED);
             process.round();
-            assertThat(process.acceptor().ingress(List.of("report-2")))
+            assertThat(process.ingress(List.of("report-2")))
                     .isEqualTo(ACCEPTED);
             process.round();
             process.round();
@@ -44,9 +47,9 @@ class DeliveryReportProcessTest {
             peer.responses.add(new Response(400, "{}"));
             DeliveryReportProcess process = process(peer, 4);
 
-            process.acceptor().ingress(List.of("bad-report"));
+            process.ingress(List.of("bad-report"));
             process.round();
-            process.acceptor().ingress(List.of("next-report"));
+            process.ingress(List.of("next-report"));
             process.round();
 
             assertThat(peer.attempts).containsExactly(
@@ -65,9 +68,9 @@ class DeliveryReportProcessTest {
             ));
             DeliveryReportProcess process = process(peer, 4);
 
-            process.acceptor().ingress(List.of("bad-accounting"));
+            process.ingress(List.of("bad-accounting"));
             process.round();
-            process.acceptor().ingress(List.of("next-report"));
+            process.ingress(List.of("next-report"));
             process.round();
 
             assertThat(peer.attempts).containsExactly(
@@ -86,9 +89,9 @@ class DeliveryReportProcessTest {
             ));
             DeliveryReportProcess process = process(peer, 4);
 
-            process.acceptor().ingress(List.of("bad-count"));
+            process.ingress(List.of("bad-count"));
             process.round();
-            process.acceptor().ingress(List.of("next-report"));
+            process.ingress(List.of("next-report"));
             process.round();
 
             assertThat(peer.attempts).containsExactly(
@@ -103,9 +106,9 @@ class DeliveryReportProcessTest {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
 
-            assertThat(process.acceptor().ingress(List.of("one", "two")))
+            assertThat(process.ingress(List.of("one", "two")))
                     .isEqualTo(ACCEPTED);
-            assertThat(process.acceptor().ingress(List.of("three")))
+            assertThat(process.ingress(List.of("three")))
                     .isEqualTo(FULL);
         }
     }
@@ -114,10 +117,10 @@ class DeliveryReportProcessTest {
     void completedCloseRejectsLateReportsAndFlushesOnce() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
-            process.acceptor().ingress(List.of("report-1"));
+            process.ingress(List.of("report-1"));
 
             process.quiesce();
-            assertThat(process.acceptor().ingress(List.of("late")))
+            assertThat(process.ingress(List.of("late")))
                     .isEqualTo(CLOSED);
             process.finishAfterSchedulerStop();
             process.finishAfterSchedulerStop();
@@ -131,7 +134,10 @@ class DeliveryReportProcessTest {
             int capacity
     ) {
         return new DeliveryReportProcess(
-                peer.server.client(),
+                new DeliveryReportRemoteApi(new WorkerDeliveryHttpClient(
+                        peer.server.baseUri(),
+                        Duration.ofSeconds(2)
+                )),
                 "adapter-1",
                 capacity
         );

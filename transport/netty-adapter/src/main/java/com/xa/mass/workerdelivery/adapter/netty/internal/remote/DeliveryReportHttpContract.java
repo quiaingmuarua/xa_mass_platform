@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.process;
+package com.xa.mass.workerdelivery.adapter.netty.internal.remote;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -12,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Strict remote HTTP codec owned by DeliveryReportProcess. */
+/** Strict HTTP codec owned by the Report remote API. */
 final class DeliveryReportHttpContract {
 
     private static final String DECODE_OPERATION =

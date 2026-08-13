@@ -1,8 +1,8 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt.RETRY_LATER;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt.STARTED;
-import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.STARTED;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.FULL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
@@ -11,14 +11,28 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
+import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.embedded.EmbeddedChannel;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,104 +45,70 @@ class DeliveryCommandProcessTest {
 
     @Test
     void softCapacityAllowsOneRemoteBatchOfRedundancy() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.batches.add(commands("worker-1", "worker-2"));
-            peer.batches.add(commands("worker-3", "worker-4"));
-            peer.batches.add(commands("worker-5"));
-            RecordingTarget target = new RecordingTarget(
-                    workerId -> RETRY_LATER
-            );
-            DeliveryCommandProcess process = process(
-                    peer,
-                    target,
-                    reports(ACCEPTED),
-                    2,
-                    3
-            );
+        try (Fixture fixture = new Fixture(2, 3, 10)) {
+            fixture.peer.batches.add(commands("worker-1", "worker-2"));
+            fixture.peer.batches.add(commands("worker-3", "worker-4"));
+            fixture.peer.batches.add(commands("worker-5"));
 
-            process.round();
-            process.round();
-            process.round();
+            fixture.process.round();
+            fixture.process.round();
+            fixture.process.round();
 
-            assertThat(peer.requestedLimits).containsExactly(2, 2);
-            assertThat(target.workerIds).hasSize(8);
+            assertThat(fixture.peer.requestedLimits).containsExactly(2, 2);
         }
     }
 
     @Test
     void remoteFailureDoesNotPreventQueuedCommandDelivery() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.batches.add(commands("worker-1"));
-            RecordingTarget target = new RecordingTarget(
-                    workerId -> RETRY_LATER
-            );
-            DeliveryCommandProcess process = process(
-                    peer,
-                    target,
-                    reports(ACCEPTED),
-                    1,
-                    2
-            );
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            fixture.peer.batches.add(commands("worker-1"));
+            fixture.process.round();
+            fixture.peer.failures = 1;
+            fixture.activate("worker-1");
 
-            process.round();
-            peer.failures = 1;
-            target.attempt = workerId -> STARTED;
-            process.round();
+            fixture.process.round();
 
-            assertThat(peer.requestedLimits).containsExactly(1, 1);
-            assertThat(target.workerIds)
-                    .containsExactly("worker-1", "worker-1");
+            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
+            assertThat(fixture.network.writtenWorkerIds)
+                    .containsExactly("worker-1");
         }
     }
 
     @Test
     void malformedRemoteResponseIsOwnerLocalAndDoesNotStopRounds() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.responseBodyOverride = "{\"unexpected\":true}";
-            DeliveryCommandProcess process = process(
-                    peer,
-                    new RecordingTarget(workerId -> STARTED),
-                    reports(ACCEPTED),
-                    1,
-                    2
-            );
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            fixture.peer.responseBodyOverride = "{\"unexpected\":true}";
 
-            process.round();
-            peer.responseBodyOverride = null;
-            peer.batches.add(commands("worker-1"));
-            process.round();
+            fixture.process.round();
+            fixture.peer.responseBodyOverride = null;
+            fixture.peer.batches.add(commands("worker-1"));
+            fixture.process.round();
 
-            assertThat(peer.requestedLimits).containsExactly(1, 1);
+            assertThat(fixture.peer.requestedLimits).containsExactly(1, 1);
         }
     }
 
     @Test
     void eachObservedCommandRunsOnceAndOnlyRetryLaterReturns() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.batches.add(commands(
+        try (Fixture fixture = new Fixture(3, 3, 10)) {
+            fixture.peer.batches.add(commands(
                     "worker-started",
                     "worker-unknown",
                     "worker-retry"
             ));
-            RecordingTarget target = new RecordingTarget(workerId -> switch (
-                    workerId
-            ) {
+            fixture.activate("worker-started");
+            fixture.activate("worker-unknown");
+            fixture.activate("worker-retry");
+            fixture.network.attempt = workerId -> switch (workerId) {
                 case "worker-started" -> STARTED;
                 case "worker-unknown" -> UNKNOWN;
                 default -> RETRY_LATER;
-            });
-            DeliveryCommandProcess process = process(
-                    peer,
-                    target,
-                    reports(ACCEPTED),
-                    3,
-                    3
-            );
+            };
 
-            process.round();
-            process.round();
+            fixture.process.round();
+            fixture.process.round();
 
-            assertThat(target.workerIds)
+            assertThat(fixture.network.writtenWorkerIds)
                     .containsOnlyOnce("worker-started", "worker-unknown")
                     .filteredOn("worker-retry"::equals)
                     .hasSize(2);
@@ -137,110 +117,66 @@ class DeliveryCommandProcessTest {
 
     @Test
     void expiredCommandCreatesBestEffortAdapterResult() {
-        try (CommandPeer peer = new CommandPeer()) {
+        try (Fixture fixture = new Fixture(1, 1, 2)) {
             DeliveryCommand expired = command(1_000, "expired-context");
-            peer.batches.add(Map.of("worker-1", expired));
-            RecordingReports reports = reports(ACCEPTED);
-            DeliveryCommandProcess process = process(
-                    peer,
-                    new RecordingTarget(workerId -> RETRY_LATER),
-                    reports,
-                    1,
-                    1
-            );
+            fixture.peer.batches.add(Map.of("worker-1", expired));
 
-            process.round();
+            fixture.process.round();
+            fixture.reportProcess.round();
 
-            assertThat(reports.batches).hasSize(1);
-            assertThat(CODEC.decodeDeliveryReport(
-                    reports.batches.get(0).get(0)
-            )).isEqualTo(DeliveryReport.fromCommand(
-                    expired,
-                    ADAPTER,
-                    "adapter-1",
-                    Integer.toString(
-                            WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED
-                                    .code()
-                    ),
-                    "null"
-            ));
+            assertThat(fixture.peer.appendedReports).singleElement()
+                    .satisfies(encoded -> assertThat(
+                            CODEC.decodeDeliveryReport(encoded)
+                    ).isEqualTo(DeliveryReport.fromCommand(
+                            expired,
+                            ADAPTER,
+                            "adapter-1",
+                            Integer.toString(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .COMMAND_EXPIRED.code()
+                            ),
+                            "null"
+                    )));
         }
     }
 
     @Test
     void rejectedExpiredResultDoesNotRetainTheCommand() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.batches.add(Map.of(
+        try (Fixture fixture = new Fixture(1, 1, 1)) {
+            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+                    .isEqualTo(ACCEPTED);
+            assertThat(fixture.reportProcess.ingress(List.of("full")))
+                    .isEqualTo(FULL);
+            fixture.peer.batches.add(Map.of(
                     "worker-1",
                     command(1_000, "expired-context")
             ));
-            RecordingTarget target = new RecordingTarget(
-                    workerId -> STARTED
-            );
-            DeliveryCommandProcess process = process(
-                    peer,
-                    target,
-                    reports(FULL),
-                    1,
-                    1
-            );
 
-            process.round();
-            process.round();
+            fixture.process.round();
+            fixture.reportProcess.round();
+            fixture.process.round();
+            fixture.reportProcess.round();
 
-            assertThat(target.workerIds).isEmpty();
+            assertThat(fixture.peer.appendedReports)
+                    .containsExactly("occupied");
         }
     }
 
     @Test
-    void quiescePreventsFurtherRemoteAndTargetWork() {
-        try (CommandPeer peer = new CommandPeer()) {
-            peer.batches.add(commands("worker-1"));
-            RecordingTarget target = new RecordingTarget(
-                    workerId -> RETRY_LATER
-            );
-            DeliveryCommandProcess process = process(
-                    peer,
-                    target,
-                    reports(ACCEPTED),
-                    1,
-                    2
-            );
-            process.round();
+    void quiescePreventsFurtherRemoteAndConnectionWork() {
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            fixture.peer.batches.add(commands("worker-1"));
+            fixture.process.round();
 
-            process.quiesce();
-            process.round();
-            process.finishAfterSchedulerStop();
-            process.finishAfterSchedulerStop();
+            fixture.process.quiesce();
+            fixture.activate("worker-1");
+            fixture.process.round();
+            fixture.process.finishAfterSchedulerStop();
+            fixture.process.finishAfterSchedulerStop();
 
-            assertThat(peer.requestedLimits).containsExactly(1);
-            assertThat(target.workerIds).containsExactly("worker-1");
+            assertThat(fixture.peer.requestedLimits).containsExactly(1);
+            assertThat(fixture.network.writtenWorkerIds).isEmpty();
         }
-    }
-
-    private static DeliveryCommandProcess process(
-            CommandPeer peer,
-            DeliveryCommandProcess.Target target,
-            DeliveryReportProcess.Acceptor reports,
-            int consumeLimit,
-            int capacity
-    ) {
-        return new DeliveryCommandProcess(
-                peer.server.client(),
-                target,
-                reports,
-                CODEC,
-                "adapter-1",
-                consumeLimit,
-                capacity,
-                () -> 1_000
-        );
-    }
-
-    private static RecordingReports reports(
-            DeliveryReportProcess.ReportIngressStatus status
-    ) {
-        return new RecordingReports(status);
     }
 
     private static Map<String, DeliveryCommand> commands(String... workerIds) {
@@ -262,11 +198,76 @@ class DeliveryCommandProcessTest {
         );
     }
 
-    private static final class CommandPeer implements AutoCloseable {
+    private static final class Fixture implements AutoCloseable {
+
+        private final RemotePeer peer = new RemotePeer();
+        private final WorkerDeliveryHttpClient httpClient =
+                new WorkerDeliveryHttpClient(
+                        peer.server.baseUri(),
+                        Duration.ofSeconds(2)
+                );
+        private final DeliveryReportProcess reportProcess;
+        private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
+        private final FakeNetworkServer network = new FakeNetworkServer();
+        private final WorkerConnectionMechanism connectionMechanism;
+        private final DeliveryCommandProcess process;
+        private final List<EmbeddedChannel> channels = new ArrayList<>();
+
+        private Fixture(
+                int consumeLimit,
+                int commandCapacity,
+                int reportCapacity
+        ) {
+            reportProcess = new DeliveryReportProcess(
+                    new DeliveryReportRemoteApi(httpClient),
+                    "adapter-1",
+                    reportCapacity
+            );
+            connectionMechanism = new WorkerConnectionMechanism(
+                    routes,
+                    network,
+                    new WorkerRouteRemoteApi(httpClient),
+                    CODEC,
+                    reportProcess,
+                    "adapter-1",
+                    Duration.ofSeconds(1)
+            );
+            process = new DeliveryCommandProcess(
+                    new DeliveryCommandRemoteApi(httpClient, CODEC),
+                    connectionMechanism,
+                    reportProcess,
+                    CODEC,
+                    "adapter-1",
+                    consumeLimit,
+                    commandCapacity,
+                    () -> 1_000
+            );
+        }
+
+        private void activate(String workerId) {
+            EmbeddedChannel channel = new EmbeddedChannel();
+            channels.add(channel);
+            network.workerIds.put(channel, workerId);
+            routes.admitIdentity(workerId, channel);
+            assertThat(routes.completeVerificationAndActivate(
+                    workerId,
+                    channel
+            ).accepted()).isTrue();
+        }
+
+        @Override
+        public void close() {
+            channels.forEach(EmbeddedChannel::finishAndReleaseAll);
+            peer.close();
+        }
+    }
+
+    private static final class RemotePeer implements AutoCloseable {
 
         private final ArrayDeque<Map<String, DeliveryCommand>> batches =
                 new ArrayDeque<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
+        private final List<String> appendedReports = new ArrayList<>();
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
@@ -276,28 +277,42 @@ class DeliveryCommandProcessTest {
         private synchronized Response handle(
                 ScriptedHttpServer.Request request
         ) {
-            assertThat(request.rawPath()).endsWith("/commands:consume");
-            Object limit = Jsons.parseObject(request.body()).get("limit");
-            requestedLimits.add(Math.toIntExact((Long) limit));
-            if (failures > 0) {
-                failures--;
-                return new Response(503, "{}");
+            if (request.rawPath().endsWith("/commands:consume")) {
+                Object limit = Jsons.parseObject(request.body()).get("limit");
+                requestedLimits.add(Math.toIntExact((Long) limit));
+                if (failures > 0) {
+                    failures--;
+                    return new Response(503, "{}");
+                }
+                if (responseBodyOverride != null) {
+                    return new Response(200, responseBodyOverride);
+                }
+                Map<String, DeliveryCommand> batch = batches.pollFirst();
+                Map<String, Object> encoded = new LinkedHashMap<>();
+                if (batch != null) {
+                    batch.forEach((workerId, command) -> encoded.put(
+                            workerId,
+                            Jsons.parseObject(CODEC.encodeDeliveryCommand(
+                                    command
+                            ))
+                    ));
+                }
+                return new Response(200, Jsons.toJson(Map.of(
+                        "workerCommandsByWorkerId", encoded
+                )));
             }
-            if (responseBodyOverride != null) {
-                return new Response(200, responseBodyOverride);
+            if (request.rawPath().endsWith("/results:append")) {
+                @SuppressWarnings("unchecked")
+                List<String> reports = (List<String>) Jsons.parseObject(
+                        request.body()
+                ).get("results");
+                appendedReports.addAll(reports);
+                return new Response(202, Jsons.toJson(Map.of(
+                        "acceptedCount", reports.size(),
+                        "rejectedCount", 0
+                )));
             }
-            Map<String, DeliveryCommand> batch = batches.pollFirst();
-            Map<String, Object> encoded = new LinkedHashMap<>();
-            if (batch != null) {
-                batch.forEach((workerId, command) -> encoded.put(
-                        workerId,
-                        Jsons.parseObject(CODEC.encodeDeliveryCommand(command))
-                ));
-            }
-            return new Response(200, Jsons.toJson(Map.of(
-                    "workerCommandsByWorkerId",
-                    encoded
-            )));
+            return new Response(204, "");
         }
 
         @Override
@@ -306,48 +321,45 @@ class DeliveryCommandProcessTest {
         }
     }
 
-    private static final class RecordingTarget
-            implements DeliveryCommandProcess.Target {
+    private static final class FakeNetworkServer
+            implements NettyWorkerServer {
 
-        private final List<String> workerIds = new ArrayList<>();
-        private Function<String, DeliveryCommandProcess.DeliveryAttempt>
-                attempt;
+        private final Map<Channel, String> workerIds =
+                new IdentityHashMap<>();
+        private final List<String> writtenWorkerIds = new ArrayList<>();
+        private Function<String, TextWriteAttempt> attempt =
+                workerId -> STARTED;
 
-        private RecordingTarget(
-                Function<String, DeliveryCommandProcess.DeliveryAttempt>
-                        attempt
-        ) {
-            this.attempt = attempt;
+        @Override
+        public void start(ChannelHandler sharedConnectionHandler) {
         }
 
         @Override
-        public DeliveryCommandProcess.DeliveryAttempt deliver(
-                String workerId,
-                DeliveryCommand command
-        ) {
-            workerIds.add(workerId);
+        public TextWriteAttempt writeText(Channel channel, String message) {
+            String workerId = workerIds.get(channel);
+            writtenWorkerIds.add(workerId);
             return attempt.apply(workerId);
         }
-    }
 
-    private static final class RecordingReports
-            implements DeliveryReportProcess.Acceptor {
-
-        private final List<List<String>> batches = new ArrayList<>();
-        private final DeliveryReportProcess.ReportIngressStatus status;
-
-        private RecordingReports(
-                DeliveryReportProcess.ReportIngressStatus status
+        @Override
+        public void writeTextAndClose(
+                Channel channel,
+                String message,
+                AdapterConnectionCloseReason reason
         ) {
-            this.status = status;
+            channel.close();
         }
 
         @Override
-        public DeliveryReportProcess.ReportIngressStatus ingress(
-                List<String> encodedReports
+        public void closeConnection(
+                Channel channel,
+                AdapterConnectionCloseReason reason
         ) {
-            batches.add(List.copyOf(encodedReports));
-            return status;
+            channel.close();
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

@@ -158,7 +158,7 @@ kernel_jvm delivery contracts/providers
 transport/netty-adapter
   finite Adapter construction factory, one package-private scheduling
   mechanism per isolated instance, one Netty resource-lifecycle owner per
-  instance, finite WebSocket/line-Socket framing protocols, mailbox pumps,
+  instance, finite WebSocket/line-Socket framing protocols, scheduled Processes,
   child Channels, bound routes, and bounded non-blocking delivery
 ```
 
@@ -449,8 +449,8 @@ internally. A Java polling host calls the Server point API through its point
 Client. A Java WebSocket or Socket host connects to the selected Adapter
 listener. These libraries do not provide a CLI or own host-process lifetime.
 
-The default Server configuration defines only the shared Adapter HTTP client.
-It does not create or start any Adapter instance:
+The default Server configuration defines only Adapter Remote API connection
+defaults. It does not construct a Client or create/start any Adapter instance:
 
 ```yaml
 xa.mass.worker-delivery.adapter:
@@ -470,7 +470,8 @@ configuration, or environment variables. The instance map key is both
 `adapterId` and `endpointManagerId`; Workers only target the instance listener
 and do not declare that identity. Each configured instance starts an independent Netty listener
 during Server startup, after the HTTP server is bound and before the process
-reports ready, and calls the shared HTTP client `base-url`. A WebSocket Worker
+reports ready. Server passes `base-url + request-timeout` to the finite factory;
+each Adapter creates one private HTTP client behind its three Remote APIs. A WebSocket Worker
 connects to the instance's fixed WebSocket path; a Socket Worker connects to
 its TCP port. Both first send
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`

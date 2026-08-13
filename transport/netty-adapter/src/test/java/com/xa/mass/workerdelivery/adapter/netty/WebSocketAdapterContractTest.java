@@ -13,7 +13,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -339,7 +338,8 @@ class WebSocketAdapterContractTest {
         NettyWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 availablePort(),
-                remoteApi.client
+                remoteApi.server.baseUri(),
+                Duration.ofSeconds(30)
         );
         adapter.start();
         assertThat(remoteApi.consumeStarted.await(
@@ -620,12 +620,14 @@ class WebSocketAdapterContractTest {
     private static NettyWorkerDeliveryAdapter adapter(
             String adapterId,
             int port,
-            WorkerDeliveryHttpClient httpClient
+            URI remoteApiBaseUrl,
+            Duration remoteRequestTimeout
     ) {
         return (NettyWorkerDeliveryAdapter)
                 NettyWorkerDeliveryAdapters.webSocket(
                         adapterId,
-                        httpClient,
+                        remoteApiBaseUrl,
+                        remoteRequestTimeout,
                         "127.0.0.1",
                         port,
                         processConfigs(Duration.ofMillis(10), 1000),
@@ -644,7 +646,8 @@ class WebSocketAdapterContractTest {
         return (NettyWorkerDeliveryAdapter)
                 NettyWorkerDeliveryAdapters.webSocket(
                 adapterId,
-                remoteApi.client,
+                remoteApi.server.baseUri(),
+                Duration.ofSeconds(2),
                 "127.0.0.1",
                 port,
                 processConfigs(reportSubmitInterval, reportQueueCapacity),
@@ -804,7 +807,6 @@ class WebSocketAdapterContractTest {
                 new CountDownLatch(1);
         private final CompletableFuture<Void> routeVerificationResponse;
         private final ScriptedHttpServer server;
-        private final WorkerDeliveryHttpClient client;
 
         private TestRemoteApi() {
             this(CompletableFuture.completedFuture(null));
@@ -816,7 +818,6 @@ class WebSocketAdapterContractTest {
             this.routeVerificationResponse = routeVerificationResponse;
             server = new ScriptedHttpServer(this::handle);
             httpServers.add(server);
-            client = server.client();
         }
 
         private Response handle(ScriptedHttpServer.Request request) {
@@ -896,11 +897,9 @@ class WebSocketAdapterContractTest {
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
-        private final WorkerDeliveryHttpClient client;
 
         private BlockingRemoteApi() {
             httpServers.add(server);
-            client = server.client(Duration.ofSeconds(30));
         }
 
         private Response handle(ScriptedHttpServer.Request request)

@@ -5,7 +5,6 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiesceP
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
@@ -15,7 +14,12 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessM
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.ScheduledAdapterProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,7 +38,8 @@ public final class NettyWorkerDeliveryAdapters {
 
     public static WorkerDeliveryAdapter webSocket(
             String adapterId,
-            WorkerDeliveryHttpClient httpClient,
+            URI remoteApiBaseUrl,
+            Duration remoteRequestTimeout,
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
@@ -43,7 +48,8 @@ public final class NettyWorkerDeliveryAdapters {
     ) {
         validateCommon(
                 adapterId,
-                httpClient,
+                remoteApiBaseUrl,
+                remoteRequestTimeout,
                 listenHost,
                 listenPort,
                 processConfigs,
@@ -59,7 +65,8 @@ public final class NettyWorkerDeliveryAdapters {
                         shutdownTimeout
                 ),
                 adapterId,
-                httpClient,
+                remoteApiBaseUrl,
+                remoteRequestTimeout,
                 processConfigs,
                 sendTimeLimit,
                 shutdownTimeout
@@ -68,7 +75,8 @@ public final class NettyWorkerDeliveryAdapters {
 
     public static WorkerDeliveryAdapter socket(
             String adapterId,
-            WorkerDeliveryHttpClient httpClient,
+            URI remoteApiBaseUrl,
+            Duration remoteRequestTimeout,
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
@@ -77,7 +85,8 @@ public final class NettyWorkerDeliveryAdapters {
     ) {
         validateCommon(
                 adapterId,
-                httpClient,
+                remoteApiBaseUrl,
+                remoteRequestTimeout,
                 listenHost,
                 listenPort,
                 processConfigs,
@@ -93,7 +102,8 @@ public final class NettyWorkerDeliveryAdapters {
                         shutdownTimeout
                 ),
                 adapterId,
-                httpClient,
+                remoteApiBaseUrl,
+                remoteRequestTimeout,
                 processConfigs,
                 sendTimeLimit,
                 shutdownTimeout
@@ -103,7 +113,8 @@ public final class NettyWorkerDeliveryAdapters {
     private static WorkerDeliveryAdapter build(
             NettyWorkerServer networkServer,
             String adapterId,
-            WorkerDeliveryHttpClient httpClient,
+            URI remoteApiBaseUrl,
+            Duration remoteRequestTimeout,
             List<NettyAdapterProcessConfig> processConfigs,
             Duration sendTimeLimit,
             Duration shutdownTimeout
@@ -121,8 +132,18 @@ public final class NettyWorkerDeliveryAdapters {
         }
 
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        WorkerDeliveryHttpClient httpClient = new WorkerDeliveryHttpClient(
+                remoteApiBaseUrl,
+                remoteRequestTimeout
+        );
+        DeliveryCommandRemoteApi commandRemoteApi =
+                new DeliveryCommandRemoteApi(httpClient, codec);
+        DeliveryReportRemoteApi reportRemoteApi =
+                new DeliveryReportRemoteApi(httpClient);
+        WorkerRouteRemoteApi routeRemoteApi =
+                new WorkerRouteRemoteApi(httpClient);
         DeliveryReportProcess reportProcess = new DeliveryReportProcess(
-                httpClient,
+                reportRemoteApi,
                 adapterId,
                 Objects.requireNonNull(reportConfig, "reportConfig")
                         .queueCapacity()
@@ -132,16 +153,16 @@ public final class NettyWorkerDeliveryAdapters {
                 new WorkerConnectionMechanism(
                         routes,
                         networkServer,
-                        httpClient,
+                        routeRemoteApi,
                         codec,
-                        reportProcess.acceptor(),
+                        reportProcess,
                         adapterId,
                         sendTimeLimit
                 );
         DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
-                httpClient,
+                commandRemoteApi,
                 connectionMechanism,
-                reportProcess.acceptor(),
+                reportProcess,
                 codec,
                 adapterId,
                 Objects.requireNonNull(commandConfig, "commandConfig")
@@ -188,7 +209,8 @@ public final class NettyWorkerDeliveryAdapters {
 
     private static void validateCommon(
             String adapterId,
-            WorkerDeliveryHttpClient httpClient,
+            URI remoteApiBaseUrl,
+            Duration remoteRequestTimeout,
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
@@ -203,7 +225,8 @@ public final class NettyWorkerDeliveryAdapters {
                     "system-polling cannot own an active Adapter"
             );
         }
-        Objects.requireNonNull(httpClient, "httpClient");
+        Objects.requireNonNull(remoteApiBaseUrl, "remoteApiBaseUrl");
+        requirePositive(remoteRequestTimeout, "remoteRequestTimeout");
         if (listenHost == null || listenHost.isBlank()) {
             throw new IllegalArgumentException(
                     "listenHost must be non-blank"

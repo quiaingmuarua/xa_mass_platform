@@ -1,7 +1,5 @@
-package com.xa.mass.workerdelivery.adapter.http;
+package com.xa.mass.workerdelivery.adapter.netty.internal.remote;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -11,12 +9,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
-/** Thread-safe physical HTTP client shared by Adapter owner processes. */
+/** Physical HTTP transport shared by one Adapter's remote APIs. */
 public final class WorkerDeliveryHttpClient {
-
-    private static final String POST_OPERATION = "workerDeliveryHttp.post";
 
     private final HttpClient http;
     private final URI baseUrl;
@@ -46,11 +43,13 @@ public final class WorkerDeliveryHttpClient {
         this.requestTimeout = requireTimeout(requestTimeout);
     }
 
-    public HttpCallResult postJson(
+    String postJson(
             String relativePath,
-            String jsonBody
+            String jsonBody,
+            int expectedStatus
     ) {
         Objects.requireNonNull(jsonBody, "jsonBody");
+        int requiredStatus = requireExpectedStatus(expectedStatus);
         HttpRequest request = request(relativePath)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(
@@ -59,30 +58,34 @@ public final class WorkerDeliveryHttpClient {
                 ))
                 .build();
         try {
-            HttpResponse<String> response = http.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString(
-                            StandardCharsets.UTF_8
-                    )
-            );
-            return new HttpCallResult(
-                    response.statusCode(),
-                    response.body()
+            return requireStatus(
+                    http.send(
+                            request,
+                            HttpResponse.BodyHandlers.ofString(
+                                    StandardCharsets.UTF_8
+                            )
+                    ),
+                    requiredStatus
             );
         } catch (IOException error) {
-            throw unavailable("Worker Delivery HTTP request failed", error);
+            throw new RequestFailure(
+                    "Worker Delivery HTTP request failed",
+                    error
+            );
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            throw unavailable(
+            throw new RequestFailure(
                     "Worker Delivery HTTP request was interrupted",
                     error
             );
         }
     }
 
-    public CompletionStage<HttpCallResult> postEmptyAsync(
-            String relativePath
+    CompletionStage<Void> postEmptyAsync(
+            String relativePath,
+            int expectedStatus
     ) {
+        int requiredStatus = requireExpectedStatus(expectedStatus);
         HttpRequest request = request(relativePath)
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
@@ -91,19 +94,17 @@ public final class WorkerDeliveryHttpClient {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         ).handle((response, failure) -> {
             if (failure != null) {
-                throw unavailable(
+                throw new RequestFailure(
                         "Worker Delivery HTTP request failed",
-                        failure
+                        unwrap(failure)
                 );
             }
-            return new HttpCallResult(
-                    response.statusCode(),
-                    response.body()
-            );
+            requireStatus(response, requiredStatus);
+            return null;
         });
     }
 
-    public static String encodePathSegment(String value) {
+    static String encodePathSegment(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(
                     "path segment must be non-blank"
@@ -120,16 +121,23 @@ public final class WorkerDeliveryHttpClient {
         return HttpRequest.newBuilder(uri).timeout(requestTimeout);
     }
 
-    private static WorkerDeliveryAdapterException unavailable(
-            String message,
-            Throwable cause
+    private static String requireStatus(
+            HttpResponse<String> response,
+            int expectedStatus
     ) {
-        return new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
-                POST_OPERATION,
-                message,
-                cause
-        );
+        if (response.statusCode() != expectedStatus) {
+            throw new UnexpectedStatus(response.statusCode());
+        }
+        return response.body() == null ? "" : response.body();
+    }
+
+    private static int requireExpectedStatus(int value) {
+        if (value < 100 || value > 599) {
+            throw new IllegalArgumentException(
+                    "expectedStatus must be a valid HTTP status"
+            );
+        }
+        return value;
     }
 
     private static String requireRelativePath(String value) {
@@ -185,13 +193,33 @@ public final class WorkerDeliveryHttpClient {
         return value;
     }
 
-    public record HttpCallResult(
-            int statusCode,
-            String body
-    ) {
+    private static Throwable unwrap(Throwable failure) {
+        Throwable current = failure;
+        while (current instanceof CompletionException
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
 
-        public HttpCallResult {
-            body = body == null ? "" : body;
+    static final class UnexpectedStatus extends RuntimeException {
+
+        private final int statusCode;
+
+        UnexpectedStatus(int statusCode) {
+            super("Unexpected HTTP status " + statusCode);
+            this.statusCode = statusCode;
+        }
+
+        int statusCode() {
+            return statusCode;
+        }
+    }
+
+    static final class RequestFailure extends RuntimeException {
+
+        RequestFailure(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 }

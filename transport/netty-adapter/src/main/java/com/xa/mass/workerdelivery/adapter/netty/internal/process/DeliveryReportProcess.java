@@ -4,7 +4,7 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.FiniteQu
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
 import java.util.List;
 import java.util.Objects;
 
@@ -16,33 +16,26 @@ public final class DeliveryReportProcess implements AdapterProcess {
     );
 
     private final FiniteQueue<String> reportQueue;
-    private final WorkerDeliveryHttpClient httpClient;
-    private final DeliveryReportHttpContract httpContract =
-            new DeliveryReportHttpContract();
+    private final DeliveryReportRemoteApi remoteApi;
     private final String adapterId;
-    private final Acceptor acceptor = this::accept;
     private List<String> pendingBatch;
     private volatile boolean roundsStopped;
     private boolean closeFinished;
 
     public DeliveryReportProcess(
-            WorkerDeliveryHttpClient httpClient,
+            DeliveryReportRemoteApi remoteApi,
             String adapterId,
             int queueCapacity
     ) {
-        this.httpClient = Objects.requireNonNull(
-                httpClient,
-                "httpClient"
+        this.remoteApi = Objects.requireNonNull(
+                remoteApi,
+                "remoteApi"
         );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
         this.adapterId = adapterId;
         reportQueue = new FiniteQueue<>(queueCapacity);
-    }
-
-    public Acceptor acceptor() {
-        return acceptor;
     }
 
     @Override
@@ -84,7 +77,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
         closeFinished = true;
     }
 
-    private ReportIngressStatus accept(List<String> encodedReports) {
+    public ReportIngressStatus ingress(List<String> encodedReports) {
         return switch (reportQueue.ingress(encodedReports)) {
             case ACCEPTED -> ReportIngressStatus.ACCEPTED;
             case FULL -> ReportIngressStatus.FULL;
@@ -106,32 +99,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
 
     private SubmissionOutcome submit(List<String> batch) {
         try {
-            String path = "/api/v1/worker-delivery/endpoint-managers/"
-                    + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
-                    + "/results:append";
-            var response = httpClient.postJson(
-                    path,
-                    httpContract.encodeResultBatch(batch)
-            );
-            if (response.statusCode() != 202) {
-                WorkerDeliveryAdapterErrorCode errorCode =
-                        response.statusCode() >= 500
-                                ? WorkerDeliveryAdapterErrorCode
-                                .REMOTE_API_UNAVAILABLE
-                                : WorkerDeliveryAdapterErrorCode
-                                .REMOTE_API_PROTOCOL_ERROR;
-                throw new WorkerDeliveryAdapterException(
-                        errorCode,
-                        "deliveryReport.submitRemote",
-                        "DeliveryReport append failed with HTTP "
-                                + response.statusCode(),
-                        null
-                );
-            }
-            httpContract.requireCompleteResultResponse(
-                    response.body(),
-                    batch.size()
-            );
+            remoteApi.append(adapterId, batch);
             return SubmissionOutcome.SUCCESS;
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(error);
@@ -163,11 +131,6 @@ public final class DeliveryReportProcess implements AdapterProcess {
                 "Worker result submission failed",
                 error
         );
-    }
-
-    public interface Acceptor {
-
-        ReportIngressStatus ingress(List<String> encodedReports);
     }
 
     public enum ReportIngressStatus {

@@ -11,8 +11,12 @@ import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -22,6 +26,7 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.AfterEach;
@@ -70,6 +75,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.taskResult("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
+            fixture.reportProcess.round();
             assertThat(fixture.reports).isEmpty();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
@@ -158,6 +164,7 @@ class WorkerConnectionMechanismTest {
         try {
             replacement.writeInbound(fixture.identity("worker-1"));
             oldChannel.writeInbound(result);
+            fixture.reportProcess.round();
 
             assertThat(fixture.reports).containsExactly(result);
             assertThat(fixture.routes.activeChannel("worker-1"))
@@ -233,25 +240,43 @@ class WorkerConnectionMechanismTest {
         private final PendingRouteHttpPeer remoteApi =
                 new PendingRouteHttpPeer();
         private final List<String> reports = new ArrayList<>();
-        private final DeliveryReportProcess.Acceptor reportAcceptor = batch -> {
-            reports.addAll(batch);
-            return DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
-        };
+        private final ScriptedHttpServer reportServer = reportServer();
+        private final DeliveryReportProcess reportProcess =
+                new DeliveryReportProcess(
+                        new DeliveryReportRemoteApi(client(reportServer)),
+                        "adapter-1",
+                        10
+                );
         private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism mechanism =
                 new WorkerConnectionMechanism(
                         routes,
                         network,
-                        remoteApi.server.client(),
+                        new WorkerRouteRemoteApi(client(remoteApi.server)),
                         codec,
-                        reportAcceptor,
+                        reportProcess,
                         "adapter-1",
                         Duration.ofSeconds(1)
                 );
 
         private EmbeddedChannel channel() {
             return new EmbeddedChannel(mechanism);
+        }
+
+        private ScriptedHttpServer reportServer() {
+            ScriptedHttpServer server = new ScriptedHttpServer(request -> {
+                Map<String, Object> body = Jsons.parseObject(request.body());
+                @SuppressWarnings("unchecked")
+                List<String> batch = (List<String>) body.get("results");
+                reports.addAll(batch);
+                return new Response(202, Jsons.toJson(Map.of(
+                        "acceptedCount", batch.size(),
+                        "rejectedCount", 0
+                )));
+            });
+            httpServers.add(server);
+            return server;
         }
 
         private String taskResult(String workerId) {
@@ -277,6 +302,15 @@ class WorkerConnectionMechanismTest {
                     ""
             ));
         }
+    }
+
+    private static WorkerDeliveryHttpClient client(
+            ScriptedHttpServer server
+    ) {
+        return new WorkerDeliveryHttpClient(
+                server.baseUri(),
+                Duration.ofSeconds(2)
+        );
     }
 
     private final class PendingRouteHttpPeer {

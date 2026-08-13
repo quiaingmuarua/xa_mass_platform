@@ -47,8 +47,9 @@ Status: current repository handoff.
   phase-local quiescence, and reverse finishing; one `DeliveryCommandProcess` for
   Command consumption, delivery, and expiry; one `DeliveryReportProcess` for
   Result acceptance, pending-batch retry, and remote ingress; one private
-  soft-capacity `FiniteQueue` owned by each Process; one shared
-  concrete `WorkerDeliveryHttpClient` that owns only physical HTTP resources;
+  soft-capacity `FiniteQueue` owned by each Process; three owner-local Remote
+  APIs for Command consumption, Report ingress, and route verification; one
+  Adapter-private concrete HTTP client shared only by those Remote APIs;
   connection mechanism plus route Registry for identity, first verification,
   Command routing, and Result ingress; and one complete WebSocket or Socket
   physical Server for listener, EventLoop, every child Channel, full Pipeline,
@@ -57,8 +58,9 @@ Status: current repository handoff.
   operations. There is no public protocol SPI,
   abstract Adapter base, transport-kind runtime, shared mutable state, or fat
   connection Session. Cross-package Netty collaborators are classified under
-  `netty.internal.process`, `netty.internal.connection`, and
-  `netty.internal.network`; they are repository-internal even when Java
+  `netty.internal.process`, `netty.internal.connection`,
+  `netty.internal.remote`, and `netty.internal.network`; they are
+  repository-internal even when Java
   visibility must be public. Server may depend only on the finite factory.
   This three-owner production cut is frozen. WebSocket and Socket preserve
   complete physical ownership and are aligned by a test-only behavior contract,
@@ -176,16 +178,20 @@ tag.
   `List<ScheduledAdapterProcess>`, one same-lifetime scheduler, per-Process
   round isolation, phase-local quiescence, and reverse finish order. It stores
   no per-Process Future and exposes no individual Process stop operation.
-  `DeliveryCommandProcess` owns its one
-  private Command `FiniteQueue`, remote Command HTTP contract, delivery target,
-  expiry, and rotation. `DeliveryReportProcess` owns its one private Result
-  `FiniteQueue`, local acceptor, pending batch, and remote Result HTTP contract.
+  `DeliveryCommandProcess` owns its one private Command `FiniteQueue`, remote
+  Command acquisition, expiry, and rotation; it calls the concrete connection
+  and Report owners directly. `DeliveryReportProcess` owns its one private
+  Result `FiniteQueue`, explicit `ingress(...)` operation, pending batch, and
+  remote Result submission.
   `FiniteQueue` is thread-safe business-neutral Process infrastructure and is
-  never passed between owners. One concrete `WorkerDeliveryHttpClient` owns
-  only a shared JDK HTTP client, base URI, timeout, path encoding, and raw POST
-  mechanics. It imports no Delivery DTO or owner HTTP codec and interprets no
-  status. Command, Report, and connection owners each own their path, encoding,
-  status interpretation, and failure policy. One shared
+  never passed between owners. `DeliveryCommandRemoteApi`,
+  `DeliveryReportRemoteApi`, and `WorkerRouteRemoteApi` own their respective
+  paths, wire JSON, expected status, and failure classification. One
+  Adapter-private `WorkerDeliveryHttpClient` owns only JDK HTTP resources, base
+  URI, timeout, headers, path encoding, expected-status enforcement, and raw
+  request mechanics; it imports no Delivery DTO or owner HTTP codec. Process
+  and connection owners never receive that Client, a URL, an HTTP status, or
+  an HTTP JSON contract. One shared
   `WorkerConnectionMechanism` owns strict identity interpretation,
   first-seen route verification, Command routing, and Result ingress, while
   its `WorkerRouteRegistry` owns the verified worker-ID set,
@@ -193,9 +199,9 @@ tag.
   Channel-to-worker correlation. A complete `WebSocketNettyWorkerServer` or
   `SocketNettyWorkerServer` owns the listener, EventLoop, every child Channel,
   physical framing, writes, asynchronous write failure, and protocol close
-  mapping. The shared mechanism implements only the Command Process target and
-  receives only the Report Process acceptor plus the concrete HTTP client. It receives
-  normalized `String` values and may
+  mapping. The shared mechanism exposes concrete `deliver(...)`, depends only
+  on its route Remote API and concrete Report Process, and receives normalized
+  `String` values. It may
   retain `Channel` only as an address; it must return every physical write or
   close to the selected Server. Connection phase is derived from Registry
   truth rather than a phase enum, Session, or Pipeline Handler replacement.
@@ -424,8 +430,8 @@ scenario_workers_jvm
   -> one internal Manager Platform -> group-local shared network resources
 
 transport/netty-adapter
-  -> one concrete physical HTTP client shared as infrastructure
-  -> owner-local Command, Report, and route-verification HTTP contracts
+  -> one Adapter-private physical HTTP client shared only by three Remote APIs
+  -> owner-local Command, Report, and route-verification Remote APIs
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
   -> one Adapter lifecycle/scheduler aggregate per configured instance

@@ -627,7 +627,7 @@ no hidden compatibility path or second mainline remains
   - finite construction factory, one package-private Adapter mechanism per
     isolated instance, one shared identity/route/Result mechanism, one complete
     WebSocket or line-Socket physical Server, all-child Channel ownership,
-    bounded mailbox pumps, and Server batch HTTP client.
+    bounded Command/Report Processes, and three owner-local Server Remote APIs.
 - [Worker Core](../transport/worker-core/README.md)
   - Java 11 compatible Worker execution, event dispatch, and
     Polling/WebSocket/Socket protocol state machines shared by JVM and Android

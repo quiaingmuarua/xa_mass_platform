@@ -300,8 +300,12 @@ network shutdown sequencing, and an `AdapterProcessManager`. The Manager owns
 the finite scheduled Process list, its one same-lifetime scheduler, phase-local
 quiescence, round isolation, and reverse finish; the
 Command and Report Processes each own one private finite queue and their own
-remote HTTP contract. A concrete shared HTTP client owns only connection
-resources and raw request mechanics; it does not form another delivery owner.
+owner-local Remote API. The Command Remote owns command paths and wire
+decoding, the Report Remote owns result paths and wire validation, and the
+route Remote owns verification status classification. A concrete
+Adapter-private HTTP client is shared only by those three Remote APIs and owns
+connection resources plus raw request mechanics; it does not form another
+delivery owner and is never passed to a Process or connection mechanism.
 One common connection
 mechanism and pure Registry own identity, verification, route selection, and
 Result ingress; the concrete physical Server owns its listener, EventLoop,

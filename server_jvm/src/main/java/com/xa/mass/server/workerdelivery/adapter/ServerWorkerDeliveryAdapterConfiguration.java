@@ -2,7 +2,6 @@ package com.xa.mass.server.workerdelivery.adapter;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
-import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapters;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
@@ -46,19 +45,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     );
 
     @Bean
-    WorkerDeliveryHttpClient workerDeliveryHttpClient(
-            ServerWorkerDeliveryAdapterProperties properties
-    ) {
-        return new WorkerDeliveryHttpClient(
-                properties.httpClient().baseUrl(),
-                properties.httpClient().requestTimeout()
-        );
-    }
-
-    @Bean
     WorkerDeliveryAdapterManager workerDeliveryAdapterManager(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerDeliveryHttpClient httpClient,
             WorkerEndpointDirectory endpointDirectory
     ) {
         WorkerDeliveryAdapterManager manager =
@@ -67,8 +55,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 manager.register(createAdapter(
                         adapterId,
                         config,
-                        properties.httpClient().requestTimeout(),
-                        httpClient,
+                        properties.httpClient(),
                         endpointDirectory
                 ))
         );
@@ -78,8 +65,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     private static WorkerDeliveryAdapter createAdapter(
             String adapterId,
             JsonNode config,
-            Duration shutdownTimeout,
-            WorkerDeliveryHttpClient httpClient,
+            ServerWorkerDeliveryAdapterProperties.HttpClientProperties
+                    httpProperties,
             WorkerEndpointDirectory endpointDirectory
     ) {
         if (!(config instanceof ObjectNode object)) {
@@ -128,21 +115,23 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         return switch (type) {
             case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
-                    httpClient,
+                    httpProperties.baseUrl(),
+                    httpProperties.requestTimeout(),
                     listenHost,
                     listenPort,
                     processConfigs,
                     sendTimeLimit,
-                    shutdownTimeout
+                    httpProperties.requestTimeout()
             );
             case "SOCKET" -> NettyWorkerDeliveryAdapters.socket(
                     adapterId,
-                    httpClient,
+                    httpProperties.baseUrl(),
+                    httpProperties.requestTimeout(),
                     listenHost,
                     listenPort,
                     processConfigs,
                     sendTimeLimit,
-                    shutdownTimeout
+                    httpProperties.requestTimeout()
             );
             default -> throw invalid(adapterId, "unsupported adapter type");
         };

@@ -228,8 +228,11 @@ delivery, expiry, rotation, and one private `FiniteQueue`. One
 `DeliveryReportProcess` owns Result acceptance, pending-batch retry, remote
 ingress, and one separate private `FiniteQueue`. Queue storage never crosses a
 Process owner. One concrete HTTP client shares only JDK networking resources;
-the Command Process, Report Process, and connection mechanism each own their
-remote path, codec/status interpretation, and failure policy.
+three owner-local Remote APIs own the Command, Report, and route-verification
+paths, wire contracts, expected statuses, and failure policy. The Command
+Process, Report Process, and connection mechanism depend only on their matching
+Remote API and concrete neighboring owner operations; none receives the HTTP
+client, URL, status, or HTTP JSON contract.
 One shared connection mechanism plus pure route
 Registry owns identity, first verification, current route selection, and Result
 ingress. One complete WebSocket or line-Socket physical Server owns listener,
