@@ -11,7 +11,9 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -25,172 +27,206 @@ import org.junit.jupiter.api.Test;
 
 class DeliveryCommandProcessTest {
 
-    private static final WorkerDeliveryCodec CODEC =
-            new WorkerDeliveryCodec();
+    private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
-    void softCapacityAllowsOneSourceBatchOfRedundancy() {
-        FakeSource source = new FakeSource();
-        source.batches.add(commands("worker-1", "worker-2"));
-        source.batches.add(commands("worker-3", "worker-4"));
-        source.batches.add(commands("worker-5"));
-        RecordingTarget target = new RecordingTarget(workerId -> RETRY_LATER);
-        DeliveryCommandProcess process = process(
-                source,
-                target,
-                reports(ACCEPTED),
-                2,
-                3
-        );
+    void softCapacityAllowsOneRemoteBatchOfRedundancy() {
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.batches.add(commands("worker-1", "worker-2"));
+            peer.batches.add(commands("worker-3", "worker-4"));
+            peer.batches.add(commands("worker-5"));
+            RecordingTarget target = new RecordingTarget(
+                    workerId -> RETRY_LATER
+            );
+            DeliveryCommandProcess process = process(
+                    peer,
+                    target,
+                    reports(ACCEPTED),
+                    2,
+                    3
+            );
 
-        process.round();
-        process.round();
-        process.round();
+            process.round();
+            process.round();
+            process.round();
 
-        assertThat(source.requestedLimits).containsExactly(2, 2);
-        assertThat(target.workerIds).hasSize(8);
+            assertThat(peer.requestedLimits).containsExactly(2, 2);
+            assertThat(target.workerIds).hasSize(8);
+        }
     }
 
     @Test
-    void sourceFailureDoesNotPreventQueuedCommandDelivery() {
-        FakeSource source = new FakeSource();
-        source.batches.add(commands("worker-1"));
-        RecordingTarget target = new RecordingTarget(workerId -> RETRY_LATER);
-        DeliveryCommandProcess process = process(
-                source,
-                target,
-                reports(ACCEPTED),
-                1,
-                2
-        );
+    void remoteFailureDoesNotPreventQueuedCommandDelivery() {
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.batches.add(commands("worker-1"));
+            RecordingTarget target = new RecordingTarget(
+                    workerId -> RETRY_LATER
+            );
+            DeliveryCommandProcess process = process(
+                    peer,
+                    target,
+                    reports(ACCEPTED),
+                    1,
+                    2
+            );
 
-        process.round();
-        source.failures = 1;
-        target.attempt = workerId -> STARTED;
-        process.round();
+            process.round();
+            peer.failures = 1;
+            target.attempt = workerId -> STARTED;
+            process.round();
 
-        assertThat(source.requestedLimits).containsExactly(1, 1);
-        assertThat(target.workerIds).containsExactly("worker-1", "worker-1");
+            assertThat(peer.requestedLimits).containsExactly(1, 1);
+            assertThat(target.workerIds)
+                    .containsExactly("worker-1", "worker-1");
+        }
+    }
+
+    @Test
+    void malformedRemoteResponseIsOwnerLocalAndDoesNotStopRounds() {
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.responseBodyOverride = "{\"unexpected\":true}";
+            DeliveryCommandProcess process = process(
+                    peer,
+                    new RecordingTarget(workerId -> STARTED),
+                    reports(ACCEPTED),
+                    1,
+                    2
+            );
+
+            process.round();
+            peer.responseBodyOverride = null;
+            peer.batches.add(commands("worker-1"));
+            process.round();
+
+            assertThat(peer.requestedLimits).containsExactly(1, 1);
+        }
     }
 
     @Test
     void eachObservedCommandRunsOnceAndOnlyRetryLaterReturns() {
-        FakeSource source = new FakeSource();
-        source.batches.add(commands(
-                "worker-started",
-                "worker-unknown",
-                "worker-retry"
-        ));
-        RecordingTarget target = new RecordingTarget(workerId -> switch (
-                workerId
-        ) {
-            case "worker-started" -> STARTED;
-            case "worker-unknown" -> UNKNOWN;
-            default -> RETRY_LATER;
-        });
-        DeliveryCommandProcess process = process(
-                source,
-                target,
-                reports(ACCEPTED),
-                3,
-                3
-        );
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.batches.add(commands(
+                    "worker-started",
+                    "worker-unknown",
+                    "worker-retry"
+            ));
+            RecordingTarget target = new RecordingTarget(workerId -> switch (
+                    workerId
+            ) {
+                case "worker-started" -> STARTED;
+                case "worker-unknown" -> UNKNOWN;
+                default -> RETRY_LATER;
+            });
+            DeliveryCommandProcess process = process(
+                    peer,
+                    target,
+                    reports(ACCEPTED),
+                    3,
+                    3
+            );
 
-        process.round();
-        process.round();
+            process.round();
+            process.round();
 
-        assertThat(target.workerIds).containsExactly(
-                "worker-started",
-                "worker-unknown",
-                "worker-retry",
-                "worker-retry"
-        );
+            assertThat(target.workerIds)
+                    .containsOnlyOnce("worker-started", "worker-unknown")
+                    .filteredOn("worker-retry"::equals)
+                    .hasSize(2);
+        }
     }
 
     @Test
     void expiredCommandCreatesBestEffortAdapterResult() {
-        FakeSource source = new FakeSource();
-        DeliveryCommand expired = command(1_000, "expired-context");
-        source.batches.add(Map.of("worker-1", expired));
-        RecordingReports reports = reports(ACCEPTED);
-        DeliveryCommandProcess process = process(
-                source,
-                new RecordingTarget(workerId -> RETRY_LATER),
-                reports,
-                1,
-                1
-        );
+        try (CommandPeer peer = new CommandPeer()) {
+            DeliveryCommand expired = command(1_000, "expired-context");
+            peer.batches.add(Map.of("worker-1", expired));
+            RecordingReports reports = reports(ACCEPTED);
+            DeliveryCommandProcess process = process(
+                    peer,
+                    new RecordingTarget(workerId -> RETRY_LATER),
+                    reports,
+                    1,
+                    1
+            );
 
-        process.round();
+            process.round();
 
-        assertThat(reports.batches).hasSize(1);
-        assertThat(CODEC.decodeDeliveryReport(
-                reports.batches.get(0).get(0)
-        )).isEqualTo(DeliveryReport.fromCommand(
-                expired,
-                ADAPTER,
-                "adapter-1",
-                Integer.toString(
-                        WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED.code()
-                ),
-                "null"
-        ));
+            assertThat(reports.batches).hasSize(1);
+            assertThat(CODEC.decodeDeliveryReport(
+                    reports.batches.get(0).get(0)
+            )).isEqualTo(DeliveryReport.fromCommand(
+                    expired,
+                    ADAPTER,
+                    "adapter-1",
+                    Integer.toString(
+                            WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED
+                                    .code()
+                    ),
+                    "null"
+            ));
+        }
     }
 
     @Test
     void rejectedExpiredResultDoesNotRetainTheCommand() {
-        FakeSource source = new FakeSource();
-        source.batches.add(Map.of(
-                "worker-1",
-                command(1_000, "expired-context")
-        ));
-        RecordingTarget target = new RecordingTarget(workerId -> STARTED);
-        DeliveryCommandProcess process = process(
-                source,
-                target,
-                reports(FULL),
-                1,
-                1
-        );
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.batches.add(Map.of(
+                    "worker-1",
+                    command(1_000, "expired-context")
+            ));
+            RecordingTarget target = new RecordingTarget(
+                    workerId -> STARTED
+            );
+            DeliveryCommandProcess process = process(
+                    peer,
+                    target,
+                    reports(FULL),
+                    1,
+                    1
+            );
 
-        process.round();
-        process.round();
+            process.round();
+            process.round();
 
-        assertThat(target.workerIds).isEmpty();
+            assertThat(target.workerIds).isEmpty();
+        }
     }
 
     @Test
-    void stopPreventsFurtherSourceAndTargetWork() {
-        FakeSource source = new FakeSource();
-        source.batches.add(commands("worker-1"));
-        RecordingTarget target = new RecordingTarget(workerId -> RETRY_LATER);
-        DeliveryCommandProcess process = process(
-                source,
-                target,
-                reports(ACCEPTED),
-                1,
-                2
-        );
-        process.round();
+    void quiescePreventsFurtherRemoteAndTargetWork() {
+        try (CommandPeer peer = new CommandPeer()) {
+            peer.batches.add(commands("worker-1"));
+            RecordingTarget target = new RecordingTarget(
+                    workerId -> RETRY_LATER
+            );
+            DeliveryCommandProcess process = process(
+                    peer,
+                    target,
+                    reports(ACCEPTED),
+                    1,
+                    2
+            );
+            process.round();
 
-        process.stopRounds();
-        process.round();
-        process.finishCloseAfterSchedulerStop();
-        process.finishCloseAfterSchedulerStop();
+            process.quiesce();
+            process.round();
+            process.finishAfterSchedulerStop();
+            process.finishAfterSchedulerStop();
 
-        assertThat(source.requestedLimits).containsExactly(1);
-        assertThat(target.workerIds).containsExactly("worker-1");
+            assertThat(peer.requestedLimits).containsExactly(1);
+            assertThat(target.workerIds).containsExactly("worker-1");
+        }
     }
 
     private static DeliveryCommandProcess process(
-            CommandSource source,
+            CommandPeer peer,
             DeliveryCommandProcess.Target target,
             DeliveryReportProcess.Acceptor reports,
             int consumeLimit,
             int capacity
     ) {
         return new DeliveryCommandProcess(
-                source,
+                peer.server.client(),
                 target,
                 reports,
                 CODEC,
@@ -226,25 +262,47 @@ class DeliveryCommandProcessTest {
         );
     }
 
-    private static final class FakeSource implements CommandSource {
+    private static final class CommandPeer implements AutoCloseable {
 
         private final ArrayDeque<Map<String, DeliveryCommand>> batches =
                 new ArrayDeque<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
+        private final ScriptedHttpServer server = new ScriptedHttpServer(
+                this::handle
+        );
         private int failures;
+        private String responseBodyOverride;
 
-        @Override
-        public Map<String, DeliveryCommand> consume(
-                String endpointManagerId,
-                int limit
+        private synchronized Response handle(
+                ScriptedHttpServer.Request request
         ) {
-            requestedLimits.add(limit);
+            assertThat(request.rawPath()).endsWith("/commands:consume");
+            Object limit = Jsons.parseObject(request.body()).get("limit");
+            requestedLimits.add(Math.toIntExact((Long) limit));
             if (failures > 0) {
                 failures--;
-                throw new IllegalStateException("unavailable");
+                return new Response(503, "{}");
+            }
+            if (responseBodyOverride != null) {
+                return new Response(200, responseBodyOverride);
             }
             Map<String, DeliveryCommand> batch = batches.pollFirst();
-            return batch == null ? Map.of() : batch;
+            Map<String, Object> encoded = new LinkedHashMap<>();
+            if (batch != null) {
+                batch.forEach((workerId, command) -> encoded.put(
+                        workerId,
+                        Jsons.parseObject(CODEC.encodeDeliveryCommand(command))
+                ));
+            }
+            return new Response(200, Jsons.toJson(Map.of(
+                    "workerCommandsByWorkerId",
+                    encoded
+            )));
+        }
+
+        @Override
+        public void close() {
+            server.close();
         }
     }
 

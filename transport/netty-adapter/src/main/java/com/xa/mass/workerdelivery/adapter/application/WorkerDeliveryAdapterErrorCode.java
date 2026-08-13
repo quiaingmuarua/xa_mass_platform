@@ -17,13 +17,13 @@ public enum WorkerDeliveryAdapterErrorCode {
             21004,
             "Worker Delivery Adapter shutdown exceeded its owner budget"
     ),
-    GATEWAY_UNAVAILABLE(
+    REMOTE_API_UNAVAILABLE(
             22001,
-            "Worker Delivery Gateway is unavailable"
+            "Worker Delivery remote API is unavailable"
     ),
-    GATEWAY_PROTOCOL_ERROR(
+    REMOTE_API_PROTOCOL_ERROR(
             22002,
-            "Worker Delivery Gateway response is invalid"
+            "Worker Delivery remote API response is invalid"
     ),
     WORKER_ROUTE_REJECTED(
             22003,

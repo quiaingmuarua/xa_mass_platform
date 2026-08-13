@@ -10,7 +10,7 @@ Server base, Session, Bridge, or protocol-extension framework.
 
 This module is a plain `java-library`. It does not depend on Spring, Server,
 Kernel, Redis, score, or Pacer code. It reaches the Server Worker Delivery
-batch API through its `WorkerDeliveryGatewayClient`.
+batch API through one shared, concrete `WorkerDeliveryHttpClient`.
 
 ## Instance Boundary
 
@@ -25,12 +25,17 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
-one `DeliveryCommandProcess` with its private Command `FiniteQueue`
-one `DeliveryReportProcess` with its private Result `FiniteQueue`
-two independently scheduled Process rounds
+one `DeliveryCommandProcess` with its private Command `FiniteQueue` and HTTP contract
+one `DeliveryReportProcess` with its private Result `FiniteQueue` and HTTP contract
+one `AdapterProcessManager` owning the finite Process set and its scheduler
 ```
 
-The common Adapter aggregate owns lifecycle and scheduling. The Command Process
+The common Adapter aggregate owns lifecycle and network ordering.
+`AdapterProcessManager` owns Process identity validation, its two scheduler
+threads, safe round invocation, phase-local quiescence, and reverse-order
+finish. The Process set is fixed for the Adapter lifetime; the Manager stores
+no per-Process Future and exposes no individual stop operation. It knows
+nothing about the network or HTTP. The Command Process
 owns remote consumption, delivery/rotation, expiry, and exactly one local
 Command queue. The Report Process owns local Result acceptance, remote ingress,
 pending-batch retry, and exactly one local Result queue. Each `FiniteQueue` is
@@ -46,7 +51,8 @@ These are internal owners, not a public SPI or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
-`WorkerDeliveryGatewayClient`, and `NettyWorkerDeliveryAdapters`. Java types
+`WorkerDeliveryHttpClient`, `NettyAdapterProcessConfig`, and
+`NettyWorkerDeliveryAdapters`. Java types
 under `netty.internal` are `public` only where repository packages must
 collaborate without JPMS; they are repository-internal and carry no external
 compatibility promise.
@@ -69,17 +75,19 @@ Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
 contracts, and Server is guarded from importing them. The shared connection
 mechanism implements only the Command Process target port and receives only the
-Report Process acceptor plus the route-verification port. It sees normalized
+Report Process acceptor plus the shared mechanical HTTP client. It owns the
+route-verification path, status interpretation, and failure classification. It sees normalized
 strings and Netty Channels as route addresses, but all physical write/close
 operations return through `NettyWorkerServer`; it does not see WebSocket
 frames, Socket lines, handshake types, listener resources, or Pipeline
 mutation.
 
-`WorkerDeliveryGatewayClient` is only the HTTP composition root. The factory
-projects it into three owner-local ports: Command Source, Result Ingress, and
-Route Verifier. These projections share one physical HTTP client and connection
-pool, while no Process or connection owner receives the broad composition
-interface.
+`WorkerDeliveryHttpClient` owns only the JDK HTTP client, base URI, request
+timeout, path encoding, and raw POST mechanics. It does not import Delivery
+DTOs, decode JSON, interpret HTTP status, or decide retry. The Command Process,
+Report Process, and connection mechanism each own their remote path, private
+HTTP codec where needed, status interpretation, and failure policy while
+sharing that one thread-safe HTTP resource.
 
 WebSocket and Socket keep complete, separately understandable physical Server
 implementations. A test-only parameterized `NettyWorkerServer` behavior
@@ -132,7 +140,7 @@ workerId in the process-local verified set and activates
 `workerId -> current Channel` without an identity ACK. A definite Server 4xx
 rejection causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
-and close the physical Channel after the write flushes. Gateway unavailability
+and close the physical Channel after the write flushes. Remote API unavailability
 or a 5xx response only closes the physical Channel, allowing the Worker Client
 to consume its current-Endpoint reconnect budget.
 
@@ -197,14 +205,14 @@ Result Routing decides whether their `forward` context remains valid.
 
 ### Command consumption round
 
-`DeliveryCommandProcess` consumes through the Command Source port into its own
-`FiniteQueue<TargetedDeliveryCommand>`. The tuple is Adapter-local; the current
-Gateway and Server HTTP contract continue to use
+`DeliveryCommandProcess` calls the Server Command HTTP endpoint and decodes its
+response into its own `FiniteQueue<TargetedDeliveryCommand>`. The tuple is
+Adapter-local; the current Server HTTP contract continues to use
 `Map<workerId, DeliveryCommand>` and are converted immediately after consume.
 
 ```text
 while estimated queue size is below its soft capacity
-  -> consume at most commandConsumeLimit commands from Server
+  -> consume at most configured consumeLimit commands from Server
   -> ingress the complete bounded batch, allowing one-batch redundancy
 
 consume at most queue capacity for this round
@@ -217,8 +225,8 @@ for each observed command exactly once
 ```
 
 The queue has no workerId index. Capacity is a backpressure target rather than
-an exact size invariant. Because `commandConsumeLimit <= capacity`, stable
-Command retention remains bounded by `capacity + commandConsumeLimit - 1`.
+an exact size invariant. Because `consumeLimit <= capacity`, stable
+Command retention remains bounded by `capacity + consumeLimit - 1`.
 One round observes each consumed command once.
 The Server mailbox already partitions by endpointManagerId, while workerId is
 the Channel route coordinate.
@@ -244,7 +252,7 @@ is dropped.
 Adapter-generated `COMMAND_EXPIRED` enters `DeliveryReportProcess` only through
 its acceptor port, exactly like a valid Result accepted by the connection
 mechanism. Neither caller sees the Result queue. `DeliveryReportProcess` runs
-the remote ingress round at `resultSubmitInterval`:
+the remote ingress round at its configured `TASK_REPORT.interval`:
 
 ```text
 pending batch exists -> retry it
@@ -258,7 +266,7 @@ accepts `ADAPTER` `2...` Reports whose `sourceId` matches the batch
 `endpointManagerId`. Point Worker Report ingress separately requires
 `WORKER + path workerId`.
 
-Gateway protocol rejection drops the pending batch. Network or Server
+Remote API protocol rejection drops the pending batch. Network or Server
 unavailability retains it for a later interval. The one pending batch is
 bounded by Result queue capacity and is retried before consuming new Results.
 Command consumption and Result ingress are independently scheduled rounds;
@@ -283,32 +291,33 @@ Start:
 ```text
 bind listener
 -> state RUNNING
--> schedule DeliveryCommandProcess and DeliveryReportProcess rounds
+-> AdapterProcessManager starts its scheduler and every finite Process entry
 ```
 
 Close:
 
 ```text
 state STOPPING
--> stop Command rounds
+-> AdapterProcessManager quiesces BEFORE_NETWORK_CLOSE processes
 -> close listener and every pre-identity, pending-verification, or bound Channel
 -> clear verified, pending, and active route-directory state
--> stop Result ingress
--> bounded final result flush
+-> AdapterProcessManager quiesces AFTER_NETWORK_CLOSE processes
+-> AdapterProcessManager closes its scheduler and finishes processes in reverse order,
+   including one bounded final Result flush
 -> state CLOSED
 ```
 
 `shutdownTimeout` is an owner-local budget, not one Adapter-wide deadline.
 Each physical Server computes one deadline for its listener, all child
 Channels, and EventLoop; timeout initiates remaining closes without waiting
-again and reports `SHUTDOWN_TIMEOUT (21004)`. The Adapter scheduler then gets
+again and reports `SHUTDOWN_TIMEOUT (21004)`. The Adapter Process scheduler then gets
 its own deadline, and `shutdownNow()` may consume only that deadline's
 remainder. A scheduler that misses its budget prevents a potentially blocking
 final Report flush; the Result queue has already stopped accepting and shutdown
 returns the timeout failure after the other cleanup steps. On the normal path,
-the final flush remains best effort and is bounded by the Gateway request
+the final flush remains best effort and is bounded by the HTTP client request
 timeout. Consequently the normal worst-case close envelope is the sum of the
-physical Server budget, scheduler budget, and one Gateway final-flush request,
+physical Server budget, scheduler budget, and one HTTP final-flush request,
 not an unbounded wait.
 
 The WebSocket protocol accepts text only and normalizes
@@ -316,7 +325,7 @@ The WebSocket protocol accepts text only and normalizes
 `LineBasedFrameDecoder(1 MiB)`, UTF-8 decoding, and a UNIX `LineEncoder`; it
 accepts LF or CRLF and emits one LF-delimited line. Netty owns TCP
 fragmentation and coalescing. Both use
-`WriteTimeoutHandler`; neither pump blocks on a `ChannelFuture`.
+`WriteTimeoutHandler`; neither scheduled Process blocks on a `ChannelFuture`.
 
 Runtime failures use one `WorkerDeliveryAdapterException` with numeric
 module-local error codes. Logs use `System.Logger` and must not include command

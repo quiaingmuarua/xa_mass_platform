@@ -69,13 +69,19 @@ class WorkerDeliveryAdapterArchitectureTest {
         ));
         assertThat(adapter)
                 .contains("WorkerConnectionMechanism connectionMechanism")
-                .contains("DeliveryCommandProcess commandProcess")
-                .contains("DeliveryReportProcess reportProcess")
+                .contains("AdapterProcessManager processManager")
                 .contains("NettyWorkerServer networkServer")
                 .contains("networkServer.start(connectionMechanism)")
+                .contains("processManager.start()")
+                .contains("processManager.close()")
+                .doesNotContain("ScheduledAdapterProcess")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("ScheduledFuture")
                 .doesNotContain("WebSocketNettyWorkerServer")
                 .doesNotContain("SocketNettyWorkerServer")
                 .doesNotContain("WorkerDeliveryGatewayClient")
+                .doesNotContain("DeliveryCommandProcess")
+                .doesNotContain("DeliveryReportProcess")
                 .doesNotContain("WorkerDeliveryCodec")
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("ServerBootstrap")
@@ -88,16 +94,19 @@ class WorkerDeliveryAdapterArchitectureTest {
         String connection = readSources(CONNECTION);
         String network = readSources(NETWORK);
         String process = readSources(PROCESS);
+        String processManager = read(PROCESS.resolve(
+                "AdapterProcessManager.java"
+        ));
 
         assertThat(connection)
                 .contains("WorkerRouteRegistry")
                 .contains("WorkerConnectionMechanism")
-                .contains("RouteVerifier routeVerifier")
+                .contains("WorkerDeliveryHttpClient httpClient")
                 .contains("DeliveryReportProcess.Acceptor reportAcceptor")
                 .doesNotContain("FiniteQueue")
                 .doesNotContain("CommandSource")
                 .doesNotContain("ResultIngress")
-                .doesNotContain("WorkerDeliveryGatewayClient gateway")
+                .doesNotContain("WorkerDeliveryGatewayClient")
                 .doesNotContain("io.netty.bootstrap")
                 .doesNotContain("EventLoopGroup")
                 .doesNotContain("io.netty.handler.codec.http")
@@ -124,11 +133,13 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("final class FiniteQueue<T>")
                 .contains("final class DeliveryCommandProcess")
                 .contains("final class DeliveryReportProcess")
+                .contains("final class AdapterProcessManager")
+                .contains("interface AdapterProcess")
+                .contains("record ScheduledAdapterProcess")
                 .contains("record TargetedDeliveryCommand")
                 .contains("FiniteQueue<TargetedDeliveryCommand>")
                 .contains("FiniteQueue<String>")
                 .doesNotContain("implements Runnable")
-                .doesNotContain("interface Process")
                 .doesNotContain("ProcessRegistry")
                 .doesNotContain("DeliveryCommandPump")
                 .doesNotContain("DeliveryReportPump")
@@ -136,12 +147,26 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("io.netty")
                 .doesNotContain("ServerBootstrap");
 
+        assertThat(processManager)
+                .contains("List<ScheduledAdapterProcess> processes")
+                .contains("ScheduledExecutorService scheduler")
+                .contains("void start()")
+                .contains("void quiesce(QuiescePhase phase)")
+                .contains("public void close()")
+                .contains("scheduler.scheduleWithFixedDelay(")
+                .doesNotContain("ScheduledFuture")
+                .doesNotContain("Map<String")
+                .doesNotContain("NettyWorkerServer")
+                .doesNotContain("WorkerDeliveryHttpClient")
+                .doesNotContain("DeliveryCommandProcess")
+                .doesNotContain("DeliveryReportProcess");
+
         assertThat(readSources(NETTY.resolve("internal/gateway")))
                 .isEmpty();
     }
 
     @Test
-    void processesOwnOneQueueAndReceiveOnlyTheirOwnerPorts()
+    void remoteContractsBelongToOwnersAndHttpClientStaysMechanical()
             throws IOException {
         String commands = read(PROCESS.resolve(
                 "DeliveryCommandProcess.java"
@@ -149,44 +174,44 @@ class WorkerDeliveryAdapterArchitectureTest {
         String reports = read(PROCESS.resolve(
                 "DeliveryReportProcess.java"
         ));
-        String gateway = read(APPLICATION.resolve(
-                "WorkerDeliveryGatewayClient.java"
+        String connection = read(CONNECTION.resolve(
+                "WorkerConnectionMechanism.java"
         ));
-        String http = read(HTTP.resolve(
-                "HttpWorkerDeliveryGatewayClient.java"
-        ));
+        String http = read(HTTP.resolve("WorkerDeliveryHttpClient.java"));
 
         assertThat(commands)
                 .contains("FiniteQueue<TargetedDeliveryCommand>")
-                .contains("CommandSource commandSource")
+                .contains("WorkerDeliveryHttpClient httpClient")
+                .contains("DeliveryCommandHttpContract httpContract")
                 .contains("Target target")
                 .contains("DeliveryReportProcess.Acceptor reportAcceptor")
                 .doesNotContain("FiniteQueue<String>")
-                .doesNotContain("ResultIngress resultIngress")
-                .doesNotContain("RouteVerifier");
+                .doesNotContain("DeliveryReportHttpContract");
         assertThat(reports)
                 .contains("FiniteQueue<String>")
-                .contains("ResultIngress resultIngress")
+                .contains("WorkerDeliveryHttpClient httpClient")
+                .contains("DeliveryReportHttpContract httpContract")
                 .doesNotContain("TargetedDeliveryCommand")
-                .doesNotContain("CommandSource")
-                .doesNotContain("RouteVerifier");
-
-        assertThat(gateway)
-                .contains("CommandSource commandSource()")
-                .contains("ResultIngress resultIngress()")
-                .contains("RouteVerifier routeVerifier()")
-                .doesNotContain("consumeWorkerCommands(")
-                .doesNotContain("appendResults(")
-                .doesNotContain("verifyWorkerRoute(");
+                .doesNotContain("DeliveryCommandHttpContract");
+        assertThat(connection)
+                .contains("WorkerDeliveryHttpClient httpClient")
+                .contains("postEmptyAsync(path)")
+                .doesNotContain("DeliveryCommandHttpContract")
+                .doesNotContain("DeliveryReportHttpContract");
         assertThat(http)
                 .contains("private final HttpClient http")
-                .contains("this::consumeWorkerCommands")
-                .contains("this::ingressResults")
-                .contains("this::verifyWorkerRoute")
-                .contains("WorkerCommandGatewayHttpContract")
-                .contains("WorkerResultGatewayHttpContract");
+                .contains("postJson(")
+                .contains("postEmptyAsync(")
+                .doesNotContain("DeliveryCommand")
+                .doesNotContain("DeliveryReport")
+                .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("acceptedCount")
+                .doesNotContain("verify-binding");
+        assertThat(Files.exists(APPLICATION.resolve(
+                "WorkerDeliveryGatewayClient.java"
+        ))).isFalse();
         assertThat(Files.exists(HTTP.resolve(
-                "WorkerDeliveryGatewayHttpContract.java"
+                "HttpWorkerDeliveryGatewayClient.java"
         ))).isFalse();
     }
 

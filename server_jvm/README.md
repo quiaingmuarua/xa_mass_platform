@@ -173,10 +173,11 @@ This Server reads the configured Adapter instance map, uses the finite Netty
 factory to create complete
 WebSocket or Socket Adapter instances, registers them, and starts/closes the
 manager at process boundaries. Each Adapter owns its Netty listener,
-bounded Command/Report pumps, every accepted child Channel, the current bound
-route Registry, and encoded Report buffer through three Netty-specific layers:
-the Adapter aggregate, one shared connection mechanism, and one complete
-protocol-specific physical Server. It consumes the existing batch HTTP API through loopback and has no
+an `AdapterProcessManager` with bounded Command/Report Processes, every
+accepted child Channel, the current bound route Registry, and encoded Report
+buffer through three Netty-specific layers: the Adapter aggregate, one shared
+connection mechanism, and one complete protocol-specific physical Server. It
+consumes the existing batch HTTP API through loopback and has no
 in-process or Redis shortcut. Polling continues to exchange DeliveryCommand and
 DeliveryReport through point HTTP.
 
@@ -448,12 +449,12 @@ internally. A Java polling host calls the Server point API through its point
 Client. A Java WebSocket or Socket host connects to the selected Adapter
 listener. These libraries do not provide a CLI or own host-process lifetime.
 
-The default Server configuration defines only the Adapter-to-Server Gateway.
+The default Server configuration defines only the shared Adapter HTTP client.
 It does not create or start any Adapter instance:
 
 ```yaml
 xa.mass.worker-delivery.adapter:
-  gateway:
+  http-client:
     base-url: http://127.0.0.1:18082
     request-timeout: 5s
 
@@ -469,7 +470,7 @@ configuration, or environment variables. The instance map key is both
 `adapterId` and `endpointManagerId`; Workers only target the instance listener
 and do not declare that identity. Each configured instance starts an independent Netty listener
 during Server startup, after the HTTP server is bound and before the process
-reports ready, and calls the shared Gateway `base-url`. A WebSocket Worker
+reports ready, and calls the shared HTTP client `base-url`. A WebSocket Worker
 connects to the instance's fixed WebSocket path; a Socket Worker connects to
 its TCP port. Both first send
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
@@ -482,17 +483,21 @@ directory; ordinary disconnect removes only the active Channel, and a later
 identity reconnects without another Server read. The cache is process-local,
 has no TTL, is cleared by Adapter close/restart, and is neither persistent
 Binding nor authentication or online truth. A definite route rejection may
-produce `ADAPTER/worker.connection.close`, while Gateway unavailability only
+produce `ADAPTER/worker.connection.close`, while remote API unavailability only
 closes the physical connection. An empty or absent `instances` map starts no
 active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
-endpoint-manager ID for throughput. Each instance runs independent Command and
-Report pumps. The Command Pump refills a bounded local queue and initiates
-non-blocking Channel writes. The Report Pump drains one shared bounded queue
-containing validated Worker-originated results and Adapter-owned rejections,
-and submits at most one pending or buffered batch per
-`result-submit-interval`. There is no producer-source split.
+endpoint-manager ID for throughput. Each instance declares exactly one
+`TASK_COMMAND` and one `TASK_REPORT` Process. Both are scheduled from one finite
+Process list owned by `AdapterProcessManager` on the Adapter's existing two
+scheduler threads. Server only supplies the declarations; it does not manage
+the scheduler or shutdown phases. The Command
+Process owns remote consumption, one bounded local queue, expiry, and
+non-blocking Channel delivery. The Report Process owns one separate bounded
+queue, pending-batch retry, and remote submission. Their intervals and queue
+capacities live under each Process entry; there are no flat pump fields or a
+combined HTTP façade owner. There is no producer-source split.
 
 ### Built-in Worker Assembly
 
@@ -511,6 +516,14 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
+            processes:
+              - type: TASK_COMMAND
+                interval: 100ms
+                consume-limit: 100
+                queue-capacity: 1000
+              - type: TASK_REPORT
+                interval: 1s
+                queue-capacity: 1000
     worker-binding:
       endpoints:
         scenario-websocket:

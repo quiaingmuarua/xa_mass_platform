@@ -2,19 +2,22 @@ package com.xa.mass.server.workerdelivery.adapter;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapters;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.springframework.boot.convert.DurationStyle;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Configuration(proxyBeanMethods = false)
@@ -27,28 +30,35 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "type",
             "listen-host",
             "listen-port",
-            "command-loop-interval",
-            "command-consume-limit",
-            "command-queue-capacity",
-            "result-submit-interval",
-            "result-queue-capacity",
+            "processes",
             "send-time-limit"
+    );
+    private static final Set<String> TASK_COMMAND_FIELDS = Set.of(
+            "type",
+            "interval",
+            "consume-limit",
+            "queue-capacity"
+    );
+    private static final Set<String> TASK_REPORT_FIELDS = Set.of(
+            "type",
+            "interval",
+            "queue-capacity"
     );
 
     @Bean
-    WorkerDeliveryGatewayClient workerDeliveryGatewayClient(
+    WorkerDeliveryHttpClient workerDeliveryHttpClient(
             ServerWorkerDeliveryAdapterProperties properties
     ) {
-        return new HttpWorkerDeliveryGatewayClient(
-                properties.gateway().baseUrl(),
-                properties.gateway().requestTimeout()
+        return new WorkerDeliveryHttpClient(
+                properties.httpClient().baseUrl(),
+                properties.httpClient().requestTimeout()
         );
     }
 
     @Bean
     WorkerDeliveryAdapterManager workerDeliveryAdapterManager(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerDeliveryGatewayClient gateway,
+            WorkerDeliveryHttpClient httpClient,
             WorkerEndpointDirectory endpointDirectory
     ) {
         WorkerDeliveryAdapterManager manager =
@@ -57,8 +67,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 manager.register(createAdapter(
                         adapterId,
                         config,
-                        properties.gateway().requestTimeout(),
-                        gateway,
+                        properties.httpClient().requestTimeout(),
+                        httpClient,
                         endpointDirectory
                 ))
         );
@@ -69,7 +79,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             String adapterId,
             JsonNode config,
             Duration shutdownTimeout,
-            WorkerDeliveryGatewayClient gateway,
+            WorkerDeliveryHttpClient httpClient,
             WorkerEndpointDirectory endpointDirectory
     ) {
         if (!(config instanceof ObjectNode object)) {
@@ -107,36 +117,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 "0.0.0.0",
                 adapterId
         );
-        Duration commandLoopInterval = optionalDuration(
-                object,
-                "command-loop-interval",
-                Duration.ofMillis(100),
-                adapterId
-        );
-        int commandConsumeLimit = optionalInt(
-                object,
-                "command-consume-limit",
-                100,
-                adapterId
-        );
-        int commandQueueCapacity = optionalInt(
-                object,
-                "command-queue-capacity",
-                1000,
-                adapterId
-        );
-        Duration resultSubmitInterval = optionalDuration(
-                object,
-                "result-submit-interval",
-                Duration.ofSeconds(1),
-                adapterId
-        );
-        int resultQueueCapacity = optionalInt(
-                object,
-                "result-queue-capacity",
-                1000,
-                adapterId
-        );
+        List<NettyAdapterProcessConfig> processConfigs =
+                parseProcessConfigs(object, adapterId);
         Duration sendTimeLimit = optionalDuration(
                 object,
                 "send-time-limit",
@@ -146,32 +128,184 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         return switch (type) {
             case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
-                    gateway,
+                    httpClient,
                     listenHost,
                     listenPort,
-                    commandLoopInterval,
-                    commandConsumeLimit,
-                    commandQueueCapacity,
-                    resultSubmitInterval,
-                    resultQueueCapacity,
+                    processConfigs,
                     sendTimeLimit,
                     shutdownTimeout
             );
             case "SOCKET" -> NettyWorkerDeliveryAdapters.socket(
                     adapterId,
-                    gateway,
+                    httpClient,
                     listenHost,
                     listenPort,
-                    commandLoopInterval,
-                    commandConsumeLimit,
-                    commandQueueCapacity,
-                    resultSubmitInterval,
-                    resultQueueCapacity,
+                    processConfigs,
                     sendTimeLimit,
                     shutdownTimeout
             );
             default -> throw invalid(adapterId, "unsupported adapter type");
         };
+    }
+
+    private static List<NettyAdapterProcessConfig> parseProcessConfigs(
+            ObjectNode adapter,
+            String adapterId
+    ) {
+        JsonNode value = adapter.get("processes");
+        List<JsonNode> processes = orderedProcessNodes(value, adapterId);
+        if (processes.isEmpty()) {
+            throw invalid(
+                    adapterId,
+                    "processes must be a non-empty list"
+            );
+        }
+        ArrayList<NettyAdapterProcessConfig> configs = new ArrayList<>(
+                processes.size()
+        );
+        HashSet<String> observedTypes = new HashSet<>();
+        for (int index = 0; index < processes.size(); index++) {
+            JsonNode process = processes.get(index);
+            if (!(process instanceof ObjectNode object)) {
+                throw invalid(
+                        adapterId,
+                        "processes[" + index + "] must be an object"
+                );
+            }
+            String type = requiredText(
+                    object,
+                    "type",
+                    adapterId
+            );
+            if (!observedTypes.add(type)) {
+                throw invalid(
+                        adapterId,
+                        "process type must be unique: " + type
+                );
+            }
+            try {
+                switch (type) {
+                    case "TASK_COMMAND" -> {
+                        rejectUnknownFields(
+                                object,
+                                TASK_COMMAND_FIELDS,
+                                adapterId,
+                                index
+                        );
+                        configs.add(new NettyAdapterProcessConfig.TaskCommand(
+                                optionalDuration(
+                                        object,
+                                        "interval",
+                                        Duration.ofMillis(100),
+                                        adapterId
+                                ),
+                                optionalInt(
+                                        object,
+                                        "consume-limit",
+                                        100,
+                                        adapterId
+                                ),
+                                optionalInt(
+                                        object,
+                                        "queue-capacity",
+                                        1000,
+                                        adapterId
+                                )
+                        ));
+                    }
+                    case "TASK_REPORT" -> {
+                        rejectUnknownFields(
+                                object,
+                                TASK_REPORT_FIELDS,
+                                adapterId,
+                                index
+                        );
+                        configs.add(new NettyAdapterProcessConfig.TaskReport(
+                                optionalDuration(
+                                        object,
+                                        "interval",
+                                        Duration.ofSeconds(1),
+                                        adapterId
+                                ),
+                                optionalInt(
+                                        object,
+                                        "queue-capacity",
+                                        1000,
+                                        adapterId
+                                )
+                        ));
+                    }
+                    default -> throw invalid(
+                            adapterId,
+                            "unsupported process type: " + type
+                    );
+                }
+            } catch (IllegalArgumentException error) {
+                if (error.getMessage() != null
+                        && error.getMessage().startsWith("Invalid Adapter ")) {
+                    throw error;
+                }
+                throw invalid(
+                        adapterId,
+                        "invalid process " + type + ": "
+                                + error.getMessage(),
+                        error
+                );
+            }
+        }
+        if (!observedTypes.equals(Set.of(
+                "TASK_COMMAND",
+                "TASK_REPORT"
+        ))) {
+            throw invalid(
+                    adapterId,
+                    "processes require exactly TASK_COMMAND and TASK_REPORT"
+            );
+        }
+        return List.copyOf(configs);
+    }
+
+    private static List<JsonNode> orderedProcessNodes(
+            JsonNode value,
+            String adapterId
+    ) {
+        if (value instanceof ArrayNode array) {
+            ArrayList<JsonNode> values = new ArrayList<>(array.size());
+            array.forEach(values::add);
+            return values;
+        }
+        if (value instanceof ObjectNode indexed) {
+            ArrayList<JsonNode> values = new ArrayList<>(indexed.size());
+            for (int index = 0; index < indexed.size(); index++) {
+                JsonNode process = indexed.get(Integer.toString(index));
+                if (process == null) {
+                    throw invalid(
+                            adapterId,
+                            "processes indices must be contiguous from zero"
+                    );
+                }
+                values.add(process);
+            }
+            return values;
+        }
+        throw invalid(adapterId, "processes must be a list");
+    }
+
+    private static void rejectUnknownFields(
+            ObjectNode object,
+            Set<String> allowed,
+            String adapterId,
+            int index
+    ) {
+        Set<String> fields = new HashSet<>(object.propertyNames());
+        if (allowed.containsAll(fields)) {
+            return;
+        }
+        fields.removeAll(allowed);
+        throw invalid(
+                adapterId,
+                "unknown fields in processes[" + index + "]: " + fields
+        );
     }
 
     private static String requiredText(

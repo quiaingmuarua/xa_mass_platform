@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.http;
+package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -14,18 +14,19 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Strict HTTP codec owned by the remote Command Source projection. */
-final class WorkerCommandGatewayHttpContract {
+/** Strict remote HTTP codec owned by DeliveryCommandProcess. */
+final class DeliveryCommandHttpContract {
 
     private static final String DECODE_OPERATION =
-            "gateway.decodeCommandResponse";
+            "deliveryCommand.decodeRemoteResponse";
     private static final Set<String> BATCH_FIELDS = Set.of(
             "workerCommandsByWorkerId"
     );
+
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final WorkerDeliveryCodec codec;
 
-    WorkerCommandGatewayHttpContract(WorkerDeliveryCodec codec) {
+    DeliveryCommandHttpContract(WorkerDeliveryCodec codec) {
         this.codec = codec;
     }
 
@@ -69,7 +70,7 @@ final class WorkerCommandGatewayHttpContract {
             throw error;
         } catch (JacksonException | IllegalArgumentException error) {
             throw new WorkerDeliveryAdapterException(
-                    WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                    WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
                     DECODE_OPERATION,
                     "Worker command consume response is malformed",
                     error
@@ -87,7 +88,7 @@ final class WorkerCommandGatewayHttpContract {
 
     private static WorkerDeliveryAdapterException malformed(String type) {
         return new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
                 DECODE_OPERATION,
                 type + " is malformed",
                 null

@@ -89,11 +89,11 @@ class RuntimeApiPythonIntegrationTest {
                 () -> Integer.toString(SERVER_PORT)
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.gateway.base-url",
+                "xa.mass.worker-delivery.adapter.http-client.base-url",
                 () -> "http://127.0.0.1:" + SERVER_PORT
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.gateway.request-timeout",
+                "xa.mass.worker-delivery.adapter.http-client.request-timeout",
                 () -> "2s"
         );
         registry.add(
@@ -793,11 +793,13 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".command-loop-interval", () -> "20ms");
-        registry.add(prefix + ".command-consume-limit", () -> "100");
-        registry.add(prefix + ".command-queue-capacity", () -> "1000");
-        registry.add(prefix + ".result-submit-interval", () -> "20ms");
-        registry.add(prefix + ".result-queue-capacity", () -> "1000");
+        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
+        registry.add(prefix + ".processes[0].interval", () -> "20ms");
+        registry.add(prefix + ".processes[0].consume-limit", () -> "100");
+        registry.add(prefix + ".processes[0].queue-capacity", () -> "1000");
+        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
+        registry.add(prefix + ".processes[1].interval", () -> "20ms");
+        registry.add(prefix + ".processes[1].queue-capacity", () -> "1000");
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(
@@ -824,11 +826,13 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".command-loop-interval", () -> "20ms");
-        registry.add(prefix + ".command-consume-limit", () -> "100");
-        registry.add(prefix + ".command-queue-capacity", () -> "1000");
-        registry.add(prefix + ".result-submit-interval", () -> "20ms");
-        registry.add(prefix + ".result-queue-capacity", () -> "1000");
+        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
+        registry.add(prefix + ".processes[0].interval", () -> "20ms");
+        registry.add(prefix + ".processes[0].consume-limit", () -> "100");
+        registry.add(prefix + ".processes[0].queue-capacity", () -> "1000");
+        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
+        registry.add(prefix + ".processes[1].interval", () -> "20ms");
+        registry.add(prefix + ".processes[1].queue-capacity", () -> "1000");
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(

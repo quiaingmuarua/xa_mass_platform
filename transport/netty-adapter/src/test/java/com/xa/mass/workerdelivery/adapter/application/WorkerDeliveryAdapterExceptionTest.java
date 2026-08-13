@@ -30,22 +30,22 @@ class WorkerDeliveryAdapterExceptionTest {
     @Test
     void exceptionPreservesItsOperationAndCause() {
         IllegalStateException cause =
-                new IllegalStateException("gateway offline");
+                new IllegalStateException("remote API offline");
         WorkerDeliveryAdapterException error =
                 new WorkerDeliveryAdapterException(
-                        WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
-                        "gateway.consumeCommands",
+                        WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
+                        "deliveryCommand.consumeRemote",
                         null,
                         cause
                 );
 
         assertThat(error.errorCode()).isEqualTo(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE
         );
         assertThat(error.operation())
-                .isEqualTo("gateway.consumeCommands");
+                .isEqualTo("deliveryCommand.consumeRemote");
         assertThat(error.getMessage())
-                .isEqualTo("Worker Delivery Gateway is unavailable");
+                .isEqualTo("Worker Delivery remote API is unavailable");
         assertThat(error.getCause()).isSameAs(cause);
     }
 
@@ -53,20 +53,20 @@ class WorkerDeliveryAdapterExceptionTest {
     void exceptionRequiresItsOwnerCodeAndOwnerMethodOperation() {
         assertThatThrownBy(() -> new WorkerDeliveryAdapterException(
                 null,
-                "gateway.consumeCommands",
+                "deliveryCommand.consumeRemote",
                 null,
                 null
         )).isInstanceOf(NullPointerException.class);
 
         assertThatThrownBy(() -> new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
                 null,
                 null,
                 null
         )).isInstanceOf(NullPointerException.class);
 
         assertThatThrownBy(() -> new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
                 "consumeCommands",
                 null,
                 null

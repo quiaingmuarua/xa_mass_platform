@@ -4,32 +4,35 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.FiniteQu
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
+import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import java.util.List;
 import java.util.Objects;
 
 /** Scheduled Result ingress process for one Adapter instance. */
-public final class DeliveryReportProcess {
+public final class DeliveryReportProcess implements AdapterProcess {
 
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryReportProcess.class.getName()
     );
 
     private final FiniteQueue<String> reportQueue;
-    private final ResultIngress resultIngress;
+    private final WorkerDeliveryHttpClient httpClient;
+    private final DeliveryReportHttpContract httpContract =
+            new DeliveryReportHttpContract();
     private final String adapterId;
     private final Acceptor acceptor = this::accept;
     private List<String> pendingBatch;
+    private volatile boolean roundsStopped;
     private boolean closeFinished;
 
     public DeliveryReportProcess(
-            ResultIngress resultIngress,
+            WorkerDeliveryHttpClient httpClient,
             String adapterId,
             int queueCapacity
     ) {
-        this.resultIngress = Objects.requireNonNull(
-                resultIngress,
-                "resultIngress"
+        this.httpClient = Objects.requireNonNull(
+                httpClient,
+                "httpClient"
         );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
@@ -42,22 +45,26 @@ public final class DeliveryReportProcess {
         return acceptor;
     }
 
+    @Override
     public void round() {
-        if (closeFinished) {
+        if (roundsStopped || closeFinished) {
             return;
         }
         submitAtMostOneBatch();
     }
 
-    public void stopIngress() {
+    @Override
+    public void quiesce() {
+        roundsStopped = true;
         reportQueue.stopIngress();
     }
 
-    public synchronized void finishCloseAfterSchedulerStop() {
+    @Override
+    public synchronized void finishAfterSchedulerStop() {
         if (closeFinished) {
             return;
         }
-        stopIngress();
+        quiesce();
 
         if (pendingBatch != null) {
             SubmissionOutcome outcome = submit(pendingBatch);
@@ -99,7 +106,32 @@ public final class DeliveryReportProcess {
 
     private SubmissionOutcome submit(List<String> batch) {
         try {
-            resultIngress.ingress(adapterId, batch);
+            String path = "/api/v1/worker-delivery/endpoint-managers/"
+                    + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
+                    + "/results:append";
+            var response = httpClient.postJson(
+                    path,
+                    httpContract.encodeResultBatch(batch)
+            );
+            if (response.statusCode() != 202) {
+                WorkerDeliveryAdapterErrorCode errorCode =
+                        response.statusCode() >= 500
+                                ? WorkerDeliveryAdapterErrorCode
+                                .REMOTE_API_UNAVAILABLE
+                                : WorkerDeliveryAdapterErrorCode
+                                .REMOTE_API_PROTOCOL_ERROR;
+                throw new WorkerDeliveryAdapterException(
+                        errorCode,
+                        "deliveryReport.submitRemote",
+                        "DeliveryReport append failed with HTTP "
+                                + response.statusCode(),
+                        null
+                );
+            }
+            httpContract.requireCompleteResultResponse(
+                    response.body(),
+                    batch.size()
+            );
             return SubmissionOutcome.SUCCESS;
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(error);
@@ -112,7 +144,8 @@ public final class DeliveryReportProcess {
                     failure.getMessage()
             );
             return failure.errorCode()
-                    == WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR
+                    == WorkerDeliveryAdapterErrorCode
+                    .REMOTE_API_PROTOCOL_ERROR
                     ? SubmissionOutcome.DROP
                     : SubmissionOutcome.RETRY;
         }
@@ -125,8 +158,8 @@ public final class DeliveryReportProcess {
             return classified;
         }
         return new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
-                "adapter.submitResults",
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
+                "deliveryReport.submitRemote",
                 "Worker result submission failed",
                 error
         );

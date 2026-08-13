@@ -240,7 +240,7 @@ workerId is physically closed. Only successful route verification records the
 process-local verified workerId and installs the active Channel; no ACK is sent.
 Adapter does not invoke Kernel Worker upsert. A definite 4xx rejection emits
 `ADAPTER/worker.connection.close` and closes the physical connection after
-flush. Gateway unavailability or 5xx only closes the physical connection, so
+flush. Remote API unavailability or 5xx only closes the physical connection, so
 the Worker Client may reconnect to the same Endpoint.
 
 Ordinary disconnect removes only the exact active Channel. The verified route
@@ -288,19 +288,25 @@ or Worker-owned `3...` are queued, and their original encoded JSON is
 preserved unchanged. A full or closed queue
 drops the current Result and physically closes that Channel. Adapter-generated
 `COMMAND_EXPIRED` uses an Adapter-owned `2...` outcome and enters the same
-queue directly from the DeliveryCommand Pump rather than through Worker
-ingress. A timed DeliveryReport Pump batches the queue to Server. There is no command/result
+queue directly from the DeliveryCommand Process rather than through Worker
+ingress. A timed DeliveryReport Process batches the queue to Server. There is no command/result
 coupling, ACK, durable Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract. It
 instantiates one package-private Adapter scheduling mechanism per endpoint and
 selects one complete WebSocket or line-Socket physical Server. Every instance
 independently owns three layers: the Adapter aggregate owns lifecycle,
-scheduler, both bounded pumps, and shutdown sequencing; one common connection
+network shutdown sequencing, and an `AdapterProcessManager`. The Manager owns
+the finite scheduled Process list, its one same-lifetime scheduler, phase-local
+quiescence, round isolation, and reverse finish; the
+Command and Report Processes each own one private finite queue and their own
+remote HTTP contract. A concrete shared HTTP client owns only connection
+resources and raw request mechanics; it does not form another delivery owner.
+One common connection
 mechanism and pure Registry own identity, verification, route selection, and
 Result ingress; the concrete physical Server owns its listener, EventLoop,
 every child Channel, complete Pipeline, framing, writes, asynchronous write
-failure, and protocol close mapping. Physical Servers own no Gateway, queue,
+failure, and protocol close mapping. Physical Servers own no HTTP client, queue,
 route, or verification state, while the common mechanism never writes, closes,
 or mutates a Channel Pipeline directly.
 Closing an Adapter therefore closes all physical child Channels, not only

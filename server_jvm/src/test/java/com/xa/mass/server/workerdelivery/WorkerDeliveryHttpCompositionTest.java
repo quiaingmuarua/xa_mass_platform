@@ -26,7 +26,7 @@ class WorkerDeliveryHttpCompositionTest {
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
                     .withUserConfiguration(
-                            IsolatedWorkerDeliveryGateway.class
+                            IsolatedWorkerDeliveryHttpApplication.class
                     )
                     .withPropertyValues(
                             "xa.mass.kernel-redis.redis-url="
@@ -83,6 +83,6 @@ class WorkerDeliveryHttpCompositionTest {
             ApiExceptionHandler.class,
             RequestIdFilter.class
     })
-    static class IsolatedWorkerDeliveryGateway {
+    static class IsolatedWorkerDeliveryHttpApplication {
     }
 }

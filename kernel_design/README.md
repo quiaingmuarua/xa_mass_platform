@@ -611,8 +611,8 @@ no hidden compatibility path or second mainline remains
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Server-owned point/batch mailbox access plus Adapter-owned complete Netty
-    instances, a shared Netty-specific runtime with independent
-    Command/Report pumps, direct DeliveryCommand/
+    instances, an Adapter-local Process Manager with independent
+    Command/Report Processes, direct DeliveryCommand/
     DeliveryReport transport, bounded queues, and trusted pre-execution rejection
     without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)

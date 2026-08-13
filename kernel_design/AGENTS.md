@@ -219,14 +219,17 @@ remain executable-spec oracles and test support. External Worker
 implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
 WebSocket and line-Socket Adapter instances live in
-`transport/netty-adapter`. A single package-private Adapter mechanism is
-instantiated independently per endpoint and owns that instance's lifecycle and
-scheduler. One `DeliveryCommandProcess` owns scheduled Command consumption,
+`transport/netty-adapter`. A single package-private Adapter aggregate is
+instantiated independently per endpoint and owns that instance's lifecycle,
+and network ordering. Its `AdapterProcessManager` owns the
+finite Process descriptors, their one same-lifetime scheduler, round isolation, phase-local
+quiescence, and reverse finishing. One `DeliveryCommandProcess` owns scheduled Command consumption,
 delivery, expiry, rotation, and one private `FiniteQueue`. One
 `DeliveryReportProcess` owns Result acceptance, pending-batch retry, remote
 ingress, and one separate private `FiniteQueue`. Queue storage never crosses a
-Process owner. The Adapter HTTP composition client projects to narrow Command
-Source, Result Ingress, and Route Verifier ports before entering those owners.
+Process owner. One concrete HTTP client shares only JDK networking resources;
+the Command Process, Report Process, and connection mechanism each own their
+remote path, codec/status interpretation, and failure policy.
 One shared connection mechanism plus pure route
 Registry owns identity, first verification, current route selection, and Result
 ingress. One complete WebSocket or line-Socket physical Server owns listener,

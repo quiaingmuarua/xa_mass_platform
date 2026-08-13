@@ -5,7 +5,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
+import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -16,14 +16,15 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /** Scheduled Command acquisition and delivery process for one Adapter. */
-public final class DeliveryCommandProcess {
+public final class DeliveryCommandProcess implements AdapterProcess {
 
     private static final System.Logger LOGGER = System.getLogger(
             DeliveryCommandProcess.class.getName()
     );
 
     private final FiniteQueue<TargetedDeliveryCommand> commandQueue;
-    private final CommandSource commandSource;
+    private final WorkerDeliveryHttpClient httpClient;
+    private final DeliveryCommandHttpContract httpContract;
     private final Target target;
     private final DeliveryReportProcess.Acceptor reportAcceptor;
     private final WorkerDeliveryCodec codec;
@@ -34,7 +35,7 @@ public final class DeliveryCommandProcess {
     private boolean closeFinished;
 
     public DeliveryCommandProcess(
-            CommandSource commandSource,
+            WorkerDeliveryHttpClient httpClient,
             Target target,
             DeliveryReportProcess.Acceptor reportAcceptor,
             WorkerDeliveryCodec codec,
@@ -43,7 +44,7 @@ public final class DeliveryCommandProcess {
             int queueCapacity
     ) {
         this(
-                commandSource,
+                httpClient,
                 target,
                 reportAcceptor,
                 codec,
@@ -55,7 +56,7 @@ public final class DeliveryCommandProcess {
     }
 
     DeliveryCommandProcess(
-            CommandSource commandSource,
+            WorkerDeliveryHttpClient httpClient,
             Target target,
             DeliveryReportProcess.Acceptor reportAcceptor,
             WorkerDeliveryCodec codec,
@@ -64,9 +65,9 @@ public final class DeliveryCommandProcess {
             int queueCapacity,
             LongSupplier nowMillis
     ) {
-        this.commandSource = Objects.requireNonNull(
-                commandSource,
-                "commandSource"
+        this.httpClient = Objects.requireNonNull(
+                httpClient,
+                "httpClient"
         );
         this.target = Objects.requireNonNull(target, "target");
         this.reportAcceptor = Objects.requireNonNull(
@@ -74,6 +75,7 @@ public final class DeliveryCommandProcess {
                 "reportAcceptor"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
+        httpContract = new DeliveryCommandHttpContract(codec);
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
@@ -90,6 +92,7 @@ public final class DeliveryCommandProcess {
         commandQueue = new FiniteQueue<>(queueCapacity);
     }
 
+    @Override
     public void round() {
         if (roundsStopped) {
             return;
@@ -134,16 +137,18 @@ public final class DeliveryCommandProcess {
         }
     }
 
-    public void stopRounds() {
+    @Override
+    public void quiesce() {
         roundsStopped = true;
         commandQueue.stopIngress();
     }
 
-    public synchronized void finishCloseAfterSchedulerStop() {
+    @Override
+    public synchronized void finishAfterSchedulerStop() {
         if (closeFinished) {
             return;
         }
-        stopRounds();
+        quiesce();
         commandQueue.clear();
         closeFinished = true;
     }
@@ -155,7 +160,7 @@ public final class DeliveryCommandProcess {
 
         Map<String, DeliveryCommand> acquired;
         try {
-            acquired = commandSource.consume(adapterId, commandConsumeLimit);
+            acquired = consumeRemoteCommands();
         } catch (RuntimeException error) {
             logSourceFailure(error);
             return;
@@ -179,6 +184,32 @@ public final class DeliveryCommandProcess {
                     "Consumed Adapter Commands were dropped"
             );
         }
+    }
+
+    private Map<String, DeliveryCommand> consumeRemoteCommands() {
+        String path = "/api/v1/worker-delivery/endpoint-managers/"
+                + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
+                + "/commands:consume";
+        var response = httpClient.postJson(
+                path,
+                httpContract.encodeConsumeRequest(commandConsumeLimit)
+        );
+        if (response.statusCode() != 200) {
+            WorkerDeliveryAdapterErrorCode errorCode =
+                    response.statusCode() >= 500
+                            ? WorkerDeliveryAdapterErrorCode
+                            .REMOTE_API_UNAVAILABLE
+                            : WorkerDeliveryAdapterErrorCode
+                            .REMOTE_API_PROTOCOL_ERROR;
+            throw new WorkerDeliveryAdapterException(
+                    errorCode,
+                    "deliveryCommand.consumeRemote",
+                    "Worker command consume failed with HTTP "
+                            + response.statusCode(),
+                    null
+            );
+        }
+        return httpContract.decodeConsumeResponse(response.body());
     }
 
     private void offerExpiredResult(TargetedDeliveryCommand queued) {
@@ -214,8 +245,8 @@ public final class DeliveryCommandProcess {
             failure = classified;
         } else {
             failure = new WorkerDeliveryAdapterException(
-                    WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
-                    "adapter.consumeCommands",
+                    WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
+                    "deliveryCommand.consumeRemote",
                     "Worker command acquisition failed",
                     error
             );

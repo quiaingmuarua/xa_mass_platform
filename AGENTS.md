@@ -42,10 +42,13 @@ Status: current repository handoff.
 - `transport/netty-adapter/` owns complete Adapter instances. Server constructs
   the finite WebSocket/Socket choices through one public factory returning
   `WorkerDeliveryAdapter`. Each endpoint has one package-private Adapter
-  aggregate for lifecycle and scheduling; one `DeliveryCommandProcess` for
+  aggregate for lifecycle and network ordering; one
+  `AdapterProcessManager` for the finite Process set, its single scheduler,
+  phase-local quiescence, and reverse finishing; one `DeliveryCommandProcess` for
   Command consumption, delivery, and expiry; one `DeliveryReportProcess` for
   Result acceptance, pending-batch retry, and remote ingress; one private
   soft-capacity `FiniteQueue` owned by each Process; one shared
+  concrete `WorkerDeliveryHttpClient` that owns only physical HTTP resources;
   connection mechanism plus route Registry for identity, first verification,
   Command routing, and Result ingress; and one complete WebSocket or Socket
   physical Server for listener, EventLoop, every child Channel, full Pipeline,
@@ -168,15 +171,21 @@ tag.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances through three frozen Netty-specific layers. The
-  `NettyWorkerDeliveryAdapter` aggregate owns lifecycle, scheduler, and the
-  two typed scheduled Process rounds. `DeliveryCommandProcess` owns its one
-  private Command `FiniteQueue`, remote Command Source, delivery target,
+  `NettyWorkerDeliveryAdapter` aggregate owns lifecycle and network shutdown
+  ordering. Its `AdapterProcessManager` owns the finite
+  `List<ScheduledAdapterProcess>`, one same-lifetime scheduler, per-Process
+  round isolation, phase-local quiescence, and reverse finish order. It stores
+  no per-Process Future and exposes no individual Process stop operation.
+  `DeliveryCommandProcess` owns its one
+  private Command `FiniteQueue`, remote Command HTTP contract, delivery target,
   expiry, and rotation. `DeliveryReportProcess` owns its one private Result
-  `FiniteQueue`, local acceptor, pending batch, and remote Result Ingress.
+  `FiniteQueue`, local acceptor, pending batch, and remote Result HTTP contract.
   `FiniteQueue` is thread-safe business-neutral Process infrastructure and is
-  never passed between owners. The broad `WorkerDeliveryGatewayClient` exists
-  only at composition and projects to Command Source, Result Ingress, and
-  Route Verifier ports that may share one physical HTTP client. One shared
+  never passed between owners. One concrete `WorkerDeliveryHttpClient` owns
+  only a shared JDK HTTP client, base URI, timeout, path encoding, and raw POST
+  mechanics. It imports no Delivery DTO or owner HTTP codec and interprets no
+  status. Command, Report, and connection owners each own their path, encoding,
+  status interpretation, and failure policy. One shared
   `WorkerConnectionMechanism` owns strict identity interpretation,
   first-seen route verification, Command routing, and Result ingress, while
   its `WorkerRouteRegistry` owns the verified worker-ID set,
@@ -185,7 +194,7 @@ tag.
   `SocketNettyWorkerServer` owns the listener, EventLoop, every child Channel,
   physical framing, writes, asynchronous write failure, and protocol close
   mapping. The shared mechanism implements only the Command Process target and
-  receives only the Report Process acceptor plus Route Verifier. It receives
+  receives only the Report Process acceptor plus the concrete HTTP client. It receives
   normalized `String` values and may
   retain `Channel` only as an address; it must return every physical write or
   close to the selected Server. Connection phase is derived from Registry
@@ -205,13 +214,13 @@ tag.
   dropped; invalid unbound input and a full or closed Result queue physically
   close the Channel. Physical close is reconnectable network evidence; only
   `ADAPTER/worker.connection.close` terminates the current Worker run.
-  Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. Its private
-  HTTP DTOs are
+  Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. The private
+  owner-local HTTP contracts are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path. `shutdownTimeout` is separately budgeted by each
-  physical Server and by the Adapter scheduler; no close path may reset a
+  physical Server and by the Adapter Process scheduler; no close path may reset a
   spent deadline or use an unbounded wait. Normal close may additionally spend
-  one Gateway request timeout on its best-effort final Result flush. If the
+  one HTTP request timeout on its best-effort final Result flush. If the
   scheduler misses its budget, stop Result acceptance, skip the contended
   final flush, finish other cleanup, and report Adapter error `21004`.
 - `transport/worker-core` may depend only on the shared Worker Delivery
@@ -415,8 +424,8 @@ scenario_workers_jvm
   -> one internal Manager Platform -> group-local shared network resources
 
 transport/netty-adapter
-  -> Adapter batch HTTP client
-  -> owner-local Command Source / Result Ingress / Route Verifier projections
+  -> one concrete physical HTTP client shared as infrastructure
+  -> owner-local Command, Report, and route-verification HTTP contracts
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
   -> one Adapter lifecycle/scheduler aggregate per configured instance

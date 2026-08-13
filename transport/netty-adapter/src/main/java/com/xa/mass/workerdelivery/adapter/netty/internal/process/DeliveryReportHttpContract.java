@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.http;
+package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -12,22 +12,21 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Strict HTTP codec owned by the remote Result Ingress projection. */
-final class WorkerResultGatewayHttpContract {
+/** Strict remote HTTP codec owned by DeliveryReportProcess. */
+final class DeliveryReportHttpContract {
 
     private static final String DECODE_OPERATION =
-            "gateway.decodeResultResponse";
+            "deliveryReport.decodeRemoteResponse";
     private static final Set<String> APPEND_FIELDS = Set.of(
             "acceptedCount",
             "rejectedCount"
     );
+
     private final ObjectMapper mapper = JsonMapper.builder().build();
 
     String encodeResultBatch(List<String> encodedDeliveryReports) {
         if (encodedDeliveryReports == null || encodedDeliveryReports.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "results must not be empty"
-            );
+            throw new IllegalArgumentException("results must not be empty");
         }
         ObjectNode payload = mapper.createObjectNode();
         ArrayNode encodedResults = payload.putArray("results");
@@ -49,7 +48,9 @@ final class WorkerResultGatewayHttpContract {
             if (!(payload instanceof ObjectNode object)
                     || !fieldNames(object).equals(APPEND_FIELDS)
                     || !object.get("acceptedCount").isIntegralNumber()
-                    || !object.get("rejectedCount").isIntegralNumber()) {
+                    || !object.get("acceptedCount").canConvertToInt()
+                    || !object.get("rejectedCount").isIntegralNumber()
+                    || !object.get("rejectedCount").canConvertToInt()) {
                 throw malformed("DeliveryReport append response");
             }
             int acceptedCount = object.get("acceptedCount").intValue();
@@ -64,7 +65,7 @@ final class WorkerResultGatewayHttpContract {
             throw error;
         } catch (JacksonException | ArithmeticException error) {
             throw new WorkerDeliveryAdapterException(
-                    WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                    WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
                     DECODE_OPERATION,
                     "DeliveryReport append response is malformed",
                     error
@@ -82,7 +83,7 @@ final class WorkerResultGatewayHttpContract {
 
     private static WorkerDeliveryAdapterException malformed(String type) {
         return new WorkerDeliveryAdapterException(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
                 DECODE_OPERATION,
                 type + " is malformed",
                 null

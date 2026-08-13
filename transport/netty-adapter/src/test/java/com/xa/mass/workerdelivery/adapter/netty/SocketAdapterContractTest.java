@@ -11,10 +11,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
+import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -34,6 +35,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletionException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class SocketAdapterContractTest {
@@ -41,13 +44,20 @@ class SocketAdapterContractTest {
     private static final String WORKER_ID = "server-issued-worker-id";
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private final List<ScriptedHttpServer> httpServers =
+            new CopyOnWriteArrayList<>();
+
+    @AfterEach
+    void closeHttpServers() {
+        httpServers.forEach(ScriptedHttpServer::close);
+    }
 
     @Test
     void closeTerminatesAnUnboundSocketChannel() throws Exception {
         int port = availablePort();
         NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
-                new FakeGateway()
+                new TestRemoteApi()
         );
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port)) {
@@ -65,8 +75,8 @@ class SocketAdapterContractTest {
     void identifiesWithCrLfAndCompletesCommandResultRound()
             throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway();
-        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        TestRemoteApi remoteApi = new TestRemoteApi();
+        NettyWorkerDeliveryAdapter adapter = adapter(port, remoteApi);
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
         manager.register(adapter);
@@ -91,7 +101,7 @@ class SocketAdapterContractTest {
             writer.flush();
 
             DeliveryCommand command = command();
-            gateway.batches.add(Map.of(WORKER_ID, command));
+            remoteApi.batches.add(Map.of(WORKER_ID, command));
             String commandLine = reader.readLine();
             assertThat(codec.decodeDeliveryCommand(commandLine))
                     .isEqualTo(command);
@@ -108,13 +118,13 @@ class SocketAdapterContractTest {
             writer.write('\n');
             writer.flush();
 
-            assertThat(gateway.resultAppended.await(
+            assertThat(remoteApi.resultAppended.await(
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            assertThat(gateway.appendedResults)
+            assertThat(remoteApi.appendedResults)
                     .containsExactly(List.of(encodedResult));
-            assertThat(gateway.endpointManagerIds)
+            assertThat(remoteApi.endpointManagerIds)
                     .containsOnly("socket-1");
         } finally {
             manager.close();
@@ -125,8 +135,8 @@ class SocketAdapterContractTest {
     void reconnectReusesVerifiedRouteAndReceivesCachedCommand()
             throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway();
-        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        TestRemoteApi remoteApi = new TestRemoteApi();
+        NettyWorkerDeliveryAdapter adapter = adapter(port, remoteApi);
         adapter.start();
         try {
             try (Socket first = new Socket("127.0.0.1", port);
@@ -146,16 +156,16 @@ class SocketAdapterContractTest {
                 writer.write('\n');
                 writer.flush();
                 first.setSoTimeout(2_000);
-                awaitRoutable(gateway, reader);
-                assertThat(gateway.verifiedWorkerIds)
+                awaitRoutable(remoteApi, reader);
+                assertThat(remoteApi.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
                 first.shutdownOutput();
                 assertThat(reader.readLine()).isNull();
             }
 
             DeliveryCommand command = command();
-            gateway.batches.add(Map.of(WORKER_ID, command));
-            awaitCommandConsumed(gateway);
+            remoteApi.batches.add(Map.of(WORKER_ID, command));
+            awaitCommandConsumed(remoteApi);
 
             try (Socket reconnect = new Socket("127.0.0.1", port);
                     BufferedReader reader = new BufferedReader(
@@ -175,7 +185,7 @@ class SocketAdapterContractTest {
                 writer.write('\n');
                 writer.flush();
 
-                assertThat(gateway.verifiedWorkerIds)
+                assertThat(remoteApi.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
                 assertThat(codec.decodeDeliveryCommand(reader.readLine()))
                         .isEqualTo(command);
@@ -189,10 +199,10 @@ class SocketAdapterContractTest {
     void invalidFirstMessageClosesAndRepeatedIdentityStaysLocal()
             throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway();
+        TestRemoteApi remoteApi = new TestRemoteApi();
         NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
-                gateway
+                remoteApi
         );
         adapter.start();
         try {
@@ -231,7 +241,7 @@ class SocketAdapterContractTest {
                 writer.write(identity);
                 writer.write('\n');
                 writer.flush();
-                awaitRoutable(gateway, reader);
+                awaitRoutable(remoteApi, reader);
 
                 writer.write(identity);
                 writer.write('\n');
@@ -271,13 +281,13 @@ class SocketAdapterContractTest {
                 writer.write('\n');
                 writer.flush();
 
-                assertThat(gateway.resultAppended.await(
+                assertThat(remoteApi.resultAppended.await(
                         2,
                         TimeUnit.SECONDS
                 )).isTrue();
-                assertThat(gateway.appendedResults)
+                assertThat(remoteApi.appendedResults)
                         .containsExactly(List.of(accepted));
-                assertThat(gateway.verifiedWorkerIds)
+                assertThat(remoteApi.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
             }
         } finally {
@@ -288,10 +298,10 @@ class SocketAdapterContractTest {
     @Test
     void hardRouteRejectionSendsCloseCommandThenCloses() throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway(failedVerification(
+        TestRemoteApi remoteApi = new TestRemoteApi(failedVerification(
                 WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED
         ));
-        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, remoteApi);
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port);
                 BufferedReader reader = new BufferedReader(
@@ -321,7 +331,7 @@ class SocketAdapterContractTest {
             assertThat(close.payload()).isEqualTo("null");
             assertThat(close.forward()).isEmpty();
             assertThat(reader.readLine()).isNull();
-            assertThat(gateway.appendedResults).isEmpty();
+            assertThat(remoteApi.appendedResults).isEmpty();
         } finally {
             adapter.close();
         }
@@ -331,10 +341,10 @@ class SocketAdapterContractTest {
     void unavailableRouteVerificationClosesWithoutCommand()
             throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway(failedVerification(
-                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE
+        TestRemoteApi remoteApi = new TestRemoteApi(failedVerification(
+                WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE
         ));
-        NettyWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        NettyWorkerDeliveryAdapter adapter = adapter(port, remoteApi);
         adapter.start();
         try (Socket socket = new Socket("127.0.0.1", port);
                 BufferedReader reader = new BufferedReader(
@@ -363,10 +373,10 @@ class SocketAdapterContractTest {
     @Test
     void fullResultQueueClosesTheBoundChannel() throws Exception {
         int port = availablePort();
-        FakeGateway gateway = new FakeGateway();
+        TestRemoteApi remoteApi = new TestRemoteApi();
         NettyWorkerDeliveryAdapter adapter = adapter(
                 port,
-                gateway,
+                remoteApi,
                 Duration.ofSeconds(30),
                 1
         );
@@ -388,7 +398,7 @@ class SocketAdapterContractTest {
             writer.write(identity(WORKER_ID));
             writer.write('\n');
             writer.flush();
-            awaitRoutable(gateway, reader);
+            awaitRoutable(remoteApi, reader);
 
             writer.write(codec.encodeDeliveryReport(result(
                     TASK,
@@ -405,7 +415,7 @@ class SocketAdapterContractTest {
             writer.flush();
 
             assertThat(reader.readLine()).isNull();
-            assertThat(gateway.appendedResults).isEmpty();
+            assertThat(remoteApi.appendedResults).isEmpty();
         } finally {
             adapter.close();
         }
@@ -436,11 +446,11 @@ class SocketAdapterContractTest {
 
     private NettyWorkerDeliveryAdapter adapter(
             int port,
-            WorkerDeliveryGatewayClient gateway
+            TestRemoteApi remoteApi
     ) {
         return adapter(
                 port,
-                gateway,
+                remoteApi,
                 Duration.ofMillis(10),
                 1000
         );
@@ -448,21 +458,27 @@ class SocketAdapterContractTest {
 
     private NettyWorkerDeliveryAdapter adapter(
             int port,
-            WorkerDeliveryGatewayClient gateway,
+            TestRemoteApi remoteApi,
             Duration reportSubmitInterval,
             int reportQueueCapacity
     ) {
         return (NettyWorkerDeliveryAdapter)
                 NettyWorkerDeliveryAdapters.socket(
                 "socket-1",
-                gateway,
+                remoteApi.client,
                 "127.0.0.1",
                 port,
-                Duration.ofMillis(10),
-                100,
-                1000,
-                reportSubmitInterval,
-                reportQueueCapacity,
+                List.of(
+                        new NettyAdapterProcessConfig.TaskCommand(
+                                Duration.ofMillis(10),
+                                100,
+                                1000
+                        ),
+                        new NettyAdapterProcessConfig.TaskReport(
+                                reportSubmitInterval,
+                                reportQueueCapacity
+                        )
+                ),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1)
         );
@@ -527,22 +543,22 @@ class SocketAdapterContractTest {
     }
 
     private static void awaitRoutable(
-            FakeGateway gateway,
+            TestRemoteApi remoteApi,
             BufferedReader reader
     ) throws Exception {
         DeliveryCommand barrier = command();
-        gateway.batches.add(Map.of(WORKER_ID, barrier));
+        remoteApi.batches.add(Map.of(WORKER_ID, barrier));
         assertThat(new WorkerDeliveryCodec().decodeDeliveryCommand(
                 reader.readLine()
         )).isEqualTo(barrier);
     }
 
-    private static void awaitCommandConsumed(FakeGateway gateway)
+    private static void awaitCommandConsumed(TestRemoteApi remoteApi)
             throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(2).toNanos();
         while (System.nanoTime() < deadline) {
-            if (gateway.batches.isEmpty()) {
+            if (remoteApi.batches.isEmpty()) {
                 return;
             }
             Thread.sleep(5);
@@ -561,8 +577,7 @@ class SocketAdapterContractTest {
         }
     }
 
-    private static final class FakeGateway
-            implements WorkerDeliveryGatewayClient {
+    private final class TestRemoteApi {
 
         private final ConcurrentLinkedQueue<
                 Map<String, DeliveryCommand>
@@ -577,54 +592,90 @@ class SocketAdapterContractTest {
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
         private final CompletableFuture<Void> routeVerificationResponse;
+        private final ScriptedHttpServer server;
+        private final WorkerDeliveryHttpClient client;
 
-        private FakeGateway() {
+        private TestRemoteApi() {
             this(CompletableFuture.completedFuture(null));
         }
 
-        private FakeGateway(
+        private TestRemoteApi(
                 CompletableFuture<Void> routeVerificationResponse
         ) {
             this.routeVerificationResponse = routeVerificationResponse;
+            server = new ScriptedHttpServer(this::handle);
+            httpServers.add(server);
+            client = server.client();
         }
 
-        @Override
-        public CommandSource commandSource() {
-            return this::consumeWorkerCommands;
-        }
-
-        @Override
-        public ResultIngress resultIngress() {
-            return this::appendResults;
-        }
-
-        @Override
-        public RouteVerifier routeVerifier() {
-            return this::verifyWorkerRoute;
-        }
-
-        public Map<String, DeliveryCommand> consumeWorkerCommands(
-                String endpointManagerId,
-                int limit
-        ) {
+        private Response handle(ScriptedHttpServer.Request request) {
+            String endpointManagerId = endpointManagerId(request.rawPath());
             endpointManagerIds.add(endpointManagerId);
-            Map<String, DeliveryCommand> batch = batches.poll();
-            return batch == null ? Map.of() : batch;
-        }
-
-        public void appendResults(
-                String endpointManagerId,
-                List<String> results
-        ) {
-            endpointManagerIds.add(endpointManagerId);
-            appendedResults.add(List.copyOf(results));
-            resultAppended.countDown();
-        }
-
-        public java.util.concurrent.CompletionStage<Void>
-        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            if (request.rawPath().endsWith("/commands:consume")) {
+                Map<String, DeliveryCommand> batch = batches.poll();
+                Map<String, Object> encoded = new java.util.LinkedHashMap<>();
+                if (batch != null) {
+                    batch.forEach((workerId, command) -> encoded.put(
+                            workerId,
+                            Jsons.parseObject(codec.encodeDeliveryCommand(
+                                    command
+                            ))
+                    ));
+                }
+                return new Response(200, Jsons.toJson(Map.of(
+                        "workerCommandsByWorkerId",
+                        encoded
+                )));
+            }
+            if (request.rawPath().endsWith("/results:append")) {
+                @SuppressWarnings("unchecked")
+                List<String> results = (List<String>) Jsons.parseObject(
+                        request.body()
+                ).get("results");
+                appendedResults.add(List.copyOf(results));
+                resultAppended.countDown();
+                return new Response(202, Jsons.toJson(Map.of(
+                        "acceptedCount",
+                        results.size(),
+                        "rejectedCount",
+                        0
+                )));
+            }
+            String workerId = workerId(request.rawPath());
             verifiedWorkerIds.add(workerId);
-            return routeVerificationResponse;
+            try {
+                routeVerificationResponse.join();
+                return new Response(204, "");
+            } catch (CompletionException error) {
+                Throwable cause = error.getCause();
+                if (cause instanceof WorkerDeliveryAdapterException failure
+                        && failure.errorCode()
+                        == WorkerDeliveryAdapterErrorCode
+                        .WORKER_ROUTE_REJECTED) {
+                    return new Response(409, "{}");
+                }
+                return new Response(503, "{}");
+            }
+        }
+
+        private String endpointManagerId(String path) {
+            String marker = "/endpoint-managers/";
+            int start = path.indexOf(marker) + marker.length();
+            int end = path.indexOf('/', start);
+            return URLDecoder.decode(
+                    path.substring(start, end),
+                    StandardCharsets.UTF_8
+            );
+        }
+
+        private String workerId(String path) {
+            String marker = "/workers/";
+            int start = path.indexOf(marker) + marker.length();
+            int end = path.indexOf(":verify-binding", start);
+            return URLDecoder.decode(
+                    path.substring(start, end),
+                    StandardCharsets.UTF_8
+            );
         }
     }
 
@@ -634,7 +685,7 @@ class SocketAdapterContractTest {
         CompletableFuture<Void> failure = new CompletableFuture<>();
         failure.completeExceptionally(new WorkerDeliveryAdapterException(
                 errorCode,
-                "gateway.verifyWorkerRoute",
+                "workerConnection.verifyRoute",
                 "Route verification failed",
                 null
         ));

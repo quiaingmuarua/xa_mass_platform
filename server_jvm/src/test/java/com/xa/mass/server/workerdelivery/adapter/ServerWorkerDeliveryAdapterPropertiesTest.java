@@ -3,11 +3,12 @@ package com.xa.mass.server.workerdelivery.adapter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -32,14 +33,18 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                     });
 
     @Test
-    void bindsOrderedWebSocketAndSocketInstancesAndAppliesDefaults() {
+    void bindsOrderedInstancesAndFiniteProcessDefaults() {
         contextRunner.withPropertyValues(
-                "xa.mass.worker-delivery.adapter.gateway"
+                "xa.mass.worker-delivery.adapter.http-client"
                         + ".base-url=http://127.0.0.1:18082",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.type=WEBSOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.listen-port=18083",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".websocket-1.processes[0].type=TASK_COMMAND",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".websocket-1.processes[1].type=TASK_REPORT",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".socket-1.type=SOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
@@ -47,7 +52,11 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".socket-1.listen-port=18084",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".socket-1.command-queue-capacity=800"
+                        + ".socket-1.processes[0].type=TASK_REPORT",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".socket-1.processes[0].queue-capacity=800",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".socket-1.processes[1].type=TASK_COMMAND"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             WorkerDeliveryAdapterManager manager = context.getBean(
@@ -55,12 +64,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
             );
             assertThat(manager.adapters().keySet())
                     .containsExactly("websocket-1", "socket-1");
-            WorkerDeliveryAdapter first =
-                    manager.requireAdapter("websocket-1");
-            WorkerDeliveryAdapter second =
-                    manager.requireAdapter("socket-1");
-            assertThat(first.adapterId()).isEqualTo("websocket-1");
-            assertThat(second.adapterId()).isEqualTo("socket-1");
+            assertThat(manager.requireAdapter("websocket-1").adapterId())
+                    .isEqualTo("websocket-1");
+            assertThat(manager.requireAdapter("socket-1").adapterId())
+                    .isEqualTo("socket-1");
         });
     }
 
@@ -75,97 +82,61 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     }
 
     @Test
-    void rejectsUnknownTypeFieldInvalidPortAndPollingIdentity() {
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=OTHER",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=18083"
+    void rejectsInvalidAdapterAndProcessConfiguration() {
+        assertAdapterFailed("type=OTHER");
+        assertAdapterFailed("unexpected=true");
+        assertAdapterFailed("listen-port=0");
+        assertAdapterFailed("processes[0].consume-limit=0");
+        assertAdapterFailed(
+                "processes[0].consume-limit=101",
+                "processes[0].queue-capacity=100"
         );
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=18083",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.unexpected=true"
-        );
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=0"
-        );
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=18083",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.command-consume-limit=0"
-        );
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=18083",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.command-consume-limit=101",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.command-queue-capacity=100"
-        );
-        assertFailed(
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.listen-port=18083",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".adapter-1.scan-count=100"
-        );
+        assertAdapterFailed("processes[0].unknown=true");
+        assertAdapterFailed("processes[1].type=TASK_COMMAND");
+        assertAdapterFailed("processes[1].type=UNKNOWN");
+        assertAdapterFailed("processes[1].interval=0ms");
         assertFailed(
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".system-polling.type=WEBSOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".system-polling.listen-port=18083"
+                        + ".system-polling.listen-port=18083",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".system-polling.processes[0].type=TASK_COMMAND",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".system-polling.processes[1].type=TASK_REPORT"
         );
     }
 
     @Test
-    void rejectsOldSingleInstanceConfiguration() {
+    void rejectsMissingProcessesAndRemovedFlatConfiguration() {
         assertFailed(
-                "xa.mass.worker-delivery.adapter.enabled=true",
-                "xa.mass.worker-delivery.adapter.type=WEBSOCKET",
-                "xa.mass.worker-delivery.adapter.runtime"
-                        + ".endpoint-manager-id=adapter-1"
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.type=WEBSOCKET",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.listen-port=18083"
+        );
+        for (String field : new String[]{
+                "command-loop-interval",
+                "command-consume-limit",
+                "command-queue-capacity",
+                "result-submit-interval",
+                "result-queue-capacity"
+        }) {
+            assertAdapterFailed(field + "=1");
+        }
+        assertFailed(
+                "xa.mass.worker-delivery.adapter.gateway"
+                        + ".base-url=http://127.0.0.1:18082"
         );
     }
 
     @Test
-    void rejectsOldLoopAndBufferFields() {
-        for (String field : new String[]{
-                "dispatch-interval",
-                "delivery-parallelism",
-                "result-batch-size",
-                "result-buffer-capacity"
-        }) {
-            assertFailed(
-                    "xa.mass.worker-delivery.adapter.instances"
-                            + ".adapter-1.type=WEBSOCKET",
-                    "xa.mass.worker-delivery.adapter.instances"
-                            + ".adapter-1.listen-port=18083",
-                    "xa.mass.worker-delivery.adapter.instances"
-                            + ".adapter-1." + field + "=1"
-            );
-        }
-    }
-
-    @Test
-    void validatesSharedGatewayConfiguration() {
+    void validatesSharedHttpClientConfiguration() {
         assertThatThrownBy(() ->
                 new ServerWorkerDeliveryAdapterProperties(
                         new ServerWorkerDeliveryAdapterProperties
-                                .GatewayProperties(
-                                URI.create("file:///gateway"),
+                                .HttpClientProperties(
+                                URI.create("file:///not-http"),
                                 Duration.ofSeconds(1)
                         ),
                         Map.of()
@@ -175,7 +146,20 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertThatThrownBy(() ->
                 new ServerWorkerDeliveryAdapterProperties(
                         new ServerWorkerDeliveryAdapterProperties
-                                .GatewayProperties(
+                                .HttpClientProperties(
+                                URI.create(
+                                        "http://127.0.0.1:18082?owner=other"
+                                ),
+                                Duration.ofSeconds(1)
+                        ),
+                        Map.of()
+                )
+        ).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("query or fragment");
+        assertThatThrownBy(() ->
+                new ServerWorkerDeliveryAdapterProperties(
+                        new ServerWorkerDeliveryAdapterProperties
+                                .HttpClientProperties(
                                 URI.create("http://127.0.0.1:18082"),
                                 Duration.ZERO
                         ),
@@ -183,6 +167,20 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 )
         ).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("request-timeout");
+    }
+
+    private void assertAdapterFailed(String... overrides) {
+        String prefix = "xa.mass.worker-delivery.adapter.instances.adapter-1.";
+        List<String> properties = new ArrayList<>(List.of(
+                prefix + "type=WEBSOCKET",
+                prefix + "listen-port=18083",
+                prefix + "processes[0].type=TASK_COMMAND",
+                prefix + "processes[1].type=TASK_REPORT"
+        ));
+        for (String override : overrides) {
+            properties.add(prefix + override);
+        }
+        assertFailed(properties.toArray(String[]::new));
     }
 
     private void assertFailed(String... properties) {

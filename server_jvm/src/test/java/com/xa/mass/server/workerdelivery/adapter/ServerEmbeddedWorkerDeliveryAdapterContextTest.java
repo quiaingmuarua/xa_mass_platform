@@ -23,9 +23,9 @@ import org.springframework.test.context.DynamicPropertySource;
                 "xa.mass.kernel.base-url=http://127.0.0.1:1",
                 "xa.mass.kernel.connect-timeout=10ms",
                 "xa.mass.kernel.read-timeout=10ms",
-                "xa.mass.worker-delivery.adapter.gateway"
+                "xa.mass.worker-delivery.adapter.http-client"
                         + ".base-url=http://127.0.0.1:1",
-                "xa.mass.worker-delivery.adapter.gateway"
+                "xa.mass.worker-delivery.adapter.http-client"
                         + ".request-timeout=10ms"
         }
 )
@@ -49,7 +49,9 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(ADAPTER_PORT)
         );
-        registry.add(prefix + ".command-loop-interval", () -> "1h");
+        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
+        registry.add(prefix + ".processes[0].interval", () -> "1h");
+        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
         String endpoint = "xa.mass.worker-binding.endpoints"
                 + ".embedded-websocket";
         registry.add(endpoint + ".transport-type", () -> "WEBSOCKET");

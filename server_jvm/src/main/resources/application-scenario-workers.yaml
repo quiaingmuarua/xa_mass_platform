@@ -7,6 +7,9 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
+            processes:
+              - type: TASK_COMMAND
+              - type: TASK_REPORT
     worker-binding:
       endpoints:
         scenario-websocket:

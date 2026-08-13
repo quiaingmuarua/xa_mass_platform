@@ -64,7 +64,7 @@ loadTaskItemSuccessResults(taskId, messageIds)
 `KernelApplication` backs the task-only Python command host.
 `ResourcesCommandClient` and the two Worker Delivery clients remain stable
 Python executable-spec and test-support surfaces; they are not mounted as
-Python HTTP routes. The Java Gateway
+Python HTTP routes. The Java Server Worker Delivery application
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and the Task-scoped
 `load_task_item_success_results` likewise remain the Python mechanism oracle.
@@ -413,9 +413,13 @@ exchange.
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
 endpoint-manager mailbox, one independent Netty listener, one scheduled
-DeliveryCommand Pump, one timed DeliveryReport Pump, one current bound
+DeliveryCommand Process, one timed DeliveryReport Process, one current bound
 connection per WorkerId, and
-bounded local queues. The Server only parses instance configuration, registers concrete
+one private bounded local queue per Process. A finite scheduled Process list
+is owned by the Adapter-local `AdapterProcessManager`, together with its one
+same-lifetime scheduler, round isolation, shutdown phase, and reverse finish
+order. The Adapter aggregate still owns lifecycle and network ordering. The Server only
+parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers Register and establish Endpoint Binding before connecting; the Bind
 control call carries the complete Worker Properties snapshot. The connection

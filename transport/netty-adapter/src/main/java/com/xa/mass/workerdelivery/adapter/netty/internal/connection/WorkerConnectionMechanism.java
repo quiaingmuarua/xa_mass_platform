@@ -11,7 +11,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
+import com.xa.mass.workerdelivery.adapter.http.WorkerDeliveryHttpClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -49,7 +49,7 @@ public final class WorkerConnectionMechanism
 
     private final WorkerRouteRegistry routes;
     private final NettyWorkerServer networkServer;
-    private final RouteVerifier routeVerifier;
+    private final WorkerDeliveryHttpClient httpClient;
     private final WorkerDeliveryCodec codec;
     private final DeliveryReportProcess.Acceptor reportAcceptor;
     private final String adapterId;
@@ -58,7 +58,7 @@ public final class WorkerConnectionMechanism
     public WorkerConnectionMechanism(
             WorkerRouteRegistry routes,
             NettyWorkerServer networkServer,
-            RouteVerifier routeVerifier,
+            WorkerDeliveryHttpClient httpClient,
             WorkerDeliveryCodec codec,
             DeliveryReportProcess.Acceptor reportAcceptor,
             String adapterId,
@@ -69,9 +69,9 @@ public final class WorkerConnectionMechanism
                 networkServer,
                 "networkServer"
         );
-        this.routeVerifier = Objects.requireNonNull(
-                routeVerifier,
-                "routeVerifier"
+        this.httpClient = Objects.requireNonNull(
+                httpClient,
+                "httpClient"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
         this.reportAcceptor = Objects.requireNonNull(
@@ -230,10 +230,16 @@ public final class WorkerConnectionMechanism
     ) {
         CompletionStage<Void> verification;
         try {
-            verification = Objects.requireNonNull(
-                    routeVerifier.verify(adapterId, workerId),
-                    "Worker route verification returned null"
-            );
+            String path = "/api/v1/worker-delivery/endpoint-managers/"
+                    + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
+                    + "/workers/"
+                    + WorkerDeliveryHttpClient.encodePathSegment(workerId)
+                    + ":verify-binding";
+            verification = httpClient.postEmptyAsync(path)
+                    .thenApply(response -> {
+                        requireVerifiedRoute(response.statusCode());
+                        return null;
+                    });
         } catch (RuntimeException error) {
             finishVerification(context, workerId, error);
             return;
@@ -242,6 +248,28 @@ public final class WorkerConnectionMechanism
                 context.executor().execute(() ->
                         finishVerification(context, workerId, failure)
                 )
+        );
+    }
+
+    private static void requireVerifiedRoute(int statusCode) {
+        if (statusCode == 204) {
+            return;
+        }
+        WorkerDeliveryAdapterErrorCode errorCode;
+        if (statusCode >= 400 && statusCode < 500) {
+            errorCode = WorkerDeliveryAdapterErrorCode.WORKER_ROUTE_REJECTED;
+        } else if (statusCode >= 500) {
+            errorCode = WorkerDeliveryAdapterErrorCode
+                    .REMOTE_API_UNAVAILABLE;
+        } else {
+            errorCode = WorkerDeliveryAdapterErrorCode
+                    .REMOTE_API_PROTOCOL_ERROR;
+        }
+        throw new WorkerDeliveryAdapterException(
+                errorCode,
+                "workerConnection.verifyRoute",
+                "Worker route verification failed with HTTP " + statusCode,
+                null
         );
     }
 

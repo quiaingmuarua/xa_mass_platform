@@ -149,8 +149,10 @@ Other scheduling pacers
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; a finite factory creates independently isolated Adapter
-  instances with three owners: an Adapter aggregate owns start/close and
-  scheduled Command/Report pumps; one shared connection mechanism plus route
+  instances with three top-level owners: an Adapter aggregate owns start/close
+  and network ordering, while its `AdapterProcessManager` owns the fixed
+  Command/Report Process set and its single scheduler; one
+  shared connection mechanism plus route
   Registry owns process-local verified/pending/active/correlation state,
   identity, routing, and Result ingress; one complete WebSocket or line-Socket
   Server owns the listener, EventLoop, all physical child Channels, full

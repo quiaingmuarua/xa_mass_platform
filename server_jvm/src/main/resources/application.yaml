@@ -37,7 +37,7 @@ xa:
       wake-batch-limit: 100
     worker-delivery:
       adapter:
-        gateway:
+        http-client:
           base-url: http://127.0.0.1:${server.port:18082}
           request-timeout: 5s
 

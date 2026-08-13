@@ -15,16 +15,16 @@ import tools.jackson.databind.json.JsonMapper;
         ignoreUnknownFields = false
 )
 public record ServerWorkerDeliveryAdapterProperties(
-        @DefaultValue GatewayProperties gateway,
+        @DefaultValue HttpClientProperties httpClient,
         @DefaultValue Map<String, Map<String, Object>> instances
 ) {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     public ServerWorkerDeliveryAdapterProperties {
-        if (gateway == null) {
+        if (httpClient == null) {
             throw new IllegalArgumentException(
-                    "Adapter gateway config must be present"
+                    "Adapter HTTP client config must be present"
             );
         }
         if (instances == null) {
@@ -54,25 +54,28 @@ public record ServerWorkerDeliveryAdapterProperties(
         return Collections.unmodifiableMap(configs);
     }
 
-    public record GatewayProperties(
+    public record HttpClientProperties(
             @DefaultValue("http://127.0.0.1:18082") URI baseUrl,
             @DefaultValue("5s") Duration requestTimeout
     ) {
 
-        public GatewayProperties {
+        public HttpClientProperties {
             if (baseUrl == null
                     || !baseUrl.isAbsolute()
                     || baseUrl.getHost() == null
+                    || baseUrl.getRawQuery() != null
+                    || baseUrl.getRawFragment() != null
                     || !isHttp(baseUrl)) {
                 throw new IllegalArgumentException(
-                        "gateway.base-url must be an absolute HTTP(S) URI"
+                    "http-client.base-url must be an absolute HTTP(S) URI "
+                            + "without query or fragment"
                 );
             }
             if (requestTimeout == null
                     || requestTimeout.isZero()
                     || requestTimeout.isNegative()) {
                 throw new IllegalArgumentException(
-                        "gateway.request-timeout must be positive"
+                    "http-client.request-timeout must be positive"
                 );
             }
         }

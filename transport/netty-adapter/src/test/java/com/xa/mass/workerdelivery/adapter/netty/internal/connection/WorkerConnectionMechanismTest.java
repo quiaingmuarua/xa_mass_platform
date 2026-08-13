@@ -6,7 +6,8 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
+import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -22,10 +23,18 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class WorkerConnectionMechanismTest {
+
+    private final List<ScriptedHttpServer> httpServers = new ArrayList<>();
+
+    @AfterEach
+    void closeHttpServers() {
+        httpServers.forEach(ScriptedHttpServer::close);
+    }
 
     @Test
     void successfulVerificationMovesDerivedPhaseToBound() {
@@ -39,8 +48,8 @@ class WorkerConnectionMechanismTest {
                                     .VERIFICATION_PENDING
                     );
 
-            fixture.gateway.currentVerification().complete(null);
-            channel.runPendingTasks();
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
 
             assertThat(fixture.routes.inspectInbound(channel).kind())
                     .isEqualTo(WorkerRouteRegistry.InboundKind.VERIFIED);
@@ -59,8 +68,8 @@ class WorkerConnectionMechanismTest {
         try {
             channel.writeInbound(fixture.identity("worker-1"));
             channel.writeInbound(fixture.taskResult("worker-1"));
-            fixture.gateway.currentVerification().complete(null);
-            channel.runPendingTasks();
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
             assertThat(fixture.reports).isEmpty();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
@@ -74,15 +83,15 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture();
         EmbeddedChannel first = fixture.channel();
         first.writeInbound(fixture.identity("worker-1"));
-        fixture.gateway.currentVerification().complete(null);
-        first.runPendingTasks();
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, first);
         first.finishAndReleaseAll();
 
         EmbeddedChannel reconnect = fixture.channel();
         try {
             reconnect.writeInbound(fixture.identity("worker-1"));
 
-            assertThat(fixture.gateway.verificationCalls).isEqualTo(1);
+            awaitVerificationCalls(fixture.remoteApi, 1);
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(reconnect);
         } finally {
@@ -98,7 +107,7 @@ class WorkerConnectionMechanismTest {
         first.writeInbound(fixture.identity("worker-1"));
         second.writeInbound(fixture.identity("worker-1"));
 
-        assertThat(fixture.gateway.verificationCalls).isEqualTo(1);
+        awaitVerificationCalls(fixture.remoteApi, 1);
         assertThat(second.isActive()).isFalse();
         second.finishAndReleaseAll();
         first.finishAndReleaseAll();
@@ -106,9 +115,9 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel retry = fixture.channel();
         try {
             retry.writeInbound(fixture.identity("worker-1"));
-            assertThat(fixture.gateway.verificationCalls).isEqualTo(2);
-            fixture.gateway.currentVerification().complete(null);
-            retry.runPendingTasks();
+            awaitVerificationCalls(fixture.remoteApi, 2);
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, retry);
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(retry);
         } finally {
@@ -123,14 +132,14 @@ class WorkerConnectionMechanismTest {
         channel.writeInbound(fixture.identity("worker-1"));
         channel.finishAndReleaseAll();
 
-        fixture.gateway.currentVerification().complete(null);
+        fixture.remoteApi.currentVerification().complete(null);
         channel.runPendingTasks();
 
         assertThat(fixture.routes.activeChannel("worker-1")).isNull();
         EmbeddedChannel retry = fixture.channel();
         try {
             retry.writeInbound(fixture.identity("worker-1"));
-            assertThat(fixture.gateway.verificationCalls).isEqualTo(2);
+            awaitVerificationCalls(fixture.remoteApi, 2);
         } finally {
             retry.finishAndReleaseAll();
         }
@@ -141,8 +150,8 @@ class WorkerConnectionMechanismTest {
         Fixture fixture = new Fixture();
         EmbeddedChannel oldChannel = fixture.channel();
         oldChannel.writeInbound(fixture.identity("worker-1"));
-        fixture.gateway.currentVerification().complete(null);
-        oldChannel.runPendingTasks();
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, oldChannel);
 
         EmbeddedChannel replacement = fixture.channel();
         String result = fixture.taskResult("worker-1");
@@ -165,8 +174,8 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            fixture.gateway.currentVerification().complete(null);
-            channel.runPendingTasks();
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
 
             DeliveryCommand command = DeliveryCommand.create(
                     TASK,
@@ -187,11 +196,42 @@ class WorkerConnectionMechanismTest {
         }
     }
 
-    private static final class Fixture {
+    private static void awaitBound(
+            Fixture fixture,
+            EmbeddedChannel channel
+    ) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            channel.runPendingTasks();
+            if (fixture.routes.inspectInbound(channel).kind()
+                    == WorkerRouteRegistry.InboundKind.VERIFIED) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("Worker route did not become verified");
+    }
+
+    private static void awaitVerificationCalls(
+            PendingRouteHttpPeer remoteApi,
+            int expected
+    ) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (remoteApi.verificationCalls >= expected) {
+                assertThat(remoteApi.verificationCalls).isEqualTo(expected);
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("Route verification request did not start");
+    }
+
+    private final class Fixture {
 
         private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        private final PendingVerificationGateway gateway =
-                new PendingVerificationGateway();
+        private final PendingRouteHttpPeer remoteApi =
+                new PendingRouteHttpPeer();
         private final List<String> reports = new ArrayList<>();
         private final DeliveryReportProcess.Acceptor reportAcceptor = batch -> {
             reports.addAll(batch);
@@ -203,7 +243,7 @@ class WorkerConnectionMechanismTest {
                 new WorkerConnectionMechanism(
                         routes,
                         network,
-                        gateway,
+                        remoteApi.server.client(),
                         codec,
                         reportAcceptor,
                         "adapter-1",
@@ -239,27 +279,40 @@ class WorkerConnectionMechanismTest {
         }
     }
 
-    private static final class PendingVerificationGateway
-            implements RouteVerifier {
+    private final class PendingRouteHttpPeer {
 
-        private CompletableFuture<Void> verification =
-                new CompletableFuture<>();
-        private int verificationCalls;
+        private volatile CompletableFuture<Void> verification;
+        private volatile int verificationCalls;
+        private final ScriptedHttpServer server;
 
-        @Override
-        public CompletionStage<Void> verify(
-                String endpointManagerId,
-                String workerId
-        ) {
+        private PendingRouteHttpPeer() {
+            server = new ScriptedHttpServer(this::handle);
+            httpServers.add(server);
+        }
+
+        private Response handle(ScriptedHttpServer.Request request) {
+            CompletableFuture<Void> current = new CompletableFuture<>();
+            verification = current;
             verificationCalls++;
-            if (verification.isDone()) {
-                verification = new CompletableFuture<>();
+            try {
+                current.join();
+                return new Response(204, "");
+            } catch (CompletionException error) {
+                return new Response(503, "{}");
             }
-            return verification;
         }
 
         private CompletableFuture<Void> currentVerification() {
-            return verification;
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < deadline) {
+                CompletableFuture<Void> current = verification;
+                if (current != null && !current.isDone()) {
+                    return current;
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("Route verification request did not start");
         }
     }
 
