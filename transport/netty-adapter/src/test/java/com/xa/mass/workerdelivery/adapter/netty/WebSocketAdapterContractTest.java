@@ -14,6 +14,9 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -820,6 +823,20 @@ class WebSocketAdapterContractTest {
         }
 
         @Override
+        public CommandSource commandSource() {
+            return this::consumeWorkerCommands;
+        }
+
+        @Override
+        public ResultIngress resultIngress() {
+            return this::appendResults;
+        }
+
+        @Override
+        public RouteVerifier routeVerifier() {
+            return this::verifyWorkerRoute;
+        }
+
         public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
@@ -829,7 +846,6 @@ class WebSocketAdapterContractTest {
             return batch == null ? Map.of() : batch;
         }
 
-        @Override
         public void appendResults(
                 String endpointManagerId,
                 List<String> results
@@ -839,7 +855,6 @@ class WebSocketAdapterContractTest {
             resultAppended.countDown();
         }
 
-        @Override
         public java.util.concurrent.CompletionStage<Void>
         verifyWorkerRoute(String endpointManagerId, String workerId) {
             verifiedWorkerIds.add(workerId);
@@ -854,6 +869,20 @@ class WebSocketAdapterContractTest {
                 new CountDownLatch(1);
 
         @Override
+        public CommandSource commandSource() {
+            return this::consumeWorkerCommands;
+        }
+
+        @Override
+        public ResultIngress resultIngress() {
+            return this::appendResults;
+        }
+
+        @Override
+        public RouteVerifier routeVerifier() {
+            return this::verifyWorkerRoute;
+        }
+
         public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
@@ -867,14 +896,12 @@ class WebSocketAdapterContractTest {
             return Map.of();
         }
 
-        @Override
         public void appendResults(
                 String endpointManagerId,
                 List<String> results
         ) {
         }
 
-        @Override
         public java.util.concurrent.CompletionStage<Void>
         verifyWorkerRoute(String endpointManagerId, String workerId) {
             return java.util.concurrent.CompletableFuture.completedFuture(
@@ -891,6 +918,20 @@ class WebSocketAdapterContractTest {
         private final CountDownLatch release = new CountDownLatch(1);
 
         @Override
+        public CommandSource commandSource() {
+            return this::consumeWorkerCommands;
+        }
+
+        @Override
+        public ResultIngress resultIngress() {
+            return this::appendResults;
+        }
+
+        @Override
+        public RouteVerifier routeVerifier() {
+            return this::verifyWorkerRoute;
+        }
+
         public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
@@ -910,14 +951,12 @@ class WebSocketAdapterContractTest {
             return Map.of();
         }
 
-        @Override
         public void appendResults(
                 String endpointManagerId,
                 List<String> results
         ) {
         }
 
-        @Override
         public java.util.concurrent.CompletionStage<Void>
         verifyWorkerRoute(String endpointManagerId, String workerId) {
             return CompletableFuture.completedFuture(null);

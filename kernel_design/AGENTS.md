@@ -220,8 +220,14 @@ implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
 WebSocket and line-Socket Adapter instances live in
 `transport/netty-adapter`. A single package-private Adapter mechanism is
-instantiated independently per endpoint and owns that instance's lifecycle,
-scheduler, Pumps, and queues. One shared connection mechanism plus pure route
+instantiated independently per endpoint and owns that instance's lifecycle and
+scheduler. One `DeliveryCommandProcess` owns scheduled Command consumption,
+delivery, expiry, rotation, and one private `FiniteQueue`. One
+`DeliveryReportProcess` owns Result acceptance, pending-batch retry, remote
+ingress, and one separate private `FiniteQueue`. Queue storage never crosses a
+Process owner. The Adapter HTTP composition client projects to narrow Command
+Source, Result Ingress, and Route Verifier ports before entering those owners.
+One shared connection mechanism plus pure route
 Registry owns identity, first verification, current route selection, and Result
 ingress. One complete WebSocket or line-Socket physical Server owns listener,
 EventLoop, every child Channel, full Pipeline, framing, writes, asynchronous
@@ -443,7 +449,8 @@ point HTTP forwarding of DeliveryCommand to the selected Worker
 direct DeliveryCommand/DeliveryReport long-connection transport
 Server point Worker result and Adapter batch validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
-independent bounded Command/Report pumps, all-child Channels, and bound routes
+independent bounded Command/Report Process rounds, all-child Channels, and
+bound routes
 Adapter-owned Netty listeners and unchanged encoded DeliveryReport forwarding
 ```
 
@@ -461,8 +468,9 @@ authentication. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
 Each Java Adapter instance owns one configured non-system-polling mailbox, one
-independent Netty listener, separate scheduled Command/Report pumps, bounded
-queues, every accepted child Channel, and one current bound route per WorkerId.
+independent Netty listener, separate scheduled Command/Report Process rounds,
+one private bounded queue per Process, every accepted child Channel, and one
+current bound route per WorkerId.
 Its common Worker route Registry owns a process-local set of verified Worker
 IDs, one pending first-verification Channel per WorkerId, and the active
 Channels plus Channel correlation. The selected physical Server owns no route

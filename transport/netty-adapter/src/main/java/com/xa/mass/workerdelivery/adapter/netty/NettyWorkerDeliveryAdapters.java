@@ -6,12 +6,11 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
 import java.util.Objects;
@@ -127,31 +126,30 @@ public final class NettyWorkerDeliveryAdapters {
             Duration shutdownTimeout
     ) {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        BoundedDeliveryReportQueue reportQueue =
-                new BoundedDeliveryReportQueue(reportQueueCapacity);
+        DeliveryReportProcess reportProcess = new DeliveryReportProcess(
+                gateway.resultIngress(),
+                adapterId,
+                reportQueueCapacity
+        );
         WorkerRouteRegistry routes = new WorkerRouteRegistry();
         WorkerConnectionMechanism connectionMechanism =
                 new WorkerConnectionMechanism(
                         routes,
                         networkServer,
-                        gateway,
+                        gateway.routeVerifier(),
                         codec,
-                        reportQueue,
+                        reportProcess.acceptor(),
                         adapterId,
                         sendTimeLimit
                 );
-        DeliveryCommandPump commandPump = new DeliveryCommandPump(
-                gateway,
+        DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
+                gateway.commandSource(),
                 connectionMechanism,
-                reportQueue,
+                reportProcess.acceptor(),
+                codec,
                 adapterId,
                 commandConsumeLimit,
                 commandQueueCapacity
-        );
-        DeliveryReportPump reportPump = new DeliveryReportPump(
-                gateway,
-                adapterId,
-                reportQueue
         );
         return new NettyWorkerDeliveryAdapter(
                 adapterId,
@@ -160,8 +158,8 @@ public final class NettyWorkerDeliveryAdapters {
                 shutdownTimeout,
                 networkServer,
                 connectionMechanism,
-                commandPump,
-                reportPump
+                commandProcess,
+                reportProcess
         );
     }
 

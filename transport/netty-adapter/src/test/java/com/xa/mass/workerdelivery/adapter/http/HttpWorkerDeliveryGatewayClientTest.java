@@ -76,7 +76,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                         + "}}"
         );
 
-        var commands = client.consumeWorkerCommands(
+        var commands = client.commandSource().consume(
                 "adapter/one",
                 100
         );
@@ -123,7 +123,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 "{\"acceptedCount\":1,\"rejectedCount\":1}"
         );
 
-        client.appendResults(
+        client.resultIngress().ingress(
                 "adapter-1",
                 encodedResults
         );
@@ -139,7 +139,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 "{\"acceptedCount\":1,\"rejectedCount\":0}"
         );
         assertThatThrownBy(() ->
-                client.appendResults(
+                client.resultIngress().ingress(
                         "adapter-1",
                         encodedResults
                 )
@@ -163,7 +163,7 @@ class HttpWorkerDeliveryGatewayClientTest {
     void verifiesTheExactWorkerBindingRouteWithoutARequestBody() {
         respond(204, "");
 
-        client.verifyWorkerRoute(
+        client.routeVerifier().verify(
                 "adapter/one",
                 WORKER_ID
         ).toCompletableFuture().join();
@@ -177,7 +177,7 @@ class HttpWorkerDeliveryGatewayClientTest {
         assertThat(requestBody).isEmpty();
 
         respond(409, "{}");
-        assertThatThrownBy(() -> client.verifyWorkerRoute(
+        assertThatThrownBy(() -> client.routeVerifier().verify(
                 "adapter-1",
                 WORKER_ID
         ).toCompletableFuture().join())
@@ -191,7 +191,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 ));
 
         respond(302, "{}");
-        assertThatThrownBy(() -> client.verifyWorkerRoute(
+        assertThatThrownBy(() -> client.routeVerifier().verify(
                 "adapter-1",
                 WORKER_ID
         ).toCompletableFuture().join())
@@ -209,7 +209,7 @@ class HttpWorkerDeliveryGatewayClientTest {
     void rejectsUnexpectedStatusAndMalformedResponses() {
         respond(503, "{}");
         assertThatThrownBy(() ->
-                client.consumeWorkerCommands("adapter-1", 100)
+                client.commandSource().consume("adapter-1", 100)
         )
                 .isInstanceOfSatisfying(
                         WorkerDeliveryAdapterException.class,
@@ -228,7 +228,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 "{\"workerCommandsByWorkerId\":{},\"nextCursor\":null}"
         );
         assertThatThrownBy(() ->
-                client.consumeWorkerCommands("adapter-1", 100)
+                client.commandSource().consume("adapter-1", 100)
         )
                 .isInstanceOfSatisfying(
                         WorkerDeliveryAdapterException.class,
@@ -247,7 +247,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 202,
                 "{\"acceptedCount\":\"one\",\"rejectedCount\":0}"
         );
-        assertThatThrownBy(() -> client.appendResults(
+        assertThatThrownBy(() -> client.resultIngress().ingress(
                 "adapter-1",
                 List.of(codec.encodeDeliveryReport(DeliveryReport.create(
                             WORKER,
@@ -273,7 +273,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                 );
 
         respond(400, "{}");
-        assertThatThrownBy(() -> client.appendResults(
+        assertThatThrownBy(() -> client.resultIngress().ingress(
                 "adapter-1",
                 List.of("opaque")
         ))
@@ -289,7 +289,7 @@ class HttpWorkerDeliveryGatewayClientTest {
     @Test
     void rejectsInvalidGatewayConfiguration() {
         assertThatThrownBy(() ->
-                client.consumeWorkerCommands("adapter-1", 0)
+                client.commandSource().consume("adapter-1", 0)
         ).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
                 URI.create("/relative"),

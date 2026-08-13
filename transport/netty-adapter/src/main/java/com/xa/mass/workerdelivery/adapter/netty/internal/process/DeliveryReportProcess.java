@@ -1,53 +1,63 @@
-package com.xa.mass.workerdelivery.adapter.netty.internal.gateway;
+package com.xa.mass.workerdelivery.adapter.netty.internal.process;
+
+import static com.xa.mass.workerdelivery.adapter.netty.internal.process.FiniteQueue.QueueIngressStatus.ACCEPTED;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
 import java.util.List;
 import java.util.Objects;
 
-public final class DeliveryReportPump implements Runnable {
+/** Scheduled Result ingress process for one Adapter instance. */
+public final class DeliveryReportProcess {
 
     private static final System.Logger LOGGER = System.getLogger(
-            DeliveryReportPump.class.getName()
+            DeliveryReportProcess.class.getName()
     );
 
-    private final WorkerDeliveryGatewayClient gateway;
+    private final FiniteQueue<String> reportQueue;
+    private final ResultIngress resultIngress;
     private final String adapterId;
-    private final BoundedDeliveryReportQueue reportQueue;
+    private final Acceptor acceptor = this::accept;
     private List<String> pendingBatch;
-    private boolean closed;
+    private boolean closeFinished;
 
-    public DeliveryReportPump(
-            WorkerDeliveryGatewayClient gateway,
+    public DeliveryReportProcess(
+            ResultIngress resultIngress,
             String adapterId,
-            BoundedDeliveryReportQueue reportQueue
+            int queueCapacity
     ) {
-        this.gateway = Objects.requireNonNull(gateway, "gateway");
+        this.resultIngress = Objects.requireNonNull(
+                resultIngress,
+                "resultIngress"
+        );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
         this.adapterId = adapterId;
-        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
+        reportQueue = new FiniteQueue<>(queueCapacity);
     }
 
-    @Override
-    public synchronized void run() {
-        if (closed) {
+    public Acceptor acceptor() {
+        return acceptor;
+    }
+
+    public void round() {
+        if (closeFinished) {
             return;
         }
         submitAtMostOneBatch();
     }
 
-    public void stopAccepting() {
-        reportQueue.stopAccepting();
+    public void stopIngress() {
+        reportQueue.stopIngress();
     }
 
-    public synchronized void closeAndFlush() {
-        if (closed) {
+    public synchronized void finishCloseAfterSchedulerStop() {
+        if (closeFinished) {
             return;
         }
-        reportQueue.stopAccepting();
+        stopIngress();
 
         if (pendingBatch != null) {
             SubmissionOutcome outcome = submit(pendingBatch);
@@ -56,38 +66,40 @@ public final class DeliveryReportPump implements Runnable {
             }
         }
         if (pendingBatch == null) {
-            List<String> remaining = reportQueue.drain();
+            List<String> remaining = reportQueue.consume(
+                    reportQueue.capacity()
+            );
             if (!remaining.isEmpty()
                     && submit(remaining) == SubmissionOutcome.RETRY) {
                 pendingBatch = remaining;
             }
         }
-        closed = true;
+        closeFinished = true;
     }
 
-    synchronized List<String> pendingBatch() {
-        return pendingBatch;
+    private ReportIngressStatus accept(List<String> encodedReports) {
+        return switch (reportQueue.ingress(encodedReports)) {
+            case ACCEPTED -> ReportIngressStatus.ACCEPTED;
+            case FULL -> ReportIngressStatus.FULL;
+            case CLOSED -> ReportIngressStatus.CLOSED;
+        };
     }
 
     private void submitAtMostOneBatch() {
         List<String> batch = pendingBatch;
         if (batch == null) {
-            batch = reportQueue.drain();
+            batch = reportQueue.consume(reportQueue.capacity());
         }
         if (batch.isEmpty()) {
             return;
         }
         SubmissionOutcome outcome = submit(batch);
-        if (outcome == SubmissionOutcome.RETRY) {
-            pendingBatch = batch;
-        } else {
-            pendingBatch = null;
-        }
+        pendingBatch = outcome == SubmissionOutcome.RETRY ? batch : null;
     }
 
     private SubmissionOutcome submit(List<String> batch) {
         try {
-            gateway.appendResults(adapterId, batch);
+            resultIngress.ingress(adapterId, batch);
             return SubmissionOutcome.SUCCESS;
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(error);
@@ -118,6 +130,17 @@ public final class DeliveryReportPump implements Runnable {
                 "Worker result submission failed",
                 error
         );
+    }
+
+    public interface Acceptor {
+
+        ReportIngressStatus ingress(List<String> encodedReports);
+    }
+
+    public enum ReportIngressStatus {
+        ACCEPTED,
+        FULL,
+        CLOSED
     }
 
     private enum SubmissionOutcome {

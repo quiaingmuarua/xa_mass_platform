@@ -5,9 +5,9 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandPump;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -27,8 +27,8 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     private final Duration reportSubmitInterval;
     private final Duration shutdownTimeout;
     private final WorkerConnectionMechanism connectionMechanism;
-    private final DeliveryCommandPump commandPump;
-    private final DeliveryReportPump reportPump;
+    private final DeliveryCommandProcess commandProcess;
+    private final DeliveryReportProcess reportProcess;
     private final NettyWorkerServer networkServer;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
@@ -43,8 +43,8 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             Duration shutdownTimeout,
             NettyWorkerServer networkServer,
             WorkerConnectionMechanism connectionMechanism,
-            DeliveryCommandPump commandPump,
-            DeliveryReportPump reportPump
+            DeliveryCommandProcess commandProcess,
+            DeliveryReportProcess reportProcess
     ) {
         this.adapterId = requireAdapterId(adapterId);
         commandPumpInterval = Objects.requireNonNull(
@@ -67,8 +67,14 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                 connectionMechanism,
                 "connectionMechanism"
         );
-        this.commandPump = Objects.requireNonNull(commandPump, "commandPump");
-        this.reportPump = Objects.requireNonNull(reportPump, "reportPump");
+        this.commandProcess = Objects.requireNonNull(
+                commandProcess,
+                "commandProcess"
+        );
+        this.reportProcess = Objects.requireNonNull(
+                reportProcess,
+                "reportProcess"
+        );
     }
 
     @Override
@@ -99,13 +105,21 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             networkServer.start(connectionMechanism);
             state = WorkerDeliveryAdapterState.RUNNING;
             commandTask = scheduler.scheduleWithFixedDelay(
-                    this::runCommandPumpSafely,
+                    () -> runSafely(
+                            "consumeCommands",
+                            "Task command consumption",
+                            commandProcess::round
+                    ),
                     0,
                     commandPumpInterval.toMillis(),
                     TimeUnit.MILLISECONDS
             );
             reportTask = scheduler.scheduleWithFixedDelay(
-                    this::runReportPumpSafely,
+                    () -> runSafely(
+                            "ingressResults",
+                            "Task result ingress",
+                            reportProcess::round
+                    ),
                     reportSubmitInterval.toMillis(),
                     reportSubmitInterval.toMillis(),
                     TimeUnit.MILLISECONDS
@@ -154,7 +168,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
                 )
                 : null;
         cancel(stoppingCommandTask);
-        commandPump.close();
+        commandProcess.stopRounds();
         try {
             networkServer.close();
         } catch (RuntimeException error) {
@@ -163,13 +177,17 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             connectionMechanism.clear();
         }
         cancel(stoppingReportTask);
-        reportPump.stopAccepting();
+        reportProcess.stopIngress();
         failure = stopScheduler(stoppingScheduler, failure);
         if (stoppingScheduler == null
                 || stoppingScheduler.isTerminated()) {
             try {
-                commandPump.finishCloseAfterSchedulerStop();
-                reportPump.closeAndFlush();
+                commandProcess.finishCloseAfterSchedulerStop();
+            } catch (RuntimeException error) {
+                failure = accumulate(failure, error);
+            }
+            try {
+                reportProcess.finishCloseAfterSchedulerStop();
             } catch (RuntimeException error) {
                 failure = accumulate(failure, error);
             }
@@ -195,29 +213,22 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
         return state == WorkerDeliveryAdapterState.RUNNING;
     }
 
-    private void runCommandPumpSafely() {
+    private void runSafely(
+            String action,
+            String description,
+            Runnable round
+    ) {
         if (!isRunning()) {
             return;
         }
         try {
-            commandPump.run();
+            round.run();
         } catch (RuntimeException error) {
-            logPumpFailure(error, "commandPump", "command pump");
+            logRoundFailure(error, action, description);
         }
     }
 
-    private void runReportPumpSafely() {
-        if (!isRunning()) {
-            return;
-        }
-        try {
-            reportPump.run();
-        } catch (RuntimeException error) {
-            logPumpFailure(error, "reportPump", "report pump");
-        }
-    }
-
-    private void logPumpFailure(
+    private void logRoundFailure(
             RuntimeException error,
             String action,
             String description

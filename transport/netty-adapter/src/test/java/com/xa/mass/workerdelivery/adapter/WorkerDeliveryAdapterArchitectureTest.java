@@ -21,7 +21,7 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path NETTY = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/netty"
     );
-    private static final Path GATEWAY = NETTY.resolve("internal/gateway");
+    private static final Path PROCESS = NETTY.resolve("internal/process");
     private static final Path CONNECTION = NETTY.resolve(
             "internal/connection"
     );
@@ -69,13 +69,15 @@ class WorkerDeliveryAdapterArchitectureTest {
         ));
         assertThat(adapter)
                 .contains("WorkerConnectionMechanism connectionMechanism")
-                .contains("DeliveryCommandPump commandPump")
-                .contains("DeliveryReportPump reportPump")
+                .contains("DeliveryCommandProcess commandProcess")
+                .contains("DeliveryReportProcess reportProcess")
                 .contains("NettyWorkerServer networkServer")
                 .contains("networkServer.start(connectionMechanism)")
                 .doesNotContain("WebSocketNettyWorkerServer")
                 .doesNotContain("SocketNettyWorkerServer")
+                .doesNotContain("WorkerDeliveryGatewayClient")
                 .doesNotContain("WorkerDeliveryCodec")
+                .doesNotContain("FiniteQueue")
                 .doesNotContain("ServerBootstrap")
                 .doesNotContain("TextWebSocketFrame")
                 .doesNotContain("LineBasedFrameDecoder");
@@ -85,11 +87,17 @@ class WorkerDeliveryAdapterArchitectureTest {
     void frozenLayersKeepAStableDependencyDirection() throws IOException {
         String connection = readSources(CONNECTION);
         String network = readSources(NETWORK);
-        String gateway = readSources(GATEWAY);
+        String process = readSources(PROCESS);
 
         assertThat(connection)
                 .contains("WorkerRouteRegistry")
                 .contains("WorkerConnectionMechanism")
+                .contains("RouteVerifier routeVerifier")
+                .contains("DeliveryReportProcess.Acceptor reportAcceptor")
+                .doesNotContain("FiniteQueue")
+                .doesNotContain("CommandSource")
+                .doesNotContain("ResultIngress")
+                .doesNotContain("WorkerDeliveryGatewayClient gateway")
                 .doesNotContain("io.netty.bootstrap")
                 .doesNotContain("EventLoopGroup")
                 .doesNotContain("io.netty.handler.codec.http")
@@ -103,19 +111,83 @@ class WorkerDeliveryAdapterArchitectureTest {
 
         assertThat(network)
                 .contains("interface NettyWorkerServer extends AutoCloseable")
-                .doesNotContain("internal.gateway")
+                .doesNotContain("internal.process")
                 .doesNotContain("WorkerDeliveryGatewayClient")
-                .doesNotContain("BoundedDeliveryReportQueue")
+                .doesNotContain("FiniteQueue")
+                .doesNotContain("DeliveryCommandProcess")
+                .doesNotContain("DeliveryReportProcess")
                 .doesNotContain("WorkerDeliveryCodec")
                 .doesNotContain("DeliveryCommandPump")
                 .doesNotContain("DeliveryReportPump");
 
-        assertThat(gateway)
-                .contains("DeliveryCommandPump")
-                .contains("DeliveryReportPump")
-                .contains("BoundedDeliveryReportQueue")
+        assertThat(process)
+                .contains("final class FiniteQueue<T>")
+                .contains("final class DeliveryCommandProcess")
+                .contains("final class DeliveryReportProcess")
+                .contains("record TargetedDeliveryCommand")
+                .contains("FiniteQueue<TargetedDeliveryCommand>")
+                .contains("FiniteQueue<String>")
+                .doesNotContain("implements Runnable")
+                .doesNotContain("interface Process")
+                .doesNotContain("ProcessRegistry")
+                .doesNotContain("DeliveryCommandPump")
+                .doesNotContain("DeliveryReportPump")
+                .doesNotContain("BoundedDeliveryReportQueue")
                 .doesNotContain("io.netty")
                 .doesNotContain("ServerBootstrap");
+
+        assertThat(readSources(NETTY.resolve("internal/gateway")))
+                .isEmpty();
+    }
+
+    @Test
+    void processesOwnOneQueueAndReceiveOnlyTheirOwnerPorts()
+            throws IOException {
+        String commands = read(PROCESS.resolve(
+                "DeliveryCommandProcess.java"
+        ));
+        String reports = read(PROCESS.resolve(
+                "DeliveryReportProcess.java"
+        ));
+        String gateway = read(APPLICATION.resolve(
+                "WorkerDeliveryGatewayClient.java"
+        ));
+        String http = read(HTTP.resolve(
+                "HttpWorkerDeliveryGatewayClient.java"
+        ));
+
+        assertThat(commands)
+                .contains("FiniteQueue<TargetedDeliveryCommand>")
+                .contains("CommandSource commandSource")
+                .contains("Target target")
+                .contains("DeliveryReportProcess.Acceptor reportAcceptor")
+                .doesNotContain("FiniteQueue<String>")
+                .doesNotContain("ResultIngress resultIngress")
+                .doesNotContain("RouteVerifier");
+        assertThat(reports)
+                .contains("FiniteQueue<String>")
+                .contains("ResultIngress resultIngress")
+                .doesNotContain("TargetedDeliveryCommand")
+                .doesNotContain("CommandSource")
+                .doesNotContain("RouteVerifier");
+
+        assertThat(gateway)
+                .contains("CommandSource commandSource()")
+                .contains("ResultIngress resultIngress()")
+                .contains("RouteVerifier routeVerifier()")
+                .doesNotContain("consumeWorkerCommands(")
+                .doesNotContain("appendResults(")
+                .doesNotContain("verifyWorkerRoute(");
+        assertThat(http)
+                .contains("private final HttpClient http")
+                .contains("this::consumeWorkerCommands")
+                .contains("this::ingressResults")
+                .contains("this::verifyWorkerRoute")
+                .contains("WorkerCommandGatewayHttpContract")
+                .contains("WorkerResultGatewayHttpContract");
+        assertThat(Files.exists(HTTP.resolve(
+                "WorkerDeliveryGatewayHttpContract.java"
+        ))).isFalse();
     }
 
     @Test

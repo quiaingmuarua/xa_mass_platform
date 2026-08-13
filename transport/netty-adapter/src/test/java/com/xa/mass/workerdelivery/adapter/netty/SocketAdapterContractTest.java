@@ -12,6 +12,9 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManag
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -586,6 +589,20 @@ class SocketAdapterContractTest {
         }
 
         @Override
+        public CommandSource commandSource() {
+            return this::consumeWorkerCommands;
+        }
+
+        @Override
+        public ResultIngress resultIngress() {
+            return this::appendResults;
+        }
+
+        @Override
+        public RouteVerifier routeVerifier() {
+            return this::verifyWorkerRoute;
+        }
+
         public Map<String, DeliveryCommand> consumeWorkerCommands(
                 String endpointManagerId,
                 int limit
@@ -595,7 +612,6 @@ class SocketAdapterContractTest {
             return batch == null ? Map.of() : batch;
         }
 
-        @Override
         public void appendResults(
                 String endpointManagerId,
                 List<String> results
@@ -605,7 +621,6 @@ class SocketAdapterContractTest {
             resultAppended.countDown();
         }
 
-        @Override
         public java.util.concurrent.CompletionStage<Void>
         verifyWorkerRoute(String endpointManagerId, String workerId) {
             verifiedWorkerIds.add(workerId);

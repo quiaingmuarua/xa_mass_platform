@@ -25,14 +25,19 @@ adapterId = endpointManagerId
 listenHost + listenPort
 one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
-one bounded DeliveryCommand queue
-one scheduled DeliveryCommand Pump
-one bounded encoded DeliveryReport queue
-one scheduled DeliveryReport Pump
+one `DeliveryCommandProcess` with its private Command `FiniteQueue`
+one `DeliveryReportProcess` with its private Result `FiniteQueue`
+two independently scheduled Process rounds
 ```
 
-The common Adapter aggregate owns lifecycle, scheduler, queues, and Pumps. The
-shared connection mechanism owns identity interpretation, first-seen route
+The common Adapter aggregate owns lifecycle and scheduling. The Command Process
+owns remote consumption, delivery/rotation, expiry, and exactly one local
+Command queue. The Report Process owns local Result acceptance, remote ingress,
+pending-batch retry, and exactly one local Result queue. Each `FiniteQueue` is
+business-neutral process infrastructure and owns only thread-safe FIFO storage
+with soft-capacity ingress; it is never passed between owners. The shared
+connection mechanism owns identity
+interpretation, first-seen route
 verification, Command routing, and Result ingress; its Registry alone owns
 verified, pending, active, and Channel-correlation truth. The selected physical
 Server owns its listener, EventLoop, all child Channels, complete Pipeline,
@@ -52,8 +57,8 @@ similarity:
 ```text
 netty/
   finite public factory + one package-private Adapter aggregate
-netty/internal/gateway/
-  DeliveryCommand target port, Result ingress buffer, and both Gateway Pumps
+netty/internal/process/
+  DeliveryCommandProcess, DeliveryReportProcess, and private FiniteQueues
 netty/internal/connection/
   pure Worker route truth + one shared Netty connection mechanism
 netty/internal/network/
@@ -62,12 +67,19 @@ netty/internal/network/
 
 Java collaborators crossing those owner packages are `public` only for module
 assembly and remain under `netty.internal`; they are not supported construction
-contracts, and Server is guarded from importing them. Gateway Pumps still see
-only the transport-neutral `DeliveryCommandTarget`. The shared connection
-mechanism sees normalized strings and Netty Channels as route addresses, but
-all physical write/close operations return through `NettyWorkerServer`; it does
-not see WebSocket frames, Socket lines, handshake types, listener resources,
-or Pipeline mutation.
+contracts, and Server is guarded from importing them. The shared connection
+mechanism implements only the Command Process target port and receives only the
+Report Process acceptor plus the route-verification port. It sees normalized
+strings and Netty Channels as route addresses, but all physical write/close
+operations return through `NettyWorkerServer`; it does not see WebSocket
+frames, Socket lines, handshake types, listener resources, or Pipeline
+mutation.
+
+`WorkerDeliveryGatewayClient` is only the HTTP composition root. The factory
+projects it into three owner-local ports: Command Source, Result Ingress, and
+Route Verifier. These projections share one physical HTTP client and connection
+pool, while no Process or connection owner receives the broad composition
+interface.
 
 WebSocket and Socket keep complete, separately understandable physical Server
 implementations. A test-only parameterized `NettyWorkerServer` behavior
@@ -124,7 +136,7 @@ and close the physical Channel after the write flushes. Gateway unavailability
 or a 5xx response only closes the physical Channel, allowing the Worker Client
 to consume its current-Endpoint reconnect budget.
 
-An unverified Channel is never visible to the DeliveryCommand Pump. Reads stay
+An unverified Channel is never visible to `DeliveryCommandProcess`. Reads stay
 enabled during asynchronous verification, but every later frame is released and
 dropped until verification completes; there is no pre-verification message
 buffer. If that Channel disconnects, its exact pending entry is cancelled and a
@@ -181,15 +193,22 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
-## DeliveryCommand Pump
+## Task Delivery Processes
 
-The DeliveryCommand Pump owns the temporary command queue:
+### Command consumption round
+
+`DeliveryCommandProcess` consumes through the Command Source port into its own
+`FiniteQueue<TargetedDeliveryCommand>`. The tuple is Adapter-local; the current
+Gateway and Server HTTP contract continue to use
+`Map<workerId, DeliveryCommand>` and are converted immediately after consume.
 
 ```text
-when a full consume batch fits
+while estimated queue size is below its soft capacity
   -> consume at most commandConsumeLimit commands from Server
+  -> ingress the complete bounded batch, allowing one-batch redundancy
 
-for each command present at round start
+consume at most queue capacity for this round
+for each observed command exactly once
   -> expired: remove and enqueue Adapter COMMAND_EXPIRED best-effort
   -> no active writable Channel: rotate to queue tail
   -> physical Server write started: remove
@@ -197,7 +216,10 @@ for each command present at round start
   -> asynchronous write failure: physical Server closes exact Channel
 ```
 
-The queue has no workerId index. One round observes each queued command once.
+The queue has no workerId index. Capacity is a backpressure target rather than
+an exact size invariant. Because `commandConsumeLimit <= capacity`, stable
+Command retention remains bounded by `capacity + commandConsumeLimit - 1`.
+One round observes each consumed command once.
 The Server mailbox already partitions by endpointManagerId, while workerId is
 the Channel route coordinate.
 
@@ -211,7 +233,7 @@ No active Channel is a temporary retry condition while the command remains
 live. A send-started failure is ambiguous and must not fabricate Adapter
 rejection evidence.
 
-## DeliveryReport Pump
+### Result ingress round
 
 Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 `ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
@@ -219,9 +241,10 @@ Netty handlers strictly decode every direct `DeliveryReport`. Results targeting
 rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
 is dropped.
 
-Adapter-generated `COMMAND_EXPIRED` enters the same bounded queue. The
-DeliveryReport Pump runs at
-`resultSubmitInterval`:
+Adapter-generated `COMMAND_EXPIRED` enters `DeliveryReportProcess` only through
+its acceptor port, exactly like a valid Result accepted by the connection
+mechanism. Neither caller sees the Result queue. `DeliveryReportProcess` runs
+the remote ingress round at `resultSubmitInterval`:
 
 ```text
 pending batch exists -> retry it
@@ -236,11 +259,15 @@ accepts `ADAPTER` `2...` Reports whose `sourceId` matches the batch
 `WORKER + path workerId`.
 
 Gateway protocol rejection drops the pending batch. Network or Server
-unavailability retains it for a later interval. Command consumption and Report
-submission are independent pumps; Report failure does not stop command
+unavailability retains it for a later interval. The one pending batch is
+bounded by Result queue capacity and is retried before consuming new Results.
+Command consumption and Result ingress are independently scheduled rounds;
+Report failure does not stop command
 forwarding.
 
-Both queues are bounded and process-local. Adapter process failure can lose
+Both queues are finite, soft-capacity, and private to their owning Process.
+`estimatedSize` is advisory and never becomes delivery truth. Adapter process
+failure can lose
 queued commands or results. Existing TaskItem claims, Worker leases, and
 Result Routing fences remain the convergence mechanism. There is no ACK,
 persistent pending queue, or exactly-once claim.
@@ -256,18 +283,17 @@ Start:
 ```text
 bind listener
 -> state RUNNING
--> schedule DeliveryCommand and DeliveryReport Pumps
+-> schedule DeliveryCommandProcess and DeliveryReportProcess rounds
 ```
 
 Close:
 
 ```text
 state STOPPING
--> stop DeliveryCommand Pump
+-> stop Command rounds
 -> close listener and every pre-identity, pending-verification, or bound Channel
 -> clear verified, pending, and active route-directory state
--> stop DeliveryReport Pump
--> stop accepting Worker results
+-> stop Result ingress
 -> bounded final result flush
 -> state CLOSED
 ```

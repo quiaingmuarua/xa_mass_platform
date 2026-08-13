@@ -6,12 +6,12 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryReportPump;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -21,7 +21,6 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
@@ -62,9 +61,7 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.taskResult("worker-1"));
             fixture.gateway.currentVerification().complete(null);
             channel.runPendingTasks();
-            fixture.reportPump().run();
-
-            assertThat(fixture.gateway.appendedResults).isEmpty();
+            assertThat(fixture.reports).isEmpty();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
         } finally {
@@ -152,10 +149,8 @@ class WorkerConnectionMechanismTest {
         try {
             replacement.writeInbound(fixture.identity("worker-1"));
             oldChannel.writeInbound(result);
-            fixture.reportPump().run();
 
-            assertThat(fixture.gateway.appendedResults)
-                    .containsExactly(List.of(result));
+            assertThat(fixture.reports).containsExactly(result);
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(replacement);
         } finally {
@@ -182,11 +177,7 @@ class WorkerConnectionMechanismTest {
                     "context"
             );
             assertThat(fixture.mechanism.deliver("worker-1", command))
-                    .isEqualTo(
-                            com.xa.mass.workerdelivery.adapter.netty.internal
-                                    .gateway.DeliveryCommandTarget
-                                    .DeliveryAttempt.STARTED
-                    );
+                    .isEqualTo(DeliveryAttempt.STARTED);
             assertThat(fixture.network.writtenMessages)
                     .containsExactly(fixture.codec.encodeDeliveryCommand(
                             command
@@ -201,8 +192,11 @@ class WorkerConnectionMechanismTest {
         private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         private final PendingVerificationGateway gateway =
                 new PendingVerificationGateway();
-        private final BoundedDeliveryReportQueue reportQueue =
-                new BoundedDeliveryReportQueue(4);
+        private final List<String> reports = new ArrayList<>();
+        private final DeliveryReportProcess.Acceptor reportAcceptor = batch -> {
+            reports.addAll(batch);
+            return DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
+        };
         private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism mechanism =
@@ -211,21 +205,13 @@ class WorkerConnectionMechanismTest {
                         network,
                         gateway,
                         codec,
-                        reportQueue,
+                        reportAcceptor,
                         "adapter-1",
                         Duration.ofSeconds(1)
                 );
 
         private EmbeddedChannel channel() {
             return new EmbeddedChannel(mechanism);
-        }
-
-        private DeliveryReportPump reportPump() {
-            return new DeliveryReportPump(
-                    gateway,
-                    "adapter-1",
-                    reportQueue
-            );
         }
 
         private String taskResult(String workerId) {
@@ -254,31 +240,14 @@ class WorkerConnectionMechanismTest {
     }
 
     private static final class PendingVerificationGateway
-            implements WorkerDeliveryGatewayClient {
+            implements RouteVerifier {
 
-        private final List<List<String>> appendedResults = new ArrayList<>();
         private CompletableFuture<Void> verification =
                 new CompletableFuture<>();
         private int verificationCalls;
 
         @Override
-        public Map<String, DeliveryCommand> consumeWorkerCommands(
-                String endpointManagerId,
-                int limit
-        ) {
-            return Map.of();
-        }
-
-        @Override
-        public void appendResults(
-                String endpointManagerId,
-                List<String> encodedDeliveryReports
-        ) {
-            appendedResults.add(List.copyOf(encodedDeliveryReports));
-        }
-
-        @Override
-        public CompletionStage<Void> verifyWorkerRoute(
+        public CompletionStage<Void> verify(
                 String endpointManagerId,
                 String workerId
         ) {

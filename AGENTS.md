@@ -42,7 +42,10 @@ Status: current repository handoff.
 - `transport/netty-adapter/` owns complete Adapter instances. Server constructs
   the finite WebSocket/Socket choices through one public factory returning
   `WorkerDeliveryAdapter`. Each endpoint has one package-private Adapter
-  aggregate for lifecycle, Gateway Pumps, and bounded queues; one shared
+  aggregate for lifecycle and scheduling; one `DeliveryCommandProcess` for
+  Command consumption, delivery, and expiry; one `DeliveryReportProcess` for
+  Result acceptance, pending-batch retry, and remote ingress; one private
+  soft-capacity `FiniteQueue` owned by each Process; one shared
   connection mechanism plus route Registry for identity, first verification,
   Command routing, and Result ingress; and one complete WebSocket or Socket
   physical Server for listener, EventLoop, every child Channel, full Pipeline,
@@ -51,7 +54,7 @@ Status: current repository handoff.
   operations. There is no public protocol SPI,
   abstract Adapter base, transport-kind runtime, shared mutable state, or fat
   connection Session. Cross-package Netty collaborators are classified under
-  `netty.internal.gateway`, `netty.internal.connection`, and
+  `netty.internal.process`, `netty.internal.connection`, and
   `netty.internal.network`; they are repository-internal even when Java
   visibility must be public. Server may depend only on the finite factory.
   This three-owner production cut is frozen. WebSocket and Socket preserve
@@ -164,9 +167,16 @@ tag.
   contract.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
-  its complete instances through three Netty-specific owners. The
-  `NettyWorkerDeliveryAdapter` aggregate owns lifecycle, scheduler, bounded
-  queues, and scheduled Command/Report pumps. One shared
+  its complete instances through three frozen Netty-specific layers. The
+  `NettyWorkerDeliveryAdapter` aggregate owns lifecycle, scheduler, and the
+  two typed scheduled Process rounds. `DeliveryCommandProcess` owns its one
+  private Command `FiniteQueue`, remote Command Source, delivery target,
+  expiry, and rotation. `DeliveryReportProcess` owns its one private Result
+  `FiniteQueue`, local acceptor, pending batch, and remote Result Ingress.
+  `FiniteQueue` is thread-safe business-neutral Process infrastructure and is
+  never passed between owners. The broad `WorkerDeliveryGatewayClient` exists
+  only at composition and projects to Command Source, Result Ingress, and
+  Route Verifier ports that may share one physical HTTP client. One shared
   `WorkerConnectionMechanism` owns strict identity interpretation,
   first-seen route verification, Command routing, and Result ingress, while
   its `WorkerRouteRegistry` owns the verified worker-ID set,
@@ -174,7 +184,9 @@ tag.
   Channel-to-worker correlation. A complete `WebSocketNettyWorkerServer` or
   `SocketNettyWorkerServer` owns the listener, EventLoop, every child Channel,
   physical framing, writes, asynchronous write failure, and protocol close
-  mapping. The shared mechanism receives normalized `String` values and may
+  mapping. The shared mechanism implements only the Command Process target and
+  receives only the Report Process acceptor plus Route Verifier. It receives
+  normalized `String` values and may
   retain `Channel` only as an address; it must return every physical write or
   close to the selected Server. Connection phase is derived from Registry
   truth rather than a phase enum, Session, or Pipeline Handler replacement.
@@ -404,9 +416,12 @@ scenario_workers_jvm
 
 transport/netty-adapter
   -> Adapter batch HTTP client
+  -> owner-local Command Source / Result Ingress / Route Verifier projections
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
-  -> one Adapter lifecycle/scheduler/Pump aggregate per configured instance
+  -> one Adapter lifecycle/scheduler aggregate per configured instance
+  -> one DeliveryCommandProcess with one private Command FiniteQueue
+  -> one DeliveryReportProcess with one private Result FiniteQueue
   -> one shared identity/route/Result connection mechanism per instance
   -> process-local verified/pending/active/correlation Registry truth
   -> one complete WebSocket or Socket listener/EventLoop/Pipeline Server

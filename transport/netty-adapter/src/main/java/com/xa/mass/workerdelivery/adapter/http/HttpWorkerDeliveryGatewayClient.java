@@ -3,6 +3,9 @@ package com.xa.mass.workerdelivery.adapter.http;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.CommandSource;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.ResultIngress;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.io.IOException;
@@ -24,7 +27,11 @@ public final class HttpWorkerDeliveryGatewayClient
     private final HttpClient http;
     private final URI gatewayBaseUrl;
     private final Duration requestTimeout;
-    private final WorkerDeliveryGatewayHttpContract contract;
+    private final WorkerCommandGatewayHttpContract commandContract;
+    private final WorkerResultGatewayHttpContract resultContract;
+    private final CommandSource commandSource = this::consumeWorkerCommands;
+    private final ResultIngress resultIngress = this::ingressResults;
+    private final RouteVerifier routeVerifier = this::verifyWorkerRoute;
 
     public HttpWorkerDeliveryGatewayClient(
             URI gatewayBaseUrl,
@@ -50,18 +57,37 @@ public final class HttpWorkerDeliveryGatewayClient
         this.http = Objects.requireNonNull(http, "http");
         this.gatewayBaseUrl = requireGatewayBaseUrl(gatewayBaseUrl);
         this.requestTimeout = requireTimeout(requestTimeout);
-        contract = new WorkerDeliveryGatewayHttpContract(
-                Objects.requireNonNull(codec, "codec")
+        WorkerDeliveryCodec requiredCodec = Objects.requireNonNull(
+                codec,
+                "codec"
         );
+        commandContract = new WorkerCommandGatewayHttpContract(
+                requiredCodec
+        );
+        resultContract = new WorkerResultGatewayHttpContract();
     }
 
     @Override
-    public Map<String, DeliveryCommand> consumeWorkerCommands(
+    public CommandSource commandSource() {
+        return commandSource;
+    }
+
+    @Override
+    public ResultIngress resultIngress() {
+        return resultIngress;
+    }
+
+    @Override
+    public RouteVerifier routeVerifier() {
+        return routeVerifier;
+    }
+
+    private Map<String, DeliveryCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
         String operation = "gateway.consumeCommands";
-        String body = contract.encodeConsumeRequest(limit);
+        String body = commandContract.encodeConsumeRequest(limit);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "commands:consume")
                         .POST(HttpRequest.BodyPublishers.ofString(
@@ -78,16 +104,17 @@ public final class HttpWorkerDeliveryGatewayClient
                     response.statusCode()
             );
         }
-        return contract.decodeConsumeResponse(response.body());
+        return commandContract.decodeConsumeResponse(response.body());
     }
 
-    @Override
-    public void appendResults(
+    private void ingressResults(
             String endpointManagerId,
             List<String> encodedDeliveryReports
     ) {
         String operation = "gateway.appendResults";
-        String body = contract.encodeResultBatch(encodedDeliveryReports);
+        String body = resultContract.encodeResultBatch(
+                encodedDeliveryReports
+        );
         HttpResponse<String> response = send(
                 request(endpointManagerId, "results:append")
                         .POST(HttpRequest.BodyPublishers.ofString(
@@ -113,14 +140,13 @@ public final class HttpWorkerDeliveryGatewayClient
                             null
                     );
         }
-        contract.requireCompleteResultResponse(
+        resultContract.requireCompleteResultResponse(
                 response.body(),
                 encodedDeliveryReports.size()
         );
     }
 
-    @Override
-    public CompletionStage<Void> verifyWorkerRoute(
+    private CompletionStage<Void> verifyWorkerRoute(
             String endpointManagerId,
             String workerId
     ) {

@@ -11,12 +11,13 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.BoundedDeliveryReportQueue;
-import com.xa.mass.workerdelivery.adapter.netty.internal.gateway.DeliveryCommandTarget;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient.RouteVerifier;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess.DeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -25,6 +26,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -39,7 +41,7 @@ import java.util.concurrent.CompletionStage;
 @ChannelHandler.Sharable
 public final class WorkerConnectionMechanism
         extends SimpleChannelInboundHandler<String>
-        implements DeliveryCommandTarget {
+        implements DeliveryCommandProcess.Target {
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionMechanism.class.getName()
@@ -47,18 +49,18 @@ public final class WorkerConnectionMechanism
 
     private final WorkerRouteRegistry routes;
     private final NettyWorkerServer networkServer;
-    private final WorkerDeliveryGatewayClient gateway;
+    private final RouteVerifier routeVerifier;
     private final WorkerDeliveryCodec codec;
-    private final BoundedDeliveryReportQueue reportQueue;
+    private final DeliveryReportProcess.Acceptor reportAcceptor;
     private final String adapterId;
     private final Duration sendTimeLimit;
 
     public WorkerConnectionMechanism(
             WorkerRouteRegistry routes,
             NettyWorkerServer networkServer,
-            WorkerDeliveryGatewayClient gateway,
+            RouteVerifier routeVerifier,
             WorkerDeliveryCodec codec,
-            BoundedDeliveryReportQueue reportQueue,
+            DeliveryReportProcess.Acceptor reportAcceptor,
             String adapterId,
             Duration sendTimeLimit
     ) {
@@ -67,9 +69,15 @@ public final class WorkerConnectionMechanism
                 networkServer,
                 "networkServer"
         );
-        this.gateway = Objects.requireNonNull(gateway, "gateway");
+        this.routeVerifier = Objects.requireNonNull(
+                routeVerifier,
+                "routeVerifier"
+        );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.reportQueue = Objects.requireNonNull(reportQueue, "reportQueue");
+        this.reportAcceptor = Objects.requireNonNull(
+                reportAcceptor,
+                "reportAcceptor"
+        );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
@@ -223,7 +231,7 @@ public final class WorkerConnectionMechanism
         CompletionStage<Void> verification;
         try {
             verification = Objects.requireNonNull(
-                    gateway.verifyWorkerRoute(adapterId, workerId),
+                    routeVerifier.verify(adapterId, workerId),
                     "Worker route verification returned null"
             );
         } catch (RuntimeException error) {
@@ -311,7 +319,7 @@ public final class WorkerConnectionMechanism
             logDrop("dropWorkerOutcome", report);
             return;
         }
-        switch (reportQueue.offer(encodedReport)) {
+        switch (reportAcceptor.ingress(List.of(encodedReport))) {
             case ACCEPTED -> {
             }
             case FULL -> closeCurrent(

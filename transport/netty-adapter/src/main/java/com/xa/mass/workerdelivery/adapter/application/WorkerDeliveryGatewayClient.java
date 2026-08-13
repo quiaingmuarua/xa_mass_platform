@@ -6,22 +6,41 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 /**
- * Thread-safe Gateway boundary shared by independent command and report pumps.
+ * Thread-safe composition boundary for the three remote Worker Delivery
+ * owners used by one or more Adapter instances.
+ *
+ * <p>Callers project this composition root to the one owner port they need;
+ * no process or connection mechanism receives the broad client.
  */
 public interface WorkerDeliveryGatewayClient {
 
-    Map<String, DeliveryCommand> consumeWorkerCommands(
-            String endpointManagerId,
-            int limit
-    );
+    CommandSource commandSource();
 
-    void appendResults(
-            String endpointManagerId,
-            List<String> encodedDeliveryReports
-    );
+    ResultIngress resultIngress();
 
-    CompletionStage<Void> verifyWorkerRoute(
-            String endpointManagerId,
-            String workerId
-    );
+    RouteVerifier routeVerifier();
+
+    interface CommandSource {
+
+        Map<String, DeliveryCommand> consume(
+                String endpointManagerId,
+                int limit
+        );
+    }
+
+    interface ResultIngress {
+
+        void ingress(
+                String endpointManagerId,
+                List<String> encodedDeliveryReports
+        );
+    }
+
+    interface RouteVerifier {
+
+        CompletionStage<Void> verify(
+                String endpointManagerId,
+                String workerId
+        );
+    }
 }

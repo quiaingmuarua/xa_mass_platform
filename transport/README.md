@@ -8,7 +8,8 @@ Status: repository-local transport contracts and implementations.
 
 :transport:netty-adapter
   -> stable WebSocket and Socket Adapter façades
-  -> Adapter lifecycle and bounded Command/Report pumps
+  -> Adapter lifecycle and scheduled Command/Report Process rounds
+  -> one private finite queue per Process owner
   -> one shared Netty connection mechanism and route registry per instance
   -> one complete protocol-specific physical Server per instance
 

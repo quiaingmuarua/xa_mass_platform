@@ -33,9 +33,11 @@ The repository contains seven active areas:
 - [`transport/`](transport/): concrete Worker Delivery implementations. It
   contains the Java 11 Worker Core execution mechanism, the Netty Adapter
   runtime, concrete JVM network clients, and the Android HandlerThread
-  WebSocket client. The Netty Adapter has three explicit owners: the Adapter
-  aggregate for lifecycle and pumps, one shared connection mechanism for
-  identity/routes/results, and one complete protocol-specific physical Server.
+  WebSocket client. The Netty Adapter has three frozen layers: the Adapter
+  aggregate plus typed Command/Report Process owners for lifecycle and local
+  scheduling, one shared connection mechanism for identity/routes/results,
+  and one complete protocol-specific physical Server. Each Process owns one
+  private finite queue; queues never cross owner boundaries.
   That production cut is frozen; WebSocket and Socket share a test behavior
   contract while retaining independent physical ownership and owner-local
   bounded shutdown.
