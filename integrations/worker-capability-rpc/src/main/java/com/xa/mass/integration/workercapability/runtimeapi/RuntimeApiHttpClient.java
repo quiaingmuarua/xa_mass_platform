@@ -42,12 +42,67 @@ public final class RuntimeApiHttpClient {
                         Jsons.toJson(body),
                         StandardCharsets.UTF_8
                 );
+        return sendJsonResponse(method, path, publisher, body == null
+                ? null
+                : "application/json");
+    }
+
+    ApiResponse uploadText(String path, String body) {
+        return sendJsonResponse(
+                "POST",
+                path,
+                HttpRequest.BodyPublishers.ofString(
+                        body,
+                        StandardCharsets.UTF_8
+                ),
+                "text/plain; charset=utf-8"
+        );
+    }
+
+    byte[] download(String path) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(endpoint(path))
+                .timeout(requestTimeout)
+                .GET()
+                .build();
+        try {
+            HttpResponse<byte[]> response = http.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofByteArray()
+            );
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException(
+                        "Runtime API download returned HTTP "
+                                + response.statusCode()
+                );
+            }
+            return response.body();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Runtime API request interrupted: GET " + path,
+                    error
+            );
+        } catch (IOException | IllegalArgumentException error) {
+            throw new IllegalStateException(
+                    "Runtime API request failed: GET " + path,
+                    error
+            );
+        }
+    }
+
+    private ApiResponse sendJsonResponse(
+            String method,
+            String path,
+            HttpRequest.BodyPublisher publisher,
+            String contentType
+    ) {
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout)
                 .method(method, publisher);
-        if (body != null) {
-            request.header("Content-Type", "application/json");
+        if (contentType != null) {
+            request.header("Content-Type", contentType);
         }
         try {
             HttpResponse<String> response = http.send(

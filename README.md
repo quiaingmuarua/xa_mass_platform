@@ -51,10 +51,11 @@ The repository contains seven active areas:
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns
-  a lightweight Java batch Process that turns caller-supplied string lines
-  into Payloads, performs bounded concurrent WorkerGroup RPC through the public
-  Runtime API, and optionally records JSONL diagnostics. Task assembly and
-  Worker identity remain outside the integration. The `scenario-workers`
+  the external client proof for Server's finite Scenario RPC Lab: it uploads
+  text fixtures, invokes six Server-owned Scenarios, and downloads JSONL
+  evidence. The Java-only [`scenario_rpc_jvm`](scenario_rpc_jvm/) module owns
+  line parsing, bounded calls, ordering, and result validation and is consumed
+  only by Server. The `scenario-workers`
   Server profile composes one real WebSocket Adapter, two reusable JVM
   Scenario WorkerGroups with six capabilities, and the advisory Android demo
   WorkerGroup. The installable
@@ -89,6 +90,7 @@ Deterministic JVM contracts:
 
 ```text
 ./gradlew :server_jvm:test
+./gradlew :scenario_rpc_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
 ```
 

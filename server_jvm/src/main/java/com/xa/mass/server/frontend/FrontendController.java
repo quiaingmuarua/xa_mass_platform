@@ -6,7 +6,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public final class FrontendController {
 
-    @GetMapping({"/", "/runtime/workers", "/runtime/workers/"})
+    @GetMapping({
+            "/",
+            "/runtime/workers",
+            "/runtime/workers/",
+            "/runtime/tasks",
+            "/runtime/tasks/"
+    })
     public String index() {
         return "forward:/index.html";
     }

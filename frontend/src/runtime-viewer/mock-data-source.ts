@@ -1,29 +1,17 @@
 import { RuntimeViewerError } from "./errors";
-import { MOCK_PREVIEWS, MOCK_WORKER_GROUPS } from "./mock-data";
+import { MOCK_CONFIGURED_RESOURCES, MOCK_PREVIEWS } from "./mock-data";
 import type {
+  ConfiguredRuntimeResourcesResponse,
   RuntimeViewerDataSource,
-  WorkerGroupBatchGetResponse,
   WorkerPreviewResponse
 } from "./types";
 
 export class MockRuntimeViewerDataSource implements RuntimeViewerDataSource {
-  async loadWorkerGroups(
-    workerGroupIds: string[],
+  async loadConfiguredResources(
     signal?: AbortSignal
-  ): Promise<WorkerGroupBatchGetResponse> {
+  ): Promise<ConfiguredRuntimeResourcesResponse> {
     throwIfAborted(signal);
-    const byId = new Map(
-      MOCK_WORKER_GROUPS.map((group) => [group.workerGroupId, group])
-    );
-    return {
-      workerGroups: workerGroupIds
-        .map((workerGroupId) => byId.get(workerGroupId))
-        .filter((group) => group !== undefined)
-        .map((group) => structuredClone(group)),
-      missingWorkerGroupIds: workerGroupIds.filter(
-        (workerGroupId) => !byId.has(workerGroupId)
-      )
-    };
+    return structuredClone(MOCK_CONFIGURED_RESOURCES);
   }
 
   async previewWorkers(

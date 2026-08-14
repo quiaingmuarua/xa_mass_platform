@@ -47,7 +47,7 @@ final class ServerWorkerTaskInitializer {
         if (initialized) {
             return;
         }
-        Map<String, String> taskIds = manifest.taskIds();
+        Map<String, String> taskIds = manifest.taskIdsByWorkerGroup();
         Map<String, TaskDescriptor> stored =
                 taskCatalog.loadTaskAllocationDescriptors(
                         List.copyOf(taskIds.values())

@@ -102,6 +102,22 @@ class ApiExceptionHandlerTest {
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
+                        ServerErrorCode.SCENARIO_RPC_INVALID_REQUEST,
+                        HttpStatus.BAD_REQUEST
+                ),
+                Arguments.of(
+                        ServerErrorCode.SCENARIO_RPC_FILE_NOT_FOUND,
+                        HttpStatus.NOT_FOUND
+                ),
+                Arguments.of(
+                        ServerErrorCode.SCENARIO_RPC_CONFLICT,
+                        HttpStatus.CONFLICT
+                ),
+                Arguments.of(
+                        ServerErrorCode.SCENARIO_RPC_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE
+                ),
+                Arguments.of(
                         ServerErrorCode.MALFORMED_REQUEST,
                         HttpStatus.BAD_REQUEST
                 )

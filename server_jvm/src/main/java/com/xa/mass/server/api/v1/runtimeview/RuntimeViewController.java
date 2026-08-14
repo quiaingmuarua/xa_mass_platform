@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.runtimeview;
 
 import com.xa.mass.server.api.RequestIdFilter;
+import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewRequest;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,6 +27,13 @@ public class RuntimeViewController {
 
     public RuntimeViewController(RuntimeViewService runtimeView) {
         this.runtimeView = runtimeView;
+    }
+
+    @GetMapping("/configured-resources")
+    public ConfiguredRuntimeResourcesResponse configuredResources(
+            HttpServletRequest httpRequest
+    ) {
+        return runtimeView.configuredResources(requestId(httpRequest));
     }
 
     @PostMapping("/worker-groups:batch-get")

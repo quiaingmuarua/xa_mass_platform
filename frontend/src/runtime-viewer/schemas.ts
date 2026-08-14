@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import type {
+  ConfiguredRuntimeResourcesResponse,
   JsonValue,
-  WorkerGroupBatchGetResponse,
   WorkerPreviewResponse
 } from "./types";
 
@@ -27,22 +27,69 @@ export const workerGroupViewSchema = z
   })
   .strict();
 
-export const workerGroupBatchGetResponseSchema: z.ZodType<WorkerGroupBatchGetResponse> =
+const taskViewSchema = z
+  .object({
+    taskId: z.string().min(1),
+    workerGroupId: z.string().min(1),
+    taskType: z.enum(["TASK_DRIVEN", "ITEM_DRIVEN"]),
+    allocationRule: attributesSchema.nullable(),
+    config: z
+      .object({
+        priority: z.string().regex(/^\d+$/),
+        maximumCandidateWorkers: z.string().regex(/^\d+$/),
+        maxRetryTimes: z.string().regex(/^\d+$/)
+      })
+      .strict(),
+    emptyCloseAtMillis: z.number().int().nonnegative().nullable()
+  })
+  .strict();
+
+const configuredRuntimeResourceEntrySchema = z
+  .object({
+    workerGroupId: z.string().min(1),
+    taskId: z.string().min(1),
+    workerGroup: workerGroupViewSchema.nullable(),
+    task: taskViewSchema.nullable()
+  })
+  .strict()
+  .superRefine((entry, context) => {
+    if (
+      entry.workerGroup !== null &&
+      entry.workerGroup.workerGroupId !== entry.workerGroupId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Configured WorkerGroup identity does not match its coordinate"
+      });
+    }
+    if (
+      entry.task !== null &&
+      (entry.task.taskId !== entry.taskId ||
+        entry.task.workerGroupId !== entry.workerGroupId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Configured Task identity does not match its coordinate"
+      });
+    }
+  });
+
+export const configuredRuntimeResourcesResponseSchema: z.ZodType<ConfiguredRuntimeResourcesResponse> =
   z
     .object({
-      workerGroups: z.array(workerGroupViewSchema),
-      missingWorkerGroupIds: z.array(z.string().min(1))
+      entries: z.array(configuredRuntimeResourceEntrySchema)
     })
     .strict()
     .superRefine((response, context) => {
-      const allIds = [
-        ...response.workerGroups.map((group) => group.workerGroupId),
-        ...response.missingWorkerGroupIds
-      ];
-      if (new Set(allIds).size !== allIds.length) {
+      const groupIds = response.entries.map((entry) => entry.workerGroupId);
+      const taskIds = response.entries.map((entry) => entry.taskId);
+      if (
+        new Set(groupIds).size !== groupIds.length ||
+        new Set(taskIds).size !== taskIds.length
+      ) {
         context.addIssue({
           code: "custom",
-          message: "WorkerGroup response contains duplicate identities"
+          message: "Configured resources contain duplicate coordinates"
         });
       }
     });

@@ -2,23 +2,36 @@ package com.xa.mass.integration.workercapability;
 
 import com.xa.mass.integration.workercapability.cli.CommandLineOptions;
 import com.xa.mass.integration.workercapability.cli.WorkerCapabilityIntegrationDefaults;
-import com.xa.mass.integration.workercapability.process.RpcResult;
 import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
-import com.xa.mass.integration.workercapability.runtimeapi.WorkerGroupRpcClient;
-import com.xa.mass.integration.workercapability.scenario.PhoneNumberProcess;
-import com.xa.mass.integration.workercapability.scenario.StringUtilityProcess;
+import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient;
+import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient.RunResult;
 import com.xa.mass.integration.workercapability.scenario.WorkerCapabilityAcceptance;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public final class WorkerCapabilityRpcMain {
 
     private static final System.Logger LOG = System.getLogger(
             WorkerCapabilityRpcMain.class.getName()
+    );
+    private static final List<ScenarioSpec> SCENARIOS = List.of(
+            new ScenarioSpec("phonenumber.e164", SeedKind.PHONE),
+            new ScenarioSpec("phonenumber.country", SeedKind.PHONE),
+            new ScenarioSpec(
+                    "phonenumber.original-carrier",
+                    SeedKind.PHONE
+            ),
+            new ScenarioSpec("string.md5", SeedKind.STRING),
+            new ScenarioSpec("string.sha1", SeedKind.STRING),
+            new ScenarioSpec("string.base64.encode", SeedKind.STRING)
     );
 
     private WorkerCapabilityRpcMain() {
@@ -26,12 +39,10 @@ public final class WorkerCapabilityRpcMain {
 
     public static void main(String[] arguments) throws IOException {
         CommandLineOptions options = CommandLineOptions.parse(arguments);
-        String scenarioId = RuntimeApiHttpClient.identifier(
-                options.string(
-                        "scenario-id",
-                        "worker-capability-" + System.currentTimeMillis()
-                )
-        );
+        String proofId = RuntimeApiHttpClient.identifier(options.string(
+                "scenario-id",
+                "worker-capability-" + System.currentTimeMillis()
+        ));
         Path phoneSeedPath = absolutePath(options.path(
                 "phone-seed-path",
                 "phone-seed.txt"
@@ -48,17 +59,13 @@ public final class WorkerCapabilityRpcMain {
                 "scenario-worker-lab-root",
                 "../../data/scenario-workers"
         ));
-        Path scenarioResultDirectory = resultDirectory.resolve(
-                scenarioId
-        );
-        long waitTimeoutMillis = options.positiveLong(
-                "wait-timeout-millis",
-                WorkerCapabilityIntegrationDefaults
-                        .RPC_WAIT_TIMEOUT_MILLIS
-        );
-        if (waitTimeoutMillis > 60_000) {
+        int concurrency = Math.toIntExact(options.positiveLong(
+                "concurrency",
+                WorkerCapabilityIntegrationDefaults.CONCURRENCY
+        ));
+        if (concurrency > 100) {
             throw new IllegalArgumentException(
-                    "--wait-timeout-millis must not exceed 60000"
+                    "--concurrency must not exceed 100"
             );
         }
         RuntimeApiHttpClient runtimeApi = new RuntimeApiHttpClient(
@@ -68,54 +75,112 @@ public final class WorkerCapabilityRpcMain {
                 ),
                 Duration.ofMillis(options.positiveLong(
                         "request-timeout-millis",
-                        waitTimeoutMillis + 5_000
+                        WorkerCapabilityIntegrationDefaults
+                                .REQUEST_TIMEOUT_MILLIS
                 ))
         );
-        WorkerGroupRpcClient rpc = new WorkerGroupRpcClient(runtimeApi);
-
-        createScenarioResultDirectory(
-                resultDirectory,
-                scenarioResultDirectory
+        ScenarioRpcApiClient scenarioRpc = new ScenarioRpcApiClient(
+                runtimeApi
         );
-        List<RpcResult> phoneResults;
-        List<RpcResult> stringResults;
+        Path proofResultDirectory = resultDirectory.resolve(proofId);
+        createProofResultDirectory(
+                resultDirectory,
+                proofResultDirectory
+        );
+
+        List<String> phoneLines = readFirstTenLines(
+                phoneSeedPath,
+                "phone-seed.txt"
+        );
+        List<String> stringLines = readFirstTenLines(
+                stringSeedPath,
+                "string-seed.txt"
+        );
+        String phoneRemote = "phone-seed-" + proofId + ".txt";
+        String stringRemote = "string-seed-" + proofId + ".txt";
+        List<Map<String, Object>> allResults = new ArrayList<>();
         try {
-            phoneResults = PhoneNumberProcess.create(
-                    rpc,
-                    scenarioId,
-                    readFirstTenLines(phoneSeedPath, "phone-seed.txt"),
-                    scenarioResultDirectory.resolve("phone-number.jsonl"),
-                    waitTimeoutMillis
-            ).start();
-            stringResults = StringUtilityProcess.create(
-                    rpc,
-                    scenarioId,
-                    readFirstTenLines(stringSeedPath, "string-seed.txt"),
-                    scenarioResultDirectory.resolve("string-utils.jsonl"),
-                    waitTimeoutMillis
-            ).start();
+            scenarioRpc.uploadInput(
+                    phoneRemote,
+                    String.join("\n", phoneLines)
+            );
+            scenarioRpc.uploadInput(
+                    stringRemote,
+                    String.join("\n", stringLines)
+            );
+            for (ScenarioSpec scenario : SCENARIOS) {
+                String inputFile = scenario.seedKind() == SeedKind.PHONE
+                        ? phoneRemote
+                        : stringRemote;
+                RunResult run = scenarioRpc.run(
+                        scenario.scenarioId(),
+                        inputFile,
+                        concurrency
+                );
+                requireRunSummary(run, scenario, inputFile);
+                String output = scenarioRpc.downloadOutput(
+                        run.outputFile()
+                );
+                Files.writeString(
+                        proofResultDirectory.resolve(run.outputFile()),
+                        output,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.WRITE
+                );
+                allResults.addAll(parseJsonLines(output, run.outputFile()));
+            }
         } catch (IOException | RuntimeException error) {
-            removeEmptyScenarioResultDirectory(
-                    scenarioResultDirectory,
+            removeEmptyProofResultDirectory(
+                    proofResultDirectory,
                     error
             );
             throw error;
         }
 
         WorkerCapabilityAcceptance.verify(
-                phoneResults,
-                stringResults,
+                allResults,
                 scenarioWorkerLabRoot
         );
-
         LOG.log(
                 System.Logger.Level.INFO,
-                "Verified "
-                        + (phoneResults.size() + stringResults.size())
-                        + " WorkerGroup RPC results and 20 persistent "
-                        + "Worker identities in "
-                        + scenarioResultDirectory
+                "Verified 6 Server Scenario RPC outputs, 60 results, and "
+                        + "20 persistent Worker identities in "
+                        + proofResultDirectory
         );
+    }
+
+    private static void requireRunSummary(
+            RunResult run,
+            ScenarioSpec scenario,
+            String inputFile
+    ) {
+        if (!scenario.scenarioId().equals(run.scenarioId())
+                || !scenario.scenarioId().equals(run.eventCode())
+                || !inputFile.equals(run.inputFile())
+                || run.inputCount() != 10
+                || run.resultCount() != 10) {
+            throw new IllegalStateException(
+                    "Scenario RPC run summary is invalid for "
+                            + scenario.scenarioId()
+            );
+        }
+    }
+
+    private static List<Map<String, Object>> parseJsonLines(
+            String output,
+            String label
+    ) {
+        try {
+            return output.lines()
+                    .map(Jsons::parseObject)
+                    .toList();
+        } catch (IllegalArgumentException error) {
+            throw new IllegalStateException(
+                    "Downloaded Scenario RPC output is invalid: " + label,
+                    error
+            );
+        }
     }
 
     private static List<String> readFirstTenLines(
@@ -138,30 +203,38 @@ public final class WorkerCapabilityRpcMain {
         return path.toAbsolutePath().normalize();
     }
 
-    private static void createScenarioResultDirectory(
+    private static void createProofResultDirectory(
             Path resultDirectory,
-            Path scenarioResultDirectory
+            Path proofResultDirectory
     ) throws IOException {
-        if (Files.exists(scenarioResultDirectory)) {
+        if (Files.exists(proofResultDirectory)) {
             throw new IllegalArgumentException(
-                    "Scenario result directory already exists: "
-                            + scenarioResultDirectory
+                    "Proof result directory already exists: "
+                            + proofResultDirectory
             );
         }
         Files.createDirectories(resultDirectory);
-        Files.createDirectory(scenarioResultDirectory);
+        Files.createDirectory(proofResultDirectory);
     }
 
-    private static void removeEmptyScenarioResultDirectory(
-            Path scenarioResultDirectory,
+    private static void removeEmptyProofResultDirectory(
+            Path proofResultDirectory,
             Throwable primaryFailure
     ) {
-        try (var files = Files.list(scenarioResultDirectory)) {
+        try (var files = Files.list(proofResultDirectory)) {
             if (files.findAny().isEmpty()) {
-                Files.delete(scenarioResultDirectory);
+                Files.delete(proofResultDirectory);
             }
         } catch (IOException cleanupFailure) {
             primaryFailure.addSuppressed(cleanupFailure);
         }
+    }
+
+    private enum SeedKind {
+        PHONE,
+        STRING
+    }
+
+    private record ScenarioSpec(String scenarioId, SeedKind seedKind) {
     }
 }

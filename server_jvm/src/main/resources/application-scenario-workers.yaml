@@ -1,5 +1,12 @@
 xa:
   mass:
+    scenario-rpc:
+      root: data/rpc-task
+      runtime-api-base-url: http://127.0.0.1:18082
+      wait-timeout-millis: 30000
+      request-timeout-millis: 35000
+      max-input-bytes: 1048576
+      max-input-lines: 1000
     worker-delivery:
       adapter:
         instances:

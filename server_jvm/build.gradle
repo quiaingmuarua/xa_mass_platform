@@ -27,6 +27,7 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.0'
     implementation 'com.scalar.maven:scalar-webmvc:0.6.60'
     implementation project(':kernel_jvm')
+    implementation project(':scenario_rpc_jvm')
     implementation project(':scenario_workers_jvm')
     implementation project(':transport:netty-adapter')
     implementation project(':worker_delivery_contract_jvm')
@@ -47,6 +48,10 @@ tasks.named('bootRun') {
     systemProperty(
             'xa.mass.worker-assembly.sandbox-root',
             rootProject.file('data/scenario-workers').absolutePath
+    )
+    systemProperty(
+            'xa.mass.scenario-rpc.root',
+            rootProject.file('data/rpc-task').absolutePath
     )
 }
 

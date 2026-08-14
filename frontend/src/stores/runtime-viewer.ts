@@ -7,13 +7,14 @@ import {
   type RuntimeViewerErrorPresentation
 } from "@/runtime-viewer/errors";
 import type {
+  ConfiguredRuntimeResourceEntry,
   RuntimeViewerConfig,
   RuntimeViewerDataSource,
-  WorkerGroupView,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
 
 export type SampleLoadStatus = "idle" | "loading" | "refreshing" | "ready" | "error";
+export type ResourceLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface WorkerGroupSampleState {
   status: SampleLoadStatus;
@@ -27,24 +28,36 @@ export function createRuntimeViewerStore(
   dataSource: RuntimeViewerDataSource
 ) {
   return defineStore("runtimeViewer", () => {
-    const groupLoadStatus = ref<"idle" | "loading" | "ready" | "error">("idle");
-    const groupLoadError = ref<RuntimeViewerErrorPresentation>();
-    const groups = ref<WorkerGroupView[]>([]);
-    const missingWorkerGroupIds = ref<string[]>([]);
+    const resourceLoadStatus = ref<ResourceLoadStatus>("idle");
+    const resourceLoadError = ref<RuntimeViewerErrorPresentation>();
+    const entries = ref<ConfiguredRuntimeResourceEntry[]>([]);
     const activeWorkerGroupId = ref<string>();
     const samples = reactive<Record<string, WorkerGroupSampleState>>({});
 
-    let groupLoadController: AbortController | undefined;
+    let resourceLoadController: AbortController | undefined;
+    let resourceLoadPromise: Promise<void> | undefined;
     const sampleControllers = new Map<string, AbortController>();
     const sampleVersions = new Map<string, number>();
 
-    for (const workerGroupId of config.workerGroupIds) {
-      samples[workerGroupId] = {
-        status: "idle",
-        stale: false
-      };
-    }
-
+    const configuredWorkerGroupIds = computed(() =>
+      entries.value.map((entry) => entry.workerGroupId)
+    );
+    const groups = computed(() =>
+      entries.value.flatMap((entry) =>
+        entry.workerGroup === null ? [] : [entry.workerGroup]
+      )
+    );
+    const tasks = computed(() =>
+      entries.value.flatMap((entry) => (entry.task === null ? [] : [entry.task]))
+    );
+    const missingWorkerGroupIds = computed(() =>
+      entries.value
+        .filter((entry) => entry.workerGroup === null)
+        .map((entry) => entry.workerGroupId)
+    );
+    const missingTaskIds = computed(() =>
+      entries.value.filter((entry) => entry.task === null).map((entry) => entry.taskId)
+    );
     const groupById = computed(
       () => new Map(groups.value.map((group) => [group.workerGroupId, group]))
     );
@@ -58,39 +71,61 @@ export function createRuntimeViewerStore(
     );
     const activeSample = computed(() => activeSampleState.value?.sample);
 
-    async function initialize(): Promise<void> {
-      if (groupLoadStatus.value === "loading" || groupLoadStatus.value === "ready") {
-        return;
+    function initialize(): Promise<void> {
+      if (resourceLoadStatus.value === "ready") {
+        return Promise.resolve();
       }
+      if (resourceLoadPromise !== undefined) {
+        return resourceLoadPromise;
+      }
+      resourceLoadPromise = loadResourceDirectory();
+      return resourceLoadPromise;
+    }
 
-      groupLoadController?.abort();
-      groupLoadController = new AbortController();
-      groupLoadStatus.value = "loading";
-      groupLoadError.value = undefined;
+    async function loadResourceDirectory(): Promise<void> {
+      resourceLoadController?.abort();
+      resourceLoadController = new AbortController();
+      resourceLoadStatus.value = "loading";
+      resourceLoadError.value = undefined;
       try {
-        const response = await dataSource.loadWorkerGroups(
-          config.workerGroupIds,
-          groupLoadController.signal
+        const response = await dataSource.loadConfiguredResources(
+          resourceLoadController.signal
         );
-        groups.value = response.workerGroups;
-        missingWorkerGroupIds.value = response.missingWorkerGroupIds;
-        groupLoadStatus.value = "ready";
-
-        const firstAvailable = config.workerGroupIds.find((workerGroupId) =>
-          groupById.value.has(workerGroupId)
-        );
-        activeWorkerGroupId.value = activeWorkerGroupId.value ?? firstAvailable;
-        if (activeWorkerGroupId.value !== undefined) {
-          await loadSample(activeWorkerGroupId.value, false);
+        entries.value = response.entries;
+        for (const entry of response.entries) {
+          samples[entry.workerGroupId] ??= {
+            status: "idle",
+            stale: false
+          };
         }
+        const configured = new Set(configuredWorkerGroupIds.value);
+        if (
+          activeWorkerGroupId.value === undefined ||
+          !configured.has(activeWorkerGroupId.value) ||
+          !groupById.value.has(activeWorkerGroupId.value)
+        ) {
+          activeWorkerGroupId.value = response.entries[0]?.workerGroupId;
+        }
+        resourceLoadStatus.value = "ready";
       } catch (error) {
         if (isRuntimeViewerCancellation(error)) {
           return;
         }
-        groupLoadStatus.value = "error";
-        groupLoadError.value = presentRuntimeViewerError(error);
+        resourceLoadStatus.value = "error";
+        resourceLoadError.value = presentRuntimeViewerError(error);
       } finally {
-        groupLoadController = undefined;
+        resourceLoadController = undefined;
+        resourceLoadPromise = undefined;
+      }
+    }
+
+    async function initializeWorkerView(): Promise<void> {
+      await initialize();
+      if (
+        resourceLoadStatus.value === "ready" &&
+        activeWorkerGroupId.value !== undefined
+      ) {
+        await loadSample(activeWorkerGroupId.value, false);
       }
     }
 
@@ -170,24 +205,28 @@ export function createRuntimeViewerStore(
     }
 
     function dispose(): void {
-      groupLoadController?.abort();
+      resourceLoadController?.abort();
       sampleControllers.forEach((controller) => controller.abort());
       sampleControllers.clear();
     }
 
     return {
       mode: config.mode,
-      configuredWorkerGroupIds: [...config.workerGroupIds],
-      groupLoadStatus,
-      groupLoadError,
+      resourceLoadStatus,
+      resourceLoadError,
+      entries,
+      configuredWorkerGroupIds,
       groups,
+      tasks,
       missingWorkerGroupIds,
+      missingTaskIds,
       activeWorkerGroupId,
       activeGroup,
       activeSampleState,
       activeSample,
       samples,
       initialize,
+      initializeWorkerView,
       selectGroup,
       refreshActiveGroup,
       dispose

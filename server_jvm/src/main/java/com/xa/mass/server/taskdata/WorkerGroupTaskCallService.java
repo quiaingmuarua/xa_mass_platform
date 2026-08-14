@@ -27,7 +27,7 @@ public final class WorkerGroupTaskCallService {
             String workerGroupId,
             TaskRpcCallRequest request
     ) {
-        String taskId = taskCatalog.taskIdFor(workerGroupId);
+        String taskId = taskCatalog.taskIdsByWorkerGroup().get(workerGroupId);
         if (taskId == null) {
             throw new ServerException(
                     ServerErrorCode.WORKER_GROUP_NOT_FOUND,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import {
   CircleCheck,
   Collection,
@@ -47,11 +47,7 @@ watch(
 );
 
 onMounted(() => {
-  void store.initialize();
-});
-
-onBeforeUnmount(() => {
-  store.dispose();
+  void store.initializeWorkerView();
 });
 
 async function selectGroup(workerGroupId: string): Promise<void> {
@@ -185,7 +181,7 @@ function formattedTime(value?: string): string {
 
     <section class="worker-panel" aria-label="Worker 样本">
       <div
-        v-if="store.groupLoadStatus === 'loading'"
+        v-if="store.resourceLoadStatus === 'loading'"
         class="panel-state"
         data-testid="group-loading"
       >
@@ -194,19 +190,19 @@ function formattedTime(value?: string): string {
       </div>
 
       <div
-        v-else-if="store.groupLoadStatus === 'error'"
+        v-else-if="store.resourceLoadStatus === 'error'"
         class="panel-state panel-state--error"
         data-testid="group-error"
       >
         <el-icon><Warning /></el-icon>
         <div>
-          <strong>{{ store.groupLoadError?.title }}</strong>
-          <p>{{ store.groupLoadError?.message }}</p>
-          <small v-if="store.groupLoadError?.requestId">
-            Request ID: {{ store.groupLoadError.requestId }}
+          <strong>{{ store.resourceLoadError?.title }}</strong>
+          <p>{{ store.resourceLoadError?.message }}</p>
+          <small v-if="store.resourceLoadError?.requestId">
+            Request ID: {{ store.resourceLoadError.requestId }}
           </small>
         </div>
-        <el-button @click="store.initialize">重新读取 Group</el-button>
+        <el-button @click="store.initializeWorkerView">重新读取目录</el-button>
       </div>
 
       <template v-else>
@@ -237,7 +233,19 @@ function formattedTime(value?: string): string {
         </div>
 
         <div
-          v-if="store.activeWorkerGroupId && isMissing(store.activeWorkerGroupId)"
+          v-if="store.configuredWorkerGroupIds.length === 0"
+          class="panel-state"
+          data-testid="empty-configured-groups"
+        >
+          <el-icon><InfoFilled /></el-icon>
+          <div>
+            <strong>当前 Profile 没有配置 WorkerGroup</strong>
+            <p>Runtime View 成功读取了一个空的配置资源目录。</p>
+          </div>
+        </div>
+
+        <div
+          v-else-if="store.activeWorkerGroupId && isMissing(store.activeWorkerGroupId)"
           class="panel-state panel-state--warning"
           data-testid="missing-group"
         >

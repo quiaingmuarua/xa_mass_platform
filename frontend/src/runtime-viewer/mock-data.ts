@@ -1,4 +1,10 @@
-import type { WorkerGroupView, WorkerPreviewResponse, WorkerView } from "./types";
+import type {
+  ConfiguredRuntimeResourcesResponse,
+  TaskView,
+  WorkerGroupView,
+  WorkerPreviewResponse,
+  WorkerView
+} from "./types";
 
 export const MOCK_GENERATED_AT = "2026-07-31T12:00:00.000Z";
 
@@ -22,8 +28,37 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
       capability: "string-utils"
     },
     eventCodes: ["string.base64.encode", "string.md5", "string.sha1"]
+  },
+  {
+    workerGroupId: "android-demo-workers",
+    attributes: {
+      capability: "android-demo-state"
+    },
+    eventCodes: ["android.demo.state.read"]
   }
 ];
+
+const mockTasks: TaskView[] = MOCK_WORKER_GROUPS.map((group) => ({
+  taskId: `scenario-rpc-${group.workerGroupId}`,
+  workerGroupId: group.workerGroupId,
+  taskType: "ITEM_DRIVEN",
+  allocationRule: null,
+  config: {
+    priority: "0",
+    maximumCandidateWorkers: "1",
+    maxRetryTimes: "3"
+  },
+  emptyCloseAtMillis: 9_999_999_999_900
+}));
+
+export const MOCK_CONFIGURED_RESOURCES: ConfiguredRuntimeResourcesResponse = {
+  entries: MOCK_WORKER_GROUPS.map((workerGroup, index) => ({
+    workerGroupId: workerGroup.workerGroupId,
+    taskId: mockTasks[index]!.taskId,
+    workerGroup,
+    task: mockTasks[index]!
+  }))
+};
 
 const phoneWorkers = createWorkers(
   "scenario-phone-number-workers",
@@ -48,7 +83,8 @@ export const MOCK_PREVIEWS: Record<string, WorkerPreviewResponse> = {
     "scenario-string-utils-workers",
     stringWorkers,
     1
-  )
+  ),
+  "android-demo-workers": preview("android-demo-workers", [], 0)
 };
 
 function createWorkers(

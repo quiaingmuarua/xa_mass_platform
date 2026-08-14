@@ -10,7 +10,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 final class ServerWorkerAssemblyManifest
         implements WorkerGroupTaskCatalog {
@@ -64,13 +63,9 @@ final class ServerWorkerAssemblyManifest
         return workerGroups;
     }
 
-    Map<String, String> taskIds() {
-        return taskIds;
-    }
-
     @Override
-    public @Nullable String taskIdFor(String workerGroupId) {
-        return taskIds.get(workerGroupId);
+    public Map<String, String> taskIdsByWorkerGroup() {
+        return taskIds;
     }
 
     private static List<String> requireEventCodes(

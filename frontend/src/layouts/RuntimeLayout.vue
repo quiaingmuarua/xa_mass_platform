@@ -1,17 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
-import { Collection, Connection, Moon, Sunny, View } from "@element-plus/icons-vue";
+import { computed, onBeforeUnmount, onMounted } from "vue";
+import { useRoute } from "vue-router";
+import {
+  Collection,
+  Connection,
+  Moon,
+  Sunny,
+  Tickets,
+  View
+} from "@element-plus/icons-vue";
 
-import { useRuntimeViewerConfig } from "@/runtime-context";
+import { useRuntimeViewerConfig, useRuntimeViewerStore } from "@/runtime-context";
 import { useThemeStore } from "@/stores/theme";
 
 const config = useRuntimeViewerConfig();
+const store = useRuntimeViewerStore();
 const theme = useThemeStore();
+const route = useRoute();
 const sourceLabel = computed(() =>
   config.mode === "api" ? "API source" : "Mock source"
 );
+const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
 
 onMounted(() => theme.apply());
+onBeforeUnmount(() => store.dispose());
 </script>
 
 <template>
@@ -37,6 +49,10 @@ onMounted(() => theme.apply());
           <el-icon><Collection /></el-icon>
           <span>Workers</span>
         </router-link>
+        <router-link class="runtime-navigation__link" to="/runtime/tasks">
+          <el-icon><Tickets /></el-icon>
+          <span>Tasks</span>
+        </router-link>
       </nav>
 
       <div class="runtime-sidebar__note">
@@ -44,7 +60,7 @@ onMounted(() => theme.apply());
           <el-icon aria-hidden="true"><View /></el-icon>
           Read-only preview
         </span>
-        <p>当前页面只展示 Owner 提供的随机描述符样本。</p>
+        <p>只读展示 Profile 配置资源和 Owner 提供的 Runtime 描述符。</p>
       </div>
     </aside>
 
@@ -56,7 +72,7 @@ onMounted(() => theme.apply());
         </div>
         <el-breadcrumb separator="/">
           <el-breadcrumb-item>Runtime</el-breadcrumb-item>
-          <el-breadcrumb-item>Workers</el-breadcrumb-item>
+          <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
         </el-breadcrumb>
         <div class="runtime-topbar__actions">
           <span

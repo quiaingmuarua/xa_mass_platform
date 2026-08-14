@@ -1,6 +1,5 @@
 package com.xa.mass.integration.workercapability.scenario;
 
-import com.xa.mass.integration.workercapability.process.RpcResult;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -15,93 +15,68 @@ import java.util.UUID;
 
 public final class WorkerCapabilityAcceptance {
 
-    private static final int INPUTS_PER_PROCESS = 10;
+    private static final int RESULTS_PER_SCENARIO = 10;
     private static final int WORKERS_PER_GROUP = 10;
+    private static final String PHONE_GROUP =
+            "scenario-phone-number-workers";
+    private static final String STRING_GROUP =
+            "scenario-string-utils-workers";
+    private static final Map<String, ExpectedScenario> EXPECTED = expected();
 
     private WorkerCapabilityAcceptance() {
     }
 
     public static void verify(
-            List<RpcResult> phoneResults,
-            List<RpcResult> stringResults,
+            List<Map<String, Object>> results,
             Path scenarioWorkerLabRoot
     ) throws IOException {
-        Set<String> allMessageIds = new HashSet<>();
-        verifyResults(
-                phoneResults,
-                PhoneNumberProcess.WORKER_GROUP_ID,
-                PhoneNumberProcess.EVENT_CODES,
-                allMessageIds
-        );
-        verifyResults(
-                stringResults,
-                StringUtilityProcess.WORKER_GROUP_ID,
-                StringUtilityProcess.EVENT_CODES,
-                allMessageIds
-        );
-        if (phoneResults.size() + stringResults.size() != 60) {
+        if (results.size() != EXPECTED.size() * RESULTS_PER_SCENARIO) {
             throw invalid("expected 60 RPC results");
         }
-        verifyPersistentWorkerIdentities(scenarioWorkerLabRoot);
-    }
-
-    private static void verifyResults(
-            List<RpcResult> results,
-            String expectedWorkerGroupId,
-            List<String> expectedEventCodes,
-            Set<String> allMessageIds
-    ) {
-        int expectedCount = INPUTS_PER_PROCESS
-                * expectedEventCodes.size();
-        if (results.size() != expectedCount) {
-            throw invalid(
-                    expectedWorkerGroupId
-                            + " expected "
-                            + expectedCount
-                            + " results but received "
-                            + results.size()
-            );
-        }
         Map<String, Integer> eventCounts = new HashMap<>();
-        for (RpcResult result : results) {
-            if (!expectedWorkerGroupId.equals(result.workerGroupId())) {
-                throw invalid(
-                        "unexpected WorkerGroup " + result.workerGroupId()
-                );
+        Set<String> messageIds = new HashSet<>();
+        for (Map<String, Object> result : results) {
+            String eventCode = requiredString(result, "eventCode");
+            ExpectedScenario expected = EXPECTED.get(eventCode);
+            if (expected == null) {
+                throw invalid("unexpected eventCode " + eventCode);
             }
-            if (!expectedEventCodes.contains(result.eventCode())) {
-                throw invalid("unexpected eventCode " + result.eventCode());
+            if (!expected.workerGroupId().equals(
+                    requiredString(result, "workerGroupId")
+            )) {
+                throw invalid("unexpected WorkerGroup for " + eventCode);
             }
-            if (!allMessageIds.add(result.messageId())) {
-                throw invalid(
-                        "messageId values must be globally unique: "
-                                + result.messageId()
-                );
+            String messageId = requiredString(result, "messageId");
+            if (!messageIds.add(messageId)) {
+                throw invalid("messageId values must be globally unique");
             }
-            eventCounts.merge(result.eventCode(), 1, Integer::sum);
+            Map<String, Object> input = requiredMap(result, "input");
+            Object inputValue = input.get(expected.inputField());
+            if (!(inputValue instanceof String)) {
+                throw invalid(eventCode + " requires input field "
+                        + expected.inputField());
+            }
+            Map<String, Object> payload = requiredMap(result, "result");
+            if (!Boolean.TRUE.equals(payload.get("valid"))
+                    || !payload.containsKey(expected.resultField())) {
+                throw invalid(eventCode + " result is invalid");
+            }
+            eventCounts.merge(eventCode, 1, Integer::sum);
         }
-        for (String eventCode : expectedEventCodes) {
+        EXPECTED.keySet().forEach(eventCode -> {
             if (eventCounts.getOrDefault(eventCode, 0)
-                    != INPUTS_PER_PROCESS) {
-                throw invalid(
-                        expectedWorkerGroupId
-                                + " must contain "
-                                + INPUTS_PER_PROCESS
-                                + " results for "
-                                + eventCode
-                );
+                    != RESULTS_PER_SCENARIO) {
+                throw invalid(eventCode + " expected 10 results");
             }
-        }
+        });
+        verifyPersistentWorkerIdentities(scenarioWorkerLabRoot);
     }
 
     private static void verifyPersistentWorkerIdentities(
             Path scenarioWorkerLabRoot
     ) throws IOException {
         Set<String> allWorkerIds = new HashSet<>();
-        for (String workerGroupId : List.of(
-                PhoneNumberProcess.WORKER_GROUP_ID,
-                StringUtilityProcess.WORKER_GROUP_ID
-        )) {
+        for (String workerGroupId : List.of(PHONE_GROUP, STRING_GROUP)) {
             Path groupDirectory = scenarioWorkerLabRoot.resolve(
                     workerGroupId
             );
@@ -116,10 +91,7 @@ public final class WorkerCapabilityAcceptance {
             }
             if (workerFiles.size() != WORKERS_PER_GROUP) {
                 throw invalid(
-                        workerGroupId
-                                + " must contain "
-                                + WORKERS_PER_GROUP
-                                + " persistent Worker files"
+                        workerGroupId + " must contain 10 persistent Workers"
                 );
             }
             Set<String> groupWorkerIds = new HashSet<>();
@@ -141,21 +113,38 @@ public final class WorkerCapabilityAcceptance {
                         state,
                         workerFile
                 );
-                if (!groupWorkerIds.add(workerId)) {
-                    throw invalid(
-                            workerGroupId + " contains duplicate Worker IDs"
-                    );
-                }
-                if (!allWorkerIds.add(workerId)) {
-                    throw invalid(
-                            "Worker IDs must be unique across WorkerGroups"
-                    );
+                if (!groupWorkerIds.add(workerId)
+                        || !allWorkerIds.add(workerId)) {
+                    throw invalid("Worker IDs must be globally unique");
                 }
             }
         }
         if (allWorkerIds.size() != 20) {
             throw invalid("expected 20 persistent Worker IDs");
         }
+    }
+
+    private static String requiredString(
+            Map<String, Object> values,
+            String name
+    ) {
+        Object value = values.get(name);
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw invalid("result requires " + name);
+        }
+        return text;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> requiredMap(
+            Map<String, Object> values,
+            String name
+    ) {
+        Object value = values.get(name);
+        if (!(value instanceof Map<?, ?>)) {
+            throw invalid("result requires " + name);
+        }
+        return (Map<String, Object>) value;
     }
 
     private static String requireCanonicalWorkerId(
@@ -176,6 +165,43 @@ public final class WorkerCapabilityAcceptance {
         return workerId;
     }
 
+    private static Map<String, ExpectedScenario> expected() {
+        Map<String, ExpectedScenario> values = new LinkedHashMap<>();
+        values.put(
+                "phonenumber.e164",
+                new ExpectedScenario(PHONE_GROUP, "rawNumber", "e164")
+        );
+        values.put(
+                "phonenumber.country",
+                new ExpectedScenario(
+                        PHONE_GROUP,
+                        "rawNumber",
+                        "countryCallingCode"
+                )
+        );
+        values.put(
+                "phonenumber.original-carrier",
+                new ExpectedScenario(
+                        PHONE_GROUP,
+                        "rawNumber",
+                        "originalCarrier"
+                )
+        );
+        values.put(
+                "string.md5",
+                new ExpectedScenario(STRING_GROUP, "value", "md5")
+        );
+        values.put(
+                "string.sha1",
+                new ExpectedScenario(STRING_GROUP, "value", "sha1")
+        );
+        values.put(
+                "string.base64.encode",
+                new ExpectedScenario(STRING_GROUP, "value", "base64")
+        );
+        return Map.copyOf(values);
+    }
+
     private static IllegalStateException invalid(String message) {
         return new IllegalStateException(
                 "Scenario RPC proof is invalid: " + message
@@ -190,5 +216,12 @@ public final class WorkerCapabilityAcceptance {
                 "Scenario RPC proof is invalid: " + message,
                 cause
         );
+    }
+
+    private record ExpectedScenario(
+            String workerGroupId,
+            String inputField,
+            String resultField
+    ) {
     }
 }

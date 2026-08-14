@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  workerGroupBatchGetResponseSchema,
+  configuredRuntimeResourcesResponseSchema,
   workerPreviewResponseSchema
 } from "@/runtime-viewer/schemas";
-import { preview, worker, workerGroup } from "./fixtures";
+import { configuredEntry, preview, worker } from "./fixtures";
 
 describe("Runtime View response schemas", () => {
   it("accepts the bounded public preview DTO", () => {
@@ -47,10 +47,33 @@ describe("Runtime View response schemas", () => {
     expect(workerPreviewResponseSchema.safeParse(mutate()).success).toBe(false);
   });
 
-  it("rejects duplicate identities across found and missing groups", () => {
-    const result = workerGroupBatchGetResponseSchema.safeParse({
-      workerGroups: [workerGroup("group-a")],
-      missingWorkerGroupIds: ["group-a"]
+  it("accepts ordered configured entries with missing descriptors", () => {
+    const value = {
+      entries: [
+        configuredEntry("group-a"),
+        configuredEntry("group-b", {
+          missingGroup: true,
+          missingTask: true
+        })
+      ]
+    };
+
+    expect(configuredRuntimeResourcesResponseSchema.parse(value)).toEqual(value);
+  });
+
+  it("rejects descriptor identity drift and duplicate coordinates", () => {
+    const drifted = configuredEntry("group-a");
+    drifted.task = {
+      ...drifted.task!,
+      workerGroupId: "group-b"
+    };
+    expect(
+      configuredRuntimeResourcesResponseSchema.safeParse({ entries: [drifted] }).success
+    ).toBe(false);
+
+    const duplicate = configuredEntry("group-a");
+    const result = configuredRuntimeResourcesResponseSchema.safeParse({
+      entries: [duplicate, duplicate]
     });
 
     expect(result.success).toBe(false);

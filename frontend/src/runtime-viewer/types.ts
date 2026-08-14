@@ -11,7 +11,6 @@ export type RuntimeDataSourceMode = "api" | "mock";
 export interface RuntimeViewerConfig {
   mode: RuntimeDataSourceMode;
   apiBaseUrl: string;
-  workerGroupIds: string[];
 }
 
 export interface RuntimeViewerConfigError {
@@ -35,9 +34,24 @@ export interface WorkerGroupView {
   eventCodes: string[];
 }
 
-export interface WorkerGroupBatchGetResponse {
-  workerGroups: WorkerGroupView[];
-  missingWorkerGroupIds: string[];
+export interface TaskView {
+  taskId: string;
+  workerGroupId: string;
+  taskType: "TASK_DRIVEN" | "ITEM_DRIVEN";
+  allocationRule: Record<string, JsonValue> | null;
+  config: Record<string, string>;
+  emptyCloseAtMillis: number | null;
+}
+
+export interface ConfiguredRuntimeResourceEntry {
+  workerGroupId: string;
+  taskId: string;
+  workerGroup: WorkerGroupView | null;
+  task: TaskView | null;
+}
+
+export interface ConfiguredRuntimeResourcesResponse {
+  entries: ConfiguredRuntimeResourceEntry[];
 }
 
 export interface WorkerView {
@@ -59,10 +73,9 @@ export interface WorkerPreviewResponse {
 }
 
 export interface RuntimeViewerDataSource {
-  loadWorkerGroups(
-    workerGroupIds: string[],
+  loadConfiguredResources(
     signal?: AbortSignal
-  ): Promise<WorkerGroupBatchGetResponse>;
+  ): Promise<ConfiguredRuntimeResourcesResponse>;
 
   previewWorkers(
     workerGroupId: string,

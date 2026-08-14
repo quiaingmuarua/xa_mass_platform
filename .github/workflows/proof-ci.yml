@@ -43,6 +43,7 @@ jobs:
               - '.github/scripts/**'
             jvm_contracts:
               - 'kernel_jvm/**'
+              - 'scenario_rpc_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
               - 'worker_delivery_contract_jvm/**'
@@ -93,6 +94,7 @@ jobs:
               - 'kernel_design/executable_spec/**'
               - 'kernel_design/runtime_server/**'
               - 'kernel_jvm/**'
+              - 'scenario_rpc_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
               - 'worker_delivery_contract_jvm/**'
@@ -196,6 +198,7 @@ jobs:
           ./gradlew --no-daemon --continue
           :worker_delivery_contract_jvm:build
           :kernel_jvm:build
+          :scenario_rpc_jvm:build
           :transport:worker-core:build
           :transport:java-worker:build
           :transport:netty-adapter:build
@@ -436,19 +439,19 @@ jobs:
           done
           cat scenario-server.log
           exit 1
-      - name: Verify 20 Workers and 60 targeted RPC calls
+      - name: Verify 20 Workers and 6 Server Scenario RPC runs
         run: >-
           ./gradlew --no-daemon
           :integrations:worker-capability-rpc:runRpcScenario
           --args="--scenario-id=ci-worker-capability
           --result-dir=ci-results
-          --wait-timeout-millis=10000
-          --request-timeout-millis=15000"
+          --concurrency=10
+          --request-timeout-millis=120000"
       - name: Summarize Scenario proof
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Scenario RPC:** workers=20, targeted-rpcs=60" \
+            echo "- **Scenario RPC:** workers=20, scenarios=6, results=60" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **Scenario RPC:** failed; inspect uploaded evidence" \

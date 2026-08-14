@@ -183,10 +183,10 @@ class RuntimeApiControllerTest {
                 new TaskRpcWaitRegistry(rpcProperties),
                 rpcProperties
         );
-        WorkerGroupTaskCatalog groupTasks = workerGroupId ->
-                "phone-tools".equals(workerGroupId)
-                        ? "scenario-rpc-phone-tools"
-                        : null;
+        WorkerGroupTaskCatalog groupTasks = () -> Map.of(
+                "phone-tools",
+                "scenario-rpc-phone-tools"
+        );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 workerCatalog,

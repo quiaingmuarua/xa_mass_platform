@@ -4,14 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createRuntimeViewerDataSource } from "@/runtime-viewer/data-source";
 import { HttpRuntimeViewerDataSource } from "@/runtime-viewer/http-data-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
-import { preview, worker, workerGroup } from "./fixtures";
+import { configuredEntry, preview, worker } from "./fixtures";
 
 describe("RuntimeViewerDataSource selection", () => {
   it("uses HTTP in API mode and never installs a Mock fallback", () => {
     const source = createRuntimeViewerDataSource({
       mode: "api",
-      apiBaseUrl: "/api",
-      workerGroupIds: ["group-a"]
+      apiBaseUrl: "/api"
     });
 
     expect(source).toBeInstanceOf(HttpRuntimeViewerDataSource);
@@ -21,8 +20,7 @@ describe("RuntimeViewerDataSource selection", () => {
   it("uses fixed Mock data only in explicit Mock mode", () => {
     const source = createRuntimeViewerDataSource({
       mode: "mock",
-      apiBaseUrl: "/api",
-      workerGroupIds: ["scenario-phone-number-workers"]
+      apiBaseUrl: "/api"
     });
 
     expect(source).toBeInstanceOf(MockRuntimeViewerDataSource);
@@ -30,6 +28,24 @@ describe("RuntimeViewerDataSource selection", () => {
 });
 
 describe("HttpRuntimeViewerDataSource", () => {
+  it("loads the configured resource directory with one GET", async () => {
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        entries: [configuredEntry("group-a")]
+      }
+    });
+    const source = new HttpRuntimeViewerDataSource("/api", {
+      get
+    } as unknown as AxiosInstance);
+
+    await expect(source.loadConfiguredResources()).resolves.toMatchObject({
+      entries: [{ workerGroupId: "group-a" }]
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get.mock.calls[0]?.[0]).toBe("/v1/runtime-view/configured-resources");
+    expect(get.mock.calls[0]?.[1].headers["X-Request-Id"]).toEqual(expect.any(String));
+  });
+
   it("sends one request with a request ID and validates a preview", async () => {
     const post = vi.fn().mockResolvedValue({
       data: preview("group/a", [worker("group/a", "worker-a")])
@@ -98,21 +114,23 @@ describe("HttpRuntimeViewerDataSource", () => {
     expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it("enforces requested group identity and ordering on batch reads", async () => {
-    const post = vi.fn().mockResolvedValue({
+  it("rejects configured descriptor identity drift", async () => {
+    const entry = configuredEntry("group-a");
+    entry.task = {
+      ...entry.task!,
+      taskId: "another-task"
+    };
+    const get = vi.fn().mockResolvedValue({
       data: {
-        workerGroups: [workerGroup("group-b"), workerGroup("group-a")],
-        missingWorkerGroupIds: []
+        entries: [entry]
       }
     });
     const source = new HttpRuntimeViewerDataSource("/api", {
-      post
+      get
     } as unknown as AxiosInstance);
 
-    await expect(source.loadWorkerGroups(["group-a", "group-b"])).rejects.toMatchObject(
-      {
-        kind: "schema"
-      }
-    );
+    await expect(source.loadConfiguredResources()).rejects.toMatchObject({
+      kind: "schema"
+    });
   });
 });

@@ -101,6 +101,22 @@ public enum ServerErrorCode {
             15003,
             "Runtime View filter is not available"
     ),
+    SCENARIO_RPC_INVALID_REQUEST(
+            16001,
+            "Scenario RPC request is invalid"
+    ),
+    SCENARIO_RPC_FILE_NOT_FOUND(
+            16002,
+            "Scenario RPC file was not found"
+    ),
+    SCENARIO_RPC_CONFLICT(
+            16003,
+            "Scenario RPC conflicts with current Lab state"
+    ),
+    SCENARIO_RPC_UNAVAILABLE(
+            16004,
+            "Scenario RPC is unavailable"
+    ),
     MALFORMED_REQUEST(
             19001,
             "Request body or parameters are invalid"

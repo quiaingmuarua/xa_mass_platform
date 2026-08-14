@@ -4,16 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeViewerError } from "@/runtime-viewer/errors";
 import { createRuntimeViewerStore } from "@/stores/runtime-viewer";
 import type {
+  ConfiguredRuntimeResourcesResponse,
   RuntimeViewerConfig,
   RuntimeViewerDataSource,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
-import { preview, worker, workerGroup } from "./fixtures";
+import { configuredEntry, preview, worker } from "./fixtures";
 
 const config: RuntimeViewerConfig = {
   mode: "api",
-  apiBaseUrl: "/api",
-  workerGroupIds: ["group-a", "group-b"]
+  apiBaseUrl: "/api"
 };
 
 describe("runtime viewer store", () => {
@@ -30,6 +30,11 @@ describe("runtime viewer store", () => {
     const store = createRuntimeViewerStore(config, dataSource);
 
     await store.initialize();
+    expect(previewWorkers).not.toHaveBeenCalled();
+    expect(store.configuredWorkerGroupIds).toEqual(["group-a", "group-b"]);
+    expect(store.tasks).toHaveLength(2);
+
+    await store.initializeWorkerView();
     expect(previewWorkers).toHaveBeenCalledTimes(1);
     expect(previewWorkers.mock.calls[0]?.[0]).toBe("group-a");
 
@@ -43,6 +48,34 @@ describe("runtime viewer store", () => {
     await store.refreshActiveGroup();
     expect(previewWorkers).toHaveBeenCalledTimes(3);
     expect(previewWorkers.mock.calls[2]?.[0]).toBe("group-a");
+  });
+
+  it("waits for the in-flight resource directory before loading the worker sample", async () => {
+    let resolveResources!: (value: ConfiguredRuntimeResourcesResponse) => void;
+    const loadConfiguredResources = vi.fn(
+      () =>
+        new Promise<ConfiguredRuntimeResourcesResponse>((resolve) => {
+          resolveResources = resolve;
+        })
+    );
+    const previewWorkers = vi.fn(async (workerGroupId: string) =>
+      preview(workerGroupId, [worker(workerGroupId, "worker-a")])
+    );
+    const store = createRuntimeViewerStore(config, {
+      loadConfiguredResources,
+      previewWorkers
+    });
+
+    const catalogLoad = store.initialize();
+    const workerLoad = store.initializeWorkerView();
+    expect(loadConfiguredResources).toHaveBeenCalledTimes(1);
+    expect(previewWorkers).not.toHaveBeenCalled();
+
+    resolveResources({ entries: [configuredEntry("group-a")] });
+    await Promise.all([catalogLoad, workerLoad]);
+
+    expect(previewWorkers).toHaveBeenCalledTimes(1);
+    expect(previewWorkers.mock.calls[0]?.[0]).toBe("group-a");
   });
 
   it("retains the last good sample and marks it stale after refresh failure", async () => {
@@ -59,15 +92,9 @@ describe("runtime viewer store", () => {
           status: 503
         })
       );
-    const store = createRuntimeViewerStore(
-      {
-        ...config,
-        workerGroupIds: ["group-a"]
-      },
-      source(previewWorkers)
-    );
+    const store = createRuntimeViewerStore(config, source(previewWorkers, ["group-a"]));
 
-    await store.initialize();
+    await store.initializeWorkerView();
     await store.refreshActiveGroup();
 
     expect(store.activeSample?.workers[0]?.workerId).toBe("worker-old");
@@ -113,14 +140,8 @@ describe("runtime viewer store", () => {
             );
           })
       );
-    const store = createRuntimeViewerStore(
-      {
-        ...config,
-        workerGroupIds: ["group-a"]
-      },
-      source(previewWorkers)
-    );
-    await store.initialize();
+    const store = createRuntimeViewerStore(config, source(previewWorkers, ["group-a"]));
+    await store.initializeWorkerView();
 
     const firstRefresh = store.refreshActiveGroup();
     await Promise.resolve();
@@ -144,12 +165,12 @@ describe("runtime viewer store", () => {
 });
 
 function source(
-  previewWorkers: RuntimeViewerDataSource["previewWorkers"]
+  previewWorkers: RuntimeViewerDataSource["previewWorkers"],
+  workerGroupIds = ["group-a", "group-b"]
 ): RuntimeViewerDataSource {
   return {
-    loadWorkerGroups: vi.fn(async () => ({
-      workerGroups: [workerGroup("group-a"), workerGroup("group-b")],
-      missingWorkerGroupIds: []
+    loadConfiguredResources: vi.fn(async () => ({
+      entries: workerGroupIds.map((workerGroupId) => configuredEntry(workerGroupId))
     })),
     previewWorkers
   };

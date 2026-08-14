@@ -3,12 +3,12 @@ import axios, { AxiosError, type AxiosInstance } from "axios";
 import { RuntimeViewerError } from "./errors";
 import {
   apiErrorResponseSchema,
-  workerGroupBatchGetResponseSchema,
+  configuredRuntimeResourcesResponseSchema,
   workerPreviewResponseSchema
 } from "./schemas";
 import type {
+  ConfiguredRuntimeResourcesResponse,
   RuntimeViewerDataSource,
-  WorkerGroupBatchGetResponse,
   WorkerPreviewResponse
 } from "./types";
 
@@ -34,29 +34,20 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
       });
   }
 
-  async loadWorkerGroups(
-    workerGroupIds: string[],
+  async loadConfiguredResources(
     signal?: AbortSignal
-  ): Promise<WorkerGroupBatchGetResponse> {
+  ): Promise<ConfiguredRuntimeResourcesResponse> {
     const requestId = createRequestId();
     try {
-      const response = await this.client.post(
-        "/v1/runtime-view/worker-groups:batch-get",
-        { workerGroupIds },
-        {
-          signal,
-          headers: {
-            "X-Request-Id": requestId
-          }
-        }
-      );
-      const parsed = parseResponse(
-        workerGroupBatchGetResponseSchema,
+      const response = await this.client.get("/v1/runtime-view/configured-resources", {
+        signal,
+        headers: { "X-Request-Id": requestId }
+      });
+      return parseResponse(
+        configuredRuntimeResourcesResponseSchema,
         response.data,
         requestId
       );
-      assertWorkerGroupResponse(parsed, workerGroupIds, requestId);
-      return parsed;
     } catch (error) {
       throw mapHttpError(error, requestId);
     }
@@ -112,43 +103,6 @@ function parseResponse<T>(
     throw schemaError(requestId);
   }
   return parsed.data;
-}
-
-function assertWorkerGroupResponse(
-  response: WorkerGroupBatchGetResponse,
-  requestedIds: string[],
-  requestId: string
-): void {
-  const positions = new Map(
-    requestedIds.map((workerGroupId, index) => [workerGroupId, index])
-  );
-  const returnedIds = [
-    ...response.workerGroups.map((group) => group.workerGroupId),
-    ...response.missingWorkerGroupIds
-  ];
-  if (
-    returnedIds.length !== requestedIds.length ||
-    returnedIds.some((workerGroupId) => !positions.has(workerGroupId)) ||
-    !isRequestOrdered(
-      response.workerGroups.map((group) => group.workerGroupId),
-      positions
-    ) ||
-    !isRequestOrdered(response.missingWorkerGroupIds, positions)
-  ) {
-    throw schemaError(requestId);
-  }
-}
-
-function isRequestOrdered(
-  workerGroupIds: string[],
-  positions: Map<string, number>
-): boolean {
-  return workerGroupIds.every(
-    (workerGroupId, index) =>
-      index === 0 ||
-      (positions.get(workerGroupIds[index - 1]) ?? -1) <
-        (positions.get(workerGroupId) ?? -1)
-  );
 }
 
 function schemaError(requestId: string): RuntimeViewerError {

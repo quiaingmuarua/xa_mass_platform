@@ -1,8 +1,8 @@
-# XA Mass Worker Runtime Viewer
+# XA Mass Runtime Viewer
 
-Standalone Vue 3 frontend for the read-only Worker Runtime preview. It is
-derived from Pure Admin Thin 6.2.0 but deliberately contains no login, token,
-dynamic-permission, fake-user, or example-business path.
+Standalone Vue 3 frontend for the read-only Worker and configured Task Runtime
+views. It is derived from Pure Admin Thin 6.2.0 but deliberately contains no
+login, token, dynamic-permission, fake-user, or example-business path.
 
 ## Requirements
 
@@ -19,7 +19,16 @@ pnpm dev --host 127.0.0.1
 ```
 
 The default data source is the real API. Vite proxies relative `/api` requests
-to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled.
+to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. WorkerGroup and
+long-lived Task coordinates come from the Server's configured resource
+directory, not a frontend environment list.
+
+Routes:
+
+```text
+/runtime/workers
+/runtime/tasks
+```
 
 Use the fixed Mock data only when explicitly requested:
 
@@ -38,6 +47,7 @@ pnpm test
 pnpm build
 ```
 
-The page is an unstable, incomplete sample. It does not expose or infer Worker
-totals, online state, score, lease, transport sessions, history, or complete
-matching results.
+The Worker page remains an unstable, incomplete sample. The Task page shows
+only Profile-configured descriptors. Neither page exposes or infers Worker
+totals, online state, Task approval/running state, score, lease, transport
+sessions, history, or complete matching results.

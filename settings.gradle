@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = 'xa-mass-platform'
 
 include ':kernel_jvm'
+include ':scenario_rpc_jvm'
 include ':scenario_workers_jvm'
 include ':server_jvm'
 include ':worker_delivery_contract_jvm'

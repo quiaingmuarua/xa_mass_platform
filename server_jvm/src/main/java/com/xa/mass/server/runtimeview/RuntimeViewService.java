@@ -1,14 +1,20 @@
 package com.xa.mass.server.runtimeview;
 
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
+import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourceEntry;
+import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.TaskView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,13 +32,71 @@ public final class RuntimeViewService {
             System.getLogger(RuntimeViewService.class.getName());
     private static final String BATCH_GET_OPERATION =
             "runtimeView.batchGetWorkerGroups";
+    private static final String CONFIGURED_RESOURCES_OPERATION =
+            "runtimeView.configuredResources";
     private static final String PREVIEW_OPERATION =
             "runtimeView.previewWorkers";
 
     private final WorkerResourceCatalog workerCatalog;
+    private final TaskResourceCatalog taskCatalog;
+    private final WorkerGroupTaskCatalog configuredTasks;
 
-    public RuntimeViewService(WorkerResourceCatalog workerCatalog) {
+    public RuntimeViewService(
+            WorkerResourceCatalog workerCatalog,
+            TaskResourceCatalog taskCatalog,
+            WorkerGroupTaskCatalog configuredTasks
+    ) {
         this.workerCatalog = workerCatalog;
+        this.taskCatalog = taskCatalog;
+        this.configuredTasks = configuredTasks;
+    }
+
+    public ConfiguredRuntimeResourcesResponse configuredResources(
+            String requestId
+    ) {
+        Map<String, String> configured =
+                configuredTasks.taskIdsByWorkerGroup();
+        if (configured.isEmpty()) {
+            return new ConfiguredRuntimeResourcesResponse(List.of());
+        }
+
+        List<String> workerGroupIds = List.copyOf(configured.keySet());
+        List<String> taskIds = List.copyOf(configured.values());
+        try {
+            Map<String, WorkerGroupDescriptor> groups = workerCatalog
+                    .getWorkerGroupDescriptors(workerGroupIds);
+            Map<String, TaskDescriptor> tasks = taskCatalog
+                    .loadTaskAllocationDescriptors(taskIds);
+            var entries = new ArrayList<ConfiguredRuntimeResourceEntry>();
+            configured.forEach((workerGroupId, taskId) -> {
+                WorkerGroupDescriptor group = groups.get(workerGroupId);
+                TaskDescriptor task = tasks.get(taskId);
+                validateConfiguredIdentity(
+                        workerGroupId,
+                        taskId,
+                        group,
+                        task
+                );
+                entries.add(new ConfiguredRuntimeResourceEntry(
+                        workerGroupId,
+                        taskId,
+                        group == null ? null : toView(group),
+                        task == null ? null : toView(task)
+                ));
+            });
+            return new ConfiguredRuntimeResourcesResponse(
+                    List.copyOf(entries)
+            );
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw unavailable(
+                    CONFIGURED_RESOURCES_OPERATION,
+                    String.join(",", workerGroupIds),
+                    requestId,
+                    error
+            );
+        }
     }
 
     public WorkerGroupBatchGetResponse batchGetWorkerGroups(
@@ -155,6 +219,21 @@ public final class RuntimeViewService {
         );
     }
 
+    private static TaskView toView(TaskDescriptor descriptor) {
+        return new TaskView(
+                descriptor.taskId(),
+                descriptor.workerGroupId(),
+                descriptor.taskType().name(),
+                descriptor.allocationRule() == null
+                        ? null
+                        : immutableMap(descriptor.allocationRule()),
+                Collections.unmodifiableMap(
+                        new LinkedHashMap<>(descriptor.config())
+                ),
+                descriptor.emptyCloseAtMillis()
+        );
+    }
+
     private static WorkerView toView(WorkerDescriptor descriptor) {
         return new WorkerView(
                 descriptor.workerId(),
@@ -175,6 +254,27 @@ public final class RuntimeViewService {
         return Collections.unmodifiableMap(
                 new LinkedHashMap<>(values)
         );
+    }
+
+    private static void validateConfiguredIdentity(
+            String workerGroupId,
+            String taskId,
+            WorkerGroupDescriptor group,
+            TaskDescriptor task
+    ) {
+        if (group != null
+                && !workerGroupId.equals(group.workerGroupId())) {
+            throw new IllegalStateException(
+                    "Configured WorkerGroup identity mismatch"
+            );
+        }
+        if (task != null
+                && (!taskId.equals(task.taskId())
+                || !workerGroupId.equals(task.workerGroupId()))) {
+            throw new IllegalStateException(
+                    "Configured Task identity mismatch"
+            );
+        }
     }
 
     private static ServerException unavailable(

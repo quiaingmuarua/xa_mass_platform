@@ -197,7 +197,19 @@ POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
+GET  /api/v1/scenario-rpc/scenarios
+POST /api/v1/scenario-rpc/input-files/{fileName}
+POST /api/v1/scenario-rpc/runs
+GET  /api/v1/scenario-rpc/output-files/{fileName}
 ```
+
+The four `scenario-rpc` routes exist only under the `scenario-workers`
+Profile. Inputs are create-only UTF-8 `.txt` files below
+`data/rpc-task/input`; one run selects exactly one listed Scenario and a
+concurrency from 1 to 100. Successful runs atomically publish one `.jsonl`
+file below `data/rpc-task/output`, which the output route downloads as
+`application/x-ndjson`. The Profile permits one run at a time and retains all
+input and output files until they are manually removed.
 
 Identity registration accepts the WorkerGroup path coordinate and complete
 Worker Properties:
@@ -277,12 +289,27 @@ first-seen order, and returns:
 The payload is opaque. A missing Task returns `404`; `null` means only that no
 last-success payload exists for that Task-scoped messageId.
 
-## Worker Runtime View
+## Runtime View
 
-Runtime View is a read-only operator preview over the
-`WorkerResourceCatalog`. It does not expose Redis, Worker score, lease,
+Runtime View is a read-only operator view over Profile-configured resources
+and bounded owner reads. It does not expose Redis, Worker or Task score, lease,
 transport session, payload, lifecycle status, history, global discovery, or
 stable pagination.
+
+The configured resource directory accepts no caller-provided identities:
+
+```http
+GET /api/v1/runtime-view/configured-resources
+```
+
+It preserves `group-config-json` order and returns each configured
+`workerGroupId -> taskId` coordinate with nullable WorkerGroup and Task
+descriptors. The Server reads only those manifest-bounded identities through
+`WorkerResourceCatalog` and `TaskResourceCatalog`. Missing descriptors remain
+visible as `null`; identity drift or provider failure returns `15002 / 503`.
+The Task projection contains `taskId`, `workerGroupId`, `taskType`,
+`allocationRule`, `config`, and `emptyCloseAtMillis`. It does not expose Task
+approval, running state, Item totals, Result totals, or Score.
 
 Batch WorkerGroup load accepts 1 to 20 unique, nonblank configured IDs:
 
@@ -712,10 +739,14 @@ scheduling/ResultRouting, Java last-success query, and exact Worker release.
 The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
 The repository Scenario RPC lane starts this Server with the `scenario-workers`
-profile and proves 20 persistent, globally unique Worker identities plus
-Identity Register, Endpoint Bind, Adapter route validation, and 60 successful
-Group-scoped single-Item RPC results. Results are not attributed to a specific
-Worker. This
+profile. That Profile also enables `/api/v1/scenario-rpc`: it accepts bounded
+text inputs under `data/rpc-task/input`, runs one of six in-memory Scenarios
+through the public WorkerGroup call route, and atomically publishes JSONL under
+`data/rpc-task/output`. Only one file Process runs at once; its internal
+concurrency is caller bounded from 1 to 100. The acceptance proves 20
+persistent, globally unique Worker identities plus Identity Register, Endpoint
+Bind, Adapter route validation, six Scenario runs, and 60 results. Results are
+not attributed to a specific Worker. This
 cross-process proof complements rather than replaces the Server integration
 suite above.
 

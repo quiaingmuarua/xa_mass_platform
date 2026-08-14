@@ -1,4 +1,6 @@
 import type {
+  ConfiguredRuntimeResourceEntry,
+  TaskView,
   WorkerGroupView,
   WorkerPreviewResponse,
   WorkerView
@@ -11,6 +13,34 @@ export function workerGroup(workerGroupId: string): WorkerGroupView {
       runtime: "test"
     },
     eventCodes: [`${workerGroupId}.event`]
+  };
+}
+
+export function task(taskId: string, workerGroupId: string): TaskView {
+  return {
+    taskId,
+    workerGroupId,
+    taskType: "ITEM_DRIVEN",
+    allocationRule: null,
+    config: {
+      priority: "0",
+      maximumCandidateWorkers: "1",
+      maxRetryTimes: "3"
+    },
+    emptyCloseAtMillis: 9_999_999_999_900
+  };
+}
+
+export function configuredEntry(
+  workerGroupId: string,
+  options: { missingGroup?: boolean; missingTask?: boolean } = {}
+): ConfiguredRuntimeResourceEntry {
+  const taskId = `scenario-rpc-${workerGroupId}`;
+  return {
+    workerGroupId,
+    taskId,
+    workerGroup: options.missingGroup ? null : workerGroup(workerGroupId),
+    task: options.missingTask ? null : task(taskId, workerGroupId)
   };
 }
 

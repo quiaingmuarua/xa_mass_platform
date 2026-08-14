@@ -19,6 +19,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
         ));
         for (String forbidden : new String[]{
                 "project(':server_jvm')",
+                "project(':scenario_rpc_jvm')",
                 "project(':scenario_workers_jvm')",
                 "project(':kernel_jvm')",
                 "project(':transport:netty-adapter')",
@@ -51,7 +52,10 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 "WorkerRuntime",
                 "ServerWorkerBundle",
                 "ScenarioWorkers",
-                "Redis"
+                "Redis",
+                "RpcProcess",
+                "WorkerGroupRpcClient",
+                "/api/v1/worker-groups/"
         }) {
             assertFalse(
                     productionSources.toString().contains(forbidden),
@@ -64,31 +68,43 @@ class WorkerCapabilityIntegrationArchitectureTest {
     }
 
     @Test
-    void processDoesNotGrowIntoAPluginOrChainedRequestFramework()
+    void integrationOnlyUsesTheServerScenarioRpcApi()
             throws Exception {
         Path root = Path.of(
                 "src/main/java/com/xa/mass/integration"
-                        + "/workercapability/process"
+                        + "/workercapability"
         );
-        StringBuilder processSources = new StringBuilder();
+        StringBuilder sources = new StringBuilder();
         try (var files = Files.walk(root)) {
             for (Path file : files.filter(path ->
                     path.toString().endsWith(".java")
             ).toList()) {
-                processSources.append(Files.readString(file));
+                sources.append(Files.readString(file));
             }
         }
+        assertTrue(sources.toString().contains(
+                "/api/v1/scenario-rpc/"
+        ));
         for (String forbidden : new String[]{
                 "ServiceLoader",
                 "Class.forName",
                 "startRequests",
                 "followRequest",
-                "Checkpoint"
+                "Checkpoint",
+                "newFixedThreadPool",
+                "newVirtualThreadPerTaskExecutor"
         }) {
             assertFalse(
-                    processSources.toString().contains(forbidden),
+                    sources.toString().contains(forbidden),
                     forbidden
             );
+        }
+        if (Files.exists(root.resolve("process"))) {
+            try (var files = Files.walk(root.resolve("process"))) {
+                assertFalse(files.anyMatch(path ->
+                        path.toString().endsWith(".java")
+                ));
+            }
         }
     }
 }

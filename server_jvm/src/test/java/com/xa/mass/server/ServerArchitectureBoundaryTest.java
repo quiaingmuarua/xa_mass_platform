@@ -68,12 +68,19 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/runtimeview"
     );
+    private static final Path SCENARIO_RPC = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/scenariorpc"
+    );
+    private static final Path SCENARIO_RPC_HTTP = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/api/v1/scenariorpc"
+    );
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
+                .contains("implementation project(':scenario_rpc_jvm')")
                 .contains(
                         "implementation project(':scenario_workers_jvm')"
                 )
@@ -164,20 +171,26 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void runtimeViewUsesOnlyTheWorkerCatalogBoundedSample()
+    void runtimeViewUsesOnlyManifestBoundedResourceCatalogs()
             throws IOException {
         String runtimeView = readSources(RUNTIME_VIEW)
                 + readSources(RUNTIME_VIEW_HTTP);
         assertThat(runtimeView)
                 .contains("WorkerResourceCatalog")
+                .contains("TaskResourceCatalog")
+                .contains("taskIdsByWorkerGroup")
                 .doesNotContain(".worker.redis")
+                .doesNotContain(".task.redis")
                 .doesNotContain("RedisWorkerResourceCatalog")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("WorkerScore")
+                .doesNotContain("TaskScore")
                 .doesNotContain("DeliveryCommand")
                 .doesNotContain("DeliveryReport")
-                .doesNotContain("TaskRuntime")
+                .doesNotContain(".hscan(")
+                .doesNotContain(".scan(")
+                .doesNotContain(".keys(")
                 .doesNotContain("Transport");
 
         String catalog = Files.readString(WORKER_CATALOG_REDIS);
@@ -192,6 +205,25 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".hlen(")
                 .doesNotContain("WorkerScore")
                 .doesNotContain("transport");
+    }
+
+    @Test
+    void scenarioRpcUsesTheFiniteEngineAndPublicLoopbackOnly()
+            throws IOException {
+        String scenarioRpc = readSources(SCENARIO_RPC)
+                + readSources(SCENARIO_RPC_HTTP);
+        assertThat(scenarioRpc)
+                .contains("ScenarioRpcEngine")
+                .contains("/api/v1/worker-groups/")
+                .doesNotContain("TaskDataService")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("TaskResourceCatalog")
+                .doesNotContain("WorkerResourceCatalog")
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("com.xa.mass.kernel")
+                .doesNotContain("com.xa.mass.transport")
+                .doesNotContain("ScenarioWorkers");
     }
 
     @Test

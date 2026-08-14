@@ -2,8 +2,6 @@ package com.xa.mass.integration.workercapability;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -15,9 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,246 +24,270 @@ import org.junit.jupiter.api.io.TempDir;
 
 class WorkerCapabilityRpcMainTest {
 
-    private static final String PHONE_GROUP =
-            "scenario-phone-number-workers";
-    private static final String STRING_GROUP =
-            "scenario-string-utils-workers";
-
     @TempDir
     Path temporaryDirectory;
 
     @Test
-    void writesSixtyGroupScopedResultsWithoutInternalCoordinates()
+    void uploadsRunsAndDownloadsSixServerScenarioOutputs()
             throws Exception {
-        try (FakeRuntimeApi api = FakeRuntimeApi.start(false)) {
-            ScenarioFiles files = scenarioFiles("complete");
-
-            WorkerCapabilityRpcMain.main(arguments(api, files));
-
-            List<Map<String, Object>> phone = readJsonLines(
-                    files.scenarioResults().resolve("phone-number.jsonl")
-            );
-            List<Map<String, Object>> strings = readJsonLines(
-                    files.scenarioResults().resolve("string-utils.jsonl")
-            );
-            assertEquals(30, phone.size());
-            assertEquals(30, strings.size());
-            assertTrue(phone.stream().allMatch(row ->
-                    PHONE_GROUP.equals(row.get("workerGroupId"))
-            ));
-            assertTrue(strings.stream().allMatch(row ->
-                    STRING_GROUP.equals(row.get("workerGroupId"))
-            ));
-            assertTrue(phone.stream().allMatch(
-                    WorkerCapabilityRpcMainTest::hasOnlyPublicResultFields
-            ));
-            assertTrue(strings.stream().allMatch(
-                    WorkerCapabilityRpcMainTest::hasOnlyPublicResultFields
-            ));
-            assertEquals(60, api.callCount.get());
-            assertEquals(
-                    Set.of(PHONE_GROUP, STRING_GROUP),
-                    api.calledWorkerGroups
-            );
-            assertTrue(api.allocationRulesWereEmpty);
-            assertFalse(api.sawTaskOrWorkerCoordinate);
-        }
-    }
-
-    @Test
-    void preservesPhoneResultsWhenStringScenarioFails()
-            throws Exception {
-        try (FakeRuntimeApi api = FakeRuntimeApi.start(true)) {
-            ScenarioFiles files = scenarioFiles("partial");
-
-            assertThrows(
-                    IllegalStateException.class,
-                    () -> WorkerCapabilityRpcMain.main(
-                            arguments(api, files)
-                    )
-            );
-
-            assertEquals(
-                    30,
-                    readJsonLines(files.scenarioResults().resolve(
-                            "phone-number.jsonl"
-                    )).size()
-            );
-            assertFalse(Files.exists(files.scenarioResults().resolve(
-                    "string-utils.jsonl"
-            )));
-            assertFalse(Files.exists(files.scenarioResults().resolve(
-                    "string-utils.jsonl.tmp"
-            )));
-        }
-    }
-
-    @Test
-    void rejectsExistingScenarioResultDirectory() throws Exception {
-        ScenarioFiles files = scenarioFiles("existing");
-        Files.createDirectories(files.scenarioResults());
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> WorkerCapabilityRpcMain.main(new String[]{
-                        "--scenario-id=" + files.scenarioId(),
-                        "--result-dir=" + files.resultRoot()
-                })
+        Path phoneSeed = writeLines(
+                "phone.txt",
+                List.of(
+                        "+8613800138000",
+                        "+14155552671",
+                        "+442071838750",
+                        "+81312345678",
+                        "+33142345678",
+                        "+61293744000",
+                        "+4930123456",
+                        "+74951234567",
+                        "+551155256325",
+                        "+919876543210"
+                )
         );
-    }
+        Path stringSeed = writeLines(
+                "strings.txt",
+                List.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
+        );
+        Path workerLab = temporaryDirectory.resolve("scenario-workers");
+        createWorkerLab(workerLab);
+        Path results = temporaryDirectory.resolve("results");
 
-    @Test
-    void removesEmptyResultDirectoryAfterEarlyFailure()
-            throws Exception {
-        try (FakeRuntimeApi api = FakeRuntimeApi.start(false)) {
-            ScenarioFiles files = scenarioFiles("early-failure");
-            Files.delete(files.phoneSeed());
+        try (FakeScenarioServer server = FakeScenarioServer.start()) {
+            WorkerCapabilityRpcMain.main(new String[]{
+                    "--scenario-id=proof-1000",
+                    "--server-base-url=" + server.baseUri(),
+                    "--phone-seed-path=" + phoneSeed,
+                    "--string-seed-path=" + stringSeed,
+                    "--result-dir=" + results,
+                    "--scenario-worker-lab-root=" + workerLab,
+                    "--concurrency=10",
+                    "--request-timeout-millis=10000"
+            });
 
-            assertThrows(
-                    IOException.class,
-                    () -> WorkerCapabilityRpcMain.main(
-                            arguments(api, files)
-                    )
-            );
-
-            assertFalse(Files.exists(files.scenarioResults()));
+            assertEquals(2, server.uploadCount());
+            assertEquals(6, server.runCount());
+            assertEquals(List.of(10, 10, 10, 10, 10, 10),
+                    server.concurrencies());
         }
+
+        Path proofResults = results.resolve("proof-1000");
+        List<Path> outputFiles;
+        try (var files = Files.list(proofResults)) {
+            outputFiles = files.sorted().toList();
+        }
+        assertEquals(6, outputFiles.size());
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Path outputFile : outputFiles) {
+            Files.readAllLines(outputFile, StandardCharsets.UTF_8)
+                    .stream()
+                    .map(Jsons::parseObject)
+                    .forEach(rows::add);
+        }
+        assertEquals(60, rows.size());
+        rows.forEach(row -> {
+            assertFalse(row.containsKey("taskId"));
+            assertFalse(row.containsKey("workerId"));
+            assertFalse(row.containsKey("score"));
+        });
     }
 
-    private ScenarioFiles scenarioFiles(String scenarioId)
+    private Path writeLines(String name, List<String> lines)
             throws IOException {
-        Path phoneSeed = temporaryDirectory.resolve(
-                scenarioId + "-phone.txt"
-        );
-        Path stringSeed = temporaryDirectory.resolve(
-                scenarioId + "-string.txt"
-        );
-        List<String> phoneInputs = new ArrayList<>(10);
-        List<String> stringInputs = new ArrayList<>(10);
-        for (int index = 1; index <= 10; index++) {
-            phoneInputs.add("+10000000" + index);
-            stringInputs.add("value-" + index);
-        }
-        Files.write(phoneSeed, phoneInputs, StandardCharsets.UTF_8);
-        Files.write(stringSeed, stringInputs, StandardCharsets.UTF_8);
-        Path resultRoot = temporaryDirectory.resolve("results");
-        Path labRoot = temporaryDirectory.resolve(
-                "data/scenario-workers"
-        );
-        writeWorkerLab(labRoot, PHONE_GROUP, "phone-worker-");
-        writeWorkerLab(labRoot, STRING_GROUP, "string-worker-");
-        return new ScenarioFiles(
-                scenarioId,
-                phoneSeed,
-                stringSeed,
-                resultRoot,
-                resultRoot.resolve(scenarioId),
-                labRoot
-        );
+        Path path = temporaryDirectory.resolve(name);
+        Files.write(path, lines, StandardCharsets.UTF_8);
+        return path;
     }
 
-    private static String[] arguments(
-            FakeRuntimeApi api,
-            ScenarioFiles files
-    ) {
-        return new String[]{
-                "--server-base-url=" + api.baseUri(),
-                "--scenario-id=" + files.scenarioId(),
-                "--phone-seed-path=" + files.phoneSeed(),
-                "--string-seed-path=" + files.stringSeed(),
-                "--result-dir=" + files.resultRoot(),
-                "--scenario-worker-lab-root=" + files.labRoot(),
-                "--wait-timeout-millis=1000",
-                "--request-timeout-millis=5000"
-        };
-    }
-
-    private static boolean hasOnlyPublicResultFields(
-            Map<String, Object> row
-    ) {
-        return row.keySet().equals(Set.of(
-                "workerGroupId",
-                "messageId",
-                "eventCode",
-                "input",
-                "result"
-        ));
-    }
-
-    private static List<Map<String, Object>> readJsonLines(Path path)
-            throws IOException {
-        return Files.readAllLines(path, StandardCharsets.UTF_8)
-                .stream()
-                .map(Jsons::parseObject)
-                .toList();
-    }
-
-    private static void writeWorkerLab(
-            Path labRoot,
-            String workerGroupId,
-            String workerKeyPrefix
-    ) throws IOException {
-        Path groupDirectory = labRoot.resolve(workerGroupId);
-        Files.createDirectories(groupDirectory);
-        for (int index = 1; index <= 10; index++) {
-            String clientWorkerKey = workerKeyPrefix
-                    + "%03d".formatted(index);
-            String workerId = UUID.nameUUIDFromBytes(
-                    (workerGroupId + ":" + clientWorkerKey).getBytes(
-                            StandardCharsets.UTF_8
-                    )
-            ).toString();
-            Files.writeString(
-                    groupDirectory.resolve(clientWorkerKey + ".json"),
-                    Jsons.toJson(Map.of(
-                            "schemaVersion", 1,
-                            "workerId", workerId
-                    )),
-                    StandardCharsets.UTF_8
-            );
+    private static void createWorkerLab(Path root) throws IOException {
+        for (String group : List.of(
+                "scenario-phone-number-workers",
+                "scenario-string-utils-workers"
+        )) {
+            Path directory = Files.createDirectories(root.resolve(group));
+            for (int index = 0; index < 10; index++) {
+                Files.writeString(
+                        directory.resolve("worker-" + index + ".json"),
+                        Jsons.toJson(Map.of(
+                                "schemaVersion", 1,
+                                "workerId", UUID.randomUUID().toString()
+                        )),
+                        StandardCharsets.UTF_8
+                );
+            }
         }
     }
 
-    private record ScenarioFiles(
-            String scenarioId,
-            Path phoneSeed,
-            Path stringSeed,
-            Path resultRoot,
-            Path scenarioResults,
-            Path labRoot
-    ) {
-    }
+    private static final class FakeScenarioServer implements AutoCloseable {
+        private static final Map<String, Expected> EXPECTED = Map.of(
+                "phonenumber.e164",
+                new Expected(
+                        "scenario-phone-number-workers",
+                        "rawNumber",
+                        "e164"
+                ),
+                "phonenumber.country",
+                new Expected(
+                        "scenario-phone-number-workers",
+                        "rawNumber",
+                        "countryCallingCode"
+                ),
+                "phonenumber.original-carrier",
+                new Expected(
+                        "scenario-phone-number-workers",
+                        "rawNumber",
+                        "originalCarrier"
+                ),
+                "string.md5",
+                new Expected(
+                        "scenario-string-utils-workers",
+                        "value",
+                        "md5"
+                ),
+                "string.sha1",
+                new Expected(
+                        "scenario-string-utils-workers",
+                        "value",
+                        "sha1"
+                ),
+                "string.base64.encode",
+                new Expected(
+                        "scenario-string-utils-workers",
+                        "value",
+                        "base64"
+                )
+        );
 
-    private static final class FakeRuntimeApi implements AutoCloseable {
         private final HttpServer server;
-        private final boolean failStringCalls;
-        private final Set<String> calledWorkerGroups =
-                ConcurrentHashMap.newKeySet();
-        private final AtomicInteger callCount = new AtomicInteger();
-        private volatile boolean allocationRulesWereEmpty = true;
-        private volatile boolean sawTaskOrWorkerCoordinate;
+        private final Map<String, String> inputs = new ConcurrentHashMap<>();
+        private final Map<String, String> outputs = new ConcurrentHashMap<>();
+        private final AtomicInteger uploads = new AtomicInteger();
+        private final AtomicInteger runs = new AtomicInteger();
+        private final List<Integer> concurrencies =
+                java.util.Collections.synchronizedList(new ArrayList<>());
 
-        private FakeRuntimeApi(
-                HttpServer server,
-                boolean failStringCalls
-        ) {
+        private FakeScenarioServer(HttpServer server) {
             this.server = server;
-            this.failStringCalls = failStringCalls;
         }
 
-        static FakeRuntimeApi start(boolean failStringCalls)
-                throws IOException {
-            HttpServer server = HttpServer.create(
+        static FakeScenarioServer start() throws IOException {
+            HttpServer http = HttpServer.create(
                     new InetSocketAddress("127.0.0.1", 0),
                     0
             );
-            FakeRuntimeApi api = new FakeRuntimeApi(
-                    server,
-                    failStringCalls
+            FakeScenarioServer fake = new FakeScenarioServer(http);
+            http.createContext("/api/v1/scenario-rpc", fake::handle);
+            http.start();
+            return fake;
+        }
+
+        private void handle(HttpExchange exchange) throws IOException {
+            try {
+                String path = exchange.getRequestURI().getPath();
+                if (path.startsWith(
+                        "/api/v1/scenario-rpc/input-files/"
+                )) {
+                    handleUpload(exchange, path);
+                } else if (path.equals("/api/v1/scenario-rpc/runs")) {
+                    handleRun(exchange);
+                } else if (path.startsWith(
+                        "/api/v1/scenario-rpc/output-files/"
+                )) {
+                    handleDownload(exchange, path);
+                } else {
+                    respond(exchange, 404, Map.of());
+                }
+            } catch (RuntimeException error) {
+                respond(exchange, 500, Map.of("error", error.getMessage()));
+            }
+        }
+
+        private void handleUpload(HttpExchange exchange, String path)
+                throws IOException {
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+            inputs.put(fileName, new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            ));
+            uploads.incrementAndGet();
+            respond(exchange, 200, Map.of(
+                    "fileName", fileName,
+                    "byteCount", inputs.get(fileName).length(),
+                    "lineCount", inputs.get(fileName).lines().count()
+            ));
+        }
+
+        private void handleRun(HttpExchange exchange) throws IOException {
+            Map<String, Object> request = Jsons.parseObject(new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            ));
+            String scenarioId = (String) request.get("scenarioId");
+            String inputFile = (String) request.get("inputFile");
+            int concurrency = ((Number) request.get("concurrency")).intValue();
+            Expected expected = EXPECTED.get(scenarioId);
+            List<String> lines = inputs.get(inputFile).lines().toList();
+            int run = runs.incrementAndGet();
+            concurrencies.add(concurrency);
+            String outputFile = scenarioId + "-" + run + ".jsonl";
+            List<String> encoded = new ArrayList<>();
+            for (int index = 0; index < lines.size(); index++) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("workerGroupId", expected.workerGroupId());
+                row.put(
+                        "messageId",
+                        "rpc-" + run + "-" + scenarioId + "-" + index
+                );
+                row.put("eventCode", scenarioId);
+                row.put(
+                        "input",
+                        Map.of(expected.inputField(), lines.get(index))
+                );
+                row.put(
+                        "result",
+                        Map.of(
+                                "valid", true,
+                                expected.resultField(), "result-" + index
+                        )
+                );
+                encoded.add(Jsons.toJson(row));
+            }
+            outputs.put(outputFile, String.join("\n", encoded) + "\n");
+            respond(exchange, 200, Map.of(
+                    "scenarioId", scenarioId,
+                    "workerGroupId", expected.workerGroupId(),
+                    "eventCode", scenarioId,
+                    "inputFile", inputFile,
+                    "outputFile", outputFile,
+                    "inputCount", lines.size(),
+                    "resultCount", lines.size(),
+                    "durationMillis", 1,
+                    "generatedAt", "2026-08-14T12:00:00Z"
+            ));
+        }
+
+        private void handleDownload(HttpExchange exchange, String path)
+                throws IOException {
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+            byte[] content = outputs.get(fileName).getBytes(
+                    StandardCharsets.UTF_8
             );
-            server.createContext("/", api::handle);
-            server.start();
-            return api;
+            exchange.sendResponseHeaders(200, content.length);
+            exchange.getResponseBody().write(content);
+            exchange.close();
+        }
+
+        private static void respond(
+                HttpExchange exchange,
+                int status,
+                Map<String, Object> body
+        ) throws IOException {
+            byte[] content = Jsons.toJson(body).getBytes(
+                    StandardCharsets.UTF_8
+            );
+            exchange.sendResponseHeaders(status, content.length);
+            exchange.getResponseBody().write(content);
+            exchange.close();
         }
 
         URI baseUri() {
@@ -274,111 +296,28 @@ class WorkerCapabilityRpcMainTest {
             );
         }
 
-        @SuppressWarnings("unchecked")
-        private void handle(HttpExchange exchange) throws IOException {
-            try {
-                String path = exchange.getRequestURI().getPath();
-                if (!path.startsWith("/api/v1/worker-groups/")
-                        || !path.endsWith("/items:call")) {
-                    respond(exchange, 404, Map.of());
-                    return;
-                }
-                String workerGroupId = path.substring(
-                        "/api/v1/worker-groups/".length(),
-                        path.length() - "/items:call".length()
-                );
-                Map<String, Object> body = readBody(exchange);
-                Map<String, Object> item =
-                        (Map<String, Object>) body.get("item");
-                String eventCode = (String) item.get("eventCode");
-                calledWorkerGroups.add(workerGroupId);
-                callCount.incrementAndGet();
-                allocationRulesWereEmpty &= Map.of().equals(
-                        item.get("allocationRule")
-                );
-                sawTaskOrWorkerCoordinate |= body.containsKey("taskId")
-                        || body.containsKey("workerId")
-                        || item.containsKey("taskId")
-                        || item.containsKey("workerId")
-                        || item.containsKey("workerGroupId");
-                if (failStringCalls && eventCode.startsWith("string.")) {
-                    respond(exchange, 500, Map.of("code", 1));
-                    return;
-                }
-                respond(exchange, 200, Map.of(
-                        "status", "succeeded",
-                        "messageId", item.get("messageId"),
-                        "opaqueResultPayload", Jsons.toJson(
-                                resultFor(eventCode)
-                        )
-                ));
-            } catch (RuntimeException error) {
-                respond(exchange, 500, Map.of("error", "test failure"));
-            }
+        int uploadCount() {
+            return uploads.get();
         }
 
-        private static Map<String, Object> resultFor(String eventCode) {
-            return switch (eventCode) {
-                case "phonenumber.e164" -> Map.of(
-                        "valid", true,
-                        "e164", "+10000000001"
-                );
-                case "phonenumber.country" -> Map.of(
-                        "valid", true,
-                        "countryCallingCode", 1
-                );
-                case "phonenumber.original-carrier" -> Map.of(
-                        "valid", true,
-                        "originalCarrier", "test-carrier"
-                );
-                case "string.md5" -> Map.of(
-                        "valid", true,
-                        "md5", "test-md5"
-                );
-                case "string.sha1" -> Map.of(
-                        "valid", true,
-                        "sha1", "test-sha1"
-                );
-                case "string.base64.encode" -> Map.of(
-                        "valid", true,
-                        "base64", "dGVzdA=="
-                );
-                default -> throw new IllegalArgumentException(
-                        "Unknown eventCode: " + eventCode
-                );
-            };
+        int runCount() {
+            return runs.get();
         }
 
-        private static Map<String, Object> readBody(
-                HttpExchange exchange
-        ) throws IOException {
-            String body = new String(
-                    exchange.getRequestBody().readAllBytes(),
-                    StandardCharsets.UTF_8
-            );
-            return body.isBlank() ? Map.of() : Jsons.parseObject(body);
-        }
-
-        private static void respond(
-                HttpExchange exchange,
-                int status,
-                Map<String, Object> body
-        ) throws IOException {
-            byte[] encoded = Jsons.toJson(body).getBytes(
-                    StandardCharsets.UTF_8
-            );
-            exchange.getResponseHeaders().set(
-                    "Content-Type",
-                    "application/json"
-            );
-            exchange.sendResponseHeaders(status, encoded.length);
-            exchange.getResponseBody().write(encoded);
-            exchange.close();
+        List<Integer> concurrencies() {
+            return List.copyOf(concurrencies);
         }
 
         @Override
         public void close() {
             server.stop(0);
+        }
+
+        private record Expected(
+                String workerGroupId,
+                String inputField,
+                String resultField
+        ) {
         }
     }
 }

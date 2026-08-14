@@ -20,6 +20,14 @@ export const router = createRouter({
           meta: {
             title: "Worker Runtime"
           }
+        },
+        {
+          path: "runtime/tasks",
+          name: "runtime-tasks",
+          component: () => import("@/views/TaskRuntimeView.vue"),
+          meta: {
+            title: "Tasks"
+          }
         }
       ]
     },

@@ -1,22 +1,28 @@
 package com.xa.mass.server.api.v1.runtimeview;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,23 +39,136 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class RuntimeViewControllerTest {
 
     private WorkerResourceCatalog workerCatalog;
+    private TaskResourceCatalog taskCatalog;
+    private WorkerGroupTaskCatalog configuredTasks;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         workerCatalog = mock(WorkerResourceCatalog.class);
+        taskCatalog = mock(TaskResourceCatalog.class);
+        configuredTasks = mock(WorkerGroupTaskCatalog.class);
+        when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of());
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new RuntimeViewController(
-                                new RuntimeViewService(workerCatalog)
+                                new RuntimeViewService(
+                                        workerCatalog,
+                                        taskCatalog,
+                                        configuredTasks
+                                )
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
+    }
+
+    @Test
+    void configuredResourcesPreserveManifestOrderAndMissingDescriptors()
+            throws Exception {
+        var configured = new LinkedHashMap<String, String>();
+        configured.put("group-b", "task-b");
+        configured.put("missing", "task-missing");
+        configured.put("group-a", "task-a");
+        when(configuredTasks.taskIdsByWorkerGroup())
+                .thenReturn(configured);
+
+        var groups = new LinkedHashMap<String, WorkerGroupDescriptor>();
+        groups.put("group-b", group(
+                "group-b",
+                Map.of("capability", "beta"),
+                Set.of("event.b")
+        ));
+        groups.put("missing", null);
+        groups.put("group-a", group(
+                "group-a",
+                Map.of("capability", "alpha"),
+                Set.of("event.a")
+        ));
+        when(workerCatalog.getWorkerGroupDescriptors(
+                List.copyOf(configured.keySet())
+        )).thenReturn(groups);
+
+        var tasks = new LinkedHashMap<String, TaskDescriptor>();
+        tasks.put("task-b", task("task-b", "group-b"));
+        tasks.put("task-missing", null);
+        tasks.put("task-a", task("task-a", "group-a"));
+        when(taskCatalog.loadTaskAllocationDescriptors(
+                List.copyOf(configured.values())
+        )).thenReturn(tasks);
+
+        mockMvc.perform(get(
+                        "/api/v1/runtime-view/configured-resources"
+                ).header("X-Request-Id", "configured-request"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "X-Request-Id",
+                        "configured-request"
+                ))
+                .andExpect(jsonPath("$.entries[0].workerGroupId")
+                        .value("group-b"))
+                .andExpect(jsonPath("$.entries[0].taskId")
+                        .value("task-b"))
+                .andExpect(jsonPath(
+                        "$.entries[0].workerGroup.attributes.capability"
+                ).value("beta"))
+                .andExpect(jsonPath("$.entries[0].task.taskType")
+                        .value("ITEM_DRIVEN"))
+                .andExpect(jsonPath(
+                        "$.entries[0].task.config.maxRetryTimes"
+                ).value("3"))
+                .andExpect(jsonPath("$.entries[1].workerGroup")
+                        .value(nullValue()))
+                .andExpect(jsonPath("$.entries[1].task")
+                        .value(nullValue()))
+                .andExpect(jsonPath("$.entries[2].workerGroupId")
+                        .value("group-a"))
+                .andExpect(jsonPath("$.entries[0].task.score")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.entries[0].task.status")
+                        .doesNotExist());
+    }
+
+    @Test
+    void configuredResourcesReturnEmptyWithoutOwnerReads()
+            throws Exception {
+        mockMvc.perform(get(
+                        "/api/v1/runtime-view/configured-resources"
+                ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries").isEmpty());
+
+        verifyNoInteractions(workerCatalog, taskCatalog);
+    }
+
+    @Test
+    void configuredResourcesRejectIdentityDriftAsUnavailable()
+            throws Exception {
+        when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of(
+                "group-a",
+                "task-a"
+        ));
+        when(workerCatalog.getWorkerGroupDescriptors(
+                List.of("group-a")
+        )).thenReturn(groupLookup("group-a"));
+        when(taskCatalog.loadTaskAllocationDescriptors(
+                List.of("task-a")
+        )).thenReturn(Map.of(
+                "task-a",
+                task("task-a", "another-group")
+        ));
+
+        mockMvc.perform(get(
+                        "/api/v1/runtime-view/configured-resources"
+                ).header("X-Request-Id", "drift-request"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(15002))
+                .andExpect(jsonPath("$.requestId")
+                        .value("drift-request"));
     }
 
     @Test
@@ -407,6 +526,24 @@ class RuntimeViewControllerTest {
                 "endpoint-1",
                 Map.of("runtime", "java"),
                 Map.of("region", "local")
+        );
+    }
+
+    private static TaskDescriptor task(
+            String taskId,
+            String workerGroupId
+    ) {
+        return new TaskDescriptor(
+                taskId,
+                workerGroupId,
+                TaskType.ITEM_DRIVEN,
+                null,
+                Map.of(
+                        "priority", "0",
+                        "maximumCandidateWorkers", "1",
+                        "maxRetryTimes", "3"
+                ),
+                9_999_999_999_900L
         );
     }
 }

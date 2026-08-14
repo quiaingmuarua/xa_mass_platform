@@ -1,26 +1,22 @@
-package com.xa.mass.integration.workercapability;
+package com.xa.mass.server.scenariorpc;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
-import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
-import com.xa.mass.integration.workercapability.runtimeapi.WorkerGroupRpcClient;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
-class WorkerGroupRpcClientTest {
+class ScenarioRpcLoopbackClientTest {
 
     @Test
-    void sendsAnOrdinaryUnrestrictedItemToTheGroupPath()
+    void sendsAStandardUnrestrictedItemToTheGroupPath()
             throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         try (TestServer server = TestServer.start(
@@ -38,51 +34,53 @@ class WorkerGroupRpcClientTest {
                     "phone-tools",
                     "message-1",
                     "phone.lookup",
-                    Map.of("number", "+14155552671"),
-                    1_000
+                    Map.of("number", "+14155552671")
             );
 
-            assertEquals("ok", result.get("value"));
+            assertThat(result.get("value")).isEqualTo("ok");
             Map<String, Object> request = Jsons.parseObject(
                     requestBody.get()
             );
             @SuppressWarnings("unchecked")
             Map<String, Object> item =
                     (Map<String, Object>) request.get("item");
-            assertEquals(Map.of(), item.get("allocationRule"));
-            assertFalse(item.containsKey("workerGroupId"));
-            assertFalse(item.containsKey("taskId"));
-            assertFalse(item.containsKey("workerId"));
+            assertThat(item.get("allocationRule")).isEqualTo(Map.of());
+            assertThat(item)
+                    .doesNotContainKeys(
+                            "workerGroupId",
+                            "taskId",
+                            "workerId"
+                    );
+            assertThat(request.get("waitTimeoutMillis"))
+                    .isEqualTo(1_000L);
         }
     }
 
     @Test
-    void rejectsAPendingCall() throws Exception {
+    void rejectsPendingAndNonSuccessResponses() throws Exception {
         try (TestServer server = TestServer.start(
                 202,
                 Map.of("status", "pending", "messageId", "message-1"),
                 new AtomicReference<>()
         )) {
-            assertThrows(
-                    IllegalStateException.class,
-                    () -> client(server).call(
-                            "phone-tools",
-                            "message-1",
-                            "phone.lookup",
-                            Map.of(),
-                            1_000
-                    )
-            );
+            assertThatThrownBy(() -> client(server).call(
+                    "phone-tools",
+                    "message-1",
+                    "phone.lookup",
+                    Map.of()
+            )).isInstanceOf(IllegalStateException.class);
         }
     }
 
-    private static WorkerGroupRpcClient client(TestServer server) {
-        return new WorkerGroupRpcClient(
-                new RuntimeApiHttpClient(
-                        server.baseUri(),
-                        Duration.ofSeconds(5)
-                )
-        );
+    private static ScenarioRpcLoopbackClient client(TestServer server) {
+        return new ScenarioRpcLoopbackClient(new ScenarioRpcProperties(
+                "data/rpc-task",
+                server.baseUri(),
+                1_000,
+                5_000,
+                1024,
+                10
+        ));
     }
 
     private static final class TestServer implements AutoCloseable {

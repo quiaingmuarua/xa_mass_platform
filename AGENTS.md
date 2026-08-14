@@ -99,14 +99,21 @@ Status: current repository handoff.
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
   Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
+- `scenario_rpc_jvm/` is the Java 21 in-memory Scenario RPC engine consumed
+  only by Server. It owns the finite six-Scenario catalog, line-to-Payload
+  parsing, bounded virtual-thread calls, stable result ordering, and business
+  result verification. It owns no HTTP, file, Spring, Kernel, Redis, Transport,
+  Task, Worker, execution registry, or persistent Scenario state.
 - `integrations/worker-capability-rpc/` is a Java 21 external acceptance
-  assembly. Its lightweight `RpcProcess` accepts caller-supplied string lines,
-  parses each line once into a Payload, combines it with an explicitly assembled
-  finite event list, and performs bounded concurrent calls through the public
-  WorkerGroup Runtime API. It returns ordered in-memory results; validation and
-  JSONL output are optional batch middleware of the checked-in scenario. It is
-  not a Task or Worker owner, file-processing framework, plugin SPI, retry
-  engine, persistent queue, or chained-request scheduler.
+  client. It uploads the checked text fixtures through the public Server Lab
+  API, runs six Server-owned Scenarios, downloads six JSONL outputs, and proves
+  60 results plus 20 persistent Worker identities. It owns no local Process,
+  Parser, concurrency scheduler, WorkerGroup RPC client, Task, or Worker.
+- `frontend/` is the read-only Vue Runtime Viewer. It discovers only the
+  Server Profile's configured WorkerGroup and long-lived Task coordinates,
+  lazily samples Workers for the active Group, and displays bounded Task
+  descriptors without lifecycle or score claims. It has no global resource
+  discovery, Task mutation, authentication, or production deployment role.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -473,6 +480,7 @@ boundary.
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
 ./gradlew :server_jvm:test
+./gradlew :scenario_rpc_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
 git diff --check
 ```
