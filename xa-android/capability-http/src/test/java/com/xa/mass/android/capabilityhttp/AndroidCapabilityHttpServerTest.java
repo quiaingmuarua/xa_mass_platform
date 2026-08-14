@@ -185,6 +185,7 @@ public final class AndroidCapabilityHttpServerTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> AndroidCapabilityHttpServer.create(
+                        0,
                         Collections.singletonList(system)
                 )
         );
@@ -200,6 +201,7 @@ public final class AndroidCapabilityHttpServerTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> AndroidCapabilityHttpServer.create(
+                        0,
                         Arrays.asList(first, second)
                 )
         );

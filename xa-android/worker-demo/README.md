@@ -65,9 +65,10 @@ adb shell pm clear com.xa.mass.integration.androidworker
 
 ## Device-local capability probe
 
-The App automatically listens only on device loopback port `18084`. This path
-does not require Redis, Python Kernel, Java Server, or an Adapter. Install and
-open the App, then forward a host loopback port to the device:
+The App owns the probe port and passes `18084` to the reusable HTTP module. It
+listens only on the device loopback address. This path does not require Redis,
+Python Kernel, Java Server, or an Adapter. Install and open the App, then
+forward a host loopback port to the device:
 
 ```powershell
 adb forward tcp:18084 tcp:18084

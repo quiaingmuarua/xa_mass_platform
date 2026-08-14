@@ -108,10 +108,11 @@ Status: current repository handoff.
   catalog, Worker lifecycle owner, or Xposed Hook owner.
 - `xa-android/capability-http/` is the loopback-only Android Lab probe for
   concrete `TASK` Definitions. Its public facade owns one NanoHTTPD listener
-  at `127.0.0.1:18084` and adapts JSON-object calls into the shared Worker Core
-  dispatcher. It proves local resolver and Handler execution only; it owns no
-  Worker identity, connection, Task, scheduling, Adapter, or Result-routing
-  truth, and NanoHTTPD is not part of its public API.
+  at `127.0.0.1` on a Host-selected port and adapts JSON-object calls into the
+  shared Worker Core dispatcher. It proves local resolver and Handler
+  execution only; it owns no default port, Worker identity, connection, Task,
+  scheduling, Adapter, or Result-routing truth, and NanoHTTPD is not part of
+  its public API.
 - `xa-android/worker-demo/` is the installable Android demo Host. Its
   Application owns one `AndroidWorker`, one concrete Android capability set,
   one best-effort Capability HTTP probe, device Worker Properties, and process

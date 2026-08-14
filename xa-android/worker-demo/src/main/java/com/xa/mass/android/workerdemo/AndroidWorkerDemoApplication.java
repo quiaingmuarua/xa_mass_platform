@@ -12,6 +12,7 @@ import java.net.URI;
 public final class AndroidWorkerDemoApplication extends Application {
 
     private static final String WORKER_GROUP_ID = "android-demo-workers";
+    private static final int CAPABILITY_HTTP_PORT = 18_084;
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
@@ -35,6 +36,7 @@ public final class AndroidWorkerDemoApplication extends Application {
                 demoCapabilities.definitions()
         );
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
+                CAPABILITY_HTTP_PORT,
                 demoCapabilities.definitions()
         );
         try {

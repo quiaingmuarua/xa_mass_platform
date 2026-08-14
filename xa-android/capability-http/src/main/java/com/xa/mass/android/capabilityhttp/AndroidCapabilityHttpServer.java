@@ -7,7 +7,6 @@ import java.util.Collection;
 
 public final class AndroidCapabilityHttpServer implements AutoCloseable {
 
-    public static final int DEFAULT_PORT = 18084;
     public static final String LOOPBACK_HOST = "127.0.0.1";
 
     private static final int SOCKET_READ_TIMEOUT_MILLIS = 5_000;
@@ -33,12 +32,6 @@ public final class AndroidCapabilityHttpServer implements AutoCloseable {
     }
 
     public static AndroidCapabilityHttpServer create(
-            Collection<? extends WorkerEventDefinition<?>> definitions
-    ) {
-        return new AndroidCapabilityHttpServer(DEFAULT_PORT, definitions);
-    }
-
-    static AndroidCapabilityHttpServer create(
             int port,
             Collection<? extends WorkerEventDefinition<?>> definitions
     ) {
