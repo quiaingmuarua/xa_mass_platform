@@ -15,7 +15,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
         String build = Files.readString(Path.of("build.gradle"));
 
         assertTrue(build.contains(
-                "project(':worker_delivery_contract_jvm')"
+                "project(':transport:worker-delivery-contract')"
         ));
         for (String forbidden : new String[]{
                 "project(':server_jvm')",

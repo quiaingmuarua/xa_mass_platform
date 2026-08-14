@@ -42,7 +42,7 @@ class JavaWorkerArchitectureTest {
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"
         ));
         assertTrue(build.contains("options.release = 11"));
-        assertFalse(build.contains("worker_delivery_contract_jvm"));
+        assertFalse(build.contains("worker-delivery-contract"));
 
         for (String forbidden : new String[]{
                 "class PollingWorkerTransport",

@@ -639,7 +639,7 @@ no hidden compatibility path or second mainline remains
 - [Android Worker](../transport/android-worker/README.md)
   - Android Identity persistence, HandlerThread WebSocket client, and complete
     composition of Worker Core's shared startup lifecycle.
-- [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
+- [Worker Delivery Contract](../transport/worker-delivery-contract/README.md)
   - transport-neutral Java `DeliveryCommand`/`DeliveryReport` DTOs, strict
     validation, outcome classification, and codec.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)

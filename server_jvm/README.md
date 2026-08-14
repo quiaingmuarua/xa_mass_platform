@@ -144,7 +144,7 @@ the liveness mechanism and append success is never rolled back.
 Worker Delivery boundaries:
 
 ```text
-worker_delivery_contract_jvm
+transport/worker-delivery-contract
   transport-neutral DeliveryCommand/DeliveryReport contracts and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles

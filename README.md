@@ -27,7 +27,7 @@ The repository contains seven active areas:
   identity Report construction, and aggregate WebSocket Worker lifecycle
   without owning WorkerGroup catalog initialization, Server profiles, or
   Adapters.
-- [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
+- [`transport/worker-delivery-contract/`](transport/worker-delivery-contract/): shared
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.
 - [`transport/`](transport/): concrete Worker Delivery implementations. It

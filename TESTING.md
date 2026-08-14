@@ -44,7 +44,7 @@ Non-Android JVM contracts:
 
 ```powershell
 .\gradlew.bat --continue `
-  :worker_delivery_contract_jvm:build `
+  :transport:worker-delivery-contract:build `
   :kernel_jvm:build `
   :transport:worker-core:build `
   :transport:java-worker:build `

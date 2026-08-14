@@ -30,7 +30,8 @@ Status: current repository handoff.
   aggregate start does not wait for an initial WebSocket connection. It is not
   a Kernel owner, Server profile, Adapter, plugin SPI, or independently
   deployed application.
-- `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
+- `transport/worker-delivery-contract/` is the Java 11 compatible
+  transport-neutral
   DeliveryCommand/DeliveryReport contract shared by Server, Adapter, and Worker.
   DeliveryReport carries required producer `src + sourceId`; DeliveryCommand
   target identity remains outside the DTO. Neither DTO carries an outer
@@ -181,7 +182,7 @@ tag.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
-- Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
+- Keep `transport/worker-delivery-contract` transport-neutral. Worker Delivery HTTP
   access and the Kernel delivery owner facade live in `server_jvm`. The
   Adapter instances may reach that facade only through the Adapter batch HTTP
   contract.
@@ -474,7 +475,7 @@ composes and starts configured Adapter instances, then starts one configured
 Delivery through the same batch HTTP boundary, and every Scenario Worker still
 connects through an Adapter rather than an in-process fast path.
 
-`worker_delivery_contract_jvm`, `transport/worker-core`, and
+`transport/worker-delivery-contract`, `transport/worker-core`, and
 `transport/java-worker` compile to Java 11 bytecode. Android Worker consumes
 the Core contract through a repository-local Gradle project dependency and
 must not depend on Java Worker; none is a published SDK. They may not pull

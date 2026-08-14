@@ -3,7 +3,7 @@
 Status: repository-local transport contracts and implementations.
 
 ```text
-../worker_delivery_contract_jvm
+:transport:worker-delivery-contract
   -> Worker Delivery DTOs, Jsons, strict codecs
 
 :transport:netty-adapter
@@ -35,8 +35,8 @@ Status: repository-local transport contracts and implementations.
 not change Kernel ownership. The Adapter delivers already-assigned commands;
 the Worker executes statically supplied business handlers.
 
-The root
-[Worker Delivery Contract](../worker_delivery_contract_jvm/README.md) remains
+The
+[Worker Delivery Contract](worker-delivery-contract/README.md) remains
 the protocol source shared by Kernel, Server, Adapter, and Worker. Do not move
 connection management, handler execution, lifecycle, or network-library code
 into that wire contract.
@@ -75,7 +75,7 @@ See:
 ## Verification
 
 ```text
-./gradlew :worker_delivery_contract_jvm:test
+./gradlew :transport:worker-delivery-contract:test
 ./gradlew :transport:worker-core:test
 ./gradlew :transport:netty-adapter:test
 ./gradlew :transport:java-worker:test

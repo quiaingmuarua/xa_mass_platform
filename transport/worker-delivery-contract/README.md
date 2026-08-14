@@ -1,4 +1,4 @@
-# XA Mass Worker Delivery Contract JVM
+# XA Mass Worker Delivery Contract
 
 Status: repository-local Java 11 protocol boundary.
 
@@ -125,5 +125,5 @@ suffixes remain owner-local.
 ## Verification
 
 ```text
-./gradlew :worker_delivery_contract_jvm:test
+./gradlew :transport:worker-delivery-contract:test
 ```

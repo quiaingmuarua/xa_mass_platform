@@ -191,7 +191,7 @@ For Worker Delivery Dispatch or a Java Worker:
 2. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 3. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 4. [../server_jvm/src/main/java/com/xa/mass/server/workerdelivery](../server_jvm/src/main/java/com/xa/mass/server/workerdelivery)
-5. [../worker_delivery_contract_jvm](../worker_delivery_contract_jvm)
+5. [../transport/worker-delivery-contract](../transport/worker-delivery-contract)
 6. [../transport](../transport)
 7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 

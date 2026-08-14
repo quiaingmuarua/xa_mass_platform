@@ -30,7 +30,9 @@ class WorkerDeliveryAdapterArchitectureTest {
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
-                .contains("api project(':worker_delivery_contract_jvm')")
+                .contains(
+                        "api project(':transport:worker-delivery-contract')"
+                )
                 .contains("io.netty:netty-transport")
                 .doesNotContain("spring-boot")
                 .doesNotContain("project(':server_jvm')")

@@ -13,7 +13,7 @@ java {
 }
 
 dependencies {
-    implementation project(':worker_delivery_contract_jvm')
+    implementation project(':transport:worker-delivery-contract')
 
     testImplementation platform('org.junit:junit-bom:5.12.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'

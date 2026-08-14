@@ -29,7 +29,7 @@ dependencies {
     implementation project(':kernel_jvm')
     implementation project(':scenario_workers_jvm')
     implementation project(':transport:netty-adapter')
-    implementation project(':worker_delivery_contract_jvm')
+    implementation project(':transport:worker-delivery-contract')
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 

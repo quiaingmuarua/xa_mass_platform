@@ -10,7 +10,7 @@ base {
 
 
 dependencies {
-    api project(':worker_delivery_contract_jvm')
+    api project(':transport:worker-delivery-contract')
     api 'org.jspecify:jspecify:1.0.0'
 
     implementation platform('tools.jackson:jackson-bom:3.1.4')

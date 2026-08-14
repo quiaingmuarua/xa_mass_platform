@@ -44,7 +44,7 @@ class WorkerCoreArchitectureBoundaryTest {
                 "archivesName.set('xa-mass-worker-core')"
         ));
         assertTrue(build.contains(
-                "api project(':worker_delivery_contract_jvm')"
+                "api project(':transport:worker-delivery-contract')"
         ));
         assertTrue(build.contains("options.release = 11"));
         assertFalse(build.contains("foundation_jvm"));

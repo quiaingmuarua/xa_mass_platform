@@ -3,7 +3,7 @@ plugins {
 }
 
 base {
-    archivesName.set('xa-mass-worker-delivery-contract-jvm')
+    archivesName.set('xa-mass-worker-delivery-contract')
 }
 
 java {

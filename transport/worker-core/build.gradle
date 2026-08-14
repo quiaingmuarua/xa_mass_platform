@@ -23,7 +23,7 @@ tasks.named('compileTestJava', JavaCompile) {
 }
 
 dependencies {
-    api project(':worker_delivery_contract_jvm')
+    api project(':transport:worker-delivery-contract')
 
     testImplementation platform('org.junit:junit-bom:5.12.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'

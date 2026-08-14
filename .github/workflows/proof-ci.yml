@@ -45,7 +45,7 @@ jobs:
               - 'kernel_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
-              - 'worker_delivery_contract_jvm/**'
+              - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
               - 'transport/java-worker/**'
               - 'transport/netty-adapter/**'
@@ -62,7 +62,7 @@ jobs:
             redis_owner:
               - 'kernel_jvm/**'
               - 'server_jvm/**'
-              - 'worker_delivery_contract_jvm/**'
+              - 'transport/worker-delivery-contract/**'
               - 'kernel_design/executable_spec/**'
               - 'build.gradle'
               - 'settings.gradle'
@@ -77,7 +77,7 @@ jobs:
               - 'kernel_design/runtime_server/**'
               - 'kernel_jvm/**'
               - 'server_jvm/**'
-              - 'worker_delivery_contract_jvm/**'
+              - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
               - 'transport/java-worker/**'
               - 'transport/netty-adapter/**'
@@ -95,7 +95,7 @@ jobs:
               - 'kernel_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
-              - 'worker_delivery_contract_jvm/**'
+              - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
               - 'transport/java-worker/**'
               - 'transport/netty-adapter/**'
@@ -109,7 +109,7 @@ jobs:
               - '.github/workflows/proof-ci.yml'
               - '.github/scripts/**'
             android_host:
-              - 'worker_delivery_contract_jvm/**'
+              - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
               - 'transport/android-worker/**'
               - 'integrations/android-websocket-worker/**'
@@ -194,7 +194,7 @@ jobs:
       - name: Verify JVM contracts and owner boundaries
         run: >-
           ./gradlew --no-daemon --continue
-          :worker_delivery_contract_jvm:build
+          :transport:worker-delivery-contract:build
           :kernel_jvm:build
           :transport:worker-core:build
           :transport:java-worker:build

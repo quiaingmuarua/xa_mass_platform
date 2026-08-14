@@ -94,7 +94,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 )
                 .contains(
                         "implementation "
-                                + "project(':worker_delivery_contract_jvm')"
+                                + "project("
+                                + "':transport:worker-delivery-contract')"
                 )
                 .contains(
                         "implementation "
