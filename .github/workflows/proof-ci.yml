@@ -112,7 +112,7 @@ jobs:
               - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
               - 'transport/android-worker/**'
-              - 'integrations/android-websocket-worker/**'
+              - 'xa-android/**'
               - 'build.gradle'
               - 'settings.gradle'
               - 'gradle.properties'
@@ -506,12 +506,14 @@ jobs:
           ./gradlew --no-daemon --continue
           :transport:android-worker:testDebugUnitTest
           :transport:android-worker:assembleDebug
-          :integrations:android-websocket-worker:testDebugUnitTest
-          :integrations:android-websocket-worker:assembleDebug
+          :xa-android:capabilities:testDebugUnitTest
+          :xa-android:capabilities:assembleDebug
+          :xa-android:worker-demo:testDebugUnitTest
+          :xa-android:worker-demo:assembleDebug
       - name: Verify Android Task RPC host driver
         run: >-
           python -m unittest discover
-          -s integrations/android-websocket-worker/host
+          -s xa-android/worker-demo/host
           -p "test_*.py"
       - name: Summarize Android proof
         if: always()
@@ -527,8 +529,10 @@ jobs:
           path: |
             transport/android-worker/build/test-results/testDebugUnitTest/**
             transport/android-worker/build/reports/tests/testDebugUnitTest/**
-            integrations/android-websocket-worker/build/test-results/testDebugUnitTest/**
-            integrations/android-websocket-worker/build/reports/tests/testDebugUnitTest/**
+            xa-android/capabilities/build/test-results/testDebugUnitTest/**
+            xa-android/capabilities/build/reports/tests/testDebugUnitTest/**
+            xa-android/worker-demo/build/test-results/testDebugUnitTest/**
+            xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
             build/reports/problems/**
           if-no-files-found: ignore
           retention-days: 7

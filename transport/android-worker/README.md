@@ -122,5 +122,5 @@ repository demo excludes the Android Worker preference file from backup.
 ```
 
 There is currently no instrumentation source set. Real-device WorkerGroup RPC
-acceptance belongs to `integrations/android-websocket-worker` and remains
-manual; hosted CI proves only the Debug host and local protocol boundary.
+acceptance belongs to `xa-android/worker-demo` and remains manual;
+hosted CI proves only the Debug host and local protocol boundary.

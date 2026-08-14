@@ -100,6 +100,17 @@ Status: current repository handoff.
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
   Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
+- `xa-android/capabilities/` is the reusable Android business capability
+  library. It owns concrete immutable Worker Event Definitions, capability
+  state, and one-shot Android data access. It depends on Worker Core, not on
+  Android Worker, Server, Kernel, Adapter, Redis, or a Host UI. It is not a
+  plugin SPI, capability catalog, Worker lifecycle owner, or Xposed Hook owner.
+- `xa-android/worker-demo/` is the installable Android demo Host. Its
+  Application owns one `AndroidWorker`, one concrete Android capability set,
+  device Worker Properties, and process lifetime; its Activity only observes
+  the two owners and issues explicit local controls. The App uses the public
+  Runtime API and Adapter path and owns no Task control, scheduling, Worker
+  identity implementation, or transport mechanism.
 - `server_jvm.taskbatch` is a local Lab application use case, not a resource
   owner. It accepts one text file plus a configured WorkerGroup, EventCode, and
   top-level Payload key; resolves the Profile-owned long-lived Task; appends all
@@ -337,6 +348,17 @@ tag.
   Main Looper; `close()` synchronously closes the Controller and then the
   Platform. Android hosts own process lifetime, permissions beyond INTERNET,
   static handler assembly, and backup policy.
+- `xa-android/capabilities` may depend on Android APIs and
+  `transport/worker-core`. Its public entrypoints may expose concrete immutable
+  Definition collections and capability-owned UI observations, but must not
+  accept or expose `AndroidWorker`, Worker identity, Endpoint, Task, Client,
+  Transport, Executor, or Scheduler state. Android data reads occur inside the
+  owning command Handler and must not create a background monitor.
+- `xa-android/worker-demo` may depend on `transport/android-worker` and
+  `xa-android/capabilities`. The Application is the assembly and lifecycle
+  owner; the Activity must not construct Worker protocol collaborators. Its
+  stable application ID and capability preference names preserve installed
+  Worker identity and demo state across package refactors.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
@@ -489,6 +511,8 @@ python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
 ./gradlew :server_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
+./gradlew :xa-android:capabilities:testDebugUnitTest
+./gradlew :xa-android:worker-demo:testDebugUnitTest
 git diff --check
 ```
 

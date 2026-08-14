@@ -58,11 +58,12 @@ The repository contains seven active areas:
   Results without defining another Scenario owner. The `scenario-workers`
   Server profile composes one real WebSocket Adapter, two reusable JVM
   Scenario WorkerGroups with six capabilities, and the advisory Android demo
-  WorkerGroup. The installable
-  [`android-websocket-worker`](integrations/android-websocket-worker/) App
-  separately proves public Register/Bind, the Android network Client, shared
-  Worker Core, and a real device WebSocket Task result without embedding Task
-  control in the App.
+  WorkerGroup.
+- [`xa-android/`](xa-android/): reusable Android business capabilities and installable
+  Android Worker hosts. The
+  [`worker-demo`](xa-android/worker-demo/) App proves public
+  Register/Bind, the Android network Client, shared Worker Core, and real
+  device State/Battery results without embedding Task control in the App.
 
 The shared contract and Transport modules are repository-local artifacts;
 they are not published SDKs.
@@ -106,7 +107,7 @@ unique Worker IDs and 60 successful WorkerGroup/Event results. Results are not
 attributed to a particular Worker. See its owning README for process startup.
 
 See
-[`integrations/android-websocket-worker/README.md`](integrations/android-websocket-worker/README.md)
+[`xa-android/worker-demo/README.md`](xa-android/worker-demo/README.md)
 for the Android 13 device, `adb reverse`, shared `scenario-workers` profile,
 and Gradle-launched WorkerGroup RPC proof.
 

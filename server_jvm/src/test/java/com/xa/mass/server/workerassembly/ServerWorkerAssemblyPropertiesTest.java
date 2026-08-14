@@ -96,7 +96,7 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"scenario-string-utils-workers\"")
                     .contains("\"android-demo-workers\"")
                     .contains("\"capability\":\"libphonenumber\"")
-                    .contains("\"capability\":\"android-demo-state\"")
+                    .contains("\"capability\":\"android-demo-capabilities\"")
                     .contains("\"phonenumber.e164\"")
                     .contains("\"string.md5\"")
                     .contains("\"android.demo.state.read\"")

@@ -691,7 +691,7 @@ process lifecycle.
 ### Unified Scenario Demo Profile
 
 The installable
-[`integrations/android-websocket-worker`](../integrations/android-websocket-worker/)
+[`xa-android/worker-demo`](../xa-android/worker-demo/)
 application uses the same `scenario-workers` profile as the JVM demo. That
 profile initializes the advisory `android-demo-workers` catalog entry and
 shares the `scenario-websocket` Adapter on `127.0.0.1:18083`. The Android App

@@ -44,7 +44,7 @@ xa:
             ]
           },
           "android-demo-workers": {
-            "attributes": {"capability":"android-demo-state"},
+            "attributes": {"capability":"android-demo-capabilities"},
             "eventCodes": [
               "android.demo.state.read",
               "android.demo.battery.read"
