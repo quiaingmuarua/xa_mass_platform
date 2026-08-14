@@ -9,6 +9,9 @@ import android.os.Build;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -20,8 +23,9 @@ import java.util.concurrent.CopyOnWriteArraySet;
 
 public final class AndroidDemoCapabilities {
 
-    public static final String STATE_READ = "android.demo.state.read";
-    public static final String BATTERY_READ = "android.demo.battery.read";
+    public static final String STATE_READ = "android.state.read";
+    public static final String BATTERY_READ = "android.battery.read";
+    public static final String STRING_DIGEST = "android.string.digest";
 
     static final String PREFERENCES =
             "android-worker-demo-state-capability";
@@ -76,6 +80,12 @@ public final class AndroidDemoCapabilities {
                         BATTERY_READ,
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> executeBatteryRead()
+                ),
+                WorkerEventDefinition.of(
+                        "TASK",
+                        STRING_DIGEST,
+                        AndroidDemoCapabilities::resolveStringDigest,
+                        this::executeStringDigest
                 )
         ));
     }
@@ -155,6 +165,17 @@ public final class AndroidDemoCapabilities {
         return complete(BATTERY_READ, result);
     }
 
+    private String executeStringDigest(StringDigestParameters parameters) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("algorithm", parameters.algorithm());
+        result.put("input", parameters.value());
+        result.put(
+                "digest",
+                digest(parameters.algorithm(), parameters.value())
+        );
+        return complete(STRING_DIGEST, result);
+    }
+
     private String complete(String eventCode, Map<String, Object> result) {
         String encoded = Jsons.toJson(result);
         synchronized (this) {
@@ -199,6 +220,71 @@ public final class AndroidDemoCapabilities {
         }
         Context resolved = context.getApplicationContext();
         return resolved == null ? context : resolved;
+    }
+
+    private static StringDigestParameters resolveStringDigest(
+            String payload
+    ) {
+        Map<String, Object> parameters = Jsons.parseObject(payload);
+        Object algorithm = parameters.get("algorithm");
+        if (!"MD5".equals(algorithm)) {
+            throw new IllegalArgumentException(
+                    "algorithm must be MD5"
+            );
+        }
+        Object value = parameters.get("value");
+        if (!(value instanceof String)) {
+            throw new IllegalArgumentException(
+                    "value must be a string"
+            );
+        }
+        return new StringDigestParameters(
+                (String) algorithm,
+                (String) value
+        );
+    }
+
+    private static String digest(String algorithm, String value) {
+        byte[] digest;
+        try {
+            digest = MessageDigest.getInstance(algorithm).digest(
+                    value.getBytes(StandardCharsets.UTF_8)
+            );
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException(
+                    "Required digest algorithm is unavailable: "
+                            + algorithm,
+                    error
+            );
+        }
+        StringBuilder encoded = new StringBuilder(digest.length * 2);
+        for (byte item : digest) {
+            encoded.append(Character.forDigit(
+                    (item >>> 4) & 0x0f,
+                    16
+            ));
+            encoded.append(Character.forDigit(item & 0x0f, 16));
+        }
+        return encoded.toString();
+    }
+
+    private static final class StringDigestParameters {
+
+        private final String algorithm;
+        private final String value;
+
+        private StringDigestParameters(String algorithm, String value) {
+            this.algorithm = algorithm;
+            this.value = value;
+        }
+
+        private String algorithm() {
+            return algorithm;
+        }
+
+        private String value() {
+            return value;
+        }
     }
 
     static final class BatteryReading {

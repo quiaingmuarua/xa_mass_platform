@@ -14,6 +14,9 @@ import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
+import com.xa.mass.workerdelivery.json.Jsons;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context
         .ConfigDataApplicationContextInitializer;
@@ -99,9 +102,21 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"capability\":\"android-demo-capabilities\"")
                     .contains("\"phonenumber.e164\"")
                     .contains("\"string.md5\"")
-                    .contains("\"android.demo.state.read\"")
-                    .contains("\"android.demo.battery.read\"")
+                    .contains("\"android.state.read\"")
+                    .contains("\"android.battery.read\"")
                     .doesNotContain("\"workers\"");
+            Map<String, Object> groups = Jsons.parseObject(
+                    properties.groupConfigJson()
+            );
+            Map<?, ?> androidGroup = (Map<?, ?>) groups.get(
+                    "android-demo-workers"
+            );
+            assertThat(androidGroup.get("eventCodes"))
+                    .isEqualTo(List.of(
+                            "android.state.read",
+                            "android.battery.read",
+                            "android.string.digest"
+                    ));
             assertThat(properties.capabilityAssemblyJson())
                     .contains("\"scenario-phone-number-workers\"")
                     .contains("\"scenario-string-utils-workers\"")
@@ -114,7 +129,7 @@ class ServerWorkerAssemblyPropertiesTest {
                     .doesNotContain("\"attributes\"")
                     .doesNotContain("\"workers\"")
                     .doesNotContain("\"android-demo-workers\"")
-                    .doesNotContain("android.demo.state.read")
+                    .doesNotContain("android.state.read")
                     .doesNotContain("clientWorkerKey")
                     .doesNotContain("sandboxDirectory");
             assertThat(properties.sandboxRoot())

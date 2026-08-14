@@ -25,13 +25,19 @@ class FakeRuntimeApiClient:
             raise AssertionError(operation)
         if event_code == self.fail_event_code:
             raise RuntimeError("scripted call failure")
-        if event_code == "android.demo.state.read":
+        if event_code == "android.state.read":
             result = {"counter": 7, "sdkInt": 33}
-        elif event_code == "android.demo.battery.read":
+        elif event_code == "android.battery.read":
             result = {
                 "available": True,
                 "capacityPercent": 82,
                 "charging": False,
+            }
+        elif event_code == "android.string.digest":
+            result = {
+                "algorithm": "MD5",
+                "input": "hello",
+                "digest": "5d41402abc4b2a76b9719d911017c592",
             }
         else:
             raise AssertionError(event_code)
@@ -63,7 +69,8 @@ class RunDemoTest(unittest.TestCase):
 
         client = FakeRuntimeApiClient.last_instance
         self.assertIsNotNone(client)
-        self.assertEqual(2, len(client.requests))
+        self.assertEqual(3, len(client.requests))
+        expected_payloads = dict(run_demo.CAPABILITY_CALLS)
         event_codes = []
         for method, path, call_body, operation in client.requests:
             self.assertEqual("POST", method)
@@ -78,6 +85,10 @@ class RunDemoTest(unittest.TestCase):
                 operation,
             )
             self.assertEqual({}, call_body["item"]["allocationRule"])
+            self.assertEqual(
+                expected_payloads[event_code],
+                call_body["item"]["payload"],
+            )
             self.assertNotIn("workerId", call_body["item"])
             self.assertNotIn("workerGroupId", call_body["item"])
             self.assertNotIn("taskId", call_body)
@@ -91,11 +102,15 @@ class RunDemoTest(unittest.TestCase):
             82,
             result["results"][1]["result"]["capacityPercent"],
         )
+        self.assertEqual(
+            "5d41402abc4b2a76b9719d911017c592",
+            result["results"][2]["result"]["digest"],
+        )
         self.assertNotIn("workerId", result)
         self.assertNotIn("taskId", result)
 
     def test_propagates_rpc_failure_without_task_cleanup(self) -> None:
-        FakeRuntimeApiClient.fail_event_code = "android.demo.battery.read"
+        FakeRuntimeApiClient.fail_event_code = "android.battery.read"
         with patch.object(
             run_demo,
             "RuntimeApiClient",
@@ -113,8 +128,8 @@ class RunDemoTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                "workerGroupItem.call[android.demo.state.read]",
-                "workerGroupItem.call[android.demo.battery.read]",
+                "workerGroupItem.call[android.state.read]",
+                "workerGroupItem.call[android.battery.read]",
             ],
             [
                 request[3]

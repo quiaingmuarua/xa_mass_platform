@@ -8,8 +8,9 @@ AndroidWorkerDemoApplication
   -> AndroidWorker
      -> persistent Worker identity, Register/Bind, WebSocket Transport
   -> AndroidDemoCapabilities
-     -> android.demo.state.read
-     -> android.demo.battery.read
+     -> android.state.read
+     -> android.battery.read
+     -> android.string.digest
   -> AndroidCapabilityHttpServer
      -> 127.0.0.1:18084
      -> direct calls through the same capability Definitions
@@ -75,11 +76,15 @@ curl.exe http://127.0.0.1:18084/events
 curl.exe -X POST `
   -H "Content-Type: application/json" `
   -d "{}" `
-  http://127.0.0.1:18084/events/android.demo.state.read:call
+  http://127.0.0.1:18084/events/android.state.read:call
 curl.exe -X POST `
   -H "Content-Type: application/json" `
   -d "{}" `
-  http://127.0.0.1:18084/events/android.demo.battery.read:call
+  http://127.0.0.1:18084/events/android.battery.read:call
+curl.exe -X POST `
+  -H "Content-Type: application/json" `
+  -d '{"algorithm":"MD5","value":"hello"}' `
+  http://127.0.0.1:18084/events/android.string.digest:call
 ```
 
 These calls update the same processed-command count and last-event observation
@@ -125,16 +130,16 @@ adb shell am start -n `
   com.xa.mass.integration.androidworker/com.xa.mass.android.workerdemo.MainActivity
 ```
 
-Wait for `RUNNING`, then call both capabilities through the public
+Wait for `RUNNING`, then call all three capabilities through the public
 WorkerGroup route:
 
 ```powershell
 .\gradlew.bat :xa-android:worker-demo:runDemoRpc
 ```
 
-The driver sends two standard Items with `allocationRule: {}` and prints the
-State and Battery results. It does not create or close a Task, expose the
-Profile-owned Task ID, or select a Worker ID.
+The driver sends three standard Items with `allocationRule: {}` and prints the
+State, Battery, and parameterized string digest results. It does not create
+or close a Task, expose the Profile-owned Task ID, or select a Worker ID.
 
 Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab

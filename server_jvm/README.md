@@ -616,6 +616,10 @@ The two JVM Scenario groups discover their replicas from the fixed local Lab roo
 `data/scenario-workers`; `capability-assembly-json` contains no Worker entries.
 The third catalog entry, `android-demo-workers`, is reserved for the external
 Android App and is deliberately absent from `capability-assembly-json`.
+Its advisory catalog lists `android.state.read`, `android.battery.read`, and
+`android.string.digest`; the last one accepts
+`{"algorithm":"MD5","value":"..."}` and is implemented by the Android App
+rather than the local JVM Scenario Worker aggregate.
 Omitted runtime fields use a 10-second request timeout and the default bounded
 connection policy.
 

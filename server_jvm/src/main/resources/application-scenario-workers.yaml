@@ -46,8 +46,9 @@ xa:
           "android-demo-workers": {
             "attributes": {"capability":"android-demo-capabilities"},
             "eventCodes": [
-              "android.demo.state.read",
-              "android.demo.battery.read"
+              "android.state.read",
+              "android.battery.read",
+              "android.string.digest"
             ]
           }
         }

@@ -34,7 +34,7 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
     attributes: {
       capability: "android-demo-state"
     },
-    eventCodes: ["android.demo.state.read"]
+    eventCodes: ["android.state.read"]
   }
 ];
 

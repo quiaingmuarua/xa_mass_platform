@@ -12,10 +12,12 @@ from urllib.request import Request, urlopen
 
 
 WORKER_GROUP_ID = "android-demo-workers"
-EVENT_CODES = (
-    "android.demo.state.read",
-    "android.demo.battery.read",
+CAPABILITY_CALLS = (
+    ("android.state.read", {}),
+    ("android.battery.read", {}),
+    ("android.string.digest", {"algorithm": "MD5", "value": "hello"}),
 )
+EVENT_CODES = tuple(event_code for event_code, _ in CAPABILITY_CALLS)
 
 
 @dataclass(frozen=True)
@@ -104,9 +106,10 @@ def run_demo(
         call_capability(
             client=client,
             event_code=event_code,
+            payload=payload,
             wait_timeout_millis=wait_timeout_millis,
         )
-        for event_code in EVENT_CODES
+        for event_code, payload in CAPABILITY_CALLS
     ]
     return {
         "workerGroupId": WORKER_GROUP_ID,
@@ -118,6 +121,7 @@ def call_capability(
     *,
     client: RuntimeApiClient,
     event_code: str,
+    payload: dict[str, Any],
     wait_timeout_millis: int,
 ) -> dict[str, Any]:
     message_id = str(uuid.uuid4())
@@ -131,7 +135,7 @@ def call_capability(
                 "messageId": message_id,
                 "eventCode": event_code,
                 "createdAtMillis": int(time.time() * 1000),
-                "payload": {},
+                "payload": dict(payload),
                 "allocationRule": {},
             },
             "waitTimeoutMillis": wait_timeout_millis,

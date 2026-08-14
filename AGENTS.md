@@ -102,9 +102,10 @@ Status: current repository handoff.
   second command, result, session, or business-message cache.
 - `xa-android/capabilities/` is the reusable Android business capability
   library. It owns concrete immutable Worker Event Definitions, capability
-  state, and one-shot Android data access. It depends on Worker Core, not on
-  Android Worker, Server, Kernel, Adapter, Redis, or a Host UI. It is not a
-  plugin SPI, capability catalog, Worker lifecycle owner, or Xposed Hook owner.
+  state, one-shot Android data access, and deterministic parameterized demo
+  computations. It depends on Worker Core, not on Android Worker, Server,
+  Kernel, Adapter, Redis, or a Host UI. It is not a plugin SPI, capability
+  catalog, Worker lifecycle owner, or Xposed Hook owner.
 - `xa-android/capability-http/` is the loopback-only Android Lab probe for
   concrete `TASK` Definitions. Its public facade owns one NanoHTTPD listener
   at `127.0.0.1:18084` and adapts JSON-object calls into the shared Worker Core

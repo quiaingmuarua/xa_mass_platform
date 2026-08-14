@@ -36,7 +36,7 @@ public class AndroidDemoCapabilitiesTest {
     }
 
     @Test
-    public void exposesExactlyTheStateAndBatteryDefinitions() {
+    public void exposesExactlyTheDemoDefinitions() {
         AndroidDemoCapabilities capabilities = capabilities(
                 AndroidDemoCapabilities.BatteryReading.available(82, false)
         );
@@ -44,12 +44,15 @@ public class AndroidDemoCapabilitiesTest {
                 capabilities
         );
 
-        assertEquals(2, definitions.size());
+        assertEquals(3, definitions.size());
         assertTrue(definitions.containsKey(
                 AndroidDemoCapabilities.STATE_READ
         ));
         assertTrue(definitions.containsKey(
                 AndroidDemoCapabilities.BATTERY_READ
+        ));
+        assertTrue(definitions.containsKey(
+                AndroidDemoCapabilities.STRING_DIGEST
         ));
         assertThrows(
                 UnsupportedOperationException.class,
@@ -120,6 +123,59 @@ public class AndroidDemoCapabilitiesTest {
     }
 
     @Test
+    public void stringDigestRequiresAllowlistedAlgorithmAndUtf8Value()
+            throws Exception {
+        AndroidDemoCapabilities capabilities = capabilities(
+                AndroidDemoCapabilities.BatteryReading.unavailable()
+        );
+
+        Map<String, Object> result = execute(
+                capabilities,
+                AndroidDemoCapabilities.STRING_DIGEST,
+                "{\"algorithm\":\"MD5\","
+                        + "\"value\":\"\\u4f60\\u597d\"}"
+        );
+
+        assertEquals("MD5", result.get("algorithm"));
+        assertEquals("\u4f60\u597d", result.get("input"));
+        assertEquals(
+                "7eca689f0d3389d9dea66ae112e5cfd7",
+                result.get("digest")
+        );
+        assertEquals(1, capabilities.snapshot().processedCommands());
+        assertEquals(
+                AndroidDemoCapabilities.STRING_DIGEST,
+                capabilities.snapshot().lastEvent()
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> execute(
+                        capabilities,
+                        AndroidDemoCapabilities.STRING_DIGEST,
+                        "{}"
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> execute(
+                        capabilities,
+                        AndroidDemoCapabilities.STRING_DIGEST,
+                        "{\"algorithm\":\"MD5\",\"value\":1}"
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> execute(
+                        capabilities,
+                        AndroidDemoCapabilities.STRING_DIGEST,
+                        "{\"algorithm\":\"SHA-256\","
+                                + "\"value\":\"hello\"}"
+                )
+        );
+        assertEquals(1, capabilities.snapshot().processedCommands());
+    }
+
+    @Test
     public void listenersObserveLocalAndRemoteCapabilityChanges()
             throws Exception {
         AndroidDemoCapabilities capabilities = capabilities(
@@ -144,16 +200,28 @@ public class AndroidDemoCapabilitiesTest {
         return new AndroidDemoCapabilities(application, () -> reading);
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> execute(
             AndroidDemoCapabilities capabilities,
             String eventCode
     ) throws Exception {
-        WorkerEventDefinition<Map<String, Object>> definition =
-                (WorkerEventDefinition<Map<String, Object>>)
-                        definitions(capabilities).get(eventCode);
-        Map<String, Object> parameters =
-                definition.parameterResolver().resolve("{}");
+        return execute(capabilities, eventCode, "{}");
+    }
+
+    private static Map<String, Object> execute(
+            AndroidDemoCapabilities capabilities,
+            String eventCode,
+            String payload
+    ) throws Exception {
+        WorkerEventDefinition<?> definition =
+                definitions(capabilities).get(eventCode);
+        return executeDefinition(definition, payload);
+    }
+
+    private static <P> Map<String, Object> executeDefinition(
+            WorkerEventDefinition<P> definition,
+            String payload
+    ) throws Exception {
+        P parameters = definition.parameterResolver().resolve(payload);
         return Jsons.parseObject(
                 definition.handler().execute(parameters)
         );
