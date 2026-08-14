@@ -89,6 +89,7 @@ try:
     print("[3/3] Starting Server, Adapter, and Scenario Workers")
     print("Open http://127.0.0.1:18082/runtime/workers")
     print("Tasks http://127.0.0.1:18082/runtime/tasks")
+    print("Task Batches http://127.0.0.1:18082/runtime/task-batches")
     gradle = "gradlew.bat" if os.name == "nt" else "./gradlew"
     subprocess.run(
         [

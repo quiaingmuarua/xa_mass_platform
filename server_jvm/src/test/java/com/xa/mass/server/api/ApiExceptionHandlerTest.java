@@ -102,19 +102,19 @@ class ApiExceptionHandlerTest {
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
-                        ServerErrorCode.SCENARIO_RPC_INVALID_REQUEST,
+                        ServerErrorCode.TASK_BATCH_INVALID_REQUEST,
                         HttpStatus.BAD_REQUEST
                 ),
                 Arguments.of(
-                        ServerErrorCode.SCENARIO_RPC_RESOURCE_NOT_FOUND,
+                        ServerErrorCode.TASK_BATCH_RESOURCE_NOT_FOUND,
                         HttpStatus.NOT_FOUND
                 ),
                 Arguments.of(
-                        ServerErrorCode.SCENARIO_RPC_CONFLICT,
+                        ServerErrorCode.TASK_BATCH_CONFLICT,
                         HttpStatus.CONFLICT
                 ),
                 Arguments.of(
-                        ServerErrorCode.SCENARIO_RPC_UNAVAILABLE,
+                        ServerErrorCode.TASK_BATCH_UNAVAILABLE,
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(

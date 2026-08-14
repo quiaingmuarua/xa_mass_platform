@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class WorkerCapabilityIntegrationArchitectureTest {
 
     @Test
-    void moduleOwnsOnlyTheExternalRpcScenario()
+    void moduleOwnsOnlyTheExternalTaskBatchAcceptance()
             throws Exception {
         String build = Files.readString(Path.of("build.gradle"));
 
@@ -68,7 +68,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
     }
 
     @Test
-    void integrationOnlyUsesTheServerScenarioRpcApi()
+    void integrationOnlyUsesTheServerTaskBatchApi()
             throws Exception {
         Path root = Path.of(
                 "src/main/java/com/xa/mass/integration"
@@ -83,9 +83,10 @@ class WorkerCapabilityIntegrationArchitectureTest {
             }
         }
         assertTrue(sources.toString().contains(
-                "/api/v1/scenario-rpc/"
+                "/api/v1/task-batches/"
         ));
         for (String forbidden : new String[]{
+                "/api/v1/scenario-rpc/",
                 "ServiceLoader",
                 "Class.forName",
                 "startRequests",

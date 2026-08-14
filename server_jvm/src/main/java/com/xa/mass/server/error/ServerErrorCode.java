@@ -101,21 +101,21 @@ public enum ServerErrorCode {
             15003,
             "Runtime View filter is not available"
     ),
-    SCENARIO_RPC_INVALID_REQUEST(
+    TASK_BATCH_INVALID_REQUEST(
             16001,
-            "Scenario RPC request is invalid"
+            "Task Batch request is invalid"
     ),
-    SCENARIO_RPC_RESOURCE_NOT_FOUND(
+    TASK_BATCH_RESOURCE_NOT_FOUND(
             16002,
-            "Scenario RPC resource was not found"
+            "Task Batch resource was not found"
     ),
-    SCENARIO_RPC_CONFLICT(
+    TASK_BATCH_CONFLICT(
             16003,
-            "Scenario RPC conflicts with current Lab state"
+            "Task Batch conflicts with current Lab state"
     ),
-    SCENARIO_RPC_UNAVAILABLE(
+    TASK_BATCH_UNAVAILABLE(
             16004,
-            "Scenario RPC is unavailable"
+            "Task Batch is unavailable"
     ),
     MALFORMED_REQUEST(
             19001,

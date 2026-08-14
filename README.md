@@ -51,11 +51,11 @@ The repository contains seven active areas:
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns
-  the external client proof for Server's finite Scenario RPC Lab: it uploads
-  text fixtures, creates and runs six Server-owned Scenarios, and downloads JSONL
-  evidence. The Java-only [`scenario_rpc_jvm`](scenario_rpc_jvm/) module owns
-  line parsing, batch append/result-load orchestration, incremental sinks,
-  ordering, and result validation and is consumed only by Server. The `scenario-workers`
+  the external client proof for Server's Task Batch Lab: it uploads two text
+  fixtures, executes six WorkerGroup/Event batches, and downloads JSONL
+  evidence. Server maps each configured WorkerGroup to its Profile-owned
+  long-lived Task, appends each file as one Item batch, and loads pending
+  Results without defining another Scenario owner. The `scenario-workers`
   Server profile composes one real WebSocket Adapter, two reusable JVM
   Scenario WorkerGroups with six capabilities, and the advisory Android demo
   WorkerGroup. The installable
@@ -90,7 +90,6 @@ Deterministic JVM contracts:
 
 ```text
 ./gradlew :server_jvm:test
-./gradlew :scenario_rpc_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
 ```
 
@@ -102,8 +101,8 @@ Real Redis and cross-process proofs use separate entrypoints:
 ./gradlew :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The Scenario command separately self-verifies 20 persistent, globally unique
-Worker IDs and 60 successful WorkerGroup/event calls. RPC results are not
+The Task Batch acceptance separately self-verifies 20 persistent, globally
+unique Worker IDs and 60 successful WorkerGroup/Event results. Results are not
 attributed to a particular Worker. See its owning README for process startup.
 
 See

@@ -1,0 +1,1911 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    name="description"
+    content="XA Mass 新内核的人类全景入口：以 Task 调度为主线，连接 Worker owner、Worker Delivery Dispatch、Result Routing、TaskType 与三条 Score 轴。"
+  >
+  <title>XA Mass Kernel · 机制全景</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182326;
+      --ink-2: #405055;
+      --muted: #6f7d81;
+      --surface: #ffffff;
+      --canvas: #f2f5f3;
+      --line: #d4dcda;
+      --line-strong: #aebbb8;
+      --charcoal: #182629;
+      --charcoal-2: #24383b;
+      --teal: #147d70;
+      --teal-soft: #dcefeb;
+      --blue: #2d6f9f;
+      --blue-soft: #e1edf5;
+      --gold: #b67d1f;
+      --gold-soft: #f4ead5;
+      --red: #b44f45;
+      --red-soft: #f4e2df;
+      --green: #347451;
+      --green-soft: #deeee5;
+      --violet: #725989;
+      --violet-soft: #ece5f1;
+      --sidebar: 236px;
+      --content: 1180px;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      --sans: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--canvas);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: var(--sans);
+      letter-spacing: 0;
+      line-height: 1.6;
+    }
+
+    a {
+      color: inherit;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    code {
+      font-family: var(--mono);
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 100;
+      top: 10px;
+      left: 10px;
+      padding: 7px 10px;
+      color: #fff;
+      background: var(--teal);
+      border-radius: 4px;
+      transform: translateY(-180%);
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .progress {
+      position: fixed;
+      z-index: 90;
+      top: 0;
+      left: 0;
+      width: 0;
+      height: 3px;
+      background: var(--gold);
+    }
+
+    .sidebar {
+      position: fixed;
+      z-index: 40;
+      inset: 0 auto 0 0;
+      width: var(--sidebar);
+      padding: 28px 20px;
+      color: #d9e3e1;
+      background: var(--charcoal);
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: block;
+      margin-bottom: 26px;
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      margin-bottom: 12px;
+      color: var(--charcoal);
+      background: #e1ae52;
+      border-radius: 6px;
+      font-weight: 900;
+    }
+
+    .brand strong,
+    .brand span {
+      display: block;
+    }
+
+    .brand strong {
+      color: #fff;
+      font-size: 16px;
+    }
+
+    .brand span {
+      margin-top: 3px;
+      color: #8ea5a2;
+      font-size: 11px;
+    }
+
+    .nav-label {
+      margin: 22px 8px 7px;
+      color: #78918e;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .nav {
+      display: grid;
+      gap: 2px;
+    }
+
+    .nav a {
+      padding: 8px 10px;
+      color: #afc1be;
+      border-left: 2px solid transparent;
+      border-radius: 0 4px 4px 0;
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible,
+    .nav a.active {
+      color: #fff;
+      background: #24383b;
+      border-left-color: #e1ae52;
+      outline: none;
+    }
+
+    .sidebar-rule {
+      margin-top: 26px;
+      padding: 13px;
+      color: #9eb1ae;
+      background: #203235;
+      border: 1px solid #30474a;
+      border-radius: 6px;
+      font-size: 10px;
+      line-height: 1.55;
+    }
+
+    .sidebar-rule b {
+      display: block;
+      margin-bottom: 5px;
+      color: #fff;
+      font-size: 11px;
+    }
+
+    main {
+      width: min(calc(100% - var(--sidebar)), var(--content));
+      margin-left: max(
+        var(--sidebar),
+        calc((100% - var(--content) + var(--sidebar)) / 2)
+      );
+      padding: 38px 42px 90px;
+    }
+
+    section {
+      scroll-margin-top: 24px;
+      margin-top: 64px;
+    }
+
+    .overview {
+      margin-top: 0;
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 22px;
+      padding-bottom: 13px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .status::before {
+      width: 8px;
+      height: 8px;
+      content: "";
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    .top-links {
+      display: flex;
+      gap: 14px;
+    }
+
+    .top-links a {
+      color: var(--ink-2);
+      text-decoration: none;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 820px;
+      margin-bottom: 12px;
+      font-size: 48px;
+      line-height: 1.08;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .lede {
+      max-width: 850px;
+      margin-bottom: 26px;
+      color: var(--ink-2);
+      font-size: 16px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .lede strong {
+      color: var(--ink);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .principle-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 20px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .principle {
+      min-height: 78px;
+      padding: 13px 15px;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+    }
+
+    .principle:last-child {
+      border-right: 0;
+    }
+
+    .principle b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+
+    .principle span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .architecture {
+      padding: 18px;
+      color: #eaf1ef;
+      background: var(--charcoal);
+      border-radius: 6px;
+    }
+
+    .architecture-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: baseline;
+      margin-bottom: 13px;
+    }
+
+    .architecture-head b {
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .architecture-head span {
+      color: #94aaa7;
+      font-size: 10px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1.35fr 0.9fr 1fr;
+      gap: 8px;
+    }
+
+    .flow-stage {
+      position: relative;
+      min-width: 0;
+      padding: 13px;
+      background: var(--charcoal-2);
+      border: 1px solid #385054;
+      border-radius: 5px;
+    }
+
+    .flow-stage:not(:last-child)::after {
+      position: absolute;
+      z-index: 2;
+      top: 50%;
+      right: -8px;
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      color: var(--charcoal);
+      background: #e1ae52;
+      border-radius: 50%;
+      content: "›";
+      transform: translateY(-50%);
+      font-weight: 900;
+    }
+
+    .stage-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .stage-label b {
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .stage-label span {
+      color: #7fa09c;
+      font: 9px var(--mono);
+    }
+
+    .stage-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .stage-steps.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stage-step {
+      min-width: 0;
+      min-height: 62px;
+      padding: 8px;
+      color: #c6d4d1;
+      background: #1d3033;
+      border-left: 3px solid #618783;
+      border-radius: 3px;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .stage-step strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #fff;
+      font-size: 10px;
+    }
+
+    .flow-stage.dispatch .stage-step {
+      border-left-color: #d3a54d;
+    }
+
+    .flow-stage.delivery .stage-step {
+      border-left-color: #5b96be;
+    }
+
+    .flow-stage.result .stage-step {
+      border-left-color: #a981bd;
+    }
+
+    .contract-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 11px;
+      color: #9eb2af;
+      font-size: 9px;
+    }
+
+    .contract-line code {
+      padding: 3px 6px;
+      color: #dce8e6;
+      background: #101e20;
+      border-radius: 3px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 0.62fr);
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+
+    .kicker {
+      margin-bottom: 7px;
+      color: var(--teal);
+      font: 800 10px var(--mono);
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin-bottom: 0;
+      font-size: 31px;
+      line-height: 1.18;
+    }
+
+    .section-head > p {
+      margin-bottom: 2px;
+      color: var(--ink-2);
+      font-size: 12px;
+    }
+
+    h3 {
+      margin-bottom: 7px;
+      font-size: 16px;
+      line-height: 1.3;
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      background: #e2e8e6;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .segmented button {
+      min-width: 148px;
+      padding: 8px 12px;
+      color: var(--ink-2);
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      cursor: pointer;
+      font: 700 11px var(--mono);
+    }
+
+    .segmented button[aria-selected="true"] {
+      color: #fff;
+      background: var(--charcoal);
+    }
+
+    .type-view {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 18px;
+      margin-top: 14px;
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--teal);
+      border-radius: 6px;
+    }
+
+    .type-view.item {
+      border-top-color: var(--gold);
+    }
+
+    .type-title {
+      margin-bottom: 10px;
+      font: 800 11px var(--mono);
+      color: var(--teal);
+    }
+
+    .type-view.item .type-title {
+      color: var(--gold);
+    }
+
+    .type-summary {
+      margin-bottom: 14px;
+      color: var(--ink-2);
+      font-size: 13px;
+    }
+
+    .type-facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+
+    .type-fact {
+      min-height: 68px;
+      padding: 10px;
+      background: #f9fbfa;
+    }
+
+    .type-fact b {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 10px;
+    }
+
+    .type-fact span {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .type-path {
+      display: grid;
+      gap: 7px;
+    }
+
+    .path-row {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 9px 11px;
+      background: #f3f6f5;
+      border-left: 3px solid var(--line-strong);
+      border-radius: 3px;
+    }
+
+    .path-row b {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      color: #fff;
+      background: var(--charcoal);
+      border-radius: 50%;
+      font: 9px var(--mono);
+    }
+
+    .path-row strong {
+      display: block;
+      font-size: 11px;
+    }
+
+    .path-row span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .shared-policy {
+      margin-top: 12px;
+      padding: 12px 14px;
+      color: var(--ink-2);
+      background: var(--gold-soft);
+      border-left: 4px solid var(--gold);
+      border-radius: 0 5px 5px 0;
+      font-size: 11px;
+    }
+
+    .axis-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .axis {
+      min-width: 0;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .axis.task {
+      border-top: 4px solid var(--teal);
+    }
+
+    .axis.worker {
+      border-top: 4px solid var(--blue);
+    }
+
+    .axis.item {
+      border-top: 4px solid var(--violet);
+    }
+
+    .axis p {
+      color: var(--ink-2);
+      font-size: 11px;
+    }
+
+    .axis-formula {
+      margin: 13px 0;
+      padding: 9px 10px;
+      color: var(--ink);
+      background: #edf1ef;
+      border-radius: 4px;
+      font: 10px/1.55 var(--mono);
+    }
+
+    .axis-route {
+      display: grid;
+      gap: 5px;
+    }
+
+    .axis-node {
+      padding: 8px 9px;
+      background: #f7f9f8;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font: 10px var(--mono);
+    }
+
+    .axis-arrow {
+      padding-left: 12px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .axis-note {
+      margin-top: 11px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .loop-table,
+    .owner-table,
+    .scale-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+
+    th,
+    td {
+      padding: 12px 13px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 11px;
+    }
+
+    th {
+      color: var(--ink);
+      background: #e7ecea;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    td {
+      color: var(--ink-2);
+    }
+
+    td:first-child {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .owner-band {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .owner-stage {
+      min-height: 156px;
+      padding: 16px;
+      color: #eaf1ef;
+      background: var(--charcoal);
+      border-radius: 6px;
+    }
+
+    .owner-stage:nth-child(2) {
+      background: #244b61;
+    }
+
+    .owner-stage:nth-child(3) {
+      background: #51415d;
+    }
+
+    .owner-stage b {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff;
+      font-size: 13px;
+    }
+
+    .owner-stage p {
+      margin-bottom: 0;
+      color: #becdca;
+      font-size: 11px;
+    }
+
+    .owner-stage code {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 4px 6px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.22);
+      border-radius: 3px;
+      font-size: 9px;
+    }
+
+    .evidence-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .evidence {
+      min-height: 105px;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+    }
+
+    .evidence b {
+      display: block;
+      margin-bottom: 5px;
+      font: 700 10px var(--mono);
+    }
+
+    .evidence span {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .outcome-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .outcome {
+      min-height: 164px;
+      padding: 15px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--line-strong);
+      border-radius: 6px;
+    }
+
+    .outcome.success {
+      border-top-color: var(--green);
+    }
+
+    .outcome.worker-failure {
+      border-top-color: var(--gold);
+    }
+
+    .outcome.adapter-rejection {
+      border-top-color: var(--red);
+    }
+
+    .outcome.unknown {
+      border-top-color: var(--blue);
+    }
+
+    .outcome-code {
+      display: block;
+      margin-bottom: 8px;
+      font: 800 12px var(--mono);
+    }
+
+    .outcome p {
+      color: var(--ink-2);
+      font-size: 10px;
+    }
+
+    .outcome small {
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .warning {
+      margin-top: 13px;
+      padding: 12px 14px;
+      color: #6e3b36;
+      background: var(--red-soft);
+      border-left: 4px solid var(--red);
+      border-radius: 0 5px 5px 0;
+      font-size: 11px;
+    }
+
+    .mailbox-race {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+      padding: 14px;
+      background: #e9eeec;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .race-step {
+      min-height: 68px;
+      padding: 9px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-size: 10px;
+    }
+
+    .race-step b {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .race-arrow {
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .scale-table code {
+      white-space: nowrap;
+      font-size: 9px;
+    }
+
+    .status-board {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .status-col {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--line-strong);
+      border-radius: 6px;
+    }
+
+    .status-col.done {
+      background: var(--green-soft);
+      border-top-color: var(--green);
+    }
+
+    .status-col.deferred {
+      background: var(--gold-soft);
+      border-top-color: var(--gold);
+    }
+
+    .status-col.no {
+      background: var(--red-soft);
+      border-top-color: var(--red);
+    }
+
+    .status-col h3 {
+      font-size: 13px;
+    }
+
+    .status-col ul {
+      margin: 8px 0 0;
+      padding-left: 16px;
+    }
+
+    .status-col li {
+      color: var(--ink-2);
+      font-size: 10px;
+    }
+
+    .status-col li + li {
+      margin-top: 5px;
+    }
+
+    .reading-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .reading-link {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      gap: 10px;
+      align-items: start;
+      min-height: 78px;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      text-decoration: none;
+    }
+
+    .reading-link:hover,
+    .reading-link:focus-visible {
+      border-color: var(--teal);
+      outline: none;
+    }
+
+    .reading-number {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      color: #fff;
+      background: var(--charcoal);
+      border-radius: 4px;
+      font: 10px var(--mono);
+    }
+
+    .reading-link b {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 11px;
+    }
+
+    .reading-link span {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: 10px;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+    }
+
+    @media (max-width: 1060px) {
+      :root {
+        --sidebar: 210px;
+      }
+
+      main {
+        padding-inline: 28px;
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-stage:not(:last-child)::after {
+        display: none;
+      }
+
+      .evidence-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .outcome-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .sidebar {
+        position: sticky;
+        top: 0;
+        width: 100%;
+        height: auto;
+        padding: 9px 12px;
+        overflow-x: auto;
+      }
+
+      .brand,
+      .nav-label,
+      .sidebar-rule {
+        display: none;
+      }
+
+      .nav {
+        display: flex;
+        width: max-content;
+        gap: 3px;
+      }
+
+      .nav a {
+        padding: 7px 9px;
+        border: 0;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+
+      .nav a.active {
+        color: var(--charcoal);
+        background: #e1ae52;
+      }
+
+      main {
+        width: 100%;
+        margin-left: 0;
+        padding: 20px 14px 60px;
+      }
+
+      section {
+        scroll-margin-top: 56px;
+        margin-top: 48px;
+      }
+
+      .topline {
+        align-items: flex-start;
+      }
+
+      .top-links {
+        display: none;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      .lede {
+        font-size: 15px;
+      }
+
+      h2 {
+        font-size: 26px;
+      }
+
+      .principle-strip,
+      .section-head,
+      .type-view,
+      .axis-grid,
+      .owner-band,
+      .evidence-grid,
+      .status-board,
+      .reading-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .principle {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .principle:last-child {
+        border-bottom: 0;
+      }
+
+      .stage-steps,
+      .stage-steps.two {
+        grid-template-columns: 1fr;
+      }
+
+      .section-head {
+        gap: 10px;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+      }
+
+      .segmented button {
+        min-width: 0;
+        padding-inline: 6px;
+      }
+
+      .type-facts {
+        grid-template-columns: 1fr;
+      }
+
+      .outcome-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mailbox-race {
+        grid-template-columns: 1fr;
+      }
+
+      .race-arrow {
+        text-align: center;
+        transform: rotate(90deg);
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+
+    @media print {
+      .sidebar,
+      .progress {
+        display: none;
+      }
+
+      main {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      section {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="progress" aria-hidden="true"></div>
+
+  <aside class="sidebar" aria-label="页面导航">
+    <a class="brand" href="#overview">
+      <span class="brand-mark">XA</span>
+      <strong>Kernel Panorama</strong>
+      <span>人类全景入口 · executable spec</span>
+    </a>
+
+    <div class="nav-label">Understand the mechanism</div>
+    <nav class="nav">
+      <a href="#overview">主线总览</a>
+      <a href="#task-types">两类 Task</a>
+      <a href="#scores">三条 Score 轴</a>
+      <a href="#loops">后台循环</a>
+      <a href="#owners">Owner 与证据</a>
+      <a href="#recovery">失败如何收敛</a>
+      <a href="#scale">规模边界</a>
+      <a href="#status">当前边界</a>
+      <a href="#reading">继续阅读</a>
+    </nav>
+
+    <div class="sidebar-rule">
+      <b>读图规则</b>
+      实线流程表示当前 executable spec 主线；“Deferred”只表示后续策略，不是第二条实现路径。
+    </div>
+  </aside>
+
+  <main id="main">
+    <section class="overview" id="overview">
+      <div class="topline">
+        <span class="status">当前机制基线 · Python executable spec</span>
+        <span class="top-links">
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/README.md">Workspace README</a>
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/README.md">Scheduling Index</a>
+        </span>
+      </div>
+
+      <h1>XA Mass Kernel<br>机制全景</h1>
+      <p class="lede">
+        Task 调度是当前 Kernel 的控制流主线；Worker resource 与 score 保持独立
+        truth owner，由 Task 驱动的 scheduling 在需要分配和收敛时调用。
+        新内核把调度拆成三个连续边界：
+        <strong>Task Dispatch 完成选择与 claim，Worker Delivery Dispatch 完成投递，
+        Result Routing 让 TaskItem 与 Worker truth 收敛。</strong>
+        Transport 不重新选 Worker，中间证据也不升级为生命周期 owner。
+      </p>
+
+      <div class="principle-strip" aria-label="核心设计原则">
+        <div class="principle">
+          <b>Kernel Mechanism</b>
+          <span>Score、exact CAS、bounded round 与 owner transition 保证机制正确。</span>
+        </div>
+        <div class="principle">
+          <b>Stable TaskType Bundle</b>
+          <span>外部只选两个场景类型，不拼装 cache、rule owner 与 acquisition flag。</span>
+        </div>
+        <div class="principle">
+          <b>Owner Truth + Evidence</b>
+          <span>Task、Worker、TaskItem 各写自己的 truth；WorkerCommand / WorkerResult 只携带执行与相关性证据。</span>
+        </div>
+      </div>
+
+      <div class="architecture" role="img" aria-label="新内核三段调度主线">
+        <div class="architecture-head">
+          <b>当前完整主线</b>
+          <span>Python scheduling oracle + JVM Runtime API / selected Redis providers + external Adapter / Worker</span>
+        </div>
+        <div class="flow">
+          <div class="flow-stage dispatch">
+            <div class="stage-label">
+              <b>Task Dispatch</b>
+              <span>KERNEL SCHEDULING</span>
+            </div>
+            <div class="stage-steps">
+              <div class="stage-step">
+                <strong>Admit Task</strong>
+                ADMISSION → RUNNING
+              </div>
+              <div class="stage-step">
+                <strong>Bind Worker</strong>
+                PRECOMPUTED / DIRECT
+              </div>
+              <div class="stage-step">
+                <strong>Claim Item</strong>
+                exact CAS → WorkerCommand
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-stage delivery">
+            <div class="stage-label">
+              <b>Worker Delivery Dispatch</b>
+              <span>SERVER HTTP / EXTERNAL ADAPTER</span>
+            </div>
+            <div class="stage-steps two">
+              <div class="stage-step">
+                <strong>Point / Bounded Batch</strong>
+                Worker point / Adapter stateless batch HTTP
+              </div>
+              <div class="stage-step">
+                <strong>Worker Protocol</strong>
+                polling + WebSocket + Socket
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-stage result">
+            <div class="stage-label">
+              <b>Result Routing</b>
+              <span>TRUTH CONVERGENCE</span>
+            </div>
+            <div class="stage-steps two">
+              <div class="stage-step">
+                <strong>Classify Evidence</strong>
+                200 / 1xxx / 3xxx
+              </div>
+              <div class="stage-step">
+                <strong>Invoke Owners</strong>
+                Item finality + Worker disposition + last-success
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="contract-line">
+          <code>TaskDescriptor</code>
+          <span>→</span>
+          <code>TaskItem + policy-selected Worker acquisition</code>
+          <span>→</span>
+          <code>WorkerCommand</code>
+          <span>→</span>
+          <code>WorkerResult</code>
+          <span>→</span>
+          <code>Task/Worker owner operations</code>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-types">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 · Scenario bundles</p>
+          <h2>两类 Task，只决定 Worker 获取模型</h2>
+        </div>
+        <p>
+          TaskType 是稳定场景组合，不表达任务优先级，也不固化关闭策略。
+          Empty-close 是两类 Task 共用的独立 policy。
+        </p>
+      </div>
+
+      <div class="segmented" role="tablist" aria-label="TaskType">
+        <button
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="type-view"
+          data-task-type="task"
+        >TASK_DRIVEN</button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="type-view"
+          data-task-type="item"
+        >ITEM_DRIVEN</button>
+      </div>
+
+      <div class="type-view" id="type-view" aria-live="polite">
+        <div>
+          <div class="type-title" id="type-title">TASK_DRIVEN · PRECOMPUTED</div>
+          <p class="type-summary" id="type-summary">
+            同构且稠密的 Item 复用一条 Task 级 Worker rule。提前筛选 Worker 的成本可以被一批 Item 摊薄。
+          </p>
+          <div class="type-facts">
+            <div class="type-fact">
+              <b>Rule owner</b>
+              <span id="type-rule-owner">TaskDescriptor</span>
+            </div>
+            <div class="type-fact">
+              <b>Acquisition</b>
+              <span id="type-acquisition">PRECOMPUTED</span>
+            </div>
+            <div class="type-fact">
+              <b>Candidate cache</b>
+              <span id="type-cache">enabled</span>
+            </div>
+            <div class="type-fact">
+              <b>Warmup Pacer</b>
+              <span id="type-warmer">participates while suffix = 0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="type-path" id="type-path">
+          <div class="path-row">
+            <b>1</b>
+            <span><strong>Warmup hint</strong>读取稳定 Task rule 与 candidate deficit。</span>
+          </div>
+          <div class="path-row">
+            <b>2</b>
+            <span><strong>HOT pool acquisition</strong>scan → exact lease → match。</span>
+          </div>
+          <div class="path-row">
+            <b>3</b>
+            <span><strong>CandidateWorkerCache</strong>保存有过期时间的匹配证据。</span>
+          </div>
+          <div class="path-row">
+            <b>4</b>
+            <span><strong>Dispatch recheck</strong>consume → renew/validate → exact Item claim。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="shared-policy">
+        <strong>共享 empty-close：</strong>
+        只有连续确认完整 ACTIVE Item band 为空，且达到最大 recheck 次数后，才检查
+        <code>emptyCloseAtMillis</code>。TASK_DRIVEN 默认阈值为 0；
+        ITEM_DRIVEN 默认是创建后三天；任何类型都可显式关闭。
+      </div>
+    </section>
+
+    <section id="scores">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 · Ordered coordinates</p>
+          <h2>三条 Score 轴，共享结构而不共享业务语义</h2>
+        </div>
+        <p>
+          对外统一传毫秒时间，score 编码完全 opaque。调用方只能保存并原样返回 lease fence，
+          不能解析 tag、timeSlot 或 suffix。
+        </p>
+      </div>
+
+      <div class="axis-grid">
+        <article class="axis task">
+          <h3>Task Score</h3>
+          <p>Task 当前处于哪个调度域，以及该 lane 下一次可执行动作的时间。</p>
+          <div class="axis-formula">band + timeSlot + lane-local suffix</div>
+          <div class="axis-route">
+            <div class="axis-node">PRE_REVIEW</div>
+            <div class="axis-arrow">external approval ↓</div>
+            <div class="axis-node">ADMISSION_VISIBLE</div>
+            <div class="axis-arrow">policy admission ↓</div>
+            <div class="axis-node">RUNNING_VISIBLE</div>
+            <div class="axis-arrow">close ↓</div>
+            <div class="axis-node">TERMINAL (negative)</div>
+          </div>
+          <div class="axis-note">
+            ADMISSION suffix = priority（0 最高）；RUNNING suffix = 连续 confirmed-empty 次数。
+          </div>
+        </article>
+
+        <article class="axis worker">
+          <h3>Worker Score</h3>
+          <p>Kernel 对 Worker TaskItem 调度服务能力的权威分类，不是 socket 在线镜像。</p>
+          <div class="axis-formula">polarity × (timeSlot + laneRank + dirty)</div>
+          <div class="axis-route">
+            <div class="axis-node">HOT_ACQUIRE (positive)</div>
+            <div class="axis-arrow">exact lease / release</div>
+            <div class="axis-node">future hold → due HOT</div>
+            <div class="axis-arrow">trusted rejection / reconnect</div>
+            <div class="axis-node">RECOVERY_RECHECK (negative)</div>
+          </div>
+          <div class="axis-note">
+            time = 下次 lane 动作；dirty = 旧匹配证据能否继续；一个 WorkerId = 一个执行槽。
+          </div>
+        </article>
+
+        <article class="axis item">
+          <h3>TaskItem Score</h3>
+          <p>短周期被动资源的 acquire、claim、预算与最终结果坐标。</p>
+          <div class="axis-formula">tag + timeSlot + remaining budget</div>
+          <div class="axis-route">
+            <div class="axis-node">ACTIVE</div>
+            <div class="axis-arrow">claim: budget - 1</div>
+            <div class="axis-node">future claim → due retry</div>
+            <div class="axis-arrow">cross-tag outcome ↑</div>
+            <div class="axis-node">FINAL_FAILED → FINAL_SUCCESS</div>
+          </div>
+          <div class="axis-note">
+            Final tag 只增大；late success 可覆盖 FINAL_FAILED。当前 ResultContext 不携带 Item claim score。
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="loops">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 · Bounded background rounds</p>
+          <h2>四个 Pacer，各自只编排 owner 操作</h2>
+        </div>
+        <p>
+          Kernel 不创建一个全知调度循环。每轮读取 bounded evidence、调用明确 owner，
+          stale CAS 是正常并发结果。
+        </p>
+      </div>
+
+      <table class="loop-table">
+        <thead>
+          <tr>
+            <th>Loop</th>
+            <th>观察</th>
+            <th>动作</th>
+            <th>绝不负责</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>TaskRunningActivationPacer</td>
+            <td>due ADMISSION、descriptor、due ACTIVE Item、RUNNING soft limit</td>
+            <td>Task/System policy 后 exact transition 到 RUNNING</td>
+            <td>预占 Worker、保证全局公平</td>
+          </tr>
+          <tr>
+            <td>TaskWorkerAllocationPacer</td>
+            <td>TASK_DRIVEN warmup hints 与 candidate deficit</td>
+            <td>HOT Worker lease、match、CandidateWorkerCache append</td>
+            <td>修改 Task score、服务 ITEM_DRIVEN</td>
+          </tr>
+          <tr>
+            <td>TaskDispatchPacer</td>
+            <td>due RUNNING、TaskItem、candidate acquisition、empty activity</td>
+            <td>exact claim、WorkerCommand append、RUNNING reschedule / empty recheck</td>
+            <td>执行 Worker、处理结果</td>
+          </tr>
+          <tr>
+            <td>ResultRoutingPacer</td>
+            <td>SUCCESS / WORKER_FAILURE / ADAPTER_REJECTION queues</td>
+            <td>调用 Task 与 Worker 的可替换结果策略</td>
+            <td>重新选择 Worker、解释业务子码</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="owners">
+      <div class="section-head">
+        <div>
+          <p class="kicker">04 · Ownership cutpoints</p>
+          <h2>三段主线，三个不同责任</h2>
+        </div>
+        <p>
+          关键不是多建接口，而是明确一个 decision 在哪个 cutpoint 已完成。
+          后续阶段只能消费该决定，不能反向重做。
+        </p>
+      </div>
+
+      <div class="owner-band">
+        <div class="owner-stage">
+          <b>Task Dispatch</b>
+          <p>按 TaskType 选择 Worker 获取路径，exact claim 具体 Item，构造 direct transport-neutral WorkerCommand，并写入 Adapter 分桶 mailbox。</p>
+          <code>output = WorkerCommand</code>
+        </div>
+        <div class="owner-stage">
+          <b>Worker Delivery Dispatch</b>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；纯 polling Worker 使用 point API。每个 Adapter 实例由 aggregate、Process Manager、共同连接机制和一个完整物理 Server 组成，通过无 cursor 的 bounded batch 获取命令，并独立拥有 listener、全部 child Channel、bound route 与 Command/Report Process。</p>
+          <code>output = WorkerResult</code>
+        </div>
+        <div class="owner-stage">
+          <b>Result Routing</b>
+          <p>分类 evidence，存储 last-success，并调用 TaskItem / Worker score owner 收敛。</p>
+          <code>output = owner transitions</code>
+        </div>
+      </div>
+      <div class="contract-line">
+        <code>JVM TaskRuntime append provider</code>
+        <span>→</span>
+        <code>TaskItem record + ACTIVE score</code>
+        <span>→</span>
+        <code>Python scheduling / ResultRouting</code>
+        <span>→</span>
+        <code>Java last-success query</code>
+      </div>
+
+      <div class="evidence-grid">
+        <div class="evidence">
+          <b>TaskDescriptor</b>
+          <span>TaskType、WorkerGroup、rule 与 task config truth。</span>
+        </div>
+        <div class="evidence">
+          <b>CandidateWorkerEntry</b>
+          <span>PRECOMPUTED 路径的可丢弃 hint；携带 Worker、route snapshot 与 opaque Worker lease evidence。</span>
+        </div>
+        <div class="evidence">
+          <b>WorkerCommand</b>
+          <span>direct 出站命令；携带 correlation UUID、event code、deadline、TaskItem payload 与 opaque forward context。</span>
+        </div>
+        <div class="evidence">
+          <b>WorkerConnectionBind</b>
+          <span>长连接首条身份消息；只建立 Adapter 进程内 workerId → current connection 路由，不创建 Kernel truth。</span>
+        </div>
+        <div class="evidence">
+          <b>WorkerResult</b>
+          <span>复制 message correlation 与 opaque forward，携带 200 / 1xxx 或 Adapter-owned 3xxx outcome 及 opaque payload。</span>
+        </div>
+        <div class="evidence">
+          <b>ResultContext</b>
+          <span>Task/Item/Worker correlation 与 opaque Worker lease fence。</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="recovery">
+      <div class="section-head">
+        <div>
+          <p class="kicker">05 · Failure convergence</p>
+          <h2>失败不是统一 retry，而是 owner-local 收敛</h2>
+        </div>
+        <p>
+          Adapter、Worker 与 timeout 只产生 evidence。Result Routing 不理解具体业务错误，
+          只按公开 outcome class 调用策略。
+        </p>
+      </div>
+
+      <div class="outcome-grid">
+        <article class="outcome success">
+          <span class="outcome-code">200 · SUCCESS</span>
+          <p>先写 Task-scoped last-success HASH，再提升 Item 到 FINAL_SUCCESS，最后 exact release Worker lease。</p>
+          <small>payload 必须存在；无返回值使用 JSON "null"。</small>
+        </article>
+        <article class="outcome worker-failure">
+          <span class="outcome-code">1xxx · WORKER_FAILURE</span>
+          <p>当前默认策略只 exact release Worker，不修改 Item score。Item 等待原 claim 到期后重新可见。</p>
+          <small>Worker 已开始执行，因此不是 Adapter rejection。</small>
+        </article>
+        <article class="outcome adapter-rejection">
+          <span class="outcome-code">3xxx · ADAPTER_REJECTION</span>
+          <p>预留给可信的“尚未进入 Worker”证据。当前策略 exact demote Worker 到 recovery，不修改 Item score。</p>
+          <small>Point polling Worker不能伪造该类别；长连接 Adapter使用batch ingress。</small>
+        </article>
+        <article class="outcome unknown">
+          <span class="outcome-code">UNKNOWN</span>
+          <p>Adapter crash、response 丢失、无结果或 destructive consume 后失败。不能伪造结果，也不能快速释放。</p>
+          <small>Item claim 与 Worker lease expiry 是 correctness fallback。</small>
+        </article>
+      </div>
+
+      <div class="warning">
+        <strong>Deferred：</strong>
+        可信 3xxx 若要快速释放 Item，必须把 opaque Item claim fence 带回
+        TaskItemScoreBandCore，并新增 exact release primitive。当前 ResultContext 没有该字段。
+      </div>
+
+      <div class="mailbox-race" aria-label="WorkerCommand replacement best-effort 边界">
+        <div class="race-step">
+          <b>旧 publisher</b>
+          通过 deadline check 后发生长暂停
+        </div>
+        <span class="race-arrow">→</span>
+        <div class="race-step">
+          <b>新 lease / 新 command</b>
+          新 attempt 写入同一 Worker field
+        </div>
+        <span class="race-arrow">→</span>
+        <div class="race-step">
+          <b>旧写恢复</b>
+          可能成为最后 mailbox write；deadline 与 score fence 限制影响
+        </div>
+      </div>
+    </section>
+
+    <section id="scale">
+      <div class="section-head">
+        <div>
+          <p class="kicker">06 · Redis topology</p>
+          <h2>当前规模边界来自 owner key，而不是线程数</h2>
+        </div>
+        <p>
+          增加 Pacer 或 HTTP 并发不会拆分 Redis 热键，反而可能增加重复 observation 与 CAS 竞争。
+          分片必须先明确 owner 和顺序语义。
+        </p>
+      </div>
+
+      <table class="scale-table">
+        <thead>
+          <tr>
+            <th>Owner key</th>
+            <th>当前分区</th>
+            <th>天然批量边界</th>
+            <th>高规模风险</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>tr:{prefix}:task:score</code></td>
+            <td>全局 Task ZSET</td>
+            <td>bounded due window</td>
+            <td>全局 Task 热键；多 Pacer 不等于分片</td>
+          </tr>
+          <tr>
+            <td><code>wr:{prefix}:score:{workerGroupId}</code></td>
+            <td>WorkerGroup</td>
+            <td>同组 score pipeline / CAS</td>
+            <td>超大 WorkerGroup 形成单键瓶颈</td>
+          </tr>
+          <tr>
+            <td><code>tr:{prefix}:task:{taskId}:*</code></td>
+            <td>Task</td>
+            <td>Item score、payload、result</td>
+            <td>单个极热 Task 的吞吐上限</td>
+          </tr>
+          <tr>
+            <td><code>wd:{prefix}:endpoint-manager:{id}:worker-commands</code></td>
+            <td>Adapter route</td>
+            <td>稀疏 HASH point / bounded HRANDFIELD observation</td>
+            <td>单 endpoint-manager 热键；replacement 与进程内 pending 都是 best-effort</td>
+          </tr>
+          <tr>
+            <td><code>rr:{prefix}:worker-results:{class}</code></td>
+            <td>三类 outcome</td>
+            <td>per-class bounded consume</td>
+            <td>全局 class LIST，尚无 pending/ack</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="status">
+      <div class="section-head">
+        <div>
+          <p class="kicker">07 · Current contract</p>
+          <h2>已闭合机制与刻意延后的生产策略</h2>
+        </div>
+        <p>
+          这份页面只描述当前主线。Deferred work 不得成为兼容分支，也不反向扩大 Kernel owner。
+        </p>
+      </div>
+
+      <div class="status-board">
+        <article class="status-col done">
+          <h3>Executable baseline</h3>
+          <ul>
+            <li>Task admission、RUNNING soft limit 与 priority window</li>
+            <li>TASK_DRIVEN PRECOMPUTED cache/warmup</li>
+            <li>ITEM_DRIVEN DIRECT bounded Group/point acquisition</li>
+            <li>TaskItem exact claim 与 shared empty-close</li>
+            <li>direct WorkerCommand / WorkerResult 与 Adapter-partitioned mailbox</li>
+            <li>Java Server delivery point/batch HTTP owner</li>
+            <li>完整 Adapter 实例注册、每实例一个 Process Manager 与完整 WebSocket/Socket 物理 Server、独立 listener、全部 child Channel、bound route、无 cursor bounded acquisition 与 bounded Report retry</li>
+            <li>三类 WorkerResult outcome queue 与 owner-local Result Routing</li>
+          </ul>
+        </article>
+        <article class="status-col deferred">
+          <h3>Deferred policy</h3>
+          <ul>
+            <li>公平、quota、resource estimate 与 cadence tuning</li>
+            <li>同 endpoint Adapter 多实例 ownership、认证与生产 flow-control</li>
+            <li>受控 Worker route migration 与自动 failover</li>
+            <li>trusted 3xxx Item fast release fence</li>
+            <li>pending/ack、retention、query projection 与分片</li>
+          </ul>
+        </article>
+        <article class="status-col no">
+          <h3>Not promised</h3>
+          <ul>
+            <li>外部副作用 exactly-once</li>
+            <li>Transport 重新选择 Worker</li>
+            <li>Candidate cache / mailbox 成为 durable lifecycle truth</li>
+            <li>任意 Task policy 正交组合</li>
+            <li>用 TaskType 表达任务优先级</li>
+            <li>旧 Java 主线兼容路径</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="reading">
+      <div class="section-head">
+        <div>
+          <p class="kicker">08 · Read owner contracts</p>
+          <h2>从全景进入实现真相</h2>
+        </div>
+        <p>
+          本页只建立心智模型。修改机制时继续读 owner 文档、Python code 和相应 Redis proof。
+        </p>
+      </div>
+
+      <div class="reading-grid">
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/README.md">
+          <span class="reading-number">01</span>
+          <span><b>Kernel Design Workspace</b>score 通则、边界与 executable-spec 入口。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/README.md">
+          <span class="reading-number">02</span>
+          <span><b>Scheduling Index</b>机制状态、主线阅读顺序与规模边界。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/resource-model/task-resource-model.md">
+          <span class="reading-number">03</span>
+          <span><b>Task Resource Model</b>TaskType、allocationRule 与 empty-close。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/resource-model/worker-resource-model.md">
+          <span class="reading-number">04</span>
+          <span><b>Worker Resource Model</b>WorkerGroup、Worker declaration 与属性 owner。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/assignment-dispatch-scheduling.md">
+          <span class="reading-number">05</span>
+          <span><b>Assignment Dispatch</b>activation、warmup 与 Task dispatch 组合。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/worker-hot-acquire-lease-protocol.md">
+          <span class="reading-number">06</span>
+          <span><b>Worker Lease Protocol</b>serviceability、dirty fence 与 exact lease。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/worker-delivery-dispatch.md">
+          <span class="reading-number">07</span>
+          <span><b>Worker Delivery Dispatch</b>Adapter mailbox 与 Worker protocol。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/scheduling/result-routing-scheduling.md">
+          <span class="reading-number">08</span>
+          <span><b>Result Routing</b>outcome lanes 与可替换 owner-local policies。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/runtime_server/app.py">
+          <span class="reading-number">09</span>
+          <span><b>Python Kernel Control API</b>资源 upsert、Task control 与 scheduling lifecycle。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md">
+          <span class="reading-number">10</span>
+          <span><b>Java Runtime API Server</b>Kernel owner provider assembly、Task data ingress/query 与 Worker Delivery HTTP owner。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/netty-adapter/README.md">
+          <span class="reading-number">11</span>
+          <span><b>Java Adapter Runtime</b>每个实例由 lifecycle aggregate、Process Manager、共同连接机制和一个完整 WebSocket/Socket 物理 Server构成，分别拥有调度任务、批量 HTTP、全部 child Channel、Worker bound route、bounded Command/Report Process 与结果缓冲机制。</span>
+        </a>
+        <a class="reading-link" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/worker-core/README.md">
+          <span class="reading-number">12</span>
+          <span><b>Worker Core</b>共享执行、事件派发与 Polling/WebSocket/Socket 状态机；JVM/Android 模块只提供具体网络 Client。</span>
+        </a>
+      </div>
+    </section>
+
+    <footer class="footer">
+      XA Mass Platform · Kernel Design Workspace · Human-facing mechanism map.
+      本页不替代 executable spec、测试或 owner contract。
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const typeContent = {
+        task: {
+          title: "TASK_DRIVEN · PRECOMPUTED",
+          summary:
+            "同构且稠密的 Item 复用一条 Task 级 Worker rule。提前筛选 Worker 的成本可以被一批 Item 摊薄。",
+          ruleOwner: "TaskDescriptor",
+          acquisition: "PRECOMPUTED",
+          cache: "enabled",
+          warmer: "participates while suffix = 0",
+          rows: [
+            ["Warmup hint", "读取稳定 Task rule 与 candidate deficit。"],
+            ["HOT pool acquisition", "scan → exact lease → match。"],
+            ["CandidateWorkerCache", "保存有过期时间的匹配证据。"],
+            ["Dispatch recheck", "consume → renew/validate → exact Item claim。"]
+          ]
+        },
+        item: {
+          title: "ITEM_DRIVEN · DIRECT",
+          summary:
+            "长期、稀疏或 Item 级目标不同的任务只在真实 Item 到来时付出 Worker 选择成本。空规则在 Group 内选择，非空规则必须给出 workerId candidate source。",
+          ruleOwner: "TaskItem",
+          acquisition: "DIRECT",
+          cache: "forbidden",
+          warmer: "does not participate",
+          rows: [
+            ["Observe Item", "每个 Item 携带 allocationRule；{} 表示 Group 内不限制 Worker。"],
+            ["Bounded source", "{} 使用一次 bounded Group HOT query；非空规则从 workerId 获取 IDs。"],
+            ["Lease and match", "bounded score evidence → exact lease → full rematch。"],
+            ["Direct dispatch", "按 messageId 绑定 Worker 后 exact Item claim；不写 cache。"]
+          ]
+        }
+      };
+
+      const typeView = document.querySelector("#type-view");
+      const typeButtons = [...document.querySelectorAll("[data-task-type]")];
+      const fields = {
+        title: document.querySelector("#type-title"),
+        summary: document.querySelector("#type-summary"),
+        ruleOwner: document.querySelector("#type-rule-owner"),
+        acquisition: document.querySelector("#type-acquisition"),
+        cache: document.querySelector("#type-cache"),
+        warmer: document.querySelector("#type-warmer"),
+        path: document.querySelector("#type-path")
+      };
+
+      const renderType = (type) => {
+        const content = typeContent[type];
+        fields.title.textContent = content.title;
+        fields.summary.textContent = content.summary;
+        fields.ruleOwner.textContent = content.ruleOwner;
+        fields.acquisition.textContent = content.acquisition;
+        fields.cache.textContent = content.cache;
+        fields.warmer.textContent = content.warmer;
+        fields.path.replaceChildren(
+          ...content.rows.map(([title, detail], index) => {
+            const row = document.createElement("div");
+            row.className = "path-row";
+            const number = document.createElement("b");
+            number.textContent = String(index + 1);
+            const copy = document.createElement("span");
+            const strong = document.createElement("strong");
+            strong.textContent = title;
+            copy.append(strong, document.createTextNode(detail));
+            row.append(number, copy);
+            return row;
+          })
+        );
+        typeView.classList.toggle("item", type === "item");
+        typeButtons.forEach((button) => {
+          button.setAttribute(
+            "aria-selected",
+            String(button.dataset.taskType === type)
+          );
+        });
+      };
+
+      typeButtons.forEach((button) => {
+        button.addEventListener("click", () => renderType(button.dataset.taskType));
+      });
+
+      const progress = document.querySelector(".progress");
+      const navLinks = [...document.querySelectorAll(".nav a")];
+      const sections = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+
+      const updateProgress = () => {
+        const maximum =
+          document.documentElement.scrollHeight - window.innerHeight;
+        const ratio = maximum > 0 ? window.scrollY / maximum : 0;
+        progress.style.width = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+      };
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+          if (!visible) return;
+          navLinks.forEach((link) => {
+            const active =
+              link.getAttribute("href") === `#${visible.target.id}`;
+            link.classList.toggle("active", active);
+            if (active) link.setAttribute("aria-current", "location");
+            else link.removeAttribute("aria-current");
+          });
+        },
+        {
+          rootMargin: "-18% 0px -65% 0px",
+          threshold: [0, 0.2, 0.5]
+        }
+      );
+
+      sections.forEach((section) => observer.observe(section));
+      window.addEventListener("scroll", updateProgress, { passive: true });
+      updateProgress();
+    })();
+  </script>
+</body>
+</html>

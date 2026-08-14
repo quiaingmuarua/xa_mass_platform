@@ -197,24 +197,40 @@ POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
-GET  /api/v1/scenario-rpc/scenario-types
-POST /api/v1/scenario-rpc/scenarios
-GET  /api/v1/scenario-rpc/scenarios/{scenarioId}
-POST /api/v1/scenario-rpc/input-files/{fileName}
-POST /api/v1/scenario-rpc/scenarios/{scenarioId}:run
-GET  /api/v1/scenario-rpc/output-files/{fileName}
+GET  /api/v1/runtime-view/configured-resources
+POST /api/v1/task-batches/input-files/{fileName}
+POST /api/v1/task-batches/runs
+GET  /api/v1/task-batches/output-files/{fileName}
 ```
 
-These `scenario-rpc` routes exist only under the `scenario-workers` Profile.
-Inputs are create-only UTF-8 `.txt` files below `data/rpc-task/input`. A
-Scenario instance selects one fixed type and can run once. Run appends all
-Items to the Group's existing long-lived Task in one batch, then loads only
-pending Result IDs at a caller-bounded interval and round count. Each completed
+These `task-batches` routes exist only under the `scenario-workers` Profile.
+Inputs are create-only UTF-8 `.txt` files below `data/rpc-task/input`. A run
+selects one configured WorkerGroup, one EventCode, and one top-level Payload
+key. Server resolves the Group's existing long-lived Task, appends every line
+as one ordinary Item in a single batch, and loads only pending Result IDs at a
+fixed 100 ms interval until the request's wait budget expires. Each completed
 round is flushed to a temporary JSONL. Completion atomically publishes
-`{scenarioId}.jsonl`; exhausted polling publishes
-`{scenarioId}.partial.jsonl`. The Profile permits one running Scenario at a
-time, keeps at most 100 in-memory instance summaries, and retains published
-input and output files until they are manually removed.
+`{runId}.jsonl`; exhausted waiting publishes `{runId}.partial.jsonl`. Runs may
+execute concurrently. Published input and output files remain until manually
+removed. The API does not use advisory Group `eventCodes` as authorization.
+
+The Server-served Vue entry points are:
+
+```text
+http://127.0.0.1:18082/runtime/workers
+http://127.0.0.1:18082/runtime/tasks
+http://127.0.0.1:18082/runtime/task-batches
+http://127.0.0.1:18082/scalar
+http://127.0.0.1:18082/overview.htm
+```
+
+The Task Batch page is a desktop Lab client for the API above. It selects Group
+and Event from the configured-resource directory, uploads one text input, runs
+one batch, keeps only the current browser session's terminal summaries, and
+downloads published JSONL on demand. Direct navigation and refresh of the Task
+Batch route forward to the Vue entry point.
+The frontend sidebar links to Scalar and the static architecture overview on
+the same Server origin.
 
 Identity registration accepts the WorkerGroup path coordinate and complete
 Worker Properties:
@@ -743,16 +759,15 @@ scheduling/ResultRouting, Java last-success query, and exact Worker release.
 
 The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
-The repository Scenario RPC lane starts this Server with the `scenario-workers`
-profile. That Profile also enables `/api/v1/scenario-rpc`: it accepts bounded
-text inputs under `data/rpc-task/input`, creates one-shot instances from six
-fixed Scenario types, appends each run as one Item batch to the Group's
-long-lived Task, polls pending Results in batches, and incrementally writes an
-atomically published JSONL under `data/rpc-task/output`. Only one Scenario runs
-at once; scheduling concurrency remains owned by Kernel scheduling and Worker
-leases. The acceptance proves 20
+The repository Task Batch lane starts this Server with the `scenario-workers`
+profile. That Profile also enables `/api/v1/task-batches`: it accepts bounded
+text inputs under `data/rpc-task/input`, resolves a configured Group's
+long-lived Task, appends each run as one Item batch, polls pending Results in
+batches, and incrementally writes an atomically published JSONL under
+`data/rpc-task/output`. Scheduling concurrency remains owned by Kernel
+scheduling and Worker leases. The acceptance proves 20
 persistent, globally unique Worker identities plus Identity Register, Endpoint
-Bind, Adapter route validation, six Scenario runs, and 60 results. Results are
+Bind, Adapter route validation, six Task Batch runs, and 60 results. Results are
 not attributed to a specific Worker. This
 cross-process proof complements rather than replaces the Server integration
 suite above.

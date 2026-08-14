@@ -62,7 +62,7 @@ final class ServerWorkerTaskInitializer {
                 create(expected);
             } else if (!expected.equals(existing)) {
                 throw new IllegalStateException(
-                        "Scenario RPC Task descriptor conflicts for "
+                        "Profile Task descriptor conflicts for "
                                 + entry.getKey()
                 );
             }
@@ -75,7 +75,7 @@ final class ServerWorkerTaskInitializer {
         TaskCreationResult result = taskRuntime.createTask(descriptor, 0);
         if (result == null || result.status() != TaskCreationStatus.CREATED) {
             throw new IllegalStateException(
-                    "Scenario RPC Task creation failed for "
+                    "Profile Task creation failed for "
                             + descriptor.workerGroupId()
                             + statusAndReason(result)
             );
@@ -88,7 +88,7 @@ final class ServerWorkerTaskInitializer {
                 || (result.status() != TaskApprovalStatus.APPROVED
                 && result.status() != TaskApprovalStatus.ALREADY_APPROVED)) {
             throw new IllegalStateException(
-                    "Scenario RPC Task approval failed for "
+                    "Profile Task approval failed for "
                             + workerGroupId
                             + statusAndReason(result)
             );

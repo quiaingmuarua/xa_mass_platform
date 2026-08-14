@@ -4,9 +4,12 @@ import { useRoute } from "vue-router";
 import {
   Collection,
   Connection,
+  Document,
+  Link,
   Moon,
   Sunny,
   Tickets,
+  VideoPlay,
   View
 } from "@element-plus/icons-vue";
 
@@ -21,6 +24,9 @@ const sourceLabel = computed(() =>
   config.mode === "api" ? "API source" : "Mock source"
 );
 const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
+const pageSection = computed(() =>
+  route.name === "runtime-task-batches" ? "Lab" : "Runtime"
+);
 
 onMounted(() => theme.apply());
 onBeforeUnmount(() => store.dispose());
@@ -28,7 +34,7 @@ onBeforeUnmount(() => store.dispose());
 
 <template>
   <div class="runtime-shell">
-    <aside class="runtime-sidebar" aria-label="主导航">
+    <aside class="runtime-sidebar" aria-label="Main navigation">
       <div class="runtime-brand">
         <img
           class="runtime-brand__logo"
@@ -43,7 +49,7 @@ onBeforeUnmount(() => store.dispose());
         </div>
       </div>
 
-      <nav class="runtime-navigation" aria-label="Runtime">
+      <nav class="runtime-navigation" aria-label="Runtime and Lab">
         <span class="runtime-navigation__eyebrow">RUNTIME</span>
         <router-link class="runtime-navigation__link" to="/runtime/workers">
           <el-icon><Collection /></el-icon>
@@ -53,14 +59,37 @@ onBeforeUnmount(() => store.dispose());
           <el-icon><Tickets /></el-icon>
           <span>Tasks</span>
         </router-link>
+
+        <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
+          LAB
+        </span>
+        <router-link class="runtime-navigation__link" to="/runtime/task-batches">
+          <el-icon><VideoPlay /></el-icon>
+          <span>Task Batches</span>
+        </router-link>
+
+        <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
+          REFERENCE
+        </span>
+        <a class="runtime-navigation__link" href="/scalar">
+          <el-icon><Link /></el-icon>
+          <span>API Docs</span>
+        </a>
+        <a class="runtime-navigation__link" href="/overview.htm">
+          <el-icon><Document /></el-icon>
+          <span>Architecture</span>
+        </a>
       </nav>
 
       <div class="runtime-sidebar__note">
         <span class="runtime-sidebar__note-title">
           <el-icon aria-hidden="true"><View /></el-icon>
-          Read-only preview
+          Runtime + Lab
         </span>
-        <p>只读展示 Profile 配置资源和 Owner 提供的 Runtime 描述符。</p>
+        <p>
+          Runtime pages are read-only. Task Batch Lab uploads input, appends Items and
+          keeps generated output files.
+        </p>
       </div>
     </aside>
 
@@ -71,7 +100,7 @@ onBeforeUnmount(() => store.dispose());
           <strong>XA MASS</strong>
         </div>
         <el-breadcrumb separator="/">
-          <el-breadcrumb-item>Runtime</el-breadcrumb-item>
+          <el-breadcrumb-item>{{ pageSection }}</el-breadcrumb-item>
           <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
         </el-breadcrumb>
         <div class="runtime-topbar__actions">
@@ -86,7 +115,7 @@ onBeforeUnmount(() => store.dispose());
           <el-button
             circle
             class="theme-toggle"
-            :aria-label="theme.dark ? '切换浅色模式' : '切换深色模式'"
+            :aria-label="theme.dark ? 'Switch to light mode' : 'Switch to dark mode'"
             data-testid="theme-toggle"
             @click="theme.toggle"
           >

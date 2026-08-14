@@ -3,10 +3,9 @@ package com.xa.mass.integration.workercapability;
 import com.xa.mass.integration.workercapability.cli.CommandLineOptions;
 import com.xa.mass.integration.workercapability.cli.WorkerCapabilityIntegrationDefaults;
 import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
-import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient;
-import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient.CreateResult;
-import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient.RunResult;
-import com.xa.mass.integration.workercapability.scenario.WorkerCapabilityAcceptance;
+import com.xa.mass.integration.workercapability.runtimeapi.TaskBatchApiClient;
+import com.xa.mass.integration.workercapability.runtimeapi.TaskBatchApiClient.RunResult;
+import com.xa.mass.integration.workercapability.acceptance.WorkerCapabilityAcceptance;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,16 +22,43 @@ public final class WorkerCapabilityRpcMain {
     private static final System.Logger LOG = System.getLogger(
             WorkerCapabilityRpcMain.class.getName()
     );
-    private static final List<ScenarioSpec> SCENARIOS = List.of(
-            new ScenarioSpec("phonenumber.e164", SeedKind.PHONE),
-            new ScenarioSpec("phonenumber.country", SeedKind.PHONE),
-            new ScenarioSpec(
-                    "phonenumber.original-carrier",
+    private static final List<BatchSpec> BATCHES = List.of(
+            new BatchSpec(
+                    "scenario-phone-number-workers",
+                    "phonenumber.e164",
+                    "rawNumber",
                     SeedKind.PHONE
             ),
-            new ScenarioSpec("string.md5", SeedKind.STRING),
-            new ScenarioSpec("string.sha1", SeedKind.STRING),
-            new ScenarioSpec("string.base64.encode", SeedKind.STRING)
+            new BatchSpec(
+                    "scenario-phone-number-workers",
+                    "phonenumber.country",
+                    "rawNumber",
+                    SeedKind.PHONE
+            ),
+            new BatchSpec(
+                    "scenario-phone-number-workers",
+                    "phonenumber.original-carrier",
+                    "rawNumber",
+                    SeedKind.PHONE
+            ),
+            new BatchSpec(
+                    "scenario-string-utils-workers",
+                    "string.md5",
+                    "value",
+                    SeedKind.STRING
+            ),
+            new BatchSpec(
+                    "scenario-string-utils-workers",
+                    "string.sha1",
+                    "value",
+                    SeedKind.STRING
+            ),
+            new BatchSpec(
+                    "scenario-string-utils-workers",
+                    "string.base64.encode",
+                    "value",
+                    SeedKind.STRING
+            )
     );
 
     private WorkerCapabilityRpcMain() {
@@ -41,7 +67,7 @@ public final class WorkerCapabilityRpcMain {
     public static void main(String[] arguments) throws IOException {
         CommandLineOptions options = CommandLineOptions.parse(arguments);
         String proofId = RuntimeApiHttpClient.identifier(options.string(
-                "scenario-id",
+                "proof-id",
                 "worker-capability-" + System.currentTimeMillis()
         ));
         Path phoneSeedPath = absolutePath(options.path(
@@ -60,19 +86,13 @@ public final class WorkerCapabilityRpcMain {
                 "scenario-worker-lab-root",
                 "../../data/scenario-workers"
         ));
-        long loadIntervalMillis = options.positiveLong(
-                "load-interval-millis",
-                WorkerCapabilityIntegrationDefaults.LOAD_INTERVAL_MILLIS
+        long maximumWaitMillis = options.positiveLong(
+                "maximum-wait-millis",
+                WorkerCapabilityIntegrationDefaults.MAXIMUM_WAIT_MILLIS
         );
-        int maximumLoadRounds = Math.toIntExact(options.positiveLong(
-                "maximum-load-rounds",
-                WorkerCapabilityIntegrationDefaults.MAXIMUM_LOAD_ROUNDS
-        ));
-        if (loadIntervalMillis > 300_000L
-                || maximumLoadRounds > 300_000
-                || loadIntervalMillis * maximumLoadRounds > 300_000L) {
+        if (maximumWaitMillis > 300_000L) {
             throw new IllegalArgumentException(
-                    "Scenario RPC polling budget must not exceed 5 minutes"
+                    "Task Batch wait must not exceed 5 minutes"
             );
         }
         RuntimeApiHttpClient runtimeApi = new RuntimeApiHttpClient(
@@ -86,7 +106,7 @@ public final class WorkerCapabilityRpcMain {
                                 .REQUEST_TIMEOUT_MILLIS
                 ))
         );
-        ScenarioRpcApiClient scenarioRpc = new ScenarioRpcApiClient(
+        TaskBatchApiClient taskBatch = new TaskBatchApiClient(
                 runtimeApi
         );
         Path proofResultDirectory = resultDirectory.resolve(proofId);
@@ -107,35 +127,31 @@ public final class WorkerCapabilityRpcMain {
         String stringRemote = "string-seed-" + proofId + ".txt";
         List<Map<String, Object>> allResults = new ArrayList<>();
         try {
-            scenarioRpc.uploadInput(
+            taskBatch.uploadInput(
                     phoneRemote,
                     String.join("\n", phoneLines)
             );
-            scenarioRpc.uploadInput(
+            taskBatch.uploadInput(
                     stringRemote,
                     String.join("\n", stringLines)
             );
-            for (ScenarioSpec scenario : SCENARIOS) {
-                String inputFile = scenario.seedKind() == SeedKind.PHONE
+            for (BatchSpec batch : BATCHES) {
+                String inputFile = batch.seedKind() == SeedKind.PHONE
                         ? phoneRemote
                         : stringRemote;
-                CreateResult created = scenarioRpc.create(
-                        scenario.scenarioType()
-                );
-                requireCreatedScenario(created, scenario);
-                RunResult run = scenarioRpc.run(
-                        created.scenarioId(),
+                RunResult run = taskBatch.run(
+                        batch.workerGroupId(),
+                        batch.eventCode(),
+                        batch.payloadKey(),
                         inputFile,
-                        loadIntervalMillis,
-                        maximumLoadRounds
+                        maximumWaitMillis
                 );
                 requireRunSummary(
                         run,
-                        created.scenarioId(),
-                        scenario,
+                        batch,
                         inputFile
                 );
-                String output = scenarioRpc.downloadOutput(
+                String output = taskBatch.downloadOutput(
                         run.outputFile()
                 );
                 Files.writeString(
@@ -161,7 +177,7 @@ public final class WorkerCapabilityRpcMain {
         );
         LOG.log(
                 System.Logger.Level.INFO,
-                "Verified 6 Server Scenario RPC outputs, 60 results, and "
+                "Verified 6 Server Task Batch outputs, 60 results, and "
                         + "20 persistent Worker identities in "
                         + proofResultDirectory
         );
@@ -169,33 +185,21 @@ public final class WorkerCapabilityRpcMain {
 
     private static void requireRunSummary(
             RunResult run,
-            String scenarioId,
-            ScenarioSpec scenario,
+            BatchSpec batch,
             String inputFile
     ) {
-        if (!scenarioId.equals(run.scenarioId())
-                || !"succeeded".equals(run.status())
+        if (!"succeeded".equals(run.status())
+                || !batch.workerGroupId().equals(run.workerGroupId())
+                || !batch.eventCode().equals(run.eventCode())
+                || !batch.payloadKey().equals(run.payloadKey())
                 || !inputFile.equals(run.inputFile())
                 || run.inputCount() != 10
                 || run.resultCount() != 10
                 || run.remainingCount() != 0
                 || run.loadRounds() < 1) {
             throw new IllegalStateException(
-                    "Scenario RPC run summary is invalid for "
-                            + scenario.scenarioType()
-            );
-        }
-    }
-
-    private static void requireCreatedScenario(
-            CreateResult created,
-            ScenarioSpec scenario
-    ) {
-        if (!scenario.scenarioType().equals(created.scenarioType())
-                || !"created".equals(created.status())) {
-            throw new IllegalStateException(
-                    "Scenario RPC create summary is invalid for "
-                            + scenario.scenarioType()
+                    "Task Batch run summary is invalid for "
+                            + batch.eventCode()
             );
         }
     }
@@ -210,7 +214,7 @@ public final class WorkerCapabilityRpcMain {
                     .toList();
         } catch (IllegalArgumentException error) {
             throw new IllegalStateException(
-                    "Downloaded Scenario RPC output is invalid: " + label,
+                    "Downloaded Task Batch output is invalid: " + label,
                     error
             );
         }
@@ -268,6 +272,11 @@ public final class WorkerCapabilityRpcMain {
         STRING
     }
 
-    private record ScenarioSpec(String scenarioType, SeedKind seedKind) {
+    private record BatchSpec(
+            String workerGroupId,
+            String eventCode,
+            String payloadKey,
+            SeedKind seedKind
+    ) {
     }
 }

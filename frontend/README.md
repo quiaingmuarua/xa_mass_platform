@@ -1,8 +1,9 @@
 # XA Mass Runtime Viewer
 
-Standalone Vue 3 frontend for the read-only Worker and configured Task Runtime
-views. It is derived from Pure Admin Thin 6.2.0 but deliberately contains no
-login, token, dynamic-permission, fake-user, or example-business path.
+Vue 3 frontend for the read-only Worker and configured Task Runtime views plus
+the Task Batch Lab. It is derived from Pure Admin Thin 6.2.0 but deliberately
+contains no login, token, dynamic-permission, fake-user, or example-business
+path.
 
 ## Requirements
 
@@ -28,7 +29,25 @@ Routes:
 ```text
 /runtime/workers
 /runtime/tasks
+/runtime/task-batches
 ```
+
+The sidebar also links to Server-hosted reference pages:
+
+```text
+/scalar
+/overview.htm
+```
+
+`overview.htm` is maintained as the static source at
+`frontend/public/overview.htm` and is copied to the frontend build root.
+
+The Task Batch page is available only in API mode with the real
+`scenario-workers` Profile. It selects a configured WorkerGroup and advisory
+EventCode, accepts one Payload key and `.txt` file, uploads it, runs the batch,
+and offers the published JSONL as a manual download. The table is
+browser-session memory only. Server input and output files remain under the
+Lab directory after a page refresh.
 
 Use the fixed Mock data only when explicitly requested:
 
@@ -36,7 +55,8 @@ Use the fixed Mock data only when explicitly requested:
 pnpm dev:mock
 ```
 
-Mock mode never activates as a fallback after a real API failure.
+Mock mode never activates as a fallback after a real API failure. It does not
+simulate batch execution and never calls the Task Batch API.
 
 ## Verification
 
@@ -50,4 +70,6 @@ pnpm build
 The Worker page remains an unstable, incomplete sample. The Task page shows
 only Profile-configured descriptors. Neither page exposes or infers Worker
 totals, online state, Task approval/running state, score, lease, transport
-sessions, history, or complete matching results.
+sessions, history, or complete matching results. The Task Batch page mutates
+only through the public Lab API: it does not create or expose Tasks, Worker
+identity, or scheduling state.

@@ -28,7 +28,7 @@ class WorkerCapabilityRpcMainTest {
     Path temporaryDirectory;
 
     @Test
-    void uploadsRunsAndDownloadsSixServerScenarioOutputs()
+    void uploadsRunsAndDownloadsSixServerTaskBatchOutputs()
             throws Exception {
         Path phoneSeed = writeLines(
                 "phone.txt",
@@ -53,26 +53,24 @@ class WorkerCapabilityRpcMainTest {
         createWorkerLab(workerLab);
         Path results = temporaryDirectory.resolve("results");
 
-        try (FakeScenarioServer server = FakeScenarioServer.start()) {
+        try (FakeTaskBatchServer server = FakeTaskBatchServer.start()) {
             WorkerCapabilityRpcMain.main(new String[]{
-                    "--scenario-id=proof-1000",
+                    "--proof-id=proof-1000",
                     "--server-base-url=" + server.baseUri(),
                     "--phone-seed-path=" + phoneSeed,
                     "--string-seed-path=" + stringSeed,
                     "--result-dir=" + results,
                     "--scenario-worker-lab-root=" + workerLab,
-                    "--load-interval-millis=25",
-                    "--maximum-load-rounds=40",
+                    "--maximum-wait-millis=40000",
                     "--request-timeout-millis=10000"
             });
 
             assertEquals(2, server.uploadCount());
-            assertEquals(6, server.createCount());
             assertEquals(6, server.runCount());
-            assertEquals(List.of(25L, 25L, 25L, 25L, 25L, 25L),
-                    server.loadIntervals());
-            assertEquals(List.of(40, 40, 40, 40, 40, 40),
-                    server.maximumLoadRounds());
+            assertEquals(
+                    List.of(40000L, 40000L, 40000L, 40000L, 40000L, 40000L),
+                    server.maximumWaitMillis()
+            );
         }
 
         Path proofResults = results.resolve("proof-1000");
@@ -122,7 +120,7 @@ class WorkerCapabilityRpcMainTest {
         }
     }
 
-    private static final class FakeScenarioServer implements AutoCloseable {
+    private static final class FakeTaskBatchServer implements AutoCloseable {
         private static final Map<String, Expected> EXPECTED = Map.of(
                 "phonenumber.e164",
                 new Expected(
@@ -165,27 +163,22 @@ class WorkerCapabilityRpcMainTest {
         private final HttpServer server;
         private final Map<String, String> inputs = new ConcurrentHashMap<>();
         private final Map<String, String> outputs = new ConcurrentHashMap<>();
-        private final Map<String, String> scenarioTypes =
-                new ConcurrentHashMap<>();
         private final AtomicInteger uploads = new AtomicInteger();
-        private final AtomicInteger creates = new AtomicInteger();
         private final AtomicInteger runs = new AtomicInteger();
-        private final List<Long> loadIntervals =
-                java.util.Collections.synchronizedList(new ArrayList<>());
-        private final List<Integer> maximumLoadRounds =
+        private final List<Long> maximumWaitMillis =
                 java.util.Collections.synchronizedList(new ArrayList<>());
 
-        private FakeScenarioServer(HttpServer server) {
+        private FakeTaskBatchServer(HttpServer server) {
             this.server = server;
         }
 
-        static FakeScenarioServer start() throws IOException {
+        static FakeTaskBatchServer start() throws IOException {
             HttpServer http = HttpServer.create(
                     new InetSocketAddress("127.0.0.1", 0),
                     0
             );
-            FakeScenarioServer fake = new FakeScenarioServer(http);
-            http.createContext("/api/v1/scenario-rpc", fake::handle);
+            FakeTaskBatchServer fake = new FakeTaskBatchServer(http);
+            http.createContext("/api/v1/task-batches", fake::handle);
             http.start();
             return fake;
         }
@@ -194,19 +187,15 @@ class WorkerCapabilityRpcMainTest {
             try {
                 String path = exchange.getRequestURI().getPath();
                 if (path.startsWith(
-                        "/api/v1/scenario-rpc/input-files/"
+                        "/api/v1/task-batches/input-files/"
                 )) {
                     handleUpload(exchange, path);
                 } else if (path.equals(
-                        "/api/v1/scenario-rpc/scenarios"
+                        "/api/v1/task-batches/runs"
                 )) {
-                    handleCreate(exchange);
+                    handleRun(exchange);
                 } else if (path.startsWith(
-                        "/api/v1/scenario-rpc/scenarios/"
-                ) && path.endsWith(":run")) {
-                    handleRun(exchange, path);
-                } else if (path.startsWith(
-                        "/api/v1/scenario-rpc/output-files/"
+                        "/api/v1/task-batches/output-files/"
                 )) {
                     handleDownload(exchange, path);
                 } else {
@@ -232,54 +221,36 @@ class WorkerCapabilityRpcMainTest {
             ));
         }
 
-        private void handleCreate(HttpExchange exchange) throws IOException {
-            Map<String, Object> request = request(exchange);
-            String scenarioType = (String) request.get("scenarioType");
-            if (!EXPECTED.containsKey(scenarioType)) {
-                throw new IllegalArgumentException("unknown scenario type");
-            }
-            String scenarioId = "scenario-" + creates.incrementAndGet();
-            scenarioTypes.put(scenarioId, scenarioType);
-            respond(exchange, 201, Map.of(
-                    "scenarioId", scenarioId,
-                    "scenarioType", scenarioType,
-                    "status", "created"
-            ));
-        }
-
-        private void handleRun(HttpExchange exchange, String path)
+        private void handleRun(HttpExchange exchange)
                 throws IOException {
-            String scenarioId = path.substring(
-                    "/api/v1/scenario-rpc/scenarios/".length(),
-                    path.length() - ":run".length()
-            );
-            String scenarioType = scenarioTypes.get(scenarioId);
-            if (scenarioType == null) {
-                throw new IllegalArgumentException("unknown scenario");
-            }
             Map<String, Object> request = request(exchange);
+            String workerGroupId = (String) request.get("workerGroupId");
+            String eventCode = (String) request.get("eventCode");
+            String payloadKey = (String) request.get("payloadKey");
             String inputFile = (String) request.get("inputFile");
-            long loadInterval = ((Number) request.get(
-                    "loadIntervalMillis"
+            long maximumWait = ((Number) request.get(
+                    "maximumWaitMillis"
             )).longValue();
-            int loadRounds = ((Number) request.get(
-                    "maximumLoadRounds"
-            )).intValue();
-            Expected expected = EXPECTED.get(scenarioType);
+            Expected expected = EXPECTED.get(eventCode);
+            if (expected == null
+                    || !expected.workerGroupId().equals(workerGroupId)
+                    || !expected.inputField().equals(payloadKey)) {
+                throw new IllegalArgumentException("invalid Task Batch");
+            }
             List<String> lines = inputs.get(inputFile).lines().toList();
             int run = runs.incrementAndGet();
-            loadIntervals.add(loadInterval);
-            maximumLoadRounds.add(loadRounds);
-            String outputFile = scenarioId + ".jsonl";
+            maximumWaitMillis.add(maximumWait);
+            String runId = "task-batch-" + run;
+            String outputFile = runId + ".jsonl";
             List<String> encoded = new ArrayList<>();
             for (int index = 0; index < lines.size(); index++) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("workerGroupId", expected.workerGroupId());
                 row.put(
                         "messageId",
-                        "rpc-" + run + "-" + scenarioType + "-" + index
+                        runId + "-" + eventCode + "-" + index
                 );
-                row.put("eventCode", scenarioType);
+                row.put("eventCode", eventCode);
                 row.put(
                         "input",
                         Map.of(expected.inputField(), lines.get(index))
@@ -294,16 +265,19 @@ class WorkerCapabilityRpcMainTest {
                 encoded.add(Jsons.toJson(row));
             }
             outputs.put(outputFile, String.join("\n", encoded) + "\n");
-            respond(exchange, 200, Map.of(
-                    "scenarioId", scenarioId,
-                    "status", "succeeded",
-                    "inputFile", inputFile,
-                    "outputFile", outputFile,
-                    "inputCount", lines.size(),
-                    "resultCount", lines.size(),
-                    "remainingCount", 0,
-                    "loadRounds", 1,
-                    "durationMillis", 1
+            respond(exchange, 200, Map.ofEntries(
+                    Map.entry("runId", runId),
+                    Map.entry("workerGroupId", workerGroupId),
+                    Map.entry("eventCode", eventCode),
+                    Map.entry("payloadKey", payloadKey),
+                    Map.entry("status", "succeeded"),
+                    Map.entry("inputFile", inputFile),
+                    Map.entry("outputFile", outputFile),
+                    Map.entry("inputCount", lines.size()),
+                    Map.entry("resultCount", lines.size()),
+                    Map.entry("remainingCount", 0),
+                    Map.entry("loadRounds", 1),
+                    Map.entry("durationMillis", 1)
             ));
         }
 
@@ -349,20 +323,12 @@ class WorkerCapabilityRpcMainTest {
             return uploads.get();
         }
 
-        int createCount() {
-            return creates.get();
-        }
-
         int runCount() {
             return runs.get();
         }
 
-        List<Long> loadIntervals() {
-            return List.copyOf(loadIntervals);
-        }
-
-        List<Integer> maximumLoadRounds() {
-            return List.copyOf(maximumLoadRounds);
+        List<Long> maximumWaitMillis() {
+            return List.copyOf(maximumWaitMillis);
         }
 
         @Override

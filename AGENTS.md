@@ -99,23 +99,28 @@ Status: current repository handoff.
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
   Worker Run Controller, and does not persist Endpoint URIs or implement a
   second command, result, session, or business-message cache.
-- `scenario_rpc_jvm/` is the Java 21 in-memory Scenario RPC engine consumed
-  only by Server. It owns the finite six-Scenario catalog, line-to-Payload
-  parsing, one batch append contract, pending-only result polling, incremental
-  result sink delivery, stable memory result ordering, and business result
-  verification. It owns no HTTP, file, Spring, Kernel, Redis, Transport, Task,
-  Worker, concurrency scheduler, execution registry, or persistent Scenario
-  state.
+- `server_jvm.taskbatch` is a local Lab application use case, not a resource
+  owner. It accepts one text file plus a configured WorkerGroup, EventCode, and
+  top-level Payload key; resolves the Profile-owned long-lived Task; appends all
+  ordinary Items once; loads only pending Result IDs in bounded rounds; and
+  atomically publishes succeeded or partial JSONL. It does not create, approve,
+  close, or expose Tasks and does not treat advisory WorkerGroup `eventCodes`
+  as Server authorization.
 - `integrations/worker-capability-rpc/` is a Java 21 external acceptance
   client. It uploads the checked text fixtures through the public Server Lab
-  API, creates and runs six Server-owned Scenarios, downloads six JSONL outputs, and proves
-  60 results plus 20 persistent Worker identities. It owns no local Process,
+  API, executes six Task Batches, downloads six JSONL outputs, and proves 60
+  results plus 20 persistent Worker identities. It owns no local Process,
   Parser, concurrency scheduler, WorkerGroup RPC client, Task, or Worker.
-- `frontend/` is the read-only Vue Runtime Viewer. It discovers only the
-  Server Profile's configured WorkerGroup and long-lived Task coordinates,
-  lazily samples Workers for the active Group, and displays bounded Task
-  descriptors without lifecycle or score claims. It has no global resource
-  discovery, Task mutation, authentication, or production deployment role.
+- `frontend/` is the Vue Runtime Viewer and local Task Batch Lab client. Its
+  Worker and Task routes discover only the Server Profile's configured
+  coordinates, lazily sample the active WorkerGroup, and remain read-only
+  without lifecycle or score claims. Its Task Batch route uses the configured
+  resource directory for Group/Event selection, uploads one text input, runs
+  one batch, keeps browser-session summaries, and manually downloads JSONL. It
+  does not create or expose Tasks, Worker identity, scheduling state, global
+  resource discovery, authentication, or production deployment behavior.
+  Its sidebar also links to the same-origin Scalar API reference and publishes
+  the human-facing architecture map from `frontend/public/overview.htm`.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -373,8 +378,8 @@ tag.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
-- The checked-in `scenario-workers` profile is local Lab capability and RPC
-  assembly. It declares advisory WorkerGroup catalogs for the finite
+- The checked-in `scenario-workers` profile is local Lab capability and Task
+  Batch assembly. It declares advisory WorkerGroup catalogs for the finite
   phone-number and string-utility Scenario capabilities plus the externally
   hosted Android demo capability. For every configured Group, Server creates or
   reuses one deterministic long-lived `ITEM_DRIVEN` Task and exposes it only
@@ -426,7 +431,7 @@ WorkerDeliveryConfiguration
 
 ServerWorkerAssemblyConfiguration
   -> WorkerGroup catalog JSON -> WorkerResourceCatalog
-  -> deterministic scenario RPC Task per configured WorkerGroup
+  -> deterministic Profile Task per configured WorkerGroup
   -> WorkerGroup path -> internal Task catalog for Group RPC
   -> opaque Scenario Group JSON + fixed Lab root + Runtime API base URL
   -> ScenarioWorkers.fromJson
@@ -482,7 +487,6 @@ boundary.
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
 ./gradlew :server_jvm:test
-./gradlew :scenario_rpc_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
 git diff --check
 ```
@@ -495,5 +499,5 @@ The repository proof registry is [`TESTING.md`](TESTING.md). `Proof CI`
 separates `:server_jvm:redisOwnerIntegrationTest`,
 `:server_jvm:runtimeBoundaryIntegrationTest`, and the external
 `:integrations:worker-capability-rpc:runRpcScenario` acceptance proof. A
-Scenario or integration-only change must continue to select its owning lane
+Task Batch or integration-only change must continue to select its owning lane
 and reach the stable `Proof Gate`.

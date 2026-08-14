@@ -100,6 +100,7 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"phonenumber.e164\"")
                     .contains("\"string.md5\"")
                     .contains("\"android.demo.state.read\"")
+                    .contains("\"android.demo.battery.read\"")
                     .doesNotContain("\"workers\"");
             assertThat(properties.workerConfigJson())
                     .contains("\"scenario-phone-number-workers\"")

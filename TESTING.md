@@ -15,13 +15,13 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Scenario RPC | The checked profile creates and batch-runs six Server-owned file Scenarios, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
-| Frontend | The read-only Worker and configured Task Runtime views remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
+| Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
-The `Scenario RPC` command uploads two text fixtures, creates six one-shot
-instances, batch-appends and polls the six finite Server Scenarios, downloads
-six successful JSONL outputs, and validates exactly 60 results. The Lab proof
+The `Task Batch` command uploads two text fixtures, executes six explicit
+WorkerGroup/Event/Payload-key batches, downloads six successful JSONL outputs,
+and validates exactly 60 results. The Lab proof
 additionally requires 20 persistent, globally unique canonical Worker IDs. A
 result is not attributed to a particular Worker.
 
@@ -46,7 +46,6 @@ Non-Android JVM contracts:
 .\gradlew.bat --continue `
   :worker_delivery_contract_jvm:build `
   :kernel_jvm:build `
-  :scenario_rpc_jvm:build `
   :transport:worker-core:build `
   :transport:java-worker:build `
   :transport:netty-adapter:build `
@@ -68,7 +67,7 @@ $env:KERNEL_COMMAND_INTEGRATION_URL = "http://127.0.0.1:18080"
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
 
-Scenario RPC process startup and the Android real-device acceptance procedure
+Task Batch process startup and the Android real-device acceptance procedure
 are documented by their owning integration modules:
 
 - [`integrations/worker-capability-rpc`](integrations/worker-capability-rpc/README.md)
@@ -98,6 +97,12 @@ corepack pnpm test
 corepack pnpm build
 ```
 
+The frontend proof keeps UI testing deliberately small. It validates Runtime
+schemas and stores plus the Task Batch Lab's strict response schemas, public
+upload/run/download routes, configured Group/Event selection, and Mock-mode
+no-call boundary. It does not run visual regression or browser
+compatibility suites.
+
 ## CI Selection and Gate
 
 `.github/workflows/proof-ci.yml` runs for every pull request, every main push,
@@ -108,15 +113,15 @@ every selected lane succeeds and every unselected lane is explicitly skipped.
 Representative selection rules:
 
 - documentation-only changes run only selection and `Proof Gate`;
-- Netty Adapter changes run JVM Contracts, Runtime Boundary, and Scenario RPC;
-- Scenario-only changes run JVM Contracts and Scenario RPC;
+- Netty Adapter changes run JVM Contracts, Runtime Boundary, and Task Batch;
+- Task-Batch-only changes run JVM Contracts and Task Batch;
 - Android-only changes run Android Host;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
-  Scenario, and Android proofs;
+  Task Batch, and Android proofs;
 - Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
-  Runtime, and Scenario proofs.
+  Runtime, and Task Batch proofs.
 
-CI uploads failed JUnit reports and process logs for seven days. Scenario RPC
+CI uploads failed JUnit reports and process logs for seven days. Task Batch
 uploads its complete or partial JSONL evidence on every run. Failures are not
 automatically retried.
 

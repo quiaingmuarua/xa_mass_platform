@@ -1,12 +1,12 @@
 xa:
   mass:
-    scenario-rpc:
+    task-batch:
       root: data/rpc-task
       max-input-bytes: 1048576
       max-input-lines: 1000
-      max-scenarios: 100
-      default-load-interval-millis: 100
-      default-maximum-load-rounds: 300
+      result-load-interval-millis: 100
+      default-maximum-wait-millis: 30000
+      maximum-wait-millis: 300000
     worker-delivery:
       adapter:
         instances:
@@ -46,7 +46,8 @@ xa:
           "android-demo-workers": {
             "attributes": {"capability":"android-demo-state"},
             "eventCodes": [
-              "android.demo.state.read"
+              "android.demo.state.read",
+              "android.demo.battery.read"
             ]
           }
         }

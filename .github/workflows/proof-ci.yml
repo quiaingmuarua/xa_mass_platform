@@ -25,7 +25,7 @@ jobs:
       jvm_contracts: ${{ steps.filter.outputs.jvm_contracts }}
       redis_owner: ${{ steps.filter.outputs.redis_owner }}
       runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
-      scenario_rpc: ${{ steps.filter.outputs.scenario_rpc }}
+      task_batch: ${{ steps.filter.outputs.task_batch }}
       android_host: ${{ steps.filter.outputs.android_host }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
@@ -43,7 +43,6 @@ jobs:
               - '.github/scripts/**'
             jvm_contracts:
               - 'kernel_jvm/**'
-              - 'scenario_rpc_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
               - 'worker_delivery_contract_jvm/**'
@@ -90,11 +89,10 @@ jobs:
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
               - '.github/scripts/**'
-            scenario_rpc:
+            task_batch:
               - 'kernel_design/executable_spec/**'
               - 'kernel_design/runtime_server/**'
               - 'kernel_jvm/**'
-              - 'scenario_rpc_jvm/**'
               - 'scenario_workers_jvm/**'
               - 'server_jvm/**'
               - 'worker_delivery_contract_jvm/**'
@@ -198,7 +196,6 @@ jobs:
           ./gradlew --no-daemon --continue
           :worker_delivery_contract_jvm:build
           :kernel_jvm:build
-          :scenario_rpc_jvm:build
           :transport:worker-core:build
           :transport:java-worker:build
           :transport:netty-adapter:build
@@ -363,11 +360,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  scenario-rpc:
-    name: Scenario RPC
+  task-batch:
+    name: Task Batch
     needs: changes
     if: >-
-      needs.changes.outputs.scenario_rpc == 'true' ||
+      needs.changes.outputs.task_batch == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -398,7 +395,7 @@ jobs:
           cache-dependency-path: kernel_design/runtime_server/requirements.txt
       - name: Install Python dependencies
         run: python -m pip install -r kernel_design/runtime_server/requirements.txt
-      - name: Build Scenario acceptance artifacts
+      - name: Build Task Batch acceptance artifacts
         run: >-
           ./gradlew --no-daemon
           :server_jvm:bootJar
@@ -439,23 +436,22 @@ jobs:
           done
           cat scenario-server.log
           exit 1
-      - name: Verify 20 Workers and 6 Server Scenario RPC runs
+      - name: Verify 20 Workers and 6 Server Task Batch runs
         run: >-
           ./gradlew --no-daemon
           :integrations:worker-capability-rpc:runRpcScenario
-          --args="--scenario-id=ci-worker-capability
+          --args="--proof-id=ci-worker-capability
           --result-dir=ci-results
-          --load-interval-millis=100
-          --maximum-load-rounds=300
+          --maximum-wait-millis=30000
           --request-timeout-millis=120000"
-      - name: Summarize Scenario proof
+      - name: Summarize Task Batch proof
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Scenario RPC:** workers=20, scenarios=6, results=60" \
+            echo "- **Task Batch:** workers=20, batches=6, results=60" \
               >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Scenario RPC:** failed; inspect uploaded evidence" \
+            echo "- **Task Batch:** failed; inspect uploaded evidence" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Stop Scenario processes
@@ -475,11 +471,11 @@ jobs:
             done
             kill -9 "$pid" 2>/dev/null || true
           done
-      - name: Upload Scenario evidence
+      - name: Upload Task Batch evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: scenario-rpc-${{ github.run_attempt }}
+          name: task-batch-${{ github.run_attempt }}
           path: |
             scenario-kernel.log
             scenario-server.log
@@ -584,7 +580,7 @@ jobs:
       - jvm-contracts
       - redis-owner
       - runtime-boundary
-      - scenario-rpc
+      - task-batch
       - android-host
       - frontend
     runs-on: ubuntu-24.04
@@ -600,8 +596,8 @@ jobs:
       REDIS_OWNER_RESULT: ${{ needs.redis-owner.result }}
       RUNTIME_BOUNDARY_SELECTED: ${{ needs.changes.outputs.runtime_boundary }}
       RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
-      SCENARIO_RPC_SELECTED: ${{ needs.changes.outputs.scenario_rpc }}
-      SCENARIO_RPC_RESULT: ${{ needs.scenario-rpc.result }}
+      TASK_BATCH_SELECTED: ${{ needs.changes.outputs.task_batch }}
+      TASK_BATCH_RESULT: ${{ needs.task-batch.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
       FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
@@ -645,7 +641,7 @@ jobs:
           check_lane \
             "Runtime Boundary" "$RUNTIME_BOUNDARY_SELECTED" "$RUNTIME_BOUNDARY_RESULT"
           check_lane \
-            "Scenario RPC" "$SCENARIO_RPC_SELECTED" "$SCENARIO_RPC_RESULT"
+            "Task Batch" "$TASK_BATCH_SELECTED" "$TASK_BATCH_RESULT"
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
           check_lane \

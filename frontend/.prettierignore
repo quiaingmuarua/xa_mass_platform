@@ -5,4 +5,5 @@ playwright-report
 test-results
 pnpm-lock.yaml
 docs/*.png
+public/overview.htm
 LICENSE.pure-admin-thin

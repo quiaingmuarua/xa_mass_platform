@@ -68,11 +68,11 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/runtimeview"
     );
-    private static final Path SCENARIO_RPC = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/scenariorpc"
+    private static final Path TASK_BATCH = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/taskbatch"
     );
-    private static final Path SCENARIO_RPC_HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/api/v1/scenariorpc"
+    private static final Path TASK_BATCH_HTTP = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/api/v1/taskbatch"
     );
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
@@ -80,10 +80,10 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .contains("implementation project(':scenario_rpc_jvm')")
                 .contains(
                         "implementation project(':scenario_workers_jvm')"
                 )
+                .doesNotContain("scenario_rpc_jvm")
                 .contains("implementation project(':transport:netty-adapter')")
                 .contains(
                         "testImplementation "
@@ -208,21 +208,20 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void scenarioRpcUsesFiniteEngineAndTaskDataBatchBoundary()
+    void taskBatchUsesOnlyTheProfileTaskAndTaskDataBoundary()
             throws IOException {
-        String scenarioRpc = readSources(SCENARIO_RPC)
-                + readSources(SCENARIO_RPC_HTTP);
-        assertThat(scenarioRpc)
-                .contains("ScenarioRpcEngine")
+        String taskBatch = readSources(TASK_BATCH)
+                + readSources(TASK_BATCH_HTTP);
+        assertThat(taskBatch)
                 .contains("TaskDataService")
                 .contains("WorkerGroupTaskCatalog")
                 .contains("appendTaskItems")
                 .contains("loadTaskItemSuccessResults")
                 .doesNotContain("/api/v1/worker-groups/")
-                .doesNotContain("ScenarioRpcLoopbackClient")
                 .doesNotContain("TaskRpcCallService")
                 .doesNotContain("TaskRpcWaitRegistry")
                 .doesNotContain("TaskRuntime")
+                .doesNotContain("TaskLifecycleCommands")
                 .doesNotContain("TaskResourceCatalog")
                 .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("io.lettuce")
