@@ -8,11 +8,9 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
-import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -35,8 +33,6 @@ class ScenarioWorkersTest {
     private static final String GROUP = "scenario-group";
     private static final String WORKER_ID_1 =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
-    private static final String WORKER_ID_2 =
-            "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3";
 
     @TempDir
     Path temporaryDirectory;
@@ -70,29 +66,20 @@ class ScenarioWorkersTest {
                 GROUP,
                 "client-2",
                 Map.of("region", "second"),
-                Map.of("index.worker.region", "local"),
                 null
         );
         writeWorker(
                 GROUP,
                 "client-1",
                 Map.of("region", "first"),
-                Map.of("index.worker.region", "local"),
                 null
         );
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot("client-1")).thenReturn(snapshot(WORKER_ID_1));
-        when(manager.snapshot("client-2")).thenReturn(snapshot(WORKER_ID_2));
-        List<String> indexedWorkerIds = new ArrayList<>();
         List<ScenarioWorkers.PreparedGroup> preparedGroups =
                 new ArrayList<>();
 
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                (group, workerId, updates, timeout) -> {
-                    indexedWorkerIds.add(workerId);
-                    return acceptedIndexResults(updates);
-                },
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     preparedGroups.add(preparedGroup);
                     return manager;
@@ -114,10 +101,6 @@ class ScenarioWorkersTest {
                 .containsExactly("client-1", "client-2");
         assertThat(prepared.replicas().get(0).workerProperties())
                 .containsEntry("region", "first");
-        assertThat(indexedWorkerIds).containsExactly(
-                WORKER_ID_1,
-                WORKER_ID_2
-        );
 
         InOrder lifecycle = inOrder(manager);
         lifecycle.verify(manager).start();
@@ -130,7 +113,6 @@ class ScenarioWorkersTest {
         AtomicInteger managersCreated = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     managersCreated.incrementAndGet();
                     return mock(JavaWorkerManager.class);
@@ -158,7 +140,6 @@ class ScenarioWorkersTest {
         AtomicInteger managersCreated = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     managersCreated.incrementAndGet();
                     return mock(JavaWorkerManager.class);
@@ -178,7 +159,6 @@ class ScenarioWorkersTest {
                 GROUP,
                 "client-1",
                 Map.of("region", "persistent"),
-                Map.of(),
                 null
         );
         List<Optional<String>> observedIds = new ArrayList<>();
@@ -208,13 +188,12 @@ class ScenarioWorkersTest {
     void groupAssemblyFailureClosesEarlierManagersWithoutStartingAny()
             throws Exception {
         createLabRoot();
-        writeWorker("group-1", "client-1", Map.of(), Map.of(), null);
-        writeWorker("group-2", "client-2", Map.of(), Map.of(), null);
+        writeWorker("group-1", "client-1", Map.of(), null);
+        writeWorker("group-2", "client-2", Map.of(), null);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 twoGroupConfig(),
-                acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     if (groups.incrementAndGet() == 1) {
                         return first;
@@ -235,8 +214,8 @@ class ScenarioWorkersTest {
     void synchronousGroupStartFailureStillAttemptsAndClosesEveryGroup()
             throws Exception {
         createLabRoot();
-        writeWorker("group-1", "client-1", Map.of(), Map.of(), null);
-        writeWorker("group-2", "client-2", Map.of(), Map.of(), null);
+        writeWorker("group-1", "client-1", Map.of(), null);
+        writeWorker("group-2", "client-2", Map.of(), null);
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         JavaWorkerManager second = mock(JavaWorkerManager.class);
         doThrow(new IllegalStateException("start first"))
@@ -244,7 +223,6 @@ class ScenarioWorkersTest {
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 twoGroupConfig(),
-                acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) ->
                         groups.getAndIncrement() == 0 ? first : second
         );
@@ -259,45 +237,12 @@ class ScenarioWorkersTest {
         closeOrder.verify(first).close();
     }
 
-    @Test
-    void missingIdentitySkipsIndexUpdateWithoutFailingStartup()
-            throws Exception {
-        createLabRoot();
-        writeWorker(
-                GROUP,
-                "client-1",
-                Map.of(),
-                Map.of("index.worker.region", "local"),
-                null
-        );
-        JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot("client-1")).thenReturn(snapshot(null));
-        AtomicInteger indexCalls = new AtomicInteger();
-        ScenarioWorkers workers = workers(
-                configWithConnectTimeout(
-                        StringUtilityWorkerEvents.MD5_EVENT_CODE,
-                        5
-                ),
-                (group, workerId, updates, timeout) -> {
-                    indexCalls.incrementAndGet();
-                    return Map.of();
-                },
-                (runtimeApiBaseUrl, preparedGroup) -> manager
-        );
-
-        workers.start();
-        workers.close();
-
-        assertThat(indexCalls).hasValue(0);
-    }
-
     private ScenarioWorkers identityWorkers(
             List<Optional<String>> observedIds
     ) {
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         return workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                acceptedIndexes(),
                 (runtimeApiBaseUrl, preparedGroup) -> {
                     ScenarioWorkers.PreparedReplica replica =
                             preparedGroup.replicas().get(0);
@@ -317,7 +262,6 @@ class ScenarioWorkersTest {
 
     private ScenarioWorkers workers(
             String json,
-            ScenarioWorkerIndexClient indexes,
             ScenarioWorkers.GroupManagerFactory managerFactory
     ) {
         return new ScenarioWorkers(
@@ -325,7 +269,6 @@ class ScenarioWorkersTest {
                 labRoot().toString(),
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
-                indexes,
                 managerFactory
         );
     }
@@ -338,7 +281,6 @@ class ScenarioWorkersTest {
             String workerGroupId,
             String clientWorkerKey,
             Map<String, Object> properties,
-            Map<String, Object> indexes,
             String workerId
     ) throws Exception {
         Path group = labRoot().resolve(workerGroupId);
@@ -349,7 +291,6 @@ class ScenarioWorkersTest {
             value.put("workerId", workerId);
         }
         value.put("workerProperties", properties);
-        value.put("indexedPropertyUpdates", indexes);
         Files.writeString(
                 group.resolve(clientWorkerKey + ".json"),
                 Jsons.toJson(value),
@@ -361,31 +302,6 @@ class ScenarioWorkersTest {
         return temporaryDirectory.resolve("data/scenario-workers");
     }
 
-    private static WorkerLifecycle.Snapshot snapshot(String workerId) {
-        return new WorkerLifecycle.Snapshot(
-                WorkerLifecycle.State.RUNNING,
-                workerId,
-                null,
-                null
-        );
-    }
-
-    private static ScenarioWorkerIndexClient acceptedIndexes() {
-        return (group, workerId, updates, timeout) ->
-                acceptedIndexResults(updates);
-    }
-
-    private static Map<String, ScenarioWorkerIndexResult>
-    acceptedIndexResults(Map<String, Object> updates) {
-        Map<String, ScenarioWorkerIndexResult> results =
-                new LinkedHashMap<>();
-        updates.keySet().forEach(field -> results.put(
-                field,
-                new ScenarioWorkerIndexResult("ok", null)
-        ));
-        return results;
-    }
-
     private static Map<String, WorkerEventDefinition<?>> definitions() {
         WorkerEventDefinition<?> definition =
                 StringUtilityWorkerEvents.definitions().get(0);
@@ -393,20 +309,11 @@ class ScenarioWorkersTest {
     }
 
     private static String config(String eventCode) {
-        return configWithConnectTimeout(eventCode, 30_000);
-    }
-
-    private static String configWithConnectTimeout(
-            String eventCode,
-            long connectTimeoutMillis
-    ) {
         return Jsons.toJson(Map.of(
                 GROUP,
                 Map.of(
                         "eventCodes",
-                        List.of(eventCode),
-                        "connectTimeoutMillis",
-                        connectTimeoutMillis
+                        List.of(eventCode)
                 )
         ));
     }

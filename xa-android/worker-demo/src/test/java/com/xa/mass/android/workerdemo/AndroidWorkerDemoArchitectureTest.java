@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config;
 public class AndroidWorkerDemoArchitectureTest {
 
     @Test
-    public void appOnlyHostsAndroidWorkerAndDemoCapabilities()
+    public void appHostsWorkerCapabilitiesAndLocalHttpProbe()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String build = read(project.resolve("build.gradle"));
@@ -54,6 +54,9 @@ public class AndroidWorkerDemoArchitectureTest {
         ));
         assertTrue(build.contains(
                 "project(':xa-android:capabilities')"
+        ));
+        assertTrue(build.contains(
+                "project(':xa-android:capability-http')"
         ));
         assertFalse(build.contains("project(':transport:worker-core')"));
         assertFalse(build.contains("project(':transport:java-worker')"));
@@ -97,6 +100,9 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "private AndroidDemoCapabilities demoCapabilities;"
         ));
+        assertTrue(application.contains(
+                "private AndroidCapabilityHttpServer capabilityHttpServer;"
+        ));
         assertTrue(application.contains("AndroidWorker.create("));
         assertFalse(application.contains(
                 "AndroidWorker." + "builder("
@@ -107,6 +113,13 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "new AndroidDemoCapabilities("
         ));
+        assertTrue(application.contains(
+                "AndroidCapabilityHttpServer.create("
+        ));
+        assertTrue(application.contains("capabilityHttpServer.start();"));
+        assertTrue(application.contains("catch (IOException error)"));
+        assertTrue(application.indexOf("capabilityHttpServer.start();")
+                < application.indexOf("worker.start();"));
         assertTrue(application.contains("worker.start();"));
         assertFalse(Files.exists(project.resolve(
                 "src/main/java/com/xa/mass/android/workerdemo/"
@@ -126,6 +139,7 @@ public class AndroidWorkerDemoArchitectureTest {
         assertFalse(activity.contains("AndroidWorker.builder"));
         assertFalse(activity.contains("OkHttpWorkerControlClient"));
         assertFalse(activity.contains("WorkerEventDefinition"));
+        assertFalse(activity.contains("AndroidCapabilityHttpServer"));
         assertFalse(activity.contains("worker.close()"));
         assertFalse(section(
                 activity,

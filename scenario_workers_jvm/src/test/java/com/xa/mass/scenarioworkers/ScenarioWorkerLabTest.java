@@ -167,8 +167,7 @@ class ScenarioWorkerLabTest {
                 workerGroupId,
                 List.of("event.one"),
                 Duration.ofSeconds(1),
-                TextMessageReconnectPolicy.defaults(),
-                Duration.ofSeconds(1)
+                TextMessageReconnectPolicy.defaults()
         );
     }
 

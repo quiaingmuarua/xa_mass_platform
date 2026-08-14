@@ -508,6 +508,8 @@ jobs:
           :transport:android-worker:assembleDebug
           :xa-android:capabilities:testDebugUnitTest
           :xa-android:capabilities:assembleDebug
+          :xa-android:capability-http:testDebugUnitTest
+          :xa-android:capability-http:assembleDebug
           :xa-android:worker-demo:testDebugUnitTest
           :xa-android:worker-demo:assembleDebug
       - name: Verify Android Task RPC host driver
@@ -531,6 +533,8 @@ jobs:
             transport/android-worker/build/reports/tests/testDebugUnitTest/**
             xa-android/capabilities/build/test-results/testDebugUnitTest/**
             xa-android/capabilities/build/reports/tests/testDebugUnitTest/**
+            xa-android/capability-http/build/test-results/testDebugUnitTest/**
+            xa-android/capability-http/build/reports/tests/testDebugUnitTest/**
             xa-android/worker-demo/build/test-results/testDebugUnitTest/**
             xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
             build/reports/problems/**

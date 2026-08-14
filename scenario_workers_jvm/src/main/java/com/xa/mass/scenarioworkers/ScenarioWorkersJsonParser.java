@@ -15,8 +15,7 @@ final class ScenarioWorkersJsonParser {
     private static final Set<String> GROUP_FIELDS = Set.of(
             "eventCodes",
             "requestTimeoutMillis",
-            "reconnectPolicy",
-            "connectTimeoutMillis"
+            "reconnectPolicy"
     );
     private static final Set<String> RECONNECT_POLICY_FIELDS = Set.of(
             "maxUnstableAttempts",
@@ -52,12 +51,7 @@ final class ScenarioWorkersJsonParser {
                             "requestTimeoutMillis",
                             10_000L
                     )),
-                    parseReconnectPolicy(group),
-                    Duration.ofMillis(optionalPositiveLong(
-                            group,
-                            "connectTimeoutMillis",
-                            15_000L
-                    ))
+                    parseReconnectPolicy(group)
             ));
         });
         return List.copyOf(configs);

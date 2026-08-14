@@ -34,6 +34,7 @@ android {
 dependencies {
     implementation project(':transport:android-worker')
     implementation project(':xa-android:capabilities')
+    implementation project(':xa-android:capability-http')
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'

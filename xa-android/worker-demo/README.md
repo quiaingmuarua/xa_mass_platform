@@ -10,15 +10,19 @@ AndroidWorkerDemoApplication
   -> AndroidDemoCapabilities
      -> android.demo.state.read
      -> android.demo.battery.read
+  -> AndroidCapabilityHttpServer
+     -> 127.0.0.1:18084
+     -> direct calls through the same capability Definitions
 
 MainActivity
   -> observes WorkerLifecycle
   -> observes capability Snapshot
 ```
 
-The App depends only on `transport:android-worker` and
-`:xa-android:capabilities`. It does not depend on Server, Kernel, Adapter,
-Redis, Scenario Workers, or Task implementation code.
+The App depends only on `transport:android-worker`,
+`:xa-android:capabilities`, and `:xa-android:capability-http`. It does not
+depend on Server, Kernel, Adapter, Redis, Scenario Workers, or Task
+implementation code.
 
 ## Runtime behavior
 
@@ -29,10 +33,12 @@ the shared Worker Core mechanism. The App stores no Endpoint URI and does not
 interpret network connection state as Worker online truth.
 
 The Application separately owns `AndroidDemoCapabilities` and passes its two
-immutable Definitions into `AndroidWorker.create(...)`. The Activity only
-observes Worker lifecycle and capability state while visible. Leaving the
-Activity does not stop the Worker; Android may still kill the process because
-this demo installs no Service or WorkManager.
+immutable Definitions into both `AndroidWorker.create(...)` and the local
+Capability HTTP probe. HTTP startup failure is diagnostic-only and does not
+prevent the Worker from starting. The Activity only observes Worker lifecycle,
+capability state, and the fixed probe endpoint while visible. Leaving the
+Activity stops neither owner; Android may still kill the process because this
+demo installs no Service or WorkManager.
 
 The State command returns package/device data plus a persistent local counter.
 The Battery command reads `BatteryManager` once per command and returns
@@ -54,6 +60,35 @@ data before registering a replacement identity:
 
 ```powershell
 adb shell pm clear com.xa.mass.integration.androidworker
+```
+
+## Device-local capability probe
+
+The App automatically listens only on device loopback port `18084`. This path
+does not require Redis, Python Kernel, Java Server, or an Adapter. Install and
+open the App, then forward a host loopback port to the device:
+
+```powershell
+adb forward tcp:18084 tcp:18084
+curl.exe http://127.0.0.1:18084/health
+curl.exe http://127.0.0.1:18084/events
+curl.exe -X POST `
+  -H "Content-Type: application/json" `
+  -d "{}" `
+  http://127.0.0.1:18084/events/android.demo.state.read:call
+curl.exe -X POST `
+  -H "Content-Type: application/json" `
+  -d "{}" `
+  http://127.0.0.1:18084/events/android.demo.battery.read:call
+```
+
+These calls update the same processed-command count and last-event observation
+shown by the App because HTTP and Worker delivery share one capability
+instance. They prove local capability execution only. Remove the forwarding
+rule when finished:
+
+```powershell
+adb forward --remove tcp:18084
 ```
 
 ## Real device run
@@ -112,6 +147,8 @@ Worker.
 ```powershell
 .\gradlew.bat :xa-android:worker-demo:testDebugUnitTest
 .\gradlew.bat :xa-android:worker-demo:assembleDebug
+.\gradlew.bat :xa-android:capability-http:testDebugUnitTest
+.\gradlew.bat :xa-android:capability-http:assembleDebug
 python -m unittest discover `
   -s xa-android/worker-demo/host `
   -p "test_*.py"

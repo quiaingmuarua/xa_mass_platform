@@ -24,21 +24,18 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
     private static final Set<String> FIELDS = Set.of(
             "schemaVersion",
             "workerId",
-            "workerProperties",
-            "indexedPropertyUpdates"
+            "workerProperties"
     );
 
     private final Path path;
     private final String clientWorkerKey;
     private final Map<String, Object> workerProperties;
-    private final Map<String, Object> indexedPropertyUpdates;
     private String workerId;
 
     private ScenarioWorkerStateFile(
             Path path,
             String clientWorkerKey,
             Map<String, Object> workerProperties,
-            Map<String, Object> indexedPropertyUpdates,
             String workerId
     ) {
         this.path = path;
@@ -46,10 +43,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
         this.workerProperties = immutableJsonMap(
                 workerProperties,
                 "workerProperties"
-        );
-        this.indexedPropertyUpdates = immutableJsonMap(
-                indexedPropertyUpdates,
-                "indexedPropertyUpdates"
         );
         this.workerId = workerId;
     }
@@ -96,17 +89,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
                 "workerProperties",
                 normalized
         );
-        Map<String, Object> indexedPropertyUpdates = optionalObject(
-                value,
-                "indexedPropertyUpdates",
-                normalized
-        );
-        indexedPropertyUpdates.keySet().forEach(field -> {
-            if (!field.startsWith("index.")
-                    || field.length() == "index.".length()) {
-                throw invalid(normalized, null);
-            }
-        });
 
         String workerId = null;
         if (value.containsKey("workerId")) {
@@ -123,7 +105,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
                 normalized,
                 clientWorkerKey,
                 workerProperties,
-                indexedPropertyUpdates,
                 workerId
         );
     }
@@ -134,10 +115,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
 
     Map<String, Object> workerProperties() {
         return workerProperties;
-    }
-
-    Map<String, Object> indexedPropertyUpdates() {
-        return indexedPropertyUpdates;
     }
 
     @Override
@@ -166,10 +143,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
         persisted.put("schemaVersion", SCHEMA_VERSION);
         persisted.put("workerId", resolvedWorkerId);
         persisted.put("workerProperties", workerProperties);
-        persisted.put(
-                "indexedPropertyUpdates",
-                indexedPropertyUpdates
-        );
         writeJson(path, persisted);
         workerId = resolvedWorkerId;
     }

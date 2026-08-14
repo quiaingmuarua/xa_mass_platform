@@ -22,7 +22,6 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final URI runtimeApiBaseUrl;
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerLab lab;
-    private final ScenarioWorkerIndexUpdater indexUpdater;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
 
@@ -35,7 +34,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<ScenarioWorkerGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>>
                     availableExtensionsByEventCode,
-            ScenarioWorkerIndexClient indexClient,
             GroupManagerFactory groupManagerFactory
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
@@ -49,7 +47,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                 )
         );
         lab = new ScenarioWorkerLab(sandboxRoot);
-        indexUpdater = new ScenarioWorkerIndexUpdater(indexClient);
         this.groupManagerFactory = Objects.requireNonNull(
                 groupManagerFactory,
                 "groupManagerFactory"
@@ -64,14 +61,11 @@ public final class ScenarioWorkers implements AutoCloseable {
         try {
             List<ScenarioWorkerGroupConfig> configs =
                     ScenarioWorkersJsonParser.parse(capabilityAssemblyJson);
-            ScenarioWorkerIndexClient indexClient =
-                    new HttpScenarioWorkerIndexClient(runtimeApiBaseUrl);
             return new ScenarioWorkers(
                     runtimeApiBaseUrl,
                     sandboxRoot,
                     configs,
                     availableDefinitionExtensions(),
-                    indexClient,
                     ScenarioWorkers::createManager
             );
         } catch (IllegalArgumentException error) {
@@ -101,7 +95,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                 if (startFailure != null) {
                     throw startFailure;
                 }
-                updateIndexes();
             }
             started = true;
         } catch (RuntimeException failure) {
@@ -168,7 +161,6 @@ public final class ScenarioWorkers implements AutoCloseable {
                 replicas.add(new PreparedReplica(
                         worker.clientWorkerKey(),
                         worker.workerProperties(),
-                        worker.indexedPropertyUpdates(),
                         worker
                 ));
             }
@@ -206,16 +198,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             }
         }
         return failure;
-    }
-
-    private void updateIndexes() {
-        for (ManagedGroup managedGroup : managedGroups) {
-            indexUpdater.update(
-                    managedGroup.preparedGroup().group().config(),
-                    managedGroup.preparedGroup().replicas(),
-                    managedGroup.manager()
-            );
-        }
     }
 
     private RuntimeException closeManagers(RuntimeException failure) {
@@ -386,7 +368,6 @@ public final class ScenarioWorkers implements AutoCloseable {
     record PreparedReplica(
             String clientWorkerKey,
             Map<String, Object> workerProperties,
-            Map<String, Object> indexedPropertyUpdates,
             WorkerIdentityStore identityStore
     ) {
     }

@@ -25,8 +25,8 @@ Status: current repository handoff.
   owns the checked-in phone-number and string-utility event definitions,
   strict configured-Group directory discovery, per-Group initialization based
   only on directory existence, one persistent JSON per Lab Worker, real
-  WebSocket Worker construction, public-HTTP identity registration, explicit
-  best-effort Property Index updates, and aggregate resource cleanup. Its
+  WebSocket Worker construction, public-HTTP identity registration, and
+  aggregate resource cleanup. Its
   aggregate start does not wait for an initial WebSocket connection. It is not
   a Kernel owner, Server profile, Adapter, plugin SPI, or independently
   deployed application.
@@ -105,12 +105,19 @@ Status: current repository handoff.
   state, and one-shot Android data access. It depends on Worker Core, not on
   Android Worker, Server, Kernel, Adapter, Redis, or a Host UI. It is not a
   plugin SPI, capability catalog, Worker lifecycle owner, or Xposed Hook owner.
+- `xa-android/capability-http/` is the loopback-only Android Lab probe for
+  concrete `TASK` Definitions. Its public facade owns one NanoHTTPD listener
+  at `127.0.0.1:18084` and adapts JSON-object calls into the shared Worker Core
+  dispatcher. It proves local resolver and Handler execution only; it owns no
+  Worker identity, connection, Task, scheduling, Adapter, or Result-routing
+  truth, and NanoHTTPD is not part of its public API.
 - `xa-android/worker-demo/` is the installable Android demo Host. Its
   Application owns one `AndroidWorker`, one concrete Android capability set,
-  device Worker Properties, and process lifetime; its Activity only observes
-  the two owners and issues explicit local controls. The App uses the public
-  Runtime API and Adapter path and owns no Task control, scheduling, Worker
-  identity implementation, or transport mechanism.
+  one best-effort Capability HTTP probe, device Worker Properties, and process
+  lifetime; its Activity only observes those owners and issues explicit local
+  controls. The HTTP and Worker paths receive the same immutable Definitions.
+  The App uses the public Runtime API and Adapter path and owns no Task control,
+  scheduling, Worker identity implementation, or transport mechanism.
 - `server_jvm.taskbatch` is a local Lab application use case, not a resource
   owner. It accepts one text file plus a configured WorkerGroup, EventCode, and
   top-level Payload key; resolves the Profile-owned long-lived Task; appends all
@@ -354,11 +361,17 @@ tag.
   accept or expose `AndroidWorker`, Worker identity, Endpoint, Task, Client,
   Transport, Executor, or Scheduler state. Android data reads occur inside the
   owning command Handler and must not create a background monitor.
-- `xa-android/worker-demo` may depend on `transport/android-worker` and
-  `xa-android/capabilities`. The Application is the assembly and lifecycle
-  owner; the Activity must not construct Worker protocol collaborators. Its
-  stable application ID and capability preference names preserve installed
-  Worker identity and demo state across package refactors.
+- `xa-android/capability-http` may depend on Android APIs, NanoHTTPD, and
+  `transport/worker-core`. It accepts only unique `TASK` Definitions, binds
+  only device loopback, and must keep NanoHTTPD, local DeliveryCommand details,
+  and listener threads behind its facade. It must not depend on Android Worker,
+  Server, Kernel, Adapter, Redis, Scenario, or AgentForge implementations.
+- `xa-android/worker-demo` may depend on `transport/android-worker`,
+  `xa-android/capabilities`, and `xa-android/capability-http`. The Application
+  is the assembly and lifecycle owner; Capability HTTP startup failure remains
+  nonfatal, and the Activity must not construct Worker protocol or HTTP
+  collaborators. Its stable application ID and capability preference names
+  preserve installed Worker identity and demo state across package refactors.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
@@ -389,12 +402,10 @@ tag.
   The aggregate creates one `JavaWorkerManager` per non-empty configured
   WorkerGroup;
   every Manager owns one bounded daemon Platform shared only by its replicas.
-  Scenario owns the local Lab and Property Index requests; closing Managers
-  preserves every Worker JSON. Aggregate `start()` never waits
-  for first Bind and does not expose Manager reconciliation. A configured
-  Property Index update may wait for the Worker ID within the existing
-  connection-timeout budget, then logs `14010` and skips when identity is
-  still unavailable. The Lab scans only direct JSON children of configured
+  Scenario owns the local Lab; closing Managers preserves every Worker JSON.
+  Aggregate `start()` never waits for first Bind and does not expose Manager
+  reconciliation. Scenario Worker files contain no Property Index update
+  requests. The Lab scans only direct JSON children of configured
   Group directories, supports at most 100 Workers per Group, and has no file
   watcher or multi-process lock. Changing replica topology requires editing
   files and restarting the process.
@@ -466,7 +477,6 @@ scenario_workers_jvm
   -> public Worker Register and Bind plus platform-issued WorkerId recovery
   -> Adapter-directed worker.connection.identify Report carrying
      WORKER + workerId source identity through the returned Adapter URI
-  -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
   -> one JavaWorkerManager per WorkerGroup -> fixed JavaWorker replicas
   -> one internal Manager Platform -> group-local shared network resources
@@ -512,6 +522,7 @@ python -m compileall -q kernel_design/executable_spec
 ./gradlew :server_jvm:test
 ./gradlew :integrations:worker-capability-rpc:test
 ./gradlew :xa-android:capabilities:testDebugUnitTest
+./gradlew :xa-android:capability-http:testDebugUnitTest
 ./gradlew :xa-android:worker-demo:testDebugUnitTest
 git diff --check
 ```

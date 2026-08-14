@@ -616,8 +616,8 @@ The two JVM Scenario groups discover their replicas from the fixed local Lab roo
 `data/scenario-workers`; `capability-assembly-json` contains no Worker entries.
 The third catalog entry, `android-demo-workers`, is reserved for the external
 Android App and is deliberately absent from `capability-assembly-json`.
-Omitted runtime fields use a 10-second request timeout, the default bounded
-connection policy, and a 15-second initial-connect timeout.
+Omitted runtime fields use a 10-second request timeout and the default bounded
+connection policy.
 
 The Lab applies one rule independently to each configured WorkerGroup. A
 missing `data/scenario-workers/{workerGroupId}` directory is initialized from
@@ -643,8 +643,7 @@ RPC Task, starts configured Adapters, then invokes one aggregate
 exactly matches the Profile contract; a conflict fails startup. Scenario
 preflights the configured Group directories,
 loads or registers each persistent Worker ID, binds it with its complete Worker
-Properties, starts every real WebSocket transport against the returned URI, and
-applies best-effort Index updates through the public Runtime Resource HTTP API.
+Properties, and starts every real WebSocket transport against the returned URI.
 Aggregate start does not wait for initial Adapter verification. Adapter route
 verification only compares the persisted Endpoint Binding; successful
 verification is followed by process-local connection activation.
@@ -653,7 +652,8 @@ entries and persistent RPC Tasks are not rolled back, closed, or removed.
 
 Every Worker owns one file named `{clientWorkerKey}.json` under its configured
 Group directory. It contains schema version 1, optional persisted `workerId`,
-the complete `workerProperties`, and explicit `indexedPropertyUpdates`.
+and the complete `workerProperties`. Scenario Workers do not configure or
+update Property Indexes.
 Register writes the first Worker ID back to that same file atomically; later
 starts reuse it and Bind again. File edits take effect on the next Server start.
 The Lab is writable local test state, not a security boundary or multi-process

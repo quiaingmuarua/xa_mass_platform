@@ -50,7 +50,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
     }
 
     @Test
-    void moduleUsesPublicResourceHttpAndWorkerTransportOnly()
+    void moduleOwnsOnlyTheLabAndWorkerTransportAssembly()
             throws Exception {
         String sources = readSources(Path.of("src/main/java"));
         String build = Files.readString(Path.of("build.gradle"));
@@ -63,7 +63,6 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("WorkerIdentityStore")
                 .contains("ScenarioWorkerLab")
                 .contains("ScenarioWorkerStateFile")
-                .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
         assertThat(sources)
                 .doesNotContain("HostResources")
@@ -74,6 +73,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("interface WorkerReference")
                 .doesNotContain("FileLock")
                 .doesNotContain("worker.lock")
+                .doesNotContain("java.net.http.HttpClient")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)

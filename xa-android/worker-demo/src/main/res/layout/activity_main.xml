@@ -65,6 +65,24 @@
             android:textIsSelectable="true"
             android:textSize="14sp" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Capability HTTP"
+            android:textColor="#52645E"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/capabilityHttpValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="http://127.0.0.1:18084"
+            android:textColor="#102A22"
+            android:textIsSelectable="true"
+            android:textSize="14sp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

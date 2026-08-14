@@ -46,8 +46,8 @@ individual Workers:
 ```
 
 `reconnectPolicy` is optional as a whole and otherwise strict: all three fields
-are required and unknown fields are rejected. Omitted request and connect
-timeouts use 10 and 15 seconds. The old inline `workers`, `sandboxDirectory`,
+are required and unknown fields are rejected. The omitted request timeout uses
+10 seconds. The old inline `workers`, `sandboxDirectory`, index-update,
 retry-policy, and Adapter URI fields are rejected.
 
 ## Persistent Worker Lab
@@ -102,15 +102,12 @@ snapshot:
   "workerProperties": {
     "runtime": "java",
     "region": "local"
-  },
-  "indexedPropertyUpdates": {
-    "index.worker.region": "local"
   }
 }
 ```
 
 `schemaVersion` must be integer `1`; `workerId` is optional until first
-Register; both map fields default to `{}`; unknown fields are rejected. The
+Register; `workerProperties` defaults to `{}`; unknown fields are rejected. The
 filename and parent directory are the only client-key and group coordinates,
 so those values are not duplicated inside the JSON. The first platform-issued
 Worker ID is written back through a temporary file and atomic replacement. A
@@ -128,18 +125,16 @@ one JavaWorkerManager for each non-empty configured WorkerGroup
 -> Bind workerId as WEBSOCKET with the complete Properties snapshot
 -> connect through the public Adapter URI returned by Bind
 -> return without waiting for initial Adapter verification
--> apply configured Property Index updates as best effort
 ```
 
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
 Worker until an explicit later Host start; Scenario does not expose Manager
-reconciliation. Index updates may wait for Worker identity within the existing
-connect timeout and otherwise log `14010` and skip.
+reconciliation. Scenario Workers do not configure or update Property Indexes.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
-unchanged. Persistent Worker means stable identity, Properties, index requests,
-and replica topology across Server restarts; it does not persist Endpoint URI,
+unchanged. Persistent Worker means stable identity, Properties, and replica
+topology across Server restarts; it does not persist Endpoint URI,
 Binding, Channels, connection state, Commands, Results, Tasks, or scores. File
 edits take effect only on the next process start. One Lab root supports one
 Scenario Server process.

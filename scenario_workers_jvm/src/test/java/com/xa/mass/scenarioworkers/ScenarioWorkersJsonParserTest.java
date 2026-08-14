@@ -24,8 +24,7 @@ class ScenarioWorkersJsonParserTest {
                               "maxUnstableAttempts":6,
                               "reconnectIntervalMillis":300,
                               "stableConnectionDurationMillis":5000
-                            },
-                            "connectTimeoutMillis":4000
+                            }
                           }
                         }
                         """);
@@ -39,7 +38,6 @@ class ScenarioWorkersJsonParserTest {
         assertThat(phone.requestTimeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(phone.reconnectPolicy().maxUnstableAttempts())
                 .isEqualTo(20);
-        assertThat(phone.connectTimeout()).isEqualTo(Duration.ofSeconds(15));
 
         ScenarioWorkerGroupConfig strings = configs.get(1);
         assertThat(strings.requestTimeout()).isEqualTo(Duration.ofSeconds(2));
@@ -49,7 +47,6 @@ class ScenarioWorkersJsonParserTest {
                 .isEqualTo(Duration.ofMillis(300));
         assertThat(strings.reconnectPolicy().stableConnectionDuration())
                 .isEqualTo(Duration.ofSeconds(5));
-        assertThat(strings.connectTimeout()).isEqualTo(Duration.ofSeconds(4));
     }
 
     @Test

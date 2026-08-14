@@ -1,0 +1,37 @@
+plugins {
+    id 'com.android.library'
+}
+
+base {
+    archivesName.set('xa-mass-android-capability-http')
+}
+
+android {
+    namespace = 'com.xa.mass.android.capabilityhttp'
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+}
+
+dependencies {
+    api project(':transport:worker-core')
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
+}

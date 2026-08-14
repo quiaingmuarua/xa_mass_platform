@@ -2,9 +2,11 @@ package com.xa.mass.android.workerdemo;
 
 import android.app.Application;
 
+import com.xa.mass.android.capabilityhttp.AndroidCapabilityHttpServer;
 import com.xa.mass.android.capabilities.AndroidDemoCapabilities;
 import com.xa.mass.worker.android.AndroidWorker;
 
+import java.io.IOException;
 import java.net.URI;
 
 public final class AndroidWorkerDemoApplication extends Application {
@@ -13,6 +15,8 @@ public final class AndroidWorkerDemoApplication extends Application {
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
+    private AndroidCapabilityHttpServer capabilityHttpServer;
+    private String capabilityHttpDiagnostic;
 
     @Override
     public void onCreate() {
@@ -30,6 +34,15 @@ public final class AndroidWorkerDemoApplication extends Application {
                 deviceProperties,
                 demoCapabilities.definitions()
         );
+        capabilityHttpServer = AndroidCapabilityHttpServer.create(
+                demoCapabilities.definitions()
+        );
+        try {
+            capabilityHttpServer.start();
+        } catch (IOException error) {
+            capabilityHttpDiagnostic = diagnosticMessage(error);
+            capabilityHttpServer.close();
+        }
         worker.start();
     }
 
@@ -51,11 +64,36 @@ public final class AndroidWorkerDemoApplication extends Application {
         return demoCapabilities;
     }
 
+    boolean capabilityHttpRunning() {
+        return capabilityHttpServer != null
+                && capabilityHttpServer.isRunning();
+    }
+
+    URI capabilityHttpEndpoint() {
+        return capabilityHttpServer == null
+                ? null
+                : capabilityHttpServer.endpoint();
+    }
+
+    String capabilityHttpDiagnostic() {
+        return capabilityHttpDiagnostic;
+    }
+
     @Override
     public void onTerminate() {
+        if (capabilityHttpServer != null) {
+            capabilityHttpServer.close();
+        }
         if (worker != null) {
             worker.close();
         }
         super.onTerminate();
+    }
+
+    private static String diagnosticMessage(IOException error) {
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty()
+                ? error.getClass().getSimpleName()
+                : message;
     }
 }

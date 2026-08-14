@@ -22,9 +22,11 @@ public final class MainActivity extends Activity {
 
     private WorkerLifecycle worker;
     private AndroidDemoCapabilities demoCapabilities;
+    private AndroidWorkerDemoApplication application;
     private TextView statusValue;
     private TextView workerIdValue;
     private TextView endpointValue;
+    private TextView capabilityHttpValue;
     private TextView counterValue;
     private TextView processedValue;
     private TextView lastEventValue;
@@ -37,7 +39,7 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         bindViews();
-        AndroidWorkerDemoApplication application =
+        application =
                 (AndroidWorkerDemoApplication) getApplication();
         worker = application.worker();
         demoCapabilities = application.demoCapabilities();
@@ -74,6 +76,7 @@ public final class MainActivity extends Activity {
         statusValue = findViewById(R.id.statusValue);
         workerIdValue = findViewById(R.id.workerIdValue);
         endpointValue = findViewById(R.id.endpointValue);
+        capabilityHttpValue = findViewById(R.id.capabilityHttpValue);
         counterValue = findViewById(R.id.counterValue);
         processedValue = findViewById(R.id.processedValue);
         lastEventValue = findViewById(R.id.lastEventValue);
@@ -101,6 +104,7 @@ public final class MainActivity extends Activity {
         endpointValue.setText(workerSnapshot.endpointUri() == null
                 ? "Not bound"
                 : workerSnapshot.endpointUri().toString());
+        capabilityHttpValue.setText(capabilityHttpStatus());
         counterValue.setText("Counter: " + demoSnapshot.counter());
         processedValue.setText(String.valueOf(
                 demoSnapshot.processedCommands()
@@ -122,6 +126,16 @@ public final class MainActivity extends Activity {
                 == WorkerLifecycle.State.STOPPED;
         connectButton.setEnabled(restartable);
         disconnectButton.setEnabled(!restartable);
+    }
+
+    private String capabilityHttpStatus() {
+        if (application.capabilityHttpRunning()) {
+            return application.capabilityHttpEndpoint().toString();
+        }
+        return "Unavailable: " + orFallback(
+                application.capabilityHttpDiagnostic(),
+                "startup failed"
+        );
     }
 
     private void copyWorkerId() {

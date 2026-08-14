@@ -33,11 +33,6 @@ class ScenarioWorkerStateFileTest {
         assertThat(first.loadWorkerId()).isEmpty();
         assertThat(first.workerProperties())
                 .containsExactlyEntriesOf(Map.of("region", "initial"));
-        assertThat(first.indexedPropertyUpdates())
-                .containsExactlyEntriesOf(Map.of(
-                        "index.worker.region",
-                        "local"
-                ));
 
         first.saveWorkerId(WORKER_ID);
         first.saveWorkerId(WORKER_ID);
@@ -71,7 +66,7 @@ class ScenarioWorkerStateFileTest {
     }
 
     @Test
-    void rejectsUnknownFieldsVersionsAndInvalidIndexes() throws Exception {
+    void rejectsUnknownFieldsAndVersions() throws Exception {
         Path path = temporaryDirectory.resolve("client-1.json");
         Files.writeString(
                 path,
@@ -117,10 +112,6 @@ class ScenarioWorkerStateFileTest {
             value.put("workerId", workerId);
         }
         value.put("workerProperties", properties);
-        value.put(
-                "indexedPropertyUpdates",
-                Map.of("index.worker.region", "local")
-        );
         Files.writeString(
                 path,
                 Jsons.toJson(value),

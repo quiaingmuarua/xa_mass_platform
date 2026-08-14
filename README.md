@@ -59,8 +59,10 @@ The repository contains seven active areas:
   Server profile composes one real WebSocket Adapter, two reusable JVM
   Scenario WorkerGroups with six capabilities, and the advisory Android demo
   WorkerGroup.
-- [`xa-android/`](xa-android/): reusable Android business capabilities and installable
-  Android Worker hosts. The
+- [`xa-android/`](xa-android/): reusable Android business capabilities, a
+  device-loopback capability probe, and installable Android Worker hosts. The
+  [`capability-http`](xa-android/capability-http/) module directly proves the
+  installed App's resolvers and handlers without claiming Transport truth. The
   [`worker-demo`](xa-android/worker-demo/) App proves public
   Register/Bind, the Android network Client, shared Worker Core, and real
   device State/Battery results without embedding Task control in the App.

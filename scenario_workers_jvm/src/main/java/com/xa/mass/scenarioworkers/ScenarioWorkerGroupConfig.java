@@ -12,8 +12,7 @@ record ScenarioWorkerGroupConfig(
         String workerGroupId,
         List<String> eventCodes,
         Duration requestTimeout,
-        TextMessageReconnectPolicy reconnectPolicy,
-        Duration connectTimeout
+        TextMessageReconnectPolicy reconnectPolicy
 ) {
 
     ScenarioWorkerGroupConfig {
@@ -39,7 +38,6 @@ record ScenarioWorkerGroupConfig(
         eventCodes = List.copyOf(copiedEventCodes);
         requirePositive(requestTimeout, "requestTimeout");
         Objects.requireNonNull(reconnectPolicy, "reconnectPolicy");
-        requirePositive(connectTimeout, "connectTimeout");
     }
 
     static void requireNonBlank(String value, String name) {

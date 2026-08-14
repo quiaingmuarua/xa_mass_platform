@@ -16,7 +16,7 @@ boundary named below.
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
-| Android Host | Android assembly, concrete capability Definitions, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
+| Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
 The `Task Batch` command uploads two text fixtures, executes six explicit
@@ -81,6 +81,8 @@ Android Host CI-equivalent proof:
   :transport:android-worker:assembleDebug `
   :xa-android:capabilities:testDebugUnitTest `
   :xa-android:capabilities:assembleDebug `
+  :xa-android:capability-http:testDebugUnitTest `
+  :xa-android:capability-http:assembleDebug `
   :xa-android:worker-demo:testDebugUnitTest `
   :xa-android:worker-demo:assembleDebug
 python -m unittest discover `
