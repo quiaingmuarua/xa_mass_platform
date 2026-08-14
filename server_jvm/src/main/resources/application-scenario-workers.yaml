@@ -3,7 +3,7 @@ xa:
     task-batch:
       root: data/rpc-task
       max-input-bytes: 1048576
-      max-input-lines: 1000
+      max-input-lines: 10000
       result-load-interval-millis: 100
       default-maximum-wait-millis: 30000
       maximum-wait-millis: 300000
@@ -51,7 +51,7 @@ xa:
             ]
           }
         }
-      worker-config-json: |
+      capability-assembly-json: |
         {
           "scenario-phone-number-workers": {
             "eventCodes": [

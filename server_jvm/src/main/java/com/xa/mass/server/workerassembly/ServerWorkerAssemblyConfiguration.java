@@ -56,7 +56,7 @@ public class ServerWorkerAssemblyConfiguration {
             ServerWorkerAssemblyProperties properties
     ) {
         return ScenarioWorkers.fromJson(
-                properties.workerConfigJson(),
+                properties.capabilityAssemblyJson(),
                 properties.sandboxRoot(),
                 properties.runtimeApiBaseUrl()
         );

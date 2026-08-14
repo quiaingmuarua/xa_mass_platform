@@ -33,7 +33,7 @@ class ServerWorkerAssemblyArchitectureTest {
         assertThat(sources)
                 .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
-                .contains("properties.workerConfigJson()")
+                .contains("properties.capabilityAssemblyJson()")
                 .contains("properties.sandboxRoot()")
                 .contains("properties.runtimeApiBaseUrl()")
                 .contains("WorkerResourceCatalog")

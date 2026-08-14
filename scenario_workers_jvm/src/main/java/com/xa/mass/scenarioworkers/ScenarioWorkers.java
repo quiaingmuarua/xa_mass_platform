@@ -57,13 +57,13 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     public static ScenarioWorkers fromJson(
-            String workerConfigJson,
+            String capabilityAssemblyJson,
             String sandboxRoot,
             URI runtimeApiBaseUrl
     ) {
         try {
             List<ScenarioWorkerGroupConfig> configs =
-                    ScenarioWorkersJsonParser.parse(workerConfigJson);
+                    ScenarioWorkersJsonParser.parse(capabilityAssemblyJson);
             ScenarioWorkerIndexClient indexClient =
                     new HttpScenarioWorkerIndexClient(runtimeApiBaseUrl);
             return new ScenarioWorkers(
@@ -78,7 +78,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             throw new ScenarioWorkerAssemblyException(
                     14012,
                     "scenarioWorkers.parseConfig",
-                    "Scenario Worker configuration is invalid: "
+                    "Scenario capability assembly is invalid: "
                             + error.getMessage(),
                     error
             );

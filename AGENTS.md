@@ -354,7 +354,7 @@ tag.
   handling, result buffering, or trusted rejection policy.
 - `scenario_workers_jvm` may expose the final `ScenarioWorkers` aggregate
   lifecycle handle and its
-  `fromJson(workerConfigJson, sandboxRoot, runtimeApiBaseUrl)`
+  `fromJson(capabilityAssemblyJson, sandboxRoot, runtimeApiBaseUrl)`
   composition entry. Finite capability providers, parsed configuration, and
   Worker factories stay module-internal.
   Definitions and Handler instances are shared by all Workers that reference

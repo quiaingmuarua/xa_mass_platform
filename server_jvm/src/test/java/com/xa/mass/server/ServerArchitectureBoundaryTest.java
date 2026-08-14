@@ -275,7 +275,7 @@ class ServerArchitectureBoundaryTest {
                 .contains("WorkerResourceCatalog")
                 .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
-                .contains("properties.workerConfigJson()")
+                .contains("properties.capabilityAssemblyJson()")
                 .contains("properties.runtimeApiBaseUrl()")
                 .doesNotContain("ScenarioWorkerBundles")
                 .doesNotContain("ScenarioWorkerBundleConfig")

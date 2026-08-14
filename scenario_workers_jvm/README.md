@@ -16,7 +16,7 @@ The only public assembly surface is:
 
 ```java
 ScenarioWorkers workers = ScenarioWorkers.fromJson(
-        workerConfigJson,
+        capabilityAssemblyJson,
         "data/scenario-workers",
         URI.create("http://127.0.0.1:18082")
 );
@@ -24,7 +24,8 @@ workers.start();
 workers.close();
 ```
 
-The JSON config declares groups and local runtime options only. It never lists
+The `capabilityAssemblyJson` document declares locally hosted Groups, their
+concrete Event Definitions, and local runtime options only. It never lists
 individual Workers:
 
 ```json

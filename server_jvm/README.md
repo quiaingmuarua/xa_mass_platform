@@ -592,7 +592,7 @@ xa:
             ]
           }
         }
-      worker-config-json: |
+      capability-assembly-json: |
         {
           "scenario-phone-number-workers": {
             "eventCodes": [
@@ -609,10 +609,13 @@ Both JSON values default to `{}`. The checked-in
 Worker capability groups. It creates or reuses one deterministic long-lived
 `ITEM_DRIVEN` RPC Task per configured Group. Those Tasks are internal
 coordinates: clients call the WorkerGroup route and never receive a Task ID.
+`capability-assembly-json` selects the Groups and concrete built-in Event
+Definitions hosted by the local `scenario_workers_jvm` aggregate; it is not a
+Worker state or Worker Properties document.
 The two JVM Scenario groups discover their replicas from the fixed local Lab root
-`data/scenario-workers`; `worker-config-json` contains no Worker entries.
+`data/scenario-workers`; `capability-assembly-json` contains no Worker entries.
 The third catalog entry, `android-demo-workers`, is reserved for the external
-Android App and is deliberately absent from `worker-config-json`.
+Android App and is deliberately absent from `capability-assembly-json`.
 Omitted runtime fields use a 10-second request timeout, the default bounded
 connection policy, and a 15-second initial-connect timeout.
 
@@ -668,7 +671,7 @@ Transport-generated Adapter Result, while connection close is a Transport
 lifecycle instruction; neither is a business Definition. WorkerGroup `eventCodes` in
 `group-config-json` are a
 display/recommendation summary and may lag the local extension list in
-`worker-config-json`; neither Server nor Kernel enforces equality.
+`capability-assembly-json`; neither Server nor Kernel enforces equality.
 
 Worker Assembly does not expose a new Kernel operation, access Redis, start a
 second scheduler, or bypass the Adapter through an in-process path.

@@ -65,7 +65,7 @@ class ServerWorkerAssemblyPropertiesTest {
             ).groupConfigJson()).isEqualTo("{}");
             assertThat(context.getBean(
                     ServerWorkerAssemblyProperties.class
-            ).workerConfigJson()).isEqualTo("{}");
+            ).capabilityAssemblyJson()).isEqualTo("{}");
             assertThat(context.getBean(
                     ServerWorkerAssemblyProperties.class
             ).runtimeApiBaseUrl().toString())
@@ -102,7 +102,7 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"android.demo.state.read\"")
                     .contains("\"android.demo.battery.read\"")
                     .doesNotContain("\"workers\"");
-            assertThat(properties.workerConfigJson())
+            assertThat(properties.capabilityAssemblyJson())
                     .contains("\"scenario-phone-number-workers\"")
                     .contains("\"scenario-string-utils-workers\"")
                     .contains("\"phonenumber.e164\"")
@@ -123,12 +123,12 @@ class ServerWorkerAssemblyPropertiesTest {
     }
 
     @Test
-    void malformedGroupOrWorkerJsonFailsDuringAssembly() {
+    void malformedGroupOrCapabilityAssemblyJsonFailsDuringAssembly() {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.group-config-json={bad-json"
         ).run(context -> assertThat(context).hasFailed());
         contextRunner.withPropertyValues(
-                "xa.mass.worker-assembly.worker-config-json={bad-json"
+                "xa.mass.worker-assembly.capability-assembly-json={bad-json"
         ).run(context -> assertThat(context).hasFailed());
     }
 
@@ -144,7 +144,7 @@ class ServerWorkerAssemblyPropertiesTest {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.group-config-json="
                         + "{\"group\":{\"eventCodes\":[\"catalog.old\"]}}",
-                "xa.mass.worker-assembly.worker-config-json="
+                "xa.mass.worker-assembly.capability-assembly-json="
                         + "{\"group\":{\"eventCodes\":[\"string.md5\"]}}"
         ).run(context -> assertThat(context).hasNotFailed());
     }

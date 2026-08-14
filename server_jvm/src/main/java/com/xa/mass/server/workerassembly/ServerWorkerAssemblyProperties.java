@@ -12,14 +12,17 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record ServerWorkerAssemblyProperties(
         @DefaultValue("http://127.0.0.1:18082") URI runtimeApiBaseUrl,
         @DefaultValue("{}") String groupConfigJson,
-        @DefaultValue("{}") String workerConfigJson,
+        @DefaultValue("{}") String capabilityAssemblyJson,
         @DefaultValue("data/scenario-workers") String sandboxRoot
 ) {
 
     public ServerWorkerAssemblyProperties {
         requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
         requireJsonObjectText(groupConfigJson, "group-config-json");
-        requireJsonObjectText(workerConfigJson, "worker-config-json");
+        requireJsonObjectText(
+                capabilityAssemblyJson,
+                "capability-assembly-json"
+        );
         if (sandboxRoot == null || sandboxRoot.isBlank()) {
             throw new IllegalArgumentException(
                     "sandbox-root must be non-blank"
