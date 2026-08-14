@@ -24,22 +24,42 @@ public final class ScenarioRpcApiClient {
         );
     }
 
+    public CreateResult create(String scenarioType) {
+        RuntimeApiHttpClient.ApiResponse response = http.send(
+                "POST",
+                "/api/v1/scenario-rpc/scenarios",
+                Map.of("scenarioType", scenarioType)
+        );
+        RuntimeApiHttpClient.requireStatus(
+                response,
+                201,
+                "scenarioRpc.create"
+        );
+        Map<String, Object> body = response.body();
+        return new CreateResult(
+                requiredString(body, "scenarioId"),
+                requiredString(body, "scenarioType"),
+                requiredString(body, "status")
+        );
+    }
+
     public RunResult run(
             String scenarioId,
             String inputFile,
-            int concurrency
+            long loadIntervalMillis,
+            int maximumLoadRounds
     ) {
         RuntimeApiHttpClient.ApiResponse response = http.send(
                 "POST",
-                "/api/v1/scenario-rpc/runs",
+                "/api/v1/scenario-rpc/scenarios/"
+                        + RuntimeApiHttpClient.identifier(scenarioId)
+                        + ":run",
                 Map.of(
-                        "scenarioId", RuntimeApiHttpClient.identifier(
-                                scenarioId
-                        ),
                         "inputFile", RuntimeApiHttpClient.identifier(
                                 inputFile
                         ),
-                        "concurrency", concurrency
+                        "loadIntervalMillis", loadIntervalMillis,
+                        "maximumLoadRounds", maximumLoadRounds
                 )
         );
         RuntimeApiHttpClient.requireStatus(
@@ -50,12 +70,14 @@ public final class ScenarioRpcApiClient {
         Map<String, Object> body = response.body();
         return new RunResult(
                 requiredString(body, "scenarioId"),
-                requiredString(body, "workerGroupId"),
-                requiredString(body, "eventCode"),
+                requiredString(body, "status"),
                 requiredString(body, "inputFile"),
-                requiredString(body, "outputFile"),
                 requiredInt(body, "inputCount"),
-                requiredInt(body, "resultCount")
+                requiredInt(body, "resultCount"),
+                requiredInt(body, "remainingCount"),
+                requiredInt(body, "loadRounds"),
+                requiredLong(body, "durationMillis"),
+                requiredString(body, "outputFile")
         );
     }
 
@@ -95,14 +117,36 @@ public final class ScenarioRpcApiClient {
         return number.intValue();
     }
 
+    private static long requiredLong(
+            Map<String, Object> body,
+            String name
+    ) {
+        Object value = body.get(name);
+        if (!(value instanceof Number number)) {
+            throw new IllegalStateException(
+                    "Scenario RPC response requires " + name
+            );
+        }
+        return number.longValue();
+    }
+
+    public record CreateResult(
+            String scenarioId,
+            String scenarioType,
+            String status
+    ) {
+    }
+
     public record RunResult(
             String scenarioId,
-            String workerGroupId,
-            String eventCode,
+            String status,
             String inputFile,
-            String outputFile,
             int inputCount,
-            int resultCount
+            int resultCount,
+            int remainingCount,
+            int loadRounds,
+            long durationMillis,
+            String outputFile
     ) {
     }
 }

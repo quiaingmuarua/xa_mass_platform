@@ -1,7 +1,7 @@
 package com.xa.mass.scenariorpc;
 
 public record ScenarioRpcDescriptor(
-        String scenarioId,
+        String scenarioType,
         String workerGroupId,
         String eventCode
 ) {

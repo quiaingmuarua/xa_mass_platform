@@ -322,10 +322,12 @@ Java TaskData and uses the Java Server's Worker Delivery owner providers.
 `TASK_DRIVEN` polling
 calls the point HTTP API directly. `ITEM_DRIVEN` uses configured WebSocket
 or Socket Adapter instances, each of which still calls the same batch HTTP
-contract through loopback. The RPC acceptance path holds one asynchronous HTTP
-waiter while a shared Java virtual thread probes one Task-scoped messageId at
-a time. Duplicate waits for that same TaskItem may share the observation, but
-different TaskItems are not combined into a result batch. Java TaskData and
+contract through loopback. The WorkerGroup Point RPC path holds one
+asynchronous HTTP waiter while a shared Java virtual thread probes one
+Task-scoped messageId at a time. Duplicate waits for that same TaskItem may
+share the observation. The separate Scenario RPC Lab path does not use that
+waiter or probe: it appends one caller-bounded Item batch, then loads the
+remaining message IDs together on each polling round. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
 for resource declaration: score read and missing-score initialization. The

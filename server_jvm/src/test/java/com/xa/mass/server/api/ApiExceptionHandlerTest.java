@@ -106,7 +106,7 @@ class ApiExceptionHandlerTest {
                         HttpStatus.BAD_REQUEST
                 ),
                 Arguments.of(
-                        ServerErrorCode.SCENARIO_RPC_FILE_NOT_FOUND,
+                        ServerErrorCode.SCENARIO_RPC_RESOURCE_NOT_FOUND,
                         HttpStatus.NOT_FOUND
                 ),
                 Arguments.of(

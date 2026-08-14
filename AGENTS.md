@@ -101,12 +101,14 @@ Status: current repository handoff.
   second command, result, session, or business-message cache.
 - `scenario_rpc_jvm/` is the Java 21 in-memory Scenario RPC engine consumed
   only by Server. It owns the finite six-Scenario catalog, line-to-Payload
-  parsing, bounded virtual-thread calls, stable result ordering, and business
-  result verification. It owns no HTTP, file, Spring, Kernel, Redis, Transport,
-  Task, Worker, execution registry, or persistent Scenario state.
+  parsing, one batch append contract, pending-only result polling, incremental
+  result sink delivery, stable memory result ordering, and business result
+  verification. It owns no HTTP, file, Spring, Kernel, Redis, Transport, Task,
+  Worker, concurrency scheduler, execution registry, or persistent Scenario
+  state.
 - `integrations/worker-capability-rpc/` is a Java 21 external acceptance
   client. It uploads the checked text fixtures through the public Server Lab
-  API, runs six Server-owned Scenarios, downloads six JSONL outputs, and proves
+  API, creates and runs six Server-owned Scenarios, downloads six JSONL outputs, and proves
   60 results plus 20 persistent Worker identities. It owns no local Process,
   Parser, concurrency scheduler, WorkerGroup RPC client, Task, or Worker.
 - `frontend/` is the read-only Vue Runtime Viewer. It discovers only the

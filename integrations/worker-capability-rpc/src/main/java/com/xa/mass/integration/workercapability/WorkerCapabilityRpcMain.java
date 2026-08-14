@@ -4,6 +4,7 @@ import com.xa.mass.integration.workercapability.cli.CommandLineOptions;
 import com.xa.mass.integration.workercapability.cli.WorkerCapabilityIntegrationDefaults;
 import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
 import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient;
+import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient.CreateResult;
 import com.xa.mass.integration.workercapability.runtimeapi.ScenarioRpcApiClient.RunResult;
 import com.xa.mass.integration.workercapability.scenario.WorkerCapabilityAcceptance;
 import com.xa.mass.workerdelivery.json.Jsons;
@@ -59,13 +60,19 @@ public final class WorkerCapabilityRpcMain {
                 "scenario-worker-lab-root",
                 "../../data/scenario-workers"
         ));
-        int concurrency = Math.toIntExact(options.positiveLong(
-                "concurrency",
-                WorkerCapabilityIntegrationDefaults.CONCURRENCY
+        long loadIntervalMillis = options.positiveLong(
+                "load-interval-millis",
+                WorkerCapabilityIntegrationDefaults.LOAD_INTERVAL_MILLIS
+        );
+        int maximumLoadRounds = Math.toIntExact(options.positiveLong(
+                "maximum-load-rounds",
+                WorkerCapabilityIntegrationDefaults.MAXIMUM_LOAD_ROUNDS
         ));
-        if (concurrency > 100) {
+        if (loadIntervalMillis > 300_000L
+                || maximumLoadRounds > 300_000
+                || loadIntervalMillis * maximumLoadRounds > 300_000L) {
             throw new IllegalArgumentException(
-                    "--concurrency must not exceed 100"
+                    "Scenario RPC polling budget must not exceed 5 minutes"
             );
         }
         RuntimeApiHttpClient runtimeApi = new RuntimeApiHttpClient(
@@ -112,12 +119,22 @@ public final class WorkerCapabilityRpcMain {
                 String inputFile = scenario.seedKind() == SeedKind.PHONE
                         ? phoneRemote
                         : stringRemote;
-                RunResult run = scenarioRpc.run(
-                        scenario.scenarioId(),
-                        inputFile,
-                        concurrency
+                CreateResult created = scenarioRpc.create(
+                        scenario.scenarioType()
                 );
-                requireRunSummary(run, scenario, inputFile);
+                requireCreatedScenario(created, scenario);
+                RunResult run = scenarioRpc.run(
+                        created.scenarioId(),
+                        inputFile,
+                        loadIntervalMillis,
+                        maximumLoadRounds
+                );
+                requireRunSummary(
+                        run,
+                        created.scenarioId(),
+                        scenario,
+                        inputFile
+                );
                 String output = scenarioRpc.downloadOutput(
                         run.outputFile()
                 );
@@ -152,17 +169,33 @@ public final class WorkerCapabilityRpcMain {
 
     private static void requireRunSummary(
             RunResult run,
+            String scenarioId,
             ScenarioSpec scenario,
             String inputFile
     ) {
-        if (!scenario.scenarioId().equals(run.scenarioId())
-                || !scenario.scenarioId().equals(run.eventCode())
+        if (!scenarioId.equals(run.scenarioId())
+                || !"succeeded".equals(run.status())
                 || !inputFile.equals(run.inputFile())
                 || run.inputCount() != 10
-                || run.resultCount() != 10) {
+                || run.resultCount() != 10
+                || run.remainingCount() != 0
+                || run.loadRounds() < 1) {
             throw new IllegalStateException(
                     "Scenario RPC run summary is invalid for "
-                            + scenario.scenarioId()
+                            + scenario.scenarioType()
+            );
+        }
+    }
+
+    private static void requireCreatedScenario(
+            CreateResult created,
+            ScenarioSpec scenario
+    ) {
+        if (!scenario.scenarioType().equals(created.scenarioType())
+                || !"created".equals(created.status())) {
+            throw new IllegalStateException(
+                    "Scenario RPC create summary is invalid for "
+                            + scenario.scenarioType()
             );
         }
     }
@@ -235,6 +268,6 @@ public final class WorkerCapabilityRpcMain {
         STRING
     }
 
-    private record ScenarioSpec(String scenarioId, SeedKind seedKind) {
+    private record ScenarioSpec(String scenarioType, SeedKind seedKind) {
     }
 }

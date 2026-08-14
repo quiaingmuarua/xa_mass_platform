@@ -61,14 +61,18 @@ class WorkerCapabilityRpcMainTest {
                     "--string-seed-path=" + stringSeed,
                     "--result-dir=" + results,
                     "--scenario-worker-lab-root=" + workerLab,
-                    "--concurrency=10",
+                    "--load-interval-millis=25",
+                    "--maximum-load-rounds=40",
                     "--request-timeout-millis=10000"
             });
 
             assertEquals(2, server.uploadCount());
+            assertEquals(6, server.createCount());
             assertEquals(6, server.runCount());
-            assertEquals(List.of(10, 10, 10, 10, 10, 10),
-                    server.concurrencies());
+            assertEquals(List.of(25L, 25L, 25L, 25L, 25L, 25L),
+                    server.loadIntervals());
+            assertEquals(List.of(40, 40, 40, 40, 40, 40),
+                    server.maximumLoadRounds());
         }
 
         Path proofResults = results.resolve("proof-1000");
@@ -161,9 +165,14 @@ class WorkerCapabilityRpcMainTest {
         private final HttpServer server;
         private final Map<String, String> inputs = new ConcurrentHashMap<>();
         private final Map<String, String> outputs = new ConcurrentHashMap<>();
+        private final Map<String, String> scenarioTypes =
+                new ConcurrentHashMap<>();
         private final AtomicInteger uploads = new AtomicInteger();
+        private final AtomicInteger creates = new AtomicInteger();
         private final AtomicInteger runs = new AtomicInteger();
-        private final List<Integer> concurrencies =
+        private final List<Long> loadIntervals =
+                java.util.Collections.synchronizedList(new ArrayList<>());
+        private final List<Integer> maximumLoadRounds =
                 java.util.Collections.synchronizedList(new ArrayList<>());
 
         private FakeScenarioServer(HttpServer server) {
@@ -188,8 +197,14 @@ class WorkerCapabilityRpcMainTest {
                         "/api/v1/scenario-rpc/input-files/"
                 )) {
                     handleUpload(exchange, path);
-                } else if (path.equals("/api/v1/scenario-rpc/runs")) {
-                    handleRun(exchange);
+                } else if (path.equals(
+                        "/api/v1/scenario-rpc/scenarios"
+                )) {
+                    handleCreate(exchange);
+                } else if (path.startsWith(
+                        "/api/v1/scenario-rpc/scenarios/"
+                ) && path.endsWith(":run")) {
+                    handleRun(exchange, path);
                 } else if (path.startsWith(
                         "/api/v1/scenario-rpc/output-files/"
                 )) {
@@ -217,28 +232,54 @@ class WorkerCapabilityRpcMainTest {
             ));
         }
 
-        private void handleRun(HttpExchange exchange) throws IOException {
-            Map<String, Object> request = Jsons.parseObject(new String(
-                    exchange.getRequestBody().readAllBytes(),
-                    StandardCharsets.UTF_8
+        private void handleCreate(HttpExchange exchange) throws IOException {
+            Map<String, Object> request = request(exchange);
+            String scenarioType = (String) request.get("scenarioType");
+            if (!EXPECTED.containsKey(scenarioType)) {
+                throw new IllegalArgumentException("unknown scenario type");
+            }
+            String scenarioId = "scenario-" + creates.incrementAndGet();
+            scenarioTypes.put(scenarioId, scenarioType);
+            respond(exchange, 201, Map.of(
+                    "scenarioId", scenarioId,
+                    "scenarioType", scenarioType,
+                    "status", "created"
             ));
-            String scenarioId = (String) request.get("scenarioId");
+        }
+
+        private void handleRun(HttpExchange exchange, String path)
+                throws IOException {
+            String scenarioId = path.substring(
+                    "/api/v1/scenario-rpc/scenarios/".length(),
+                    path.length() - ":run".length()
+            );
+            String scenarioType = scenarioTypes.get(scenarioId);
+            if (scenarioType == null) {
+                throw new IllegalArgumentException("unknown scenario");
+            }
+            Map<String, Object> request = request(exchange);
             String inputFile = (String) request.get("inputFile");
-            int concurrency = ((Number) request.get("concurrency")).intValue();
-            Expected expected = EXPECTED.get(scenarioId);
+            long loadInterval = ((Number) request.get(
+                    "loadIntervalMillis"
+            )).longValue();
+            int loadRounds = ((Number) request.get(
+                    "maximumLoadRounds"
+            )).intValue();
+            Expected expected = EXPECTED.get(scenarioType);
             List<String> lines = inputs.get(inputFile).lines().toList();
             int run = runs.incrementAndGet();
-            concurrencies.add(concurrency);
-            String outputFile = scenarioId + "-" + run + ".jsonl";
+            loadIntervals.add(loadInterval);
+            maximumLoadRounds.add(loadRounds);
+            String outputFile = scenarioId + ".jsonl";
             List<String> encoded = new ArrayList<>();
             for (int index = 0; index < lines.size(); index++) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("workerGroupId", expected.workerGroupId());
                 row.put(
                         "messageId",
-                        "rpc-" + run + "-" + scenarioId + "-" + index
+                        "rpc-" + run + "-" + scenarioType + "-" + index
                 );
-                row.put("eventCode", scenarioId);
+                row.put("eventCode", scenarioType);
                 row.put(
                         "input",
                         Map.of(expected.inputField(), lines.get(index))
@@ -255,14 +296,22 @@ class WorkerCapabilityRpcMainTest {
             outputs.put(outputFile, String.join("\n", encoded) + "\n");
             respond(exchange, 200, Map.of(
                     "scenarioId", scenarioId,
-                    "workerGroupId", expected.workerGroupId(),
-                    "eventCode", scenarioId,
+                    "status", "succeeded",
                     "inputFile", inputFile,
                     "outputFile", outputFile,
                     "inputCount", lines.size(),
                     "resultCount", lines.size(),
-                    "durationMillis", 1,
-                    "generatedAt", "2026-08-14T12:00:00Z"
+                    "remainingCount", 0,
+                    "loadRounds", 1,
+                    "durationMillis", 1
+            ));
+        }
+
+        private static Map<String, Object> request(HttpExchange exchange)
+                throws IOException {
+            return Jsons.parseObject(new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
             ));
         }
 
@@ -300,12 +349,20 @@ class WorkerCapabilityRpcMainTest {
             return uploads.get();
         }
 
+        int createCount() {
+            return creates.get();
+        }
+
         int runCount() {
             return runs.get();
         }
 
-        List<Integer> concurrencies() {
-            return List.copyOf(concurrencies);
+        List<Long> loadIntervals() {
+            return List.copyOf(loadIntervals);
+        }
+
+        List<Integer> maximumLoadRounds() {
+            return List.copyOf(maximumLoadRounds);
         }
 
         @Override

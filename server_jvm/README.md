@@ -197,18 +197,23 @@ POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
-GET  /api/v1/scenario-rpc/scenarios
+GET  /api/v1/scenario-rpc/scenario-types
+POST /api/v1/scenario-rpc/scenarios
+GET  /api/v1/scenario-rpc/scenarios/{scenarioId}
 POST /api/v1/scenario-rpc/input-files/{fileName}
-POST /api/v1/scenario-rpc/runs
+POST /api/v1/scenario-rpc/scenarios/{scenarioId}:run
 GET  /api/v1/scenario-rpc/output-files/{fileName}
 ```
 
-The four `scenario-rpc` routes exist only under the `scenario-workers`
-Profile. Inputs are create-only UTF-8 `.txt` files below
-`data/rpc-task/input`; one run selects exactly one listed Scenario and a
-concurrency from 1 to 100. Successful runs atomically publish one `.jsonl`
-file below `data/rpc-task/output`, which the output route downloads as
-`application/x-ndjson`. The Profile permits one run at a time and retains all
+These `scenario-rpc` routes exist only under the `scenario-workers` Profile.
+Inputs are create-only UTF-8 `.txt` files below `data/rpc-task/input`. A
+Scenario instance selects one fixed type and can run once. Run appends all
+Items to the Group's existing long-lived Task in one batch, then loads only
+pending Result IDs at a caller-bounded interval and round count. Each completed
+round is flushed to a temporary JSONL. Completion atomically publishes
+`{scenarioId}.jsonl`; exhausted polling publishes
+`{scenarioId}.partial.jsonl`. The Profile permits one running Scenario at a
+time, keeps at most 100 in-memory instance summaries, and retains published
 input and output files until they are manually removed.
 
 Identity registration accepts the WorkerGroup path coordinate and complete
@@ -740,10 +745,12 @@ The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
 The repository Scenario RPC lane starts this Server with the `scenario-workers`
 profile. That Profile also enables `/api/v1/scenario-rpc`: it accepts bounded
-text inputs under `data/rpc-task/input`, runs one of six in-memory Scenarios
-through the public WorkerGroup call route, and atomically publishes JSONL under
-`data/rpc-task/output`. Only one file Process runs at once; its internal
-concurrency is caller bounded from 1 to 100. The acceptance proves 20
+text inputs under `data/rpc-task/input`, creates one-shot instances from six
+fixed Scenario types, appends each run as one Item batch to the Group's
+long-lived Task, polls pending Results in batches, and incrementally writes an
+atomically published JSONL under `data/rpc-task/output`. Only one Scenario runs
+at once; scheduling concurrency remains owned by Kernel scheduling and Worker
+leases. The acceptance proves 20
 persistent, globally unique Worker identities plus Identity Register, Endpoint
 Bind, Adapter route validation, six Scenario runs, and 60 results. Results are
 not attributed to a specific Worker. This

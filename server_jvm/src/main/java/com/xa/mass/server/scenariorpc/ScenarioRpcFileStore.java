@@ -1,9 +1,11 @@
 package com.xa.mass.server.scenariorpc;
 
 import com.xa.mass.scenariorpc.ScenarioRpcResult;
+import com.xa.mass.scenariorpc.ScenarioRpcResultSink;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -131,9 +133,8 @@ final class ScenarioRpcFileStore {
                         "input file exceeds byte limit"
                 );
             }
-            byte[] content = Files.readAllBytes(path);
             return decodeLines(
-                    content,
+                    Files.readAllBytes(path),
                     READ_INPUT_OPERATION,
                     maxInputLines
             );
@@ -144,40 +145,12 @@ final class ScenarioRpcFileStore {
         }
     }
 
-    void publishOutput(
-            String fileName,
-            List<ScenarioRpcResult> results
-    ) {
-        Path target = outputPath(fileName, WRITE_OUTPUT_OPERATION);
-        if (Files.exists(target)) {
-            throw conflict(WRITE_OUTPUT_OPERATION);
+    OutputSession output(String scenarioId) {
+        if (scenarioId == null
+                || !scenarioId.matches("[A-Za-z0-9._-]+")) {
+            throw invalid(WRITE_OUTPUT_OPERATION, "scenarioId is invalid");
         }
-        List<String> encoded = results.stream()
-                .map(ScenarioRpcFileStore::encodeResult)
-                .toList();
-        Path temporary = null;
-        try {
-            temporary = Files.createTempFile(
-                    outputDirectory,
-                    ".result-",
-                    ".tmp"
-            );
-            Files.write(
-                    temporary,
-                    encoded,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.TRUNCATE_EXISTING,
-                    StandardOpenOption.WRITE
-            );
-            moveNew(temporary, target);
-            temporary = null;
-        } catch (FileAlreadyExistsException error) {
-            throw conflict(WRITE_OUTPUT_OPERATION);
-        } catch (IOException error) {
-            throw unavailable(WRITE_OUTPUT_OPERATION, error);
-        } finally {
-            deleteTemporary(temporary);
-        }
+        return new OutputSession(outputDirectory, scenarioId);
     }
 
     byte[] readOutput(String fileName) {
@@ -286,7 +259,7 @@ final class ScenarioRpcFileStore {
 
     private static ServerException notFound(String operation) {
         return new ServerException(
-                ServerErrorCode.SCENARIO_RPC_FILE_NOT_FOUND,
+                ServerErrorCode.SCENARIO_RPC_RESOURCE_NOT_FOUND,
                 operation,
                 null,
                 null
@@ -315,5 +288,92 @@ final class ScenarioRpcFileStore {
     }
 
     record StoredInput(String fileName, long byteCount, int lineCount) {
+    }
+
+    static final class OutputSession
+            implements ScenarioRpcResultSink, AutoCloseable {
+        private final Path outputDirectory;
+        private final String scenarioId;
+        private Path temporary;
+        private BufferedWriter writer;
+        private boolean published;
+
+        private OutputSession(Path outputDirectory, String scenarioId) {
+            this.outputDirectory = outputDirectory;
+            this.scenarioId = scenarioId;
+        }
+
+        @Override
+        public void accept(List<ScenarioRpcResult> results) {
+            if (published) {
+                throw new IllegalStateException("output is already published");
+            }
+            try {
+                BufferedWriter current = writer();
+                for (ScenarioRpcResult result : results) {
+                    current.write(encodeResult(result));
+                    current.newLine();
+                }
+                current.flush();
+            } catch (IOException error) {
+                throw unavailable(WRITE_OUTPUT_OPERATION, error);
+            }
+        }
+
+        String publish(boolean partial) {
+            if (published) {
+                throw new IllegalStateException("output is already published");
+            }
+            String fileName = scenarioId
+                    + (partial ? ".partial.jsonl" : ".jsonl");
+            Path target = outputDirectory.resolve(fileName);
+            if (Files.exists(target)) {
+                throw conflict(WRITE_OUTPUT_OPERATION);
+            }
+            try {
+                writer();
+                closeWriter();
+                moveNew(temporary, target);
+                temporary = null;
+                published = true;
+                return fileName;
+            } catch (FileAlreadyExistsException error) {
+                throw conflict(WRITE_OUTPUT_OPERATION);
+            } catch (IOException error) {
+                throw unavailable(WRITE_OUTPUT_OPERATION, error);
+            }
+        }
+
+        @Override
+        public void close() {
+            try {
+                closeWriter();
+            } catch (IOException ignored) {
+                // Failed runs retain their unexposed temporary evidence.
+            }
+        }
+
+        private BufferedWriter writer() throws IOException {
+            if (writer == null) {
+                temporary = Files.createTempFile(
+                        outputDirectory,
+                        "." + scenarioId + "-",
+                        ".tmp"
+                );
+                writer = Files.newBufferedWriter(
+                        temporary,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.WRITE
+                );
+            }
+            return writer;
+        }
+
+        private void closeWriter() throws IOException {
+            if (writer != null) {
+                writer.close();
+                writer = null;
+            }
+        }
     }
 }

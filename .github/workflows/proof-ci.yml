@@ -445,7 +445,8 @@ jobs:
           :integrations:worker-capability-rpc:runRpcScenario
           --args="--scenario-id=ci-worker-capability
           --result-dir=ci-results
-          --concurrency=10
+          --load-interval-millis=100
+          --maximum-load-rounds=300
           --request-timeout-millis=120000"
       - name: Summarize Scenario proof
         if: always()

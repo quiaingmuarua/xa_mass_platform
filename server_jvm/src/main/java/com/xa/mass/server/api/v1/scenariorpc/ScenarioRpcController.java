@@ -1,11 +1,15 @@
 package com.xa.mass.server.api.v1.scenariorpc;
 
-import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcCatalogResponse;
+import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcCreateRequest;
+import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcCreateResponse;
 import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcInputUploadResponse;
+import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcInstanceResponse;
 import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcRunRequest;
 import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcRunResponse;
+import com.xa.mass.server.api.v1.scenariorpc.model.ScenarioRpcTypeCatalogResponse;
 import com.xa.mass.server.scenariorpc.ScenarioRpcService;
 import jakarta.validation.constraints.NotBlank;
+import java.net.URI;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -23,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @Profile("scenario-workers")
 @RequestMapping("/api/v1/scenario-rpc")
-public final class ScenarioRpcController {
+public class ScenarioRpcController {
 
     private static final MediaType NDJSON = new MediaType(
             "application",
@@ -36,9 +40,26 @@ public final class ScenarioRpcController {
         this.scenarioRpc = scenarioRpc;
     }
 
-    @GetMapping("/scenarios")
-    public ScenarioRpcCatalogResponse scenarios() {
-        return scenarioRpc.scenarios();
+    @GetMapping("/scenario-types")
+    public ScenarioRpcTypeCatalogResponse scenarioTypes() {
+        return scenarioRpc.scenarioTypes();
+    }
+
+    @PostMapping("/scenarios")
+    public ResponseEntity<ScenarioRpcCreateResponse> create(
+            @RequestBody ScenarioRpcCreateRequest request
+    ) {
+        ScenarioRpcCreateResponse created = scenarioRpc.create(request);
+        return ResponseEntity.created(URI.create(
+                "/api/v1/scenario-rpc/scenarios/" + created.scenarioId()
+        )).body(created);
+    }
+
+    @GetMapping("/scenarios/{scenarioId}")
+    public ScenarioRpcInstanceResponse get(
+            @PathVariable @NotBlank String scenarioId
+    ) {
+        return scenarioRpc.get(scenarioId);
     }
 
     @PostMapping(
@@ -52,11 +73,12 @@ public final class ScenarioRpcController {
         return scenarioRpc.upload(fileName, content);
     }
 
-    @PostMapping("/runs")
+    @PostMapping("/scenarios/{scenarioId}:run")
     public ScenarioRpcRunResponse run(
+            @PathVariable @NotBlank String scenarioId,
             @RequestBody ScenarioRpcRunRequest request
     ) {
-        return scenarioRpc.run(request);
+        return scenarioRpc.run(scenarioId, request);
     }
 
     @GetMapping("/output-files/{fileName}")

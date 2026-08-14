@@ -1,8 +1,12 @@
 package com.xa.mass.server.api.v1.scenariorpc.model;
 
-public record ScenarioRpcRunResponse(
+import java.time.Instant;
+
+public record ScenarioRpcInstanceResponse(
         String scenarioId,
+        String scenarioType,
         String status,
+        Instant createdAt,
         String inputFile,
         int inputCount,
         int resultCount,

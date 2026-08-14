@@ -208,14 +208,20 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void scenarioRpcUsesTheFiniteEngineAndPublicLoopbackOnly()
+    void scenarioRpcUsesFiniteEngineAndTaskDataBatchBoundary()
             throws IOException {
         String scenarioRpc = readSources(SCENARIO_RPC)
                 + readSources(SCENARIO_RPC_HTTP);
         assertThat(scenarioRpc)
                 .contains("ScenarioRpcEngine")
-                .contains("/api/v1/worker-groups/")
-                .doesNotContain("TaskDataService")
+                .contains("TaskDataService")
+                .contains("WorkerGroupTaskCatalog")
+                .contains("appendTaskItems")
+                .contains("loadTaskItemSuccessResults")
+                .doesNotContain("/api/v1/worker-groups/")
+                .doesNotContain("ScenarioRpcLoopbackClient")
+                .doesNotContain("TaskRpcCallService")
+                .doesNotContain("TaskRpcWaitRegistry")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskResourceCatalog")
                 .doesNotContain("WorkerResourceCatalog")

@@ -15,14 +15,15 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Scenario RPC | The checked profile runs six Server-owned file Scenarios, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Scenario RPC | The checked profile creates and batch-runs six Server-owned file Scenarios, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Worker and configured Task Runtime views remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 
-The `Scenario RPC` command uploads two text fixtures, runs the six finite
-Server Scenarios, downloads six JSONL outputs, and validates exactly 60
-results. The Lab proof additionally requires 20 persistent, globally unique
-canonical Worker IDs. A result is not attributed to a particular Worker.
+The `Scenario RPC` command uploads two text fixtures, creates six one-shot
+instances, batch-appends and polls the six finite Server Scenarios, downloads
+six successful JSONL outputs, and validates exactly 60 results. The Lab proof
+additionally requires 20 persistent, globally unique canonical Worker IDs. A
+result is not attributed to a particular Worker.
 
 ## Local Commands
 

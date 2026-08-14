@@ -68,7 +68,7 @@ public final class ApiExceptionHandler {
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
-                    SCENARIO_RPC_FILE_NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    SCENARIO_RPC_RESOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case KERNEL_REJECTED_CONFLICT,
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,

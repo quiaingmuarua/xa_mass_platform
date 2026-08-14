@@ -105,9 +105,9 @@ public enum ServerErrorCode {
             16001,
             "Scenario RPC request is invalid"
     ),
-    SCENARIO_RPC_FILE_NOT_FOUND(
+    SCENARIO_RPC_RESOURCE_NOT_FOUND(
             16002,
-            "Scenario RPC file was not found"
+            "Scenario RPC resource was not found"
     ),
     SCENARIO_RPC_CONFLICT(
             16003,

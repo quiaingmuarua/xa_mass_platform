@@ -9,17 +9,18 @@ directly.
 ```text
 phone-seed.txt / string-seed.txt
   -> POST /api/v1/scenario-rpc/input-files/{fileName}
-  -> six POST /api/v1/scenario-rpc/runs
+  -> six POST /api/v1/scenario-rpc/scenarios
+  -> six POST /api/v1/scenario-rpc/scenarios/{scenarioId}:run
   -> six GET /api/v1/scenario-rpc/output-files/{fileName}
   -> downloaded JSONL validation
   -> persistent Worker identity validation
 ```
 
-The Server owns the six finite Scenarios, line parsing, concurrency, public
-WorkerGroup RPC calls, result validation, and authoritative output files. This
-integration verifies ten results per Scenario, sixty total results, globally
-unique Message IDs, and twenty persistent canonical Worker IDs across the two
-JVM Lab Groups.
+The Server owns the six finite Scenario types, one-shot instances, line
+parsing, one batch Item append, pending-result polling, result validation, and
+authoritative output files. This integration verifies six successful runs,
+ten results per Scenario, sixty total results, globally unique Message IDs,
+and twenty persistent canonical Worker IDs across the two JVM Lab Groups.
 
 ## Run
 
@@ -39,13 +40,16 @@ Optional arguments use `--name=value`:
 --string-seed-path=string-seed.txt
 --result-dir=results
 --scenario-worker-lab-root=../../data/scenario-workers
---concurrency=10
+--load-interval-millis=100
+--maximum-load-rounds=300
 --request-timeout-millis=120000
 ```
 
 `scenario-id` names this acceptance proof and its uploaded files; the Server
-still generates each execution's timestamped Message ID prefix. Uploaded inputs
-and Server outputs are permanent local Lab files and are cleaned manually.
+creates its own one-shot Scenario IDs. Uploaded inputs and published Server
+outputs are permanent local Lab files and are cleaned manually. A run that
+exhausts its polling rounds is `partial`; this acceptance requires all six runs
+to be `succeeded`.
 
 Unit proof:
 
