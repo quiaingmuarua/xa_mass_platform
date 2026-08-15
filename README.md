@@ -19,7 +19,11 @@ The repository contains seven active areas:
   Adapter route verification. Its
   optional Worker Assembly initializes advisory WorkerGroup catalog metadata,
   starts configured Adapters, and then composes Scenario Workers through the
-  public Identity and Worker transport paths.
+  public Identity and Worker transport paths. It also owns the bounded,
+  instance-local CONTROL_ONLY call mailbox. CONTROL_ONLY admission observes a
+  Worker's pause score but does not become a Kernel scheduling owner; active
+  Adapters consume those commands and return their reports through the same
+  two batch HTTP endpoints used by Task delivery.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, configured-Group Lab directory discovery,
@@ -40,7 +44,10 @@ The repository contains seven active areas:
   private finite queue; queues never cross owner boundaries.
   That production cut is frozen; WebSocket and Socket share a test behavior
   contract while retaining independent physical ownership and owner-local
-  bounded shutdown.
+  bounded shutdown. CONTROL_ONLY does not add another Adapter Process or
+  transport lane: Server chooses one remote Command source per consume request,
+  while the existing Command and Report Processes carry both TASK and SYSTEM
+  messages.
   Its long-lived Worker path likewise has three explicit owners:
   Client networking and reconnect, Transport identity/Command/Result protocol, and
   `WorkerRunController` `RUNNING/STOPPED` lifecycle. Each Host `start()` makes

@@ -14,6 +14,7 @@ import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class DeliveryCommandRemoteApiTest {
@@ -21,7 +22,7 @@ class DeliveryCommandRemoteApiTest {
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
-    void ownsCommandPathJsonAndSuccessfulDecode() {
+    void ownsUnifiedCommandPathAndSuccessfulDecode() {
         DeliveryCommand command = DeliveryCommand.create(
                 TASK,
                 WORKER,
@@ -30,7 +31,9 @@ class DeliveryCommandRemoteApiTest {
                 "{}",
                 "forward-1"
         );
-        String body = "{\"workerCommandsByWorkerId\":{\"worker-1\":"
+        String body = "{\"commands\":{\"worker-2\":"
+                + CODEC.encodeDeliveryCommand(command)
+                + ",\"worker-1\":"
                 + CODEC.encodeDeliveryCommand(command)
                 + "}}";
         try (ScriptedHttpServer server = new ScriptedHttpServer(
@@ -38,16 +41,18 @@ class DeliveryCommandRemoteApiTest {
         )) {
             DeliveryCommandRemoteApi remoteApi = remoteApi(server);
 
-            assertThat(remoteApi.consume("adapter/one", 7))
-                    .hasSize(1)
-                    .containsEntry("worker-1", command);
-            assertThat(server.requests()).singleElement().satisfies(request -> {
-                assertThat(request.rawPath()).isEqualTo(
-                        "/api/v1/worker-delivery/endpoint-managers/"
-                                + "adapter%2Fone/commands:consume"
-                );
-                assertThat(request.body()).isEqualTo("{\"limit\":7}");
-            });
+            Map<String, DeliveryCommand> commands =
+                    remoteApi.consume("adapter/one", 3);
+            assertThat(commands.keySet())
+                    .containsExactly("worker-2", "worker-1");
+            assertThat(commands).containsEntry("worker-1", command);
+            assertThat(server.requests()).hasSize(1);
+            assertThat(server.requests().get(0).rawPath()).isEqualTo(
+                    "/api/v1/worker-delivery/endpoint-managers/"
+                            + "adapter%2Fone/commands:consume"
+            );
+            assertThat(server.requests().get(0).body())
+                    .isEqualTo("{\"limit\":3}");
         }
     }
 

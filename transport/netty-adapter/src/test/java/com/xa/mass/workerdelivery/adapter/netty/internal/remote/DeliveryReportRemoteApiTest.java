@@ -16,26 +16,26 @@ import org.junit.jupiter.api.Test;
 class DeliveryReportRemoteApiTest {
 
     @Test
-    void ownsReportPathJsonAndCompleteAcceptanceContract() {
+    void ownsUnifiedReportPathAndCompleteAcceptanceContract() {
         try (ScriptedHttpServer server = new ScriptedHttpServer(
-                request -> new Response(
-                        202,
-                        "{\"acceptedCount\":2,\"rejectedCount\":0}"
-                )
+                request -> new Response(202,
+                        "{\"acceptedCount\":2,\"rejectedCount\":0}")
         )) {
             DeliveryReportRemoteApi remoteApi = remoteApi(server);
 
-            remoteApi.append("adapter/one", List.of("report-1", "report-2"));
+            remoteApi.append(
+                    "adapter/one",
+                    List.of("report-1", "report-2")
+            );
 
-            assertThat(server.requests()).singleElement().satisfies(request -> {
-                assertThat(request.rawPath()).isEqualTo(
-                        "/api/v1/worker-delivery/endpoint-managers/"
-                                + "adapter%2Fone/results:append"
-                );
-                assertThat(request.body()).isEqualTo(
-                        "{\"results\":[\"report-1\",\"report-2\"]}"
-                );
-            });
+            assertThat(server.requests()).hasSize(1);
+            assertThat(server.requests().get(0).rawPath()).isEqualTo(
+                    "/api/v1/worker-delivery/endpoint-managers/"
+                            + "adapter%2Fone/results:append"
+            );
+            assertThat(server.requests().get(0).body()).isEqualTo(
+                    "{\"results\":[\"report-1\",\"report-2\"]}"
+            );
         }
     }
 
@@ -46,12 +46,18 @@ class DeliveryReportRemoteApiTest {
         )) {
             DeliveryReportRemoteApi remoteApi = remoteApi(server);
             assertFailure(
-                    () -> remoteApi.append("adapter-1", List.of("report")),
+                    () -> remoteApi.append(
+                            "adapter-1",
+                            List.of("report")
+                    ),
                     REMOTE_API_UNAVAILABLE
             );
             server.handler(request -> new Response(400, "{}"));
             assertFailure(
-                    () -> remoteApi.append("adapter-1", List.of("report")),
+                    () -> remoteApi.append(
+                            "adapter-1",
+                            List.of("report")
+                    ),
                     REMOTE_API_PROTOCOL_ERROR
             );
             server.handler(request -> new Response(
@@ -59,7 +65,10 @@ class DeliveryReportRemoteApiTest {
                     "{\"acceptedCount\":0,\"rejectedCount\":0}"
             ));
             assertFailure(
-                    () -> remoteApi.append("adapter-1", List.of("report")),
+                    () -> remoteApi.append(
+                            "adapter-1",
+                            List.of("report")
+                    ),
                     REMOTE_API_PROTOCOL_ERROR
             );
         }

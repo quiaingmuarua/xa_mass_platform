@@ -102,7 +102,7 @@ class DeliveryReportProcessTest {
     }
 
     @Test
-    void acceptorHidesQueueStatusAndAppliesSoftCapacity() {
+    void ingressHidesQueueStorageAndAppliesSoftCapacity() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
 
@@ -117,7 +117,7 @@ class DeliveryReportProcessTest {
     void completedCloseRejectsLateReportsAndFlushesOnce() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
-            process.ingress(List.of("report-1"));
+            process.ingress(List.of("report-1", "control-report"));
 
             process.quiesce();
             assertThat(process.ingress(List.of("late")))
@@ -125,7 +125,9 @@ class DeliveryReportProcessTest {
             process.finishAfterSchedulerStop();
             process.finishAfterSchedulerStop();
 
-            assertThat(peer.attempts).containsExactly(List.of("report-1"));
+            assertThat(peer.attempts).containsExactly(
+                    List.of("report-1", "control-report")
+            );
         }
     }
 

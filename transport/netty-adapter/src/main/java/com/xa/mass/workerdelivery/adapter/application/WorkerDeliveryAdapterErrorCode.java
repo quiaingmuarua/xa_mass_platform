@@ -40,6 +40,14 @@ public enum WorkerDeliveryAdapterErrorCode {
     WORKER_MESSAGE_INVALID(
             23003,
             "Worker message is invalid"
+    ),
+    CONTROL_COMMAND_INVALID(
+            23004,
+            "Adapter control command is invalid"
+    ),
+    CONTROL_EVENT_UNSUPPORTED(
+            23005,
+            "Adapter control event is unsupported"
     );
 
     private final int code;

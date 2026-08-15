@@ -15,8 +15,13 @@ xa:
             listen-host: 127.0.0.1
             listen-port: 18083
             processes:
-              - type: TASK_COMMAND
-              - type: TASK_REPORT
+              - type: DELIVERY_COMMAND
+                interval: 100ms
+                consume-limit: 100
+                queue-capacity: 1000
+              - type: DELIVERY_REPORT
+                interval: 1s
+                queue-capacity: 1000
     worker-binding:
       endpoints:
         scenario-websocket:

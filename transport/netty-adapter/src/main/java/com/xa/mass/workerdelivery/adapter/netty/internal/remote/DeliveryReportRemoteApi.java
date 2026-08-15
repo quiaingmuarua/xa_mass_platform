@@ -32,7 +32,7 @@ public final class DeliveryReportRemoteApi {
         String body;
         try {
             body = httpClient.postJson(
-                    endpointPath(adapterId, "results:append"),
+                    endpointPath(adapterId),
                     encodeResultBatch(encodedReports),
                     202
             );
@@ -99,11 +99,10 @@ public final class DeliveryReportRemoteApi {
         );
     }
 
-    private static String endpointPath(String adapterId, String action) {
+    private static String endpointPath(String adapterId) {
         return "/api/v1/worker-delivery/endpoint-managers/"
                 + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
-                + "/"
-                + action;
+                + "/results:append";
     }
 
     private static WorkerDeliveryAdapterException statusFailure(

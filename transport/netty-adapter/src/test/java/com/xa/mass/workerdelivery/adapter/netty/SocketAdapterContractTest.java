@@ -251,12 +251,13 @@ class SocketAdapterContractTest {
                         "23002",
                         "context"
                 )) + "\n");
-                writer.write(codec.encodeDeliveryReport(result(
+                String systemAccepted = codec.encodeDeliveryReport(result(
                         SYSTEM,
                         "system.observe",
                         "200",
                         ""
-                )) + "\n");
+                ));
+                writer.write(systemAccepted + "\n");
                 writer.write(codec.encodeDeliveryReport(result(
                         ADAPTER,
                         "adapter.unknown",
@@ -285,7 +286,7 @@ class SocketAdapterContractTest {
                         TimeUnit.SECONDS
                 )).isTrue();
                 assertThat(remoteApi.appendedResults)
-                        .containsExactly(List.of(accepted));
+                        .containsExactly(List.of(systemAccepted, accepted));
                 assertThat(remoteApi.verifiedWorkerIds)
                         .containsExactly(WORKER_ID);
             }
@@ -469,15 +470,15 @@ class SocketAdapterContractTest {
                 "127.0.0.1",
                 port,
                 List.of(
-                        new NettyAdapterProcessConfig.TaskCommand(
-                                Duration.ofMillis(10),
-                                100,
-                                1000
-                        ),
-                        new NettyAdapterProcessConfig.TaskReport(
-                                reportSubmitInterval,
-                                reportQueueCapacity
-                        )
+                    new NettyAdapterProcessConfig.DeliveryCommand(
+                            Duration.ofMillis(10),
+                            100,
+                            1000
+                    ),
+                    new NettyAdapterProcessConfig.DeliveryReport(
+                            reportSubmitInterval,
+                            reportQueueCapacity
+                    )
                 ),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1)
@@ -621,7 +622,7 @@ class SocketAdapterContractTest {
                     ));
                 }
                 return new Response(200, Jsons.toJson(Map.of(
-                        "workerCommandsByWorkerId",
+                        "commands",
                         encoded
                 )));
             }
@@ -632,12 +633,7 @@ class SocketAdapterContractTest {
                 ).get("results");
                 appendedResults.add(List.copyOf(results));
                 resultAppended.countDown();
-                return new Response(202, Jsons.toJson(Map.of(
-                        "acceptedCount",
-                        results.size(),
-                        "rejectedCount",
-                        0
-                )));
+                return accepted(results.size());
             }
             String workerId = workerId(request.rawPath());
             verifiedWorkerIds.add(workerId);
@@ -654,6 +650,15 @@ class SocketAdapterContractTest {
                 }
                 return new Response(503, "{}");
             }
+        }
+
+        private Response accepted(int count) {
+            return new Response(202, Jsons.toJson(Map.of(
+                    "acceptedCount",
+                    count,
+                    "rejectedCount",
+                    0
+            )));
         }
 
         private String endpointManagerId(String path) {

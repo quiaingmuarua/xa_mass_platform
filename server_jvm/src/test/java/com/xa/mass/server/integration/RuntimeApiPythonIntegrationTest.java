@@ -55,6 +55,8 @@ class RuntimeApiPythonIntegrationTest {
             "java-socket-integration";
     private static final String TEST_EVENT_CODE =
             "test.integration.observe";
+    private static final String CONTROL_EVENT_CODE =
+            "test.integration.control-snapshot";
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -217,6 +219,113 @@ class RuntimeApiPythonIntegrationTest {
                     null
             ).statusCode()).isEqualTo(200);
         } finally {
+            worker.close();
+        }
+    }
+
+    @Test
+    void controlOnlyWorkerAndAdapterCallsTraverseWebSocketAdapter()
+            throws Exception {
+        requireExternalRuntime();
+        String suffix = UUID.randomUUID().toString();
+        String workerGroupId = "control-tools-" + suffix;
+        String clientWorkerKey = "control-worker-" + suffix;
+
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId,
+                """
+                        {
+                          "eventCodes": ["%s", "%s"]
+                        }
+                        """.formatted(TEST_EVENT_CODE, CONTROL_EVENT_CODE)
+        ).statusCode()).isEqualTo(200);
+        BoundWorker boundWorker = registerAndBindWorker(
+                workerGroupId,
+                clientWorkerKey,
+                TransportProfile.WEBSOCKET,
+                Map.of("runtime", "java-control")
+        );
+        String workerId = boundWorker.workerId();
+        RunningWorker worker = startWorker(
+                workerGroupId,
+                clientWorkerKey,
+                workerId,
+                boundWorker.endpointUri(),
+                Map.of("runtime", "java-control"),
+                TransportProfile.WEBSOCKET
+        );
+        boolean paused = false;
+        try {
+            awaitWorkerRegistered(workerGroupId, workerId);
+            assertThat(send(
+                    "POST",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/workers/" + workerId
+                            + ":pause-scheduling",
+                    null
+            ).statusCode()).isEqualTo(200);
+            paused = true;
+
+            HttpResponse<String> workerControl = send(
+                    "POST",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/workers/controls:call",
+                    """
+                            {
+                              "workerIds": ["%s"],
+                              "messageType": "%s",
+                              "opaquePayload": "{}",
+                              "waitTimeoutMillis": 3000
+                            }
+                            """.formatted(workerId, CONTROL_EVENT_CODE)
+            );
+            assertThat(workerControl.statusCode()).isEqualTo(200);
+            var workerTarget = JSON.readTree(workerControl.body())
+                    .get("results")
+                    .get(workerId);
+            assertThat(workerTarget.get("status").asText())
+                    .isEqualTo("observed");
+            assertThat(workerTarget.get("outcomeCode").asText())
+                    .isEqualTo("200");
+            assertThat(workerTarget.get("opaqueResultPayload").asText())
+                    .isEqualTo("{\"control\":\"observed\"}");
+
+            HttpResponse<String> adapterControl = send(
+                    "POST",
+                    "/api/v1/worker-delivery/endpoint-managers/"
+                            + WEBSOCKET_ENDPOINT_MANAGER_ID
+                            + "/controls:call",
+                    """
+                            {
+                              "messageType": "adapter.probe",
+                              "opaquePayload": "null",
+                              "waitTimeoutMillis": 3000
+                            }
+                            """
+            );
+            assertThat(adapterControl.statusCode()).isEqualTo(200);
+            var adapterTarget = JSON.readTree(adapterControl.body())
+                    .get("results")
+                    .get(WEBSOCKET_ENDPOINT_MANAGER_ID);
+            assertThat(adapterTarget.get("status").asText())
+                    .isEqualTo("observed");
+            assertThat(adapterTarget.get("outcomeCode").asText())
+                    .isEqualTo("200");
+            assertThat(com.xa.mass.workerdelivery.json.Jsons.parseObject(
+                    adapterTarget.get("opaqueResultPayload").asText()
+            )).containsEntry("adapterId", WEBSOCKET_ENDPOINT_MANAGER_ID)
+                    .containsEntry("reachable", true);
+        } finally {
+            if (paused) {
+                send(
+                        "POST",
+                        "/api/v1/worker-groups/" + workerGroupId
+                                + "/workers/" + workerId
+                                + ":resume-scheduling",
+                        null
+                );
+            }
             worker.close();
         }
     }
@@ -429,6 +538,12 @@ class RuntimeApiPythonIntegrationTest {
                                                 payload.get("value")
                                         )
                                 )
+                        ),
+                        WorkerEventDefinition.of(
+                                "SYSTEM",
+                                CONTROL_EVENT_CODE,
+                                WorkerEventParameterResolvers.jsonMap(),
+                                payload -> "{\"control\":\"observed\"}"
                         )
                 );
         return switch (transportProfile) {
@@ -793,13 +908,7 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
-        registry.add(prefix + ".processes[0].interval", () -> "20ms");
-        registry.add(prefix + ".processes[0].consume-limit", () -> "100");
-        registry.add(prefix + ".processes[0].queue-capacity", () -> "1000");
-        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
-        registry.add(prefix + ".processes[1].interval", () -> "20ms");
-        registry.add(prefix + ".processes[1].queue-capacity", () -> "1000");
+        addAdapterProcesses(registry, prefix);
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(
@@ -826,13 +935,7 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
-        registry.add(prefix + ".processes[0].interval", () -> "20ms");
-        registry.add(prefix + ".processes[0].consume-limit", () -> "100");
-        registry.add(prefix + ".processes[0].queue-capacity", () -> "1000");
-        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
-        registry.add(prefix + ".processes[1].interval", () -> "20ms");
-        registry.add(prefix + ".processes[1].queue-capacity", () -> "1000");
+        addAdapterProcesses(registry, prefix);
         String endpointPrefix = "xa.mass.worker-binding.endpoints."
                 + adapterId;
         registry.add(
@@ -842,6 +945,34 @@ class RuntimeApiPythonIntegrationTest {
         registry.add(
                 endpointPrefix + ".public-uri",
                 () -> "tcp://127.0.0.1:" + listenPort
+        );
+    }
+
+    private static void addAdapterProcesses(
+            DynamicPropertyRegistry registry,
+            String prefix
+    ) {
+        registry.add(
+                prefix + ".processes[0].type",
+                () -> "DELIVERY_COMMAND"
+        );
+        registry.add(prefix + ".processes[0].interval", () -> "20ms");
+        registry.add(
+                prefix + ".processes[0].consume-limit",
+                () -> "100"
+        );
+        registry.add(
+                prefix + ".processes[0].queue-capacity",
+                () -> "1000"
+        );
+        registry.add(
+                prefix + ".processes[1].type",
+                () -> "DELIVERY_REPORT"
+        );
+        registry.add(prefix + ".processes[1].interval", () -> "20ms");
+        registry.add(
+                prefix + ".processes[1].queue-capacity",
+                () -> "1000"
         );
     }
 

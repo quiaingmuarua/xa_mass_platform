@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass.SUCCESS;
@@ -296,7 +297,7 @@ public final class WorkerConnectionMechanism {
             }
             return;
         }
-        if (report.dst() != TASK) {
+        if (report.dst() != TASK && report.dst() != SYSTEM) {
             logDrop("dropUnsupportedDestination", report);
             return;
         }
@@ -306,19 +307,32 @@ public final class WorkerConnectionMechanism {
             logDrop("dropWorkerOutcome", report);
             return;
         }
+        boolean taskReport = report.dst() == TASK;
         switch (reportProcess.ingress(List.of(encodedReport))) {
             case ACCEPTED -> {
             }
-            case FULL -> closeCurrent(
-                    workerId,
-                    context.channel(),
-                    AdapterConnectionCloseReason.RESULT_BUFFER_FULL
-            );
-            case CLOSED -> closeCurrent(
-                    workerId,
-                    context.channel(),
-                    AdapterConnectionCloseReason.ADAPTER_STOPPING
-            );
+            case FULL -> {
+                if (taskReport) {
+                    closeCurrent(
+                            workerId,
+                            context.channel(),
+                            AdapterConnectionCloseReason.RESULT_BUFFER_FULL
+                    );
+                } else {
+                    logDrop("dropControlResultBufferFull", report);
+                }
+            }
+            case CLOSED -> {
+                if (taskReport) {
+                    closeCurrent(
+                            workerId,
+                            context.channel(),
+                            AdapterConnectionCloseReason.ADAPTER_STOPPING
+                    );
+                } else {
+                    logDrop("dropControlResultBufferClosed", report);
+                }
+            }
         }
     }
 

@@ -3,8 +3,6 @@ package com.xa.mass.server.api.v1.control;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
-import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -46,53 +44,6 @@ public final class ControlCallHttpContract {
         void rejectUnknownField(String name, Object value) {
             throw new IllegalArgumentException(
                     "Unknown Adapter Control Call field: " + name
-            );
-        }
-    }
-
-    public record ControlCommandConsumeRequest(
-            @Positive @Max(100) int limit
-    ) {
-        @JsonAnySetter
-        void rejectUnknownField(String name, Object value) {
-            throw new IllegalArgumentException(
-                    "Unknown Control Command consume field: " + name
-            );
-        }
-    }
-
-    public record ControlCommandConsumeResponse(
-            Map<String, WorkerCommandResponse> commands
-    ) {
-        public static ControlCommandConsumeResponse from(
-                Map<String, DeliveryCommand> source
-        ) {
-            Map<String, WorkerCommandResponse> response =
-                    new LinkedHashMap<>();
-            source.forEach((target, command) -> response.put(
-                    target,
-                    new WorkerCommandResponse(
-                            command.src().wireValue(),
-                            command.dst().wireValue(),
-                            command.messageType(),
-                            command.executeBeforeMillis(),
-                            command.payload(),
-                            command.forward()
-                    )
-            ));
-            return new ControlCommandConsumeResponse(
-                    Collections.unmodifiableMap(response)
-            );
-        }
-    }
-
-    public record ControlResultBatchRequest(
-            @NotEmpty @Size(max = 100) List<@NotBlank String> results
-    ) {
-        @JsonAnySetter
-        void rejectUnknownField(String name, Object value) {
-            throw new IllegalArgumentException(
-                    "Unknown Control Result batch field: " + name
             );
         }
     }

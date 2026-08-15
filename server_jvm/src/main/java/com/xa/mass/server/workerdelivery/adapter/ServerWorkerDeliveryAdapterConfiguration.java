@@ -32,13 +32,13 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "processes",
             "send-time-limit"
     );
-    private static final Set<String> TASK_COMMAND_FIELDS = Set.of(
+    private static final Set<String> COMMAND_PROCESS_FIELDS = Set.of(
             "type",
             "interval",
             "consume-limit",
             "queue-capacity"
     );
-    private static final Set<String> TASK_REPORT_FIELDS = Set.of(
+    private static final Set<String> REPORT_PROCESS_FIELDS = Set.of(
             "type",
             "interval",
             "queue-capacity"
@@ -174,14 +174,15 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             }
             try {
                 switch (type) {
-                    case "TASK_COMMAND" -> {
+                    case "DELIVERY_COMMAND" -> {
                         rejectUnknownFields(
                                 object,
-                                TASK_COMMAND_FIELDS,
+                                COMMAND_PROCESS_FIELDS,
                                 adapterId,
                                 index
                         );
-                        configs.add(new NettyAdapterProcessConfig.TaskCommand(
+                        configs.add(new NettyAdapterProcessConfig
+                                .DeliveryCommand(
                                 optionalDuration(
                                         object,
                                         "interval",
@@ -202,14 +203,15 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                                 )
                         ));
                     }
-                    case "TASK_REPORT" -> {
+                    case "DELIVERY_REPORT" -> {
                         rejectUnknownFields(
                                 object,
-                                TASK_REPORT_FIELDS,
+                                REPORT_PROCESS_FIELDS,
                                 adapterId,
                                 index
                         );
-                        configs.add(new NettyAdapterProcessConfig.TaskReport(
+                        configs.add(new NettyAdapterProcessConfig
+                                .DeliveryReport(
                                 optionalDuration(
                                         object,
                                         "interval",
@@ -243,12 +245,13 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             }
         }
         if (!observedTypes.equals(Set.of(
-                "TASK_COMMAND",
-                "TASK_REPORT"
+                "DELIVERY_COMMAND",
+                "DELIVERY_REPORT"
         ))) {
             throw invalid(
                     adapterId,
-                    "processes require exactly TASK_COMMAND and TASK_REPORT"
+                    "processes require exactly DELIVERY_COMMAND and "
+                            + "DELIVERY_REPORT"
             );
         }
         return List.copyOf(configs);
@@ -286,6 +289,20 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             String adapterId,
             int index
     ) {
+        rejectUnknownFields(
+                object,
+                allowed,
+                adapterId,
+                "processes[" + index + "]"
+        );
+    }
+
+    private static void rejectUnknownFields(
+            ObjectNode object,
+            Set<String> allowed,
+            String adapterId,
+            String location
+    ) {
         Set<String> fields = new HashSet<>(object.propertyNames());
         if (allowed.containsAll(fields)) {
             return;
@@ -293,7 +310,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         fields.removeAll(allowed);
         throw invalid(
                 adapterId,
-                "unknown fields in processes[" + index + "]: " + fields
+                "unknown fields in " + location + ": " + fields
         );
     }
 

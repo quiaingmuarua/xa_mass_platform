@@ -62,10 +62,10 @@ class AdapterBatchDeliveryControllerTest {
                         .content("{\"limit\":100}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.workerCommandsByWorkerId.worker-1.messageId"
+                        "$.commands.worker-1.messageId"
                 ).doesNotExist())
                 .andExpect(jsonPath(
-                        "$.workerCommandsByWorkerId.worker-1.messageType"
+                        "$.commands.worker-1.messageType"
                 ).value("test.event"));
     }
 

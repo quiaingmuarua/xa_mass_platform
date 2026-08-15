@@ -83,6 +83,13 @@ returns only `WorkerCommandOutcome`; it does not know workerId or construct a
 protocol Report. Transport owns Report routing and Worker source identity;
 Delivery defines no outer message or correlation ID.
 
+TASK and direct CONTROL_ONLY execution use this same path. A Host exposes a
+Worker management operation by statically assembling a
+`WorkerEventDefinition(src=SYSTEM, eventCode=...)`; Core does not add a
+CONTROL_ONLY mode, queue, executor, or special handler registry.
+`DeliveryReport.fromCommand()` naturally sends the result back to
+`dst=SYSTEM` and preserves the Server-owned opaque `forward` value.
+
 Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
 `forWorker(definitionExtensions)`. Core owns the complete registry: it loads
 its built-in Definitions first and appends a defensive copy of Host business
@@ -107,8 +114,8 @@ replayed.
 
 On every physical connection open, Transport first sends
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
-`messageType=worker.connection.identify,payload="null")` with a fresh message
-ID. A failed identity send asks
+`messageType=worker.connection.identify,payload="null",forward="")`. Identity
+has no message ID or correlation value. A failed identity send asks
 the Client to close the current physical connection and consume its normal
 reconnect budget. A non-expired `ADAPTER/worker.connection.close` Command is
 the only protocol event that directly ends the current run. It is consumed by
@@ -163,7 +170,11 @@ mechanism.
 There is no local Command injection or Properties-refresh lifecycle method.
 Platform and Adapter capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
-messages.
+messages. SYSTEM and TASK Definitions share the same serialized Client callback
+lane. A CONTROL_ONLY Handler therefore cannot preempt an already running TASK
+Handler and must remain fast, bounded, thread-safe, and non-blocking; network or
+disk workflows require another owner rather than a long-running management
+Handler. Worker Core neither reads the pause score nor enforces that policy.
 
 ## Client Boundary
 

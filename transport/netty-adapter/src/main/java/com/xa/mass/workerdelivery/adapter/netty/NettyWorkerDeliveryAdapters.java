@@ -28,8 +28,10 @@ import java.util.Objects;
 /** Finite construction boundary for the built-in Netty Adapter types. */
 public final class NettyWorkerDeliveryAdapters {
 
-    private static final String TASK_COMMAND_PROCESS_ID = "TASK_COMMAND";
-    private static final String TASK_REPORT_PROCESS_ID = "TASK_REPORT";
+    private static final String DELIVERY_COMMAND_PROCESS_ID =
+            "DELIVERY_COMMAND";
+    private static final String DELIVERY_REPORT_PROCESS_ID =
+            "DELIVERY_REPORT";
 
     private NettyWorkerDeliveryAdapters() {
     }
@@ -118,8 +120,10 @@ public final class NettyWorkerDeliveryAdapters {
             Duration shutdownTimeout
     ) {
         ProcessConfigs configs = requireProcessConfigs(processConfigs);
-        NettyAdapterProcessConfig.TaskCommand commandConfig = configs.command();
-        NettyAdapterProcessConfig.TaskReport reportConfig = configs.report();
+        NettyAdapterProcessConfig.DeliveryCommand commandConfig =
+                configs.command();
+        NettyAdapterProcessConfig.DeliveryReport reportConfig =
+                configs.report();
 
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerDeliveryHttpClient httpClient = new WorkerDeliveryHttpClient(
@@ -163,19 +167,19 @@ public final class NettyWorkerDeliveryAdapters {
         List<ScheduledAdapterProcess> scheduledProcesses = processConfigs
                 .stream()
                 .map(processConfig -> switch (processConfig) {
-                    case NettyAdapterProcessConfig.TaskCommand taskCommand ->
+                    case NettyAdapterProcessConfig.DeliveryCommand command ->
                             new ScheduledAdapterProcess(
-                        TASK_COMMAND_PROCESS_ID,
+                        DELIVERY_COMMAND_PROCESS_ID,
                         Duration.ZERO,
-                        taskCommand.interval(),
+                        command.interval(),
                         BEFORE_NETWORK_CLOSE,
                         commandProcess
                     );
-                    case NettyAdapterProcessConfig.TaskReport taskReport ->
+                    case NettyAdapterProcessConfig.DeliveryReport report ->
                             new ScheduledAdapterProcess(
-                        TASK_REPORT_PROCESS_ID,
-                        taskReport.interval(),
-                        taskReport.interval(),
+                        DELIVERY_REPORT_PROCESS_ID,
+                        report.interval(),
+                        report.interval(),
                         AFTER_NETWORK_CLOSE,
                         reportProcess
                     );
@@ -235,18 +239,20 @@ public final class NettyWorkerDeliveryAdapters {
             List<NettyAdapterProcessConfig> processConfigs
     ) {
         Objects.requireNonNull(processConfigs, "processConfigs");
-        NettyAdapterProcessConfig.TaskCommand command = null;
-        NettyAdapterProcessConfig.TaskReport report = null;
+        NettyAdapterProcessConfig.DeliveryCommand command = null;
+        NettyAdapterProcessConfig.DeliveryReport report = null;
         for (NettyAdapterProcessConfig processConfig : processConfigs) {
             Objects.requireNonNull(processConfig, "processConfig");
-            if (processConfig instanceof NettyAdapterProcessConfig.TaskCommand
+            if (processConfig instanceof NettyAdapterProcessConfig
+                    .DeliveryCommand
                     value) {
                 if (command != null) {
                     throw duplicateProcess();
                 }
                 command = value;
             } else if (processConfig
-                    instanceof NettyAdapterProcessConfig.TaskReport value) {
+                    instanceof NettyAdapterProcessConfig
+                    .DeliveryReport value) {
                 if (report != null) {
                     throw duplicateProcess();
                 }
@@ -255,8 +261,8 @@ public final class NettyWorkerDeliveryAdapters {
         }
         if (command == null || report == null || processConfigs.size() != 2) {
             throw new IllegalArgumentException(
-                    "Adapter requires exactly one TASK_COMMAND and one "
-                            + "TASK_REPORT process"
+                    "Adapter requires exactly one DELIVERY_COMMAND and one "
+                            + "DELIVERY_REPORT process"
             );
         }
         return new ProcessConfigs(command, report);
@@ -269,8 +275,8 @@ public final class NettyWorkerDeliveryAdapters {
     }
 
     private record ProcessConfigs(
-            NettyAdapterProcessConfig.TaskCommand command,
-            NettyAdapterProcessConfig.TaskReport report
+            NettyAdapterProcessConfig.DeliveryCommand command,
+            NettyAdapterProcessConfig.DeliveryReport report
     ) {}
 
     private static void requirePositive(Duration value, String name) {

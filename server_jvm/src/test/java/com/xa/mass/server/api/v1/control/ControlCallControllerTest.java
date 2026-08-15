@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -17,6 +19,7 @@ import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.WorkerControlController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterControlController;
+import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.control.ControlCallProperties;
 import com.xa.mass.server.control.ControlCallRegistry;
 import com.xa.mass.server.control.ControlCallService;
@@ -24,6 +27,7 @@ import com.xa.mass.server.workerbinding.WorkerBindingProperties.EndpointProperti
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
@@ -91,16 +95,22 @@ class ControlCallControllerTest {
                 scores,
                 bindings,
                 endpoints,
-                new WorkerDeliveryCodec(),
                 new ControlCallRegistry(properties),
                 properties
+        );
+        WorkerDeliveryService workerDelivery = new WorkerDeliveryService(
+                mock(WorkerCommandRuntime.class),
+                mock(WorkerResultRuntime.class),
+                bindings,
+                service
         );
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new WorkerControlController(service),
-                        new AdapterControlController(service)
+                        new AdapterControlController(service),
+                        new AdapterBatchDeliveryController(workerDelivery)
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -158,7 +168,7 @@ class ControlCallControllerTest {
                 .andReturn();
         MvcResult consumed = mockMvc.perform(post(controlPath(
                                 ADAPTER_1,
-                                "control-commands:consume"
+                                "commands:consume"
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"limit\":100}"))
@@ -170,7 +180,7 @@ class ControlCallControllerTest {
         );
         mockMvc.perform(post(controlPath(
                                 ADAPTER_1,
-                                "control-results:append"
+                                "results:append"
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(resultBatch(
@@ -248,7 +258,7 @@ class ControlCallControllerTest {
     ) throws Exception {
         MvcResult consumed = mockMvc.perform(post(controlPath(
                                 adapterId,
-                                "control-commands:consume"
+                                "commands:consume"
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"limit\":100}"))
@@ -268,7 +278,7 @@ class ControlCallControllerTest {
     ) throws Exception {
         mockMvc.perform(post(controlPath(
                                 adapterId,
-                                "control-results:append"
+                                "results:append"
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(resultBatch(

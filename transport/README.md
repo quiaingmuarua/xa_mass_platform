@@ -33,7 +33,11 @@ Status: repository-local transport contracts and implementations.
 
 `transport/` groups local transport mechanisms and implementations. It does
 not change Kernel ownership. The Adapter delivers already-assigned commands;
-the Worker executes statically supplied business handlers.
+the Worker executes statically supplied business handlers. TASK execution and
+direct SYSTEM control reuse the same Delivery DTOs, Adapter Processes, physical
+connection, and Worker Dispatcher. Server owns CONTROL_ONLY admission,
+instance-local mailbox state, and remote-source priority; Transport does not
+introduce a CONTROL_ONLY mode field, score check, or second queue owner.
 
 The
 [Worker Delivery Contract](worker-delivery-contract/README.md) remains
@@ -63,7 +67,10 @@ routing, and Result ingress; its WebSocket and Socket Servers independently
 own their complete physical network resources and protocols. This three-owner
 production cut is frozen. The two physical Servers share a behavior contract
 in tests rather than a lifecycle implementation, and each Server plus the
-Adapter scheduler enforces its own bounded shutdown budget.
+Adapter scheduler enforces its own bounded shutdown budget. Source priority
+applies when Server answers a remote Command consume request; it does not
+reorder commands already in the Adapter queue or preempt a Worker Handler
+already running on the connection callback lane.
 
 See:
 

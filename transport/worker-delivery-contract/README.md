@@ -59,6 +59,21 @@ For a Task command:
 - `forward` is opaque Result Routing context;
 - `executeBeforeMillis` is checked before execution starts.
 
+For a direct Server-owned control call:
+
+- a Worker target uses `SYSTEM -> WORKER` and the Server-selected map key is
+  the workerId;
+- an Adapter target uses `SYSTEM -> ADAPTER` and the current Adapter-local map
+  key is `@adapter`;
+- `DeliveryReport.fromCommand()` returns Worker or Adapter evidence to
+  `dst=SYSTEM` while preserving `messageType` and `forward`;
+- the Server Control owner alone interprets that `forward` for waiter
+  correlation.
+
+`CONTROL_ONLY` is therefore not a Delivery DTO field or another protocol
+envelope. Pause-score admission, mailbox replacement, timeout, source priority,
+and aggregate HTTP results remain outside this transport-neutral module.
+
 The Worker supplies `src=WORKER`, `sourceId=workerId`, `outcomeCode`, and its
 opaque payload. An Adapter may instead report a pre-delivery rejection as
 `src=ADAPTER`, `sourceId=adapterId` while preserving the Command routing
@@ -96,12 +111,13 @@ Polling sends no identity Report; Server verifies its persisted
 Identity reporting does not create or update Endpoint Binding and is not
 authentication, heartbeat, property-index update, or endpoint migration.
 
-The other fixed control event is
+The fixed connection-lifecycle control event is
 `ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields
 are empty JSON value and empty string respectively. Worker Transport consumes
 the non-expired Command and ends its current run without returning a Result.
-These controls use the existing `DeliveryCommand` and `DeliveryReport` DTOs; there
-is no third connection DTO or transport-specific wrapper.
+Connection lifecycle and direct SYSTEM controls both use the existing
+`DeliveryCommand` and `DeliveryReport` DTOs; there is no third connection DTO
+or transport-specific wrapper.
 
 ## JSON Boundary
 

@@ -8,6 +8,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.server.control.ControlCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -25,16 +26,19 @@ public final class WorkerDeliveryService {
     private final WorkerCommandRuntime commandRuntime;
     private final WorkerResultRuntime resultRuntime;
     private final WorkerBindingService bindings;
+    private final ControlCallService controlCalls;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             WorkerResultRuntime resultRuntime,
-            WorkerBindingService bindings
+            WorkerBindingService bindings,
+            ControlCallService controlCalls
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
         this.bindings = bindings;
+        this.controlCalls = controlCalls;
     }
 
     public void verifyWorkerRoute(
@@ -72,6 +76,11 @@ public final class WorkerDeliveryService {
         String operation = "workerDelivery.consumeCommands";
         requireAdapterBatchIdentity(endpointManagerId, operation);
         try {
+            Map<String, DeliveryCommand> controlCommands =
+                    controlCalls.consume(endpointManagerId, limit);
+            if (!controlCommands.isEmpty()) {
+                return controlCommands;
+            }
             Map<String, DeliveryCommand> commands =
                     commandRuntime.consumeWorkerCommands(
                             endpointManagerId,
@@ -130,7 +139,8 @@ public final class WorkerDeliveryService {
             );
         }
 
-        List<DeliveryReport> acceptedResults = new ArrayList<>();
+        List<DeliveryReport> controlResults = new ArrayList<>();
+        List<DeliveryReport> taskResults = new ArrayList<>();
         int rejectedCount = 0;
         for (String encodedWorkerResult : encodedWorkerResults) {
             if (encodedWorkerResult == null
@@ -142,21 +152,36 @@ public final class WorkerDeliveryService {
                 DeliveryReport result = codec.decodeDeliveryReport(
                         encodedWorkerResult
                 );
-                if (!acceptableAdapterBatchReport(
+                if (result == null) {
+                    rejectedCount++;
+                } else if (result.dst() == DeliveryEndpoint.SYSTEM) {
+                    controlResults.add(result);
+                } else if (acceptableTaskBatchReport(
                         endpointManagerId,
                         result
                 )) {
+                    taskResults.add(result);
+                } else {
                     rejectedCount++;
-                    continue;
                 }
-                acceptedResults.add(result);
             } catch (IllegalArgumentException error) {
                 rejectedCount++;
             }
         }
 
-        if (!acceptedResults.isEmpty()) {
-            appendResults(acceptedResults, operation);
+        int acceptedCount = 0;
+        if (!taskResults.isEmpty()) {
+            appendResults(taskResults, operation);
+            acceptedCount += taskResults.size();
+        }
+        if (!controlResults.isEmpty()) {
+            ControlCallService.ResultAppendCounts controlCounts =
+                    controlCalls.completeReports(
+                            endpointManagerId,
+                            controlResults
+                    );
+            acceptedCount += controlCounts.acceptedCount();
+            rejectedCount += controlCounts.rejectedCount();
         }
         if (rejectedCount > 0) {
             LOGGER.log(
@@ -164,17 +189,17 @@ public final class WorkerDeliveryService {
                     "endpointManagerId={0} acceptedCount={1} "
                             + "rejectedCount={2}",
                     endpointManagerId,
-                    acceptedResults.size(),
+                    acceptedCount,
                     rejectedCount
             );
         }
         return new WorkerResultAppendCounts(
-                acceptedResults.size(),
+                acceptedCount,
                 rejectedCount
         );
     }
 
-    private static boolean acceptableAdapterBatchReport(
+    private static boolean acceptableTaskBatchReport(
             String endpointManagerId,
             DeliveryReport report
     ) {

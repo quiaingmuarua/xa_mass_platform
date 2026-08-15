@@ -6,11 +6,13 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWrit
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.FULL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
@@ -179,6 +181,153 @@ class DeliveryCommandProcessTest {
         }
     }
 
+    @Test
+    void unifiedCommandSourceExecutesAdapterProbe() {
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            DeliveryCommand probe = controlCommand(
+                    ADAPTER,
+                    "adapter.probe",
+                    "null",
+                    2_000
+            );
+            fixture.peer.controlBatches.add(Map.of(
+                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                    probe
+            ));
+            fixture.peer.batches.add(commands("worker-1"));
+            fixture.activate("worker-1");
+
+            fixture.process.round();
+            fixture.reportProcess.round();
+
+            assertThat(fixture.peer.server.requests())
+                    .extracting(ScriptedHttpServer.Request::rawPath)
+                    .startsWith(
+                            "/api/v1/worker-delivery/endpoint-managers/"
+                                    + "adapter-1/commands:consume"
+                    );
+            assertThat(fixture.peer.appendedControlReports).singleElement()
+                    .satisfies(encoded -> {
+                        DeliveryReport report = CODEC.decodeDeliveryReport(
+                                encoded
+                        );
+                        assertThat(report).isEqualTo(
+                                DeliveryReport.fromCommand(
+                                        probe,
+                                        ADAPTER,
+                                        "adapter-1",
+                                        "200",
+                                        report.payload()
+                                )
+                        );
+                        assertThat(Jsons.parseObject(report.payload()))
+                                .containsEntry("adapterId", "adapter-1")
+                                .containsEntry("reachable", true);
+                    });
+        }
+    }
+
+    @Test
+    void controlWorkerCommandUsesTheExistingConnectionRoute() {
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            DeliveryCommand control = controlCommand(
+                    WORKER,
+                    "worker.observe",
+                    "{}",
+                    2_000
+            );
+            fixture.peer.controlBatches.add(Map.of("worker-1", control));
+            fixture.activate("worker-1");
+
+            fixture.process.round();
+
+            assertThat(fixture.network.writtenWorkerIds)
+                    .containsExactly("worker-1");
+            assertThat(fixture.peer.appendedControlReports).isEmpty();
+        }
+    }
+
+    @Test
+    void unsupportedAdapterControlProducesObservedAdapterError() {
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            DeliveryCommand unsupported = controlCommand(
+                    ADAPTER,
+                    "adapter.unknown",
+                    "null",
+                    2_000
+            );
+            fixture.peer.controlBatches.add(Map.of(
+                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                    unsupported
+            ));
+
+            fixture.process.round();
+            fixture.reportProcess.round();
+
+            assertThat(fixture.peer.appendedControlReports).singleElement()
+                    .satisfies(encoded -> assertThat(
+                            CODEC.decodeDeliveryReport(encoded).outcomeCode()
+                    ).isEqualTo(Integer.toString(
+                            WorkerDeliveryAdapterErrorCode
+                                    .CONTROL_EVENT_UNSUPPORTED.code()
+                    )));
+        }
+    }
+
+    @Test
+    void adapterProbeRejectsANonNullPayload() {
+        try (Fixture fixture = new Fixture(1, 2, 10)) {
+            fixture.peer.controlBatches.add(Map.of(
+                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                    controlCommand(
+                            ADAPTER,
+                            "adapter.probe",
+                            "{}",
+                            2_000
+                    )
+            ));
+
+            fixture.process.round();
+            fixture.reportProcess.round();
+
+            assertThat(fixture.peer.appendedControlReports).singleElement()
+                    .satisfies(encoded -> assertThat(
+                            CODEC.decodeDeliveryReport(encoded).outcomeCode()
+                    ).isEqualTo(Integer.toString(
+                            WorkerDeliveryAdapterErrorCode
+                                    .CONTROL_COMMAND_INVALID.code()
+                    )));
+        }
+    }
+
+    @Test
+    void expiredOrMisaddressedControlDoesNotFabricateResult() {
+        try (Fixture fixture = new Fixture(2, 2, 10)) {
+            fixture.peer.controlBatches.add(Map.of(
+                    "worker-expired",
+                    controlCommand(
+                            WORKER,
+                            "worker.observe",
+                            "{}",
+                            1_000
+                    ),
+                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                    controlCommand(
+                            WORKER,
+                            "worker.observe",
+                            "{}",
+                            2_000
+                    )
+            ));
+
+            fixture.process.round();
+            fixture.reportProcess.round();
+
+            assertThat(fixture.peer.appendedControlReports).isEmpty();
+            assertThat(fixture.peer.appendedReports).isEmpty();
+        }
+    }
+
     private static Map<String, DeliveryCommand> commands(String... workerIds) {
         Map<String, DeliveryCommand> commands = new LinkedHashMap<>();
         for (String workerId : workerIds) {
@@ -195,6 +344,23 @@ class DeliveryCommandProcessTest {
                 deadline,
                 "{}",
                 forward
+        );
+    }
+
+    private static DeliveryCommand controlCommand(
+            com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+                    .DeliveryEndpoint destination,
+            String event,
+            String payload,
+            long deadline
+    ) {
+        return DeliveryCommand.create(
+                SYSTEM,
+                destination,
+                event,
+                deadline,
+                payload,
+                "control-only:v1:test"
         );
     }
 
@@ -266,8 +432,11 @@ class DeliveryCommandProcessTest {
 
         private final ArrayDeque<Map<String, DeliveryCommand>> batches =
                 new ArrayDeque<>();
+        private final ArrayDeque<Map<String, DeliveryCommand>>
+                controlBatches = new ArrayDeque<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
         private final List<String> appendedReports = new ArrayList<>();
+        private final List<String> appendedControlReports = new ArrayList<>();
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
@@ -287,32 +456,52 @@ class DeliveryCommandProcessTest {
                 if (responseBodyOverride != null) {
                     return new Response(200, responseBodyOverride);
                 }
-                Map<String, DeliveryCommand> batch = batches.pollFirst();
-                Map<String, Object> encoded = new LinkedHashMap<>();
-                if (batch != null) {
-                    batch.forEach((workerId, command) -> encoded.put(
-                            workerId,
-                            Jsons.parseObject(CODEC.encodeDeliveryCommand(
-                                    command
-                            ))
-                    ));
+                Map<String, DeliveryCommand> batch = controlBatches.pollFirst();
+                if (batch == null) {
+                    batch = batches.pollFirst();
                 }
-                return new Response(200, Jsons.toJson(Map.of(
-                        "workerCommandsByWorkerId", encoded
-                )));
+                return commandResponse("commands", batch);
             }
             if (request.rawPath().endsWith("/results:append")) {
                 @SuppressWarnings("unchecked")
                 List<String> reports = (List<String>) Jsons.parseObject(
                         request.body()
                 ).get("results");
-                appendedReports.addAll(reports);
-                return new Response(202, Jsons.toJson(Map.of(
-                        "acceptedCount", reports.size(),
-                        "rejectedCount", 0
-                )));
+                for (String report : reports) {
+                    try {
+                        if (CODEC.decodeDeliveryReport(report).dst() == SYSTEM) {
+                            appendedControlReports.add(report);
+                        } else {
+                            appendedReports.add(report);
+                        }
+                    } catch (RuntimeException ignored) {
+                        appendedReports.add(report);
+                    }
+                }
+                return accepted(reports.size());
             }
             return new Response(204, "");
+        }
+
+        private static Response commandResponse(
+                String field,
+                Map<String, DeliveryCommand> batch
+        ) {
+            Map<String, Object> encoded = new LinkedHashMap<>();
+            if (batch != null) {
+                batch.forEach((target, command) -> encoded.put(
+                        target,
+                        Jsons.parseObject(CODEC.encodeDeliveryCommand(command))
+                ));
+            }
+            return new Response(200, Jsons.toJson(Map.of(field, encoded)));
+        }
+
+        private static Response accepted(int count) {
+            return new Response(202, Jsons.toJson(Map.of(
+                    "acceptedCount", count,
+                    "rejectedCount", 0
+            )));
         }
 
         @Override

@@ -2,6 +2,9 @@ package com.xa.mass.server.workerdelivery.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
+import com.xa.mass.server.control.ControlCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -18,6 +22,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,6 +36,7 @@ class WorkerDeliveryServiceTest {
     private WorkerCommandRuntime commandRuntime;
     private WorkerResultRuntime resultRuntime;
     private WorkerBindingService bindings;
+    private ControlCallService controlCalls;
     private WorkerDeliveryService service;
 
     @BeforeEach
@@ -38,10 +44,19 @@ class WorkerDeliveryServiceTest {
         commandRuntime = mock(WorkerCommandRuntime.class);
         resultRuntime = mock(WorkerResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
+        controlCalls = mock(ControlCallService.class);
+        when(controlCalls.consume(anyString(), anyInt())).thenReturn(Map.of());
+        when(controlCalls.completeReports(anyString(), anyList()))
+                .thenAnswer(invocation ->
+                        new ControlCallService.ResultAppendCounts(
+                                invocation.<List<?>>getArgument(1).size(),
+                                0
+                        ));
         service = new WorkerDeliveryService(
                 commandRuntime,
                 resultRuntime,
-                bindings
+                bindings,
+                controlCalls
         );
     }
 
@@ -60,6 +75,45 @@ class WorkerDeliveryServiceTest {
         assertThat(service.pollWorkerCommand(POLLING, "worker-1"))
                 .isNull();
         verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
+    }
+
+    @Test
+    void adapterBatchReturnsOnlyControlSourceWhenControlIsAvailable() {
+        DeliveryCommand control = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.WORKER,
+                "worker.properties.snapshot",
+                System.currentTimeMillis() + 10_000,
+                "{}",
+                "control-only:v1:test"
+        );
+        when(controlCalls.consume("endpoint-1", 100))
+                .thenReturn(Map.of("worker-1", control));
+
+        assertThat(service.consumeWorkerCommands("endpoint-1", 100))
+                .containsExactlyEntriesOf(Map.of("worker-1", control));
+        verify(commandRuntime, never()).consumeWorkerCommands(
+                "endpoint-1",
+                100
+        );
+    }
+
+    @Test
+    void adapterBatchFallsBackToTaskSourceWhenControlIsEmpty() {
+        DeliveryCommand task = DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
+                "test.event",
+                System.currentTimeMillis() + 10_000,
+                "{}",
+                "task-context"
+        );
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 100))
+                .thenReturn(Map.of("worker-1", task));
+
+        assertThat(service.consumeWorkerCommands("endpoint-1", 100))
+                .containsExactlyEntriesOf(Map.of("worker-1", task));
+        verify(controlCalls).consume("endpoint-1", 100);
     }
 
     @Test
@@ -151,6 +205,10 @@ class WorkerDeliveryServiceTest {
         );
         when(resultRuntime.appendWorkerResults(List.of(success)))
                 .thenReturn(1);
+        when(controlCalls.completeReports(
+                "endpoint-1",
+                List.of(wrongDestination)
+        )).thenReturn(new ControlCallService.ResultAppendCounts(0, 1));
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",

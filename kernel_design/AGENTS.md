@@ -223,10 +223,15 @@ WebSocket and line-Socket Adapter instances live in
 instantiated independently per endpoint and owns that instance's lifecycle,
 and network ordering. Its `AdapterProcessManager` owns the
 finite Process descriptors, their one same-lifetime scheduler, round isolation, phase-local
-quiescence, and reverse finishing. One `DeliveryCommandProcess` owns scheduled Command consumption,
-delivery, expiry, rotation, and one private `FiniteQueue`. One
-`DeliveryReportProcess` owns Result acceptance, pending-batch retry, remote
-ingress, and one separate private `FiniteQueue`. Queue storage never crosses a
+quiescence, and reverse finishing. One `DeliveryCommandProcess` owns scheduled
+Command consumption, delivery, expiry, and rotation with one private
+`FiniteQueue`. One `DeliveryReportProcess` owns mixed Result acceptance, one
+pending batch, and remote ingress with one private queue. Server selects a
+single Command source per response and gives CONTROL_ONLY strict priority.
+That priority is remote acquisition policy only: it creates no Adapter lane,
+does not reorder the local FIFO or preempt a Worker Handler, and does not turn
+the pause-score admission observation into a persisted Worker mode or lock.
+Queue storage never crosses a
 Process owner. One concrete HTTP client shares only JDK networking resources;
 three owner-local Remote APIs own the Command, Report, and route-verification
 paths, wire contracts, expected statuses, and failure policy. The Command

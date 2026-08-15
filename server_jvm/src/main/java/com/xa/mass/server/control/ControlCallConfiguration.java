@@ -4,7 +4,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -24,7 +23,6 @@ public class ControlCallConfiguration {
             WorkerScoreCore workerScores,
             WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
-            WorkerDeliveryCodec codec,
             ControlCallRegistry registry,
             ControlCallProperties properties
     ) {
@@ -33,7 +31,6 @@ public class ControlCallConfiguration {
                 workerScores,
                 workerBindings,
                 endpoints,
-                codec,
                 registry,
                 properties
         );

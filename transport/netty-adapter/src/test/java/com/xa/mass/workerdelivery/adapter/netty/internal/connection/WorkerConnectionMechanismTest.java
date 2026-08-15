@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -246,6 +247,52 @@ class WorkerConnectionMechanismTest {
         channel.finishAndReleaseAll();
     }
 
+    @Test
+    void systemResultUsesControlLaneWithoutClosingOnBackpressure() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+
+            channel.writeInbound(fixture.systemResult("worker-1"));
+            fixture.reportProcess.round();
+            assertThat(fixture.controlReports)
+                    .containsExactly(fixture.systemResult("worker-1"));
+
+            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+                    .isEqualTo(
+                    DeliveryReportProcess.ReportIngressStatus.ACCEPTED
+            );
+            channel.writeInbound(fixture.systemResult("worker-1"));
+
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void taskResultStillClosesCurrentChannelWhenTaskLaneIsFull() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        channel.writeInbound(fixture.identity("worker-1"));
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, channel);
+        assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+                .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
+
+        channel.writeInbound(fixture.taskResult("worker-1"));
+
+        assertThat(channel.isActive()).isFalse();
+        assertThat(fixture.network.closeReasons).containsExactly(
+                AdapterConnectionCloseReason.RESULT_BUFFER_FULL
+        );
+        channel.finishAndReleaseAll();
+    }
+
     private static void awaitBound(
             Fixture fixture,
             EmbeddedChannel channel
@@ -283,17 +330,26 @@ class WorkerConnectionMechanismTest {
         private final PendingRouteHttpPeer remoteApi =
                 new PendingRouteHttpPeer();
         private final List<String> reports = new ArrayList<>();
-        private final ScriptedHttpServer reportServer = reportServer();
-        private final DeliveryReportProcess reportProcess =
-                new DeliveryReportProcess(
-                        new DeliveryReportRemoteApi(client(reportServer)),
-                        "adapter-1",
-                        10
-                );
+        private final List<String> controlReports = new ArrayList<>();
+        private final ScriptedHttpServer reportServer;
+        private final DeliveryReportProcess reportProcess;
         private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
         private final FakeNetworkServer network = new FakeNetworkServer();
-        private final WorkerConnectionMechanism mechanism =
-                new WorkerConnectionMechanism(
+        private final WorkerConnectionMechanism mechanism;
+        private final WorkerConnectionInboundHandler inboundHandler;
+
+        private Fixture() {
+            this(10);
+        }
+
+        private Fixture(int reportCapacity) {
+            reportServer = reportServer();
+            reportProcess = new DeliveryReportProcess(
+                    new DeliveryReportRemoteApi(client(reportServer)),
+                    "adapter-1",
+                    reportCapacity
+            );
+            mechanism = new WorkerConnectionMechanism(
                         routes,
                         network,
                         new WorkerRouteRemoteApi(client(remoteApi.server)),
@@ -302,8 +358,8 @@ class WorkerConnectionMechanismTest {
                         "adapter-1",
                         Duration.ofSeconds(1)
                 );
-        private final WorkerConnectionInboundHandler inboundHandler =
-                new WorkerConnectionInboundHandler(mechanism);
+            inboundHandler = new WorkerConnectionInboundHandler(mechanism);
+        }
 
         private EmbeddedChannel channel() {
             return new EmbeddedChannel(inboundHandler);
@@ -318,7 +374,13 @@ class WorkerConnectionMechanismTest {
                 Map<String, Object> body = Jsons.parseObject(request.body());
                 @SuppressWarnings("unchecked")
                 List<String> batch = (List<String>) body.get("results");
-                reports.addAll(batch);
+                for (String encoded : batch) {
+                    if (codec.decodeDeliveryReport(encoded).dst() == SYSTEM) {
+                        controlReports.add(encoded);
+                    } else {
+                        reports.add(encoded);
+                    }
+                }
                 return new Response(202, Jsons.toJson(Map.of(
                         "acceptedCount", batch.size(),
                         "rejectedCount", 0
@@ -337,6 +399,18 @@ class WorkerConnectionMechanismTest {
                     "200",
                     "null",
                     "context"
+            ));
+        }
+
+        private String systemResult(String workerId) {
+            return codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER,
+                    workerId,
+                    SYSTEM,
+                    "worker.properties.snapshot",
+                    "200",
+                    "{}",
+                    "control-only:v1:test"
             ));
         }
 

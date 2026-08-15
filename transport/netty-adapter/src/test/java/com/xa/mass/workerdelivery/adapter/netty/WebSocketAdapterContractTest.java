@@ -521,12 +521,13 @@ class WebSocketAdapterContractTest {
                     "23002",
                     "context"
             )));
-            send(socket, codec.encodeDeliveryReport(result(
+            String systemAccepted = codec.encodeDeliveryReport(result(
                     SYSTEM,
                     "system.observe",
                     "200",
                     ""
-            )));
+            ));
+            send(socket, systemAccepted);
             send(socket, codec.encodeDeliveryReport(result(
                     ADAPTER,
                     "adapter.unknown",
@@ -555,7 +556,7 @@ class WebSocketAdapterContractTest {
                     TimeUnit.SECONDS
             )).isTrue();
             assertThat(remoteApi.appendedResults)
-                    .containsExactly(List.of(accepted));
+                    .containsExactly(List.of(systemAccepted, accepted));
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
         } finally {
@@ -661,12 +662,12 @@ class WebSocketAdapterContractTest {
             int reportQueueCapacity
     ) {
         return List.of(
-                new NettyAdapterProcessConfig.TaskCommand(
+                new NettyAdapterProcessConfig.DeliveryCommand(
                         Duration.ofMillis(10),
                         100,
                         1000
                 ),
-                new NettyAdapterProcessConfig.TaskReport(
+                new NettyAdapterProcessConfig.DeliveryReport(
                         reportSubmitInterval,
                         reportQueueCapacity
                 )
@@ -834,7 +835,7 @@ class WebSocketAdapterContractTest {
                     ));
                 }
                 return new Response(200, Jsons.toJson(Map.of(
-                        "workerCommandsByWorkerId",
+                        "commands",
                         encoded
                 )));
             }
@@ -845,12 +846,7 @@ class WebSocketAdapterContractTest {
                 ).get("results");
                 appendedResults.add(List.copyOf(results));
                 resultAppended.countDown();
-                return new Response(202, Jsons.toJson(Map.of(
-                        "acceptedCount",
-                        results.size(),
-                        "rejectedCount",
-                        0
-                )));
+                return accepted(results.size());
             }
             String workerId = workerId(request.rawPath());
             verifiedWorkerIds.add(workerId);
@@ -867,6 +863,15 @@ class WebSocketAdapterContractTest {
                 }
                 return new Response(503, "{}");
             }
+        }
+
+        private Response accepted(int count) {
+            return new Response(202, Jsons.toJson(Map.of(
+                    "acceptedCount",
+                    count,
+                    "rejectedCount",
+                    0
+            )));
         }
 
         private String endpointManagerId(String path) {
@@ -911,7 +916,7 @@ class WebSocketAdapterContractTest {
             new CountDownLatch(1).await();
             return new Response(
                     200,
-                    "{\"workerCommandsByWorkerId\":{}}"
+                    "{\"commands\":{}}"
             );
         }
     }

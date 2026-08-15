@@ -22,7 +22,6 @@ import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointBinding;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -45,7 +44,6 @@ public final class ControlCallService {
     private final WorkerScoreCore workerScores;
     private final WorkerBindingService workerBindings;
     private final WorkerEndpointDirectory endpoints;
-    private final WorkerDeliveryCodec codec;
     private final ControlCallRegistry registry;
     private final long defaultWaitTimeoutMillis;
     private final long maxWaitTimeoutMillis;
@@ -55,7 +53,6 @@ public final class ControlCallService {
             WorkerScoreCore workerScores,
             WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
-            WorkerDeliveryCodec codec,
             ControlCallRegistry registry,
             ControlCallProperties properties
     ) {
@@ -72,7 +69,6 @@ public final class ControlCallService {
                 "workerBindings"
         );
         this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
-        this.codec = Objects.requireNonNull(codec, "codec");
         this.registry = Objects.requireNonNull(registry, "registry");
         Objects.requireNonNull(properties, "properties");
         this.defaultWaitTimeoutMillis =
@@ -217,35 +213,22 @@ public final class ControlCallService {
         );
     }
 
-    public ResultAppendCounts appendResults(
+    public ResultAppendCounts completeReports(
             String adapterId,
-            List<String> encodedReports
+            List<DeliveryReport> reports
     ) {
         requireControlAdapter(adapterId);
-        if (encodedReports == null || encodedReports.isEmpty()
-                || encodedReports.size() > MAX_BATCH_SIZE) {
-            throw invalid(
-                    "Control Result batch must contain between 1 and 100 items"
-            );
+        if (reports == null) {
+            throw invalid("Control Result batch must be present");
         }
-        List<DeliveryReport> decoded = new ArrayList<>();
-        int malformed = 0;
-        for (String encoded : encodedReports) {
-            if (encoded == null || encoded.isBlank()) {
-                malformed++;
-                continue;
-            }
-            try {
-                decoded.add(codec.decodeDeliveryReport(encoded));
-            } catch (IllegalArgumentException error) {
-                malformed++;
-            }
+        if (reports.isEmpty()) {
+            return new ResultAppendCounts(0, 0);
         }
         ControlCallRegistry.CompletionCounts counts =
-                registry.completeReports(adapterId, decoded);
+                registry.completeReports(adapterId, reports);
         return new ResultAppendCounts(
                 counts.acceptedCount(),
-                counts.rejectedCount() + malformed
+                counts.rejectedCount()
         );
     }
 

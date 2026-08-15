@@ -5,16 +5,16 @@ import java.util.Objects;
 
 /** Finite public construction configuration for built-in Adapter processes. */
 public sealed interface NettyAdapterProcessConfig
-        permits NettyAdapterProcessConfig.TaskCommand,
-        NettyAdapterProcessConfig.TaskReport {
+        permits NettyAdapterProcessConfig.DeliveryCommand,
+        NettyAdapterProcessConfig.DeliveryReport {
 
-    record TaskCommand(
+    record DeliveryCommand(
             Duration interval,
             int consumeLimit,
             int queueCapacity
     ) implements NettyAdapterProcessConfig {
 
-        public TaskCommand {
+        public DeliveryCommand {
             interval = requirePositive(interval, "interval");
             if (consumeLimit <= 0 || queueCapacity < consumeLimit) {
                 throw new IllegalArgumentException(
@@ -24,12 +24,12 @@ public sealed interface NettyAdapterProcessConfig
         }
     }
 
-    record TaskReport(
+    record DeliveryReport(
             Duration interval,
             int queueCapacity
     ) implements NettyAdapterProcessConfig {
 
-        public TaskReport {
+        public DeliveryReport {
             interval = requirePositive(interval, "interval");
             if (queueCapacity <= 0) {
                 throw new IllegalArgumentException(

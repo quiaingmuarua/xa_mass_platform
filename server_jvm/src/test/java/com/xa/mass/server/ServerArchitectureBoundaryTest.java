@@ -53,6 +53,18 @@ class ServerArchitectureBoundaryTest {
     private static final Path DELIVERY_ADAPTER_HOST = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/adapter"
     );
+
+    @Test
+    void adapterBatchApiHasNoControlOnlyCompatibilityRoutes()
+            throws IOException {
+        String sources = readSources(HTTP);
+        assertThat(sources)
+                .contains("/commands:consume")
+                .contains("/results:append")
+                .doesNotContain("control-commands:consume")
+                .doesNotContain("control-results:append")
+                .doesNotContain("workerCommandsByWorkerId");
+    }
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerassembly"
     );
@@ -330,7 +342,10 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("WorkerWebSocketHandler")
                 .doesNotContain("TextMessage")
-                .doesNotContain("DeliveryReport")
+                .doesNotContain(
+                        "workerdelivery.protocol.WorkerDeliveryProtocol"
+                                + ".DeliveryReport"
+                )
                 .doesNotContain("\"23002\"")
                 .doesNotContain("ArrayBlockingQueue");
 

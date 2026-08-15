@@ -146,6 +146,35 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
+    void twoProcessesEachOwnOneQueueWithoutAnotherScheduler()
+            throws IOException {
+        String config = read(NETTY.resolve("NettyAdapterProcessConfig.java"));
+        String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
+        String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
+
+        assertThat(config)
+                .contains("record DeliveryCommand(")
+                .contains("int consumeLimit")
+                .contains("int queueCapacity")
+                .contains("record DeliveryReport(")
+                .doesNotContain("TaskCommand")
+                .doesNotContain("TaskReport")
+                .doesNotContain("DeliveryLane");
+        assertThat(command)
+                .contains("FiniteQueue<TargetedCommand> commandQueue")
+                .doesNotContain("LaneState")
+                .doesNotContain("DeliveryLane");
+        assertThat(report)
+                .contains("FiniteQueue<String> reportQueue")
+                .doesNotContain("LaneState")
+                .doesNotContain("DeliveryLane");
+        assertThat(command + report)
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("SystemControlProcess")
+                .doesNotContain("ControlOnlyProcess");
+    }
+
+    @Test
     void repositoryConsumersCannotImportInternalConstructionTypes()
             throws IOException {
         Path repository = Path.of("../..").toAbsolutePath().normalize();

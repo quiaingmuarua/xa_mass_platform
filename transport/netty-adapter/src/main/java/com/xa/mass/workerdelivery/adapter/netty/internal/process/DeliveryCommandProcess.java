@@ -2,6 +2,9 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -19,8 +22,10 @@ import java.util.function.LongSupplier;
 /** Scheduled Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
 
+    static final String ADAPTER_TARGET_ADDRESS = "@adapter";
+
     private record TargetedCommand(
-            String workerId,
+            String targetAddress,
             DeliveryCommand command
     ) {}
 
@@ -33,6 +38,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
     private final WorkerDeliveryCodec codec;
+    private final AdapterControlExecutor adapterControlExecutor;
     private final String adapterId;
     private final int commandConsumeLimit;
     private final LongSupplier nowMillis;
@@ -70,10 +76,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             int queueCapacity,
             LongSupplier nowMillis
     ) {
-        this.remoteApi = Objects.requireNonNull(
-                remoteApi,
-                "remoteApi"
-        );
+        this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
         this.connectionMechanism = Objects.requireNonNull(
                 connectionMechanism,
                 "connectionMechanism"
@@ -97,6 +100,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         this.commandConsumeLimit = commandConsumeLimit;
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
         commandQueue = new FiniteQueue<>(queueCapacity);
+        adapterControlExecutor = new AdapterControlExecutor(adapterId);
     }
 
     @Override
@@ -122,15 +126,13 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 return;
             }
             DeliveryCommand command = queued.command();
-            if (command == null
-                    || command.executeBeforeMillis() <= currentTimeMillis) {
-                offerExpiredResult(queued);
+            if (command.executeBeforeMillis() <= currentTimeMillis) {
+                if (isTaskWorkerCommand(queued)) {
+                    offerExpiredTaskResult(queued);
+                }
                 continue;
             }
-            if (connectionMechanism.deliver(
-                    queued.workerId(),
-                    command
-            ) == RETRY_LATER) {
+            if (dispatch(queued) == RETRY_LATER) {
                 retryLater.add(queued);
             }
         }
@@ -163,6 +165,25 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         closeFinished = true;
     }
 
+    private WorkerConnectionMechanism.DeliveryAttempt dispatch(
+            TargetedCommand queued
+    ) {
+        DeliveryCommand command = queued.command();
+        String targetAddress = queued.targetAddress();
+        if (isTaskWorkerCommand(queued)
+                || isSystemWorkerCommand(queued)) {
+            return connectionMechanism.deliver(targetAddress, command);
+        }
+        if (ADAPTER_TARGET_ADDRESS.equals(targetAddress)
+                && command.src() == SYSTEM
+                && command.dst() == ADAPTER) {
+            offerControlResult(adapterControlExecutor.execute(command));
+            return WorkerConnectionMechanism.DeliveryAttempt.STARTED;
+        }
+        logInvalidTarget(targetAddress, command);
+        return WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
+    }
+
     private void refillBelowSoftCapacity() {
         if (commandQueue.estimatedSize() >= commandQueue.capacity()) {
             return;
@@ -170,7 +191,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
 
         Map<String, DeliveryCommand> acquired;
         try {
-            acquired = consumeRemoteCommands();
+            acquired = remoteApi.consume(adapterId, commandConsumeLimit);
         } catch (RuntimeException error) {
             logSourceFailure(error);
             return;
@@ -178,11 +199,9 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         if (acquired.isEmpty() || roundsStopped) {
             return;
         }
-        ArrayList<TargetedCommand> batch = new ArrayList<>(
-                acquired.size()
-        );
-        acquired.forEach((workerId, command) -> batch.add(
-                new TargetedCommand(workerId, command)
+        ArrayList<TargetedCommand> batch = new ArrayList<>(acquired.size());
+        acquired.forEach((targetAddress, command) -> batch.add(
+                new TargetedCommand(targetAddress, command)
         ));
         if (commandQueue.ingress(batch)
                 != FiniteQueue.QueueIngressStatus.ACCEPTED) {
@@ -196,17 +215,9 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
-    private Map<String, DeliveryCommand> consumeRemoteCommands() {
-        return remoteApi.consume(adapterId, commandConsumeLimit);
-    }
-
-    private void offerExpiredResult(TargetedCommand queued) {
-        DeliveryCommand command = queued.command();
-        if (command == null) {
-            return;
-        }
+    private void offerExpiredTaskResult(TargetedCommand queued) {
         DeliveryReport rejection = DeliveryReport.fromCommand(
-                command,
+                queued.command(),
                 ADAPTER,
                 adapterId,
                 Integer.toString(
@@ -219,12 +230,58 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         )) != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
-                    "adapterId={0} workerId={1} message={2}",
+                    "adapterId={0} target={1} message={2}",
                     adapterId,
-                    queued.workerId(),
+                    queued.targetAddress(),
                     "Adapter rejection result was dropped"
             );
         }
+    }
+
+    private void offerControlResult(DeliveryReport report) {
+        if (reportProcess.ingress(List.of(
+                codec.encodeDeliveryReport(report)
+        )) != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "adapterId={0} messageType={1} message={2}",
+                    adapterId,
+                    report.messageType(),
+                    "Adapter Control Result was dropped"
+            );
+        }
+    }
+
+    private static boolean isTaskWorkerCommand(TargetedCommand queued) {
+        return !ADAPTER_TARGET_ADDRESS.equals(queued.targetAddress())
+                && queued.command().src() == TASK
+                && queued.command().dst() == WORKER;
+    }
+
+    private static boolean isSystemWorkerCommand(TargetedCommand queued) {
+        return !ADAPTER_TARGET_ADDRESS.equals(queued.targetAddress())
+                && queued.command().src() == SYSTEM
+                && queued.command().dst() == WORKER;
+    }
+
+    private void logInvalidTarget(
+            String targetAddress,
+            DeliveryCommand command
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode={0} operation={1} adapterId={2} target={3} "
+                        + "messageType={4}",
+                (command.src() == SYSTEM
+                        ? WorkerDeliveryAdapterErrorCode
+                        .CONTROL_COMMAND_INVALID
+                        : WorkerDeliveryAdapterErrorCode
+                        .WORKER_MESSAGE_INVALID).code(),
+                "deliveryCommand.validateTarget",
+                adapterId,
+                targetAddress,
+                command.messageType()
+        );
     }
 
     private void logSourceFailure(RuntimeException error) {
@@ -248,5 +305,4 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 failure.getMessage()
         );
     }
-
 }

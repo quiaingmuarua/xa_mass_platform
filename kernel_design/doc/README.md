@@ -5,7 +5,9 @@ Status: current document index for the clean-kernel mechanism workspace.
 Task scheduling is the current control-flow mainline. Worker resource and score
 remain independent owner contracts used by that mainline; delivery routes,
 Adapter connectivity, and execution evidence are not a second Worker lifecycle
-system.
+system. The Server-memory CONTROL_ONLY management bypass reuses Worker Delivery
+after a pause-score admission read, but creates no Task, scheduling lane,
+persisted Worker mode, or Result Routing truth.
 
 The document families are grouped by design concern:
 

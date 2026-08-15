@@ -66,7 +66,6 @@ class ControlCallServiceTest {
                 scores,
                 bindings,
                 endpoints(),
-                codec,
                 new ControlCallRegistry(properties),
                 properties
         );
@@ -120,13 +119,13 @@ class ControlCallServiceTest {
                 100
         ).get("worker-ok");
         assertThat(command).isNotNull();
-        service.appendResults(
+        service.completeReports(
                 ADAPTER_ID,
-                List.of(codec.encodeDeliveryReport(workerReport(
+                List.of(workerReport(
                         "worker-ok",
                         command.forward(),
                         "3302"
-                )))
+                ))
         );
 
         ControlBatchCallResponse response = response(deferred).getBody();
@@ -245,7 +244,10 @@ class ControlCallServiceTest {
                         "200"
                 )))
                 .toList();
-        service.appendResults(ADAPTER_ID, reports);
+        service.completeReports(
+                ADAPTER_ID,
+                reports.stream().map(codec::decodeDeliveryReport).toList()
+        );
 
         ControlBatchCallResponse response = response(deferred).getBody();
         assertThat(response).isNotNull();
@@ -323,9 +325,9 @@ class ControlCallServiceTest {
                 "{\"reachable\":true}",
                 command.forward()
         );
-        service.appendResults(
+        service.completeReports(
                 ADAPTER_ID,
-                List.of(codec.encodeDeliveryReport(report))
+                List.of(report)
         );
 
         ControlBatchCallResponse response = response(deferred).getBody();

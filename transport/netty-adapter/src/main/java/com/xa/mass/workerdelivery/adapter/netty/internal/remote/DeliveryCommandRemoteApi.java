@@ -5,10 +5,10 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /** Remote Command source used by one Adapter's Command process. */
 public final class DeliveryCommandRemoteApi {
@@ -16,9 +16,7 @@ public final class DeliveryCommandRemoteApi {
     private static final String OPERATION = "deliveryCommand.consumeRemote";
     private static final String DECODE_OPERATION =
             "deliveryCommand.decodeRemoteResponse";
-    private static final Set<String> BATCH_FIELDS = Set.of(
-            "workerCommandsByWorkerId"
-    );
+    private static final String RESPONSE_FIELD = "commands";
 
     private final WorkerDeliveryHttpClient httpClient;
     private final WorkerDeliveryCodec codec;
@@ -38,7 +36,7 @@ public final class DeliveryCommandRemoteApi {
         String body;
         try {
             body = httpClient.postJson(
-                    endpointPath(adapterId, "commands:consume"),
+                    endpointPath(adapterId),
                     encodeConsumeRequest(limit),
                     200
             );
@@ -62,11 +60,13 @@ public final class DeliveryCommandRemoteApi {
         return Jsons.toJson(Map.of("limit", limit));
     }
 
-    private Map<String, DeliveryCommand> decodeConsumeResponse(String value) {
+    private Map<String, DeliveryCommand> decodeConsumeResponse(
+            String value
+    ) {
         try {
             Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(BATCH_FIELDS)
-                    || !(payload.get("workerCommandsByWorkerId")
+            if (!payload.keySet().equals(java.util.Set.of(RESPONSE_FIELD))
+                    || !(payload.get(RESPONSE_FIELD)
                     instanceof Map<?, ?> commands)) {
                 throw malformed("Worker command consume response");
             }
@@ -84,7 +84,7 @@ public final class DeliveryCommandRemoteApi {
                 }
                 decoded.put(id, command);
             });
-            return Map.copyOf(decoded);
+            return Collections.unmodifiableMap(decoded);
         } catch (WorkerDeliveryAdapterException error) {
             throw error;
         } catch (IllegalArgumentException error) {
@@ -106,11 +106,10 @@ public final class DeliveryCommandRemoteApi {
         );
     }
 
-    private static String endpointPath(String adapterId, String action) {
+    private static String endpointPath(String adapterId) {
         return "/api/v1/worker-delivery/endpoint-managers/"
                 + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
-                + "/"
-                + action;
+                + "/commands:consume";
     }
 
     private static WorkerDeliveryAdapterException statusFailure(

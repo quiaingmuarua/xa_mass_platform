@@ -27,8 +27,8 @@ listenHost + listenPort
 one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
 one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
-one `DeliveryCommandProcess` with its private Command `FiniteQueue` and Command Remote API
-one `DeliveryReportProcess` with its private Result `FiniteQueue` and Report Remote API
+one `DeliveryCommandProcess` with one private Command queue
+one `DeliveryReportProcess` with one private Result queue and pending batch
 one `AdapterProcessManager` owning the finite Process set and its scheduler
 ```
 
@@ -37,10 +37,10 @@ The common Adapter aggregate owns lifecycle and network ordering.
 threads, safe round invocation, phase-local quiescence, and reverse-order
 finish. The Process set is fixed for the Adapter lifetime; the Manager stores
 no per-Process Future and exposes no individual stop operation. It knows
-nothing about the network or HTTP. The Command Process
-owns remote consumption, delivery/rotation, expiry, and exactly one local
-Command queue. The Report Process owns local Result acceptance, remote ingress,
-pending-batch retry, and exactly one local Result queue. Each `FiniteQueue` is
+nothing about the network or HTTP. The Command Process owns the unified remote
+Command path, delivery/rotation, expiry, and one local queue. The Report
+Process owns the unified Result path, local Result acceptance, one pending
+batch, and one local queue. Each `FiniteQueue` is
 business-neutral process infrastructure and owns only thread-safe FIFO storage
 with soft-capacity ingress; it is never passed between owners. The stateless
 inbound Handler only forwards normalized text, inactive, and failure callbacks.
@@ -189,13 +189,14 @@ Server Result queue. Repeated identity and unknown Adapter events on an
 established connection are logged and dropped. Before identity, a malformed,
 invalid, or non-identity Report closes the physical Channel.
 
-Once bound, malformed JSON, `SYSTEM`, repeated identity, unknown Adapter
-events, mismatched `src/sourceId`, and Worker-originated `2...` outcomes are
-logged and dropped without closing the Channel. Only `TASK` Reports with
-`src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` outcomes
-enter the bounded Result queue, preserving their original JSON. A
-full or closed Result queue drops the current Result and physically closes the
-Channel as process-local backpressure.
+Once bound, malformed JSON, repeated identity, unknown Adapter events,
+mismatched `src/sourceId`, unsupported destinations, and Worker-originated
+`2...` outcomes are logged and dropped without closing the Channel. A valid
+Worker Report must use `src=WORKER`, the bound workerId, and outcome `200` or a
+Worker-owned `3...`. Both `dst=TASK` and `dst=SYSTEM` enter the same Result
+queue and preserve the original encoded JSON. A full or closed queue drops the
+Result. TASK backpressure closes the exact Channel; best-effort SYSTEM
+backpressure keeps it usable.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
 verified worker IDs, first-verification pending Channels, active
@@ -211,86 +212,64 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
-## Task Delivery Processes
+## Delivery Processes
 
 ### Command consumption round
 
-`DeliveryCommandProcess` calls the Server Command HTTP endpoint and decodes its
-response into its own `FiniteQueue` of private targeted-command tuples. The tuple is
-Adapter-local; the current Server HTTP contract continues to use
-`Map<workerId, DeliveryCommand>`, converted immediately after consume.
+`DeliveryCommandProcess` owns one private queue and one fixed remote path.
+Every request to `commands:consume` returns a map from exactly one Server-owned
+source. CONTROL_ONLY has strict priority at Server; Adapter never requests two
+hashes and never merges them. This is remote acquisition priority, not local
+preemption: commands already present in the Adapter FIFO remain ahead, a full
+local queue postpones the next Server consume, and an already running Worker
+Handler is unaffected. Sustained CONTROL_ONLY traffic can therefore delay TASK
+mailbox acquisition by policy.
 
 ```text
-while estimated queue size is below its soft capacity
-  -> consume at most configured consumeLimit commands from Server
-  -> ingress the complete bounded batch, allowing one-batch redundancy
+while the queue is below its soft capacity
+  -> consume at most the configured limit from commands:consume
+  -> ingress the complete bounded batch
 
-consume at most queue capacity for this round
-for each observed command exactly once
-  -> expired: remove and enqueue Adapter COMMAND_EXPIRED best-effort
-  -> no active writable Channel: rotate to queue tail
+consume one queue snapshot
+for each command exactly once this round
+  -> expired: remove; only expired TASK creates 23002 evidence
+  -> no active writable Worker Channel: rotate to queue tail
   -> physical Server write started: remove
-  -> synchronous write failure: close exact Channel, result UNKNOWN
-  -> asynchronous write failure: physical Server closes exact Channel
+  -> SYSTEM -> ADAPTER at @adapter: execute fixed adapter.probe
 ```
 
-The queue has no workerId index. Capacity is a backpressure target rather than
-an exact size invariant. Because `consumeLimit <= capacity`, stable
-Command retention remains bounded by `capacity + consumeLimit - 1`.
-One round observes each consumed command once.
-The Server mailbox already partitions by endpointManagerId, while workerId is
-the Channel route coordinate.
-
-Adapter holds a consumed command until send starts or the deadline expires.
-An Adapter-generated `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` (`23002`)
-uses `DeliveryReport.fromCommand`, declares `src=ADAPTER` and
-`sourceId=adapterId`, and copies the Command message type plus opaque forward
-context. Its payload is `"null"`.
-
-No active Channel is a temporary retry condition while the command remains
-live. A send-started failure is ambiguous and must not fabricate Adapter
-rejection evidence.
+TASK accepts `TASK -> WORKER`. CONTROL_ONLY accepts `SYSTEM -> WORKER` and
+`SYSTEM -> ADAPTER` only at `@adapter`. No active Channel is temporary while
+the deadline remains live. CONTROL_ONLY expiry creates no synthetic result;
+the Server waiter owns timeout. The queue has no workerId index, and its soft
+capacity is a backpressure target rather than delivery truth. Adapter does not
+read Worker score or recheck pause: Server admission is the only current
+CONTROL_ONLY eligibility observation.
 
 ### Result ingress round
 
-`WorkerConnectionMechanism` strictly decodes every direct `DeliveryReport`.
-Results targeting
-`ADAPTER` stay local. Only bound `TASK` Results using `200` or Worker-owned
-`3...` are queued, using their original encoded JSON so Adapter does not
-rebuild payload or forward context. `SYSTEM` has no Adapter queue consumer and
-is dropped.
-
-Adapter-generated `COMMAND_EXPIRED` and valid Results accepted by the
-connection mechanism enter through the concrete
-`DeliveryReportProcess.ingress(...)` owner operation. Neither caller sees the
-Result queue. `DeliveryReportProcess` runs
-the remote ingress round at its configured `TASK_REPORT.interval`:
+`DeliveryReportProcess` owns one private queue, one pending batch, and the
+single `results:append` path. Qualified TASK and SYSTEM reports preserve their
+original encoded JSON and enter through the same concrete `ingress(...)`
+operation.
 
 ```text
-pending batch exists -> retry it
-otherwise            -> drain current queue once
-submit one encoded-result batch to Server
+pending batch exists -> retry it first
+otherwise            -> drain the queue once
+submit one mixed encoded-result batch to results:append
 ```
 
-The batch wrapper has no caller-provided source field. Each encoded Report
-declares its producer. Server accepts `WORKER` success/failure Reports and only
-accepts `ADAPTER` `2...` Reports whose `sourceId` matches the batch
-`endpointManagerId`. Point Worker Report ingress separately requires
-`WORKER + path workerId`.
+Server routes each Report by `dst`: TASK enters Kernel Result truth and SYSTEM
+completes the Server-local Control waiter. Remote unavailability retains the
+whole mixed pending batch; protocol rejection drops it. Normal close performs
+one bounded best-effort final submit. Command and Report rounds remain
+independent. TASK and SYSTEM do not have separate retry policies inside the
+Adapter: a late CONTROL_ONLY Report may be retried with the mixed batch and is
+then rejected by Server after its waiter has ended.
 
-Remote API protocol rejection drops the pending batch. Network or Server
-unavailability retains it for a later interval. The one pending batch is
-bounded by Result queue capacity and is retried before consuming new Results.
-Command consumption and Result ingress are independently scheduled rounds;
-Report failure does not stop command
-forwarding.
-
-Both queues are finite, soft-capacity, and private to their owning Process.
-`estimatedSize` is advisory and never becomes delivery truth. Adapter process
-failure can lose
-queued commands or results. Existing TaskItem claims, Worker leases, and
-Result Routing fences remain the convergence mechanism. There is no ACK,
-persistent pending queue, or exactly-once claim.
+Both queues are finite, soft-capacity, and private to their Process.
+`estimatedSize` is advisory. Adapter failure can lose queued commands or
+results; there is no ACK, persistent pending queue, or exactly-once claim.
 
 A physical Channel close is a reconnectable network fact. It does not tell the
 Worker to end its current run. Only a delivered

@@ -449,10 +449,10 @@ command delivery only when the persisted Binding matches the Adapter's
 endpoint-manager identity. Every physical connection still sends identity;
 verified reconnects skip this Server read until the Adapter restarts.
 The Adapter result request carries an array of encoded `DeliveryReport` strings.
-Server accepts `WORKER` success/failure Reports targeting `TASK`; it accepts an
-`ADAPTER` `2...` Report only when `sourceId` equals the path
-`endpointManagerId`. Server appends the valid subset and
-returns both `acceptedCount` and `rejectedCount`. The point Worker result
+Server decodes the batch once and routes each valid item by destination:
+`dst=TASK` enters `WorkerResultRuntime`, while `dst=SYSTEM` is correlated with
+the Server-local Control waiter. Mixed batches are allowed. The response
+returns combined `acceptedCount` and `rejectedCount`. The point Worker result
 endpoint separately requires `src=WORKER`, `sourceId` equal to the path
 workerId, and an outcome of `200` or Worker-owned `3...`.
 
@@ -489,10 +489,6 @@ Server-local CONTROL_ONLY calls:
 ```text
 POST /api/v1/worker-groups/{workerGroupId}/workers/controls:call
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/controls:call
-POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
-     control-commands:consume
-POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
-     control-results:append
 ```
 
 The Worker batch request applies one Command to an explicit, input-ordered
@@ -528,6 +524,15 @@ timed-out targets:
 }
 ```
 
+Request-level failures remain distinct from per-target admission results:
+
+```text
+invalid shape, duplicate IDs, or invalid timeout -> 400
+unknown Adapter target                         -> 404
+mailbox or pending-target capacity exhausted   -> 429
+bounded descriptor/score/Binding read failure  -> 503
+```
+
 This is a bounded, best-effort Server memory channel, not Kernel scheduling or
 reliable delivery. One Worker request names `1..100` unique Worker IDs in one
 Group and applies one Command payload to all of them. Server performs one
@@ -553,14 +558,37 @@ A Worker-targeted batch calls
 admits a Worker only when the decoded `timeMillis` equals the Kernel pause
 time. It does not write, release, or reinterpret the opaque score. The pause
 check is best-effort admission evidence rather than an execution lock.
+`CONTROL_ONLY` is a Server use-case classification derived at admission, not a
+persisted Worker mode or another score field. Pause does not cancel an existing
+Worker lease, drain a TASK Command already present in Redis or the Adapter,
+interrupt a running Handler, or wait for prior execution to finish. Resume does
+not wait for a Control Call to complete. Callers that require the operational
+sequence `pause -> control -> resume` must wait for and interpret each response.
 Missing Workers, scores, Bindings, configured endpoints, Polling endpoints,
 and non-paused Workers become per-target rejections; an owner read failure
 rejects the whole request. Adapter-targeted calls use the same aggregate
 response contract but do not read Worker state. Neither route creates
 pause/resume behavior; callers use the separate explicit scheduling routes
 above when they need to move that score coordinate.
-The current Netty Adapter does not yet consume these new paths, so this Server
-slice is API-ready but not a completed Adapter/Worker feature.
+Each active Netty Adapter continues to use only the ordinary
+`commands:consume` and `results:append` APIs. For one consume request the
+Server selects exactly one source: a non-empty CONTROL_ONLY mailbox has strict
+priority; otherwise it consumes TASK commands. It never merges two maps or
+fills a partial control batch from TASK. Results share one Adapter queue and
+one HTTP batch; Server routes each Report by `dst`. These bounded memory hops
+do not make the pause admission check an execution lock, add persistence, or
+involve Kernel scheduling. Strict priority applies only when Server answers a
+new Adapter consume request. It does not reorder the Adapter's existing FIFO,
+preempt a Worker callback, or reserve transport capacity, and sustained
+CONTROL_ONLY traffic may delay TASK mailbox consumption.
+
+The mailbox and waiters belong to one Server process. The Adapter's configured
+Worker Delivery base URL must therefore return consume and result requests to
+that same instance; a load balancer without instance affinity loses this
+best-effort correlation. Worker SYSTEM handlers execute synchronously on the
+same per-connection callback lane as TASK handlers, so current CONTROL_ONLY
+handlers must be fast, bounded, thread-safe, and free of blocking network or
+disk work.
 
 ```yaml
 xa.mass.control-call:
@@ -656,15 +684,14 @@ active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance declares exactly one
-`TASK_COMMAND` and one `TASK_REPORT` Process. Both are scheduled from one finite
+`DELIVERY_COMMAND` and one `DELIVERY_REPORT` Process. Both are scheduled from one finite
 Process list owned by `AdapterProcessManager` on the Adapter's existing two
 scheduler threads. Server only supplies the declarations; it does not manage
-the scheduler or shutdown phases. The Command
-Process owns remote consumption, one bounded local queue, expiry, and
-non-blocking Channel delivery. The Report Process owns one separate bounded
-queue, pending-batch retry, and remote submission. Their intervals and queue
-capacities live under each Process entry; there are no flat pump fields or a
-combined HTTP façade owner. There is no producer-source split.
+the scheduler or shutdown phases. The Command Process owns one bounded queue
+and consumes one Server-selected map per round. The Report Process owns one
+bounded queue and one pending batch for mixed TASK/SYSTEM evidence. There are
+no lane-specific URLs, queues, schedulers, dynamic lanes, or combined HTTP
+facade owner.
 
 ### Built-in Worker Assembly
 
@@ -684,11 +711,11 @@ xa:
             listen-host: 127.0.0.1
             listen-port: 18083
             processes:
-              - type: TASK_COMMAND
+              - type: DELIVERY_COMMAND
                 interval: 100ms
                 consume-limit: 100
                 queue-capacity: 1000
-              - type: TASK_REPORT
+              - type: DELIVERY_REPORT
                 interval: 1s
                 queue-capacity: 1000
     worker-binding:
@@ -879,8 +906,11 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 The Redis Owner proof runs without Python. The Runtime Boundary proof runs
 against an already healthy Python Kernel and proves `TASK_DRIVEN` through the
 real Java polling Worker and `ITEM_DRIVEN` through Netty WebSocket and Socket
-Adapter endpoints. All paths use the Server HTTP boundary, Python
-scheduling/ResultRouting, Java last-success query, and exact Worker release.
+Adapter endpoints. It also pauses a real WebSocket Worker, completes a
+CONTROL_ONLY Worker call, and completes `adapter.probe` through the Adapter's
+unified Command and Report APIs. Task paths use the Server HTTP boundary, Python
+scheduling/ResultRouting, Java last-success query, and exact Worker release;
+CONTROL_ONLY remains entirely outside Task scheduling and Result Routing.
 
 The finite Scenario Worker acceptance is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).

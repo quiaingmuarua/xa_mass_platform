@@ -2,10 +2,6 @@ package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.AdapterControlCallRequest;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchCallResponse;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCommandConsumeRequest;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCommandConsumeResponse;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlResultBatchRequest;
-import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerResultBatchResponse;
 import com.xa.mass.server.control.ControlCallService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -40,33 +36,4 @@ public class AdapterControlController {
         return controlCalls.callAdapter(endpointManagerId, request);
     }
 
-    @PostMapping("/control-commands:consume")
-    public ControlCommandConsumeResponse consumeCommands(
-            @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody ControlCommandConsumeRequest request
-    ) {
-        return ControlCommandConsumeResponse.from(
-                controlCalls.consume(
-                        endpointManagerId,
-                        request.limit()
-                )
-        );
-    }
-
-    @PostMapping("/control-results:append")
-    public ResponseEntity<WorkerResultBatchResponse> appendResults(
-            @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody ControlResultBatchRequest request
-    ) {
-        var counts = controlCalls.appendResults(
-                endpointManagerId,
-                request.results()
-        );
-        return ResponseEntity.accepted().body(
-                new WorkerResultBatchResponse(
-                        counts.acceptedCount(),
-                        counts.rejectedCount()
-                )
-        );
-    }
 }

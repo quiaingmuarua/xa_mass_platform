@@ -53,9 +53,9 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerCommandConsumeResponse(
-            Map<String, WorkerCommandResponse> workerCommandsByWorkerId
+            Map<String, WorkerCommandResponse> commands
     ) {
-        static WorkerCommandConsumeResponse from(
+        public static WorkerCommandConsumeResponse from(
                 Map<String, DeliveryCommand> commands
         ) {
             Map<String, WorkerCommandResponse> response =

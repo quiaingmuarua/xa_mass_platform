@@ -110,6 +110,34 @@ Adapter -> Worker
 The close Command is a first-version terminal instruction and carries no
 reason, sleep duration, or retry hint.
 
+Direct CONTROL_ONLY management reuses the same transport DTOs but not the Task
+mailbox or Result Routing:
+
+```text
+Server instance-local bounded mailbox
+  -> Server-selected unified Adapter Command batch
+  -> SYSTEM -> WORKER, or SYSTEM -> ADAPTER at @adapter
+  -> unified Adapter Report batch
+  -> Server waiter
+```
+
+The Server admits Worker controls only from its current pause-score read, but
+that observation is not an execution lock and Adapter never reads score.
+Mailbox slots, Adapter queues, and waiter correlation are memory-only and may
+be lost on process failure. CONTROL_ONLY expiry produces no synthetic Result;
+late or missing evidence becomes `unobserved` at the Server waiter. The fixed
+Adapter-local surface contains only `adapter.probe`; Worker management events
+come from statically assembled `src=SYSTEM` Worker Definitions. This path does
+not create a Task, claim an Item or Worker lease, or write Result Routing truth.
+
+`CONTROL_ONLY` is not a persisted Worker mode, a third transport lane, or a
+Kernel score band. Server derives the classification from the pause coordinate
+only while admitting a call. Pause does not revoke an existing Worker lease,
+drain a TASK Command already acquired by an Adapter, or interrupt a Handler;
+resume does not wait for the Control Call. Any stronger
+`pause -> drain -> control -> resume` transaction would require a separate
+management owner and is not implied here.
+
 ## Task Dispatch
 
 After exact Item and Worker claims, `TaskItemDispatcher` constructs one
@@ -187,7 +215,7 @@ Batch consume returns:
 
 ```json
 {
-  "workerCommandsByWorkerId": {
+  "commands": {
     "worker-1": {
       "src": "TASK",
       "dst": "WORKER",
@@ -200,11 +228,21 @@ Batch consume returns:
 }
 ```
 
-The Adapter result endpoint accepts `WORKER` success/failure Reports and
-`ADAPTER` `2...` Reports whose `sourceId` equals the path endpoint-manager ID.
-Each encoded Report is validated independently.
-The response reports accepted and rejected counts. A partial or failed Redis
-append returns `503` so the Adapter can retry its pending batch.
+For each consume request, Server selects one source only. A non-empty
+CONTROL_ONLY mailbox has strict priority; otherwise Server consumes the TASK
+mailbox. It never merges the two maps. The Adapter result endpoint accepts a
+mixed encoded batch: `dst=TASK` is validated and appended through the Kernel
+Result owner, while `dst=SYSTEM` is correlated with the Server-local Control
+waiter. The response reports combined accepted and rejected counts. Remote
+unavailability keeps the Adapter's one pending batch for retry.
+
+Strict priority is limited to this remote source-selection decision. It does
+not reorder commands already present in the Adapter's single FIFO, preempt an
+in-flight Worker Handler, or reserve delivery capacity. A full Adapter queue
+delays the next consume call, and sustained CONTROL_ONLY traffic may delay TASK
+mailbox acquisition. Because the Control mailbox is Server-instance memory,
+the Adapter's consume and result requests must return to the same Server
+instance; no distributed mailbox or cross-instance waiter correlation exists.
 
 `system-polling` is a logical endpoint-manager binding for pure polling
 Workers. It may use only point access, never batch access.
@@ -258,8 +296,9 @@ Adapter -> Worker : DeliveryCommand
 Worker  -> Adapter: DeliveryReport
 ```
 
-The Adapter forwards Task/System commands unchanged. The selected physical
-Server normalizes inbound text to `String`, then invokes one sharable Netty
+The Adapter forwards Worker-targeted Task/System commands unchanged. The fixed
+Adapter-local `adapter.probe` control is executed without entering the network
+Server. The selected physical Server normalizes inbound text to `String`, then invokes one sharable Netty
 callback Handler. That Handler only forwards text, inactive, and failure
 callbacks to the common connection mechanism; it owns no connection semantics
 or state. The mechanism validates the first Report, coordinates optional first
@@ -274,9 +313,9 @@ local events on an established connection are logged and dropped.
 Before identity, malformed or non-identity input closes the physical Channel.
 During asynchronous route verification reads remain enabled, but later input is
 released and dropped without buffering or closing that Channel. Once bound,
-malformed JSON, `SYSTEM`, repeated identity, unknown
-Adapter events, mismatched `src/sourceId`, and Worker-originated Adapter
-`2...` outcomes are logged and dropped while the Channel remains usable.
+malformed JSON, repeated identity, unknown Adapter events, mismatched
+`src/sourceId`, unsupported destinations, and Worker-originated Adapter `2...`
+outcomes are logged and dropped while the Channel remains usable.
 
 The Adapter keeps consumed commands in a bounded local queue. A command with
 no active connection rotates until the Worker reconnects or the command
@@ -285,14 +324,14 @@ expires. On expiry the Adapter may create
 type and opaque forward context. If a send has started and later fails, delivery is
 `UNKNOWN`; the Adapter must not fabricate rejection evidence.
 
-Only bound `TASK` Worker Reports declaring the bound workerId and using `200`
-or Worker-owned `3...` are queued, and their original encoded JSON is
-preserved unchanged. A full or closed queue
-drops the current Result and physically closes that Channel. Adapter-generated
-`COMMAND_EXPIRED` uses an Adapter-owned `2...` outcome and enters the same
-queue directly from the DeliveryCommand Process rather than through Worker
-ingress. A timed DeliveryReport Process batches the queue to Server. There is no command/result
-coupling, ACK, durable Adapter queue, or exactly-once promise.
+Bound Worker Reports declaring the bound workerId and using `200` or
+Worker-owned `3...` enter the single Result queue for `dst=TASK` or
+`dst=SYSTEM`, preserving their original encoded JSON. A full or closed queue
+still closes the Channel for TASK backpressure; best-effort SYSTEM evidence is
+dropped without closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
+the same queue. CONTROL_ONLY expiry creates no synthetic evidence because the
+Server waiter owns timeout. There is no command/result coupling, ACK, durable
+Adapter queue, or exactly-once promise.
 
 One finite construction factory returns only the public Adapter contract. It
 instantiates one package-private Adapter scheduling mechanism per endpoint and
@@ -300,9 +339,10 @@ selects one complete WebSocket or line-Socket physical Server. Every instance
 independently owns three layers: the Adapter aggregate owns lifecycle,
 network shutdown sequencing, and an `AdapterProcessManager`. The Manager owns
 the finite scheduled Process list, its one same-lifetime scheduler, phase-local
-quiescence, round isolation, and reverse finish; the
-Command and Report Processes each own one private finite queue and their own
-owner-local Remote API. The Command Remote owns command paths and wire
+quiescence, round isolation, and reverse finish; the Command and Report
+Processes each own one private finite queue and one owner-local Remote API.
+Source priority is decided by Server before the Command response is created.
+The Command Remote owns the unified command path and wire
 decoding, the Report Remote owns result paths and wire validation, and the
 route Remote owns verification status classification. A concrete
 Adapter-private HTTP client is shared only by those three Remote APIs and owns
@@ -340,6 +380,13 @@ map to `3302`; Handler failures map to `3303`, and invalid output maps to
 `3304`. The Handler returns an
 already serialized opaque String result. `"null"` represents no business
 value.
+
+`src=SYSTEM` management Definitions use this same synchronous Dispatcher and
+the same per-connection Client callback lane as TASK Definitions. They cannot
+preempt an already running Handler. The current CONTROL_ONLY policy therefore
+requires them to be fast, bounded, thread-safe, and non-blocking; a network,
+disk, or long-running management workflow needs another owner rather than a
+transport Handler.
 
 Polling submits the direct result through the point API. WebSocket and Socket
 send direct result JSON to the Adapter. A Worker that receives an already
@@ -384,6 +431,10 @@ contract.
 - Worker sends each Result once; a failed send is lost. Adapter queues are
   process-local and can be lost.
 - Adapter batch retry can duplicate a DeliveryReport at Server ingress.
+- A mixed TASK/SYSTEM pending batch is retried as one unit; a CONTROL_ONLY
+  waiter may already have timed out when its late evidence reaches Server.
+- Instance-local Control mailbox and waiter state require Adapter HTTP affinity
+  to the Server process that accepted the call.
 - Result Routing fences converge late and duplicate evidence.
 - Item claim and Worker lease expiry recover missing evidence.
 

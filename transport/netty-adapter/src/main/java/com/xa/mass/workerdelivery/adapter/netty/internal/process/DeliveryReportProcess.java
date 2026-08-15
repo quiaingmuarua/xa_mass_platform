@@ -27,10 +27,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
             String adapterId,
             int queueCapacity
     ) {
-        this.remoteApi = Objects.requireNonNull(
-                remoteApi,
-                "remoteApi"
-        );
+        this.remoteApi = Objects.requireNonNull(remoteApi, "remoteApi");
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
@@ -74,6 +71,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
                 pendingBatch = remaining;
             }
         }
+        reportQueue.clear();
         closeFinished = true;
     }
 

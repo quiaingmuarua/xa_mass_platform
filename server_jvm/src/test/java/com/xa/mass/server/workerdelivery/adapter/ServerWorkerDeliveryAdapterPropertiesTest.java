@@ -42,9 +42,15 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.listen-port=18083",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-1.processes[0].type=TASK_COMMAND",
+                        + ".websocket-1.processes[0].type=DELIVERY_COMMAND",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-1.processes[1].type=TASK_REPORT",
+                        + ".websocket-1.processes[0]"
+                        + ".queue-capacity=1000",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".websocket-1.processes[1].type=DELIVERY_REPORT",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".websocket-1.processes[1]"
+                        + ".queue-capacity=1000",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".socket-1.type=SOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
@@ -52,11 +58,18 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".socket-1.listen-port=18084",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".socket-1.processes[0].type=TASK_REPORT",
+                        + ".socket-1.processes[0].type=DELIVERY_REPORT",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".socket-1.processes[0].queue-capacity=800",
+                        + ".socket-1.processes[0]"
+                        + ".queue-capacity=800",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".socket-1.processes[1].type=TASK_COMMAND"
+                        + ".socket-1.processes[1].type=DELIVERY_COMMAND",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".socket-1.processes[1]"
+                        + ".queue-capacity=1000",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".socket-1.processes[1]"
+                        + ".consume-limit=100"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             WorkerDeliveryAdapterManager manager = context.getBean(
@@ -86,24 +99,40 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertAdapterFailed("type=OTHER");
         assertAdapterFailed("unexpected=true");
         assertAdapterFailed("listen-port=0");
-        assertAdapterFailed("processes[0].consume-limit=0");
+        assertAdapterFailed(
+                "processes[0].consume-limit=0"
+        );
         assertAdapterFailed(
                 "processes[0].consume-limit=101",
                 "processes[0].queue-capacity=100"
         );
         assertAdapterFailed("processes[0].unknown=true");
-        assertAdapterFailed("processes[1].type=TASK_COMMAND");
+        assertAdapterFailed("processes[0].lanes.unknown.queue-capacity=1");
+        assertAdapterFailed("processes[1].type=DELIVERY_COMMAND");
         assertAdapterFailed("processes[1].type=UNKNOWN");
         assertAdapterFailed("processes[1].interval=0ms");
+        assertAdapterFailed(
+                "processes[1].retry-on-unavailable=maybe"
+        );
+        assertAdapterFailed("processes[0].type=TASK_COMMAND");
         assertFailed(
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".system-polling.type=WEBSOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".system-polling.listen-port=18083",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".system-polling.processes[0].type=TASK_COMMAND",
+                        + ".system-polling.processes[0].type=DELIVERY_COMMAND",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".system-polling.processes[1].type=TASK_REPORT"
+                        + ".system-polling.processes[0]"
+                        + ".queue-capacity=1000",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".system-polling.processes[1].type=DELIVERY_REPORT",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".system-polling.processes[1]"
+                        + ".queue-capacity=1000",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".system-polling.processes[0]"
+                        + ".consume-limit=100"
         );
     }
 
@@ -174,8 +203,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         List<String> properties = new ArrayList<>(List.of(
                 prefix + "type=WEBSOCKET",
                 prefix + "listen-port=18083",
-                prefix + "processes[0].type=TASK_COMMAND",
-                prefix + "processes[1].type=TASK_REPORT"
+                prefix + "processes[0].type=DELIVERY_COMMAND",
+                prefix + "processes[0].queue-capacity=1000",
+                prefix + "processes[1].type=DELIVERY_REPORT",
+                prefix + "processes[1].queue-capacity=1000"
         ));
         for (String override : overrides) {
             properties.add(prefix + override);

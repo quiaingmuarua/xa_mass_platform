@@ -32,8 +32,11 @@ Status: current repository handoff.
   the pause time; Adapter calls use the same aggregate result contract without
   reading score. This best-effort channel has one unconsumed slot per target,
   no Redis mailbox, retry ledger, result store, background thread, or score
-  writer inside the CONTROL_ONLY owner. Its internal consume/result endpoints
-  are Server proof surfaces until the Adapter adopts them.
+  writer inside the CONTROL_ONLY owner. Active Netty Adapters consume and
+  report this best-effort channel through the same two batch APIs used for
+  Task delivery; Server selects one Command source per consume request. The
+  Adapter HTTP path must return to the Server instance holding the mailbox and
+  waiter; there is no distributed correlation or cross-instance fallback.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
   strict configured-Group directory discovery, per-Group initialization based
@@ -59,9 +62,10 @@ Status: current repository handoff.
   aggregate for lifecycle and network ordering; one
   `AdapterProcessManager` for the finite Process set, its single scheduler,
   phase-local quiescence, and reverse finishing; one `DeliveryCommandProcess` for
-  Command consumption, delivery, and expiry; one `DeliveryReportProcess` for
-  Result acceptance, pending-batch retry, and remote ingress; one private
-  soft-capacity `FiniteQueue` owned by each Process; three owner-local Remote
+  unified Command consumption, delivery, and expiry; one
+  `DeliveryReportProcess` for mixed Result acceptance, one pending-batch
+  policy, and remote ingress; one private soft-capacity `FiniteQueue` owned by
+  each Process; three owner-local Remote
   APIs for Command consumption, Report ingress, and route verification; one
   Adapter-private concrete HTTP client shared only by those Remote APIs; one
   stateless inbound Handler that only adapts Netty callbacks; one connection
@@ -80,9 +84,9 @@ Status: current repository handoff.
   This three-owner production cut is frozen. WebSocket and Socket preserve
   complete physical ownership and are aligned by a test-only behavior contract,
   not a shared lifecycle implementation.
-  Adapter-directed payloads are consumed locally;
-  only bound TASK results with Worker-owned outcomes enter the Result queue,
-  preserving their original JSON.
+  Adapter-directed payloads are consumed locally. Qualified bound Worker
+  TASK and SYSTEM results enter the same Report Process, preserving their
+  original JSON.
   It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
@@ -237,11 +241,17 @@ tag.
   `List<ScheduledAdapterProcess>`, one same-lifetime scheduler, per-Process
   round isolation, phase-local quiescence, and reverse finish order. It stores
   no per-Process Future and exposes no individual Process stop operation.
-  `DeliveryCommandProcess` owns its one private Command `FiniteQueue`, remote
-  Command acquisition, expiry, and rotation; it calls the concrete connection
-  and Report owners directly. `DeliveryReportProcess` owns its one private
-  Result `FiniteQueue`, explicit `ingress(...)` operation, pending batch, and
-  remote Result submission.
+  `DeliveryCommandProcess` owns one private Command `FiniteQueue`, unified
+  remote acquisition, expiry, and rotation; it
+  calls the concrete connection and Report owners directly.
+  `DeliveryReportProcess` owns one private Result `FiniteQueue`, one optional
+  pending batch, explicit `ingress(...)`, and mixed Result submission. Server,
+  not Adapter, gives CONTROL_ONLY strict priority by selecting one source for
+  each unified Command response. This priority does not create a local lane,
+  reorder the Adapter FIFO, preempt a Worker callback, or drain already
+  acquired TASK commands. CONTROL_ONLY is derived from one Server pause-score
+  observation at call admission; it is not a persisted Worker mode or an
+  execution lock.
   `FiniteQueue` is thread-safe business-neutral Process infrastructure and is
   never passed between owners. `DeliveryCommandRemoteApi`,
   `DeliveryReportRemoteApi`, and `WorkerRouteRemoteApi` own their respective
@@ -276,12 +286,12 @@ tag.
   Binding, authentication, Worker online truth, or an implicit unbind mechanism.
   Input after identity while first verification is pending is dropped, not
   buffered or used to close the Channel. There is no Adapter event registry or
-  plugin dispatcher. Only verified TASK Reports declaring
-  `src=WORKER`, the bound workerId, and `200` or Worker-owned `3...` may enter
-  the Result queue, with encoded JSON, payload, and forward context unchanged.
-  SYSTEM and invalid bound input are logged and
-  dropped; invalid unbound input and a full or closed Result queue physically
-  close the Channel. Physical close is reconnectable network evidence; only
+  plugin dispatcher. Verified Reports declaring `src=WORKER`, the bound
+  workerId, and `200` or Worker-owned `3...` enter one queue for
+  `dst=TASK|SYSTEM`, with encoded JSON, payload, and forward context unchanged.
+  Invalid bound input is logged and dropped. A full or closed queue physically
+  closes the Channel for TASK, while SYSTEM backpressure drops only that
+  best-effort Report. Invalid unbound input closes the Channel. Physical close is reconnectable network evidence; only
   `ADAPTER/worker.connection.close` terminates the current Worker run.
   Adapter-owned outcomes must use `WorkerDeliveryAdapterErrorCode`. The private
   owner-local Remote API contracts are
@@ -314,6 +324,10 @@ tag.
   Command queue, execution task, in-flight registry, or Result cache. One
   Client's ordered callback lane serializes its Commands; separate Client
   connections may execute shared thread-safe Definitions concurrently. A
+  `src=SYSTEM` CONTROL_ONLY operation is an ordinary statically assembled
+  Definition on that same callback lane. It must remain fast, bounded, and
+  non-blocking; Core does not inspect pause score or provide management
+  preemption. A
   terminal Transport waits for the current callback, discards its late Result,
   and exposes no Bind, execution, reconnect, or exit-in-progress state to the
   lifecycle layer.
@@ -515,15 +529,15 @@ transport/netty-adapter
   -> first-seen-per-Adapter-process route verification through Server HTTP
   -> finite factory returning the public WorkerDeliveryAdapter contract
   -> one Adapter lifecycle/scheduler aggregate per configured instance
-  -> one DeliveryCommandProcess with one private Command FiniteQueue
-  -> one DeliveryReportProcess with one private Result FiniteQueue
+  -> one DeliveryCommandProcess with one private Command queue
+  -> one DeliveryReportProcess with one private mixed Result queue
   -> one shared identity/route/Result connection mechanism per instance
   -> process-local verified/pending/active/correlation Registry truth
   -> one complete WebSocket or Socket listener/EventLoop/Pipeline Server
   -> all-child physical Channel ownership and strict first-value identity
   -> direct fixed Adapter-local identity Report handshake
-  -> unchanged encoded bound TASK Result forwarding and Adapter-owned error
-     generation
+  -> unchanged encoded bound TASK/SYSTEM Result forwarding and Adapter-owned
+     Task expiry or fixed Adapter control result generation
   -> independent Netty WebSocket and Socket listeners
 ```
 

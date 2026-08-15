@@ -613,8 +613,9 @@ no hidden compatibility path or second mainline remains
   - Server-owned point/batch mailbox access plus Adapter-owned complete Netty
     instances, an Adapter-local Process Manager with independent
     Command/Report Processes, direct DeliveryCommand/
-    DeliveryReport transport, bounded queues, and trusted pre-execution rejection
-    without Adapter-owned score mutation.
+    DeliveryReport transport, bounded queues, trusted pre-execution rejection,
+    and the Server-memory CONTROL_ONLY bypass that reuses the same two Adapter
+    batch APIs without creating another scheduling or transport owner.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI control host for Task create/approve/close and
     dispatch wake; only

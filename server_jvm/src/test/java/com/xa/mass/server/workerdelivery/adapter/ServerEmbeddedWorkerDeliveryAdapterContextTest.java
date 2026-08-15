@@ -49,9 +49,23 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(ADAPTER_PORT)
         );
-        registry.add(prefix + ".processes[0].type", () -> "TASK_COMMAND");
+        registry.add(
+                prefix + ".processes[0].type",
+                () -> "DELIVERY_COMMAND"
+        );
         registry.add(prefix + ".processes[0].interval", () -> "1h");
-        registry.add(prefix + ".processes[1].type", () -> "TASK_REPORT");
+        registry.add(
+                prefix + ".processes[0].queue-capacity",
+                () -> "1000"
+        );
+        registry.add(
+                prefix + ".processes[1].type",
+                () -> "DELIVERY_REPORT"
+        );
+        registry.add(
+                prefix + ".processes[1].queue-capacity",
+                () -> "1000"
+        );
         String endpoint = "xa.mass.worker-binding.endpoints"
                 + ".embedded-websocket";
         registry.add(endpoint + ".transport-type", () -> "WEBSOCKET");

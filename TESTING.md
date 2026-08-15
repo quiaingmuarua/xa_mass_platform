@@ -14,7 +14,7 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves pause-gated Worker CONTROL_ONLY and Adapter-local probe calls through the unified batch APIs | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
@@ -66,6 +66,11 @@ Runtime Boundary additionally requires a healthy Python Kernel at `18080`:
 $env:KERNEL_COMMAND_INTEGRATION_URL = "http://127.0.0.1:18080"
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
+
+The same proof pauses a real WebSocket Worker, invokes a statically assembled
+SYSTEM handler, completes `adapter.probe`, and resumes scheduling. It proves
+the current single Server / unified Adapter HTTP path; it is not evidence for
+a distributed CONTROL_ONLY mailbox or cross-instance waiter correlation.
 
 Task Batch process startup and the Android real-device acceptance procedure
 are documented by their owning modules:
