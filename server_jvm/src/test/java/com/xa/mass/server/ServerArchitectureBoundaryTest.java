@@ -77,6 +77,12 @@ class ServerArchitectureBoundaryTest {
     private static final Path CONTROL_CALL = SERVER_SOURCE.resolve(
             "com/xa/mass/server/control"
     );
+    private static final Path WORKER_SCHEDULING = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerscheduling"
+    );
+    private static final Path WORKER_SCHEDULING_HTTP = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/api/v1/WorkerSchedulingController.java"
+    );
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
@@ -277,6 +283,37 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("DeferredResult")
                 .doesNotContain("ResponseEntity")
                 .doesNotContain("server.api.v1.control");
+    }
+
+    @Test
+    void workerSchedulingIsTheOnlyServerScoreTransitionBoundary()
+            throws IOException {
+        String scheduling = readSources(WORKER_SCHEDULING);
+        assertThat(scheduling)
+                .contains("WorkerScoreCore")
+                .contains("rewriteCurrentScores")
+                .contains("getScoreStates")
+                .contains("releaseScoreHolds")
+                .doesNotContain("RedisWorkerScoreCore")
+                .doesNotContain(".score.redis")
+                .doesNotContain("PythonKernelHttpTransport")
+                .doesNotContain("WorkerResourceCatalog")
+                .doesNotContain("WorkerBindingService")
+                .doesNotContain("ControlCall")
+                .doesNotContain("Pacer")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("io.lettuce");
+        assertThat(readSources(WORKER_SCHEDULING_HTTP))
+                .contains("WorkerSchedulingService")
+                .doesNotContain("RedisWorkerScoreCore")
+                .doesNotContain("PythonKernelHttpTransport")
+                .doesNotContain("io.lettuce");
+
+        String serverSources = readSources(SERVER_SOURCE);
+        assertThat(occurrences(serverSources, "rewriteCurrentScores("))
+                .isEqualTo(1);
+        assertThat(occurrences(serverSources, "releaseScoreHolds("))
+                .isEqualTo(1);
     }
 
     @Test

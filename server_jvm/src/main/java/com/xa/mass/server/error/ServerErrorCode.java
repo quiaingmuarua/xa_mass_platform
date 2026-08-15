@@ -101,6 +101,10 @@ public enum ServerErrorCode {
             15003,
             "Runtime View filter is not available"
     ),
+    WORKER_SCHEDULING_UNAVAILABLE(
+            15004,
+            "Worker scheduling control is unavailable"
+    ),
     TASK_BATCH_INVALID_REQUEST(
             16001,
             "Task Batch request is invalid"

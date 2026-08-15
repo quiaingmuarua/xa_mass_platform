@@ -57,6 +57,7 @@ public final class ApiExceptionHandler {
                     WORKER_BINDING_UNAVAILABLE,
                     WORKER_ENDPOINT_UNAVAILABLE,
                     RUNTIME_VIEW_UNAVAILABLE,
+                    WORKER_SCHEDULING_UNAVAILABLE,
                     TASK_BATCH_UNAVAILABLE,
                     CONTROL_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;

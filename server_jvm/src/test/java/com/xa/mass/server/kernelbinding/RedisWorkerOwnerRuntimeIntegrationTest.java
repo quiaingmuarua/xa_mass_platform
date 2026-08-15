@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.MappedWorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
@@ -350,6 +352,214 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void workerScorePauseAndReleasePreserveOwnerShape() {
+        long currentSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long hotScore = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                currentSlot,
+                7,
+                1
+        );
+        long recoveryScore = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                currentSlot,
+                43,
+                0
+        );
+        redis.zadd(scoreKey("group-1"), hotScore, "hot-worker");
+        redis.zadd(
+                scoreKey("group-1"),
+                recoveryScore,
+                "recovery-worker"
+        );
+
+        var paused = scoreCore.rewriteCurrentScores(
+                "group-1",
+                List.of("hot-worker", "recovery-worker", "missing-worker"),
+                WorkerScoreCore.PAUSE_TIME_MILLIS,
+                null
+        );
+
+        assertThat(paused.keySet()).containsExactly(
+                "hot-worker",
+                "recovery-worker",
+                "missing-worker"
+        );
+        assertThat(paused.get("hot-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+        assertThat(paused.get("recovery-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+        assertThat(paused.get("missing-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThat(paused.get("missing-worker").score()).isNull();
+
+        Map<String, WorkerScoreState> pausedStates = scoreCore.getScoreStates(
+                "group-1",
+                List.of("hot-worker", "recovery-worker")
+        );
+        assertScoreShape(
+                pausedStates.get("hot-worker"),
+                WorkerScorePolarity.HOT_ACQUIRE,
+                WorkerScoreCore.PAUSE_TIME_MILLIS,
+                7,
+                1
+        );
+        assertScoreShape(
+                pausedStates.get("recovery-worker"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                WorkerScoreCore.PAUSE_TIME_MILLIS,
+                43,
+                0
+        );
+
+        var repeatedPause = scoreCore.rewriteCurrentScores(
+                "group-1",
+                List.of("hot-worker", "recovery-worker"),
+                WorkerScoreCore.PAUSE_TIME_MILLIS,
+                null
+        );
+        assertThat(repeatedPause.values()).allSatisfy(result -> {
+            assertThat(result.status())
+                    .isEqualTo(WorkerScoreTransitionStatus.STALE);
+            assertThat(result.score()).isNotNull();
+        });
+
+        long releaseTimeMillis = redisTimeMillis()
+                + WorkerScoreCore.SLOT_MILLIS;
+        var released = scoreCore.releaseScoreHolds(
+                "group-1",
+                Map.of(
+                        "hot-worker",
+                        pausedStates.get("hot-worker").score(),
+                        "recovery-worker",
+                        pausedStates.get("recovery-worker").score()
+                ),
+                releaseTimeMillis
+        );
+        assertThat(released.values()).allSatisfy(result ->
+                assertThat(result.status()).isEqualTo(
+                        WorkerScoreTransitionStatus.TRANSITIONED
+                ));
+
+        long releasedTimeMillis = releaseTimeMillis
+                / WorkerScoreCore.SLOT_MILLIS
+                * WorkerScoreCore.SLOT_MILLIS;
+        Map<String, WorkerScoreState> releasedStates = scoreCore.getScoreStates(
+                "group-1",
+                List.of("hot-worker", "recovery-worker")
+        );
+        assertScoreShape(
+                releasedStates.get("hot-worker"),
+                WorkerScorePolarity.HOT_ACQUIRE,
+                releasedTimeMillis,
+                7,
+                1
+        );
+        assertScoreShape(
+                releasedStates.get("recovery-worker"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                releasedTimeMillis,
+                43,
+                0
+        );
+    }
+
+    @Test
+    void workerScoreReleaseUsesExactCasAndKeepsBatchResultsIndependent() {
+        long firstObserved = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                WorkerScoreCore.PAUSE_TIME_SLOT,
+                3,
+                0
+        );
+        long secondObserved = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                WorkerScoreCore.PAUSE_TIME_SLOT,
+                4,
+                0
+        );
+        long secondCurrent = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                WorkerScoreCore.PAUSE_TIME_SLOT,
+                4,
+                1
+        );
+        redis.zadd(scoreKey("group-1"), firstObserved, "first-worker");
+        redis.zadd(scoreKey("group-1"), secondCurrent, "second-worker");
+        long ordinaryObserved = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS,
+                1,
+                0
+        );
+        long releaseTimeMillis = redisTimeMillis()
+                + WorkerScoreCore.SLOT_MILLIS;
+        LinkedHashMap<String, Long> observations = new LinkedHashMap<>();
+        observations.put("first-worker", firstObserved);
+        observations.put("second-worker", secondObserved);
+        observations.put("missing-worker", firstObserved);
+        observations.put("ordinary-worker", ordinaryObserved);
+
+        var results = scoreCore.releaseScoreHolds(
+                "group-1",
+                observations,
+                releaseTimeMillis
+        );
+
+        assertThat(results.keySet()).containsExactlyElementsOf(
+                observations.keySet()
+        );
+        assertThat(results.get("first-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+        assertThat(results.get("second-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThat(results.get("second-worker").score())
+                .isEqualTo(secondCurrent);
+        assertThat(results.get("missing-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThat(results.get("missing-worker").score()).isNull();
+        assertThat(results.get("ordinary-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.INVALID);
+        assertThat(redis.zscore(scoreKey("group-1"), "second-worker"))
+                .isEqualTo((double) secondCurrent);
+
+        var staleRetry = scoreCore.releaseScoreHolds(
+                "group-1",
+                Map.of("first-worker", firstObserved),
+                releaseTimeMillis + WorkerScoreCore.SLOT_MILLIS
+        );
+        assertThat(staleRetry.get("first-worker").status())
+                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+
+        long currentFirst = scoreCore.getScoreStates(
+                "group-1",
+                List.of("first-worker")
+        ).get("first-worker").score();
+        assertThat(scoreCore.releaseScoreHolds(
+                "group-1",
+                Map.of("first-worker", currentFirst),
+                redisTimeMillis() - WorkerScoreCore.SLOT_MILLIS
+        ).get("first-worker").status()).isEqualTo(
+                WorkerScoreTransitionStatus.INVALID
+        );
+        assertThat(scoreCore.releaseScoreHolds(
+                "group-1",
+                Map.of(
+                        "pause-base-worker",
+                        workerScore(
+                                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                                WorkerScoreCore.PAUSE_TIME_SLOT,
+                                WorkerScoreCore.MIN_LANE_RANK,
+                                WorkerScoreCore.MIN_DIRTY
+                        )
+                ),
+                WorkerScoreCore.PAUSE_TIME_MILLIS
+        ).get("pause-base-worker").status()).isEqualTo(
+                WorkerScoreTransitionStatus.INVALID
+        );
+    }
+
+    @Test
     void snapshotsAndExplicitIndexProjectionsRemainIndependent() {
         catalog.upsertWorkerGroup(group("group-1", Map.of(), Set.of("event")));
         runtime.upsertWorker(worker(
@@ -485,5 +695,37 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     private String scoreKey(String workerGroupId) {
         return "wr:" + prefix + ":score:" + workerGroupId;
+    }
+
+    private long redisTimeMillis() {
+        List<String> parts = redis.time();
+        return Long.parseLong(parts.get(0)) * 1_000
+                + Long.parseLong(parts.get(1)) / 1_000;
+    }
+
+    private static long workerScore(
+            int polarity,
+            long timeSlot,
+            int laneRank,
+            int dirty
+    ) {
+        long absoluteScore = timeSlot * WorkerScoreCore.SLOT_FACTOR
+                + (long) laneRank * WorkerScoreCore.DIRTY_FACTOR
+                + dirty;
+        return polarity * absoluteScore;
+    }
+
+    private static void assertScoreShape(
+            WorkerScoreState state,
+            WorkerScorePolarity polarity,
+            long timeMillis,
+            int laneRank,
+            int dirty
+    ) {
+        assertThat(state).isNotNull();
+        assertThat(state.polarity()).isEqualTo(polarity);
+        assertThat(state.timeMillis()).isEqualTo(timeMillis);
+        assertThat(state.laneRank()).isEqualTo(laneRank);
+        assertThat(state.dirty()).isEqualTo(dirty);
     }
 }

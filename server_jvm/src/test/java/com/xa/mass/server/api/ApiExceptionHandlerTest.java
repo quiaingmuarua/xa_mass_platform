@@ -102,6 +102,10 @@ class ApiExceptionHandlerTest {
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
+                        ServerErrorCode.WORKER_SCHEDULING_UNAVAILABLE,
+                        HttpStatus.SERVICE_UNAVAILABLE
+                ),
+                Arguments.of(
                         ServerErrorCode.TASK_BATCH_INVALID_REQUEST,
                         HttpStatus.BAD_REQUEST
                 ),

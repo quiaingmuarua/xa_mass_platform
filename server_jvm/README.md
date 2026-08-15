@@ -99,8 +99,11 @@ composes only the DeliveryCommand and DeliveryReport Redis providers. The shared
 implemented in owner-local `kernel_jvm` packages. Java does not read Task
 scores, invoke Pacers, append Worker commands, or consume DeliveryReport queues.
 Its Worker score provider implements get/initialize for
-`WorkerRuntime.upsertWorker` plus a parity reconcile mechanism with no current
-production caller; scheduling score operations remain unavailable.
+`WorkerRuntime.upsertWorker`, a parity reconcile mechanism with no current
+production caller, same-polarity current-score rewrite, and exact-observation
+hold release. The latter two operations are exposed only through the explicit
+Worker scheduling pause/resume service; Server still owns no Pacer or general
+Worker scheduling loop.
 
 Current provider matrix:
 
@@ -110,6 +113,7 @@ Current provider matrix:
 | Worker identity registration coordinate | Server-owned Java Redis |
 | Persistent Worker Endpoint Binding | Server-owned Java Redis |
 | Worker Bind upsert, Properties replacement, and missing HOT_ACQUIRE initialization | Java Redis |
+| Explicit Worker scheduling pause/resume | Java Redis Worker score owner |
 | Platform Properties patch | Java Redis |
 | Explicit indexed-property update/point load | Java Redis |
 | Task create | Python HTTP |
@@ -452,6 +456,34 @@ returns both `acceptedCount` and `rejectedCount`. The point Worker result
 endpoint separately requires `src=WORKER`, `sourceId` equal to the path
 workerId, and an outcome of `200` or Worker-owned `3...`.
 
+Explicit Worker scheduling control:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling
+POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling
+```
+
+Both routes have no request body and return the existing
+`CommandResultResponse` without exposing the opaque score. Pause uses
+`WorkerScoreCore.rewriteCurrentScores` with the fixed Kernel pause time.
+Resume first observes the current complete score and, only when its decoded
+time is the pause time, calls `releaseScoreHolds` with that exact observation
+and the current time. Both transitions preserve polarity, lane rank, and dirty;
+a RECOVERY Worker is not converted to HOT. Already-paused pause and
+already-resumed resume return `noop`; missing or concurrently changed score
+evidence returns `stale`.
+
+```text
+ok/noop -> HTTP 200
+stale   -> HTTP 409
+invalid -> HTTP 422
+owner unavailable -> HTTP 503
+```
+
+These routes control only the Worker scheduling coordinate. They do not imply
+connection, Binding, online, current execution, or CONTROL_ONLY mailbox state,
+and they do not read or mutate any of those owners.
+
 Server-local CONTROL_ONLY calls:
 
 ```text
@@ -525,7 +557,8 @@ Missing Workers, scores, Bindings, configured endpoints, Polling endpoints,
 and non-paused Workers become per-target rejections; an owner read failure
 rejects the whole request. Adapter-targeted calls use the same aggregate
 response contract but do not read Worker state. Neither route creates
-pause/resume behavior.
+pause/resume behavior; callers use the separate explicit scheduling routes
+above when they need to move that score coordinate.
 The current Netty Adapter does not yet consume these new paths, so this Server
 slice is API-ready but not a completed Adapter/Worker feature.
 

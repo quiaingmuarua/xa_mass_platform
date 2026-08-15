@@ -49,6 +49,8 @@ WorkerScoreCore
   getScoreStates
   initializeHotAcquireScore
   reconcileWorkerHotAcquire (parity proof only; no production caller)
+  rewriteCurrentScores
+  releaseScoreHolds
 
 WorkerCommandRuntime
   point and bounded random batch consume
@@ -57,11 +59,15 @@ WorkerResultRuntime
   append
 ```
 
-Worker score acquisition, lease, dirty, polarity, release, and recovery
-operations remain explicit gaps in the JVM provider. Task creation, TaskItem
-record reads, success-result writes, DeliveryCommand append, and DeliveryReport
-consume likewise remain Python-owned or unimplemented on this provider
-surface. Implementing one method in a translated interface does not imply that
+Worker score candidate acquisition, observed lease acquisition/renewal,
+demotion, dirty marking, polarity changes, and recovery exhaustion remain
+explicit gaps in the JVM provider. `rewriteCurrentScores` preserves polarity,
+lane rank, and dirty while moving the time coordinate forward;
+`releaseScoreHolds` preserves the same fields and uses the complete observed
+score as an exact CAS fence. Task creation, TaskItem record reads,
+success-result writes, DeliveryCommand append, and DeliveryReport consume
+likewise remain Python-owned or unimplemented on this provider surface.
+Implementing these two transitions does not imply that Worker scheduling or
 the complete owner has migrated.
 
 Every other translated operation is explicit and throws

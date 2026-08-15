@@ -10,8 +10,10 @@ Status: current repository handoff.
   Pacers, or the Kernel application lifecycle. Its Worker score provider is
   deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`,
   one bounded get used by Server CONTROL_ONLY admission, plus a parity-proved
-  reconcile mechanism with no production caller; all
-  scheduling score operations remain gaps.
+  reconcile mechanism with no production caller, same-polarity current-score
+  rewrite, and exact-observation hold release. Only the Server-owned explicit
+  Worker scheduling pause/resume service calls those two transition
+  operations; all other scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
   depend on `kernel_jvm` owner contracts. Its assembly binds Task control
   operations to Python HTTP providers and Worker resource, Task data, and
@@ -29,9 +31,9 @@ Status: current repository handoff.
   Worker admission uses the existing decoded Worker score read only to require
   the pause time; Adapter calls use the same aggregate result contract without
   reading score. This best-effort channel has one unconsumed slot per target,
-  no Redis mailbox, retry ledger, result store, background thread, or
-  pause/resume writer. Its internal consume/result endpoints are Server proof
-  surfaces until the Adapter adopts them.
+  no Redis mailbox, retry ledger, result store, background thread, or score
+  writer inside the CONTROL_ONLY owner. Its internal consume/result endpoints
+  are Server proof surfaces until the Adapter adopts them.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
   strict configured-Group directory discovery, per-Group initialization based
@@ -211,7 +213,12 @@ tag.
   CONTROL_ONLY admission batch of at most 100 explicitly named Workers in one
   WorkerGroup. Server classifies each missing or ineligible target in the
   aggregate response. This read does not make Server a score owner and must
-  not call any score transition operation.
+  not call any score transition operation. The separate
+  `WorkerSchedulingService` is the only Server production caller of
+  `rewriteCurrentScores` and `releaseScoreHolds`; it provides explicit
+  single-Worker pause/resume routes, returns no opaque score, and does not read
+  Worker resources, Binding, Adapter, or CONTROL_ONLY mailbox state. No other
+  Server package may call those transition operations.
   Properties are replaced by the same upsert without changing an existing
   score. Reconcile is parity-proved but has no production caller and must not
   be treated as resource-upsert behavior.
@@ -455,8 +462,11 @@ interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
 reads, WorkerGroup upsert, Worker upsert, Platform Properties patch, Worker/Platform
 explicit indexed-property update/load, Worker score get/initialize plus an
-unused parity reconcile mechanism, DeliveryCommand consume, and DeliveryReport
-append. All other translated operations remain explicit gaps.
+unused parity reconcile mechanism, same-polarity current-score rewrite,
+exact-observation hold release, DeliveryCommand consume, and DeliveryReport
+append. The rewrite/release production surface is limited to explicit Server
+Worker scheduling pause/resume. All other translated operations remain
+explicit gaps.
 
 `server_jvm.kernelbinding` composes Task and Worker control/data providers:
 
