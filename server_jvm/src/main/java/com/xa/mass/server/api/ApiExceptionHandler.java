@@ -57,10 +57,12 @@ public final class ApiExceptionHandler {
                     WORKER_BINDING_UNAVAILABLE,
                     WORKER_ENDPOINT_UNAVAILABLE,
                     RUNTIME_VIEW_UNAVAILABLE,
-                    TASK_BATCH_UNAVAILABLE ->
+                    TASK_BATCH_UNAVAILABLE,
+                    CONTROL_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
             case KERNEL_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
-            case TASK_RPC_CAPACITY_EXCEEDED ->
+            case TASK_RPC_CAPACITY_EXCEEDED,
+                    CONTROL_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
             case INVALID_KERNEL_RESPONSE -> HttpStatus.BAD_GATEWAY;
             case KERNEL_REJECTED_NOT_FOUND,
@@ -68,7 +70,8 @@ public final class ApiExceptionHandler {
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
-                    TASK_BATCH_RESOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND;
+                    TASK_BATCH_RESOURCE_NOT_FOUND,
+                    CONTROL_CALL_TARGET_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case KERNEL_REJECTED_CONFLICT,
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
@@ -81,6 +84,7 @@ public final class ApiExceptionHandler {
                     INVALID_WORKER_IDENTITY_REQUEST,
                     INVALID_WORKER_BINDING_REQUEST,
                     TASK_BATCH_INVALID_REQUEST,
+                    INVALID_CONTROL_CALL_REQUEST,
                     MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
         };
     }

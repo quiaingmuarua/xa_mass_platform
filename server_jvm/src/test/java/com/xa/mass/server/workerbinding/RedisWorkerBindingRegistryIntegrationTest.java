@@ -1,11 +1,13 @@
 package com.xa.mass.server.workerbinding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -97,5 +99,59 @@ class RedisWorkerBindingRegistryIntegrationTest {
             assertThat(registry.getEndpointManagerId(WORKER_ID))
                     .isEqualTo(observed.iterator().next());
         }
+    }
+
+    @Test
+    void boundedBatchReadPreservesOrderAcrossBucketsAndMissingValues() {
+        String sameBucket = workerIdInBucket(
+                RedisWorkerBindingRegistry.bucket(WORKER_ID),
+                "same"
+        );
+        String otherBucket = workerIdOutsideBucket(
+                RedisWorkerBindingRegistry.bucket(WORKER_ID),
+                "other"
+        );
+        String missing = "missing-worker";
+        registry.bindIfAbsent(WORKER_ID, "websocket-a");
+        registry.bindIfAbsent(sameBucket, "socket-a");
+        registry.bindIfAbsent(otherBucket, "websocket-b");
+
+        assertThat(registry.getEndpointManagerIds(List.of(
+                otherBucket,
+                missing,
+                WORKER_ID,
+                sameBucket
+        ))).containsExactly(
+                entry(otherBucket, "websocket-b"),
+                entry(missing, null),
+                entry(WORKER_ID, "websocket-a"),
+                entry(sameBucket, "socket-a")
+        );
+    }
+
+    private static String workerIdInBucket(
+            String bucket,
+            String prefix
+    ) {
+        for (int index = 0; index < 10_000; index++) {
+            String candidate = prefix + "-" + index;
+            if (RedisWorkerBindingRegistry.bucket(candidate).equals(bucket)) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("Could not find same-bucket Worker ID");
+    }
+
+    private static String workerIdOutsideBucket(
+            String bucket,
+            String prefix
+    ) {
+        for (int index = 0; index < 10_000; index++) {
+            String candidate = prefix + "-" + index;
+            if (!RedisWorkerBindingRegistry.bucket(candidate).equals(bucket)) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("Could not find cross-bucket Worker ID");
     }
 }

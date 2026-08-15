@@ -74,6 +74,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path TASK_BATCH_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/taskbatch"
     );
+    private static final Path CONTROL_CALL = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/control"
+    );
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
@@ -247,6 +250,33 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".server.api")
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce");
+    }
+
+    @Test
+    void controlCallOwnsOnlyBoundedServerMemoryAndReadOnlyAdmission()
+            throws IOException {
+        String control = readSources(CONTROL_CALL);
+        assertThat(control)
+                .contains("ControlCallRegistry")
+                .contains("getScoreStates")
+                .contains("currentEndpointManagerIds")
+                .doesNotContain("rewriteCurrentScores")
+                .doesNotContain("releaseScoreHolds")
+                .doesNotContain("WorkerCommandRuntime")
+                .doesNotContain("WorkerResultRuntime")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("TaskItem")
+                .doesNotContain("Pacer")
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("new Thread");
+        assertThat(Files.readString(CONTROL_CALL.resolve(
+                "ControlCallRegistry.java"
+        )))
+                .doesNotContain("DeferredResult")
+                .doesNotContain("ResponseEntity")
+                .doesNotContain("server.api.v1.control");
     }
 
     @Test

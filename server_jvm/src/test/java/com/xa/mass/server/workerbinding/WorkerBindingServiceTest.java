@@ -2,6 +2,7 @@ package com.xa.mass.server.workerbinding;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,7 @@ import com.xa.mass.server.workerbinding.WorkerBindingProperties.EndpointProperti
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
 import java.net.URI;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -185,6 +187,30 @@ class WorkerBindingServiceTest {
         service.requireCurrentEndpoint("websocket-a", WORKER_ID);
     }
 
+    @Test
+    void currentEndpointManagerIdsUsesOneBoundedOwnerRead() {
+        String second = "e54a0f75-a8f3-4b08-9aa0-22fc42ca3ea2";
+        when(registry.getEndpointManagerIds(List.of(
+                WORKER_ID,
+                second
+        ))).thenReturn(linkedBindings(
+                WORKER_ID, "websocket-a",
+                second, null
+        ));
+
+        assertThat(service.currentEndpointManagerIds(List.of(
+                WORKER_ID,
+                second
+        ))).containsExactly(
+                entry(WORKER_ID, "websocket-a"),
+                entry(second, null)
+        );
+        verify(registry).getEndpointManagerIds(List.of(
+                WORKER_ID,
+                second
+        ));
+    }
+
     private WorkerEndpointBinding bindWebSocket(
             Map<String, Object> workerProperties
     ) {
@@ -237,6 +263,18 @@ class WorkerBindingServiceTest {
 
     private static WorkerRuntimeResult result(WorkerRuntimeStatus status) {
         return new WorkerRuntimeResult(status, status.wireValue());
+    }
+
+    private static Map<String, String> linkedBindings(
+            String firstId,
+            String firstEndpoint,
+            String secondId,
+            String secondEndpoint
+    ) {
+        LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        result.put(firstId, firstEndpoint);
+        result.put(secondId, secondEndpoint);
+        return result;
     }
 
     private static void assertFailure(

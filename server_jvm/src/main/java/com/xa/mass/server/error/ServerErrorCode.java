@@ -117,6 +117,22 @@ public enum ServerErrorCode {
             16004,
             "Task Batch is unavailable"
     ),
+    INVALID_CONTROL_CALL_REQUEST(
+            17001,
+            "Control Call request is invalid"
+    ),
+    CONTROL_CALL_TARGET_NOT_FOUND(
+            17002,
+            "Control Call target was not found"
+    ),
+    CONTROL_CALL_CAPACITY_EXCEEDED(
+            17003,
+            "Control Call capacity is exhausted"
+    ),
+    CONTROL_CALL_UNAVAILABLE(
+            17004,
+            "Control Call is unavailable"
+    ),
     MALFORMED_REQUEST(
             19001,
             "Request body or parameters are invalid"

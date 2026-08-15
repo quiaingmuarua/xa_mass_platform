@@ -8,8 +8,9 @@ Status: current repository handoff.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
   Pacers, or the Kernel application lifecycle. Its Worker score provider is
-  deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`
-  plus a parity-proved reconcile mechanism with no production caller; all
+  deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`,
+  one bounded get used by Server CONTROL_ONLY admission, plus a parity-proved
+  reconcile mechanism with no production caller; all
   scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
   depend on `kernel_jvm` owner contracts. Its assembly binds Task control
@@ -21,6 +22,16 @@ Status: current repository handoff.
   public Runtime API base URL to the Scenario Worker module. It does not parse
   Lab Worker files, implement Scenario handlers, or own individual Worker
   resource lifecycle.
+  It also owns one instance-local, bounded CONTROL_ONLY mailbox and batch
+  waiter registry. One Worker call names `1..100` unique Workers in one Group,
+  performs one bounded descriptor, score, and Binding read, and returns an
+  input-ordered aggregate of observed, unobserved, and rejected targets.
+  Worker admission uses the existing decoded Worker score read only to require
+  the pause time; Adapter calls use the same aggregate result contract without
+  reading score. This best-effort channel has one unconsumed slot per target,
+  no Redis mailbox, retry ledger, result store, background thread, or
+  pause/resume writer. Its internal consume/result endpoints are Server proof
+  surfaces until the Adapter adopts them.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
   strict configured-Group directory discovery, per-Group initialization based
@@ -195,10 +206,15 @@ tag.
 - Java Redis owner operations belong in the matching `kernel_jvm` owner
   package. `server_jvm.kernelredis` owns only connection and health. Java must
   not read or mutate Task score, candidate cache, Pacers, or ResultRouting
-  consumption. The only Java Worker score operations currently allowed inside
-  Worker upsert are get/initialize. Properties are replaced by the same upsert
-  without changing an existing score. Reconcile is parity-proved but has no
-  production caller and must not be treated as resource-upsert behavior.
+  consumption. Java Worker score get/initialize remain allowed inside Worker
+  upsert; the existing bounded get may additionally serve one Server
+  CONTROL_ONLY admission batch of at most 100 explicitly named Workers in one
+  WorkerGroup. Server classifies each missing or ineligible target in the
+  aggregate response. This read does not make Server a score owner and must
+  not call any score transition operation.
+  Properties are replaced by the same upsert without changing an existing
+  score. Reconcile is parity-proved but has no production caller and must not
+  be treated as resource-upsert behavior.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.

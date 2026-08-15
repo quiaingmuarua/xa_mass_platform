@@ -452,6 +452,91 @@ returns both `acceptedCount` and `rejectedCount`. The point Worker result
 endpoint separately requires `src=WORKER`, `sourceId` equal to the path
 workerId, and an outcome of `200` or Worker-owned `3...`.
 
+Server-local CONTROL_ONLY calls:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers/controls:call
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/controls:call
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
+     control-commands:consume
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
+     control-results:append
+```
+
+The Worker batch request applies one Command to an explicit, input-ordered
+set of Workers:
+
+```json
+{
+  "workerIds": ["worker-1", "worker-2"],
+  "messageType": "worker.properties.snapshot",
+  "opaquePayload": "{}",
+  "waitTimeoutMillis": 3000
+}
+```
+
+A valid request always returns one HTTP `200` aggregate, including rejected or
+timed-out targets:
+
+```json
+{
+  "controlBatchId": "5d8abf59-8048-4b7f-8b20-a149384c7964",
+  "status": "partial",
+  "results": {
+    "worker-1": {
+      "status": "observed",
+      "outcomeCode": "200",
+      "opaqueResultPayload": "{\"battery\":87}"
+    },
+    "worker-2": {
+      "status": "rejected",
+      "reason": "control-only-required"
+    }
+  }
+}
+```
+
+This is a bounded, best-effort Server memory channel, not Kernel scheduling or
+reliable delivery. One Worker request names `1..100` unique Worker IDs in one
+Group and applies one Command payload to all of them. Server performs one
+bounded Worker descriptor read, one bounded score read, and one bounded
+Binding read, then returns one ordered aggregate response. Targets may span
+multiple Adapters. A valid request returns HTTP `200`: aggregate status is
+`observed` only when every target produced valid evidence and otherwise is
+`partial`. Per-target status is `observed`, `unobserved`, or `rejected`;
+Worker-owned failure outcomes are still observed evidence.
+
+Each Adapter has one unconsumed Command slot per target. A later call for that
+target replaces only that slot and marks the old batch target
+`unobserved/replaced`; other targets in the old batch continue independently.
+Adapter consumption is destructive. Matching `DeliveryReport(dst=SYSTEM)`
+evidence completes the current target; late, duplicate, or mismatched evidence
+is rejected and never retained. Timeout marks every unresolved batch target
+`unobserved/timeout`. HTTP disconnect removes that batch's still-unconsumed
+slots, and shutdown marks unresolved targets `unobserved/shutdown`. There is no
+Redis mailbox, result query, retry ledger, or background cleanup thread.
+
+A Worker-targeted batch calls
+`WorkerScoreCore.getScoreStates(workerGroupId, workerIds)` exactly once and
+admits a Worker only when the decoded `timeMillis` equals the Kernel pause
+time. It does not write, release, or reinterpret the opaque score. The pause
+check is best-effort admission evidence rather than an execution lock.
+Missing Workers, scores, Bindings, configured endpoints, Polling endpoints,
+and non-paused Workers become per-target rejections; an owner read failure
+rejects the whole request. Adapter-targeted calls use the same aggregate
+response contract but do not read Worker state. Neither route creates
+pause/resume behavior.
+The current Netty Adapter does not yet consume these new paths, so this Server
+slice is API-ready but not a completed Adapter/Worker feature.
+
+```yaml
+xa.mass.control-call:
+  default-wait-timeout-millis: 3000
+  max-wait-timeout-millis: 10000
+  max-commands-per-adapter: 1000
+  max-pending-calls: 10000
+```
+
 Management endpoints:
 
 ```text

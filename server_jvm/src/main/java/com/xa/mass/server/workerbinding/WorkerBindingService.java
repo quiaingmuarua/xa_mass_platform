@@ -6,6 +6,9 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -150,6 +153,46 @@ public final class WorkerBindingService {
                     operation,
                     "Worker is bound to a different endpoint",
                     null
+            );
+        }
+    }
+
+    public Map<String, String> currentEndpointManagerIds(
+            List<String> workerIds
+    ) {
+        String operation = "workerBinding.currentEndpointManagerIds";
+        if (workerIds == null
+                || workerIds.isEmpty()
+                || workerIds.size() > 100) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_BINDING_REQUEST,
+                    operation,
+                    "workerIds must contain between 1 and 100 entries",
+                    null
+            );
+        }
+        LinkedHashMap<String, Boolean> unique = new LinkedHashMap<>();
+        for (String workerId : workerIds) {
+            requireNonBlank(workerId, "workerId", operation);
+            if (unique.put(workerId, Boolean.TRUE) != null) {
+                throw failure(
+                        ServerErrorCode.INVALID_WORKER_BINDING_REQUEST,
+                        operation,
+                        "workerIds must be unique",
+                        null
+                );
+            }
+        }
+        try {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(
+                    registry.getEndpointManagerIds(workerIds)
+            ));
+        } catch (RuntimeException error) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    operation,
+                    null,
+                    error
             );
         }
     }
