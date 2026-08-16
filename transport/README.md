@@ -2,12 +2,16 @@
 
 Status: repository-local transport contracts and implementations.
 
+Cross-module scheduling and delivery authority is fixed by the root
+[architecture entrypoint](../README.md). This document owns only the Transport
+module map and common implementation boundaries.
+
 ```text
 :transport:worker-delivery-contract
   -> Worker Delivery DTOs, Jsons, strict codecs
 
 :transport:netty-adapter
-  -> stable WebSocket and Socket Adapter façades
+  -> stable WebSocket and Socket Adapter facades
   -> Adapter lifecycle and scheduled Command/Report Process rounds
   -> one private finite queue per Process owner
   -> one shared Netty connection mechanism and route registry per instance

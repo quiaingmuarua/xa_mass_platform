@@ -40,7 +40,7 @@ jobs:
               - 'kernel_design/executable_spec/**'
               - 'kernel_design/runtime_server/**'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '!**/*.md'
             jvm_contracts:
               - 'kernel_jvm/**'
               - 'scenario_workers_jvm/**'
@@ -58,7 +58,8 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '.github/scripts/summarize_junit.py'
+              - '!**/*.md'
             redis_owner:
               - 'kernel_jvm/**'
               - 'server_jvm/**'
@@ -71,7 +72,8 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '.github/scripts/summarize_junit.py'
+              - '!**/*.md'
             runtime_boundary:
               - 'kernel_design/executable_spec/**'
               - 'kernel_design/runtime_server/**'
@@ -88,7 +90,8 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '.github/scripts/summarize_junit.py'
+              - '!**/*.md'
             task_batch:
               - 'kernel_design/executable_spec/**'
               - 'kernel_design/runtime_server/**'
@@ -107,7 +110,7 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '!**/*.md'
             android_host:
               - 'transport/worker-delivery-contract/**'
               - 'transport/worker-core/**'
@@ -120,11 +123,20 @@ jobs:
               - 'gradlew'
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '.github/scripts/summarize_junit.py'
+              - '!**/*.md'
             frontend:
               - 'frontend/**'
               - '.github/workflows/proof-ci.yml'
-              - '.github/scripts/**'
+              - '!**/*.md'
+  docs-contract:
+    name: Docs Contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Verify current documentation contract
+        run: python3 .github/scripts/check_docs.py
 
   kernel-oracle:
     name: Kernel Oracle
@@ -591,6 +603,7 @@ jobs:
       - task-batch
       - android-host
       - frontend
+      - docs-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
@@ -610,6 +623,7 @@ jobs:
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
       FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
+      DOCS_RESULT: ${{ needs.docs-contract.result }}
     steps:
       - name: Require every selected proof lane
         shell: bash
@@ -654,5 +668,7 @@ jobs:
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
           check_lane \
             "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
+          check_lane \
+            "Docs Contract" "true" "$DOCS_RESULT"
 
           exit "$failed"

@@ -1,124 +1,127 @@
 # XA Mass Kernel
 
-Status: clean-kernel mechanism workspace, incremental JVM owner parity, and
-Runtime API.
+Status: current cross-module architecture and repository entrypoint.
 
-The repository contains seven active areas:
+XA Mass is organized around one hard boundary:
 
-- [`kernel_design/`](kernel_design/): Python executable specification,
-  mechanism documentation, and Redis proofs. It is the
-  current semantic oracle.
-- [`kernel_jvm/`](kernel_jvm/): Java 21 mirror of the Kernel owner contracts
-  plus selected owner-specific Redis providers. It intentionally has no
-  scheduling or application lifecycle implementation.
-- [`server_jvm/`](server_jvm/): Java/Spring Boot Runtime API Server. It exposes
-  the stable `/api/v1` surface. Task control operations use Python HTTP;
-  Worker resource/Properties/index operations, Task data, and Worker Delivery use Java Redis
-  providers without redefining Kernel runtime contracts. It separately owns
-  long-lived Worker identity registration, persistent Endpoint Binding, and
-  Adapter route verification. Its
-  optional Worker Assembly initializes advisory WorkerGroup catalog metadata,
-  starts configured Adapters, and then composes Scenario Workers through the
-  public Identity and Worker transport paths. It also owns the bounded,
-  instance-local CONTROL_ONLY call mailbox. CONTROL_ONLY admission observes a
-  Worker's pause score but does not become a Kernel scheduling owner; active
-  Adapters consume those commands and return their reports through the same
-  two batch HTTP endpoints used by Task delivery.
-- [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
-  Worker capability assembly. It owns the checked-in phone-number and
-  string-utility event definitions, configured-Group Lab directory discovery,
-  one persistent JSON per Worker, public-HTTP Register/Bind control, Adapter
-  identity Report construction, and aggregate WebSocket Worker lifecycle
-  without owning WorkerGroup catalog initialization, Server profiles, or
-  Adapters.
-- [`transport/worker-delivery-contract/`](transport/worker-delivery-contract/): shared
-  Java 11 compatible Worker Delivery DTO, validation, outcome classification,
-  strict codec, and JDK-value JSON facade shared with Android.
-- [`transport/`](transport/): concrete Worker Delivery implementations. It
-  contains the Java 11 Worker Core execution mechanism, the Netty Adapter
-  runtime, concrete JVM network clients, and the Android HandlerThread
-  WebSocket client. The Netty Adapter has three frozen layers: the Adapter
-  aggregate plus typed Command/Report Process owners for lifecycle and local
-  scheduling, one shared connection mechanism for identity/routes/results,
-  and one complete protocol-specific physical Server. Each Process owns one
-  private finite queue; queues never cross owner boundaries.
-  That production cut is frozen; WebSocket and Socket share a test behavior
-  contract while retaining independent physical ownership and owner-local
-  bounded shutdown. CONTROL_ONLY does not add another Adapter Process or
-  transport lane: Server chooses one remote Command source per consume request,
-  while the existing Command and Report Processes carry both TASK and SYSTEM
-  messages.
-  Its long-lived Worker path likewise has three explicit owners:
-  Client networking and reconnect, Transport identity/Command/Result protocol, and
-  `WorkerRunController` `RUNNING/STOPPED` lifecycle. Each Host `start()` makes
-  one non-blocking request for exactly one Preparation attempt; failed
-  preparation or endpoint termination remains stopped until the Host starts
-  it again. Java and Android Worker assemblies own their platform execution
-  resources without exposing physical connection state.
-- [`integrations/`](integrations/): externally assembled, runnable proof
-  applications. The
-  [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns
-  the external client proof for Server's Task Batch Lab: it uploads two text
-  fixtures, executes six WorkerGroup/Event batches, and downloads JSONL
-  evidence. Server maps each configured WorkerGroup to its Profile-owned
-  long-lived Task, appends each file as one Item batch, and loads pending
-  Results without defining another Scenario owner. The `scenario-workers`
-  Server profile composes one real WebSocket Adapter, two reusable JVM
-  Scenario WorkerGroups with six capabilities, and the advisory Android demo
-  WorkerGroup.
-- [`xa-android/`](xa-android/): reusable Android business capabilities, a
-  device-loopback capability probe, and installable Android Worker hosts. The
-  [`capability-http`](xa-android/capability-http/) module directly proves the
-  installed App's resolvers and handlers without claiming Transport truth. The
-  [`worker-demo`](xa-android/worker-demo/) App proves public
-  Register/Bind, the Android network Client, shared Worker Core, and real
-  device State/Battery results without embedding Task control in the App.
+```text
+Kernel    decides and converges scheduling
+Server    exposes, validates, routes and correlates
+Transport delivers and executes endpoint-local events
+```
 
-The shared contract and Transport modules are repository-local artifacts;
-they are not published SDKs.
+The visual projection is available in
+[the human architecture overview](frontend/public/overview.htm).
 
-The superseded Java platform, frontend, SDK, server, transport, infrastructure,
-and integration code are preserved by the annotated Git tag
-`legacy-java-platform-final-2026-07-24`. They are historical evidence, not
-compatibility targets.
+## Authority And Dispatch
+
+| Layer | Owns | Must not own |
+| --- | --- | --- |
+| Kernel | Task, TaskItem and Worker scheduling truth; selection; lease; claim; retry, recovery and result disposition | HTTP, physical connections, endpoint handlers and request waiters |
+| Server | Runtime API; provider assembly; bounded use cases; Worker identity and Binding; Command-source routing; Result destination routing and correlation | Candidate selection, Worker lease, Item claim, retry policy and Task finality |
+| Adapter | Command acquisition, current verified route, physical delivery and Adapter-local handlers | Scheduling eligibility, Task priority, Worker selection and result truth |
+| Worker | Local `(src, messageType)` resolution, execution and Result evidence | Task lifecycle, scheduling policy and Adapter routing |
+
+`dispatch` has three distinct meanings:
+
+1. **Assignment dispatch** is Kernel resource allocation: scheduling evidence
+   becomes an already-targeted `DeliveryCommand`.
+2. **Authority routing** is Server owner routing: an existing TASK or
+   CONTROL_ONLY authority is exposed to an Adapter, and a Result is routed to
+   its TASK or SYSTEM owner.
+3. **Event dispatch** is Transport-local invocation: an Adapter or Worker
+   resolves an already-delivered Command to a fixed handler.
+
+Only the first chooses resources. A useful review question is: is this code
+deciding whether a Command should exist, or processing one that already
+exists? Selection, timing, lease, claim, retry and convergence belong to
+Kernel. Validation, source routing and request correlation belong to Server.
+Network delivery and local invocation belong to Transport.
+
+TASK follows:
+
+```text
+API -> Kernel Task/Item truth -> assignment dispatch -> targeted Command
+    -> Server authority routing -> Adapter -> Worker -> Result
+    -> Server TASK owner -> Kernel result routing
+```
+
+CONTROL_ONLY follows:
+
+```text
+caller-selected target -> Server admission + bounded in-memory correlation
+    -> the same Adapter/Worker delivery path -> Server SYSTEM waiter
+```
+
+CONTROL_ONLY bypasses Task scheduling because the caller already selected the
+target. It is not a Kernel Task type, reliable queue, persistent result owner,
+second Adapter Process, or permission for Server to select Workers. Worker
+pause remains scheduling-score truth; Server observes it only as best-effort
+admission evidence.
+
+The stable cuts are independent Task/TaskItem/Worker score owners, score as a
+scheduling coordinate rather than a resource lock, separate assignment and
+result-routing planes, the frozen Netty Adapter three-layer structure, and the
+Worker Client/Transport/Run Controller split. JVM parity, finite Server use
+cases and concrete endpoint handlers may evolve without moving those owners.
+
+## Active Surfaces
+
+- [`kernel_design/`](kernel_design/) is the Python executable mechanism oracle,
+  current Kernel documentation and Redis proof surface.
+- [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
+  Redis providers. It does not implement Kernel scheduling or application
+  lifecycle.
+- [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
+  provider assembly. It also owns Worker Identity, Endpoint Binding, bounded
+  use cases, and configured Adapter/Scenario startup.
+- [`transport/`](transport/) contains the Java 11 delivery contract, Worker
+  Core, Netty Adapter, Java Worker and Android Worker implementations.
+- [`scenario_workers_jvm/`](scenario_workers_jvm/) owns the finite JVM Scenario
+  capabilities and persistent local Lab Worker assembly.
+- [`xa-android/`](xa-android/) owns reusable Android capabilities, a loopback
+  capability probe and the demo Worker host.
+- [`integrations/`](integrations/) contains external acceptance clients; it
+  owns no Kernel, Server or Transport mechanism.
+- [`frontend/`](frontend/) is the read-only Runtime viewer, Task Batch Lab,
+  Scalar link surface and architecture overview host.
+
+The shared contracts and Transport modules are repository-local artifacts,
+not published SDKs. The superseded Java platform exists only at the annotated
+tag `legacy-java-platform-final-2026-07-24` and carries no compatibility
+obligation.
+
+## Reading Path
+
+1. This cross-module authority contract.
+2. [Documentation Index](doc/README.md).
+3. [Kernel Design Workspace](kernel_design/README.md).
+4. [Proof Lanes](TESTING.md).
+5. The owning module README for the area being changed.
+
+Read [AGENTS.md](AGENTS.md) before changing behavior. Agent rules govern how
+changes are made; they are not a second mechanism narrative.
 
 ## Verification
 
-The current verification contract is organized by proof boundary rather than
-coverage percentage. See [`TESTING.md`](TESTING.md) for lane ownership,
-path selection, exact local commands, and the stable CI `Proof Gate`.
-
-Python executable specification and real Redis oracle (set
-`KERNEL_DESIGN_REDIS_URL` to enable the Redis-backed proofs):
+Verification is organized by owner invariant rather than coverage percentage.
+Commands, prerequisites and CI selection rules live in
+[TESTING.md](TESTING.md).
 
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
+
+./gradlew --continue \
+  :transport:worker-delivery-contract:build \
+  :kernel_jvm:build \
+  :transport:worker-core:build \
+  :transport:java-worker:build \
+  :transport:netty-adapter:build \
+  :scenario_workers_jvm:build \
+  :server_jvm:build \
+  :integrations:worker-capability-rpc:build
 ```
 
-Deterministic JVM contracts:
-
-```text
-./gradlew :server_jvm:test
-./gradlew :integrations:worker-capability-rpc:test
-```
-
-Real Redis and cross-process proofs use separate entrypoints:
-
-```text
-./gradlew :server_jvm:redisOwnerIntegrationTest
-./gradlew :server_jvm:runtimeBoundaryIntegrationTest
-./gradlew :integrations:worker-capability-rpc:runRpcScenario
-```
-
-The Task Batch acceptance separately self-verifies 20 persistent, globally
-unique Worker IDs and 60 successful WorkerGroup/Event results. Results are not
-attributed to a particular Worker. See its owning README for process startup.
-
-See
-[`xa-android/worker-demo/README.md`](xa-android/worker-demo/README.md)
-for the Android 13 device, `adb reverse`, shared `scenario-workers` profile,
-and Gradle-launched WorkerGroup RPC proof.
-
-See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and
-[`doc/README.md`](doc/README.md) for the retained historical method assets.
+Real Redis, cross-process, Task Batch, Android and frontend proofs have
+separate prerequisites and commands in the proof registry.

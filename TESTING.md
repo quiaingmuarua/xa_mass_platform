@@ -18,6 +18,7 @@ boundary named below.
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
+| Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Task Batch` command uploads two text fixtures, executes six explicit
 WorkerGroup/Event/Payload-key batches, downloads six successful JSONL outputs,
@@ -106,6 +107,18 @@ corepack pnpm test
 corepack pnpm build
 ```
 
+Documentation contract:
+
+```powershell
+python .github/scripts/check_docs.py
+git diff --check
+```
+
+The documentation checker uses only the Python standard library. It validates
+current tracked Markdown and the source `frontend/public/overview.htm`; it
+excludes historical `doc/archive` content and does not generate documentation
+or access the network.
+
 The frontend proof keeps UI testing deliberately small. It validates Runtime
 schemas and stores plus the Task Batch Lab's strict response schemas, public
 upload/run/download routes, configured Group/Event selection, and Mock-mode
@@ -121,7 +134,9 @@ every selected lane succeeds and every unselected lane is explicitly skipped.
 
 Representative selection rules:
 
-- documentation-only changes run only selection and `Proof Gate`;
+- Docs Contract runs on every workflow invocation; documentation-only changes
+  otherwise reach only `Proof Gate`;
+- the human overview additionally runs the Frontend lane;
 - Netty Adapter changes run JVM Contracts, Runtime Boundary, and Task Batch;
 - Task-Batch-only changes run JVM Contracts and Task Batch;
 - Android-only changes run Android Host;

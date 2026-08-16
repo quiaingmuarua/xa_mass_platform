@@ -1,719 +1,155 @@
 # Kernel Design Agent Handoff
 
-Status: current local handoff for `kernel_design/`.
-
-This directory owns clean-kernel mechanism contracts and the current Python
-executable specification. Incremental JVM contract and owner-provider parity
-lives under `kernel_jvm/` and must use this workspace as its oracle. That
-module is currently Java 21 and does not own scheduling, Pacers, or the Kernel
-application lifecycle; Kotlin behavior requires its own explicitly scoped
-parity slice.
-
-## 0. TL;DR
-
-- `kernel_design/` is the current mechanism oracle.
-- The superseded Java platform exists only in
-  `legacy-java-platform-final-2026-07-24`.
-- Historical Java code is useful only as failure-mode evidence, invariant
-  input, or anti-pattern context.
-- The design target is a small strict kernel, not a simplified weak kernel.
-- Owner boundaries matter more than closing a broad demo loop.
-- Prefer owner-local executable proof before crossing into another runtime.
-- Treat `TaskType` as a supported workload scenario contract, not a bag of
-  orthogonal policy switches.
-- Add a TaskType only when a concrete scenario cannot be represented by the
-  existing types and has its own vertical executable proof.
-- Treat Task scheduling as the current control-flow mainline. Worker resource
-  and score are independent truth owners called by that mainline, not a second
-  peer scheduling application.
-- Do not promote route metadata, Adapter connectivity observations, command
-  handoff, or result evidence into a Worker lifecycle without a concrete
-  scenario and an implemented owner.
-- Treat `WorkerGroup.eventCodes` as replaceable catalog metadata for display
-  and future Server recommendation, not a scheduling predicate or current
-  Worker capability truth. Kernel append, matching, and dispatch must not add
-  per-Item EventCode checks or require equality with local Worker definitions.
-- For `ITEM_DRIVEN`, an empty TaskItem allocation rule is the explicit
-  no-Worker-restriction form. DIRECT acquisition uses one caller-bounded
-  due-HOT score query inside the Task's WorkerGroup, then exact score CAS and a
-  bounded descriptor point read for selected IDs. An explicit `workerId` rule
-  keeps the point-source path; another non-empty rule cannot discover a Group
-  and fails closed. Neither path scans Worker descriptors or uses candidate
-  cache fallback.
-
-Core kernel shape:
-
-```text
-Task score admission and visibility
-  -> TaskType profile
-     -> TASK_DRIVEN: Task rule, candidate warmup/cache, PRECOMPUTED acquisition
-     -> ITEM_DRIVEN: TaskItem rule, no cache, DIRECT acquisition
-  -> Task Dispatch
-     -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
-                     -> DeliveryCommand mailbox append
-     -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
-  -> Worker Delivery Dispatch
-     -> outbound Worker command protocol
-     -> semantic DeliveryReport ingress
-     -> outcome-class DeliveryReport queues
-  -> Result Routing
-     -> TaskItem and Worker truth convergence
-```
-
-These are scheduling planes, not necessarily modules. A first Python kernel may
-implement them in one package if owner truth remains explicit.
-
-## 1. Trust Order
-
-Use this order inside `kernel_design/`:
-
-1. Python executable spec code and tests under `executable_spec/`
-2. Current local design docs under `doc/scheduling/`, `doc/resource-model/`,
-   and `doc/runtime-redis/`
-3. Superseded shape docs only when their status says they are retained as
-   historical context
-4. Historical tag material only as legacy/failure-mode context
-
-If a design doc and Python executable spec disagree, describe the gap and do
-not silently bend one into the other.
-
-This trust order describes current behavior; it does not authorize code to
-override an already aligned interface contract. If code and an agreed contract
-diverge, stop and identify which one is stale before editing either side.
-
-### TaskType Scenario Gate
-
-Do not design Task scheduling by enumerating independent policy combinations.
-For every proposed TaskType or type-level behavior, identify:
-
-```text
-concrete workload and caller
-why TASK_DRIVEN and ITEM_DRIVEN cannot represent it
-which owner or scheduling invariant differs
-which policy decisions are required by that scenario
-the create -> dispatch -> result/close vertical proof
-```
-
-Scan limits, cadence, priority, fairness, retry intervals, and other bounded
-System Policy values do not justify a new TaskType. Tests must prove supported
-TaskType scenarios and owner primitives; do not add orchestration branches or
-defensive tests for policy combinations that no supported scenario can create.
-
-Do not infer priority, latency class, RPC versus batch behavior, arrival
-density, Worker exclusivity, or preemption rights from TaskType. The stable
-type distinction is Task-owned reusable Worker rules with candidate
-precomputation versus Item-owned Worker rules with DIRECT acquisition.
-Identical or empty Item rules remain valid for `ITEM_DRIVEN`.
-
-## 2. First Read
-
-For general kernel work:
-
-1. [README.md](README.md)
-2. [doc/README.md](doc/README.md)
-3. [doc/scheduling/README.md](doc/scheduling/README.md)
-
-For worker-runtime work:
-
-1. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
-2. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
-3. [doc/scheduling/worker-hot-acquire-lease-protocol.md](doc/scheduling/worker-hot-acquire-lease-protocol.md)
-4. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-5. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
-6. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
-7. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
-8. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
-9. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
-
-For task runtime or task score-band work:
-
-1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
-2. [doc/scheduling/task-score-band-scheduling.md](doc/scheduling/task-score-band-scheduling.md)
-3. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
-4. [executable_spec/kernel/task_runtime.py](executable_spec/kernel/task_runtime.py)
-5. [executable_spec/kernel/task_score_band.py](executable_spec/kernel/task_score_band.py)
-6. [executable_spec/kernel/task_item_score_band.py](executable_spec/kernel/task_item_score_band.py)
-7. [executable_spec/redis_runtime/task_item_score_band.py](executable_spec/redis_runtime/task_item_score_band.py)
-8. [executable_spec/redis_runtime/task_runtime.py](executable_spec/redis_runtime/task_runtime.py)
-9. [executable_spec/redis_runtime/task_score_band.py](executable_spec/redis_runtime/task_score_band.py)
-10. [executable_spec/tests/test_task_runtime_contract.py](executable_spec/tests/test_task_runtime_contract.py)
-11. [executable_spec/tests/test_task_item_score_band_contract.py](executable_spec/tests/test_task_item_score_band_contract.py)
-12. [executable_spec/tests/test_redis_task_item_score_band.py](executable_spec/tests/test_redis_task_item_score_band.py)
-13. [executable_spec/tests/test_redis_task_item_score_band_integration.py](executable_spec/tests/test_redis_task_item_score_band_integration.py)
-14. [executable_spec/tests/test_redis_task_runtime.py](executable_spec/tests/test_redis_task_runtime.py)
-15. [executable_spec/tests/test_redis_task_runtime_integration.py](executable_spec/tests/test_redis_task_runtime_integration.py)
-16. [executable_spec/tests/test_redis_task_score_band.py](executable_spec/tests/test_redis_task_score_band.py)
-
-For assignment dispatch:
-
-1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
-2. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-3. [executable_spec/scheduling/task_scheduling_profile.py](executable_spec/scheduling/task_scheduling_profile.py)
-4. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
-5. [executable_spec/scheduling/task_dispatch.py](executable_spec/scheduling/task_dispatch.py)
-6. [executable_spec/tests/test_task_dispatch_integration.py](executable_spec/tests/test_task_dispatch_integration.py)
-7. [executable_spec/tests/test_result_routing_integration.py](executable_spec/tests/test_result_routing_integration.py)
-
-For result routing:
-
-1. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-2. [doc/runtime-redis/worker-result-runtime-redis-shape.md](doc/runtime-redis/worker-result-runtime-redis-shape.md)
-3. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
-4. [executable_spec/kernel/worker_result_runtime.py](executable_spec/kernel/worker_result_runtime.py)
-5. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
-6. [executable_spec/redis_runtime/worker_result.py](executable_spec/redis_runtime/worker_result.py)
-7. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
-
-For Worker Delivery Protocol changes:
-
-1. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
-2. [executable_spec/kernel/worker_delivery.py](executable_spec/kernel/worker_delivery.py)
-3. [executable_spec/redis_runtime/worker_delivery.py](executable_spec/redis_runtime/worker_delivery.py)
-4. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
-5. [../server_jvm/src/main/java/com/xa/mass/server/workerdelivery](../server_jvm/src/main/java/com/xa/mass/server/workerdelivery)
-6. [executable_spec/tests/test_worker_delivery.py](executable_spec/tests/test_worker_delivery.py)
-
-For process assembly or server entry work:
-
-1. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
-2. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
-3. [executable_spec/assembly/resources_command_client.py](executable_spec/assembly/resources_command_client.py)
-4. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-5. [executable_spec/assembly/result_routing_application.py](executable_spec/assembly/result_routing_application.py)
-6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
-7. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
-8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
-9. [runtime_server/app.py](runtime_server/app.py)
-
-For Worker Delivery Dispatch or a Java Worker:
-
-1. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
-2. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-3. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
-4. [../server_jvm/src/main/java/com/xa/mass/server/workerdelivery](../server_jvm/src/main/java/com/xa/mass/server/workerdelivery)
-5. [../transport/worker-delivery-contract](../transport/worker-delivery-contract)
-6. [../transport](../transport)
-7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
-
-## 2.1 Python Naming Rules
-
-Python workspace names expose owner, mechanism, or process responsibility, not
-historical status or storage trivia:
-
-```text
-executable_spec/              stable mechanism package, never example/demo
-  kernel/                     owner contracts, score mechanisms, internal protocols
-  scheduling/                 bounded matching and cross-owner pacer orchestration
-  assembly/                   application lifecycle and dependency composition
-  constraint_dsl/             standalone constraint compilation/evaluation
-  redis_runtime/              Redis-backed implementations of owner contracts
-runtime_server/               Python Kernel control command host
-```
-
-`kernel_design/runtime_server/` composes only Task create/approve/close,
-dispatch wake, and `KernelApplication` lifecycle. Java `server_jvm` hosts
-WorkerGroup upsert, external Worker Register/Bind and Worker upsert, TaskItem append,
-last-success reads, and Worker
-Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
-remain executable-spec oracles and test support. External Worker
-implementations live under `transport/` and
-share one Java 11 compatible execution core and protocol module. Complete
-WebSocket and line-Socket Adapter instances live in
-`transport/netty-adapter`. A single package-private Adapter aggregate is
-instantiated independently per endpoint and owns that instance's lifecycle,
-and network ordering. Its `AdapterProcessManager` owns the
-finite Process descriptors, their one same-lifetime scheduler, round isolation, phase-local
-quiescence, and reverse finishing. One `DeliveryCommandProcess` owns scheduled
-Command consumption, delivery, expiry, and rotation with one private
-`FiniteQueue`. One `DeliveryReportProcess` owns mixed Result acceptance, one
-pending batch, and remote ingress with one private queue. Server selects a
-single Command source per response and gives CONTROL_ONLY strict priority.
-That priority is remote acquisition policy only: it creates no Adapter lane,
-does not reorder the local FIFO or preempt a Worker Handler, and does not turn
-the pause-score admission observation into a persisted Worker mode or lock.
-Queue storage never crosses a
-Process owner. One concrete HTTP client shares only JDK networking resources;
-three owner-local Remote APIs own the Command, Report, and route-verification
-paths, wire contracts, expected statuses, and failure policy. The Command
-Process, Report Process, and connection mechanism depend only on their matching
-Remote API and concrete neighboring owner operations; none receives the HTTP
-client, URL, status, or HTTP JSON contract.
-One stateless sharable inbound Handler only adapts Netty callbacks to the
-shared connection mechanism. That mechanism plus the pure route Registry owns
-identity, first verification, current route selection, and Result ingress. One
-complete WebSocket or line-Socket physical Server owns listener,
-EventLoop, every child Channel, full Pipeline, framing, writes, asynchronous
-write failure, and close behavior.
-The finite Netty factory is the only supported construction entry;
-cross-package collaborators remain isolated under `netty.internal`.
-`server_jvm` supplies only instance configuration and process lifecycle events.
-Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or Redis
-dependency.
-
-Use these rules:
-
-- package names describe an owner/domain or backend implementation boundary;
-- file names describe the primary owner or mechanism in that file;
-- contract classes use semantic names such as `TaskScoreBandCore`;
-- concrete backend classes use one backend prefix such as
-  `RedisTaskScoreBandCore`;
-- do not repeat internal storage structures such as `Zset`, `Hash`, `List`, or
-  `Lua` in stable class names merely because the first implementation uses them;
-- related DTOs and one owner interface may share a file; do not force one class
-  per file when it fragments one owner surface;
-- test file and test class names should identify the concrete mechanism under
-  proof;
-- renames replace old names directly; do not retain aliases or compatibility
-  packages inside this isolated workspace.
-
-## 2.2 Interface Change Gate
-
-Treat every kernel-facing method, DTO, callback, and owner operation as frozen
-unless the current request explicitly changes that contract. An implementation
-cleanup must preserve caller, owner, input authority, output meaning, side
-effects, bounds, and concurrency semantics.
-
-Before editing an interface or moving an operation between classes, write down:
-
-```text
-owner
-caller
-caller-owned inputs
-owner-internal inputs
-output meaning
-side effects and keys
-batch/scan bound owner
-concurrency or stale fence
-explicitly excluded responsibilities
-```
-
-Stop and discuss before implementation when any of these changes:
-
-```text
-method signature or DTO shape
-which component performs I/O
-which component selects or discovers candidates
-which component owns a limit, ordering rule, retry, or fairness policy
-which owner writes score, lease, queue, descriptor, or result truth
-atomicity, CAS, lease, monotonicity, or best-effort semantics
-```
-
-Removing a bridge, wrapper, or helper is not permission to redistribute its
-operations. Inline the same owner sequence at the caller. Do not move candidate
-acquisition into matching, policy into a runtime primitive, persistence into an
-orchestrator, or owner validation into a convenience facade merely to reduce a
-parameter or call site.
-
-Public inputs must be meaningful and constructible by the caller. Owner-local
-score encodings, internal observations, handler maps, Redis ranges, and cached
-snapshots stay hidden. Conversely, a caller-selected bounded identity set such
-as `workerIds` must not become hidden callee discovery just to shorten the
-signature.
-
-Policy breadth does not justify owner-contract breadth. Prefer operations that
-are owner-local, accept explicit caller-bounded identities, and aggregate
-within one owner key. Same-key requested-id batching is an owner operation;
-cross-key grouping, fan-out, polling cadence, completion coordination, and
-retry timing remain caller or policy orchestration by default.
-
-Treat cross-key fan-out, global discovery, owner-spanning aggregation, new
-queues or background loops, and stronger consistency as high-cost interface
-changes. Before implementing one, require all of:
-
-```text
-a named production invariant
-evidence that existing owner-local operations cannot express it
-a worst-case cost and explicit bound
-owner, key, failure, and partial-success semantics
-rejection of the cheaper policy-layer alternative
-focused boundary and behavior proof
-```
-
-Do not promote a strategy's internal batching or grouping shape into a Kernel
-contract merely to reduce caller code or Redis round trips. For example,
-TaskRuntime may load bounded requested `messageIds` from one Task result key;
-cross-Task result observation remains application policy.
-
-Required proof for an intentional interface change:
-
-- update the owning design document before or with code;
-- lock the public signature or DTO shape in a contract test;
-- prove which owner performs every external read and mutation;
-- add a negative assertion for the owner action that must not move;
-- scan for the old interface, renamed wrappers, compatibility paths, and stale
-  documentation;
-- if implementation reality differs from the approved change, stop instead of
-  expanding scope.
-
-## 3. Owner Map
-
-Task score-band owns:
-
-```text
-task scheduling visibility
-task score-state interpretation
-bounded task acquire / recheck primitives
-```
-
-It does not own Item append, Item score claim/retry/outcome movement, worker
-selection, transport delivery, or result finality classification.
-
-TaskRuntime owns:
-
-```text
-canonical per-Task Item records
-TaskItem validation, defaults, persistence, and bounded record reads
-batch Item append orchestration through TaskItemScoreBandCore initialization
-Task-scoped last-success payload storage and bounded requested-id reads
-```
-
-The external process implementation is split by owner operation, not by truth.
-Java implements the same `TaskRuntime` contract in `kernel_jvm` for public Item
-append and last-success reads; Python `RedisTaskRuntime` remains the mechanism
-oracle and performs internal ResultRouting storage. Both use the same keys.
-`server_jvm` selects providers in assembly; it does not define a route-shaped
-or Server-local Kernel runtime. There is no proxy fallback, mirrored result
-store, or double write.
-
-TaskItemScoreBandCore owns:
-
-```text
-initial ACTIVE Item score creation
-bounded ACTIVE Item-score acquire
-same-tag claim/retry rewrite through exact observed-score fencing
-strict-tag ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome promotion
-```
-
-`TaskItem` is the only runtime unit from append through finality. Claiming it
-does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
-
-Item append callers provide TaskItem fields only. Append scheduling policy maps
-Item priority to initial due milliseconds; Task config owns `maxRetryTimes`.
-The Python oracle passes those stable initialization inputs to
-TaskItemScoreBandCore. The Java `RedisTaskRuntime` provider reproduces only this
-initial record-plus-score operation behind the same owner contract. Tag,
-timeSlot, suffix, score bounds, and initial score never cross the HTTP API.
-
-Score is not a resource mutation lock. Task/worker metadata writes, property
-snapshot/index writes, item append, result/evidence writes, projections, and trace
-must not acquire or refresh score. Initialization establishes the first score;
-the active scheduling plane is the only routine writer for acquirable scores;
-explicit lifecycle commands may invoke only declared approve/reject/pause/
-resume/close or scheduling-serviceability transitions.
-
-Worker-runtime owns:
-
-```text
-worker group descriptor and worker descriptor truth
-explicit indexed-property update and bounded point-load ingress
-bounded worker candidate matching
-worker score acquire / recovery / hot lease / dirty / release semantics
-```
-
-Worker-runtime surfaces in the current Python spec:
-
-```text
-WorkerResourceCatalog
-  group descriptors, worker descriptors, low-frequency metadata
-
-WorkerPropertyIndexRuntime
-  explicit index.* updates and per-field bounded WorkerId point loads routed
-  to an immutable index map; candidate discovery, operator execution, and
-  provider storage stay outside the owner contract
-
-WorkerCandidateMatcher
-  one worker group, caller-supplied bounded worker id batch, ordered candidate
-  constraints, and matched Worker lease evidence
-
-WorkerScoreCore
-  bounded HOT observation, batched exact-score lease, RECOVERY_RECHECK acquisition, and score transitions
-```
-
-Assignment-dispatch owns:
-
-```text
-one scheduling-round composition
-candidate ranking after worker-runtime matching
-short assignment plan evidence
-Item score claim timing
-dispatch-time Worker lease disposition through WorkerScoreCore owner primitives
-queued DeliveryCommand creation
-```
-
-Within Task Dispatch, `TaskDispatchPacer` owns the bounded RUNNING round,
-suffix routing, mailbox publication, and Task-score pacing.
-`TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
-acquisition, exact Item claim, and DeliveryCommand construction. It is not
-another Pacer or lifecycle owner.
-
-It does not own Task lifecycle truth, Worker resource or score truth, Worker
-score encoding/storage, result finality, transport delivery, or transport
-connection internals. The canonical allocation/dispatch/result lease sequence is
-defined by
-[Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
-
-Worker Delivery Dispatch owns:
-
-```text
-Server point WorkerId polling through the fixed system-polling route
-Server bounded no-cursor access for a long-lived Adapter's sparse mailbox
-point HTTP forwarding of DeliveryCommand to the selected Worker
-direct DeliveryCommand/DeliveryReport long-connection transport
-Server point Worker result and Adapter batch validation/append
-complete Java Adapter instance registration/start/close and scheduled dispatch
-independent bounded Command/Report Process rounds, all-child Channels, and
-bound routes
-Adapter-owned Netty listeners and unchanged encoded DeliveryReport forwarding
-```
-
-Its boundary starts after Task Dispatch handles mailbox publication and ends
-after DeliveryReport append. It does not select Workers, claim Items, mutate Task
-score, interpret Worker score, or renew/release Worker leases. The current
-Delivery DTOs carry no outer `messageId`; TaskItem identity remains in the Task
-owner contract and opaque ResultContext. Delivery owners must not decode
-`forward` or infer correlation from it. The current
-polling HTTP slice accepts Worker-originated `200` and Worker-owned `3...`;
-the long-lived Adapter endpoint also accepts Adapter `2...` Reports when
-`sourceId` matches the path endpoint-manager ID. Point ingress requires
-`WORKER + path workerId`; these declarations are consistency evidence, not
-authentication. Polling never
-scans a mailbox, and `system-polling` is only a logical route binding.
-
-Each Java Adapter instance owns one configured non-system-polling mailbox, one
-independent Netty listener, separate scheduled Command/Report Process rounds,
-one private bounded queue per Process, every accepted child Channel, and one
-current bound route per WorkerId.
-Its common Worker route Registry owns a process-local set of verified Worker
-IDs, one pending first-verification Channel per WorkerId, and the active
-Channels plus Channel correlation. The selected physical Server owns no route
-or scheduling state.
-Every physical connection starts with strict identity. The first occurrence in
-one Adapter process is verified through Server; ordinary disconnect removes
-only the active Channel, while a later identity reconnects from the cached
-verified route. Adapter close/restart clears verified, pending, and active
-state. The cache is not persistent Binding, authentication, online truth, TTL,
-or an implicit unbind mechanism. One sharable connection Handler coordinates
-this without a phase enum or Session, drops later input while verification is
-pending, and derives bound behavior from Registry truth after the physical
-Pipeline normalizes input to String. It does not mutate the Pipeline or perform
-physical Channel writes/closes. Different Adapter instances share no verified
-cache or Channel Registry, even when they select the same physical protocol.
-The Adapter owns statically bound direct
-DeliveryCommand/DeliveryReport transport and Adapter rejection versus
-`UNKNOWN` classification; there is no Adapter event plugin registry. Adapter
-validates Worker-originated outcomes, but queues and forwards the original
-encoded result String; Server ingress performs the authoritative batch
-validation.
-`server_jvm` may turn each configured JSON tree into a concrete instance,
-register it, and invoke lifecycle events, but must not host WebSocket
-endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
-in one JVM must use different endpoint-manager IDs and listener ports.
-Workers Register and Bind their endpoint/resource snapshot before connecting.
-Command expiry before send produces the Adapter-owned `COMMAND_EXPIRED` result;
-disconnect, missing result, and any failure after send was attempted remain
-UNKNOWN. Same-endpoint distributed ownership remains
-unsupported.
-
-Result-routing owns:
-
-```text
-three outcome-class DeliveryReport queues through WorkerResultRuntime
-bounded consume, forward decode, owner-key grouping, and handler
-delegation through ResultRoutingPacer
-Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
-through the selected Task result handler
-current built-in policy performs no Item score mutation for failure outcomes;
-the existing claim becomes due naturally
-workerGroupId plus opaque workerLeaseScore pass-through to WorkerScoreCore exact
-release for `200` and Worker failure outcomes or exact RECOVERY_RECHECK
-demotion for Adapter rejection outcomes through
-the selected Worker result handler
-valid routed-evidence counting
-```
-
-Outcome codes provide only coarse result classes. Future retry, sleep, or
-band-transition policy must use explicit typed interface fields and must not
-parse exact Worker or Adapter subcodes.
-
-WorkerResultRuntime may classify only the public outcome class needed to select
-its queue; it must not decode context. ResultRoutingPacer must not interpret
-current Item score, reproduce same-tag/cross-tag rules, select workers, parse
-transport connections as truth, depend directly on Task/Worker runtime owners, or
-refresh task or worker score as a generic side effect. Built-in owner-operation
-policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
-same stable handler contracts. DeliveryReport queues are not partitioned by endpointManagerId,
-exact subcode, Task, WorkerGroup, or producer source. The current result
-projection is a bounded Java read of requested Task-scoped last-success
-payloads. It exposes neither failure history nor pending/final state. Exhausted
-ACTIVE budget is finalized by Item dispatch acquire.
-
-A future trusted pre-execution-rejection policy may accelerate Item retry only
-after the opaque Item claim fence is carried to a TaskItem score-owner exact
-release operation. Adapter crash, timeout, missing response, and other
-`UNKNOWN` evidence cannot release an Item claim early.
-
-## 4. Worker-Runtime Boundary Rules
-
-WorkerGroup is a stable scheduling entry boundary. Task creation/admission
-selects a worker group; task/item payloads do not scan all worker groups.
-
-Worker score is an acquisition coordinate, not worker lifecycle truth:
-
-```text
-HOT_ACQUIRE
-  positive score; worker may enter hot worker admission after validation
-
-RECOVERY_RECHECK
-  negative score; recovery validation lane, not a worker selection lane
-```
-
-Hot score lease rules:
-
-```text
-acquire_hot_acquire_candidates(..., limit)
-  read-only bounded due HOT_ACQUIRE query
-  returns workerId -> observedScore mapping to allocation pacer
-  scan order is not part of the public contract
-
-acquire_observed_hot_score_leases(...)
-  before matching, batches one exact CAS per observed Worker
-  preserves laneRank and clears dirty while writing each future lease
-
-renew_active_hot_score_leases(...)
-  requires clean active HOT_ACQUIRE observed score
-  exact-validates an already sufficient lease or extends it
-  returns an independent result per Worker and STALE on dirty
-
-dispatch disposition
-  validates/renews the exact active fence before Item claim
-  rejects dirty/recovery/expired/stale candidates without compensation release
-  result-routing Worker handlers exact-release `200` and Worker-failure fences
-  and move Adapter-rejection fences to negative polarity
-
-Worker upsert during Server Bind
-  missing score initializes positive, dirty=0
-  every existing score is preserved exactly
-  fully replaces workerProperties while preserving platformProperties
-  does not express connect, reconnect, or activation evidence
-
-RECOVERY_RECHECK
-  must not pass either hot lease primitive
-```
-
-`observedScore` remains an opaque full-score fence for batched lease, active
-renewal, release, polarity move, and recovery exhaustion. HOT query returns the
-observation only to the allocation pacer sidecar; matcher sees Worker ids only.
-Do not decode, trim, construct, or reinterpret observed scores outside worker
-score logic.
-
-Dirty is an assignment-continuation stale hint, not a worker-global version:
-
-```text
-dirty = 1 means cached match/admission facts may be stale
-dirty is meaningful only while a real assignment plan / hot score lease
-continuation can observe it
-```
-
-`validationDependencySet` is conceptual evidence for future dirty decisions.
-Do not implement it by adding a global scan, reverse plan query, or dynamic
-attribute owner that searches assignment state. If dirty execution is needed,
-the assignment-plan owner must provide the owner-local lookup/index.
-
-## 5. Proof Discipline
-
-Do not jump directly to a task -> worker -> transport -> result closure proof
-unless explicitly requested. Prove one owner plane first.
-
-Worker-runtime proof should stop at worker-runtime behavior:
-
-```text
-upsert WorkerGroupDescriptor
-upsert WorkerDeclaration
-initialize HOT_ACQUIRE score
-acquire HOT_ACQUIRE candidates
-acquire unchanged candidates through exact observed-score CAS
-match bounded WorkerCandidateConstraint maps
-retain unmatched HOT leases until natural expiry
-renew_active_hot_score_leases
-release_score_holds / rewrite_current_scores
-RECOVERY_RECHECK path
-dirty stale behavior
-```
-
-Task-runtime proof should stop at Task score, Task Item, and result-owner behavior
-unless a separate plan explicitly crosses into worker-runtime or transport.
-
-Fast Python validation:
+Status: current local change contract for `kernel_design/`.
+
+Read the repository [architecture entrypoint](../README.md), root
+[AGENTS.md](../AGENTS.md), this workspace [README](README.md), and the relevant
+owner document before changing Kernel behavior.
+
+## Trust Order
+
+1. `executable_spec/` code and focused tests.
+2. Verified Redis behavior.
+3. Current owner documents under `doc/`.
+4. Workspace README and this handoff.
+5. Historical tag material as failure-mode evidence only.
+
+If code and a current owner document disagree, identify the drift before
+editing. Do not normalize current implementation debt into the mechanism
+contract merely because it is easier to test.
+
+## First Read
+
+Use the smallest path relevant to the change:
+
+- Resource truth: `doc/resource-model/` and matching owner interfaces.
+- Score behavior: the matching score-band document, score owner and tests.
+- Assignment: `doc/scheduling/assignment-dispatch-scheduling.md`, the bounded
+  Pacer implementation and integration proof.
+- Result behavior: `doc/scheduling/result-routing-scheduling.md`, result owner
+  and focused tests.
+- Delivery boundary: `doc/scheduling/worker-delivery-dispatch.md`.
+- Application lifecycle: `doc/kernel-application-assembly.md`.
+- Redis shape: matching `doc/runtime-redis/` note plus real Redis provider and
+  proof.
+
+Do not start with Server, Transport or legacy code when the requested change is
+a Kernel mechanism decision.
+
+## Owner Rules
+
+- Task record, Task score, TaskItem record, TaskItem score, Worker resource,
+  Worker score, DeliveryCommand and result disposition remain distinct owners.
+- Score is a scheduling coordinate, not a resource lock or general version.
+- Keep score values opaque outside score-owner operations.
+- Assignment Dispatch may orchestrate bounded owner reads and transitions; it
+  does not merge owner truth.
+- Result Routing owns retry/finality policy and accepted evidence disposition.
+- Worker Delivery carries already-assigned work and never selects a Worker or
+  claims a TaskItem.
+- CONTROL_ONLY is a Server use case and must not enter Kernel Task scheduling,
+  score encoding or Result Routing.
+- Event and wake paths are best-effort accelerators. Owner scans and exact
+  rechecks preserve correctness.
+
+## Interface Change Gate
+
+Before adding or widening an owner operation, record:
+
+1. the owner and named invariant;
+2. the bounded caller and input identities;
+3. the key or keys touched;
+4. atomicity, stale and failure semantics;
+5. why caller composition or an existing operation is insufficient;
+6. focused executable proof and, for Redis behavior, real Redis proof.
+
+Reject or narrow operations that provide global discovery, cross-key fan-out,
+owner-spanning aggregation, background coordination or mirrored DTOs without a
+high-ROI invariant.
+
+Prefer same-key aggregation and explicit primitives. Do not add a carrier
+record merely to make a mechanical signature look smaller.
+
+## Score Changes
+
+- Preserve the documented exact integer range and Redis double precision
+  proof.
+- Preserve owner-specific tag, time and suffix semantics.
+- Add boundary, ordering, illegal-transition and exact-CAS tests.
+- A policy may choose a coordinate, but it does not own the score encoding.
+- Do not expose raw score values through Server convenience APIs.
+- Pause/release mechanisms must preserve polarity, lane and dirty unless the
+  owner contract explicitly changes them.
+
+## Redis Changes
+
+- Redis keys and Lua belong to the matching owner provider.
+- Avoid cross-owner scripts and global scans.
+- Use exact observed-value comparison for stale-sensitive transitions.
+- Pipeline only caller-bounded independent owner operations.
+- Prove concurrency and partial-result behavior against real Redis.
+- Shape documents are implementation contracts, not public APIs by default.
+
+## Application And Policy
+
+- Kernel application assembly may own Pacer threads, startup order and bounded
+  shutdown. Owner contracts do not create background threads.
+- Policies choose bounded inputs and legal owner operations; they do not become
+  new truth owners.
+- Task admission limits and fairness are best-effort policy unless a stronger
+  invariant is explicitly approved.
+- `TASK_DRIVEN` and `ITEM_DRIVEN` are acquisition profiles. Do not introduce
+  orthogonal combinations without a real production scenario and proof.
+- Task close remains a policy over owner truth; do not add strong cross-owner
+  consistency solely to eliminate bounded recheck.
+
+## Python Naming And Contracts
+
+- Public executable-spec names mirror the owning mechanism vocabulary.
+- DTOs contain facts their owner can validate and construct.
+- Keep storage implementation details out of public contracts.
+- Do not preserve superseded names with aliases unless an external compatibility
+  obligation is explicitly approved.
+- Python HTTP request models belong to `runtime_server`; they adapt but do not
+  widen Kernel owner operations.
+
+## JVM Parity
+
+- JVM parity is incremental and caller-driven.
+- Do not implement Kotlin or Java scheduling simply because the Python
+  mechanism exists.
+- A parity slice names the Python interface/DTO/enum, current caller, Java
+  provider and proof it replaces or enables.
+- Missing JVM operations remain explicit gaps; no remote fallback or default
+  method may hide them.
+
+## Proof Discipline
+
+For every behavior change:
+
+1. run the focused deterministic owner tests;
+2. run the complete Python executable suite;
+3. run `compileall`;
+4. run real Redis proof when storage, CAS, ordering or concurrency changes;
+5. update the owning document in the same change;
+6. scan for old names, old paths and stale gap/status text.
+
+Canonical commands:
 
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
-git diff --check -- kernel_design
 ```
 
-Real Redis TaskResourceCatalog proof requires a reachable Redis URI:
+Set `KERNEL_DESIGN_REDIS_URL` for Redis-backed proofs. The repository
+[TESTING.md](../TESTING.md) owns cross-process and JVM lanes.
 
-```text
-KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
-python -m unittest \
-  kernel_design.executable_spec.tests.test_redis_task_runtime_integration
-```
+## Documentation Rules
 
-For focused worker-runtime checks:
-
-```text
-python -m unittest \
-  kernel_design.executable_spec.tests.test_worker_runtime_contract \
-  kernel_design.executable_spec.tests.test_redis_worker_score
-```
-
-## 6. Guardrails
-
-- Do not copy historical Java engine/module shapes into clean-kernel design.
-- Do not create bridges, facades, or wrappers unless they protect a real owner
-  boundary or executable-spec seam.
-- Do not add scan-heavy observability or reconciliation loops to hot paths.
-- Do not make external events required for correctness or ordinary liveness.
-- Do not let heartbeat, transport ack, result notification, trace, or
-  read-model update become scheduling wakeups by default. The one current
-  append exception is a bounded, taskId-coalesced, droppable Task Dispatch
-  hint that may exact-release an existing future empty-recheck hold; it is
-  never part of append acceptance or scheduling liveness.
-- Do not put transport identifiers into scheduling candidate truth.
-- Do not make score-band a read model, storage blob, or lifecycle facade.
-- Do not require a score read, lease, or rewrite before resource metadata,
-  property snapshot/index, Item append, result/evidence, projection, or trace
-  mutation.
-- The default server/SDK ingress calls `TaskRuntime.append_items` directly;
-  do not require a server backlog, outbox, broker, or periodic materializer.
-- Treat append success as canonical Item acceptance only. Do not infer that
-  the Task is live, schedulable, guaranteed to consume the item, or required to
-  reopen. Ingress owns append eligibility; retention owns terminal residue.
-- Do not make kernel append compensate for stale server intake decisions. A
-  late append after terminal may be discarded and must never refresh or reopen
-  task score.
-- Do not let a resource mutation become a generic score refresh. Worker dirty
-  may only be an additional bounded stale hint for a real continuation and must
-  never gate or roll back the resource write.
-- Do not create a second routine writer for an acquirable score. Scheduling owns
-  cadence/budget rewrites; command handlers are limited to explicit lifecycle
-  transitions.
-- Do not make worker score own task demand, task backlog, or final result.
-- Do not make Task score own Item score claim/retry/outcome movement or result
-  finality classification.
-- Do not introduce a second hot-path candidate index without naming its owner,
-  lifecycle, update discipline, and deletion path.
-- Do not treat `doc/runtime-redis/*shape.md` as public API unless a current
-  executable spec explicitly adopts it.
-
-## 7. Documentation Rules
-
-- Keep mechanism design under `kernel_design/`.
-- Keep phase plans and migration plans out of `kernel_design/`; use an explicit
-  new-kernel executable-spec plan when execution begins.
-- Update Python tests when a Python interface contract changes.
-- Delete or rewrite stale design text instead of preserving parallel narratives.
-- Delete superseded Redis or shape notes after current contracts and links have
-  been migrated; do not retain a parallel historical design narrative.
-- When executable code makes a design fact current kernel truth, migrate it to
-  the owning contract and delete the superseded narrative after link cleanup.
+- `doc/scheduling/README.md` is the only scheduling status matrix.
+- Owner documents define detailed mechanism behavior.
+- Workspace README is an entrypoint and axiom summary, not a second status
+  catalog.
+- Root architecture owns cross-module authority and stability classification.
+- AGENTS files own change rules, not unique production facts.
+- Historical notes remain historical and must not be linked as current truth.

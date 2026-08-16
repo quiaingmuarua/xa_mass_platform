@@ -5,7 +5,8 @@ executable spec; policy coverage partial.
 
 The workspace-level isolation, event-cost, liveness, and score-writer rules are
 defined in [Kernel Core Design Workspace](../../README.md). This file is the
-entry map for scheduling owners and their current executable mechanisms.
+entry map and single current status matrix for scheduling owners and their
+executable mechanisms; individual documents below own detailed invariants.
 
 ## Scheduling Planes
 

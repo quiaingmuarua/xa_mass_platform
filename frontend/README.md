@@ -40,7 +40,10 @@ The sidebar also links to Server-hosted reference pages:
 ```
 
 `overview.htm` is maintained as the static source at
-`frontend/public/overview.htm` and is copied to the frontend build root.
+`frontend/public/overview.htm` and is copied to the frontend build root. It is
+the human-facing projection of the repository
+[architecture entrypoint](../README.md), not an independent mechanism
+truth source. Generated `frontend/dist/overview.htm` is never committed.
 
 The Task Batch page is available only in API mode with the real
 `scenario-workers` Profile. It selects a configured WorkerGroup and advisory

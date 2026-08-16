@@ -2,6 +2,11 @@
 
 Status: current document index for the clean-kernel mechanism workspace.
 
+Cross-module Kernel/Server/Transport authority is defined by the repository
+[architecture entrypoint](../../README.md). This index owns Kernel
+document routing; [Scheduling](scheduling/README.md) owns the single current
+scheduling status matrix.
+
 Task scheduling is the current control-flow mainline. Worker resource and score
 remain independent owner contracts used by that mainline; delivery routes,
 Adapter connectivity, and execution evidence are not a second Worker lifecycle
