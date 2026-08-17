@@ -64,6 +64,11 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("control-commands:consume")
                 .doesNotContain("control-results:append")
                 .doesNotContain("workerCommandsByWorkerId");
+        assertThat(readSources(SERVER_SOURCE.resolve(
+                "com/xa/mass/server/api/v1"
+        )))
+                .doesNotContain("WorkerControlController")
+                .doesNotContain("/workers/controls:call");
     }
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerassembly"

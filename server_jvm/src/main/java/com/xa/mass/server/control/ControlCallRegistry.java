@@ -487,8 +487,7 @@ public final class ControlCallRegistry implements AutoCloseable {
         CONTROL_ONLY_REQUIRED,
         SCORE_UNAVAILABLE,
         NOT_BOUND,
-        ENDPOINT_UNAVAILABLE,
-        POLLING_ENDPOINT
+        ENDPOINT_MISMATCH
     }
 
     public record ControlTarget(

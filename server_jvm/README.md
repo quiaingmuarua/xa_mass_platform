@@ -59,8 +59,12 @@ The bounded use cases do not create new truth: WorkerGroup RPC appends one Item
 and observes last success through one shared probe; Task Batch appends a finite
 input once and publishes complete or partial JSONL; pause/resume calls the
 Worker score owner; CONTROL_ONLY correlates caller-selected targets without
-persisting Commands or Results. Exact route schemas are available from the
-running Server:
+persisting Commands or Results. Its single public call is scoped to one
+configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
+one WorkerGroup plus a `1..100` entry `workerId -> opaquePayload` map targets
+only Workers currently bound to that Adapter. The two request modes are
+exclusive, and Server never partitions one Control Call across Adapters.
+Exact route schemas are available from the running Server:
 
 ```text
 Scalar API Reference  http://127.0.0.1:18082/scalar

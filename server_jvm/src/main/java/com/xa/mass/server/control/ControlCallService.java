@@ -4,13 +4,12 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.AdapterControlCallRequest;
+import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCallRequest;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchCallResponse;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchStatus;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetCallResponse;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetReason;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetStatus;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.WorkerControlBatchCallRequest;
 import com.xa.mass.server.control.ControlCallRegistry.BatchOutcome;
 import com.xa.mass.server.control.ControlCallRegistry.ControlTarget;
 import com.xa.mass.server.control.ControlCallRegistry.TargetOutcome;
@@ -27,7 +26,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoi
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -76,16 +74,53 @@ public final class ControlCallService {
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<ResponseEntity<ControlBatchCallResponse>>
-            callWorkers(
-                    String workerGroupId,
-                    WorkerControlBatchCallRequest request
-            ) {
-        requireNonBlank(workerGroupId, "workerGroupId");
-        requireWorkerRequest(request);
-        List<String> workerIds = validatedWorkerIds(request.workerIds());
+    public DeferredResult<ResponseEntity<ControlBatchCallResponse>> call(
+            String adapterId,
+            ControlCallRequest request
+    ) {
+        requireControlRequest(request);
+        requireControlAdapter(adapterId);
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         long deadline = System.currentTimeMillis() + timeoutMillis;
+
+        boolean hasWorkerGroup = request.workerGroupId() != null;
+        boolean hasWorkerPayloads = request.workerPayloads() != null;
+        if (hasWorkerGroup != hasWorkerPayloads) {
+            throw invalid(
+                    "workerGroupId and workerPayloads must be provided together"
+            );
+        }
+        if (!hasWorkerPayloads) {
+            if (request.opaquePayload() == null) {
+                throw invalid(
+                        "opaquePayload must be present for an Adapter call"
+                );
+            }
+            return registerBatch(
+                    timeoutMillis,
+                    List.of(commandPlan(
+                            adapterId,
+                            adapterId,
+                            ControlTarget.adapter(adapterId),
+                            DeliveryEndpoint.ADAPTER,
+                            request.messageType(),
+                            request.opaquePayload(),
+                            deadline
+                    ))
+            );
+        }
+        if (request.opaquePayload() != null) {
+            throw invalid(
+                    "opaquePayload must be omitted for a Worker batch"
+            );
+        }
+
+        String workerGroupId = request.workerGroupId();
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Map<String, String> workerPayloads = validatedWorkerPayloads(
+                request.workerPayloads()
+        );
+        List<String> workerIds = List.copyOf(workerPayloads.keySet());
 
         Map<String, WorkerDescriptor> workers;
         Map<String, WorkerScoreState> scores;
@@ -147,55 +182,24 @@ public final class ControlCallService {
                 ));
                 continue;
             }
-            WorkerEndpointBinding endpoint = endpoints.find(endpointId);
-            if (endpoint == null) {
+            if (!adapterId.equals(endpointId)) {
                 plans.add(TargetPlan.rejected(
                         workerId,
-                        TargetOutcomeReason.ENDPOINT_UNAVAILABLE
-                ));
-                continue;
-            }
-            if (endpoint.transportType() == WorkerTransportType.POLLING) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.POLLING_ENDPOINT
+                        TargetOutcomeReason.ENDPOINT_MISMATCH
                 ));
                 continue;
             }
             plans.add(commandPlan(
                     workerId,
-                    endpointId,
+                    adapterId,
                     ControlTarget.worker(workerId),
                     DeliveryEndpoint.WORKER,
                     request.messageType(),
-                    request.opaquePayload(),
+                    workerPayloads.get(workerId),
                     deadline
             ));
         }
         return registerBatch(timeoutMillis, plans);
-    }
-
-    public DeferredResult<ResponseEntity<ControlBatchCallResponse>>
-            callAdapter(
-                    String adapterId,
-                    AdapterControlCallRequest request
-            ) {
-        requireAdapterRequest(request);
-        requireControlAdapter(adapterId);
-        long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
-        long deadline = System.currentTimeMillis() + timeoutMillis;
-        return registerBatch(
-                timeoutMillis,
-                List.of(commandPlan(
-                        adapterId,
-                        adapterId,
-                        ControlTarget.adapter(adapterId),
-                        DeliveryEndpoint.ADAPTER,
-                        request.messageType(),
-                        request.opaquePayload(),
-                        deadline
-                ))
-        );
     }
 
     public Map<String, DeliveryCommand> consume(
@@ -334,10 +338,8 @@ public final class ControlCallService {
             case SCORE_UNAVAILABLE ->
                     ControlTargetReason.SCORE_UNAVAILABLE;
             case NOT_BOUND -> ControlTargetReason.NOT_BOUND;
-            case ENDPOINT_UNAVAILABLE ->
-                    ControlTargetReason.ENDPOINT_UNAVAILABLE;
-            case POLLING_ENDPOINT ->
-                    ControlTargetReason.POLLING_ENDPOINT;
+            case ENDPOINT_MISMATCH ->
+                    ControlTargetReason.ENDPOINT_MISMATCH;
         };
     }
 
@@ -365,45 +367,35 @@ public final class ControlCallService {
         return timeout;
     }
 
-    private static List<String> validatedWorkerIds(List<String> workerIds) {
-        if (workerIds == null
-                || workerIds.isEmpty()
-                || workerIds.size() > MAX_BATCH_SIZE) {
-            throw invalid("workerIds must contain between 1 and 100 items");
+    private static Map<String, String> validatedWorkerPayloads(
+            Map<String, String> workerPayloads
+    ) {
+        if (workerPayloads == null
+                || workerPayloads.isEmpty()
+                || workerPayloads.size() > MAX_BATCH_SIZE) {
+            throw invalid(
+                    "workerPayloads must contain between 1 and 100 entries"
+            );
         }
-        LinkedHashSet<String> unique = new LinkedHashSet<>();
-        for (String workerId : workerIds) {
+        Map<String, String> validated = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : workerPayloads.entrySet()) {
+            String workerId = entry.getKey();
             requireNonBlank(workerId, "workerId");
-            if (!unique.add(workerId)) {
-                throw invalid("workerIds must be unique");
+            if (entry.getValue() == null) {
+                throw invalid("Worker opaquePayload must be present");
             }
+            validated.put(workerId, entry.getValue());
         }
-        return List.copyOf(unique);
+        return validated;
     }
 
-    private static void requireWorkerRequest(
-            WorkerControlBatchCallRequest request
+    private static void requireControlRequest(
+            ControlCallRequest request
     ) {
         if (request == null) {
-            throw invalid("Worker Control Batch request must be present");
+            throw invalid("Control Call request must be present");
         }
-        requireCommand(request.messageType(), request.opaquePayload());
-    }
-
-    private static void requireAdapterRequest(
-            AdapterControlCallRequest request
-    ) {
-        if (request == null) {
-            throw invalid("Adapter Control Call request must be present");
-        }
-        requireCommand(request.messageType(), request.opaquePayload());
-    }
-
-    private static void requireCommand(String messageType, String payload) {
-        requireNonBlank(messageType, "messageType");
-        if (payload == null) {
-            throw invalid("opaquePayload must be present");
-        }
+        requireNonBlank(request.messageType(), "messageType");
     }
 
     private static void requireNonBlank(String value, String name) {

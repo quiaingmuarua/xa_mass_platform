@@ -115,6 +115,9 @@ mailbox or Result Routing:
 
 ```text
 Server instance-local bounded mailbox
+  -> one adapterId-scoped public Control Call
+  -> optional same-Group workerId -> opaquePayload map
+  -> only paused Workers bound to that Adapter are admitted
   -> Server-selected unified Adapter Command batch
   -> SYSTEM -> WORKER, or SYSTEM -> ADAPTER at @adapter
   -> unified Adapter Report batch
@@ -123,6 +126,11 @@ Server instance-local bounded mailbox
 
 The Server admits Worker controls only from its current pause-score read, but
 that observation is not an execution lock and Adapter never reads score.
+`workerGroupId` is a request-body score coordinate, not the public route owner.
+Worker mode pairs it with a `1..100` entry `workerPayloads` map and creates one
+Command with its own payload per admitted Worker. Adapter mode instead carries
+one top-level `opaquePayload`; the two shapes are exclusive. One call never
+fans out across Adapters.
 Mailbox slots, Adapter queues, and waiter correlation are memory-only and may
 be lost on process failure. CONTROL_ONLY expiry produces no synthetic Result;
 late or missing evidence becomes `unobserved` at the Server waiter. The fixed

@@ -5,13 +5,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -20,30 +18,26 @@ public final class ControlCallHttpContract {
     private ControlCallHttpContract() {
     }
 
-    public record WorkerControlBatchCallRequest(
-            @NotEmpty @Size(max = 100)
-            List<@NotBlank String> workerIds,
+    public record ControlCallRequest(
+            @Nullable String workerGroupId,
+            @Nullable @Size(min = 1, max = 100)
+            Map<@NotBlank String, @NotNull String> workerPayloads,
             @NotBlank String messageType,
-            @NotNull String opaquePayload,
+            @Nullable String opaquePayload,
             @Positive @Max(10_000) Long waitTimeoutMillis
     ) {
-        @JsonAnySetter
-        void rejectUnknownField(String name, Object value) {
-            throw new IllegalArgumentException(
-                    "Unknown Worker Control Batch field: " + name
-            );
+        public ControlCallRequest {
+            if (workerPayloads != null) {
+                workerPayloads = Collections.unmodifiableMap(
+                        new LinkedHashMap<>(workerPayloads)
+                );
+            }
         }
-    }
 
-    public record AdapterControlCallRequest(
-            @NotBlank String messageType,
-            @NotNull String opaquePayload,
-            @Positive @Max(10_000) Long waitTimeoutMillis
-    ) {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw new IllegalArgumentException(
-                    "Unknown Adapter Control Call field: " + name
+                    "Unknown Control Call field: " + name
             );
         }
     }
@@ -143,8 +137,7 @@ public final class ControlCallHttpContract {
         CONTROL_ONLY_REQUIRED("control-only-required"),
         SCORE_UNAVAILABLE("score-unavailable"),
         NOT_BOUND("not-bound"),
-        ENDPOINT_UNAVAILABLE("endpoint-unavailable"),
-        POLLING_ENDPOINT("polling-endpoint");
+        ENDPOINT_MISMATCH("endpoint-mismatch");
 
         private final String wireValue;
 

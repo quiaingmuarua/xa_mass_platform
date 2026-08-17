@@ -8,18 +8,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.api.v1.WorkerControlController;
-import com.xa.mass.server.api.v1.workerdelivery.AdapterControlController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
+import com.xa.mass.server.api.v1.workerdelivery.AdapterControlController;
 import com.xa.mass.server.control.ControlCallProperties;
 import com.xa.mass.server.control.ControlCallRegistry;
 import com.xa.mass.server.control.ControlCallService;
@@ -29,7 +28,6 @@ import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,8 +48,7 @@ class ControlCallControllerTest {
             "b93ad1ab-313d-4484-838b-52f9dbc975ac";
     private static final String WORKER_2 =
             "5edc3086-9b45-4b47-8d24-f34e44f8dcd9";
-    private static final String ADAPTER_1 = "adapter-1";
-    private static final String ADAPTER_2 = "adapter-2";
+    private static final String ADAPTER_ID = "adapter-1";
 
     private MockMvc mockMvc;
 
@@ -61,18 +58,13 @@ class ControlCallControllerTest {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         WorkerBindingService bindings = mock(WorkerBindingService.class);
         WorkerEndpointDirectory endpoints = new WorkerEndpointDirectory(
-                Map.of(
-                        ADAPTER_1,
-                        endpoint(18083),
-                        ADAPTER_2,
-                        endpoint(18084)
-                )
+                Map.of(ADAPTER_ID, endpoint(18083))
         );
         List<String> workerIds = List.of(WORKER_1, WORKER_2);
         when(catalog.getWorkerDescriptors(GROUP_ID, workerIds))
                 .thenReturn(Map.of(
-                        WORKER_1, descriptor(WORKER_1, ADAPTER_1),
-                        WORKER_2, descriptor(WORKER_2, ADAPTER_2)
+                        WORKER_1, descriptor(WORKER_1),
+                        WORKER_2, descriptor(WORKER_2)
                 ));
         when(scores.getScoreStates(GROUP_ID, workerIds))
                 .thenReturn(Map.of(
@@ -81,8 +73,8 @@ class ControlCallControllerTest {
                 ));
         when(bindings.currentEndpointManagerIds(workerIds))
                 .thenReturn(Map.of(
-                        WORKER_1, ADAPTER_1,
-                        WORKER_2, ADAPTER_2
+                        WORKER_1, ADAPTER_ID,
+                        WORKER_2, ADAPTER_ID
                 ));
         ControlCallProperties properties = new ControlCallProperties(
                 3_000,
@@ -108,7 +100,6 @@ class ControlCallControllerTest {
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new WorkerControlController(service),
                         new AdapterControlController(service),
                         new AdapterBatchDeliveryController(workerDelivery)
                 )
@@ -119,12 +110,8 @@ class ControlCallControllerTest {
     }
 
     @Test
-    void workerBatchCompletesAcrossTwoAdapterResultBatches()
-            throws Exception {
-        MvcResult call = mockMvc.perform(post(
-                                "/api/v1/worker-groups/" + GROUP_ID
-                                        + "/workers/controls:call"
-                        )
+    void workerBatchCompletesThroughTheSelectedAdapter() throws Exception {
+        MvcResult call = mockMvc.perform(post(controlPath("controls:call"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(workerBatchRequest(List.of(
                                 WORKER_1,
@@ -133,17 +120,47 @@ class ControlCallControllerTest {
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
-        Map<String, Object> command1 = consume(ADAPTER_1, WORKER_1);
-        Map<String, Object> command2 = consume(ADAPTER_2, WORKER_2);
-        appendWorkerResult(ADAPTER_2, WORKER_2, command2, "200");
-        appendWorkerResult(ADAPTER_1, WORKER_1, command1, "3302");
+        MvcResult consumed = mockMvc.perform(post(controlPath(
+                                "commands:consume"
+                        ))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"limit\":100}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.commands['" + WORKER_1 + "'].dst"
+                ).value("WORKER"))
+                .andExpect(jsonPath(
+                        "$.commands['" + WORKER_2 + "'].dst"
+                ).value("WORKER"))
+                .andExpect(jsonPath(
+                        "$.commands['" + WORKER_1 + "'].payload"
+                ).value("{\"workerId\":\"" + WORKER_1 + "\"}"))
+                .andExpect(jsonPath(
+                        "$.commands['" + WORKER_2 + "'].payload"
+                ).value("{\"workerId\":\"" + WORKER_2 + "\"}"))
+                .andReturn();
+        Map<String, Object> command1 = command(consumed, WORKER_1);
+        Map<String, Object> command2 = command(consumed, WORKER_2);
+        mockMvc.perform(post(controlPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resultBatch(List.of(
+                                encodedWorkerResult(
+                                        WORKER_1,
+                                        command1,
+                                        "3302"
+                                ),
+                                encodedWorkerResult(
+                                        WORKER_2,
+                                        command2,
+                                        "200"
+                                )
+                        ))))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.acceptedCount").value(2));
 
         mockMvc.perform(asyncDispatch(call))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("observed"))
-                .andExpect(jsonPath(
-                        "$.results['" + WORKER_1 + "'].status"
-                ).value("observed"))
                 .andExpect(jsonPath(
                         "$.results['" + WORKER_1 + "'].outcomeCode"
                 ).value("3302"))
@@ -153,11 +170,8 @@ class ControlCallControllerTest {
     }
 
     @Test
-    void adapterCallUsesTheSameAggregateResponse() throws Exception {
-        MvcResult call = mockMvc.perform(post(controlPath(
-                                ADAPTER_1,
-                                "controls:call"
-                        ))
+    void omittedWorkerCoordinatesCallTheAdapter() throws Exception {
+        MvcResult call = mockMvc.perform(post(controlPath("controls:call"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(Map.of(
                                 "messageType", "adapter.probe",
@@ -167,7 +181,6 @@ class ControlCallControllerTest {
                 .andExpect(request().asyncStarted())
                 .andReturn();
         MvcResult consumed = mockMvc.perform(post(controlPath(
-                                ADAPTER_1,
                                 "commands:consume"
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -178,18 +191,15 @@ class ControlCallControllerTest {
                 consumed,
                 ControlCallRegistry.ADAPTER_TARGET_ADDRESS
         );
-        mockMvc.perform(post(controlPath(
-                                ADAPTER_1,
-                                "results:append"
-                        ))
+        mockMvc.perform(post(controlPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(resultBatch(
+                        .content(resultBatch(List.of(encodedResult(
                                 "ADAPTER",
-                                ADAPTER_1,
+                                ADAPTER_ID,
                                 "adapter.probe",
                                 (String) command.get("forward"),
                                 "200"
-                        )))
+                        )))))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.acceptedCount").value(1));
 
@@ -197,99 +207,70 @@ class ControlCallControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("observed"))
                 .andExpect(jsonPath(
-                        "$.results['" + ADAPTER_1 + "'].status"
+                        "$.results['" + ADAPTER_ID + "'].status"
                 ).value("observed"));
     }
 
     @Test
-    void invalidBatchShapesAndOldSingleWorkerPathAreRejected()
+    void invalidShapesAndRetiredWorkerGroupRouteAreRejected()
             throws Exception {
+        assertBadRequest(workerBatchRequest(List.of()));
+        assertBadRequest(workerBatchRequest(IntStream.range(0, 101)
+                .mapToObj(index -> "worker-" + index)
+                .toList()));
+        assertBadRequest(Jsons.toJson(Map.of(
+                "workerGroupId", GROUP_ID,
+                "messageType", "event",
+                "opaquePayload", "{}"
+        )));
+        assertBadRequest(Jsons.toJson(Map.of(
+                "workerPayloads", Map.of(WORKER_1, "{}"),
+                "messageType", "event",
+                "waitTimeoutMillis", 3_000
+        )));
+        assertBadRequest(Jsons.toJson(Map.of(
+                "workerGroupId", GROUP_ID,
+                "workerIds", List.of(WORKER_1),
+                "messageType", "event",
+                "opaquePayload", "{}",
+                "waitTimeoutMillis", 3_000
+        )));
+        assertBadRequest(Jsons.toJson(Map.of(
+                "workerGroupId", GROUP_ID,
+                "workerPayloads", Map.of(WORKER_1, "{}"),
+                "messageType", "event",
+                "opaquePayload", "{}",
+                "waitTimeoutMillis", 3_000
+        )));
+        assertBadRequest("""
+                {
+                  "workerGroupId":"group-1",
+                  "workerPayloads":{"worker-1":null},
+                  "messageType":"event",
+                  "waitTimeoutMillis":3000
+                }
+                """);
+        assertBadRequest(Jsons.toJson(Map.of(
+                "workerGroupId", GROUP_ID,
+                "workerPayloads", Map.of(WORKER_1, "{}"),
+                "messageType", "event",
+                "waitTimeoutMillis", 3_000,
+                "unknown", true
+        )));
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/" + GROUP_ID
                                         + "/workers/controls:call"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(workerBatchRequest(List.of())))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(post(
-                                "/api/v1/worker-groups/" + GROUP_ID
-                                        + "/workers/controls:call"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(workerBatchRequest(List.of(
-                                WORKER_1,
-                                WORKER_1
-                        ))))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(post(
-                                "/api/v1/worker-groups/" + GROUP_ID
-                                        + "/workers/controls:call"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(workerBatchRequest(IntStream.range(0, 101)
-                                .mapToObj(index -> "worker-" + index)
-                                .toList())))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(post(
-                                "/api/v1/worker-groups/" + GROUP_ID
-                                        + "/workers/controls:call"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(Jsons.toJson(Map.of(
-                                "workerIds", List.of(WORKER_1),
-                                "messageType", "event",
-                                "opaquePayload", "{}",
-                                "unknown", true
-                        ))))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(post(
-                                "/api/v1/worker-groups/" + GROUP_ID
-                                        + "/workers/" + WORKER_1
-                                        + "/controls:call"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isNotFound());
     }
 
-    private Map<String, Object> consume(
-            String adapterId,
-            String workerId
-    ) throws Exception {
-        MvcResult consumed = mockMvc.perform(post(controlPath(
-                                adapterId,
-                                "commands:consume"
-                        ))
+    private void assertBadRequest(String body) throws Exception {
+        mockMvc.perform(post(controlPath("controls:call"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limit\":100}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath(
-                        "$.commands['" + workerId + "'].dst"
-                ).value("WORKER"))
-                .andReturn();
-        return command(consumed, workerId);
-    }
-
-    private void appendWorkerResult(
-            String adapterId,
-            String workerId,
-            Map<String, Object> command,
-            String outcomeCode
-    ) throws Exception {
-        mockMvc.perform(post(controlPath(
-                                adapterId,
-                                "results:append"
-                        ))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(resultBatch(
-                                "WORKER",
-                                workerId,
-                                "worker.properties.snapshot",
-                                (String) command.get("forward"),
-                                outcomeCode
-                        )))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.acceptedCount").value(1));
+                        .content(body))
+                .andExpect(status().isBadRequest());
     }
 
     @SuppressWarnings("unchecked")
@@ -307,14 +288,33 @@ class ControlCallControllerTest {
 
     private static String workerBatchRequest(List<String> workerIds) {
         LinkedHashMap<String, Object> request = new LinkedHashMap<>();
-        request.put("workerIds", workerIds);
+        LinkedHashMap<String, String> workerPayloads = new LinkedHashMap<>();
+        workerIds.forEach(workerId -> workerPayloads.put(
+                workerId,
+                "{\"workerId\":\"" + workerId + "\"}"
+        ));
+        request.put("workerGroupId", GROUP_ID);
+        request.put("workerPayloads", workerPayloads);
         request.put("messageType", "worker.properties.snapshot");
-        request.put("opaquePayload", "{}");
         request.put("waitTimeoutMillis", 3_000);
         return Jsons.toJson(request);
     }
 
-    private static String resultBatch(
+    private static String encodedWorkerResult(
+            String workerId,
+            Map<String, Object> command,
+            String outcomeCode
+    ) {
+        return encodedResult(
+                "WORKER",
+                workerId,
+                "worker.properties.snapshot",
+                (String) command.get("forward"),
+                outcomeCode
+        );
+    }
+
+    private static String encodedResult(
             String source,
             String sourceId,
             String event,
@@ -329,20 +329,18 @@ class ControlCallControllerTest {
         report.put("outcomeCode", outcomeCode);
         report.put("payload", "{\"ok\":true}");
         report.put("forward", forward);
-        return Jsons.toJson(Map.of(
-                "results",
-                List.of(Jsons.toJson(report))
-        ));
+        return Jsons.toJson(report);
     }
 
-    private static WorkerDescriptor descriptor(
-            String workerId,
-            String adapterId
-    ) {
+    private static String resultBatch(List<String> reports) {
+        return Jsons.toJson(Map.of("results", reports));
+    }
+
+    private static WorkerDescriptor descriptor(String workerId) {
         return new WorkerDescriptor(
                 workerId,
                 GROUP_ID,
-                adapterId,
+                ADAPTER_ID,
                 Map.of(),
                 Map.of()
         );
@@ -366,8 +364,8 @@ class ControlCallControllerTest {
         );
     }
 
-    private static String controlPath(String adapterId, String action) {
+    private static String controlPath(String action) {
         return "/api/v1/worker-delivery/endpoint-managers/"
-                + adapterId + "/" + action;
+                + ADAPTER_ID + "/" + action;
     }
 }

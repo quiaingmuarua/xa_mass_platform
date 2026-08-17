@@ -1,6 +1,6 @@
 package com.xa.mass.server.api.v1.workerdelivery;
 
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.AdapterControlCallRequest;
+import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCallRequest;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchCallResponse;
 import com.xa.mass.server.control.ControlCallService;
 import jakarta.validation.Valid;
@@ -29,11 +29,11 @@ public class AdapterControlController {
 
     @PostMapping("/controls:call")
     public DeferredResult<ResponseEntity<ControlBatchCallResponse>>
-            callAdapter(
+            call(
             @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody AdapterControlCallRequest request
+            @Valid @RequestBody ControlCallRequest request
     ) {
-        return controlCalls.callAdapter(endpointManagerId, request);
+        return controlCalls.call(endpointManagerId, request);
     }
 
 }

@@ -116,6 +116,9 @@ Server must not own:
 
 CONTROL_ONLY is an instance-local, best-effort Server use case. It observes the
 pause score for admission, but does not create a Kernel mode or strong lock.
+Its only public call route is scoped by `adapterId`; an optional same-Group
+`workerId -> opaquePayload` map supplies Worker targets and per-target input,
+not a WorkerGroup authority.
 The unified Adapter consume endpoint selects one Command authority; it does not
 merge CONTROL_ONLY and TASK sources.
 

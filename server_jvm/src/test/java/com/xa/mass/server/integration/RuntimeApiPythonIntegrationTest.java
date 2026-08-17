@@ -269,16 +269,21 @@ class RuntimeApiPythonIntegrationTest {
 
             HttpResponse<String> workerControl = send(
                     "POST",
-                    "/api/v1/worker-groups/" + workerGroupId
-                            + "/workers/controls:call",
+                    "/api/v1/worker-delivery/endpoint-managers/"
+                            + WEBSOCKET_ENDPOINT_MANAGER_ID
+                            + "/controls:call",
                     """
                             {
-                              "workerIds": ["%s"],
+                              "workerGroupId": "%s",
+                              "workerPayloads": {"%s":"{}"},
                               "messageType": "%s",
-                              "opaquePayload": "{}",
                               "waitTimeoutMillis": 3000
                             }
-                            """.formatted(workerId, CONTROL_EVENT_CODE)
+                            """.formatted(
+                                    workerGroupId,
+                                    workerId,
+                                    CONTROL_EVENT_CODE
+                            )
             );
             assertThat(workerControl.statusCode()).isEqualTo(200);
             var workerTarget = JSON.readTree(workerControl.body())

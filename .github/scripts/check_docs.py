@@ -41,6 +41,7 @@ REQUIRED_OVERVIEW_IDS = {
 FORBIDDEN_CURRENT_TERMS = {
     "/control-commands:consume",
     "/control-results:append",
+    "/workers/controls:call",
     "workerCommandsByWorkerId",
     "TASK_COMMAND",
     "TASK_REPORT",

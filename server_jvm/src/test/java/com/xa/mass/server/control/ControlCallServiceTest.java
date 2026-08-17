@@ -13,11 +13,10 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.AdapterControlCallRequest;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchCallResponse;
+import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCallRequest;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetReason;
 import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetStatus;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.WorkerControlBatchCallRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingProperties.EndpointProperties;
@@ -42,6 +41,7 @@ class ControlCallServiceTest {
 
     private static final String GROUP_ID = "group-1";
     private static final String ADAPTER_ID = "adapter-1";
+    private static final String OTHER_ADAPTER_ID = "adapter-2";
 
     private WorkerResourceCatalog catalog;
     private WorkerScoreCore scores;
@@ -72,15 +72,14 @@ class ControlCallServiceTest {
     }
 
     @Test
-    void batchUsesOneReadPerOwnerAndReturnsPerTargetOutcomes() {
+    void adapterScopedBatchUsesOneReadPerOwnerAndRejectsOtherBindings() {
         List<String> workerIds = List.of(
                 "worker-ok",
                 "worker-missing",
                 "worker-score-missing",
                 "worker-running",
                 "worker-unbound",
-                "worker-endpoint-missing",
-                "worker-polling"
+                "worker-other-adapter"
         );
         LinkedHashMap<String, WorkerDescriptor> workers = new LinkedHashMap<>();
         LinkedHashMap<String, WorkerScoreState> scoreStates =
@@ -95,8 +94,7 @@ class ControlCallServiceTest {
         scoreStates.put("worker-score-missing", null);
         scoreStates.put("worker-running", running("worker-running"));
         endpointIds.put("worker-unbound", null);
-        endpointIds.put("worker-endpoint-missing", "removed");
-        endpointIds.put("worker-polling", "system-polling");
+        endpointIds.put("worker-other-adapter", OTHER_ADAPTER_ID);
         when(catalog.getWorkerDescriptors(GROUP_ID, workerIds))
                 .thenReturn(workers);
         when(scores.getScoreStates(GROUP_ID, workerIds))
@@ -105,20 +103,16 @@ class ControlCallServiceTest {
                 .thenReturn(endpointIds);
 
         DeferredResult<ResponseEntity<ControlBatchCallResponse>> deferred =
-                service.callWorkers(
-                        GROUP_ID,
-                        new WorkerControlBatchCallRequest(
-                                workerIds,
-                                "worker.properties.snapshot",
-                                "{}",
-                                3_000L
-                        )
-                );
+                service.call(ADAPTER_ID, workerRequest(workerIds));
         DeliveryCommand command = service.consume(
                 ADAPTER_ID,
                 100
         ).get("worker-ok");
         assertThat(command).isNotNull();
+        assertThat(command.payload()).isEqualTo(
+                "{\"workerId\":\"worker-ok\"}"
+        );
+        assertThat(service.consume(OTHER_ADAPTER_ID, 100)).isEmpty();
         service.completeReports(
                 ADAPTER_ID,
                 List.of(workerReport(
@@ -152,13 +146,8 @@ class ControlCallServiceTest {
         assertReason(response, "worker-unbound", ControlTargetReason.NOT_BOUND);
         assertReason(
                 response,
-                "worker-endpoint-missing",
-                ControlTargetReason.ENDPOINT_UNAVAILABLE
-        );
-        assertReason(
-                response,
-                "worker-polling",
-                ControlTargetReason.POLLING_ENDPOINT
+                "worker-other-adapter",
+                ControlTargetReason.ENDPOINT_MISMATCH
         );
         verify(catalog).getWorkerDescriptors(GROUP_ID, workerIds);
         verify(scores).getScoreStates(GROUP_ID, workerIds);
@@ -187,15 +176,7 @@ class ControlCallServiceTest {
         when(bindings.currentEndpointManagerIds(workerIds))
                 .thenReturn(endpointIds);
 
-        var deferred = service.callWorkers(
-                GROUP_ID,
-                new WorkerControlBatchCallRequest(
-                        workerIds,
-                        "event",
-                        "{}",
-                        3_000L
-                )
-        );
+        var deferred = service.call(ADAPTER_ID, workerRequest(workerIds));
 
         assertThat(response(deferred).getBody().results()).hasSize(100);
         verify(catalog).getWorkerDescriptors(GROUP_ID, workerIds);
@@ -224,15 +205,7 @@ class ControlCallServiceTest {
         when(bindings.currentEndpointManagerIds(workerIds))
                 .thenReturn(endpointIds);
 
-        var deferred = service.callWorkers(
-                GROUP_ID,
-                new WorkerControlBatchCallRequest(
-                        workerIds,
-                        "worker.properties.snapshot",
-                        "{}",
-                        3_000L
-                )
-        );
+        var deferred = service.call(ADAPTER_ID, workerRequest(workerIds));
         Map<String, DeliveryCommand> commands = service.consume(
                 ADAPTER_ID,
                 100
@@ -265,19 +238,44 @@ class ControlCallServiceTest {
     }
 
     @Test
-    void duplicateWorkerIdsFailBeforeAnyOwnerRead() {
-        assertThatThrownBy(() -> service.callWorkers(
+    void invalidWorkerShapesFailBeforeAnyOwnerRead() {
+        assertInvalid(new ControlCallRequest(
                 GROUP_ID,
-                new WorkerControlBatchCallRequest(
-                        List.of("worker-1", "worker-1"),
-                        "event",
-                        "{}",
-                        3_000L
-                )
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode()).isEqualTo(
-                        ServerErrorCode.INVALID_CONTROL_CALL_REQUEST
-                ));
+                Map.of(),
+                "event",
+                null,
+                3_000L
+        ));
+        assertInvalid(new ControlCallRequest(
+                GROUP_ID,
+                null,
+                "event",
+                null,
+                3_000L
+        ));
+        assertInvalid(new ControlCallRequest(
+                null,
+                Map.of("worker-1", "{}"),
+                "event",
+                null,
+                3_000L
+        ));
+        assertInvalid(new ControlCallRequest(
+                GROUP_ID,
+                Map.of("worker-1", "{}"),
+                "event",
+                "adapter-payload",
+                3_000L
+        ));
+        LinkedHashMap<String, String> nullPayload = new LinkedHashMap<>();
+        nullPayload.put("worker-1", null);
+        assertInvalid(new ControlCallRequest(
+                GROUP_ID,
+                nullPayload,
+                "event",
+                null,
+                3_000L
+        ));
         verifyNoInteractions(catalog, scores, bindings);
     }
 
@@ -287,14 +285,9 @@ class ControlCallServiceTest {
         when(catalog.getWorkerDescriptors(GROUP_ID, workerIds))
                 .thenThrow(new IllegalStateException("redis unavailable"));
 
-        assertThatThrownBy(() -> service.callWorkers(
-                GROUP_ID,
-                new WorkerControlBatchCallRequest(
-                        workerIds,
-                        "event",
-                        "{}",
-                        3_000L
-                )
+        assertThatThrownBy(() -> service.call(
+                ADAPTER_ID,
+                workerRequest(workerIds)
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode()).isEqualTo(
                         ServerErrorCode.CONTROL_CALL_UNAVAILABLE
@@ -302,11 +295,13 @@ class ControlCallServiceTest {
     }
 
     @Test
-    void adapterCallUsesTheSameAggregateContractWithoutWorkerOwners() {
+    void omittedWorkerCoordinatesCallTheAdapterWithoutWorkerOwners() {
         DeferredResult<ResponseEntity<ControlBatchCallResponse>> deferred =
-                service.callAdapter(
+                service.call(
                         ADAPTER_ID,
-                        new AdapterControlCallRequest(
+                        new ControlCallRequest(
+                                null,
+                                null,
                                 "adapter.probe",
                                 "null",
                                 3_000L
@@ -325,10 +320,7 @@ class ControlCallServiceTest {
                 "{\"reachable\":true}",
                 command.forward()
         );
-        service.completeReports(
-                ADAPTER_ID,
-                List.of(report)
-        );
+        service.completeReports(ADAPTER_ID, List.of(report));
 
         ControlBatchCallResponse response = response(deferred).getBody();
         assertThat(response.status().wireValue()).isEqualTo("observed");
@@ -336,6 +328,29 @@ class ControlCallServiceTest {
         assertThat(response.results().get(ADAPTER_ID).status())
                 .isEqualTo(ControlTargetStatus.OBSERVED);
         verifyNoInteractions(catalog, scores, bindings);
+    }
+
+    private void assertInvalid(ControlCallRequest request) {
+        assertThatThrownBy(() -> service.call(ADAPTER_ID, request))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(
+                                ServerErrorCode.INVALID_CONTROL_CALL_REQUEST
+                        ));
+    }
+
+    private static ControlCallRequest workerRequest(List<String> workerIds) {
+        LinkedHashMap<String, String> workerPayloads = new LinkedHashMap<>();
+        workerIds.forEach(workerId -> workerPayloads.put(
+                workerId,
+                "{\"workerId\":\"" + workerId + "\"}"
+        ));
+        return new ControlCallRequest(
+                GROUP_ID,
+                workerPayloads,
+                "worker.properties.snapshot",
+                null,
+                3_000L
+        );
     }
 
     private static WorkerDescriptor descriptor(String workerId) {
@@ -392,6 +407,11 @@ class ControlCallServiceTest {
                 new EndpointProperties(
                         WorkerTransportType.WEBSOCKET,
                         URI.create("ws://127.0.0.1:18083/worker")
+                ),
+                OTHER_ADAPTER_ID,
+                new EndpointProperties(
+                        WorkerTransportType.WEBSOCKET,
+                        URI.create("ws://127.0.0.1:18084/worker")
                 ),
                 "system-polling",
                 new EndpointProperties(

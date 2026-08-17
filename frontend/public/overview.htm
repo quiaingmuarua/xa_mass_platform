@@ -734,11 +734,11 @@
           <div class="flow">
             <div class="flow-row server">
               <div class="flow-label">Explicit target</div>
-              <div class="flow-body">调用方提交1..100个明确Worker ID及同一个SYSTEM Command，或明确选择一个Adapter。</div>
+              <div class="flow-body">调用方在一个Adapter URL下提交同Group的1..100项workerId → opaquePayload；使用顶层opaquePayload时直接控制该Adapter。</div>
             </div>
             <div class="flow-row server">
               <div class="flow-label">Admission</div>
-              <div class="flow-body">Worker调用一次有界读取descriptor、pause score与Binding。pause只是admission evidence，不是强一致执行锁。</div>
+              <div class="flow-body">Worker调用批量读取descriptor、pause score与Binding，并要求Binding等于URL中的Adapter；Server不会跨Adapter拆分调用。</div>
             </div>
             <div class="flow-row server">
               <div class="flow-label">Memory mailbox</div>

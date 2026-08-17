@@ -6,7 +6,6 @@ import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
 import com.xa.mass.server.api.v1.WorkerGroupTaskController;
-import com.xa.mass.server.api.v1.WorkerControlController;
 import com.xa.mass.server.api.v1.runtimeview.RuntimeViewController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterControlController;
@@ -114,9 +113,6 @@ class ServerApplicationContextTest {
         )).isNotNull();
         assertThat(applicationContext.getBean(
                 AdapterBatchDeliveryController.class
-        )).isNotNull();
-        assertThat(applicationContext.getBean(
-                WorkerControlController.class
         )).isNotNull();
         assertThat(applicationContext.getBean(
                 AdapterControlController.class
