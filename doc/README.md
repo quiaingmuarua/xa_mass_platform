@@ -21,6 +21,7 @@ Status: current repository document index.
 - [JVM Kernel parity](../kernel_jvm/README.md)
 - [Runtime API Server](../server_jvm/README.md)
 - [Transport](../transport/README.md)
+- [Transport Platform Event Catalog](../transport/EVENTS.md)
 - [Scenario Workers](../scenario_workers_jvm/README.md)
 - [Android surfaces](../xa-android/README.md)
 - [External acceptance](../integrations/worker-capability-rpc/README.md)

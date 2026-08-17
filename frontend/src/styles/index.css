@@ -587,6 +587,7 @@ pre {
 
 .worker-toolbar .el-input {
   width: min(390px, 100%);
+  flex: 0 1 390px;
 }
 
 .worker-toolbar .el-input__wrapper {
@@ -595,14 +596,34 @@ pre {
   border-radius: 8px;
 }
 
-.worker-toolbar > span {
+.worker-toolbar__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.worker-toolbar__actions > span {
   color: var(--rv-text-muted);
   font-size: 10px;
   white-space: nowrap;
 }
 
-.worker-toolbar > span strong {
+.worker-toolbar__actions > span strong {
   color: var(--rv-text-secondary);
+}
+
+.worker-toolbar__actions .el-button {
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+.worker-toolbar__actions .el-tag {
+  --el-tag-bg-color: var(--rv-warning-soft);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .active-group-context {
@@ -1043,7 +1064,7 @@ pre {
 }
 
 .worker-table {
-  min-width: 1020px;
+  min-width: 1190px;
   --el-table-bg-color: var(--rv-surface);
   --el-table-tr-bg-color: var(--rv-surface);
   --el-table-header-bg-color: color-mix(in srgb, var(--rv-bg) 72%, var(--rv-surface));
@@ -1134,6 +1155,25 @@ pre {
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.network-state-cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.network-state-cell .el-tag {
+  min-width: 92px;
+  justify-content: center;
+  font-size: 9px;
+}
+
+.network-state-cell small {
+  color: var(--rv-warning);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .sample-footnote {
@@ -1296,6 +1336,124 @@ pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 10px;
   overflow-wrap: anywhere;
+}
+
+.worker-network-detail__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.worker-network-detail__heading h2 {
+  margin-bottom: 4px;
+}
+
+.worker-network-detail__heading p {
+  margin: 0;
+  color: var(--rv-text-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.worker-network-detail__heading .el-tag {
+  flex: 0 0 auto;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.worker-network-card {
+  padding: 14px;
+  background: color-mix(in srgb, var(--rv-bg) 62%, var(--rv-surface));
+  border: 1px solid var(--rv-border);
+  border-radius: 10px;
+}
+
+.worker-network-card__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--rv-border);
+}
+
+.worker-network-card__status > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.worker-network-card__status strong {
+  color: var(--rv-text);
+  font-size: 13px;
+}
+
+.worker-network-card__status small {
+  color: var(--rv-text-muted);
+  font-size: 9px;
+}
+
+.network-status-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  background: var(--rv-text-muted);
+  border: 3px solid color-mix(in srgb, var(--rv-text-muted) 16%, transparent);
+  border-radius: 50%;
+  background-clip: padding-box;
+}
+
+.network-status-dot--connected {
+  background-color: var(--rv-success);
+  border-color: color-mix(in srgb, var(--rv-success) 18%, transparent);
+}
+
+.network-status-dot--disconnected {
+  background-color: var(--rv-warning);
+  border-color: color-mix(in srgb, var(--rv-warning) 18%, transparent);
+}
+
+.worker-network-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 13px 0;
+}
+
+.worker-network-card dl > div {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.worker-network-card dt {
+  color: var(--rv-text-muted);
+  font-size: 9px;
+}
+
+.worker-network-card dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--rv-text-secondary);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.worker-network-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rv-border);
+}
+
+.worker-network-card__actions .el-button {
+  min-height: 34px;
+  margin: 0;
+  border-radius: 8px;
 }
 
 .json-block {
@@ -1537,10 +1695,17 @@ pre {
 
   .worker-toolbar .el-input {
     width: 100%;
+    flex-basis: auto;
   }
 
-  .worker-toolbar > span {
-    align-self: flex-end;
+  .worker-toolbar__actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .worker-toolbar__actions > span {
+    margin-right: auto;
   }
 
   .active-group-context {
@@ -1637,6 +1802,16 @@ pre {
   .worker-detail__identity > div {
     grid-template-columns: 1fr;
     gap: 5px;
+  }
+
+  .worker-network-card__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .worker-network-card dl > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .standalone-state__card {

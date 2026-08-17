@@ -33,6 +33,8 @@ import "element-plus/es/components/config-provider/style/css";
 import "element-plus/es/components/drawer/style/css";
 import "element-plus/es/components/icon/style/css";
 import "element-plus/es/components/input/style/css";
+import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/message-box/style/css";
 import "element-plus/es/components/table/style/css";
 import "element-plus/es/components/table-column/style/css";
 import "element-plus/es/components/tag/style/css";

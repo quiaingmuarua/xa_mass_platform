@@ -3,21 +3,29 @@ import { computed, onMounted, ref, watch } from "vue";
 import {
   CircleCheck,
   Collection,
+  Connection,
   DataAnalysis,
   InfoFilled,
   RefreshRight,
   Search,
+  SwitchButton,
   Tickets,
   Warning
 } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
 import { useRuntimeViewerStore } from "@/runtime-context";
 import { filterCurrentSample } from "@/runtime-viewer/filter";
 import type { JsonValue, WorkerView } from "@/runtime-viewer/types";
+import {
+  useWorkerNetworkMockStore,
+  type WorkerNetworkMockObservation
+} from "@/stores/worker-network-mock";
 
 const store = useRuntimeViewerStore();
+const network = useWorkerNetworkMockStore();
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
@@ -56,8 +64,55 @@ async function selectGroup(workerGroupId: string): Promise<void> {
 }
 
 async function refreshSample(): Promise<void> {
+  const workerGroupId = store.activeWorkerGroupId;
   closeDetails();
   await store.refreshActiveGroup();
+  if (
+    workerGroupId !== undefined &&
+    store.activeWorkerGroupId === workerGroupId &&
+    store.activeSampleState?.status === "ready" &&
+    !store.activeSampleState.stale
+  ) {
+    network.clearGroup(workerGroupId);
+  }
+}
+
+async function observeCurrentSample(): Promise<void> {
+  await network.observeWorkers(activeWorkers.value);
+  ElMessage.success(`已生成 ${activeWorkers.value.length} 条 Mock 连接观测`);
+}
+
+async function observeSelectedWorker(): Promise<void> {
+  if (selectedWorker.value === undefined) {
+    return;
+  }
+  await network.observeWorker(selectedWorker.value);
+}
+
+async function closeSelectedWorkerConnection(): Promise<void> {
+  const worker = selectedWorker.value;
+  if (worker === undefined) {
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      "只关闭 Adapter 当前持有的连接；Worker 可能立即自动重连。这不会修改 Binding 或调度状态。",
+      "关闭当前连接（Mock）",
+      {
+        confirmButtonText: "关闭当前连接",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    return;
+  }
+  const outcome = await network.closeCurrent(worker);
+  ElMessage.info(
+    outcome === "close-started"
+      ? "Mock outcome: close-started；旧观测已标记为陈旧"
+      : "Mock outcome: not-connected"
+  );
 }
 
 function openDetails(worker: WorkerView): void {
@@ -108,6 +163,32 @@ function formattedTime(value?: string): string {
     hour12: false
   }).format(new Date(value));
 }
+
+function networkObservation(worker: WorkerView): WorkerNetworkMockObservation {
+  return network.observation(worker);
+}
+
+function networkLabel(worker: WorkerView): string {
+  const value = networkObservation(worker);
+  if (value.status === "connected") {
+    return "Connected";
+  }
+  if (value.status === "disconnected") {
+    return "Disconnected";
+  }
+  return "Not observed";
+}
+
+function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
+  const value = networkObservation(worker);
+  if (value.stale) {
+    return "warning";
+  }
+  if (value.status === "connected") {
+    return "success";
+  }
+  return "info";
+}
 </script>
 
 <template>
@@ -116,7 +197,7 @@ function formattedTime(value?: string): string {
       <div>
         <p class="worker-page__eyebrow">RUNTIME / WORKERS</p>
         <h1>Worker Runtime</h1>
-        <p>Worker 声明与能力的只读随机预览</p>
+        <p>Worker 声明预览与 Adapter 网络连接观测</p>
       </div>
       <div class="worker-page__heading-actions">
         <span class="generated-at" data-testid="generated-at">
@@ -174,8 +255,9 @@ function formattedTime(value?: string): string {
       <template #title>
         <strong>样本语义：</strong>
         每次只对当前 WorkerGroup
-        执行一次随机采样；结果不承诺顺序、稳定性、完整性或总量。
-        页面不推断在线状态、Score、lease 或 Transport 会话。
+        执行一次随机采样；结果不承诺顺序、稳定性、完整性或总量。 网络连接是独立的
+        Adapter 观测：connected ≠ bound ≠ schedulable ≠ executing。本版连接交互为前端
+        Mock，不调用后端。
       </template>
     </el-alert>
 
@@ -268,12 +350,24 @@ function formattedTime(value?: string): string {
               placeholder="筛选当前样本 Worker ID / 属性"
               aria-label="筛选当前样本"
             />
-            <span>
-              当前筛选
-              <strong>{{ filteredWorkers.length }}</strong>
-              /
-              {{ store.activeSample?.returnedCount ?? 0 }}
-            </span>
+            <div class="worker-toolbar__actions">
+              <span>
+                当前筛选
+                <strong>{{ filteredWorkers.length }}</strong>
+                /
+                {{ store.activeSample?.returnedCount ?? 0 }}
+              </span>
+              <el-button
+                :icon="Connection"
+                :loading="network.batchLoading"
+                :disabled="activeWorkers.length === 0"
+                data-testid="observe-network-button"
+                @click="observeCurrentSample"
+              >
+                观测当前样本连接
+              </el-button>
+              <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+            </div>
           </div>
 
           <div class="active-group-context">
@@ -392,6 +486,16 @@ function formattedTime(value?: string): string {
                   label="ENDPOINT MANAGER"
                   min-width="170"
                 />
+                <el-table-column label="NETWORK CONNECTION" min-width="170">
+                  <template #default="{ row }">
+                    <div class="network-state-cell">
+                      <el-tag :type="networkTagType(row)" effect="light" size="small">
+                        {{ networkLabel(row) }}
+                      </el-tag>
+                      <small v-if="networkObservation(row).stale">Stale</small>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column label="WORKER PROPERTIES" min-width="210">
                   <template #default="{ row }">
                     <span class="attribute-preview">
@@ -442,6 +546,10 @@ function formattedTime(value?: string): string {
                   <div>
                     <dt>Endpoint</dt>
                     <dd>{{ worker.endpointManagerId }}</dd>
+                  </div>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>{{ networkLabel(worker) }}</dd>
                   </div>
                   <div>
                     <dt>Worker properties</dt>
@@ -495,6 +603,64 @@ function formattedTime(value?: string): string {
             </div>
           </dl>
         </section>
+        <section class="worker-network-detail">
+          <div class="worker-network-detail__heading">
+            <div>
+              <h2>Adapter Network</h2>
+              <p>当前 Endpoint Manager 中已验证且活动的 Channel</p>
+            </div>
+            <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+          </div>
+          <div class="worker-network-card">
+            <div class="worker-network-card__status">
+              <span
+                class="network-status-dot"
+                :class="`network-status-dot--${
+                  networkObservation(selectedWorker).status
+                }`"
+              />
+              <div>
+                <strong>{{ networkLabel(selectedWorker) }}</strong>
+                <small v-if="networkObservation(selectedWorker).stale">
+                  旧观测已陈旧，请手工重新观测
+                </small>
+                <small v-else>
+                  {{ formattedTime(networkObservation(selectedWorker).observedAt) }}
+                </small>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Endpoint Manager</dt>
+                <dd>{{ selectedWorker.endpointManagerId }}</dd>
+              </div>
+              <div>
+                <dt>Last close outcome</dt>
+                <dd>
+                  {{ networkObservation(selectedWorker).lastCloseOutcome ?? "—" }}
+                </dd>
+              </div>
+            </dl>
+            <div class="worker-network-card__actions">
+              <el-button
+                :icon="RefreshRight"
+                :loading="networkObservation(selectedWorker).loading"
+                @click="observeSelectedWorker"
+              >
+                重新观测
+              </el-button>
+              <el-button
+                type="danger"
+                plain
+                :icon="SwitchButton"
+                :loading="networkObservation(selectedWorker).loading"
+                @click="closeSelectedWorkerConnection"
+              >
+                Close Current Connection
+              </el-button>
+            </div>
+          </div>
+        </section>
         <section>
           <h2>Worker properties</h2>
           <JsonBlock :value="selectedWorker.workerProperties" />
@@ -505,8 +671,8 @@ function formattedTime(value?: string): string {
         </section>
         <el-alert type="info" :closable="false" show-icon>
           <template #title>
-            详情只包含 WorkerResourceCatalog 描述符字段，不包含 Score、
-            lease、连接或执行状态。
+            连接观测只属于 Adapter 网络事实，不证明 Binding、可调度性、 lease
+            或执行状态。
           </template>
         </el-alert>
       </div>

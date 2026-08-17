@@ -409,10 +409,12 @@ preempt an already running Handler. The current CONTROL_ONLY policy therefore
 requires them to be fast, bounded, thread-safe, and non-blocking; a network,
 disk, or long-running management workflow needs another owner rather than a
 transport Handler. Java and Android assemblies include default
-`platform.worker.probe` and live `platform.worker.properties.snapshot`
-Definitions before Host extensions. The properties result excludes the
-assembly-owned `clientWorkerKey`; arbitrary Host `extension.worker.*`
-Definitions remain equally callable.
+`platform.worker.probe`, live `platform.worker.properties.snapshot`, and static
+`platform.worker.events.snapshot` Definitions before Host extensions. The
+properties result excludes the assembly-owned `clientWorkerKey`; arbitrary
+Host `extension.worker.*` Definitions remain equally callable. The repository
+[Transport Platform Event Catalog](../../../transport/EVENTS.md) is a human
+projection, not Handler-map or WorkerGroup truth.
 
 Polling submits the direct result through the point API. WebSocket and Socket
 send direct result JSON to the Adapter. A Worker that receives an already

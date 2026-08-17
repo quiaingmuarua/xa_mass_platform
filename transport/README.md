@@ -85,6 +85,7 @@ already running on the connection callback lane.
 
 See:
 
+- [Transport Platform Event Catalog](EVENTS.md)
 - [Netty Adapter](netty-adapter/README.md)
 - [Worker Core](worker-core/README.md)
 - [Java Worker](java-worker/README.md)

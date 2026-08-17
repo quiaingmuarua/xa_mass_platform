@@ -69,7 +69,10 @@ and Delivery always carry the full
 by the current process; they do not replace WorkerGroup declarations or become
 scheduling input. Compatible optional payload additions may keep a name;
 incompatible semantics use a new name such as `.v2`, without aliases or
-fallback lookup.
+fallback lookup. The
+[Transport Platform Event Catalog](transport/EVENTS.md) indexes only the
+platform events owned by Transport; concrete Extension contracts remain with
+their capability Owners.
 
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a
 scheduling coordinate rather than a resource lock, separate assignment and
