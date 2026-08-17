@@ -5,6 +5,7 @@ import android.content.Context;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
@@ -113,10 +114,6 @@ public final class AndroidWorker implements WorkerLifecycle {
                 options,
                 "options"
         );
-        WorkerCommandDispatcher dispatcher =
-                WorkerCommandDispatcher.forWorker(
-                        resolvedDefinitionExtensions
-                );
         AndroidClientWorkerKeyStore clientKeyStore =
                 new AndroidClientWorkerKeyStore(
                         resolvedContext,
@@ -127,11 +124,10 @@ public final class AndroidWorker implements WorkerLifecycle {
                         resolvedContext,
                         resolvedWorkerGroupId
                 );
+        WorkerPropertiesProvider liveProperties = () ->
+                resolvedWorkerProperties.getProperties(resolvedContext);
         WorkerPropertiesProvider completeProperties = () -> {
-            Map<String, Object> supplied =
-                    resolvedWorkerProperties.getProperties(
-                            resolvedContext
-                    );
+            Map<String, Object> supplied = liveProperties.loadProperties();
             if (supplied == null) {
                 throw new IllegalArgumentException(
                         "workerProperties must be present"
@@ -151,6 +147,12 @@ public final class AndroidWorker implements WorkerLifecycle {
             complete.putAll(supplied);
             return complete;
         };
+        WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
+                WorkerManagementEventDefinitions.assemble(
+                        liveProperties,
+                        resolvedDefinitionExtensions
+                )
+        );
 
         AndroidWorkerPlatform platform =
                 AndroidWorkerPlatform.create(resolvedWorkerGroupId);

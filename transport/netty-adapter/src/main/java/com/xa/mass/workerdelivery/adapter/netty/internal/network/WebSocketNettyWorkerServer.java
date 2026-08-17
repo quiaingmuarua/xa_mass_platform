@@ -451,6 +451,10 @@ public final class WebSocketNettyWorkerServer
                     1008,
                     "Replaced by a newer Worker connection"
             );
+            case CONTROL_REQUEST -> new CloseDescription(
+                    1000,
+                    "Worker connection closed by a control request"
+            );
             case RESULT_BUFFER_FULL -> new CloseDescription(
                     1013,
                     "Worker result buffer is full"

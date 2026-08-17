@@ -35,25 +35,25 @@ xa:
           "scenario-phone-number-workers": {
             "attributes": {"capability":"libphonenumber"},
             "eventCodes": [
-              "phonenumber.e164",
-              "phonenumber.country",
-              "phonenumber.original-carrier"
+              "extension.worker.phonenumber.e164",
+              "extension.worker.phonenumber.country",
+              "extension.worker.phonenumber.original-carrier"
             ]
           },
           "scenario-string-utils-workers": {
             "attributes": {"capability":"string-utils"},
             "eventCodes": [
-              "string.md5",
-              "string.sha1",
-              "string.base64.encode"
+              "extension.worker.string.md5",
+              "extension.worker.string.sha1",
+              "extension.worker.string.base64.encode"
             ]
           },
           "android-demo-workers": {
             "attributes": {"capability":"android-demo-capabilities"},
             "eventCodes": [
-              "android.state.read",
-              "android.battery.read",
-              "android.string.digest"
+              "extension.worker.android.state.read",
+              "extension.worker.android.battery.read",
+              "extension.worker.android.string.digest"
             ]
           }
         }
@@ -61,16 +61,16 @@ xa:
         {
           "scenario-phone-number-workers": {
             "eventCodes": [
-              "phonenumber.e164",
-              "phonenumber.country",
-              "phonenumber.original-carrier"
+              "extension.worker.phonenumber.e164",
+              "extension.worker.phonenumber.country",
+              "extension.worker.phonenumber.original-carrier"
             ]
           },
           "scenario-string-utils-workers": {
             "eventCodes": [
-              "string.md5",
-              "string.sha1",
-              "string.base64.encode"
+              "extension.worker.string.md5",
+              "extension.worker.string.sha1",
+              "extension.worker.string.base64.encode"
             ]
           }
         }

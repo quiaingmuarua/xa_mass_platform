@@ -121,6 +121,8 @@ Its only public call route is scoped by `adapterId`; an optional same-Group
 not a WorkerGroup authority.
 The unified Adapter consume endpoint selects one Command authority; it does not
 merge CONTROL_ONLY and TASK sources.
+Control Call passes `messageType` and opaque payload through without an event
+whitelist; future API Session authorization remains a separate owner.
 
 The default profile declares no Adapter instances and no Scenario WorkerGroup.
 
@@ -170,6 +172,11 @@ Rules:
   physical operations to the Server.
 - WebSocket and Socket share behavior tests, not a common lifecycle base.
 - Adapter does not read score, select Workers or reinterpret Task policy.
+- Adapter-local `platform.adapter.*` events use one immutable,
+  composition-time Handler map;
+  there is no runtime registration surface.
+- `platform.adapter.events.snapshot` reports that process-local immutable map;
+  it is observation evidence, not configuration or routing truth.
 - Only valid bound Worker TASK/SYSTEM evidence follows the current destination
   rules; invalid unbound input and TASK result backpressure may close the exact
   connection.
@@ -195,8 +202,17 @@ the `WorkerDeliveryAdapter` contract.
   Executor or Scheduler.
 - One Client callback lane serializes Commands. Do not add Command queues,
   in-flight registries or result caches.
-- Event definitions are keyed by `(src, eventCode)` and assembled before the
-  Transport starts.
+- Event definitions are keyed by full Event Name and assembled before the
+  Transport starts. Host code supplies short capability names through
+  `WorkerEventDefinition.extension(...)`; Command `src` is evidence rather
+  than a Handler lookup key.
+- Java and Android assemblies prepend the finite default Worker management
+  Definitions before Host extensions; Host code cannot replace their keys.
+- `platform.worker.events.snapshot` reports the immutable assembled Event Names;
+  it does not update WorkerGroup `eventCodes` or scheduling capability truth.
+- Compatible optional payload additions may retain an Event Name. Incompatible
+  input, output, semantics or side effects require a new name such as `.v2`;
+  do not add alias, wildcard, prefix or fallback dispatch.
 - Endpoint termination ends the current run; only an explicit Host `start()`
   begins another preparation.
 

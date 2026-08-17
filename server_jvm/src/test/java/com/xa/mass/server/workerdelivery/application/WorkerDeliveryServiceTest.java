@@ -82,7 +82,7 @@ class WorkerDeliveryServiceTest {
         DeliveryCommand control = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
                 DeliveryEndpoint.WORKER,
-                "worker.properties.snapshot",
+                "platform.worker.properties.snapshot",
                 System.currentTimeMillis() + 10_000,
                 "{}",
                 "control-only:v1:test"

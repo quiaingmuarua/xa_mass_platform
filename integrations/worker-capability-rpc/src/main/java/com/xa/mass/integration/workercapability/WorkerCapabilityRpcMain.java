@@ -25,37 +25,37 @@ public final class WorkerCapabilityRpcMain {
     private static final List<BatchSpec> BATCHES = List.of(
             new BatchSpec(
                     "scenario-phone-number-workers",
-                    "phonenumber.e164",
+                    "extension.worker.phonenumber.e164",
                     "rawNumber",
                     SeedKind.PHONE
             ),
             new BatchSpec(
                     "scenario-phone-number-workers",
-                    "phonenumber.country",
+                    "extension.worker.phonenumber.country",
                     "rawNumber",
                     SeedKind.PHONE
             ),
             new BatchSpec(
                     "scenario-phone-number-workers",
-                    "phonenumber.original-carrier",
+                    "extension.worker.phonenumber.original-carrier",
                     "rawNumber",
                     SeedKind.PHONE
             ),
             new BatchSpec(
                     "scenario-string-utils-workers",
-                    "string.md5",
+                    "extension.worker.string.md5",
                     "value",
                     SeedKind.STRING
             ),
             new BatchSpec(
                     "scenario-string-utils-workers",
-                    "string.sha1",
+                    "extension.worker.string.sha1",
                     "value",
                     SeedKind.STRING
             ),
             new BatchSpec(
                     "scenario-string-utils-workers",
-                    "string.base64.encode",
+                    "extension.worker.string.base64.encode",
                     "value",
                     SeedKind.STRING
             )

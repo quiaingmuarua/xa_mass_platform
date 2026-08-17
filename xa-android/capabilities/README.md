@@ -6,11 +6,12 @@ the Android Worker assembly, Server, Kernel, Adapter, Redis, or a Host UI.
 
 The current concrete `AndroidDemoCapabilities` collection provides:
 
-- `android.state.read`: package/device information plus the persistent
-  demo counter;
-- `android.battery.read`: a one-shot battery capacity and charging
-  snapshot;
-- `android.string.digest`: a parameterized UTF-8 string digest accepting
+- `extension.worker.android.state.read`: package/device information plus the
+  persistent demo counter;
+- `extension.worker.android.battery.read`: a one-shot battery capacity and
+  charging snapshot;
+- `extension.worker.android.string.digest`: a parameterized UTF-8 string
+  digest accepting
   `{"algorithm":"MD5","value":"hello"}` and returning the lowercase
   digest.
 

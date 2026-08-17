@@ -16,9 +16,9 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
       capability: "libphonenumber"
     },
     eventCodes: [
-      "phonenumber.country",
-      "phonenumber.e164",
-      "phonenumber.original-carrier"
+      "extension.worker.phonenumber.country",
+      "extension.worker.phonenumber.e164",
+      "extension.worker.phonenumber.original-carrier"
     ]
   },
   {
@@ -27,14 +27,18 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
       runtime: "java",
       capability: "string-utils"
     },
-    eventCodes: ["string.base64.encode", "string.md5", "string.sha1"]
+    eventCodes: [
+      "extension.worker.string.base64.encode",
+      "extension.worker.string.md5",
+      "extension.worker.string.sha1"
+    ]
   },
   {
     workerGroupId: "android-demo-workers",
     attributes: {
       capability: "android-demo-state"
     },
-    eventCodes: ["android.state.read"]
+    eventCodes: ["extension.worker.android.state.read"]
   }
 ];
 

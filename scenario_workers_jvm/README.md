@@ -12,6 +12,11 @@ Worker in that group shares the same stateless or thread-safe Handler instances.
 The WorkerGroup catalog projection remains a separate Server-owned value and
 may lag this local list.
 
+Capability implementations register short names such as
+`phonenumber.e164`; `WorkerEventDefinition.extension(...)` stores the full
+`extension.worker.phonenumber.e164` Event Name. TaskItem `eventCode`, Control
+Call `messageType`, and WorkerGroup `eventCodes` always carry that full name.
+
 The only public assembly surface is:
 
 ```java
@@ -32,9 +37,9 @@ individual Workers:
 {
   "scenario-phone-number-workers": {
     "eventCodes": [
-      "phonenumber.e164",
-      "phonenumber.country",
-      "phonenumber.original-carrier"
+      "extension.worker.phonenumber.e164",
+      "extension.worker.phonenumber.country",
+      "extension.worker.phonenumber.original-carrier"
     ],
     "reconnectPolicy": {
       "maxUnstableAttempts": 20,

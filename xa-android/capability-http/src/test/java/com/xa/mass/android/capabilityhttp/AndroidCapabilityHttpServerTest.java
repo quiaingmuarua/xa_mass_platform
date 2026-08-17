@@ -6,6 +6,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
@@ -44,8 +46,7 @@ public final class AndroidCapabilityHttpServerTest {
         AtomicInteger executions = new AtomicInteger();
         server = start(Arrays.asList(
                 definition("demo.echo", executions),
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "demo.second",
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> "plain-text"
@@ -59,19 +60,25 @@ public final class AndroidCapabilityHttpServerTest {
         HttpResult events = request("GET", "/events", null, null);
         assertEquals(200, events.status);
         assertEquals(
-                Arrays.asList("demo.echo", "demo.second"),
+                Arrays.asList(
+                        "extension.worker.demo.echo",
+                        "extension.worker.demo.second"
+                ),
                 events.body.get("events")
         );
 
         HttpResult call = request(
                 "POST",
-                "/events/demo.echo:call",
+                "/events/extension.worker.demo.echo:call",
                 "application/json; charset=utf-8",
                 "{\"value\":\"hello\"}"
         );
         assertEquals(200, call.status);
         assertEquals("succeeded", call.body.get("status"));
-        assertEquals("demo.echo", call.body.get("eventCode"));
+        assertEquals(
+                "extension.worker.demo.echo",
+                call.body.get("eventCode")
+        );
         assertEquals("200", call.body.get("outcomeCode"));
         assertEquals(
                 Collections.singletonMap("value", "hello"),
@@ -81,7 +88,7 @@ public final class AndroidCapabilityHttpServerTest {
 
         HttpResult plain = request(
                 "POST",
-                "/events/demo.second:call",
+                "/events/extension.worker.demo.second:call",
                 "application/json",
                 "{}"
         );
@@ -93,8 +100,7 @@ public final class AndroidCapabilityHttpServerTest {
     public void mapsInputMissingAndExecutionFailures()
             throws Exception {
         WorkerEventDefinition<Map<String, Object>> failing =
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "demo.fail",
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> {
@@ -106,7 +112,7 @@ public final class AndroidCapabilityHttpServerTest {
         assertFailure(
                 request(
                         "POST",
-                        "/events/demo.fail:call",
+                        "/events/extension.worker.demo.fail:call",
                         "application/json",
                         "[]"
                 ),
@@ -116,7 +122,7 @@ public final class AndroidCapabilityHttpServerTest {
         assertFailure(
                 request(
                         "POST",
-                        "/events/demo.missing:call",
+                        "/events/extension.worker.demo.missing:call",
                         "application/json",
                         "{}"
                 ),
@@ -126,7 +132,7 @@ public final class AndroidCapabilityHttpServerTest {
         assertFailure(
                 request(
                         "POST",
-                        "/events/demo.fail:call",
+                        "/events/extension.worker.demo.fail:call",
                         "application/json",
                         "{}"
                 ),
@@ -153,14 +159,19 @@ public final class AndroidCapabilityHttpServerTest {
                 415,
                 request(
                         "POST",
-                        "/events/demo.echo:call",
+                        "/events/extension.worker.demo.echo:call",
                         "text/plain",
                         "{}"
                 ).status
         );
         assertEquals(
                 405,
-                request("GET", "/events/demo.echo:call", null, null)
+                request(
+                        "GET",
+                        "/events/extension.worker.demo.echo:call",
+                        null,
+                        null
+                )
                         .status
         );
         assertEquals(
@@ -174,19 +185,17 @@ public final class AndroidCapabilityHttpServerTest {
     }
 
     @Test
-    public void rejectsNonTaskAndDuplicateDefinitions() {
-        WorkerEventDefinition<Map<String, Object>> system =
-                WorkerEventDefinition.of(
-                        "SYSTEM",
-                        "demo.system",
-                        WorkerEventParameterResolvers.jsonMap(),
-                        Jsons::toJson
-                );
+    public void rejectsPlatformAndDuplicateDefinitions() {
+        WorkerEventDefinition<?> platform =
+                WorkerManagementEventDefinitions.assemble(
+                        Map::of,
+                        List.of()
+                ).get(0);
         assertThrows(
                 IllegalArgumentException.class,
                 () -> AndroidCapabilityHttpServer.create(
                         0,
-                        Collections.singletonList(system)
+                        Collections.singletonList(platform)
                 )
         );
 
@@ -220,8 +229,7 @@ public final class AndroidCapabilityHttpServerTest {
             String eventCode,
             AtomicInteger executions
     ) {
-        return WorkerEventDefinition.of(
-                "TASK",
+        return WorkerEventDefinition.extension(
                 eventCode,
                 WorkerEventParameterResolvers.jsonMap(),
                 payload -> {

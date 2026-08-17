@@ -17,7 +17,7 @@ Each key is a Redis LIST containing deterministic `DeliveryReport` JSON:
 {
   "dst": "TASK",
   "forward": "...",
-  "messageType": "telecom.phone.inspect",
+  "messageType": "extension.worker.telecom.phone.inspect",
   "outcomeCode": "200",
   "payload": "{\"isValid\":true}",
   "sourceId": "worker-1",

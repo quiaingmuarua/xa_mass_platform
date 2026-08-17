@@ -16,7 +16,7 @@ class PhoneNumberWorkerEventsTest {
                 PhoneNumberWorkerEvents.definitions();
 
         assertThat(definitions)
-                .extracting(WorkerEventDefinition::eventCode)
+                .extracting(WorkerEventDefinition::eventName)
                 .containsExactly(
                         PhoneNumberWorkerEvents.E164_EVENT_CODE,
                         PhoneNumberWorkerEvents.COUNTRY_EVENT_CODE,
@@ -74,7 +74,7 @@ class PhoneNumberWorkerEventsTest {
             String eventCode
     ) throws Exception {
         WorkerEventDefinition<?> definition = definitions.stream()
-                .filter(candidate -> candidate.eventCode().equals(eventCode))
+                .filter(candidate -> candidate.eventName().equals(eventCode))
                 .findFirst()
                 .orElseThrow();
         return Jsons.parseObject(

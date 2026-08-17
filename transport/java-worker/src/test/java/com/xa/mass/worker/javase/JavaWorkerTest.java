@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
@@ -132,6 +133,26 @@ class JavaWorkerTest {
     }
 
     @Test
+    void hostCannotOverrideDefaultManagementEvents() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> JavaWorker.create(
+                        URI.create(server.url("/").toString()),
+                        "group-1",
+                        "fixed-installation",
+                        WorkerIdentityStore.noCache(),
+                        WorkerTransportType.WEBSOCKET,
+                        Map::of,
+                        List.of(WorkerEventDefinition.extension(
+                                WorkerManagementEventDefinitions.PROBE_EVENT,
+                                payload -> null,
+                                ignored -> "null"
+                        ))
+                )
+        );
+    }
+
+    @Test
     void callerCannotOverrideReservedClientWorkerKey() throws Exception {
         worker = worker(
                 WorkerIdentityStore.noCache(),
@@ -243,8 +264,7 @@ class JavaWorkerTest {
     }
 
     private static List<WorkerEventDefinition<?>> definitions() {
-        return List.of(WorkerEventDefinition.of(
-                "TASK",
+        return List.of(WorkerEventDefinition.extension(
                 "test.observe",
                 WorkerEventParameterResolvers.jsonMap(),
                 parameters -> "null"

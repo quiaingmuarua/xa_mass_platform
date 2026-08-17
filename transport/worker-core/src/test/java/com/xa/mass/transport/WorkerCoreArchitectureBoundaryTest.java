@@ -335,6 +335,13 @@ class WorkerCoreArchitectureBoundaryTest {
         assertFalse(dispatcherSource.contains(
                 "WORKER_CONNECTION_CLOSE_EVENT_CODE"
         ));
+        for (Method method : dispatcher.getDeclaredMethods()) {
+            String methodName = method.getName();
+            assertFalse(methodName.startsWith("register"), methodName);
+            assertFalse(methodName.startsWith("unregister"), methodName);
+            assertFalse(methodName.startsWith("reload"), methodName);
+            assertFalse(methodName.startsWith("refresh"), methodName);
+        }
     }
 
     @Test

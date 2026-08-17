@@ -71,6 +71,9 @@ class JavaWorkerArchitectureTest {
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
+        assertTrue(source.contains(
+                "WorkerManagementEventDefinitions.assemble("
+        ));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("new JavaLineSocketClient("));
         assertFalse(webSocketClient.contains(

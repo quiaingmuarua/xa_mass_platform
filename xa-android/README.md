@@ -10,7 +10,7 @@ transport mechanics.
   -> capability-owned state and Android data access
 
 :xa-android:capability-http
-  -> device-loopback HTTP probe for TASK Definitions
+  -> device-loopback HTTP probe for extension Worker Definitions
   -> direct resolver, Handler, and logical-result verification
 
 :xa-android:worker-demo

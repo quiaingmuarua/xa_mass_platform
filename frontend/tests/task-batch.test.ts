@@ -84,7 +84,7 @@ describe("Task Batch store", () => {
 
     await store.execute({
       workerGroupId: "scenario-string-utils-workers",
-      eventCode: "string.md5",
+      eventCode: "extension.worker.string.md5",
       payloadKey: "value",
       file: textFile("seed.txt", "one\ntwo\n"),
       maximumWaitMillis: 30_000
@@ -95,7 +95,7 @@ describe("Task Batch store", () => {
     expect(store.runs[0]?.runId).toBe("task-batch-1");
     expect(vi.mocked(client.run).mock.calls[0]?.[0]).toMatchObject({
       workerGroupId: "scenario-string-utils-workers",
-      eventCode: "string.md5",
+      eventCode: "extension.worker.string.md5",
       payloadKey: "value"
     });
   });
@@ -123,7 +123,7 @@ describe("Task Batch store", () => {
     );
     await mockStore.execute({
       workerGroupId: "scenario-string-utils-workers",
-      eventCode: "string.md5",
+      eventCode: "extension.worker.string.md5",
       payloadKey: "value",
       file: textFile("seed.txt", "one"),
       maximumWaitMillis: 30_000
@@ -142,7 +142,7 @@ function runtimeStore() {
           workerGroup: {
             workerGroupId: "scenario-string-utils-workers",
             attributes: {},
-            eventCodes: ["string.md5", "string.sha1"]
+            eventCodes: ["extension.worker.string.md5", "extension.worker.string.sha1"]
           },
           task: null
         }
@@ -168,7 +168,7 @@ function fakeClient(overrides: Partial<TaskBatchClient> = {}): TaskBatchClient {
 function runRequest(inputFile: string) {
   return {
     workerGroupId: "scenario-string-utils-workers",
-    eventCode: "string.md5",
+    eventCode: "extension.worker.string.md5",
     payloadKey: "value",
     inputFile,
     maximumWaitMillis: 30_000
@@ -179,7 +179,7 @@ function runResponse(inputFile = "seed.txt") {
   return {
     runId: "task-batch-1",
     workerGroupId: "scenario-string-utils-workers",
-    eventCode: "string.md5",
+    eventCode: "extension.worker.string.md5",
     payloadKey: "value",
     status: "succeeded" as const,
     inputFile,

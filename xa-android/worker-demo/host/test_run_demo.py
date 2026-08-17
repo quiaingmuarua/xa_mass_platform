@@ -25,15 +25,15 @@ class FakeRuntimeApiClient:
             raise AssertionError(operation)
         if event_code == self.fail_event_code:
             raise RuntimeError("scripted call failure")
-        if event_code == "android.state.read":
+        if event_code == "extension.worker.android.state.read":
             result = {"counter": 7, "sdkInt": 33}
-        elif event_code == "android.battery.read":
+        elif event_code == "extension.worker.android.battery.read":
             result = {
                 "available": True,
                 "capacityPercent": 82,
                 "charging": False,
             }
-        elif event_code == "android.string.digest":
+        elif event_code == "extension.worker.android.string.digest":
             result = {
                 "algorithm": "MD5",
                 "input": "hello",
@@ -110,7 +110,9 @@ class RunDemoTest(unittest.TestCase):
         self.assertNotIn("taskId", result)
 
     def test_propagates_rpc_failure_without_task_cleanup(self) -> None:
-        FakeRuntimeApiClient.fail_event_code = "android.battery.read"
+        FakeRuntimeApiClient.fail_event_code = (
+            "extension.worker.android.battery.read"
+        )
         with patch.object(
             run_demo,
             "RuntimeApiClient",
@@ -128,8 +130,8 @@ class RunDemoTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                "workerGroupItem.call[android.state.read]",
-                "workerGroupItem.call[android.battery.read]",
+                "workerGroupItem.call[extension.worker.android.state.read]",
+                "workerGroupItem.call[extension.worker.android.battery.read]",
             ],
             [
                 request[3]

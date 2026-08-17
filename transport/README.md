@@ -42,6 +42,13 @@ direct SYSTEM control reuse the same Delivery DTOs, Adapter Processes, physical
 connection, and Worker Dispatcher. Server owns CONTROL_ONLY admission,
 instance-local mailbox state, and remote-source priority; Transport does not
 introduce a CONTROL_ONLY mode field, score check, or second queue owner.
+Adapter management events come from one immutable `platform.adapter.*`
+Handler map. Java and Android Workers prepend finite `platform.worker.*`
+Definitions before Host `extension.worker.*` Definitions. Event Names describe
+capability ownership, while Command `src` remains invocation evidence. Neither
+surface supports runtime registration. Their fixed `events.snapshot` handlers
+report only the immutable names loaded by that process, not WorkerGroup or
+scheduling truth.
 
 The
 [Worker Delivery Contract](worker-delivery-contract/README.md) remains

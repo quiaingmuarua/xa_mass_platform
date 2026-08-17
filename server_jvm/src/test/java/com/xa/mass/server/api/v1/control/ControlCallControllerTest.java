@@ -174,7 +174,8 @@ class ControlCallControllerTest {
         MvcResult call = mockMvc.perform(post(controlPath("controls:call"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(Map.of(
-                                "messageType", "adapter.probe",
+                                "messageType",
+                                "platform.adapter.events.snapshot",
                                 "opaquePayload", "null",
                                 "waitTimeoutMillis", 3_000
                         ))))
@@ -196,7 +197,7 @@ class ControlCallControllerTest {
                         .content(resultBatch(List.of(encodedResult(
                                 "ADAPTER",
                                 ADAPTER_ID,
-                                "adapter.probe",
+                                "platform.adapter.events.snapshot",
                                 (String) command.get("forward"),
                                 "200"
                         )))))
@@ -295,7 +296,10 @@ class ControlCallControllerTest {
         ));
         request.put("workerGroupId", GROUP_ID);
         request.put("workerPayloads", workerPayloads);
-        request.put("messageType", "worker.properties.snapshot");
+        request.put(
+                "messageType",
+                "platform.worker.events.snapshot"
+        );
         request.put("waitTimeoutMillis", 3_000);
         return Jsons.toJson(request);
     }
@@ -308,7 +312,7 @@ class ControlCallControllerTest {
         return encodedResult(
                 "WORKER",
                 workerId,
-                "worker.properties.snapshot",
+                "platform.worker.events.snapshot",
                 (String) command.get("forward"),
                 outcomeCode
         );

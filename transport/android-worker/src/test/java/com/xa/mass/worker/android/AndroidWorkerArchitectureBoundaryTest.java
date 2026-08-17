@@ -98,6 +98,9 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(assembly.contains("isConnected("));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
+        assertTrue(assembly.contains(
+                "WorkerManagementEventDefinitions.assemble("
+        ));
         assertFalse(source.contains("public enum State"));
         assertFalse(source.contains("public static final class Snapshot"));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));

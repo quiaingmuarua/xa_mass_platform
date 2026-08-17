@@ -126,7 +126,7 @@ class TaskBatchServiceTest {
 
         var response = service.run(new TaskBatchRunRequest(
                 "string-group",
-                "string.md5",
+                "extension.worker.string.md5",
                 "value",
                 "empty.txt",
                 null
@@ -140,7 +140,7 @@ class TaskBatchServiceTest {
 
         assertThatThrownBy(() -> service.run(new TaskBatchRunRequest(
                 "missing-group",
-                "string.md5",
+                "extension.worker.string.md5",
                 "value",
                 "empty.txt",
                 null
@@ -219,7 +219,7 @@ class TaskBatchServiceTest {
 
         assertThatThrownBy(() -> service.run(new TaskBatchRunRequest(
                 "string-group",
-                "string.md5",
+                "extension.worker.string.md5",
                 "value",
                 "invalid-result.txt",
                 1000L
@@ -273,7 +273,7 @@ class TaskBatchServiceTest {
     private TaskBatchRunRequest request(long waitMillis) {
         return new TaskBatchRunRequest(
                 "string-group",
-                "string.md5",
+                "extension.worker.string.md5",
                 "value",
                 "strings.txt",
                 waitMillis

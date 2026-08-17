@@ -8,9 +8,9 @@ AndroidWorkerDemoApplication
   -> AndroidWorker
      -> persistent Worker identity, Register/Bind, WebSocket Transport
   -> AndroidDemoCapabilities
-     -> android.state.read
-     -> android.battery.read
-     -> android.string.digest
+     -> extension.worker.android.state.read
+     -> extension.worker.android.battery.read
+     -> extension.worker.android.string.digest
   -> AndroidCapabilityHttpServer
      -> 127.0.0.1:18084
      -> direct calls through the same capability Definitions
@@ -77,15 +77,15 @@ curl.exe http://127.0.0.1:18084/events
 curl.exe -X POST `
   -H "Content-Type: application/json" `
   -d "{}" `
-  http://127.0.0.1:18084/events/android.state.read:call
+  http://127.0.0.1:18084/events/extension.worker.android.state.read:call
 curl.exe -X POST `
   -H "Content-Type: application/json" `
   -d "{}" `
-  http://127.0.0.1:18084/events/android.battery.read:call
+  http://127.0.0.1:18084/events/extension.worker.android.battery.read:call
 curl.exe -X POST `
   -H "Content-Type: application/json" `
   -d '{"algorithm":"MD5","value":"hello"}' `
-  http://127.0.0.1:18084/events/android.string.digest:call
+  http://127.0.0.1:18084/events/extension.worker.android.string.digest:call
 ```
 
 These calls update the same processed-command count and last-event observation

@@ -3,7 +3,6 @@ package com.xa.mass.worker.execution;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -54,10 +53,7 @@ public final class WorkerCommandDispatcher
 
     private WorkerCommandOutcome executeEvent(DeliveryCommand command) {
         WorkerEventDefinition<?> definition = definitions.get(
-                definitionKey(
-                        command.src().wireValue(),
-                        command.messageType()
-                )
+                command.messageType()
         );
         if (definition == null) {
             return failure(WorkerErrorCode.EVENT_NOT_FOUND);
@@ -112,7 +108,6 @@ public final class WorkerCommandDispatcher
         );
         Map<String, WorkerEventDefinition<?>> definitions =
                 new LinkedHashMap<>();
-        addDefinitions(definitions, builtInDefinitions());
         addDefinitions(definitions, definitionExtensions);
         return Collections.unmodifiableMap(definitions);
     }
@@ -126,43 +121,14 @@ public final class WorkerCommandDispatcher
                     definition,
                     "definition"
             );
-            String key = definitionKey(
-                    present.src(),
-                    present.eventCode()
-            );
+            String key = present.eventName();
             if (target.putIfAbsent(key, present) != null) {
                 throw new IllegalArgumentException(
                         "Duplicate Worker event: "
-                                + present.src()
-                                + "/"
-                                + present.eventCode()
+                                + present.eventName()
                 );
             }
         }
     }
 
-    private static String definitionKey(String src, String eventCode) {
-        if (src == null || src.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "src must be non-blank"
-            );
-        }
-        DeliveryEndpoint endpoint =
-                DeliveryEndpoint.fromWire(src);
-        if (endpoint == DeliveryEndpoint.WORKER) {
-            throw new IllegalArgumentException(
-                    "Worker event src cannot be WORKER"
-            );
-        }
-        if (eventCode == null || eventCode.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "eventCode must be non-blank"
-            );
-        }
-        return endpoint.wireValue() + ":" + eventCode;
-    }
-
-    private static Collection<WorkerEventDefinition<?>> builtInDefinitions() {
-        return Collections.emptyList();
-    }
 }

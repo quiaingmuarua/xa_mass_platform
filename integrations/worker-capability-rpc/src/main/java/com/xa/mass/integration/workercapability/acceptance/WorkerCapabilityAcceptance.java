@@ -168,11 +168,11 @@ public final class WorkerCapabilityAcceptance {
     private static Map<String, ExpectedCase> expected() {
         Map<String, ExpectedCase> values = new LinkedHashMap<>();
         values.put(
-                "phonenumber.e164",
+                "extension.worker.phonenumber.e164",
                 new ExpectedCase(PHONE_GROUP, "rawNumber", "e164")
         );
         values.put(
-                "phonenumber.country",
+                "extension.worker.phonenumber.country",
                 new ExpectedCase(
                         PHONE_GROUP,
                         "rawNumber",
@@ -180,7 +180,7 @@ public final class WorkerCapabilityAcceptance {
                 )
         );
         values.put(
-                "phonenumber.original-carrier",
+                "extension.worker.phonenumber.original-carrier",
                 new ExpectedCase(
                         PHONE_GROUP,
                         "rawNumber",
@@ -188,15 +188,15 @@ public final class WorkerCapabilityAcceptance {
                 )
         );
         values.put(
-                "string.md5",
+                "extension.worker.string.md5",
                 new ExpectedCase(STRING_GROUP, "value", "md5")
         );
         values.put(
-                "string.sha1",
+                "extension.worker.string.sha1",
                 new ExpectedCase(STRING_GROUP, "value", "sha1")
         );
         values.put(
-                "string.base64.encode",
+                "extension.worker.string.base64.encode",
                 new ExpectedCase(STRING_GROUP, "value", "base64")
         );
         return Map.copyOf(values);

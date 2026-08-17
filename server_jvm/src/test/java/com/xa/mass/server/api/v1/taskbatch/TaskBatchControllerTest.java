@@ -41,7 +41,7 @@ class TaskBatchControllerTest {
         when(service.run(any())).thenReturn(new TaskBatchRunResponse(
                 "task-batch-1786680000123",
                 "scenario-string-utils-workers",
-                "string.md5",
+                "extension.worker.string.md5",
                 "value",
                 "succeeded",
                 "strings.txt",
@@ -65,7 +65,7 @@ class TaskBatchControllerTest {
                         .content("""
                                 {
                                   "workerGroupId":"scenario-string-utils-workers",
-                                  "eventCode":"string.md5",
+                                  "eventCode":"extension.worker.string.md5",
                                   "payloadKey":"value",
                                   "inputFile":"strings.txt",
                                   "maximumWaitMillis":30000

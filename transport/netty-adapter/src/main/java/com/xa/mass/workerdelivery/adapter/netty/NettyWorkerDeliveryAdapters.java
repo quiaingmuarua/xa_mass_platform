@@ -11,6 +11,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteR
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterControlExecutor;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
@@ -154,9 +155,15 @@ public final class NettyWorkerDeliveryAdapters {
                 );
         WorkerConnectionInboundHandler connectionInboundHandler =
                 new WorkerConnectionInboundHandler(connectionMechanism);
+        AdapterControlExecutor adapterControlExecutor =
+                AdapterControlExecutor.defaults(
+                        adapterId,
+                        connectionMechanism
+                );
         DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
                 commandRemoteApi,
                 connectionMechanism,
+                adapterControlExecutor,
                 reportProcess,
                 codec,
                 adapterId,

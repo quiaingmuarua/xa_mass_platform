@@ -23,7 +23,10 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
 
@@ -158,6 +161,39 @@ public final class WorkerConnectionMechanism {
                 yield DeliveryAttempt.UNKNOWN;
             }
         };
+    }
+
+    public Map<String, Boolean> connectionStates(List<String> workerIds) {
+        return routes.connectionStates(workerIds);
+    }
+
+    public Map<String, CloseCurrentOutcome> closeCurrentConnections(
+            List<String> workerIds
+    ) {
+        Map<String, Channel> detached = routes.detachActiveChannels(
+                workerIds
+        );
+        List<String> requiredWorkerIds = List.copyOf(workerIds);
+        Map<String, CloseCurrentOutcome> outcomes = new LinkedHashMap<>();
+        for (String workerId : requiredWorkerIds) {
+            Channel channel = detached.get(workerId);
+            if (channel == null) {
+                outcomes.put(workerId, CloseCurrentOutcome.NOT_CONNECTED);
+                continue;
+            }
+            boolean active = channel.isActive();
+            networkServer.closeConnection(
+                    channel,
+                    AdapterConnectionCloseReason.CONTROL_REQUEST
+            );
+            outcomes.put(
+                    workerId,
+                    active
+                            ? CloseCurrentOutcome.CLOSE_STARTED
+                            : CloseCurrentOutcome.NOT_CONNECTED
+            );
+        }
+        return Collections.unmodifiableMap(outcomes);
     }
 
     public void clear() {
@@ -437,5 +473,20 @@ public final class WorkerConnectionMechanism {
         STARTED,
         RETRY_LATER,
         UNKNOWN
+    }
+
+    public enum CloseCurrentOutcome {
+        CLOSE_STARTED("close-started"),
+        NOT_CONNECTED("not-connected");
+
+        private final String wireValue;
+
+        CloseCurrentOutcome(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
     }
 }

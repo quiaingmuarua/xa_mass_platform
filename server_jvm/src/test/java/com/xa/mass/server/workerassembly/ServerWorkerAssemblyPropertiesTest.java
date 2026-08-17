@@ -100,10 +100,10 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"android-demo-workers\"")
                     .contains("\"capability\":\"libphonenumber\"")
                     .contains("\"capability\":\"android-demo-capabilities\"")
-                    .contains("\"phonenumber.e164\"")
-                    .contains("\"string.md5\"")
-                    .contains("\"android.state.read\"")
-                    .contains("\"android.battery.read\"")
+                    .contains("\"extension.worker.phonenumber.e164\"")
+                    .contains("\"extension.worker.string.md5\"")
+                    .contains("\"extension.worker.android.state.read\"")
+                    .contains("\"extension.worker.android.battery.read\"")
                     .doesNotContain("\"workers\"");
             Map<String, Object> groups = Jsons.parseObject(
                     properties.groupConfigJson()
@@ -113,23 +113,23 @@ class ServerWorkerAssemblyPropertiesTest {
             );
             assertThat(androidGroup.get("eventCodes"))
                     .isEqualTo(List.of(
-                            "android.state.read",
-                            "android.battery.read",
-                            "android.string.digest"
+                            "extension.worker.android.state.read",
+                            "extension.worker.android.battery.read",
+                            "extension.worker.android.string.digest"
                     ));
             assertThat(properties.capabilityAssemblyJson())
                     .contains("\"scenario-phone-number-workers\"")
                     .contains("\"scenario-string-utils-workers\"")
-                    .contains("\"phonenumber.e164\"")
-                    .contains("\"phonenumber.country\"")
-                    .contains("\"string.md5\"")
-                    .contains("\"string.base64.encode\"")
+                    .contains("\"extension.worker.phonenumber.e164\"")
+                    .contains("\"extension.worker.phonenumber.country\"")
+                    .contains("\"extension.worker.string.md5\"")
+                    .contains("\"extension.worker.string.base64.encode\"")
                     .doesNotContain("\"type\"")
                     .doesNotContain("\"workerGroupId\"")
                     .doesNotContain("\"attributes\"")
                     .doesNotContain("\"workers\"")
                     .doesNotContain("\"android-demo-workers\"")
-                    .doesNotContain("android.state.read")
+                    .doesNotContain("extension.worker.android.state.read")
                     .doesNotContain("clientWorkerKey")
                     .doesNotContain("sandboxDirectory");
             assertThat(properties.sandboxRoot())
@@ -160,7 +160,8 @@ class ServerWorkerAssemblyPropertiesTest {
                 "xa.mass.worker-assembly.group-config-json="
                         + "{\"group\":{\"eventCodes\":[\"catalog.old\"]}}",
                 "xa.mass.worker-assembly.capability-assembly-json="
-                        + "{\"group\":{\"eventCodes\":[\"string.md5\"]}}"
+                        + "{\"group\":{\"eventCodes\":["
+                        + "\"extension.worker.string.md5\"]}}"
         ).run(context -> assertThat(context).hasNotFailed());
     }
 

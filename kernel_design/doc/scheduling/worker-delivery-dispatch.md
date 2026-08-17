@@ -133,10 +133,15 @@ one top-level `opaquePayload`; the two shapes are exclusive. One call never
 fans out across Adapters.
 Mailbox slots, Adapter queues, and waiter correlation are memory-only and may
 be lost on process failure. CONTROL_ONLY expiry produces no synthetic Result;
-late or missing evidence becomes `unobserved` at the Server waiter. The fixed
-Adapter-local surface contains only `adapter.probe`; Worker management events
-come from statically assembled `src=SYSTEM` Worker Definitions. This path does
-not create a Task, claim an Item or Worker lease, or write Result Routing truth.
+late or missing evidence becomes `unobserved` at the Server waiter. Server
+treats event code and payload as opaque execution data rather than maintaining
+a whitelist. Adapter events come from one immutable composition-time
+`platform.adapter.*` Handler map; Worker events come from the immutable
+`platform.worker.*` plus `extension.worker.*` Definition map. Unknown events
+return observed Adapter `23005` or Worker `3302` results. This path does not
+create a Task, claim an Item or Worker lease,
+or write Result Routing truth. Authorization belongs before this use case in a
+future API Session owner.
 
 `CONTROL_ONLY` is not a persisted Worker mode, a third transport lane, or a
 Kernel score band. Server derives the classification from the pause coordinate
@@ -227,7 +232,7 @@ Batch consume returns:
     "worker-1": {
       "src": "TASK",
       "dst": "WORKER",
-      "messageType": "telecom.phone.inspect",
+      "messageType": "extension.worker.telecom.phone.inspect",
       "executeBeforeMillis": 1234567890,
       "payload": "{\"phoneNumber\":\"+14155552671\"}",
       "forward": "..."
@@ -304,9 +309,15 @@ Adapter -> Worker : DeliveryCommand
 Worker  -> Adapter: DeliveryReport
 ```
 
-The Adapter forwards Worker-targeted Task/System commands unchanged. The fixed
-Adapter-local `adapter.probe` control is executed without entering the network
-Server. The selected physical Server normalizes inbound text to `String`, then invokes one sharable Netty
+The Adapter forwards Worker-targeted Task/System commands unchanged.
+Adapter-targeted controls are dispatched through a finite immutable local map;
+the defaults are probe, bounded current-connection observation, and exact
+current-connection close. They execute without entering the network Server.
+Connection observation is Adapter-local truth only: active verified Channel is
+not schedulability, Binding, writability or Worker idleness. Exact close
+preserves the verified route cache and returns physical close to the selected
+Server, allowing the existing Worker Client reconnect path to establish a new
+Channel. The selected physical Server normalizes inbound text to `String`, then invokes one sharable Netty
 callback Handler. That Handler only forwards text, inactive, and failure
 callbacks to the common connection mechanism; it owns no connection semantics
 or state. The mechanism validates the first Report, coordinates optional first
@@ -316,7 +327,9 @@ phase enum, Session, or Pipeline replacement. Different Adapter instances
 share no verified cache, route Registry, or Channel state. The fixed identity Report is handled directly;
 there is no Adapter event registry or plugin dispatcher. Reports whose
 `dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
-local events on an established connection are logged and dropped.
+Worker-originated local events on an established connection are logged and
+dropped; Adapter-targeted CONTROL_ONLY commands receive `23005` from the local
+event executor.
 
 Before identity, malformed or non-identity input closes the physical Channel.
 During asynchronous route verification reads remain enabled, but later input is
@@ -376,7 +389,7 @@ The Worker receives `DeliveryCommand` and:
 
 ```text
 deadline check before start
--> use messageType as eventCode
+-> use the full messageType Event Name
 -> parse payload into Handler parameters
 -> execute selected WorkerEventDefinition
 -> return WorkerCommandOutcome(outcomeCode, payload)
@@ -389,12 +402,17 @@ map to `3302`; Handler failures map to `3303`, and invalid output maps to
 already serialized opaque String result. `"null"` represents no business
 value.
 
-`src=SYSTEM` management Definitions use this same synchronous Dispatcher and
-the same per-connection Client callback lane as TASK Definitions. They cannot
+SYSTEM and TASK Commands use this same Event Name Dispatcher and the same
+per-connection Client callback lane. Command `src` is source evidence, not a
+Handler lookup coordinate. They cannot
 preempt an already running Handler. The current CONTROL_ONLY policy therefore
 requires them to be fast, bounded, thread-safe, and non-blocking; a network,
 disk, or long-running management workflow needs another owner rather than a
-transport Handler.
+transport Handler. Java and Android assemblies include default
+`platform.worker.probe` and live `platform.worker.properties.snapshot`
+Definitions before Host extensions. The properties result excludes the
+assembly-owned `clientWorkerKey`; arbitrary Host `extension.worker.*`
+Definitions remain equally callable.
 
 Polling submits the direct result through the point API. WebSocket and Socket
 send direct result JSON to the Adapter. A Worker that receives an already

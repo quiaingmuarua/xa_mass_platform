@@ -46,7 +46,7 @@ TextMessageClient
   -> bounded reconnect within one prepared Endpoint
 
 WorkerCommandDispatcher
-  -> Core built-ins + immutable Host extensions
+  -> immutable Definitions assembled from platform defaults + Host extensions
   -> synchronous Definition resolution and Handler execution
   -> optional WorkerCommandOutcome(outcomeCode, payload)
 ```
@@ -64,7 +64,7 @@ Client protocol callback
   -> TextMessageWorkerTransport strict decode
   -> ADAPTER/worker.connection.close: end current run
   -> WorkerCommandDispatcher.execute
-  -> WorkerEventDefinition(src, eventCode, resolver, handler)
+  -> WorkerEventDefinition(eventName, resolver, handler)
   -> optional WorkerCommandOutcome
   -> Transport creates DeliveryReport.fromCommand(WORKER, workerId, ...)
   -> one send attempt on the current connection
@@ -77,32 +77,55 @@ respective protocol callback threads, so Definitions shared by Worker
 instances must still be thread-safe.
 
 `WorkerCommandDispatcher` compares the Command deadline with the local system
-epoch-millisecond clock, resolves the immutable
-`(src, messageType)` definition, and invokes the resolver and handler. It
+epoch-millisecond clock, resolves the immutable `messageType` Event Name, and
+invokes the resolver and handler. It
 returns only `WorkerCommandOutcome`; it does not know workerId or construct a
 protocol Report. Transport owns Report routing and Worker source identity;
 Delivery defines no outer message or correlation ID.
 
-TASK and direct CONTROL_ONLY execution use this same path. A Host exposes a
-Worker management operation by statically assembling a
-`WorkerEventDefinition(src=SYSTEM, eventCode=...)`; Core does not add a
-CONTROL_ONLY mode, queue, executor, or special handler registry.
+TASK and direct CONTROL_ONLY execution use this same path. A Host exposes an
+additional Worker capability with
+`WorkerEventDefinition.extension("device.snapshot", ...)`, which registers
+the full name `extension.worker.device.snapshot`. Core does not add a
+CONTROL_ONLY mode, queue, executor, or special handler registry. Command
+`src` remains invocation evidence and does not participate in Handler lookup.
 `DeliveryReport.fromCommand()` naturally sends the result back to
 `dst=SYSTEM` and preserves the Server-owned opaque `forward` value.
 
 Workers create Dispatchers through `WorkerCommandDispatcher.forWorker()` or
-`forWorker(definitionExtensions)`. Core owns the complete registry: it loads
-its built-in Definitions first and appends a defensive copy of Host business
-extensions. The built-in set is currently empty. Duplicate
-`(src, eventCode)` keys, including an extension attempting to replace a future
-built-in, fail assembly; runtime mutation and last-wins replacement are not
-supported.
+`forWorker(definitions)`. Java and Android assemblies call
+`WorkerManagementEventDefinitions.assemble(propertiesProvider, extensions)`
+to copy Host extensions, prepend the platform Definitions and construct that
+one immutable Dispatcher map:
+
+| Event | Input | Result payload |
+| --- | --- | --- |
+| `platform.worker.probe` | `null` | `{"reachable":true}` |
+| `platform.worker.properties.snapshot` | `null` | `{"properties":{...}}` |
+| `platform.worker.events.snapshot` | `null` | sorted full `eventNames` |
+
+Properties are loaded from the original Host provider on every snapshot. The
+assembly-only `clientWorkerKey` is never injected into this result. The map
+must be JSON-safe and the encoded result is capped below the one MiB transport
+frame limit; invalid or unavailable properties map through the existing `3303`
+execution failure. The Event snapshot is precomputed during assembly, includes
+itself and all Host extensions in lexical order, and must fit the same result
+limit. It is execution evidence for this Worker process, not WorkerGroup
+`eventCodes`, authorization or schedulability. Duplicate full Event Names fail
+assembly. Host extensions cannot construct or replace `platform.worker.*`
+events. Runtime mutation and last-wins replacement are not supported.
+
+An Event Name is the compatibility identity. Adding optional input or output
+fields without changing existing meaning may retain the name. Incompatible
+input, output, semantics or side effects require a new full name such as
+`extension.worker.device.snapshot.v2`. Dispatcher lookup remains exact: Core
+does not provide aliases, wildcard or prefix matching, dual lookup or fallback.
 
 | Outcome | Meaning |
 | --- | --- |
 | `200` | Handler returned a non-empty result payload |
 | `3301` | Resolver or handler rejected event input |
-| `3302` | No definition exists for `(src, messageType)` |
+| `3302` | No definition exists for `messageType` |
 | `3303` | Handler execution failed |
 | `3304` | Handler returned invalid output |
 
@@ -168,10 +191,11 @@ Hosts move UI or blocking observation work to their own platform execution
 mechanism.
 
 There is no local Command injection or Properties-refresh lifecycle method.
-Platform and Adapter capabilities use statically assembled
+Platform and extension capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
-messages. SYSTEM and TASK Definitions share the same serialized Client callback
-lane. A CONTROL_ONLY Handler therefore cannot preempt an already running TASK
+messages. SYSTEM and TASK Commands share the same immutable Event Name map and
+serialized Client callback lane. A CONTROL_ONLY Handler therefore cannot
+preempt an already running TASK
 Handler and must remain fast, bounded, thread-safe, and non-blocking; network or
 disk workflows require another owner rather than a long-running management
 Handler. Worker Core neither reads the pause score nor enforces that policy.

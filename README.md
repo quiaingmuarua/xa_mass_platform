@@ -20,7 +20,7 @@ The visual projection is available in
 | Kernel | Task, TaskItem and Worker scheduling truth; selection; lease; claim; retry, recovery and result disposition | HTTP, physical connections, endpoint handlers and request waiters |
 | Server | Runtime API; provider assembly; bounded use cases; Worker identity and Binding; Command-source routing; Result destination routing and correlation | Candidate selection, Worker lease, Item claim, retry policy and Task finality |
 | Adapter | Command acquisition, current verified route, physical delivery and Adapter-local handlers | Scheduling eligibility, Task priority, Worker selection and result truth |
-| Worker | Local `(src, messageType)` resolution, execution and Result evidence | Task lifecycle, scheduling policy and Adapter routing |
+| Worker | Local full Event Name resolution, execution and Result evidence | Task lifecycle, scheduling policy and Adapter routing |
 
 `dispatch` has three distinct meanings:
 
@@ -57,7 +57,19 @@ CONTROL_ONLY bypasses Task scheduling because the caller already selected the
 target. It is not a Kernel Task type, reliable queue, persistent result owner,
 second Adapter Process, or permission for Server to select Workers. Worker
 pause remains scheduling-score truth; Server observes it only as best-effort
-admission evidence.
+admission evidence. Server treats `messageType` and opaque payload as event
+data; execution support is decided only by the statically assembled Adapter or
+Worker Handler map. API Session authorization is a future boundary, not
+an event whitelist inside CONTROL_ONLY.
+
+Hosts register short Extension capability names, while TaskItem, Control Call
+and Delivery always carry the full
+`(platform|extension).(worker|adapter).<capability>` Event Name. Owner-local
+`events.snapshot` handlers expose the immutable names loaded
+by the current process; they do not replace WorkerGroup declarations or become
+scheduling input. Compatible optional payload additions may keep a name;
+incompatible semantics use a new name such as `.v2`, without aliases or
+fallback lookup.
 
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a
 scheduling coordinate rather than a resource lock, separate assignment and

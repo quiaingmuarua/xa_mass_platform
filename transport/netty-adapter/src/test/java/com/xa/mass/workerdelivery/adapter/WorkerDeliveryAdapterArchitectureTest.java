@@ -175,6 +175,22 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
+    void adapterEventsRemainAStaticImmutableExecutionMap()
+            throws IOException {
+        String executor = read(PROCESS.resolve(
+                "AdapterControlExecutor.java"
+        ));
+
+        assertThat(executor)
+                .contains("Collections.unmodifiableMap(copied)")
+                .doesNotContain("ConcurrentHashMap")
+                .doesNotContain("ServiceLoader")
+                .doesNotContain("Class.forName")
+                .doesNotContain("registerHandler")
+                .doesNotContain("unregisterHandler");
+    }
+
+    @Test
     void repositoryConsumersCannotImportInternalConstructionTypes()
             throws IOException {
         Path repository = Path.of("../..").toAbsolutePath().normalize();

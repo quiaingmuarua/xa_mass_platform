@@ -235,7 +235,7 @@ for each command exactly once this round
   -> expired: remove; only expired TASK creates 23002 evidence
   -> no active writable Worker Channel: rotate to queue tail
   -> physical Server write started: remove
-  -> SYSTEM -> ADAPTER at @adapter: execute fixed adapter.probe
+  -> SYSTEM -> ADAPTER at @adapter: dispatch through the immutable local map
 ```
 
 TASK accepts `TASK -> WORKER`. CONTROL_ONLY accepts `SYSTEM -> WORKER` and
@@ -245,6 +245,30 @@ the Server waiter owns timeout. The queue has no workerId index, and its soft
 capacity is a backpressure target rather than delivery truth. Adapter does not
 read Worker score or recheck pause: Server admission is the only current
 CONTROL_ONLY eligibility observation.
+
+The composition root installs a finite immutable Adapter event map. This is an
+execution surface, not a public registry or Server whitelist:
+
+| Event | Input | Result payload |
+| --- | --- | --- |
+| `platform.adapter.probe` | `null` | Adapter identity and reachability |
+| `platform.adapter.events.snapshot` | `null` | sorted full `eventNames` |
+| `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `connectedByWorkerId` |
+| `platform.adapter.worker-connections.close-current` | `{"workerIds":[...]}` | `outcomeByWorkerId` |
+
+The Event snapshot is precomputed when the immutable map is assembled, includes
+itself, and is process-local execution evidence rather than Server
+configuration or routing truth. Its reserved name cannot be replaced by another
+static Handler.
+
+Worker ID lists are unique, ordered and bounded to `1..100`. Snapshot
+`connected=true` means only that first route verification completed and the
+Adapter currently has an active Channel. It does not imply Binding validity,
+schedulability, writability or Worker idleness. Close-current atomically
+removes the observed active route and asks the physical Server to close that
+Channel (`1000` for WebSocket, TCP close for Socket). It preserves the
+process-local verified ID, so the existing Client reconnect path can install a
+new active Channel without another route verification.
 
 ### Result ingress round
 

@@ -530,7 +530,7 @@ class WebSocketAdapterContractTest {
             send(socket, systemAccepted);
             send(socket, codec.encodeDeliveryReport(result(
                     ADAPTER,
-                    "adapter.unknown",
+                    "extension.adapter.unknown",
                     "200",
                     ""
             )));
@@ -555,8 +555,11 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
-            assertThat(remoteApi.appendedResults)
-                    .containsExactly(List.of(systemAccepted, accepted));
+            awaitResultCount(remoteApi, 2);
+            assertThat(remoteApi.appendedResults.stream()
+                    .flatMap(List::stream)
+                    .toList())
+                    .containsExactly(systemAccepted, accepted);
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
         } finally {
@@ -766,6 +769,22 @@ class WebSocketAdapterContractTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Command was not cached by the Adapter");
+    }
+
+    private static void awaitResultCount(TestRemoteApi remoteApi, int count)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            long observed = remoteApi.appendedResults.stream()
+                    .mapToLong(List::size)
+                    .sum();
+            if (observed >= count) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Expected Worker results were not appended");
     }
 
     private static void awaitVerification(TestRemoteApi remoteApi)

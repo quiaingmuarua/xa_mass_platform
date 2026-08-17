@@ -23,9 +23,18 @@ import java.util.concurrent.CopyOnWriteArraySet;
 
 public final class AndroidDemoCapabilities {
 
-    public static final String STATE_READ = "android.state.read";
-    public static final String BATTERY_READ = "android.battery.read";
-    public static final String STRING_DIGEST = "android.string.digest";
+    public static final String STATE_READ =
+            "extension.worker.android.state.read";
+    public static final String BATTERY_READ =
+            "extension.worker.android.battery.read";
+    public static final String STRING_DIGEST =
+            "extension.worker.android.string.digest";
+
+    private static final String STATE_READ_CAPABILITY = "android.state.read";
+    private static final String BATTERY_READ_CAPABILITY =
+            "android.battery.read";
+    private static final String STRING_DIGEST_CAPABILITY =
+            "android.string.digest";
 
     static final String PREFERENCES =
             "android-worker-demo-state-capability";
@@ -69,21 +78,18 @@ public final class AndroidDemoCapabilities {
                 ? new SystemBatteryStateReader(applicationContext)
                 : batteryStateReader;
         definitions = Collections.unmodifiableList(Arrays.asList(
-                WorkerEventDefinition.of(
-                        "TASK",
-                        STATE_READ,
+                WorkerEventDefinition.extension(
+                        STATE_READ_CAPABILITY,
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> executeStateRead()
                 ),
-                WorkerEventDefinition.of(
-                        "TASK",
-                        BATTERY_READ,
+                WorkerEventDefinition.extension(
+                        BATTERY_READ_CAPABILITY,
                         WorkerEventParameterResolvers.jsonMap(),
                         ignored -> executeBatteryRead()
                 ),
-                WorkerEventDefinition.of(
-                        "TASK",
-                        STRING_DIGEST,
+                WorkerEventDefinition.extension(
+                        STRING_DIGEST_CAPABILITY,
                         AndroidDemoCapabilities::resolveStringDigest,
                         this::executeStringDigest
                 )

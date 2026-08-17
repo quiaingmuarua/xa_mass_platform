@@ -48,6 +48,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     public DeliveryCommandProcess(
             DeliveryCommandRemoteApi remoteApi,
             WorkerConnectionMechanism connectionMechanism,
+            AdapterControlExecutor adapterControlExecutor,
             DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
@@ -57,6 +58,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         this(
                 remoteApi,
                 connectionMechanism,
+                adapterControlExecutor,
                 reportProcess,
                 codec,
                 adapterId,
@@ -69,6 +71,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     DeliveryCommandProcess(
             DeliveryCommandRemoteApi remoteApi,
             WorkerConnectionMechanism connectionMechanism,
+            AdapterControlExecutor adapterControlExecutor,
             DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
@@ -80,6 +83,10 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         this.connectionMechanism = Objects.requireNonNull(
                 connectionMechanism,
                 "connectionMechanism"
+        );
+        this.adapterControlExecutor = Objects.requireNonNull(
+                adapterControlExecutor,
+                "adapterControlExecutor"
         );
         this.reportProcess = Objects.requireNonNull(
                 reportProcess,
@@ -100,7 +107,6 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         this.commandConsumeLimit = commandConsumeLimit;
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
         commandQueue = new FiniteQueue<>(queueCapacity);
-        adapterControlExecutor = new AdapterControlExecutor(adapterId);
     }
 
     @Override

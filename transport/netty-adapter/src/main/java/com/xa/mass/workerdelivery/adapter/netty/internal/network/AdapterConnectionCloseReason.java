@@ -9,6 +9,7 @@ public enum AdapterConnectionCloseReason {
     VERIFICATION_IN_PROGRESS,
     VERIFICATION_FAILED,
     REPLACED,
+    CONTROL_REQUEST,
     RESULT_BUFFER_FULL,
     TRANSPORT_ERROR
 }

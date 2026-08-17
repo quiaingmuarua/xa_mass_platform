@@ -232,7 +232,7 @@ public class AndroidDemoCapabilitiesTest {
     ) {
         Map<String, WorkerEventDefinition<?>> result = new LinkedHashMap<>();
         for (WorkerEventDefinition<?> definition : capabilities.definitions()) {
-            result.put(definition.eventCode(), definition);
+            result.put(definition.eventName(), definition);
         }
         return result;
     }

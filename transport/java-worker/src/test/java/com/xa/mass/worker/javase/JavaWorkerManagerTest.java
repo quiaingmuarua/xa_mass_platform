@@ -260,8 +260,7 @@ class JavaWorkerManagerTest {
     }
 
     private static List<WorkerEventDefinition<?>> definitions() {
-        return List.of(WorkerEventDefinition.of(
-                "TASK",
+        return List.of(WorkerEventDefinition.extension(
                 "test.observe",
                 WorkerEventParameterResolvers.jsonMap(),
                 parameters -> "null"

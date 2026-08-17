@@ -16,7 +16,7 @@ class StringUtilityWorkerEventsTest {
                 StringUtilityWorkerEvents.definitions();
 
         assertThat(definitions)
-                .extracting(WorkerEventDefinition::eventCode)
+                .extracting(WorkerEventDefinition::eventName)
                 .containsExactly(
                         StringUtilityWorkerEvents.MD5_EVENT_CODE,
                         StringUtilityWorkerEvents.SHA1_EVENT_CODE,
@@ -80,7 +80,7 @@ class StringUtilityWorkerEventsTest {
             String value
     ) throws Exception {
         WorkerEventDefinition<?> definition = definitions.stream()
-                .filter(candidate -> candidate.eventCode().equals(eventCode))
+                .filter(candidate -> candidate.eventName().equals(eventCode))
                 .findFirst()
                 .orElseThrow();
         Map<String, Object> result = Jsons.parseObject(

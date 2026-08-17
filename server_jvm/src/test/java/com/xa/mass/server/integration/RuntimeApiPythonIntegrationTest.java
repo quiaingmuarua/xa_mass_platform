@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
@@ -13,6 +14,7 @@ import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.net.http.HttpClient;
@@ -53,10 +55,14 @@ class RuntimeApiPythonIntegrationTest {
             "java-websocket-integration";
     private static final String SOCKET_ENDPOINT_MANAGER_ID =
             "java-socket-integration";
-    private static final String TEST_EVENT_CODE =
+    private static final String TEST_CAPABILITY =
             "test.integration.observe";
-    private static final String CONTROL_EVENT_CODE =
+    private static final String TEST_EVENT_CODE =
+            "extension.worker." + TEST_CAPABILITY;
+    private static final String CONTROL_CAPABILITY =
             "test.integration.control-snapshot";
+    private static final String CONTROL_EVENT_CODE =
+            "extension.worker." + CONTROL_CAPABILITY;
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -267,60 +273,72 @@ class RuntimeApiPythonIntegrationTest {
             ).statusCode()).isEqualTo(200);
             paused = true;
 
-            HttpResponse<String> workerControl = send(
-                    "POST",
-                    "/api/v1/worker-delivery/endpoint-managers/"
-                            + WEBSOCKET_ENDPOINT_MANAGER_ID
-                            + "/controls:call",
-                    """
-                            {
-                              "workerGroupId": "%s",
-                              "workerPayloads": {"%s":"{}"},
-                              "messageType": "%s",
-                              "waitTimeoutMillis": 3000
-                            }
-                            """.formatted(
-                                    workerGroupId,
-                                    workerId,
-                                    CONTROL_EVENT_CODE
-                            )
-            );
-            assertThat(workerControl.statusCode()).isEqualTo(200);
-            var workerTarget = JSON.readTree(workerControl.body())
-                    .get("results")
-                    .get(workerId);
-            assertThat(workerTarget.get("status").asText())
-                    .isEqualTo("observed");
-            assertThat(workerTarget.get("outcomeCode").asText())
-                    .isEqualTo("200");
-            assertThat(workerTarget.get("opaqueResultPayload").asText())
+            assertThat(observedControlPayload(workerControl(
+                    workerGroupId,
+                    workerId,
+                    CONTROL_EVENT_CODE,
+                    "{}"
+            ), workerId, "200"))
                     .isEqualTo("{\"control\":\"observed\"}");
 
-            HttpResponse<String> adapterControl = send(
-                    "POST",
-                    "/api/v1/worker-delivery/endpoint-managers/"
-                            + WEBSOCKET_ENDPOINT_MANAGER_ID
-                            + "/controls:call",
-                    """
-                            {
-                              "messageType": "adapter.probe",
-                              "opaquePayload": "null",
-                              "waitTimeoutMillis": 3000
-                            }
-                            """
-            );
-            assertThat(adapterControl.statusCode()).isEqualTo(200);
-            var adapterTarget = JSON.readTree(adapterControl.body())
-                    .get("results")
-                    .get(WEBSOCKET_ENDPOINT_MANAGER_ID);
-            assertThat(adapterTarget.get("status").asText())
-                    .isEqualTo("observed");
-            assertThat(adapterTarget.get("outcomeCode").asText())
-                    .isEqualTo("200");
-            assertThat(com.xa.mass.workerdelivery.json.Jsons.parseObject(
-                    adapterTarget.get("opaqueResultPayload").asText()
+            assertThat(Jsons.parseObject(
+                    observedControlPayload(
+                            adapterControl(
+                                    "platform.adapter.probe",
+                                    "null"
+                            ),
+                            WEBSOCKET_ENDPOINT_MANAGER_ID,
+                            "200"
+                    )
             )).containsEntry("adapterId", WEBSOCKET_ENDPOINT_MANAGER_ID)
                     .containsEntry("reachable", true);
+
+            assertThat(Jsons.parseObject(
+                    observedControlPayload(workerControl(
+                            workerGroupId,
+                            workerId,
+                            WorkerManagementEventDefinitions.PROBE_EVENT,
+                            "null"
+                    ), workerId, "200")
+            )).containsEntry("reachable", true);
+
+            assertThat(Jsons.parseObject(
+                    observedControlPayload(workerControl(
+                            workerGroupId,
+                            workerId,
+                            WorkerManagementEventDefinitions
+                                    .PROPERTIES_SNAPSHOT_EVENT,
+                            "null"
+                    ), workerId, "200")
+            )).containsEntry(
+                    "properties",
+                    Map.of("runtime", "java-control")
+            );
+
+            assertConnectionState(workerId, true);
+            assertThat(Jsons.parseObject(
+                    observedControlPayload(
+                            adapterControl(
+                                    "platform.adapter.worker-connections.close-current",
+                                    workerIdsPayload(workerId)
+                            ),
+                            WEBSOCKET_ENDPOINT_MANAGER_ID,
+                            "200"
+                    )
+            )).containsEntry(
+                    "outcomeByWorkerId",
+                    Map.of(workerId, "close-started")
+            );
+
+            assertThat(Jsons.parseObject(
+                    observedControlPayload(workerControl(
+                            workerGroupId,
+                            workerId,
+                            WorkerManagementEventDefinitions.PROBE_EVENT,
+                            "null"
+                    ), workerId, "200")
+            )).containsEntry("reachable", true);
+            assertConnectionState(workerId, true);
         } finally {
             if (paused) {
                 send(
@@ -333,6 +351,84 @@ class RuntimeApiPythonIntegrationTest {
             }
             worker.close();
         }
+    }
+
+    private HttpResponse<String> workerControl(
+            String workerGroupId,
+            String workerId,
+            String eventCode,
+            String opaquePayload
+    ) throws Exception {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("workerGroupId", workerGroupId);
+        request.put("workerPayloads", Map.of(workerId, opaquePayload));
+        request.put("messageType", eventCode);
+        request.put("waitTimeoutMillis", 3_000);
+        return send(
+                "POST",
+                "/api/v1/worker-delivery/endpoint-managers/"
+                        + WEBSOCKET_ENDPOINT_MANAGER_ID
+                        + "/controls:call",
+                JSON.writeValueAsString(request)
+        );
+    }
+
+    private HttpResponse<String> adapterControl(
+            String eventCode,
+            String opaquePayload
+    ) throws Exception {
+        return send(
+                "POST",
+                "/api/v1/worker-delivery/endpoint-managers/"
+                        + WEBSOCKET_ENDPOINT_MANAGER_ID
+                        + "/controls:call",
+                JSON.writeValueAsString(Map.of(
+                        "messageType", eventCode,
+                        "opaquePayload", opaquePayload,
+                        "waitTimeoutMillis", 3_000
+                ))
+        );
+    }
+
+    private static String observedControlPayload(
+            HttpResponse<String> response,
+            String targetId,
+            String outcomeCode
+    ) throws Exception {
+        assertThat(response.statusCode()).isEqualTo(200);
+        var target = JSON.readTree(response.body())
+                .get("results")
+                .get(targetId);
+        assertThat(target.get("status").asText()).isEqualTo("observed");
+        assertThat(target.get("outcomeCode").asText())
+                .isEqualTo(outcomeCode);
+        return target.get("opaqueResultPayload").asText();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertConnectionState(String workerId, boolean connected)
+            throws Exception {
+        Map<String, Object> payload =
+                Jsons.parseObject(
+                        observedControlPayload(
+                                adapterControl(
+                                        "platform.adapter.worker-connections.snapshot",
+                                        workerIdsPayload(workerId)
+                                ),
+                                WEBSOCKET_ENDPOINT_MANAGER_ID,
+                                "200"
+                        )
+                );
+        assertThat((Map<String, Object>) payload.get(
+                "connectedByWorkerId"
+        )).containsEntry(workerId, connected);
+    }
+
+    private static String workerIdsPayload(String workerId) {
+        return Jsons.toJson(Map.of(
+                "workerIds",
+                List.of(workerId)
+        ));
     }
 
     @Test
@@ -532,21 +628,19 @@ class RuntimeApiPythonIntegrationTest {
     ) throws Exception {
         List<WorkerEventDefinition<?>> definitions =
                 List.of(
-                        WorkerEventDefinition.of(
-                                "TASK",
-                                TEST_EVENT_CODE,
+                        WorkerEventDefinition.extension(
+                                TEST_CAPABILITY,
                                 WorkerEventParameterResolvers.jsonMap(),
                                 payload ->
-                                com.xa.mass.workerdelivery.json.Jsons.toJson(
+                                Jsons.toJson(
                                         Map.of(
                                                 "observed",
                                                 payload.get("value")
                                         )
                                 )
                         ),
-                        WorkerEventDefinition.of(
-                                "SYSTEM",
-                                CONTROL_EVENT_CODE,
+                        WorkerEventDefinition.extension(
+                                CONTROL_CAPABILITY,
                                 WorkerEventParameterResolvers.jsonMap(),
                                 payload -> "{\"control\":\"observed\"}"
                         )

@@ -64,6 +64,11 @@ configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
 one WorkerGroup plus a `1..100` entry `workerId -> opaquePayload` map targets
 only Workers currently bound to that Adapter. The two request modes are
 exclusive, and Server never partitions one Control Call across Adapters.
+`messageType` and each opaque payload pass through unchanged. Server does not
+enumerate event support or convert an unknown event into an HTTP admission
+error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
+result. Future API Session authorization may restrict caller/target/event
+access before this use case, but it is not a CONTROL_ONLY event whitelist.
 Exact route schemas are available from the running Server:
 
 ```text
@@ -185,8 +190,11 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
-paths. It also pauses a real WebSocket Worker, completes one Worker
-CONTROL_ONLY call and one Adapter-local probe, then resumes scheduling.
+paths. It also pauses a real WebSocket Worker, executes a custom
+`extension.worker.*` event through a SYSTEM Command and the default
+probe/properties/events handlers, observes Adapter connection state,
+closes the current Channel, proves transparent reconnect, then resumes
+scheduling.
 
 The canonical proof ownership, prerequisites and CI lane selection are in
 [`TESTING.md`](../TESTING.md).

@@ -122,37 +122,37 @@ class WorkerCapabilityRpcMainTest {
 
     private static final class FakeTaskBatchServer implements AutoCloseable {
         private static final Map<String, Expected> EXPECTED = Map.of(
-                "phonenumber.e164",
+                "extension.worker.phonenumber.e164",
                 new Expected(
                         "scenario-phone-number-workers",
                         "rawNumber",
                         "e164"
                 ),
-                "phonenumber.country",
+                "extension.worker.phonenumber.country",
                 new Expected(
                         "scenario-phone-number-workers",
                         "rawNumber",
                         "countryCallingCode"
                 ),
-                "phonenumber.original-carrier",
+                "extension.worker.phonenumber.original-carrier",
                 new Expected(
                         "scenario-phone-number-workers",
                         "rawNumber",
                         "originalCarrier"
                 ),
-                "string.md5",
+                "extension.worker.string.md5",
                 new Expected(
                         "scenario-string-utils-workers",
                         "value",
                         "md5"
                 ),
-                "string.sha1",
+                "extension.worker.string.sha1",
                 new Expected(
                         "scenario-string-utils-workers",
                         "value",
                         "sha1"
                 ),
-                "string.base64.encode",
+                "extension.worker.string.base64.encode",
                 new Expected(
                         "scenario-string-utils-workers",
                         "value",

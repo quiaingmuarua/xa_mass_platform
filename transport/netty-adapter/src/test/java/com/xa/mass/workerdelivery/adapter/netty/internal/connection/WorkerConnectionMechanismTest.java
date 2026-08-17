@@ -13,6 +13,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnecti
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.CloseCurrentOutcome;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerDeliveryHttpClient;
@@ -204,6 +205,86 @@ class WorkerConnectionMechanismTest {
                     ));
         } finally {
             channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void connectionSnapshotReportsOnlyVerifiedActiveRoutes() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel active = new EmbeddedChannel();
+        EmbeddedChannel pending = new EmbeddedChannel();
+        EmbeddedChannel inactive = new EmbeddedChannel();
+        try {
+            fixture.routes.admitIdentity("active", active);
+            fixture.routes.completeVerificationAndActivate(
+                    "active",
+                    active
+            );
+            fixture.routes.admitIdentity("pending", pending);
+            fixture.routes.admitIdentity("inactive", inactive);
+            fixture.routes.completeVerificationAndActivate(
+                    "inactive",
+                    inactive
+            );
+            inactive.close();
+
+            assertThat(fixture.mechanism.connectionStates(List.of(
+                    "active",
+                    "pending",
+                    "inactive",
+                    "unknown"
+            ))).containsExactly(
+                    Map.entry("active", true),
+                    Map.entry("pending", false),
+                    Map.entry("inactive", false),
+                    Map.entry("unknown", false)
+            );
+        } finally {
+            active.finishAndReleaseAll();
+            pending.finishAndReleaseAll();
+            inactive.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void closeCurrentDetachesOnlyCurrentRouteAndPreservesVerification() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel active = new EmbeddedChannel();
+        EmbeddedChannel reconnect = new EmbeddedChannel();
+        try {
+            fixture.routes.admitIdentity("worker-1", active);
+            fixture.routes.completeVerificationAndActivate(
+                    "worker-1",
+                    active
+            );
+
+            assertThat(fixture.mechanism.closeCurrentConnections(List.of(
+                    "worker-1",
+                    "unknown"
+            ))).containsExactly(
+                    Map.entry("worker-1", CloseCurrentOutcome.CLOSE_STARTED),
+                    Map.entry("unknown", CloseCurrentOutcome.NOT_CONNECTED)
+            );
+            assertThat(fixture.network.closedChannels)
+                    .containsExactly(active);
+            assertThat(fixture.network.closeReasons).containsExactly(
+                    AdapterConnectionCloseReason.CONTROL_REQUEST
+            );
+            assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+
+            assertThat(fixture.routes.admitIdentity(
+                    "worker-1",
+                    reconnect
+            ).kind()).isEqualTo(
+                    WorkerRouteRegistry.IdentityAdmissionKind
+                            .VERIFIED_ACTIVATED
+            );
+            fixture.routes.onChannelClosed(active);
+            assertThat(fixture.routes.activeChannel("worker-1"))
+                    .isSameAs(reconnect);
+        } finally {
+            active.finishAndReleaseAll();
+            reconnect.finishAndReleaseAll();
         }
     }
 
@@ -407,7 +488,7 @@ class WorkerConnectionMechanismTest {
                     WORKER,
                     workerId,
                     SYSTEM,
-                    "worker.properties.snapshot",
+                    "platform.worker.properties.snapshot",
                     "200",
                     "{}",
                     "control-only:v1:test"

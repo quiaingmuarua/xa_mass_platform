@@ -3,6 +3,7 @@ package com.xa.mass.worker.javase;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
@@ -38,8 +39,12 @@ final class JavaWorkerAssembly {
     ) {
         Objects.requireNonNull(platform, "platform");
         Objects.requireNonNull(options, "options");
+        WorkerPropertiesProvider liveProperties = Objects.requireNonNull(
+                workerProperties,
+                "workerProperties"
+        );
         WorkerPropertiesProvider completeProperties = () -> {
-            Map<String, Object> supplied = workerProperties.loadProperties();
+            Map<String, Object> supplied = liveProperties.loadProperties();
             if (supplied == null) {
                 throw new IllegalArgumentException(
                         "workerProperties must be present"
@@ -56,8 +61,15 @@ final class JavaWorkerAssembly {
             complete.putAll(supplied);
             return complete;
         };
-        WorkerCommandDispatcher dispatcher =
-                WorkerCommandDispatcher.forWorker(definitionExtensions);
+        WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
+                WorkerManagementEventDefinitions.assemble(
+                        liveProperties,
+                        Objects.requireNonNull(
+                                definitionExtensions,
+                                "definitionExtensions"
+                        )
+                )
+        );
         return new WorkerRunController(
                 new RegisteredWorkerPreparation(
                         workerGroupId,

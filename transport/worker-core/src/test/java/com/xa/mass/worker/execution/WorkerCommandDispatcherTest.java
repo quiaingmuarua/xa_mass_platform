@@ -31,7 +31,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 WorkerCommandDispatcher.forWorker().execute(command(
                         TASK,
-                        "test.missing",
+                        extensionName("test.missing"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -42,11 +42,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void definitionExtensionsAreDefensivelyCopied() {
         List<WorkerEventDefinition<?>> extensions = new ArrayList<>();
-        extensions.add(definition(
-                "TASK",
-                "test.observe",
-                "\"copied\""
-        ));
+        extensions.add(definition("test.observe", "\"copied\""));
         WorkerCommandDispatcher dispatcher =
                 WorkerCommandDispatcher.forWorker(extensions);
 
@@ -54,14 +50,17 @@ class WorkerCommandDispatcherTest {
 
         assertEquals(
                 "\"copied\"",
-                resultPayload(dispatcher, TASK, "test.observe")
+                resultPayload(
+                        dispatcher,
+                        TASK,
+                        extensionName("test.observe")
+                )
         );
     }
 
     @Test
     void duplicateExtensionsAreRejected() {
         WorkerEventDefinition<?> definition = definition(
-                "TASK",
                 "test.observe",
                 "\"duplicate\""
         );
@@ -76,26 +75,17 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
-    void invalidDefinitionSourcesAreRejected() {
+    void invalidExtensionCapabilityNamesAreRejected() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> WorkerCommandDispatcher.forWorker(List.of(
-                        definition(
-                                "UNKNOWN",
-                                "test.observe",
-                                "\"unknown\""
-                        )
-                ))
+                () -> definition(
+                        "platform.worker.test.observe",
+                        "\"invalid\""
+                )
         );
         assertThrows(
                 IllegalArgumentException.class,
-                () -> WorkerCommandDispatcher.forWorker(List.of(
-                        definition(
-                                "WORKER",
-                                "test.observe",
-                                "\"worker\""
-                        )
-                ))
+                () -> definition("Test.Observe", "\"invalid\"")
         );
     }
 
@@ -103,7 +93,6 @@ class WorkerCommandDispatcherTest {
     void successfulEventProducesWorkerOutcome() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
                 mapDefinition(
-                        "TASK",
                         "test.observe",
                         parameters -> "{\"observed\":\""
                                 + parameters.get("value")
@@ -113,7 +102,7 @@ class WorkerCommandDispatcherTest {
 
         WorkerCommandOutcome result = dispatcher.execute(command(
                 TASK,
-                "test.observe",
+                extensionName("test.observe"),
                 "{\"value\":\"ready\"}",
                 ACTIVE_DEADLINE
         )).orElseThrow();
@@ -123,24 +112,34 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
-    void sameEventCodeDispatchesBySource() {
+    void eventNameDoesNotBindCommandSource() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
-                definition("TASK", "shared.inspect", "\"task\""),
-                definition("SYSTEM", "shared.inspect", "\"system\""),
-                definition("ADAPTER", "shared.inspect", "\"adapter\"")
+                definition("shared.inspect", "\"executed\"")
         ));
 
         assertEquals(
-                "\"task\"",
-                resultPayload(dispatcher, TASK, "shared.inspect")
+                "\"executed\"",
+                resultPayload(
+                        dispatcher,
+                        TASK,
+                        extensionName("shared.inspect")
+                )
         );
         assertEquals(
-                "\"system\"",
-                resultPayload(dispatcher, SYSTEM, "shared.inspect")
+                "\"executed\"",
+                resultPayload(
+                        dispatcher,
+                        SYSTEM,
+                        extensionName("shared.inspect")
+                )
         );
         assertEquals(
-                "\"adapter\"",
-                resultPayload(dispatcher, ADAPTER, "shared.inspect")
+                "\"executed\"",
+                resultPayload(
+                        dispatcher,
+                        ADAPTER,
+                        extensionName("shared.inspect")
+                )
         );
     }
 
@@ -148,14 +147,12 @@ class WorkerCommandDispatcherTest {
     void malformedPayloadAndResolverFailureMapToEventInputInvalid() {
         WorkerCommandDispatcher malformed = dispatcher(List.of(
                 mapDefinition(
-                        "TASK",
                         "test.observe",
                         parameters -> "\"unused\""
                 )
         ));
         WorkerCommandDispatcher rejected = dispatcher(List.of(
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "test.observe",
                         parameters -> {
                             throw new WorkerException(
@@ -172,7 +169,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 malformed.execute(command(
                         TASK,
-                        "test.observe",
+                        extensionName("test.observe"),
                         "not-json",
                         ACTIVE_DEADLINE
                 )),
@@ -181,7 +178,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 rejected.execute(command(
                         TASK,
-                        "test.observe",
+                        extensionName("test.observe"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -190,15 +187,15 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
-    void unknownSourceEventPairMapsToEventNotFound() {
+    void unknownEventNameMapsToEventNotFoundRegardlessOfSource() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
-                definition("TASK", "shared.inspect", "\"task\"")
+                definition("shared.inspect", "\"known\"")
         ));
 
         assertFailure(
                 dispatcher.execute(command(
                         SYSTEM,
-                        "shared.inspect",
+                        extensionName("shared.missing"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -210,7 +207,6 @@ class WorkerCommandDispatcherTest {
     void handlerFailureMapsToEventExecutionFailed() {
         WorkerCommandDispatcher throwing = dispatcher(List.of(
                 mapDefinition(
-                        "TASK",
                         "test.observe",
                         parameters -> {
                             throw new IllegalStateException("failed");
@@ -220,7 +216,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 throwing.execute(command(
                         TASK,
-                        "test.observe",
+                        extensionName("test.observe"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -232,12 +228,10 @@ class WorkerCommandDispatcherTest {
     void emptyOrNullHandlerResultMapsToEventResultInvalid() {
         WorkerCommandDispatcher empty = dispatcher(List.of(
                 mapDefinition(
-                        "TASK",
                         "test.empty",
                         parameters -> ""
                 ),
                 mapDefinition(
-                        "TASK",
                         "test.null",
                         parameters -> null
                 )
@@ -246,7 +240,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 empty.execute(command(
                         TASK,
-                        "test.empty",
+                        extensionName("test.empty"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -255,7 +249,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 empty.execute(command(
                         TASK,
-                        "test.null",
+                        extensionName("test.null"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -266,8 +260,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void explicitWorkerExceptionCodeIsPreserved() {
         WorkerCommandDispatcher resolverFailure = dispatcher(List.of(
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "test.resolve",
                         payload -> {
                             throw new WorkerException(
@@ -281,8 +274,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
         WorkerCommandDispatcher handlerFailure = dispatcher(List.of(
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "test.handle",
                         WorkerEventParameterResolvers.string(),
                         ignored -> {
@@ -299,7 +291,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 resolverFailure.execute(command(
                         TASK,
-                        "test.resolve",
+                        extensionName("test.resolve"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -308,7 +300,7 @@ class WorkerCommandDispatcherTest {
         assertFailure(
                 handlerFailure.execute(command(
                         TASK,
-                        "test.handle",
+                        extensionName("test.handle"),
                         "{}",
                         ACTIVE_DEADLINE
                 )),
@@ -333,8 +325,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void customResolverReceivesTheOriginalPayloadString() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
-                WorkerEventDefinition.of(
-                        "TASK",
+                WorkerEventDefinition.extension(
                         "test.raw",
                         WorkerEventParameterResolvers.string(),
                         payload -> "\"" + payload + "\""
@@ -343,7 +334,7 @@ class WorkerCommandDispatcherTest {
 
         WorkerCommandOutcome result = dispatcher.execute(command(
                 TASK,
-                "test.raw",
+                extensionName("test.raw"),
                 "not-json",
                 ACTIVE_DEADLINE
         )).orElseThrow();
@@ -357,7 +348,6 @@ class WorkerCommandDispatcherTest {
         AtomicBoolean executed = new AtomicBoolean();
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
                 mapDefinition(
-                        "TASK",
                         "test.observe",
                         parameters -> {
                             executed.set(true);
@@ -368,7 +358,7 @@ class WorkerCommandDispatcherTest {
 
         Optional<WorkerCommandOutcome> result = dispatcher.execute(command(
                 TASK,
-                "test.observe",
+                extensionName("test.observe"),
                 "{}",
                 EXPIRED_DEADLINE
         ));
@@ -378,26 +368,22 @@ class WorkerCommandDispatcherTest {
     }
 
     private static WorkerEventDefinition<Map<String, Object>> definition(
-            String src,
-            String eventCode,
+            String capabilityName,
             String result
     ) {
         return mapDefinition(
-                src,
-                eventCode,
+                capabilityName,
                 parameters -> result
         );
     }
 
     private static WorkerEventDefinition<Map<String, Object>>
     mapDefinition(
-            String src,
-            String eventCode,
+            String capabilityName,
             WorkerEventHandler<Map<String, Object>> handler
     ) {
-        return WorkerEventDefinition.of(
-                src,
-                eventCode,
+        return WorkerEventDefinition.extension(
+                capabilityName,
                 WorkerEventParameterResolvers.jsonMap(),
                 handler
         );
@@ -436,6 +422,10 @@ class WorkerCommandDispatcherTest {
                 payload,
                 "result-context"
         );
+    }
+
+    private static String extensionName(String capabilityName) {
+        return "extension.worker." + capabilityName;
     }
 
     private static void assertFailure(

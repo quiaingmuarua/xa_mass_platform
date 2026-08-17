@@ -16,10 +16,16 @@ import java.util.Map;
 
 final class PhoneNumberWorkerEvents {
 
-    static final String E164_EVENT_CODE = "phonenumber.e164";
+    static final String E164_EVENT_CODE =
+            "extension.worker.phonenumber.e164";
     static final String COUNTRY_EVENT_CODE =
-            "phonenumber.country";
+            "extension.worker.phonenumber.country";
     static final String ORIGINAL_CARRIER_EVENT_CODE =
+            "extension.worker.phonenumber.original-carrier";
+
+    private static final String E164_CAPABILITY = "phonenumber.e164";
+    private static final String COUNTRY_CAPABILITY = "phonenumber.country";
+    private static final String ORIGINAL_CARRIER_CAPABILITY =
             "phonenumber.original-carrier";
 
     private static final PhoneNumberUtil PHONE_NUMBERS =
@@ -32,25 +38,24 @@ final class PhoneNumberWorkerEvents {
 
     static List<WorkerEventDefinition<?>> definitions() {
         return List.of(
-                definition(E164_EVENT_CODE, PhoneNumberWorkerEvents::e164),
+                definition(E164_CAPABILITY, PhoneNumberWorkerEvents::e164),
                 definition(
-                        COUNTRY_EVENT_CODE,
+                        COUNTRY_CAPABILITY,
                         PhoneNumberWorkerEvents::country
                 ),
                 definition(
-                        ORIGINAL_CARRIER_EVENT_CODE,
+                        ORIGINAL_CARRIER_CAPABILITY,
                         PhoneNumberWorkerEvents::originalCarrier
                 )
         );
     }
 
     private static WorkerEventDefinition<Map<String, Object>> definition(
-            String eventCode,
+            String capabilityName,
             WorkerEventHandler<Map<String, Object>> handler
     ) {
-        return WorkerEventDefinition.of(
-                "TASK",
-                eventCode,
+        return WorkerEventDefinition.extension(
+                capabilityName,
                 WorkerEventParameterResolvers.jsonMap(),
                 handler
         );

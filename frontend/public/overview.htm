@@ -621,7 +621,7 @@
           <article class="card worker">
             <span class="owner">WORKER</span>
             <h3>Resolve & execute</h3>
-            <p>通过 <code>(src, messageType)</code> 找到静态Definition，执行resolver与handler，并生成Result evidence。</p>
+            <p>通过完整的 <code>messageType Event Name</code> 找到静态Definition，执行resolver与handler，并生成Result evidence；<code>src</code>只保留调用来源证据。</p>
           </article>
         </div>
 
@@ -812,7 +812,8 @@ Adapter
   ADAPTER target -> fixed local handler
 
 Worker
-  (src, messageType) -> immutable Definition -> resolver -> handler
+  full messageType Event Name -> immutable Definition -> resolver -> handler
+  src -> invocation evidence only
 
 DeliveryReport
   producer src + sourceId + destination + outcome + opaque payload/forward</pre>

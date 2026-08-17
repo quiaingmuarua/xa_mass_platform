@@ -50,7 +50,7 @@ public class AndroidWebSocketCompositionTest {
         DeliveryCommand command = DeliveryCommand.create(
                 DeliveryEndpoint.TASK,
                 DeliveryEndpoint.WORKER,
-                "test.observe",
+                "extension.worker.test.observe",
                 System.currentTimeMillis() + 30_000,
                 "{\"value\":\"visible\"}",
                 "result-context"
@@ -118,8 +118,7 @@ public class AndroidWebSocketCompositionTest {
             );
             WorkerCommandDispatcher dispatcher =
                     WorkerCommandDispatcher.forWorker(List.of(
-                            WorkerEventDefinition.of(
-                                    "TASK",
+                            WorkerEventDefinition.extension(
                                     "test.observe",
                                     WorkerEventParameterResolvers
                                             .jsonMap(),

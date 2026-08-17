@@ -58,12 +58,19 @@ internal UTF-8 line Client. `POLLING` remains a separate request-response
 assembly.
 
 The Definition collection is an extension set, not the Worker's complete
-registry. Core composes its currently empty built-in set before these business
-extensions and rejects duplicate `(src, eventCode)` keys. Connection close is
-handled by Transport rather than registered as a Definition. The common overload
-omits both extensions and options; another overload accepts extensions with
-default connection options. `create()` assembles local resources but performs
-no Register, Bind, or connection I/O until `start()`.
+Handler map. Assembly delegates to Core's static Definition assembly, which adds
+`platform.worker.probe`, `platform.worker.properties.snapshot` and
+`platform.worker.events.snapshot` before the defensive copy of business
+extensions and rejects duplicate full Event Names. Host code registers only
+short capability names through `WorkerEventDefinition.extension(...)`; the
+internal map uses their `extension.worker.*` Event Names. Properties remain
+live, while the sorted Event snapshot is fixed for the Worker process lifetime.
+Neither exposes the assembly-owned `clientWorkerKey`. Connection close is
+handled by Transport rather than registered as a Definition. The common
+overload omits both extensions and options; another overload accepts extensions
+with default connection options.
+`create()` assembles local resources but performs no Register, Bind, or
+connection I/O until `start()`.
 
 `start()` submits one Preparation to the Worker's internal Control executor
 and returns immediately:

@@ -94,7 +94,7 @@ class ScenarioWorkersTest {
         assertThat(prepared.group().config().workerGroupId())
                 .isEqualTo(GROUP);
         assertThat(prepared.group().definitionExtensions())
-                .extracting(WorkerEventDefinition::eventCode)
+                .extracting(WorkerEventDefinition::eventName)
                 .containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
         assertThat(prepared.replicas())
                 .extracting(ScenarioWorkers.PreparedReplica::clientWorkerKey)
@@ -305,7 +305,7 @@ class ScenarioWorkersTest {
     private static Map<String, WorkerEventDefinition<?>> definitions() {
         WorkerEventDefinition<?> definition =
                 StringUtilityWorkerEvents.definitions().get(0);
-        return Map.of(definition.eventCode(), definition);
+        return Map.of(definition.eventName(), definition);
     }
 
     private static String config(String eventCode) {

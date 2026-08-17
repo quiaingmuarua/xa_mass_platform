@@ -16,9 +16,14 @@ import java.util.function.Function;
 
 final class StringUtilityWorkerEvents {
 
-    static final String MD5_EVENT_CODE = "string.md5";
-    static final String SHA1_EVENT_CODE = "string.sha1";
+    static final String MD5_EVENT_CODE = "extension.worker.string.md5";
+    static final String SHA1_EVENT_CODE = "extension.worker.string.sha1";
     static final String BASE64_ENCODE_EVENT_CODE =
+            "extension.worker.string.base64.encode";
+
+    private static final String MD5_CAPABILITY = "string.md5";
+    private static final String SHA1_CAPABILITY = "string.sha1";
+    private static final String BASE64_ENCODE_CAPABILITY =
             "string.base64.encode";
 
     private StringUtilityWorkerEvents() {
@@ -27,17 +32,17 @@ final class StringUtilityWorkerEvents {
     static List<WorkerEventDefinition<?>> definitions() {
         return List.of(
                 definition(
-                        MD5_EVENT_CODE,
+                        MD5_CAPABILITY,
                         "md5",
                         value -> digest("MD5", value)
                 ),
                 definition(
-                        SHA1_EVENT_CODE,
+                        SHA1_CAPABILITY,
                         "sha1",
                         value -> digest("SHA-1", value)
                 ),
                 definition(
-                        BASE64_ENCODE_EVENT_CODE,
+                        BASE64_ENCODE_CAPABILITY,
                         "base64",
                         value -> Base64.getEncoder().encodeToString(
                                 value.getBytes(StandardCharsets.UTF_8)
@@ -47,15 +52,14 @@ final class StringUtilityWorkerEvents {
     }
 
     private static WorkerEventDefinition<Map<String, Object>> definition(
-            String eventCode,
+            String capabilityName,
             String outputField,
             Function<String, String> operation
     ) {
         WorkerEventHandler<Map<String, Object>> handler = payload ->
                 execute(payload, outputField, operation);
-        return WorkerEventDefinition.of(
-                "TASK",
-                eventCode,
+        return WorkerEventDefinition.extension(
+                capabilityName,
                 WorkerEventParameterResolvers.jsonMap(),
                 handler
         );

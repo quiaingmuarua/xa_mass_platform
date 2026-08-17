@@ -257,6 +257,60 @@ class NettyWorkerServerTest {
     }
 
     @Test
+    void webSocketControlCloseUsesNormalClosure() throws Exception {
+        int port = availablePort();
+        RecordingStringHandler handler = new RecordingStringHandler();
+        NettyWorkerServer server = Protocol.WEBSOCKET.server(
+                port,
+                DEFAULT_TIMEOUT
+        );
+        server.start(handler);
+        WebSocketProbe probe = new WebSocketProbe();
+        WebSocket socket = openWebSocket(port, probe);
+        try {
+            socket.sendText("identify", true).join();
+            assertThat(handler.received.await(2, TimeUnit.SECONDS)).isTrue();
+
+            server.closeConnection(
+                    handler.channel,
+                    AdapterConnectionCloseReason.CONTROL_REQUEST
+            );
+
+            assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(probe.closeStatusCode).isEqualTo(1000);
+        } finally {
+            socket.abort();
+            server.close();
+        }
+    }
+
+    @Test
+    void socketControlCloseUsesTcpClose() throws Exception {
+        int port = availablePort();
+        RecordingStringHandler handler = new RecordingStringHandler();
+        NettyWorkerServer server = Protocol.SOCKET.server(
+                port,
+                DEFAULT_TIMEOUT
+        );
+        server.start(handler);
+        try (SocketPeer peer = new SocketPeer(
+                new Socket("127.0.0.1", port)
+        )) {
+            peer.send("identify");
+            assertThat(handler.received.await(2, TimeUnit.SECONDS)).isTrue();
+
+            server.closeConnection(
+                    handler.channel,
+                    AdapterConnectionCloseReason.CONTROL_REQUEST
+            );
+
+            assertThat(peer.awaitClosed()).isTrue();
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
     void socketOwnsCrLfInputAndAlwaysWritesLf() throws Exception {
         int port = availablePort();
         RecordingStringHandler handler = new RecordingStringHandler();

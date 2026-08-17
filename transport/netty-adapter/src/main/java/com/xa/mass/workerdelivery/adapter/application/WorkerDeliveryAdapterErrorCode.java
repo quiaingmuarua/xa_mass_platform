@@ -48,6 +48,10 @@ public enum WorkerDeliveryAdapterErrorCode {
     CONTROL_EVENT_UNSUPPORTED(
             23005,
             "Adapter control event is unsupported"
+    ),
+    CONTROL_EVENT_EXECUTION_FAILED(
+            23006,
+            "Adapter control event execution failed"
     );
 
     private final int code;

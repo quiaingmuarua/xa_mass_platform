@@ -40,11 +40,16 @@ application package and WorkerGroup coordinate. A valid Worker ID skips
 Register on later starts. The Properties function cannot override the
 reserved `clientWorkerKey` field.
 
-The supplied Definitions are business extensions, not a complete registry.
-Core appends their defensive copy after its currently empty built-in set and
-rejects duplicate `(src, eventCode)` keys. Connection close is handled by
-Transport rather than registered as a Definition. Definitions remain immutable
-for the lifetime of the Worker.
+The supplied Definitions are business extensions, not a complete Handler map.
+Assembly delegates to Core's static Definition assembly, which adds
+`platform.worker.probe`, `platform.worker.properties.snapshot` and
+`platform.worker.events.snapshot` before the defensive copy and rejects
+duplicate full Event Names. Host code registers only short capability names
+through `WorkerEventDefinition.extension(...)`; the internal map uses their
+`extension.worker.*` Event Names. Properties remain live, while the sorted
+Event snapshot is fixed for the Worker process lifetime. Neither exposes the
+assembly-owned `clientWorkerKey`. Connection close is handled by Transport
+rather than registered as a Definition.
 
 Only one active `AndroidWorker` for a package and WorkerGroup is allowed in
 one process. An `Application`, Service, or another Host owner decides its

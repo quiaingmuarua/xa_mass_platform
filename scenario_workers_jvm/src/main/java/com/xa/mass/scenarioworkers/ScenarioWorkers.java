@@ -5,8 +5,6 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryEndpoint;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +16,8 @@ import java.util.Objects;
 public final class ScenarioWorkers implements AutoCloseable {
 
     private static final int WORKER_START_FAILED = 14004;
+    private static final String EXTENSION_WORKER_EVENT_PREFIX =
+            "extension.worker.";
 
     private final URI runtimeApiBaseUrl;
     private final List<GroupAssembly> groups;
@@ -272,13 +272,13 @@ public final class ScenarioWorkers implements AutoCloseable {
     ) {
         for (WorkerEventDefinition<?> definition : definitions) {
             WorkerEventDefinition<?> existing = target.putIfAbsent(
-                    definition.eventCode(),
+                    definition.eventName(),
                     definition
             );
             if (existing != null) {
                 throw new IllegalArgumentException(
                         "Duplicate Scenario Worker eventCode: "
-                                + definition.eventCode()
+                                + definition.eventName()
                 );
             }
         }
@@ -301,16 +301,15 @@ public final class ScenarioWorkers implements AutoCloseable {
                 );
             }
             if (definition == null
-                    || !eventCode.equals(definition.eventCode())) {
+                    || !eventCode.equals(definition.eventName())) {
                 throw new IllegalArgumentException(
                         "Definition key does not match eventCode: "
                                 + eventCode
                 );
             }
-            if (!DeliveryEndpoint.TASK.wireValue()
-                    .equals(definition.src())) {
+            if (!eventCode.startsWith(EXTENSION_WORKER_EVENT_PREFIX)) {
                 throw new IllegalArgumentException(
-                        "Scenario Definition src must be TASK: "
+                        "Scenario Definition must be a Worker extension: "
                                 + eventCode
                 );
             }

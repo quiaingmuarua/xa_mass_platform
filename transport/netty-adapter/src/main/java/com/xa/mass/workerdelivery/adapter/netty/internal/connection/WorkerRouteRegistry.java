@@ -1,9 +1,12 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import io.netty.channel.Channel;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -143,6 +146,39 @@ public final class WorkerRouteRegistry {
         }
     }
 
+    public Map<String, Boolean> connectionStates(List<String> workerIds) {
+        List<String> requiredWorkerIds = requireWorkerIds(workerIds);
+        Map<String, Boolean> states = new LinkedHashMap<>();
+        synchronized (routeLock) {
+            for (String workerId : requiredWorkerIds) {
+                Channel channel = activeChannels.get(workerId);
+                states.put(
+                        workerId,
+                        verifiedWorkerIds.contains(workerId)
+                                && channel != null
+                                && channel.isActive()
+                );
+            }
+        }
+        return Collections.unmodifiableMap(states);
+    }
+
+    public Map<String, Channel> detachActiveChannels(
+            List<String> workerIds
+    ) {
+        List<String> requiredWorkerIds = requireWorkerIds(workerIds);
+        Map<String, Channel> detached = new LinkedHashMap<>();
+        synchronized (routeLock) {
+            for (String workerId : requiredWorkerIds) {
+                Channel channel = activeChannels.remove(workerId);
+                if (channel != null) {
+                    detached.put(workerId, channel);
+                }
+            }
+        }
+        return Collections.unmodifiableMap(detached);
+    }
+
     public boolean deactivate(String workerId, Channel expectedChannel) {
         String requiredWorkerId = requireWorkerId(workerId);
         Channel requiredChannel = Objects.requireNonNull(
@@ -197,6 +233,26 @@ public final class WorkerRouteRegistry {
             throw new IllegalArgumentException("workerId must be non-blank");
         }
         return workerId;
+    }
+
+    private static List<String> requireWorkerIds(List<String> workerIds) {
+        if (workerIds == null
+                || workerIds.isEmpty()
+                || workerIds.size() > 100) {
+            throw new IllegalArgumentException(
+                    "workerIds must contain between 1 and 100 entries"
+            );
+        }
+        Set<String> unique = new HashSet<>();
+        for (String workerId : workerIds) {
+            String requiredWorkerId = requireWorkerId(workerId);
+            if (!unique.add(requiredWorkerId)) {
+                throw new IllegalArgumentException(
+                        "workerIds must be unique"
+                );
+            }
+        }
+        return List.copyOf(workerIds);
     }
 
     public enum IdentityAdmissionKind {

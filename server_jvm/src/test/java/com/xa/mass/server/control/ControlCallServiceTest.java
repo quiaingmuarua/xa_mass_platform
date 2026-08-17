@@ -109,6 +109,7 @@ class ControlCallServiceTest {
                 100
         ).get("worker-ok");
         assertThat(command).isNotNull();
+        assertThat(command.messageType()).isEqualTo("device.custom-event");
         assertThat(command.payload()).isEqualTo(
                 "{\"workerId\":\"worker-ok\"}"
         );
@@ -295,15 +296,15 @@ class ControlCallServiceTest {
     }
 
     @Test
-    void omittedWorkerCoordinatesCallTheAdapterWithoutWorkerOwners() {
+    void arbitraryAdapterEventPassesThroughWithoutWorkerOwners() {
         DeferredResult<ResponseEntity<ControlBatchCallResponse>> deferred =
                 service.call(
                         ADAPTER_ID,
                         new ControlCallRequest(
                                 null,
                                 null,
-                                "adapter.probe",
-                                "null",
+                                "adapter.vendor.inspect",
+                                "{\"detail\":true}",
                                 3_000L
                         )
                 );
@@ -311,13 +312,17 @@ class ControlCallServiceTest {
                 ADAPTER_ID,
                 100
         ).get(ControlCallRegistry.ADAPTER_TARGET_ADDRESS);
+        assertThat(command.messageType()).isEqualTo(
+                "adapter.vendor.inspect"
+        );
+        assertThat(command.payload()).isEqualTo("{\"detail\":true}");
         DeliveryReport report = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 ADAPTER_ID,
                 DeliveryEndpoint.SYSTEM,
-                "adapter.probe",
-                "200",
-                "{\"reachable\":true}",
+                "adapter.vendor.inspect",
+                "23005",
+                "unsupported",
                 command.forward()
         );
         service.completeReports(ADAPTER_ID, List.of(report));
@@ -327,6 +332,8 @@ class ControlCallServiceTest {
         assertThat(response.results()).containsOnlyKeys(ADAPTER_ID);
         assertThat(response.results().get(ADAPTER_ID).status())
                 .isEqualTo(ControlTargetStatus.OBSERVED);
+        assertThat(response.results().get(ADAPTER_ID).outcomeCode())
+                .isEqualTo("23005");
         verifyNoInteractions(catalog, scores, bindings);
     }
 
@@ -347,7 +354,7 @@ class ControlCallServiceTest {
         return new ControlCallRequest(
                 GROUP_ID,
                 workerPayloads,
-                "worker.properties.snapshot",
+                "device.custom-event",
                 null,
                 3_000L
         );
@@ -394,7 +401,7 @@ class ControlCallServiceTest {
                 DeliveryEndpoint.WORKER,
                 workerId,
                 DeliveryEndpoint.SYSTEM,
-                "worker.properties.snapshot",
+                "device.custom-event",
                 outcomeCode,
                 "{\"battery\":87}",
                 forward

@@ -14,6 +14,7 @@ import android.content.Context;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
@@ -54,7 +55,8 @@ public class AndroidWorkerTest {
     private static final String WORKER_GROUP_ID = "android-demo-workers";
     private static final String WORKER_ID =
             "server-issued-worker-id";
-    private static final String EVENT_CODE = "test.observe";
+    private static final String EVENT_CODE =
+            "extension.worker.test.observe";
 
     private Application application;
     private MockWebServer server;
@@ -287,6 +289,24 @@ public class AndroidWorkerTest {
     }
 
     @Test
+    public void hostCannotOverrideDefaultManagementEvents() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> AndroidWorker.create(
+                        application,
+                        URI.create(server.url("/").toString()),
+                        WORKER_GROUP_ID,
+                        context -> properties.get(),
+                        List.of(WorkerEventDefinition.extension(
+                                WorkerManagementEventDefinitions.PROBE_EVENT,
+                                payload -> null,
+                                ignored -> "null"
+                        ))
+                )
+        );
+    }
+
+    @Test
     public void onlyOneActiveWorkerPerApplicationAndGroup() throws Exception {
         enqueueRegister();
         enqueueBind();
@@ -411,9 +431,8 @@ public class AndroidWorkerTest {
                 URI.create(server.url("/").toString()),
                 WORKER_GROUP_ID,
                 provider,
-                List.of(WorkerEventDefinition.of(
-                        "TASK",
-                        EVENT_CODE,
+                List.of(WorkerEventDefinition.extension(
+                        "test.observe",
                         WorkerEventParameterResolvers.jsonMap(),
                         handler
                 )),

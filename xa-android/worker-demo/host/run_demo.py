@@ -13,9 +13,12 @@ from urllib.request import Request, urlopen
 
 WORKER_GROUP_ID = "android-demo-workers"
 CAPABILITY_CALLS = (
-    ("android.state.read", {}),
-    ("android.battery.read", {}),
-    ("android.string.digest", {"algorithm": "MD5", "value": "hello"}),
+    ("extension.worker.android.state.read", {}),
+    ("extension.worker.android.battery.read", {}),
+    (
+        "extension.worker.android.string.digest",
+        {"algorithm": "MD5", "value": "hello"},
+    ),
 )
 EVENT_CODES = tuple(event_code for event_code, _ in CAPABILITY_CALLS)
 

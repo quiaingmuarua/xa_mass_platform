@@ -30,7 +30,8 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
     private static final String JSON_MEDIA_TYPE = "application/json";
     private static final String JSON_RESPONSE_TYPE =
             "application/json; charset=utf-8";
-    private static final String TASK = "TASK";
+    private static final String EXTENSION_WORKER_EVENT_PREFIX =
+            "extension.worker.";
     private static final String LOCAL_FORWARD = "capability-http";
     private static final String CALL_PREFIX = "/events/";
     private static final String CALL_SUFFIX = ":call";
@@ -48,7 +49,7 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
         List<WorkerEventDefinition<?>> copied = copyDefinitions(definitions);
         List<String> codes = new ArrayList<>(copied.size());
         for (WorkerEventDefinition<?> definition : copied) {
-            codes.add(definition.eventCode());
+            codes.add(definition.eventName());
         }
         eventCodes = Collections.unmodifiableList(codes);
         eventCodeSet = Collections.unmodifiableSet(
@@ -281,15 +282,17 @@ final class CapabilityNanoHttpServer extends NanoHTTPD {
                     definition,
                     "definition"
             );
-            if (!TASK.equals(resolved.src())) {
+            if (!resolved.eventName().startsWith(
+                    EXTENSION_WORKER_EVENT_PREFIX
+            )) {
                 throw new IllegalArgumentException(
-                        "Capability HTTP accepts only TASK definitions"
+                        "Capability HTTP accepts only Worker extensions"
                 );
             }
-            if (!eventCodes.add(resolved.eventCode())) {
+            if (!eventCodes.add(resolved.eventName())) {
                 throw new IllegalArgumentException(
                         "Duplicate capability eventCode: "
-                                + resolved.eventCode()
+                                + resolved.eventName()
                 );
             }
             copied.add(resolved);
