@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1.control;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -79,6 +80,7 @@ class ControlCallControllerTest {
         ControlCallProperties properties = new ControlCallProperties(
                 3_000,
                 10_000,
+                1_000,
                 1_000,
                 10_000
         );
@@ -188,10 +190,7 @@ class ControlCallControllerTest {
                         .content("{\"limit\":100}"))
                 .andExpect(status().isOk())
                 .andReturn();
-        Map<String, Object> command = command(
-                consumed,
-                ControlCallRegistry.ADAPTER_TARGET_ADDRESS
-        );
+        Map<String, Object> command = onlyCommand(consumed);
         mockMvc.perform(post(controlPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(resultBatch(List.of(encodedResult(
@@ -285,6 +284,19 @@ class ControlCallControllerTest {
         Map<String, Object> commands =
                 (Map<String, Object>) body.get("commands");
         return (Map<String, Object>) commands.get(address);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> onlyCommand(
+            MvcResult consumed
+    ) throws Exception {
+        Map<String, Object> body = Jsons.parseObject(
+                consumed.getResponse().getContentAsString()
+        );
+        Map<String, Object> commands =
+                (Map<String, Object>) body.get("commands");
+        assertThat(commands).hasSize(1);
+        return (Map<String, Object>) commands.values().iterator().next();
     }
 
     private static String workerBatchRequest(List<String> workerIds) {

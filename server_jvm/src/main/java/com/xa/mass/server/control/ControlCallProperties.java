@@ -10,7 +10,8 @@ import org.springframework.validation.annotation.Validated;
 public record ControlCallProperties(
         @Min(1) @Max(10_000) long defaultWaitTimeoutMillis,
         @Min(1) @Max(10_000) long maxWaitTimeoutMillis,
-        @Min(1) int maxCommandsPerAdapter,
+        @Min(1) int maxAdapterCommandsPerAdapter,
+        @Min(1) int maxWorkerCommandsPerAdapter,
         @Min(1) int maxPendingCalls
 ) {
     public ControlCallProperties {

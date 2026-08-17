@@ -13,11 +13,16 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class WorkerDeliveryService {
+
+    private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerDeliveryService.class.getName()
@@ -75,31 +80,93 @@ public final class WorkerDeliveryService {
     ) {
         String operation = "workerDelivery.consumeCommands";
         requireAdapterBatchIdentity(endpointManagerId, operation);
+        List<DeliveryCommand> adapterCommands;
         try {
-            Map<String, DeliveryCommand> controlCommands =
-                    controlCalls.consume(endpointManagerId, limit);
-            if (!controlCommands.isEmpty()) {
-                return controlCommands;
-            }
-            Map<String, DeliveryCommand> commands =
-                    commandRuntime.consumeWorkerCommands(
-                            endpointManagerId,
-                            limit
-                    );
-            long nowMillis = System.currentTimeMillis();
-            Map<String, DeliveryCommand> active =
-                    new LinkedHashMap<>();
-            commands.forEach((workerId, command) -> {
-                if (command.executeBeforeMillis() > nowMillis) {
-                    active.put(workerId, command);
-                }
-            });
-            return Map.copyOf(active);
+            adapterCommands = controlCalls.consumeAdapterCommands(
+                    endpointManagerId,
+                    limit
+            );
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
             throw unavailable(operation, error);
         }
+
+        int remaining = limit - adapterCommands.size();
+        Map<String, DeliveryCommand> workerCommands = Map.of();
+        if (remaining > 0) {
+            try {
+                workerCommands = controlCalls.consumeWorkerCommands(
+                        endpointManagerId,
+                        remaining
+                );
+                if (workerCommands.isEmpty()) {
+                    workerCommands = activeCommands(
+                            commandRuntime.consumeWorkerCommands(
+                                    endpointManagerId,
+                                    remaining
+                            )
+                    );
+                }
+            } catch (RuntimeException error) {
+                if (adapterCommands.isEmpty()) {
+                    if (error instanceof ServerException serverError) {
+                        throw serverError;
+                    }
+                    throw unavailable(operation, error);
+                }
+                logLowerPrioritySourceFailure(endpointManagerId, error);
+                workerCommands = Map.of();
+            }
+        }
+        return combineCommands(adapterCommands, workerCommands);
+    }
+
+    private static Map<String, DeliveryCommand> activeCommands(
+            Map<String, DeliveryCommand> commands
+    ) {
+        long nowMillis = System.currentTimeMillis();
+        Map<String, DeliveryCommand> active = new LinkedHashMap<>();
+        commands.forEach((workerId, command) -> {
+            if (command.executeBeforeMillis() > nowMillis) {
+                active.put(workerId, command);
+            }
+        });
+        return active;
+    }
+
+    private static Map<String, DeliveryCommand> combineCommands(
+            List<DeliveryCommand> adapterCommands,
+            Map<String, DeliveryCommand> workerCommands
+    ) {
+        Map<String, DeliveryCommand> combined = new LinkedHashMap<>();
+        Set<String> occupied = new HashSet<>(workerCommands.keySet());
+        int ordinal = 0;
+        for (DeliveryCommand command : adapterCommands) {
+            String entryKey;
+            do {
+                entryKey = OPAQUE_COMMAND_ENTRY_PREFIX + ordinal++;
+            } while (occupied.contains(entryKey));
+            occupied.add(entryKey);
+            combined.put(entryKey, command);
+        }
+        combined.putAll(workerCommands);
+        return Collections.unmodifiableMap(combined);
+    }
+
+    private static void logLowerPrioritySourceFailure(
+            String endpointManagerId,
+            RuntimeException error
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "operation={0} endpointManagerId={1} failureType={2} "
+                        + "message={3}",
+                "workerDelivery.consumeWorkerSource",
+                endpointManagerId,
+                error.getClass().getName(),
+                "Returning already-consumed Adapter Commands"
+        );
     }
 
     public void appendWorkerResult(

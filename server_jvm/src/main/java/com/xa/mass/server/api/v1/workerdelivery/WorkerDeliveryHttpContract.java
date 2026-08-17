@@ -60,8 +60,8 @@ public final class WorkerDeliveryHttpContract {
         ) {
             Map<String, WorkerCommandResponse> response =
                     new LinkedHashMap<>();
-            commands.forEach((workerId, command) -> response.put(
-                    workerId,
+            commands.forEach((entryKey, command) -> response.put(
+                    entryKey,
                     WorkerCommandResponse.from(command)
             ));
             return new WorkerCommandConsumeResponse(

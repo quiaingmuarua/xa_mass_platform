@@ -202,15 +202,24 @@ public final class ControlCallService {
         return registerBatch(timeoutMillis, plans);
     }
 
-    public Map<String, DeliveryCommand> consume(
+    public List<DeliveryCommand> consumeAdapterCommands(
             String adapterId,
             int limit
     ) {
-        requireControlAdapter(adapterId);
-        if (limit <= 0 || limit > MAX_CONSUME_LIMIT) {
-            throw invalid("consume limit must be within 1..100");
-        }
-        return registry.consume(
+        requireControlConsume(adapterId, limit);
+        return registry.consumeAdapterCommands(
+                adapterId,
+                limit,
+                System.currentTimeMillis()
+        );
+    }
+
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
+            String adapterId,
+            int limit
+    ) {
+        requireControlConsume(adapterId, limit);
+        return registry.consumeWorkerCommands(
                 adapterId,
                 limit,
                 System.currentTimeMillis()
@@ -353,6 +362,13 @@ public final class ControlCallService {
             throw invalid("Polling endpoints do not support Control Calls");
         }
         return endpoint;
+    }
+
+    private void requireControlConsume(String adapterId, int limit) {
+        requireControlAdapter(adapterId);
+        if (limit <= 0 || limit > MAX_CONSUME_LIMIT) {
+            throw invalid("consume limit must be within 1..100");
+        }
     }
 
     private long resolveTimeout(Long requested) {

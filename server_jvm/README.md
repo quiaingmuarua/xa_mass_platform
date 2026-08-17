@@ -69,6 +69,14 @@ enumerate event support or convert an unknown event into an HTTP admission
 error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a CONTROL_ONLY event whitelist.
+For each configured Adapter, Adapter-targeted calls enter a bounded FIFO and
+Worker-targeted calls enter a separate bounded `workerId` single-slot Hash.
+Adapter Commands are consumed first. Any remaining response capacity comes
+from the CONTROL_ONLY Worker Hash when it yields at least one live command, or
+from the TASK Worker Hash only when CONTROL_ONLY yields none. The response may
+therefore contain Adapter Commands plus one Worker authority, never both Worker
+authorities. Only a Worker Command map key is its workerId; Adapter Command keys
+are response-local and opaque.
 Exact route schemas are available from the running Server:
 
 ```text
@@ -131,6 +139,8 @@ Redis prefix                   default
 Adapter instances              none
 WorkerGroup RPC wait           30s default / 60s maximum
 CONTROL_ONLY wait              3s default / 10s maximum
+Adapter Control FIFO capacity  1000 per Adapter
+Worker Control Hash capacity   1000 targets per Adapter
 ```
 
 The default Adapter section defines only remote API connection defaults. An

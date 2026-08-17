@@ -38,7 +38,8 @@ xa:
     control-call:
       default-wait-timeout-millis: 3000
       max-wait-timeout-millis: 10000
-      max-commands-per-adapter: 1000
+      max-adapter-commands-per-adapter: 1000
+      max-worker-commands-per-adapter: 1000
       max-pending-calls: 10000
     worker-delivery:
       adapter:

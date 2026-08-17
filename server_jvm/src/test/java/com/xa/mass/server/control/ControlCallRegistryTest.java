@@ -39,8 +39,8 @@ class ControlCallRegistryTest {
         );
 
         assertThat(handle.completion().toCompletableFuture()).isNotDone();
-        registry.consume("adapter-1", 10, now());
-        registry.consume("adapter-2", 10, now());
+        registry.consumeWorkerCommands("adapter-1", 10, now());
+        registry.consumeWorkerCommands("adapter-2", 10, now());
         assertThat(registry.completeReports(
                 "adapter-2",
                 List.of(workerReport(
@@ -97,7 +97,7 @@ class ControlCallRegistryTest {
                 ))
         );
 
-        Map<String, DeliveryCommand> consumed = registry.consume(
+        Map<String, DeliveryCommand> consumed = registry.consumeWorkerCommands(
                 "adapter-1",
                 10,
                 now()
@@ -132,6 +132,198 @@ class ControlCallRegistryTest {
     }
 
     @Test
+    void adapterCommandsAccumulateAndConsumeInFifoOrder() {
+        ControlCallRegistry registry = registry(10, 10);
+        BatchHandle first = registry.registerBatch(
+                "batch-1",
+                List.of(adapterPlan("adapter-1", "call-1"))
+        );
+        BatchHandle second = registry.registerBatch(
+                "batch-2",
+                List.of(adapterPlan("adapter-1", "call-2"))
+        );
+
+        List<DeliveryCommand> commands = registry.consumeAdapterCommands(
+                "adapter-1",
+                10,
+                now()
+        );
+
+        assertThat(commands)
+                .extracting(DeliveryCommand::forward)
+                .containsExactly(
+                        ControlCallRegistry.FORWARD_PREFIX + "call-1",
+                        ControlCallRegistry.FORWARD_PREFIX + "call-2"
+                );
+        assertThat(first.completion().toCompletableFuture()).isNotDone();
+        assertThat(second.completion().toCompletableFuture()).isNotDone();
+
+        registry.completeReports(
+                "adapter-1",
+                List.of(
+                        adapterReport("call-1", "adapter-1"),
+                        adapterReport("call-2", "adapter-1")
+                )
+        );
+
+        assertThat(outcome(first).results().get("adapter-1"))
+                .isEqualTo(TargetOutcome.observed(
+                        "200",
+                        "{\"ok\":true}"
+                ));
+        assertThat(outcome(second).results().get("adapter-1"))
+                .isEqualTo(TargetOutcome.observed(
+                        "200",
+                        "{\"ok\":true}"
+                ));
+    }
+
+    @Test
+    void adapterListAndWorkerHashHaveIndependentCapacity() {
+        ControlCallRegistry registry = registry(1, 1, 10);
+        registry.registerBatch(
+                "adapter-batch",
+                List.of(adapterPlan("adapter-1", "adapter-call"))
+        );
+        registry.registerBatch(
+                "worker-batch",
+                List.of(workerPlan(
+                        "worker-1",
+                        "worker-call",
+                        "adapter-1"
+                ))
+        );
+
+        assertThatThrownBy(() -> registry.registerBatch(
+                "adapter-overflow",
+                List.of(adapterPlan("adapter-1", "adapter-overflow-call"))
+        )).isInstanceOfSatisfying(ServerException.class, error ->
+                assertThat(error.errorCode()).isEqualTo(
+                        ServerErrorCode.CONTROL_CALL_CAPACITY_EXCEEDED
+                ));
+        assertThatThrownBy(() -> registry.registerBatch(
+                "worker-overflow",
+                List.of(workerPlan(
+                        "worker-2",
+                        "worker-overflow-call",
+                        "adapter-1"
+                ))
+        )).isInstanceOfSatisfying(ServerException.class, error ->
+                assertThat(error.errorCode()).isEqualTo(
+                        ServerErrorCode.CONTROL_CALL_CAPACITY_EXCEEDED
+                ));
+
+        assertThat(registry.consumeAdapterCommands(
+                "adapter-1",
+                10,
+                now()
+        )).hasSize(1);
+        assertThat(registry.consumeWorkerCommands(
+                "adapter-1",
+                10,
+                now()
+        )).containsOnlyKeys("worker-1");
+    }
+
+    @Test
+    void adapterTimeoutAndCancelRemoveOnlyTheirFifoEntries() {
+        ControlCallRegistry registry = registry(10, 10);
+        registry.registerBatch(
+                "batch-first",
+                List.of(adapterPlan("adapter-1", "call-first"))
+        );
+        BatchHandle cancelled = registry.registerBatch(
+                "batch-cancelled",
+                List.of(adapterPlan("adapter-1", "call-cancelled"))
+        );
+        BatchHandle timedOut = registry.registerBatch(
+                "batch-timeout",
+                List.of(adapterPlan("adapter-1", "call-timeout"))
+        );
+        registry.registerBatch(
+                "batch-last",
+                List.of(adapterPlan("adapter-1", "call-last"))
+        );
+
+        registry.cancel("batch-cancelled");
+        registry.timeout("batch-timeout");
+
+        assertThat(cancelled.completion().toCompletableFuture())
+                .isCancelled();
+        assertThat(outcome(timedOut).results().get("adapter-1"))
+                .isEqualTo(TargetOutcome.unobserved(
+                        TargetOutcomeReason.TIMEOUT
+                ));
+        assertThat(registry.consumeAdapterCommands(
+                "adapter-1",
+                10,
+                now()
+        )).extracting(DeliveryCommand::forward).containsExactly(
+                ControlCallRegistry.FORWARD_PREFIX + "call-first",
+                ControlCallRegistry.FORWARD_PREFIX + "call-last"
+        );
+    }
+
+    @Test
+    void expiredAdapterEntryDoesNotConsumeTheResponseLimit() {
+        ControlCallRegistry registry = registry(10, 10);
+        BatchHandle expired = registry.registerBatch(
+                "batch-expired",
+                List.of(adapterPlan(
+                        "adapter-1",
+                        "call-expired",
+                        now() - 1
+                ))
+        );
+        registry.registerBatch(
+                "batch-live",
+                List.of(adapterPlan("adapter-1", "call-live"))
+        );
+
+        assertThat(registry.consumeAdapterCommands(
+                "adapter-1",
+                1,
+                now()
+        )).extracting(DeliveryCommand::forward).containsExactly(
+                ControlCallRegistry.FORWARD_PREFIX + "call-live"
+        );
+        assertThat(outcome(expired).results().get("adapter-1"))
+                .isEqualTo(TargetOutcome.unobserved(
+                        TargetOutcomeReason.TIMEOUT
+                ));
+    }
+
+    @Test
+    void workerHashConsumesABoundedNonRepeatingSubset() {
+        ControlCallRegistry registry = registry(10, 10);
+        registry.registerBatch(
+                "batch-1",
+                List.of(
+                        workerPlan("worker-1", "call-1", "adapter-1"),
+                        workerPlan("worker-2", "call-2", "adapter-1"),
+                        workerPlan("worker-3", "call-3", "adapter-1")
+                )
+        );
+
+        Map<String, DeliveryCommand> first =
+                registry.consumeWorkerCommands("adapter-1", 2, now());
+        Map<String, DeliveryCommand> second =
+                registry.consumeWorkerCommands("adapter-1", 2, now());
+
+        assertThat(first).hasSize(2);
+        assertThat(second).hasSize(1);
+        assertThat(first.keySet()).doesNotContainAnyElementsOf(second.keySet());
+        assertThat(java.util.stream.Stream.concat(
+                first.keySet().stream(),
+                second.keySet().stream()
+        ).toList()).containsExactlyInAnyOrder(
+                "worker-1",
+                "worker-2",
+                "worker-3"
+        );
+    }
+
+    @Test
     void timeoutCompletesConsumedAndUnconsumedTargetsAndRejectsLateResult() {
         ControlCallRegistry registry = registry(10, 10);
         BatchHandle handle = registry.registerBatch(
@@ -141,18 +333,31 @@ class ControlCallRegistryTest {
                         workerPlan("worker-2", "call-2", "adapter-1")
                 )
         );
-        assertThat(registry.consume("adapter-1", 1, now()))
-                .containsOnlyKeys("worker-1");
+        Map<String, DeliveryCommand> consumed =
+                registry.consumeWorkerCommands("adapter-1", 1, now());
+        assertThat(consumed).hasSize(1);
+        Map.Entry<String, DeliveryCommand> consumedEntry =
+                consumed.entrySet().iterator().next();
 
         registry.timeout("batch-1");
 
         assertThat(outcome(handle).results().values()).containsOnly(
                 TargetOutcome.unobserved(TargetOutcomeReason.TIMEOUT)
         );
-        assertThat(registry.consume("adapter-1", 10, now())).isEmpty();
+        assertThat(registry.consumeWorkerCommands(
+                "adapter-1",
+                10,
+                now()
+        )).isEmpty();
         assertThat(registry.completeReports(
                 "adapter-1",
-                List.of(workerReport("call-1", "worker-1", "200"))
+                List.of(workerReport(
+                        consumedEntry.getValue().forward().substring(
+                                ControlCallRegistry.FORWARD_PREFIX.length()
+                        ),
+                        consumedEntry.getKey(),
+                        "200"
+                ))
         )).isEqualTo(new ControlCallRegistry.CompletionCounts(0, 1));
     }
 
@@ -166,6 +371,11 @@ class ControlCallRegistryTest {
                         workerPlan("worker-2", "call-2", "adapter-1")
                 )
         );
+        Map<String, DeliveryCommand> consumed =
+                registry.consumeWorkerCommands("adapter-1", 1, now());
+        assertThat(consumed).hasSize(1);
+        Map.Entry<String, DeliveryCommand> consumedEntry =
+                consumed.entrySet().iterator().next();
         registry.registerBatch(
                 "batch-kept",
                 List.of(workerPlan(
@@ -174,18 +384,21 @@ class ControlCallRegistryTest {
                         "adapter-1"
                 ))
         );
-        assertThat(registry.consume("adapter-1", 1, now()))
-                .containsOnlyKeys("worker-1");
-
         registry.cancel("batch-cancelled");
 
         assertThat(cancelled.completion().toCompletableFuture())
                 .isCancelled();
-        assertThat(registry.consume("adapter-1", 10, now()))
+        assertThat(registry.consumeWorkerCommands("adapter-1", 10, now()))
                 .containsOnlyKeys("worker-3");
         assertThat(registry.completeReports(
                 "adapter-1",
-                List.of(workerReport("call-1", "worker-1", "200"))
+                List.of(workerReport(
+                        consumedEntry.getValue().forward().substring(
+                                ControlCallRegistry.FORWARD_PREFIX.length()
+                        ),
+                        consumedEntry.getKey(),
+                        "200"
+                ))
         )).isEqualTo(new ControlCallRegistry.CompletionCounts(0, 1));
     }
 
@@ -200,7 +413,7 @@ class ControlCallRegistryTest {
                         "adapter-1"
                 ))
         );
-        registry.consume("adapter-1", 10, now());
+        registry.consumeWorkerCommands("adapter-1", 10, now());
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var timeout = executor.submit(() -> {
@@ -254,8 +467,16 @@ class ControlCallRegistryTest {
                         ServerErrorCode.CONTROL_CALL_CAPACITY_EXCEEDED
                 ));
 
-        assertThat(registry.consume("adapter-2", 10, now())).isEmpty();
-        assertThat(registry.consume("adapter-1", 10, now()))
+        assertThat(registry.consumeWorkerCommands(
+                "adapter-2",
+                10,
+                now()
+        )).isEmpty();
+        assertThat(registry.consumeWorkerCommands(
+                "adapter-1",
+                10,
+                now()
+        ))
                 .containsOnlyKeys("worker-1");
     }
 
@@ -304,7 +525,7 @@ class ControlCallRegistryTest {
         assertThat(outcome(handle).results().values()).containsOnly(
                 TargetOutcome.unobserved(TargetOutcomeReason.SHUTDOWN)
         );
-        assertThatThrownBy(() -> registry.consume(
+        assertThatThrownBy(() -> registry.consumeWorkerCommands(
                 "adapter-1",
                 10,
                 now()
@@ -315,10 +536,23 @@ class ControlCallRegistryTest {
             int mailboxCapacity,
             int pendingCapacity
     ) {
+        return registry(
+                mailboxCapacity,
+                mailboxCapacity,
+                pendingCapacity
+        );
+    }
+
+    private static ControlCallRegistry registry(
+            int adapterCapacity,
+            int workerCapacity,
+            int pendingCapacity
+    ) {
         return new ControlCallRegistry(new ControlCallProperties(
                 3_000,
                 10_000,
-                mailboxCapacity,
+                adapterCapacity,
+                workerCapacity,
                 pendingCapacity
         ));
     }
@@ -341,12 +575,27 @@ class ControlCallRegistryTest {
             String adapterId,
             String callId
     ) {
+        return adapterPlan(adapterId, callId, now() + 60_000);
+    }
+
+    private static TargetPlan adapterPlan(
+            String adapterId,
+            String callId,
+            long executeBeforeMillis
+    ) {
         return TargetPlan.command(
                 adapterId,
                 callId,
                 adapterId,
                 ControlTarget.adapter(adapterId),
-                command(callId, DeliveryEndpoint.ADAPTER)
+                DeliveryCommand.create(
+                        DeliveryEndpoint.SYSTEM,
+                        DeliveryEndpoint.ADAPTER,
+                        "event-1",
+                        executeBeforeMillis,
+                        "{}",
+                        ControlCallRegistry.FORWARD_PREFIX + callId
+                )
         );
     }
 
@@ -375,6 +624,21 @@ class ControlCallRegistryTest {
                 DeliveryEndpoint.SYSTEM,
                 "event-1",
                 outcomeCode,
+                "{\"ok\":true}",
+                ControlCallRegistry.FORWARD_PREFIX + callId
+        );
+    }
+
+    private static DeliveryReport adapterReport(
+            String callId,
+            String adapterId
+    ) {
+        return DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                adapterId,
+                DeliveryEndpoint.SYSTEM,
+                "event-1",
+                "200",
                 "{\"ok\":true}",
                 ControlCallRegistry.FORWARD_PREFIX + callId
         );

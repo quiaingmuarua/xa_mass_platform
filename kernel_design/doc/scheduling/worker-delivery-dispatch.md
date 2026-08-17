@@ -119,7 +119,7 @@ Server instance-local bounded mailbox
   -> optional same-Group workerId -> opaquePayload map
   -> only paused Workers bound to that Adapter are admitted
   -> Server-selected unified Adapter Command batch
-  -> SYSTEM -> WORKER, or SYSTEM -> ADAPTER at @adapter
+  -> SYSTEM -> WORKER, or SYSTEM -> ADAPTER under an opaque response key
   -> unified Adapter Report batch
   -> Server waiter
 ```
@@ -131,9 +131,10 @@ Worker mode pairs it with a `1..100` entry `workerPayloads` map and creates one
 Command with its own payload per admitted Worker. Adapter mode instead carries
 one top-level `opaquePayload`; the two shapes are exclusive. One call never
 fans out across Adapters.
-Mailbox slots, Adapter queues, and waiter correlation are memory-only and may
-be lost on process failure. CONTROL_ONLY expiry produces no synthetic Result;
-late or missing evidence becomes `unobserved` at the Server waiter. Server
+The Adapter Command FIFO, Worker single-slot Hash, Adapter queues, and waiter
+correlation are memory-only and may be lost on process failure. CONTROL_ONLY
+expiry produces no synthetic Result; late or missing evidence becomes
+`unobserved` at the Server waiter. Server
 treats event code and payload as opaque execution data rather than maintaining
 a whitelist. Adapter events come from one immutable composition-time
 `platform.adapter.*` Handler map; Worker events come from the immutable
@@ -241,21 +242,29 @@ Batch consume returns:
 }
 ```
 
-For each consume request, Server selects one source only. A non-empty
-CONTROL_ONLY mailbox has strict priority; otherwise Server consumes the TASK
-mailbox. It never merges the two maps. The Adapter result endpoint accepts a
-mixed encoded batch: `dst=TASK` is validated and appended through the Kernel
-Result owner, while `dst=SYSTEM` is correlated with the Server-local Control
-waiter. The response reports combined accepted and rejected counts. Remote
-unavailability keeps the Adapter's one pending batch for retry.
+For each consume request, Server first consumes the Adapter Control FIFO up to
+the request limit. With the remaining capacity it tries the CONTROL_ONLY Worker
+Hash. If that Hash yields any live command, Server returns that partial Worker
+batch without reading TASK; only an empty CONTROL_ONLY result permits one TASK
+Hash consume. Thus one response may contain Adapter Commands plus one Worker
+authority, but never both Worker Hash authorities. Worker entry keys are
+workerId addresses. Adapter entry keys are response-local, opaque, and ignored
+by Adapter dispatch, which relies on `dst`.
 
-Strict priority is limited to this remote source-selection decision. It does
-not reorder commands already present in the Adapter's single FIFO, preempt an
-in-flight Worker Handler, or reserve delivery capacity. A full Adapter queue
-delays the next consume call, and sustained CONTROL_ONLY traffic may delay TASK
-mailbox acquisition. Because the Control mailbox is Server-instance memory,
-the Adapter's consume and result requests must return to the same Server
-instance; no distributed mailbox or cross-instance waiter correlation exists.
+The Adapter result endpoint accepts a mixed encoded batch: `dst=TASK` is
+validated and appended through the Kernel Result owner, while `dst=SYSTEM` is
+correlated with the Server-local Control waiter. The response reports combined
+accepted and rejected counts. Remote unavailability keeps the Adapter's one
+pending batch for retry.
+
+Priority is limited to remote acquisition. It does not reorder commands already
+present in the Adapter's single FIFO, preempt an in-flight Worker Handler, or
+reserve delivery capacity. A full Adapter queue delays the next consume call.
+Sustained Adapter Commands may delay all Worker acquisition, while sustained
+CONTROL_ONLY Worker Commands may delay TASK acquisition. Because Control state
+is Server-instance memory, Adapter consume and result requests must return to
+the Server process that accepted the call; no distributed mailbox or
+cross-instance waiter correlation exists.
 
 `system-polling` is a logical endpoint-manager binding for pure polling
 Workers. It may use only point access, never batch access.

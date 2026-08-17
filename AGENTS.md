@@ -119,8 +119,10 @@ pause score for admission, but does not create a Kernel mode or strong lock.
 Its only public call route is scoped by `adapterId`; an optional same-Group
 `workerId -> opaquePayload` map supplies Worker targets and per-target input,
 not a WorkerGroup authority.
-The unified Adapter consume endpoint selects one Command authority; it does not
-merge CONTROL_ONLY and TASK sources.
+The unified Adapter consume endpoint may prefix a response with the Adapter
+Control FIFO, then reads at most one Worker authority: CONTROL_ONLY when that
+Worker Hash yields any command, otherwise TASK. Adapter-local Commands route by
+`dst`; only Worker Command map keys carry workerId address meaning.
 Control Call passes `messageType` and opaque payload through without an event
 whitelist; future API Session authorization remains a separate owner.
 

@@ -45,7 +45,10 @@ class WorkerDeliveryServiceTest {
         resultRuntime = mock(WorkerResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
         controlCalls = mock(ControlCallService.class);
-        when(controlCalls.consume(anyString(), anyInt())).thenReturn(Map.of());
+        when(controlCalls.consumeAdapterCommands(anyString(), anyInt()))
+                .thenReturn(List.of());
+        when(controlCalls.consumeWorkerCommands(anyString(), anyInt()))
+                .thenReturn(Map.of());
         when(controlCalls.completeReports(anyString(), anyList()))
                 .thenAnswer(invocation ->
                         new ControlCallService.ResultAppendCounts(
@@ -78,7 +81,51 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterBatchReturnsOnlyControlSourceWhenControlIsAvailable() {
+    void adapterCommandsFillTheLimitBeforeAnyWorkerSourceIsRead() {
+        DeliveryCommand first = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.ADAPTER,
+                "platform.adapter.probe",
+                System.currentTimeMillis() + 10_000,
+                "null",
+                "control-only:v1:first"
+        );
+        DeliveryCommand second = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.ADAPTER,
+                "platform.adapter.events.snapshot",
+                System.currentTimeMillis() + 10_000,
+                "null",
+                "control-only:v1:second"
+        );
+        when(controlCalls.consumeAdapterCommands("endpoint-1", 2))
+                .thenReturn(List.of(first, second));
+
+        Map<String, DeliveryCommand> commands =
+                service.consumeWorkerCommands("endpoint-1", 2);
+
+        assertThat(commands.values()).containsExactly(first, second);
+        assertThat(commands.keySet()).hasSize(2);
+        verify(controlCalls, never()).consumeWorkerCommands(
+                anyString(),
+                anyInt()
+        );
+        verify(commandRuntime, never()).consumeWorkerCommands(
+                anyString(),
+                anyInt()
+        );
+    }
+
+    @Test
+    void adapterPrefixUsesRemainingLimitFromControlWorkerHashOnly() {
+        DeliveryCommand adapter = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.ADAPTER,
+                "platform.adapter.probe",
+                System.currentTimeMillis() + 10_000,
+                "null",
+                "control-only:v1:adapter"
+        );
         DeliveryCommand control = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
                 DeliveryEndpoint.WORKER,
@@ -87,19 +134,29 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "control-only:v1:test"
         );
-        when(controlCalls.consume("endpoint-1", 100))
+        when(controlCalls.consumeAdapterCommands("endpoint-1", 4))
+                .thenReturn(List.of(adapter));
+        when(controlCalls.consumeWorkerCommands("endpoint-1", 3))
                 .thenReturn(Map.of("worker-1", control));
 
-        assertThat(service.consumeWorkerCommands("endpoint-1", 100))
-                .containsExactlyEntriesOf(Map.of("worker-1", control));
+        assertThat(service.consumeWorkerCommands("endpoint-1", 4).values())
+                .containsExactly(adapter, control);
         verify(commandRuntime, never()).consumeWorkerCommands(
-                "endpoint-1",
-                100
+                anyString(),
+                anyInt()
         );
     }
 
     @Test
-    void adapterBatchFallsBackToTaskSourceWhenControlIsEmpty() {
+    void emptyControlWorkerHashFallsBackToTaskWithTheRemainingLimit() {
+        DeliveryCommand adapter = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.ADAPTER,
+                "platform.adapter.probe",
+                System.currentTimeMillis() + 10_000,
+                "null",
+                "control-only:v1:adapter"
+        );
         DeliveryCommand task = DeliveryCommand.create(
                 DeliveryEndpoint.TASK,
                 DeliveryEndpoint.WORKER,
@@ -108,12 +165,47 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "task-context"
         );
-        when(commandRuntime.consumeWorkerCommands("endpoint-1", 100))
-                .thenReturn(Map.of("worker-1", task));
+        when(controlCalls.consumeAdapterCommands("endpoint-1", 4))
+                .thenReturn(List.of(adapter));
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 3))
+                .thenReturn(Map.of("entry:0", task));
 
-        assertThat(service.consumeWorkerCommands("endpoint-1", 100))
-                .containsExactlyEntriesOf(Map.of("worker-1", task));
-        verify(controlCalls).consume("endpoint-1", 100);
+        Map<String, DeliveryCommand> commands =
+                service.consumeWorkerCommands("endpoint-1", 4);
+
+        assertThat(commands).containsEntry("entry:0", task);
+        assertThat(commands).containsValue(adapter).hasSize(2);
+        assertThat(commands.entrySet().stream()
+                .filter(entry -> entry.getValue().equals(adapter))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow()).isNotEqualTo("entry:0");
+        verify(controlCalls).consumeWorkerCommands("endpoint-1", 3);
+    }
+
+    @Test
+    void acquiredAdapterCommandsSurviveLowerPrioritySourceFailure() {
+        DeliveryCommand adapter = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.ADAPTER,
+                "platform.adapter.probe",
+                System.currentTimeMillis() + 10_000,
+                "null",
+                "control-only:v1:adapter"
+        );
+        when(controlCalls.consumeAdapterCommands("endpoint-1", 2))
+                .thenReturn(List.of(adapter));
+        when(controlCalls.consumeWorkerCommands("endpoint-1", 1))
+                .thenThrow(new IllegalStateException("unavailable"));
+
+        Map<String, DeliveryCommand> commands =
+                service.consumeWorkerCommands("endpoint-1", 2);
+
+        assertThat(commands.values()).containsExactly(adapter);
+        verify(commandRuntime, never()).consumeWorkerCommands(
+                anyString(),
+                anyInt()
+        );
     }
 
     @Test

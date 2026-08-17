@@ -190,8 +190,8 @@ class DeliveryCommandProcessTest {
                     "null",
                     2_000
             );
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-probe-entry",
                     probe
             ));
             fixture.peer.batches.add(commands("worker-1"));
@@ -228,10 +228,55 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
+    void oneQueueDispatchesMultipleOpaqueAdapterEntriesAndAWorkerEntry() {
+        try (Fixture fixture = new Fixture(3, 3, 10)) {
+            DeliveryCommand probe = controlCommand(
+                    ADAPTER,
+                    "platform.adapter.probe",
+                    "null",
+                    2_000
+            );
+            DeliveryCommand events = controlCommand(
+                    ADAPTER,
+                    AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+                    "null",
+                    2_000
+            );
+            DeliveryCommand worker = controlCommand(
+                    WORKER,
+                    "platform.worker.probe",
+                    "null",
+                    2_000
+            );
+            fixture.peer.batches.add(Map.of(
+                    "first-opaque-entry", probe,
+                    "second-opaque-entry", events,
+                    "worker-1", worker
+            ));
+            fixture.activate("worker-1");
+
+            fixture.process.round();
+            fixture.reportProcess.round();
+
+            assertThat(fixture.network.writtenWorkerIds)
+                    .containsExactly("worker-1");
+            assertThat(fixture.peer.appendedControlReports)
+                    .hasSize(2)
+                    .extracting(encoded -> CODEC.decodeDeliveryReport(
+                            encoded
+                    ).messageType())
+                    .containsExactlyInAnyOrder(
+                            "platform.adapter.probe",
+                            AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT
+                    );
+        }
+    }
+
+    @Test
     void unifiedCommandSourceReportsTheStaticAdapterEvents() {
         try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-events-entry",
                     controlCommand(
                             ADAPTER,
                             AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
@@ -270,8 +315,8 @@ class DeliveryCommandProcessTest {
             for (int index = 1; index <= 100; index++) {
                 workerIds.add("worker-" + index);
             }
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-snapshot-entry",
                     controlCommand(
                             ADAPTER,
                             "platform.adapter.worker-connections.snapshot",
@@ -310,8 +355,8 @@ class DeliveryCommandProcessTest {
     void closeCurrentUsesTheConnectionAndPhysicalNetworkOwners() {
         try (Fixture fixture = new Fixture(1, 2, 10)) {
             fixture.activate("worker-1");
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-close-entry",
                     controlCommand(
                             ADAPTER,
                             "platform.adapter.worker-connections.close-current",
@@ -367,8 +412,8 @@ class DeliveryCommandProcessTest {
         )));
         for (String payload : invalidPayloads) {
             try (Fixture fixture = new Fixture(1, 2, 10)) {
-                fixture.peer.controlBatches.add(Map.of(
-                        DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                fixture.peer.batches.add(Map.of(
+                        "opaque-invalid-entry",
                         controlCommand(
                                 ADAPTER,
                                 "platform.adapter.worker-connections.snapshot",
@@ -402,7 +447,7 @@ class DeliveryCommandProcessTest {
                     "{}",
                     2_000
             );
-            fixture.peer.controlBatches.add(Map.of("worker-1", control));
+            fixture.peer.batches.add(Map.of("worker-1", control));
             fixture.activate("worker-1");
 
             fixture.process.round();
@@ -422,8 +467,8 @@ class DeliveryCommandProcessTest {
                     "null",
                     2_000
             );
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-unsupported-entry",
                     unsupported
             ));
 
@@ -443,8 +488,8 @@ class DeliveryCommandProcessTest {
     @Test
     void adapterProbeRejectsANonNullPayload() {
         try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.controlBatches.add(Map.of(
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+            fixture.peer.batches.add(Map.of(
+                    "opaque-invalid-probe-entry",
                     controlCommand(
                             ADAPTER,
                             "platform.adapter.probe",
@@ -469,7 +514,7 @@ class DeliveryCommandProcessTest {
     @Test
     void expiredOrMisaddressedControlDoesNotFabricateResult() {
         try (Fixture fixture = new Fixture(2, 2, 10)) {
-            fixture.peer.controlBatches.add(Map.of(
+            fixture.peer.batches.add(Map.of(
                     "worker-expired",
                     controlCommand(
                             WORKER,
@@ -477,7 +522,7 @@ class DeliveryCommandProcessTest {
                             "{}",
                             1_000
                     ),
-                    DeliveryCommandProcess.ADAPTER_TARGET_ADDRESS,
+                    "opaque-worker-entry",
                     controlCommand(
                             WORKER,
                             "worker.observe",
@@ -602,8 +647,6 @@ class DeliveryCommandProcessTest {
 
         private final ArrayDeque<Map<String, DeliveryCommand>> batches =
                 new ArrayDeque<>();
-        private final ArrayDeque<Map<String, DeliveryCommand>>
-                controlBatches = new ArrayDeque<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
         private final List<String> appendedReports = new ArrayList<>();
         private final List<String> appendedControlReports = new ArrayList<>();
@@ -626,10 +669,7 @@ class DeliveryCommandProcessTest {
                 if (responseBodyOverride != null) {
                     return new Response(200, responseBodyOverride);
                 }
-                Map<String, DeliveryCommand> batch = controlBatches.pollFirst();
-                if (batch == null) {
-                    batch = batches.pollFirst();
-                }
+                Map<String, DeliveryCommand> batch = batches.pollFirst();
                 return commandResponse("commands", batch);
             }
             if (request.rawPath().endsWith("/results:append")) {

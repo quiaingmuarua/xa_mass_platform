@@ -217,13 +217,15 @@ Result Routing decides whether their `forward` context remains valid.
 ### Command consumption round
 
 `DeliveryCommandProcess` owns one private queue and one fixed remote path.
-Every request to `commands:consume` returns a map from exactly one Server-owned
-source. CONTROL_ONLY has strict priority at Server; Adapter never requests two
-hashes and never merges them. This is remote acquisition priority, not local
-preemption: commands already present in the Adapter FIFO remain ahead, a full
-local queue postpones the next Server consume, and an already running Worker
-Handler is unaffected. Sustained CONTROL_ONLY traffic can therefore delay TASK
-mailbox acquisition by policy.
+Server may place a bounded prefix from its Adapter Command FIFO in a
+`commands:consume` response. Remaining capacity comes from at most one Worker
+Hash: CONTROL_ONLY when it yields any live command, otherwise TASK. Server does
+not use TASK to fill a partial CONTROL_ONLY Worker batch. These are remote
+acquisition priorities, not local preemption: commands already present in the
+Adapter FIFO remain ahead, a full local queue postpones the next Server
+consume, and an already running Worker Handler is unaffected. Sustained
+Adapter Commands may delay all Worker acquisition; sustained CONTROL_ONLY
+Worker Commands may delay TASK acquisition.
 
 ```text
 while the queue is below its soft capacity
@@ -235,11 +237,12 @@ for each command exactly once this round
   -> expired: remove; only expired TASK creates 23002 evidence
   -> no active writable Worker Channel: rotate to queue tail
   -> physical Server write started: remove
-  -> SYSTEM -> ADAPTER at @adapter: dispatch through the immutable local map
+  -> dst=ADAPTER: ignore the entry key and dispatch through the immutable map
 ```
 
 TASK accepts `TASK -> WORKER`. CONTROL_ONLY accepts `SYSTEM -> WORKER` and
-`SYSTEM -> ADAPTER` only at `@adapter`. No active Channel is temporary while
+`SYSTEM -> ADAPTER`. A Worker Command entry key is its workerId; an Adapter
+Command entry key is opaque and ignored. No active Channel is temporary while
 the deadline remains live. CONTROL_ONLY expiry creates no synthetic result;
 the Server waiter owns timeout. The queue has no workerId index, and its soft
 capacity is a backpressure target rather than delivery truth. Adapter does not

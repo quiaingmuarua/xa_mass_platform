@@ -42,11 +42,11 @@ public final class DeliveryCommandRemoteApi {
             );
         } catch (WorkerDeliveryHttpClient.UnexpectedStatus error) {
             throw statusFailure(
-                    "Worker command consume",
+                    "Delivery Command consume",
                     error.statusCode()
             );
         } catch (WorkerDeliveryHttpClient.RequestFailure error) {
-            throw unavailable("Worker command acquisition failed", error);
+            throw unavailable("Delivery Command acquisition failed", error);
         }
         return decodeConsumeResponse(body);
     }
@@ -68,21 +68,21 @@ public final class DeliveryCommandRemoteApi {
             if (!payload.keySet().equals(java.util.Set.of(RESPONSE_FIELD))
                     || !(payload.get(RESPONSE_FIELD)
                     instanceof Map<?, ?> commands)) {
-                throw malformed("Worker command consume response");
+                throw malformed("Delivery Command consume response");
             }
             Map<String, DeliveryCommand> decoded = new LinkedHashMap<>();
-            commands.forEach((workerId, encoded) -> {
-                if (!(workerId instanceof String id) || id.isBlank()
+            commands.forEach((entryKey, encoded) -> {
+                if (!(entryKey instanceof String key) || key.isBlank()
                         || !(encoded instanceof Map<?, ?>)) {
-                    throw malformed("Worker command workerId");
+                    throw malformed("Delivery Command entry key");
                 }
                 DeliveryCommand command = codec.decodeDeliveryCommand(
                         Jsons.toJson(encoded)
                 );
                 if (command == null) {
-                    throw malformed("Worker command envelope");
+                    throw malformed("Delivery Command envelope");
                 }
-                decoded.put(id, command);
+                decoded.put(key, command);
             });
             return Collections.unmodifiableMap(decoded);
         } catch (WorkerDeliveryAdapterException error) {
@@ -91,7 +91,7 @@ public final class DeliveryCommandRemoteApi {
             throw new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
                     DECODE_OPERATION,
-                    "Worker command consume response is malformed",
+                    "Delivery Command consume response is malformed",
                     error
             );
         }

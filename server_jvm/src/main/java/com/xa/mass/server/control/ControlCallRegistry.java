@@ -6,6 +6,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -20,13 +21,15 @@ import java.util.concurrent.CompletionStage;
 
 public final class ControlCallRegistry implements AutoCloseable {
 
-    public static final String ADAPTER_TARGET_ADDRESS = "@adapter";
     public static final String FORWARD_PREFIX = "control-only:v1:";
 
-    private final int maxCommandsPerAdapter;
+    private final int maxAdapterCommandsPerAdapter;
+    private final int maxWorkerCommandsPerAdapter;
     private final int maxPendingCalls;
-    private final Map<String, LinkedHashMap<ControlTarget, CommandEntry>>
-            commandsByAdapter = new LinkedHashMap<>();
+    private final Map<String, ArrayDeque<CommandEntry>>
+            adapterCommandsByAdapter = new LinkedHashMap<>();
+    private final Map<String, LinkedHashMap<String, CommandEntry>>
+            workerCommandsByAdapter = new LinkedHashMap<>();
     private final Map<String, TargetState> pendingTargetsByControlCallId =
             new LinkedHashMap<>();
     private final Map<String, BatchState> batchesByBatchId =
@@ -36,7 +39,10 @@ public final class ControlCallRegistry implements AutoCloseable {
 
     public ControlCallRegistry(ControlCallProperties properties) {
         Objects.requireNonNull(properties, "properties");
-        this.maxCommandsPerAdapter = properties.maxCommandsPerAdapter();
+        this.maxAdapterCommandsPerAdapter =
+                properties.maxAdapterCommandsPerAdapter();
+        this.maxWorkerCommandsPerAdapter =
+                properties.maxWorkerCommandsPerAdapter();
         this.maxPendingCalls = properties.maxPendingCalls();
     }
 
@@ -67,33 +73,27 @@ public final class ControlCallRegistry implements AutoCloseable {
                     continue;
                 }
 
-                LinkedHashMap<ControlTarget, CommandEntry> mailbox =
-                        commandsByAdapter.computeIfAbsent(
-                                plan.adapterId(),
-                                ignored -> new LinkedHashMap<>()
-                        );
-                CommandEntry previous = mailbox.remove(plan.target());
-                if (previous != null) {
-                    TargetState replaced = pendingTargetsByControlCallId
-                            .remove(previous.controlCallId());
-                    if (replaced != null && replaced.outcome == null) {
-                        pendingTargetCount--;
-                        replaced.outcome = TargetOutcome.unobserved(
-                                TargetOutcomeReason.REPLACED
-                        );
-                        queueCompletionIfTerminalLocked(
-                                replaced.batch,
-                                completions
-                        );
-                    }
-                }
-                mailbox.put(
-                        plan.target(),
-                        new CommandEntry(
-                                plan.controlCallId(),
-                                plan.command()
-                        )
+                CommandEntry commandEntry = new CommandEntry(
+                        plan.controlCallId(),
+                        plan.command()
                 );
+                if (plan.target().type() == ControlTargetType.ADAPTER) {
+                    adapterCommandsByAdapter.computeIfAbsent(
+                            plan.adapterId(),
+                            ignored -> new ArrayDeque<>()
+                    ).addLast(commandEntry);
+                } else {
+                    LinkedHashMap<String, CommandEntry> mailbox =
+                            workerCommandsByAdapter.computeIfAbsent(
+                                    plan.adapterId(),
+                                    ignored -> new LinkedHashMap<>()
+                            );
+                    CommandEntry previous = mailbox.remove(
+                            plan.target().targetId()
+                    );
+                    completeReplacedTargetLocked(previous, completions);
+                    mailbox.put(plan.target().targetId(), commandEntry);
+                }
                 pendingTargetsByControlCallId.put(
                         plan.controlCallId(),
                         target
@@ -109,7 +109,40 @@ public final class ControlCallRegistry implements AutoCloseable {
         );
     }
 
-    public Map<String, DeliveryCommand> consume(
+    public List<DeliveryCommand> consumeAdapterCommands(
+            String adapterId,
+            int limit,
+            long nowMillis
+    ) {
+        Map<BatchState, BatchOutcome> completions = new LinkedHashMap<>();
+        List<DeliveryCommand> consumed = new ArrayList<>();
+        synchronized (this) {
+            requireOpen();
+            requirePositiveLimit(limit);
+            ArrayDeque<CommandEntry> mailbox =
+                    adapterCommandsByAdapter.get(adapterId);
+            if (mailbox != null) {
+                while (!mailbox.isEmpty() && consumed.size() < limit) {
+                    CommandEntry entry = mailbox.removeFirst();
+                    if (!markConsumedIfLiveLocked(
+                            entry,
+                            nowMillis,
+                            completions
+                    )) {
+                        continue;
+                    }
+                    consumed.add(entry.command());
+                }
+                if (mailbox.isEmpty()) {
+                    adapterCommandsByAdapter.remove(adapterId);
+                }
+            }
+        }
+        completeOutsideLock(completions);
+        return List.copyOf(consumed);
+    }
+
+    public Map<String, DeliveryCommand> consumeWorkerCommands(
             String adapterId,
             int limit,
             long nowMillis
@@ -118,41 +151,30 @@ public final class ControlCallRegistry implements AutoCloseable {
         Map<String, DeliveryCommand> consumed = new LinkedHashMap<>();
         synchronized (this) {
             requireOpen();
-            LinkedHashMap<ControlTarget, CommandEntry> mailbox =
-                    commandsByAdapter.get(adapterId);
+            requirePositiveLimit(limit);
+            LinkedHashMap<String, CommandEntry> mailbox =
+                    workerCommandsByAdapter.get(adapterId);
             if (mailbox != null) {
-                Iterator<Map.Entry<ControlTarget, CommandEntry>> iterator =
-                        mailbox.entrySet().iterator();
+                List<String> workerIds = new ArrayList<>(mailbox.keySet());
+                Collections.shuffle(workerIds);
+                Iterator<String> iterator = workerIds.iterator();
                 while (iterator.hasNext() && consumed.size() < limit) {
-                    Map.Entry<ControlTarget, CommandEntry> entry =
-                            iterator.next();
-                    iterator.remove();
-                    TargetState target = pendingTargetsByControlCallId.get(
-                            entry.getValue().controlCallId()
-                    );
-                    if (target == null || target.outcome != null) {
+                    String workerId = iterator.next();
+                    CommandEntry entry = mailbox.remove(workerId);
+                    if (entry == null) {
                         continue;
                     }
-                    if (entry.getValue().command().executeBeforeMillis()
-                            <= nowMillis) {
-                        removePendingTargetLocked(target);
-                        target.outcome = TargetOutcome.unobserved(
-                                TargetOutcomeReason.TIMEOUT
-                        );
-                        queueCompletionIfTerminalLocked(
-                                target.batch,
-                                completions
-                        );
+                    if (!markConsumedIfLiveLocked(
+                            entry,
+                            nowMillis,
+                            completions
+                    )) {
                         continue;
                     }
-                    target.consumed = true;
-                    consumed.put(
-                            entry.getKey().address(),
-                            entry.getValue().command()
-                    );
+                    consumed.put(workerId, entry.command());
                 }
                 if (mailbox.isEmpty()) {
-                    commandsByAdapter.remove(adapterId);
+                    workerCommandsByAdapter.remove(adapterId);
                 }
             }
         }
@@ -243,7 +265,8 @@ public final class ControlCallRegistry implements AutoCloseable {
             }
             batchesByBatchId.clear();
             pendingTargetsByControlCallId.clear();
-            commandsByAdapter.clear();
+            adapterCommandsByAdapter.clear();
+            workerCommandsByAdapter.clear();
             pendingTargetCount = 0;
         }
         completions.forEach(completion -> completion.batch.completion.complete(
@@ -320,28 +343,39 @@ public final class ControlCallRegistry implements AutoCloseable {
     private void requireCapacity(List<TargetPlan> plans) {
         int replacements = 0;
         int eligible = 0;
-        Map<String, Integer> newSlotsByAdapter = new LinkedHashMap<>();
+        Map<String, Integer> newAdapterEntriesByAdapter =
+                new LinkedHashMap<>();
+        Map<String, Integer> newWorkerSlotsByAdapter =
+                new LinkedHashMap<>();
         for (TargetPlan plan : plans) {
             if (plan.initialOutcome() != null) {
                 continue;
             }
             eligible++;
-            LinkedHashMap<ControlTarget, CommandEntry> mailbox =
-                    commandsByAdapter.get(plan.adapterId());
-            CommandEntry previous = mailbox == null
-                    ? null
-                    : mailbox.get(plan.target());
-            if (previous != null
-                    && pendingTargetsByControlCallId.containsKey(
-                            previous.controlCallId()
-                    )) {
-                replacements++;
-            } else {
-                newSlotsByAdapter.merge(
+            if (plan.target().type() == ControlTargetType.ADAPTER) {
+                newAdapterEntriesByAdapter.merge(
                         plan.adapterId(),
                         1,
                         Integer::sum
                 );
+            } else {
+                LinkedHashMap<String, CommandEntry> mailbox =
+                        workerCommandsByAdapter.get(plan.adapterId());
+                CommandEntry previous = mailbox == null
+                        ? null
+                        : mailbox.get(plan.target().targetId());
+                if (previous != null
+                        && pendingTargetsByControlCallId.containsKey(
+                                previous.controlCallId()
+                        )) {
+                    replacements++;
+                } else {
+                    newWorkerSlotsByAdapter.merge(
+                            plan.adapterId(),
+                            1,
+                            Integer::sum
+                    );
+                }
             }
         }
         if (pendingTargetCount - replacements + eligible
@@ -351,17 +385,72 @@ public final class ControlCallRegistry implements AutoCloseable {
             );
         }
         for (Map.Entry<String, Integer> addition
-                : newSlotsByAdapter.entrySet()) {
-            LinkedHashMap<ControlTarget, CommandEntry> mailbox =
-                    commandsByAdapter.get(addition.getKey());
+                : newAdapterEntriesByAdapter.entrySet()) {
+            ArrayDeque<CommandEntry> mailbox =
+                    adapterCommandsByAdapter.get(addition.getKey());
             int currentSize = mailbox == null ? 0 : mailbox.size();
             if (currentSize + addition.getValue()
-                    > maxCommandsPerAdapter) {
+                    > maxAdapterCommandsPerAdapter) {
                 throw capacityExceeded(
-                        "Control Command capacity is exhausted for Adapter"
+                        "Adapter Control Command capacity is exhausted"
                 );
             }
         }
+        for (Map.Entry<String, Integer> addition
+                : newWorkerSlotsByAdapter.entrySet()) {
+            LinkedHashMap<String, CommandEntry> mailbox =
+                    workerCommandsByAdapter.get(addition.getKey());
+            int currentSize = mailbox == null ? 0 : mailbox.size();
+            if (currentSize + addition.getValue()
+                    > maxWorkerCommandsPerAdapter) {
+                throw capacityExceeded(
+                        "Worker Control Command capacity is exhausted"
+                );
+            }
+        }
+    }
+
+    private void completeReplacedTargetLocked(
+            CommandEntry previous,
+            Map<BatchState, BatchOutcome> completions
+    ) {
+        if (previous == null) {
+            return;
+        }
+        TargetState replaced = pendingTargetsByControlCallId.remove(
+                previous.controlCallId()
+        );
+        if (replaced == null || replaced.outcome != null) {
+            return;
+        }
+        pendingTargetCount--;
+        replaced.outcome = TargetOutcome.unobserved(
+                TargetOutcomeReason.REPLACED
+        );
+        queueCompletionIfTerminalLocked(replaced.batch, completions);
+    }
+
+    private boolean markConsumedIfLiveLocked(
+            CommandEntry entry,
+            long nowMillis,
+            Map<BatchState, BatchOutcome> completions
+    ) {
+        TargetState target = pendingTargetsByControlCallId.get(
+                entry.controlCallId()
+        );
+        if (target == null || target.outcome != null) {
+            return false;
+        }
+        if (entry.command().executeBeforeMillis() <= nowMillis) {
+            removePendingTargetLocked(target);
+            target.outcome = TargetOutcome.unobserved(
+                    TargetOutcomeReason.TIMEOUT
+            );
+            queueCompletionIfTerminalLocked(target.batch, completions);
+            return false;
+        }
+        target.consumed = true;
+        return true;
     }
 
     private void removePendingTargetLocked(TargetState target) {
@@ -378,18 +467,33 @@ public final class ControlCallRegistry implements AutoCloseable {
         if (target.target == null || target.adapterId == null) {
             return;
         }
-        LinkedHashMap<ControlTarget, CommandEntry> mailbox =
-                commandsByAdapter.get(target.adapterId);
+        if (target.target.type() == ControlTargetType.ADAPTER) {
+            ArrayDeque<CommandEntry> mailbox =
+                    adapterCommandsByAdapter.get(target.adapterId);
+            if (mailbox == null) {
+                return;
+            }
+            mailbox.removeIf(entry -> entry.controlCallId().equals(
+                    target.controlCallId
+            ));
+            if (mailbox.isEmpty()) {
+                adapterCommandsByAdapter.remove(target.adapterId);
+            }
+            return;
+        }
+
+        LinkedHashMap<String, CommandEntry> mailbox =
+                workerCommandsByAdapter.get(target.adapterId);
         if (mailbox == null) {
             return;
         }
-        CommandEntry entry = mailbox.get(target.target);
+        CommandEntry entry = mailbox.get(target.target.targetId());
         if (entry != null
                 && entry.controlCallId().equals(target.controlCallId)) {
-            mailbox.remove(target.target);
+            mailbox.remove(target.target.targetId());
         }
         if (mailbox.isEmpty()) {
-            commandsByAdapter.remove(target.adapterId);
+            workerCommandsByAdapter.remove(target.adapterId);
         }
     }
 
@@ -459,6 +563,12 @@ public final class ControlCallRegistry implements AutoCloseable {
         }
     }
 
+    private static void requirePositiveLimit(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+    }
+
     private static ServerException capacityExceeded(String message) {
         return new ServerException(
                 ServerErrorCode.CONTROL_CALL_CAPACITY_EXCEEDED,
@@ -507,11 +617,6 @@ public final class ControlCallRegistry implements AutoCloseable {
             return new ControlTarget(ControlTargetType.ADAPTER, adapterId);
         }
 
-        String address() {
-            return type == ControlTargetType.ADAPTER
-                    ? ADAPTER_TARGET_ADDRESS
-                    : targetId;
-        }
     }
 
     public record TargetOutcome(

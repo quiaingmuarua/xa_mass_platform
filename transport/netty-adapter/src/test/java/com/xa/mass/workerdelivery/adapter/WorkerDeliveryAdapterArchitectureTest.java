@@ -161,11 +161,11 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("TaskReport")
                 .doesNotContain("DeliveryLane");
         assertThat(command)
-                .contains("FiniteQueue<TargetedCommand> commandQueue")
+                .containsOnlyOnce("private final FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
         assertThat(report)
-                .contains("FiniteQueue<String> reportQueue")
+                .containsOnlyOnce("private final FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
         assertThat(command + report)

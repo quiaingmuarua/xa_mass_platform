@@ -22,10 +22,8 @@ import java.util.function.LongSupplier;
 /** Scheduled Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
 
-    static final String ADAPTER_TARGET_ADDRESS = "@adapter";
-
-    private record TargetedCommand(
-            String targetAddress,
+    private record QueuedCommand(
+            String entryKey,
             DeliveryCommand command
     ) {}
 
@@ -33,7 +31,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             DeliveryCommandProcess.class.getName()
     );
 
-    private final FiniteQueue<TargetedCommand> commandQueue;
+    private final FiniteQueue<QueuedCommand> commandQueue;
     private final DeliveryCommandRemoteApi remoteApi;
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
@@ -119,15 +117,15 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             return;
         }
 
-        List<TargetedCommand> observed = commandQueue.consume(
+        List<QueuedCommand> observed = commandQueue.consume(
                 commandQueue.capacity()
         );
         if (observed.isEmpty()) {
             return;
         }
         long currentTimeMillis = nowMillis.getAsLong();
-        ArrayList<TargetedCommand> retryLater = new ArrayList<>();
-        for (TargetedCommand queued : observed) {
+        ArrayList<QueuedCommand> retryLater = new ArrayList<>();
+        for (QueuedCommand queued : observed) {
             if (roundsStopped) {
                 return;
             }
@@ -172,21 +170,18 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     }
 
     private WorkerConnectionMechanism.DeliveryAttempt dispatch(
-            TargetedCommand queued
+            QueuedCommand queued
     ) {
         DeliveryCommand command = queued.command();
-        String targetAddress = queued.targetAddress();
-        if (isTaskWorkerCommand(queued)
-                || isSystemWorkerCommand(queued)) {
-            return connectionMechanism.deliver(targetAddress, command);
-        }
-        if (ADAPTER_TARGET_ADDRESS.equals(targetAddress)
-                && command.src() == SYSTEM
-                && command.dst() == ADAPTER) {
+        if (command.dst() == ADAPTER) {
             offerControlResult(adapterControlExecutor.execute(command));
             return WorkerConnectionMechanism.DeliveryAttempt.STARTED;
         }
-        logInvalidTarget(targetAddress, command);
+        if (isTaskWorkerCommand(queued)
+                || isSystemWorkerCommand(queued)) {
+            return connectionMechanism.deliver(queued.entryKey(), command);
+        }
+        logInvalidTarget(queued.entryKey(), command);
         return WorkerConnectionMechanism.DeliveryAttempt.UNKNOWN;
     }
 
@@ -205,9 +200,9 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         if (acquired.isEmpty() || roundsStopped) {
             return;
         }
-        ArrayList<TargetedCommand> batch = new ArrayList<>(acquired.size());
-        acquired.forEach((targetAddress, command) -> batch.add(
-                new TargetedCommand(targetAddress, command)
+        ArrayList<QueuedCommand> batch = new ArrayList<>(acquired.size());
+        acquired.forEach((entryKey, command) -> batch.add(
+                new QueuedCommand(entryKey, command)
         ));
         if (commandQueue.ingress(batch)
                 != FiniteQueue.QueueIngressStatus.ACCEPTED) {
@@ -221,7 +216,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
-    private void offerExpiredTaskResult(TargetedCommand queued) {
+    private void offerExpiredTaskResult(QueuedCommand queued) {
         DeliveryReport rejection = DeliveryReport.fromCommand(
                 queued.command(),
                 ADAPTER,
@@ -238,7 +233,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                     System.Logger.Level.WARNING,
                     "adapterId={0} target={1} message={2}",
                     adapterId,
-                    queued.targetAddress(),
+                    queued.entryKey(),
                     "Adapter rejection result was dropped"
             );
         }
@@ -258,20 +253,18 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
-    private static boolean isTaskWorkerCommand(TargetedCommand queued) {
-        return !ADAPTER_TARGET_ADDRESS.equals(queued.targetAddress())
-                && queued.command().src() == TASK
+    private static boolean isTaskWorkerCommand(QueuedCommand queued) {
+        return queued.command().src() == TASK
                 && queued.command().dst() == WORKER;
     }
 
-    private static boolean isSystemWorkerCommand(TargetedCommand queued) {
-        return !ADAPTER_TARGET_ADDRESS.equals(queued.targetAddress())
-                && queued.command().src() == SYSTEM
+    private static boolean isSystemWorkerCommand(QueuedCommand queued) {
+        return queued.command().src() == SYSTEM
                 && queued.command().dst() == WORKER;
     }
 
     private void logInvalidTarget(
-            String targetAddress,
+            String entryKey,
             DeliveryCommand command
     ) {
         LOGGER.log(
@@ -285,7 +278,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                         .WORKER_MESSAGE_INVALID).code(),
                 "deliveryCommand.validateTarget",
                 adapterId,
-                targetAddress,
+                entryKey,
                 command.messageType()
         );
     }
@@ -298,7 +291,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             failure = new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.REMOTE_API_UNAVAILABLE,
                     "deliveryCommand.consumeRemote",
-                    "Worker command acquisition failed",
+                    "Delivery Command acquisition failed",
                     error
             );
         }

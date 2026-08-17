@@ -59,6 +59,7 @@ class ControlCallServiceTest {
                 3_000,
                 10_000,
                 1_000,
+                1_000,
                 10_000
         );
         service = new ControlCallService(
@@ -104,7 +105,7 @@ class ControlCallServiceTest {
 
         DeferredResult<ResponseEntity<ControlBatchCallResponse>> deferred =
                 service.call(ADAPTER_ID, workerRequest(workerIds));
-        DeliveryCommand command = service.consume(
+        DeliveryCommand command = service.consumeWorkerCommands(
                 ADAPTER_ID,
                 100
         ).get("worker-ok");
@@ -113,7 +114,10 @@ class ControlCallServiceTest {
         assertThat(command.payload()).isEqualTo(
                 "{\"workerId\":\"worker-ok\"}"
         );
-        assertThat(service.consume(OTHER_ADAPTER_ID, 100)).isEmpty();
+        assertThat(service.consumeWorkerCommands(
+                OTHER_ADAPTER_ID,
+                100
+        )).isEmpty();
         service.completeReports(
                 ADAPTER_ID,
                 List.of(workerReport(
@@ -207,7 +211,7 @@ class ControlCallServiceTest {
                 .thenReturn(endpointIds);
 
         var deferred = service.call(ADAPTER_ID, workerRequest(workerIds));
-        Map<String, DeliveryCommand> commands = service.consume(
+        Map<String, DeliveryCommand> commands = service.consumeWorkerCommands(
                 ADAPTER_ID,
                 100
         );
@@ -308,10 +312,10 @@ class ControlCallServiceTest {
                                 3_000L
                         )
                 );
-        DeliveryCommand command = service.consume(
+        DeliveryCommand command = service.consumeAdapterCommands(
                 ADAPTER_ID,
                 100
-        ).get(ControlCallRegistry.ADAPTER_TARGET_ADDRESS);
+        ).getFirst();
         assertThat(command.messageType()).isEqualTo(
                 "adapter.vendor.inspect"
         );

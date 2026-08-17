@@ -63,8 +63,8 @@ For a direct Server-owned control call:
 
 - a Worker target uses `SYSTEM -> WORKER` and the Server-selected map key is
   the workerId;
-- an Adapter target uses `SYSTEM -> ADAPTER` and the current Adapter-local map
-  key is `@adapter`;
+- an Adapter target uses `SYSTEM -> ADAPTER`; its response-map key is a
+  response-local opaque entry key which Transport must ignore;
 - `DeliveryReport.fromCommand()` returns Worker or Adapter evidence to
   `dst=SYSTEM` while preserving `messageType` and `forward`;
 - the Server Control owner alone interprets that `forward` for waiter
