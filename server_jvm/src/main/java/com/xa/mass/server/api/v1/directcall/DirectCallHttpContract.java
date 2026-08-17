@@ -1,4 +1,4 @@
-package com.xa.mass.server.api.v1.control;
+package com.xa.mass.server.api.v1.directcall;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -13,12 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-public final class ControlCallHttpContract {
+public final class DirectCallHttpContract {
 
-    private ControlCallHttpContract() {
+    private DirectCallHttpContract() {
     }
 
-    public record ControlCallRequest(
+    public record DirectCallRequest(
             @Nullable String workerGroupId,
             @Nullable @Size(min = 1, max = 100)
             Map<@NotBlank String, @NotNull String> workerPayloads,
@@ -26,7 +26,7 @@ public final class ControlCallHttpContract {
             @Nullable String opaquePayload,
             @Positive @Max(10_000) Long waitTimeoutMillis
     ) {
-        public ControlCallRequest {
+        public DirectCallRequest {
             if (workerPayloads != null) {
                 workerPayloads = Collections.unmodifiableMap(
                         new LinkedHashMap<>(workerPayloads)
@@ -37,17 +37,17 @@ public final class ControlCallHttpContract {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw new IllegalArgumentException(
-                    "Unknown Control Call field: " + name
+                    "Unknown Direct Call field: " + name
             );
         }
     }
 
-    public record ControlBatchCallResponse(
-            String controlBatchId,
-            ControlBatchStatus status,
-            Map<String, ControlTargetCallResponse> results
+    public record DirectCallResponse(
+            String directCallId,
+            DirectCallStatus status,
+            Map<String, DirectTargetCallResponse> results
     ) {
-        public ControlBatchCallResponse {
+        public DirectCallResponse {
             results = Collections.unmodifiableMap(
                     new LinkedHashMap<>(results)
             );
@@ -55,40 +55,40 @@ public final class ControlCallHttpContract {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record ControlTargetCallResponse(
-            ControlTargetStatus status,
+    public record DirectTargetCallResponse(
+            DirectTargetStatus status,
             @Nullable String outcomeCode,
             @Nullable String opaqueResultPayload,
-            @Nullable ControlTargetReason reason
+            @Nullable DirectTargetReason reason
     ) {
-        public static ControlTargetCallResponse observed(
+        public static DirectTargetCallResponse observed(
                 String outcomeCode,
                 String payload
         ) {
-            return new ControlTargetCallResponse(
-                    ControlTargetStatus.OBSERVED,
+            return new DirectTargetCallResponse(
+                    DirectTargetStatus.OBSERVED,
                     outcomeCode,
                     payload,
                     null
             );
         }
 
-        public static ControlTargetCallResponse unobserved(
-                ControlTargetReason reason
+        public static DirectTargetCallResponse unobserved(
+                DirectTargetReason reason
         ) {
-            return new ControlTargetCallResponse(
-                    ControlTargetStatus.UNOBSERVED,
+            return new DirectTargetCallResponse(
+                    DirectTargetStatus.UNOBSERVED,
                     null,
                     null,
                     reason
             );
         }
 
-        public static ControlTargetCallResponse rejected(
-                ControlTargetReason reason
+        public static DirectTargetCallResponse rejected(
+                DirectTargetReason reason
         ) {
-            return new ControlTargetCallResponse(
-                    ControlTargetStatus.REJECTED,
+            return new DirectTargetCallResponse(
+                    DirectTargetStatus.REJECTED,
                     null,
                     null,
                     reason
@@ -96,13 +96,13 @@ public final class ControlCallHttpContract {
         }
     }
 
-    public enum ControlBatchStatus {
+    public enum DirectCallStatus {
         OBSERVED("observed"),
         PARTIAL("partial");
 
         private final String wireValue;
 
-        ControlBatchStatus(String wireValue) {
+        DirectCallStatus(String wireValue) {
             this.wireValue = wireValue;
         }
 
@@ -112,14 +112,14 @@ public final class ControlCallHttpContract {
         }
     }
 
-    public enum ControlTargetStatus {
+    public enum DirectTargetStatus {
         OBSERVED("observed"),
         UNOBSERVED("unobserved"),
         REJECTED("rejected");
 
         private final String wireValue;
 
-        ControlTargetStatus(String wireValue) {
+        DirectTargetStatus(String wireValue) {
             this.wireValue = wireValue;
         }
 
@@ -129,19 +129,18 @@ public final class ControlCallHttpContract {
         }
     }
 
-    public enum ControlTargetReason {
+    public enum DirectTargetReason {
         TIMEOUT("timeout"),
-        REPLACED("replaced"),
         SHUTDOWN("shutdown"),
         NOT_FOUND("not-found"),
-        CONTROL_ONLY_REQUIRED("control-only-required"),
-        SCORE_UNAVAILABLE("score-unavailable"),
         NOT_BOUND("not-bound"),
-        ENDPOINT_MISMATCH("endpoint-mismatch");
+        ENDPOINT_MISMATCH("endpoint-mismatch"),
+        COMMAND_SLOT_OCCUPIED("command-slot-occupied"),
+        SUBMISSION_UNKNOWN("submission-unknown");
 
         private final String wireValue;
 
-        ControlTargetReason(String wireValue) {
+        DirectTargetReason(String wireValue) {
             this.wireValue = wireValue;
         }
 

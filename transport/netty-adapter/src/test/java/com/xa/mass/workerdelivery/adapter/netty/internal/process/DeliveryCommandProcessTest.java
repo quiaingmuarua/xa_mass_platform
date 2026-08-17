@@ -581,7 +581,7 @@ class DeliveryCommandProcessTest {
                 event,
                 deadline,
                 payload,
-                "control-only:v1:test"
+                "direct-call:v1:test"
         );
     }
 

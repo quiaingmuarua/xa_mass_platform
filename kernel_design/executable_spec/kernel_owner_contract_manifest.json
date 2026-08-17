@@ -111,7 +111,8 @@
     "WorkerCommandRuntime": [
       "append_worker_commands",
       "consume_worker_command",
-      "consume_worker_commands"
+      "consume_worker_commands",
+      "offer_worker_commands"
     ],
     "WorkerPropertyIndex": [
       "load",
@@ -303,6 +304,10 @@
     "WorkerCommandAppendStatus": [
       "APPENDED",
       "REPLACED"
+    ],
+    "WorkerCommandOfferStatus": [
+      "OFFERED",
+      "OCCUPIED"
     ],
     "DeliveryEndpoint": [
       "TASK",

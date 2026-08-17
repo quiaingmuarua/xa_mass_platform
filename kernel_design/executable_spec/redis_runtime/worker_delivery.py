@@ -5,6 +5,7 @@ from typing import Any, Mapping, Sequence
 from ..kernel.task_score_band import TimeMillis
 from ..kernel.worker_delivery import (
     WorkerCommandAppendStatus,
+    WorkerCommandOfferStatus,
     DeliveryCommand,
     WorkerCommandRuntime,
     decode_delivery_command,
@@ -12,6 +13,20 @@ from ..kernel.worker_delivery import (
 )
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_score import WorkerId
+
+
+_OFFER_WORKER_COMMANDS_SCRIPT = """
+local results = {}
+for index = 1, #ARGV, 2 do
+    local worker_id = ARGV[index]
+    local encoded_command = ARGV[index + 1]
+    table.insert(
+        results,
+        redis.call('HSETNX', KEYS[1], worker_id, encoded_command)
+    )
+end
+return results
+"""
 
 
 _CONSUME_WORKER_COMMAND_SCRIPT = """
@@ -98,6 +113,67 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
                 WorkerCommandAppendStatus.APPENDED
                 if was_inserted
                 else WorkerCommandAppendStatus.REPLACED
+            )
+            for worker_id, was_inserted in zip(worker_ids, inserted)
+        }
+
+    def offer_worker_commands(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        worker_commands_by_worker_id: Mapping[
+            WorkerId,
+            DeliveryCommand,
+        ],
+    ) -> Mapping[WorkerId, WorkerCommandOfferStatus]:
+        self._validate_endpoint_manager_id(endpoint_manager_id)
+        if not worker_commands_by_worker_id:
+            return {}
+
+        worker_ids = tuple(worker_commands_by_worker_id)
+        self._validate_worker_ids(worker_ids)
+        now_millis = self._current_time_millis()
+        if any(
+            not isinstance(command, DeliveryCommand)
+            or command.execute_before_millis <= now_millis
+            for command in worker_commands_by_worker_id.values()
+        ):
+            raise ValueError(
+                "Worker commands must be DeliveryCommand values with "
+                "future deadlines"
+            )
+
+        arguments = [
+            value
+            for worker_id, command in worker_commands_by_worker_id.items()
+            for value in (worker_id, encode_delivery_command(command))
+        ]
+        raw_results = self.redis.eval(
+            _OFFER_WORKER_COMMANDS_SCRIPT,
+            1,
+            self._worker_command_key(endpoint_manager_id),
+            *arguments,
+        )
+        results = tuple(raw_results or ())
+        if len(results) != len(worker_ids):
+            raise RuntimeError(
+                "Redis Worker command offer returned an invalid response"
+            )
+        try:
+            inserted = tuple(int(value) for value in results)
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(
+                "Redis Worker command offer returned an invalid response"
+            ) from error
+        if any(value not in (0, 1) for value in inserted):
+            raise RuntimeError(
+                "Redis Worker command offer returned an invalid response"
+            )
+        return {
+            worker_id: (
+                WorkerCommandOfferStatus.OFFERED
+                if was_inserted
+                else WorkerCommandOfferStatus.OCCUPIED
             )
             for worker_id, was_inserted in zip(worker_ids, inserted)
         }

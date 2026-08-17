@@ -567,7 +567,7 @@
       <nav aria-label="页面导航">
         <a href="#authority">Authority</a>
         <a href="#task-mainline">TASK</a>
-        <a href="#control-only">CONTROL_ONLY</a>
+        <a href="#direct-call">DIRECT_CALL</a>
         <a href="#transport">Transport</a>
         <a href="#runtime-topology">Runtime</a>
         <a href="#proof-and-stability">Proof</a>
@@ -640,7 +640,7 @@
           <article class="card server">
             <span class="owner">AUTHORITY ROUTING</span>
             <h3>消息owner路由</h3>
-            <p>Server在已存在的TASK与CONTROL_ONLY authority之间选择一个source，并按Result destination分流。</p>
+            <p>Server将Adapter Direct FIFO与共享Worker Command mailbox暴露给Adapter，并按Result destination分流。</p>
           </article>
           <article class="card transport">
             <span class="owner">EVENT DISPATCH</span>
@@ -677,7 +677,7 @@
           </div>
           <div class="flow-row server">
             <div class="flow-label">Server routing</div>
-            <div class="flow-body">Server在当前Command authorities中选择一个source，向Adapter返回已经包含目标workerId的Command map。</div>
+            <div class="flow-body">Server先读取Adapter Direct FIFO，再从共享Worker Command Hash消费一次，返回已经包含目标workerId的Command map。</div>
           </div>
           <div class="flow-row transport">
             <div class="flow-label">Transport</div>
@@ -718,15 +718,15 @@
         </div>
       </section>
 
-      <section id="control-only">
+      <section id="direct-call">
         <div class="section-head">
           <div>
-            <p class="kicker">03 · CONTROL_ONLY</p>
+            <p class="kicker">03 · DIRECT_CALL</p>
             <h2>直接控制，不伪装成Task</h2>
           </div>
           <p>
             调用方已经明确选择目标，因此Server无需重新调度。它只做bounded admission、
-            memory mailbox与结果相关性，并复用同一套Adapter delivery。
+            mailbox offer与结果相关性，并复用同一套Adapter delivery。
           </p>
         </div>
 
@@ -738,19 +738,19 @@
             </div>
             <div class="flow-row server">
               <div class="flow-label">Admission</div>
-              <div class="flow-body">Worker调用批量读取descriptor、pause score与Binding，并要求Binding等于URL中的Adapter；Server不会跨Adapter拆分调用。</div>
+              <div class="flow-body">Worker调用批量读取descriptor与Binding，并要求Binding等于URL中的Adapter；它不读取score，也不会跨Adapter拆分调用。</div>
             </div>
             <div class="flow-row server">
-              <div class="flow-label">Memory mailbox</div>
-              <div class="flow-body">每个Adapter、每个target一个未消费槽位，latest-write-wins；waiter与Server进程同生命周期。</div>
+              <div class="flow-label">Shared mailbox</div>
+              <div class="flow-body">Worker Command通过HSETNX只填空槽；TASK append可在消费前覆盖它。Adapter Command进入Server内存FIFO，waiter与Server进程同生命周期。</div>
             </div>
             <div class="flow-row transport">
               <div class="flow-label">Unified delivery</div>
-              <div class="flow-body">CONTROL_ONLY与TASK共用Adapter Command Process、Report Process、connection和Worker Dispatcher，不增加第二条Transport状态机。</div>
+              <div class="flow-body">DIRECT_CALL与TASK共用Adapter Command Process、Report Process、connection和Worker Dispatcher，不增加第二条Transport状态机。</div>
             </div>
             <div class="flow-row server">
               <div class="flow-label">Correlation</div>
-              <div class="flow-body">合法SYSTEM Result完成当前target；timeout、replace、shutdown与Result精确竞争。迟到、重复或不匹配证据被丢弃。</div>
+              <div class="flow-body">合法SYSTEM Result完成当前target；timeout、shutdown与Result精确竞争。槽位占用立即拒绝，提交结果未知则返回unobserved。</div>
             </div>
           </div>
 
@@ -760,12 +760,12 @@
             <ul>
               <li>不创建Task或TaskItem</li>
               <li>不进入Result Routing</li>
-              <li>不持久化Command或Result</li>
+              <li>不创建独立可靠Command或Result存储</li>
               <li>不提供结果查询与可靠重试</li>
-              <li>不把pause变成Worker mode字段</li>
+              <li>不提供pause、drain、互斥或抢占</li>
               <li>不允许Server从候选Worker中选择目标</li>
             </ul>
-            <p style="margin-top: 18px">CONTROL_ONLY可以承载快速、pure-memory管理handler；需要解绑、迁移、排他维护或可靠执行时，应建立独立管理owner。</p>
+            <p style="margin-top: 18px">DIRECT_CALL只保证投递时不覆盖已有Worker槽位；已经消费的Direct Command不会被后来的TASK撤回。解绑、迁移、排他维护或可靠执行需要独立Fleet owner。</p>
           </article>
         </div>
       </section>
@@ -912,7 +912,7 @@ DeliveryReport
             <h3>独立未来路线</h3>
             <ul>
               <li>统一生产Kernel runtime</li>
-              <li>分布式CONTROL_ONLY</li>
+              <li>分布式DIRECT_CALL correlation</li>
               <li>认证、Adapter HA与显式unbind</li>
               <li>persistent delivery ack</li>
               <li>通用plugin与动态Process系统</li>
@@ -923,7 +923,7 @@ DeliveryReport
         <div class="grid-4" style="margin-top: 14px">
           <article class="card"><h3>Kernel Oracle</h3><p>Python executable spec与真实Redis机制proof。</p></article>
           <article class="card"><h3>JVM / Redis Owner</h3><p>contract、architecture guard与Java Redis owner proof。</p></article>
-          <article class="card"><h3>Runtime Boundary</h3><p>Python Kernel、Java Server、Polling、WebSocket、Socket与CONTROL_ONLY。</p></article>
+          <article class="card"><h3>Runtime Boundary</h3><p>Python Kernel、Java Server、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
           <article class="card"><h3>Task Batch / Android / Frontend</h3><p>外部能力、真实文件、Host assembly与read-only UI proof。</p></article>
         </div>
 

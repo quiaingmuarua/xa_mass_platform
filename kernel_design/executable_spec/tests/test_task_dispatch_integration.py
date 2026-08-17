@@ -19,6 +19,7 @@ from kernel_design.executable_spec import (
     TaskType,
     DeliveryCommand,
     WorkerCommandAppendStatus,
+    WorkerCommandOfferStatus,
     DeliveryEndpoint,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
@@ -227,6 +228,81 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(
             [conflicting_seed],
             [result for result in results if result],
+        )
+
+    def test_direct_offer_and_task_append_share_one_worker_slot(self) -> None:
+        direct = self._worker_command(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"direct","payload":{}}',
+            opaque_result_context='{"authority":"direct"}',
+        )
+        task = self._worker_command(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"task","payload":{}}',
+            opaque_result_context='{"authority":"task"}',
+        )
+
+        self.assertEqual(
+            {"worker-1": WorkerCommandOfferStatus.OFFERED},
+            self.worker_command_runtime.offer_worker_commands(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_commands_by_worker_id={"worker-1": direct},
+            ),
+        )
+        self.assertEqual(
+            {"worker-1": WorkerCommandOfferStatus.OCCUPIED},
+            self.worker_command_runtime.offer_worker_commands(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_commands_by_worker_id={"worker-1": direct},
+            ),
+        )
+        self.assertEqual(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_commands_by_worker_id={"worker-1": task},
+            ),
+        )
+        self.assertEqual(
+            task,
+            self.worker_command_runtime.consume_worker_command(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
+        )
+
+    def test_consumed_direct_offer_is_not_recalled_by_later_task(self) -> None:
+        direct = self._worker_command(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"direct","payload":{}}',
+            opaque_result_context='{"authority":"direct"}',
+        )
+        task = self._worker_command(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"task","payload":{}}',
+            opaque_result_context='{"authority":"task"}',
+        )
+        self.worker_command_runtime.offer_worker_commands(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_commands_by_worker_id={"worker-1": direct},
+        )
+
+        consumed_direct = self.worker_command_runtime.consume_worker_command(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_id="worker-1",
+        )
+        self.worker_command_runtime.append_worker_commands(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_commands_by_worker_id={"worker-1": task},
+        )
+
+        self.assertEqual(direct, consumed_direct)
+        self.assertEqual(
+            task,
+            self.worker_command_runtime.consume_worker_command(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
         )
 
     def test_adapter_mailbox_bounded_batches_consume_sparse_worker_fields(

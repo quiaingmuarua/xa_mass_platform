@@ -110,33 +110,40 @@ Adapter -> Worker
 The close Command is a first-version terminal instruction and carries no
 reason, sleep duration, or retry hint.
 
-Direct CONTROL_ONLY management reuses the same transport DTOs but not the Task
-mailbox or Result Routing:
+DIRECT_CALL reuses the same transport DTOs and Worker Command mailbox, but not
+Task scheduling or Result Routing:
 
 ```text
-Server instance-local bounded mailbox
-  -> one adapterId-scoped public Control Call
+one adapterId-scoped public Direct Call
   -> optional same-Group workerId -> opaquePayload map
-  -> only paused Workers bound to that Adapter are admitted
-  -> Server-selected unified Adapter Command batch
+  -> only Workers bound to that Adapter are admitted
+  -> Worker: HSETNX offer to the shared Worker Command Hash
+  -> Adapter: Server instance-local bounded FIFO
+  -> unified Adapter Command batch
   -> SYSTEM -> WORKER, or SYSTEM -> ADAPTER under an opaque response key
   -> unified Adapter Report batch
-  -> Server waiter
+  -> Server instance-local waiter
 ```
 
-The Server admits Worker controls only from its current pause-score read, but
-that observation is not an execution lock and Adapter never reads score.
-`workerGroupId` is a request-body score coordinate, not the public route owner.
-Worker mode pairs it with a `1..100` entry `workerPayloads` map and creates one
-Command with its own payload per admitted Worker. Adapter mode instead carries
-one top-level `opaquePayload`; the two shapes are exclusive. One call never
-fans out across Adapters.
-The Adapter Command FIFO, Worker single-slot Hash, Adapter queues, and waiter
-correlation are memory-only and may be lost on process failure. CONTROL_ONLY
-expiry produces no synthetic Result; late or missing evidence becomes
-`unobserved` at the Server waiter. Server
-treats event code and payload as opaque execution data rather than maintaining
-a whitelist. Adapter events come from one immutable composition-time
+`workerGroupId` is a request-body resource coordinate, not the public route
+owner. Worker mode pairs it with a `1..100` entry `workerPayloads` map and
+creates one Command with its own payload per admitted Worker. Adapter mode
+instead carries one top-level `opaquePayload`; the two shapes are exclusive.
+One call never fans out across Adapters.
+
+Worker Direct Commands use the delivery owner's non-overwriting offer. An
+empty Worker field becomes `OFFERED`; any occupied field is `OCCUPIED` and the
+target is rejected immediately. Authoritative TASK append retains its existing
+replace behavior, so it may replace an offered Direct Command until Adapter
+consumption. After compare-delete consume, no later append recalls or preempts
+the consumed Command; Direct and TASK handlers may both execute serially.
+
+The Adapter FIFO and waiter correlation are Server-instance memory. Worker
+Commands use the existing Redis Hash, while Adapter queues remain process
+local. Expiry produces no synthetic Direct Result; late or missing evidence
+becomes `unobserved` at the Server waiter. Server treats event code and payload
+as opaque execution data rather than maintaining a whitelist. Adapter events
+come from one immutable composition-time
 `platform.adapter.*` Handler map; Worker events come from the immutable
 `platform.worker.*` plus `extension.worker.*` Definition map. Unknown events
 return observed Adapter `23005` or Worker `3302` results. This path does not
@@ -144,13 +151,11 @@ create a Task, claim an Item or Worker lease,
 or write Result Routing truth. Authorization belongs before this use case in a
 future API Session owner.
 
-`CONTROL_ONLY` is not a persisted Worker mode, a third transport lane, or a
-Kernel score band. Server derives the classification from the pause coordinate
-only while admitting a call. Pause does not revoke an existing Worker lease,
-drain a TASK Command already acquired by an Adapter, or interrupt a Handler;
-resume does not wait for the Control Call. Any stronger
-`pause -> drain -> control -> resume` transaction would require a separate
-management owner and is not implied here.
+`DIRECT_CALL` names caller-selected addressing, not a persisted Worker mode, a
+third transport lane, a Kernel score band, or a safety fence. Server neither
+reads nor changes Worker score for admission. Any stronger pause, drain,
+exclusion, preemption or migration transaction requires a separate Fleet
+coordination owner and is not implied here.
 
 ## Task Dispatch
 
@@ -168,7 +173,8 @@ the command.
 `TaskDispatchPacer` appends one Map per endpoint-manager bucket. A Worker lease
 prevents a second valid concurrent assignment. If a mailbox field still
 exists, it is stale transport residue; append first uses `HSETNX`, then replaces
-the occupied residue. The new lease-backed command is authoritative.
+the occupied residue. The new lease-backed command is authoritative, including
+over a pending Direct Command.
 
 ## Redis Mailbox
 
@@ -176,6 +182,22 @@ the occupied residue. The new lease-backed command is authoritative.
 wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
   HASH workerId -> DeliveryCommand JSON
 ```
+
+The owner exposes two distinct writes:
+
+```text
+append_worker_commands
+  HSETNX then replace occupied fields
+  -> APPENDED | REPLACED
+
+offer_worker_commands
+  one same-key Lua batch of HSETNX operations
+  -> OFFERED | OCCUPIED per worker
+```
+
+`offer_worker_commands` is a generic mailbox operation, not a DIRECT_CALL or
+scheduling contract. It validates a caller-bounded, single-Adapter map and
+never changes an occupied field.
 
 Point consume atomically performs `HGET + HDEL` for one workerId.
 
@@ -242,29 +264,26 @@ Batch consume returns:
 }
 ```
 
-For each consume request, Server first consumes the Adapter Control FIFO up to
-the request limit. With the remaining capacity it tries the CONTROL_ONLY Worker
-Hash. If that Hash yields any live command, Server returns that partial Worker
-batch without reading TASK; only an empty CONTROL_ONLY result permits one TASK
-Hash consume. Thus one response may contain Adapter Commands plus one Worker
-authority, but never both Worker Hash authorities. Worker entry keys are
-workerId addresses. Adapter entry keys are response-local, opaque, and ignored
-by Adapter dispatch, which relies on `dst`.
+For each consume request, Server first consumes the Adapter Direct FIFO up to
+the request limit. With the remaining capacity it calls
+`WorkerCommandRuntime.consumeWorkerCommands` exactly once. That shared Hash may
+contain TASK or SYSTEM Commands for different Worker fields; there is no
+authority-specific Worker queue. Worker entry keys are workerId addresses.
+Adapter entry keys are response-local, opaque, and ignored by Adapter dispatch,
+which relies on `dst`.
 
 The Adapter result endpoint accepts a mixed encoded batch: `dst=TASK` is
 validated and appended through the Kernel Result owner, while `dst=SYSTEM` is
-correlated with the Server-local Control waiter. The response reports combined
+correlated with the Server-local Direct Call waiter. The response reports combined
 accepted and rejected counts. Remote unavailability keeps the Adapter's one
 pending batch for retry.
 
-Priority is limited to remote acquisition. It does not reorder commands already
-present in the Adapter's single FIFO, preempt an in-flight Worker Handler, or
-reserve delivery capacity. A full Adapter queue delays the next consume call.
-Sustained Adapter Commands may delay all Worker acquisition, while sustained
-CONTROL_ONLY Worker Commands may delay TASK acquisition. Because Control state
-is Server-instance memory, Adapter consume and result requests must return to
-the Server process that accepted the call; no distributed mailbox or
-cross-instance waiter correlation exists.
+Priority is limited to the Adapter Direct FIFO prefix. It does not reorder
+commands already present in the Adapter's local FIFO, preempt an in-flight
+Worker Handler, or reserve delivery capacity. A full Adapter queue delays the
+next consume call. Because Direct waiter state is Server-instance memory,
+Adapter consume and result requests must return to the Server process that
+accepted the call; no distributed waiter correlation exists.
 
 `system-polling` is a logical endpoint-manager binding for pure polling
 Workers. It may use only point access, never batch access.
@@ -337,7 +356,7 @@ share no verified cache, route Registry, or Channel state. The fixed identity Re
 there is no Adapter event registry or plugin dispatcher. Reports whose
 `dst=ADAPTER` never enter Server, Redis, or Kernel Result Routing. Unknown
 Worker-originated local events on an established connection are logged and
-dropped; Adapter-targeted CONTROL_ONLY commands receive `23005` from the local
+dropped; Adapter-targeted DIRECT_CALL commands receive `23005` from the local
 event executor.
 
 Before identity, malformed or non-identity input closes the physical Channel.
@@ -359,7 +378,7 @@ Worker-owned `3...` enter the single Result queue for `dst=TASK` or
 `dst=SYSTEM`, preserving their original encoded JSON. A full or closed queue
 still closes the Channel for TASK backpressure; best-effort SYSTEM evidence is
 dropped without closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
-the same queue. CONTROL_ONLY expiry creates no synthetic evidence because the
+the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
 
@@ -414,10 +433,9 @@ value.
 SYSTEM and TASK Commands use this same Event Name Dispatcher and the same
 per-connection Client callback lane. Command `src` is source evidence, not a
 Handler lookup coordinate. They cannot
-preempt an already running Handler. The current CONTROL_ONLY policy therefore
-requires them to be fast, bounded, thread-safe, and non-blocking; a network,
-disk, or long-running management workflow needs another owner rather than a
-transport Handler. Java and Android assemblies include default
+preempt an already running Handler. All synchronous handlers must therefore be
+bounded and thread-safe; a long-running management workflow needs another
+owner rather than a transport Handler. Java and Android assemblies include default
 `platform.worker.probe`, live `platform.worker.properties.snapshot`, and static
 `platform.worker.events.snapshot` Definitions before Host extensions. The
 properties result excludes the assembly-owned `clientWorkerKey`; arbitrary
@@ -468,10 +486,10 @@ contract.
 - Worker sends each Result once; a failed send is lost. Adapter queues are
   process-local and can be lost.
 - Adapter batch retry can duplicate a DeliveryReport at Server ingress.
-- A mixed TASK/SYSTEM pending batch is retried as one unit; a CONTROL_ONLY
+- A mixed TASK/SYSTEM pending batch is retried as one unit; a DIRECT_CALL
   waiter may already have timed out when its late evidence reaches Server.
-- Instance-local Control mailbox and waiter state require Adapter HTTP affinity
-  to the Server process that accepted the call.
+- Instance-local Adapter Direct FIFO and waiter state require Adapter HTTP
+  affinity to the Server process that accepted the call.
 - Result Routing fences converge late and duplicate evidence.
 - Item claim and Worker lease expiry recover missing evidence.
 

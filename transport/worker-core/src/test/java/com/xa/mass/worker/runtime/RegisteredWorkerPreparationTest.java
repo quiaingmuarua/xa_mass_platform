@@ -115,7 +115,7 @@ class RegisteredWorkerPreparationTest {
     }
 
     @Test
-    void invalidPropertiesFailBeforeAnyControlCall() {
+    void invalidPropertiesFailBeforeAnyRegistrationCall() {
         FakeControlClient control = new FakeControlClient();
         RegisteredWorkerPreparation preparation = preparation(
                 new MutableIdentityStore(),

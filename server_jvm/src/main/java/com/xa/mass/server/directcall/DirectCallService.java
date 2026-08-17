@@ -1,20 +1,19 @@
-package com.xa.mass.server.control;
+package com.xa.mass.server.directcall;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlCallRequest;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchCallResponse;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlBatchStatus;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetCallResponse;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetReason;
-import com.xa.mass.server.api.v1.control.ControlCallHttpContract.ControlTargetStatus;
-import com.xa.mass.server.control.ControlCallRegistry.BatchOutcome;
-import com.xa.mass.server.control.ControlCallRegistry.ControlTarget;
-import com.xa.mass.server.control.ControlCallRegistry.TargetOutcome;
-import com.xa.mass.server.control.ControlCallRegistry.TargetOutcomeReason;
-import com.xa.mass.server.control.ControlCallRegistry.TargetPlan;
+import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectCallRequest;
+import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectCallResponse;
+import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectCallStatus;
+import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectTargetCallResponse;
+import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectTargetReason;
+import com.xa.mass.server.directcall.DirectCallRegistry.BatchOutcome;
+import com.xa.mass.server.directcall.DirectCallRegistry.DirectTarget;
+import com.xa.mass.server.directcall.DirectCallRegistry.TargetOutcome;
+import com.xa.mass.server.directcall.DirectCallRegistry.TargetOutcomeReason;
+import com.xa.mass.server.directcall.DirectCallRegistry.TargetPlan;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -33,34 +32,37 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.context.request.async.DeferredResult;
 
-public final class ControlCallService {
+public final class DirectCallService {
 
     private static final int MAX_BATCH_SIZE = 100;
     private static final int MAX_CONSUME_LIMIT = 100;
+    private static final System.Logger LOGGER = System.getLogger(
+            DirectCallService.class.getName()
+    );
 
     private final WorkerResourceCatalog workerCatalog;
-    private final WorkerScoreCore workerScores;
+    private final WorkerCommandRuntime workerCommands;
     private final WorkerBindingService workerBindings;
     private final WorkerEndpointDirectory endpoints;
-    private final ControlCallRegistry registry;
+    private final DirectCallRegistry registry;
     private final long defaultWaitTimeoutMillis;
     private final long maxWaitTimeoutMillis;
 
-    public ControlCallService(
+    public DirectCallService(
             WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScores,
+            WorkerCommandRuntime workerCommands,
             WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
-            ControlCallRegistry registry,
-            ControlCallProperties properties
+            DirectCallRegistry registry,
+            DirectCallProperties properties
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
         );
-        this.workerScores = Objects.requireNonNull(
-                workerScores,
-                "workerScores"
+        this.workerCommands = Objects.requireNonNull(
+                workerCommands,
+                "workerCommands"
         );
         this.workerBindings = Objects.requireNonNull(
                 workerBindings,
@@ -74,12 +76,12 @@ public final class ControlCallService {
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<ResponseEntity<ControlBatchCallResponse>> call(
+    public DeferredResult<ResponseEntity<DirectCallResponse>> call(
             String adapterId,
-            ControlCallRequest request
+            DirectCallRequest request
     ) {
-        requireControlRequest(request);
-        requireControlAdapter(adapterId);
+        requireDirectRequest(request);
+        requireDirectAdapter(adapterId);
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         long deadline = System.currentTimeMillis() + timeoutMillis;
 
@@ -101,7 +103,7 @@ public final class ControlCallService {
                     List.of(commandPlan(
                             adapterId,
                             adapterId,
-                            ControlTarget.adapter(adapterId),
+                            DirectTarget.adapter(adapterId),
                             DeliveryEndpoint.ADAPTER,
                             request.messageType(),
                             request.opaquePayload(),
@@ -123,7 +125,6 @@ public final class ControlCallService {
         List<String> workerIds = List.copyOf(workerPayloads.keySet());
 
         Map<String, WorkerDescriptor> workers;
-        Map<String, WorkerScoreState> scores;
         Map<String, String> endpointIds;
         try {
             workers = Objects.requireNonNull(
@@ -133,19 +134,15 @@ public final class ControlCallService {
                     ),
                     "Worker descriptor batch"
             );
-            scores = Objects.requireNonNull(
-                    workerScores.getScoreStates(
-                            workerGroupId,
-                            workerIds
-                    ),
-                    "Worker score batch"
-            );
             endpointIds = Objects.requireNonNull(
                     workerBindings.currentEndpointManagerIds(workerIds),
                     "Worker Binding batch"
             );
         } catch (RuntimeException error) {
-            throw unavailable("Could not load Worker control admission", error);
+            throw unavailable(
+                    "Could not load Worker Direct Call admission",
+                    error
+            );
         }
 
         List<TargetPlan> plans = new ArrayList<>(workerIds.size());
@@ -156,21 +153,6 @@ public final class ControlCallService {
                 plans.add(TargetPlan.rejected(
                         workerId,
                         TargetOutcomeReason.NOT_FOUND
-                ));
-                continue;
-            }
-            WorkerScoreState score = scores.get(workerId);
-            if (score == null) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.SCORE_UNAVAILABLE
-                ));
-                continue;
-            }
-            if (score.timeMillis() != WorkerScoreCore.PAUSE_TIME_MILLIS) {
-                plans.add(TargetPlan.rejected(
-                        workerId,
-                        TargetOutcomeReason.CONTROL_ONLY_REQUIRED
                 ));
                 continue;
             }
@@ -192,34 +174,26 @@ public final class ControlCallService {
             plans.add(commandPlan(
                     workerId,
                     adapterId,
-                    ControlTarget.worker(workerId),
+                    DirectTarget.worker(workerId),
                     DeliveryEndpoint.WORKER,
                     request.messageType(),
                     workerPayloads.get(workerId),
                     deadline
             ));
         }
-        return registerBatch(timeoutMillis, plans);
+
+        DeferredResult<ResponseEntity<DirectCallResponse>> response =
+                registerBatch(timeoutMillis, plans);
+        offerWorkerCommands(adapterId, plans);
+        return response;
     }
 
     public List<DeliveryCommand> consumeAdapterCommands(
             String adapterId,
             int limit
     ) {
-        requireControlConsume(adapterId, limit);
+        requireDirectConsume(adapterId, limit);
         return registry.consumeAdapterCommands(
-                adapterId,
-                limit,
-                System.currentTimeMillis()
-        );
-    }
-
-    public Map<String, DeliveryCommand> consumeWorkerCommands(
-            String adapterId,
-            int limit
-    ) {
-        requireControlConsume(adapterId, limit);
-        return registry.consumeWorkerCommands(
                 adapterId,
                 limit,
                 System.currentTimeMillis()
@@ -230,14 +204,14 @@ public final class ControlCallService {
             String adapterId,
             List<DeliveryReport> reports
     ) {
-        requireControlAdapter(adapterId);
+        requireDirectAdapter(adapterId);
         if (reports == null) {
-            throw invalid("Control Result batch must be present");
+            throw invalid("Direct Result batch must be present");
         }
         if (reports.isEmpty()) {
             return new ResultAppendCounts(0, 0);
         }
-        ControlCallRegistry.CompletionCounts counts =
+        DirectCallRegistry.CompletionCounts counts =
                 registry.completeReports(adapterId, reports);
         return new ResultAppendCounts(
                 counts.acceptedCount(),
@@ -245,127 +219,212 @@ public final class ControlCallService {
         );
     }
 
-    private DeferredResult<ResponseEntity<ControlBatchCallResponse>>
-            registerBatch(
-                    long timeoutMillis,
-                    List<TargetPlan> plans
-            ) {
-        String controlBatchId = UUID.randomUUID().toString();
-        DeferredResult<ResponseEntity<ControlBatchCallResponse>> deferred =
+    private void offerWorkerCommands(
+            String adapterId,
+            List<TargetPlan> plans
+    ) {
+        Map<String, DeliveryCommand> commandsByWorkerId =
+                new LinkedHashMap<>();
+        Map<String, String> correlationsByWorkerId = new LinkedHashMap<>();
+        for (TargetPlan plan : plans) {
+            if (plan.target() == null
+                    || plan.target().type()
+                    != DirectCallRegistry.DirectTargetType.WORKER) {
+                continue;
+            }
+            commandsByWorkerId.put(plan.target().targetId(), plan.command());
+            correlationsByWorkerId.put(
+                    plan.target().targetId(),
+                    plan.correlationId()
+            );
+        }
+        if (commandsByWorkerId.isEmpty()) {
+            return;
+        }
+
+        Map<String, TargetOutcome> immediate = new LinkedHashMap<>();
+        try {
+            Map<String, WorkerCommandOfferStatus> statuses =
+                    workerCommands.offerWorkerCommands(
+                            adapterId,
+                            commandsByWorkerId
+                    );
+            if (statuses == null
+                    || !statuses.keySet().equals(
+                            commandsByWorkerId.keySet()
+                    )) {
+                completeSubmissionUnknown(
+                        correlationsByWorkerId,
+                        immediate
+                );
+            } else {
+                statuses.forEach((workerId, status) -> {
+                    if (status == WorkerCommandOfferStatus.OCCUPIED) {
+                        immediate.put(
+                                correlationsByWorkerId.get(workerId),
+                                TargetOutcome.rejected(
+                                        TargetOutcomeReason
+                                                .COMMAND_SLOT_OCCUPIED
+                                )
+                        );
+                    } else if (status
+                            != WorkerCommandOfferStatus.OFFERED) {
+                        immediate.put(
+                                correlationsByWorkerId.get(workerId),
+                                TargetOutcome.unobserved(
+                                        TargetOutcomeReason.SUBMISSION_UNKNOWN
+                                )
+                        );
+                    }
+                });
+            }
+        } catch (RuntimeException error) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "operation={0} adapterId={1} targetCount={2} "
+                            + "failureType={3}",
+                    "directCall.offerWorkerCommands",
+                    adapterId,
+                    commandsByWorkerId.size(),
+                    error.getClass().getName()
+            );
+            completeSubmissionUnknown(correlationsByWorkerId, immediate);
+        }
+        if (!immediate.isEmpty()) {
+            registry.completeTargets(immediate);
+        }
+    }
+
+    private static void completeSubmissionUnknown(
+            Map<String, String> correlationsByWorkerId,
+            Map<String, TargetOutcome> outcomes
+    ) {
+        correlationsByWorkerId.values().forEach(correlationId -> outcomes.put(
+                correlationId,
+                TargetOutcome.unobserved(
+                        TargetOutcomeReason.SUBMISSION_UNKNOWN
+                )
+        ));
+    }
+
+    private DeferredResult<ResponseEntity<DirectCallResponse>> registerBatch(
+            long timeoutMillis,
+            List<TargetPlan> plans
+    ) {
+        String directCallId = UUID.randomUUID().toString();
+        DeferredResult<ResponseEntity<DirectCallResponse>> deferred =
                 new DeferredResult<>(timeoutMillis);
-        ControlCallRegistry.BatchHandle handle = registry.registerBatch(
-                controlBatchId,
+        DirectCallRegistry.BatchHandle handle = registry.registerBatch(
+                directCallId,
                 plans
         );
         handle.completion().thenAccept(outcome -> deferred.setResult(
                 ResponseEntity.ok(toResponse(outcome))
         ));
-        deferred.onTimeout(() -> registry.timeout(controlBatchId));
-        deferred.onError(ignored -> registry.cancel(controlBatchId));
-        deferred.onCompletion(() -> registry.cancel(controlBatchId));
+        deferred.onTimeout(() -> registry.timeout(directCallId));
+        deferred.onError(ignored -> registry.cancel(directCallId));
+        deferred.onCompletion(() -> registry.cancel(directCallId));
         return deferred;
     }
 
     private static TargetPlan commandPlan(
             String resultKey,
             String adapterId,
-            ControlTarget target,
+            DirectTarget target,
             DeliveryEndpoint destination,
             String messageType,
             String payload,
             long deadline
     ) {
-        String controlCallId = UUID.randomUUID().toString();
+        String correlationId = UUID.randomUUID().toString();
         DeliveryCommand command = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
                 destination,
                 messageType,
                 deadline,
                 payload,
-                ControlCallRegistry.FORWARD_PREFIX + controlCallId
+                DirectCallRegistry.FORWARD_PREFIX + correlationId
         );
         return TargetPlan.command(
                 resultKey,
-                controlCallId,
+                correlationId,
                 adapterId,
                 target,
                 command
         );
     }
 
-    private static ControlBatchCallResponse toResponse(BatchOutcome outcome) {
-        Map<String, ControlTargetCallResponse> results =
-                new LinkedHashMap<>();
+    private static DirectCallResponse toResponse(BatchOutcome outcome) {
+        Map<String, DirectTargetCallResponse> results = new LinkedHashMap<>();
         boolean allObserved = true;
         for (Map.Entry<String, TargetOutcome> entry
                 : outcome.results().entrySet()) {
             TargetOutcome target = entry.getValue();
-            ControlTargetCallResponse response;
+            DirectTargetCallResponse response;
             switch (target.status()) {
                 case OBSERVED -> response =
-                        ControlTargetCallResponse.observed(
+                        DirectTargetCallResponse.observed(
                                 target.outcomeCode(),
                                 target.payload()
                         );
                 case UNOBSERVED -> {
                     allObserved = false;
-                    response = ControlTargetCallResponse.unobserved(
+                    response = DirectTargetCallResponse.unobserved(
                             toHttpReason(target.reason())
                     );
                 }
                 case REJECTED -> {
                     allObserved = false;
-                    response = ControlTargetCallResponse.rejected(
+                    response = DirectTargetCallResponse.rejected(
                             toHttpReason(target.reason())
                     );
                 }
                 default -> throw new IllegalStateException(
-                        "Unknown Control target outcome"
+                        "Unknown Direct target outcome"
                 );
             }
             results.put(entry.getKey(), response);
         }
-        return new ControlBatchCallResponse(
-                outcome.controlBatchId(),
+        return new DirectCallResponse(
+                outcome.directCallId(),
                 allObserved
-                        ? ControlBatchStatus.OBSERVED
-                        : ControlBatchStatus.PARTIAL,
+                        ? DirectCallStatus.OBSERVED
+                        : DirectCallStatus.PARTIAL,
                 results
         );
     }
 
-    private static ControlTargetReason toHttpReason(
+    private static DirectTargetReason toHttpReason(
             TargetOutcomeReason reason
     ) {
         return switch (reason) {
-            case TIMEOUT -> ControlTargetReason.TIMEOUT;
-            case REPLACED -> ControlTargetReason.REPLACED;
-            case SHUTDOWN -> ControlTargetReason.SHUTDOWN;
-            case NOT_FOUND -> ControlTargetReason.NOT_FOUND;
-            case CONTROL_ONLY_REQUIRED ->
-                    ControlTargetReason.CONTROL_ONLY_REQUIRED;
-            case SCORE_UNAVAILABLE ->
-                    ControlTargetReason.SCORE_UNAVAILABLE;
-            case NOT_BOUND -> ControlTargetReason.NOT_BOUND;
+            case TIMEOUT -> DirectTargetReason.TIMEOUT;
+            case SHUTDOWN -> DirectTargetReason.SHUTDOWN;
+            case NOT_FOUND -> DirectTargetReason.NOT_FOUND;
+            case NOT_BOUND -> DirectTargetReason.NOT_BOUND;
             case ENDPOINT_MISMATCH ->
-                    ControlTargetReason.ENDPOINT_MISMATCH;
+                    DirectTargetReason.ENDPOINT_MISMATCH;
+            case COMMAND_SLOT_OCCUPIED ->
+                    DirectTargetReason.COMMAND_SLOT_OCCUPIED;
+            case SUBMISSION_UNKNOWN ->
+                    DirectTargetReason.SUBMISSION_UNKNOWN;
         };
     }
 
-    private WorkerEndpointBinding requireControlAdapter(String adapterId) {
+    private WorkerEndpointBinding requireDirectAdapter(String adapterId) {
         requireNonBlank(adapterId, "adapterId");
         WorkerEndpointBinding endpoint = endpoints.find(adapterId);
         if (endpoint == null) {
             throw targetNotFound("Adapter was not found");
         }
         if (endpoint.transportType() == WorkerTransportType.POLLING) {
-            throw invalid("Polling endpoints do not support Control Calls");
+            throw invalid("Polling endpoints do not support Direct Calls");
         }
         return endpoint;
     }
 
-    private void requireControlConsume(String adapterId, int limit) {
-        requireControlAdapter(adapterId);
+    private void requireDirectConsume(String adapterId, int limit) {
+        requireDirectAdapter(adapterId);
         if (limit <= 0 || limit > MAX_CONSUME_LIMIT) {
             throw invalid("consume limit must be within 1..100");
         }
@@ -405,11 +464,9 @@ public final class ControlCallService {
         return validated;
     }
 
-    private static void requireControlRequest(
-            ControlCallRequest request
-    ) {
+    private static void requireDirectRequest(DirectCallRequest request) {
         if (request == null) {
-            throw invalid("Control Call request must be present");
+            throw invalid("Direct Call request must be present");
         }
         requireNonBlank(request.messageType(), "messageType");
     }
@@ -422,8 +479,8 @@ public final class ControlCallService {
 
     private static ServerException invalid(String message) {
         return new ServerException(
-                ServerErrorCode.INVALID_CONTROL_CALL_REQUEST,
-                "controlCall.validate",
+                ServerErrorCode.INVALID_DIRECT_CALL_REQUEST,
+                "directCall.validate",
                 message,
                 null
         );
@@ -431,8 +488,8 @@ public final class ControlCallService {
 
     private static ServerException targetNotFound(String message) {
         return new ServerException(
-                ServerErrorCode.CONTROL_CALL_TARGET_NOT_FOUND,
-                "controlCall.requireTarget",
+                ServerErrorCode.DIRECT_CALL_TARGET_NOT_FOUND,
+                "directCall.requireTarget",
                 message,
                 null
         );
@@ -443,8 +500,8 @@ public final class ControlCallService {
             Throwable cause
     ) {
         return new ServerException(
-                ServerErrorCode.CONTROL_CALL_UNAVAILABLE,
-                "controlCall.loadTargets",
+                ServerErrorCode.DIRECT_CALL_UNAVAILABLE,
+                "directCall.loadTargets",
                 message,
                 cause
         );

@@ -33,7 +33,7 @@ REQUIRED_ROOT_LINKS = {
 REQUIRED_OVERVIEW_IDS = {
     "authority",
     "task-mainline",
-    "control-only",
+    "direct-call",
     "transport",
     "runtime-topology",
     "proof-and-stability",
@@ -42,6 +42,9 @@ FORBIDDEN_CURRENT_TERMS = {
     "/control-commands:consume",
     "/control-results:append",
     "/workers/controls:call",
+    "/controls:call",
+    "CONTROL_ONLY",
+    "control-only:v1:",
     "workerCommandsByWorkerId",
     "TASK_COMMAND",
     "TASK_REPORT",

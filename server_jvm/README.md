@@ -10,7 +10,7 @@ opt-in Scenario host.
 - process health and public OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as Task Batch, WorkerGroup RPC and
-  CONTROL_ONLY correlation;
+  DIRECT_CALL correlation;
 - configured Adapter and Scenario startup order.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
@@ -52,31 +52,37 @@ Provider ownership is deliberately mixed but explicit:
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | WorkerGroup RPC and Task Batch | Server-bounded use cases over existing owners |
-| CONTROL_ONLY mailbox, waiter and correlation | Server instance memory |
+| Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
+| Adapter Direct FIFO, waiter and correlation | Server instance memory |
 | Other scheduling internals | Explicit JVM gaps |
 
 The bounded use cases do not create new truth: WorkerGroup RPC appends one Item
 and observes last success through one shared probe; Task Batch appends a finite
 input once and publishes complete or partial JSONL; pause/resume calls the
-Worker score owner; CONTROL_ONLY correlates caller-selected targets without
-persisting Commands or Results. Its single public call is scoped to one
+Worker score owner; DIRECT_CALL correlates caller-selected targets without
+creating Task or Result Routing truth. Its single public call is scoped to one
 configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
 one WorkerGroup plus a `1..100` entry `workerId -> opaquePayload` map targets
 only Workers currently bound to that Adapter. The two request modes are
-exclusive, and Server never partitions one Control Call across Adapters.
+exclusive, and Server never partitions one Direct Call across Adapters.
 `messageType` and each opaque payload pass through unchanged. Server does not
 enumerate event support or convert an unknown event into an HTTP admission
 error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
-access before this use case, but it is not a CONTROL_ONLY event whitelist.
-For each configured Adapter, Adapter-targeted calls enter a bounded FIFO and
-Worker-targeted calls enter a separate bounded `workerId` single-slot Hash.
-Adapter Commands are consumed first. Any remaining response capacity comes
-from the CONTROL_ONLY Worker Hash when it yields at least one live command, or
-from the TASK Worker Hash only when CONTROL_ONLY yields none. The response may
-therefore contain Adapter Commands plus one Worker authority, never both Worker
-authorities. Only a Worker Command map key is its workerId; Adapter Command keys
-are response-local and opaque.
+access before this use case, but it is not a DIRECT_CALL event whitelist.
+
+Worker calls do not require pause or read score. They use
+`WorkerCommandRuntime.offerWorkerCommands`: an empty field in the existing
+Adapter-partitioned Worker Command Hash is filled, while an occupied field is
+rejected as `command-slot-occupied`. The authoritative TASK append path may
+replace an offered Direct Command until it is destructively consumed. Timeout,
+HTTP cancellation and shutdown finish only the waiter; they do not retract a
+Worker Command already offered to Redis.
+
+Adapter-targeted calls enter a bounded Server-memory FIFO. Adapter Commands are
+consumed first; any remaining response capacity is filled by exactly one
+bounded consume from the shared Worker Command Hash. Only a Worker Command map
+key is its workerId; Adapter Command keys are response-local and opaque.
 Exact route schemas are available from the running Server:
 
 ```text
@@ -138,9 +144,9 @@ Kernel Redis                   redis://localhost:6379/15
 Redis prefix                   default
 Adapter instances              none
 WorkerGroup RPC wait           30s default / 60s maximum
-CONTROL_ONLY wait              3s default / 10s maximum
-Adapter Control FIFO capacity  1000 per Adapter
-Worker Control Hash capacity   1000 targets per Adapter
+DIRECT_CALL wait               3s default / 10s maximum
+Adapter Direct FIFO capacity   1000 per Adapter
+Pending Direct targets         10000 per Server
 ```
 
 The default Adapter section defines only remote API connection defaults. An
@@ -200,11 +206,10 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
-paths. It also pauses a real WebSocket Worker, executes a custom
-`extension.worker.*` event through a SYSTEM Command and the default
-probe/properties/events handlers, observes Adapter connection state,
-closes the current Channel, proves transparent reconnect, then resumes
-scheduling.
+paths. It also calls an unpaused real WebSocket Worker directly, executes a
+custom `extension.worker.*` event through a SYSTEM Command and the default
+probe/properties/events handlers, observes Adapter connection state, closes
+the current Channel, and proves transparent reconnect.
 
 The canonical proof ownership, prerequisites and CI lane selection are in
 [`TESTING.md`](../TESTING.md).

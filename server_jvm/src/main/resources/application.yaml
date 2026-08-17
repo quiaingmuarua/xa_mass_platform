@@ -35,11 +35,10 @@ xa:
       long-probe-interval-millis: 250
       wake-buffer-capacity: 10000
       wake-batch-limit: 100
-    control-call:
+    direct-call:
       default-wait-timeout-millis: 3000
       max-wait-timeout-millis: 10000
       max-adapter-commands-per-adapter: 1000
-      max-worker-commands-per-adapter: 1000
       max-pending-calls: 10000
     worker-delivery:
       adapter:

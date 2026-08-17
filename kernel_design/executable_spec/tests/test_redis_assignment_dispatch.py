@@ -7,6 +7,7 @@ from kernel_design.executable_spec import (
     CandidateWorkerEntry,
     DeliveryCommand,
     WorkerCommandAppendStatus,
+    WorkerCommandOfferStatus,
     DeliveryEndpoint,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
@@ -180,6 +181,17 @@ class FakeRedis:
             for member in selected:
                 del row[member]
             return selected
+        if "HSETNX" in script:
+            results = []
+            for index in range(0, len(args), 2):
+                results.append(
+                    self.hsetnx(
+                        key,
+                        str(args[index]),
+                        str(args[index + 1]),
+                    )
+                )
+            return results
         if "current == observed" in script:
             if self.before_exact_consume is not None:
                 self.before_exact_consume(key)
@@ -374,6 +386,71 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         )
         self.assertEqual(
             replacement,
+            self.worker_command_runtime.consume_worker_command(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
+        )
+
+    def test_mailbox_offer_only_fills_empty_worker_slots(self) -> None:
+        occupied = self._worker_command("task", "worker-1")
+        offered = self._worker_command("direct", "worker-1")
+        other = self._worker_command("other", "worker-2")
+        self.worker_command_runtime.append_worker_commands(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_commands_by_worker_id={"worker-1": occupied},
+        )
+
+        result = self.worker_command_runtime.offer_worker_commands(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_commands_by_worker_id={
+                "worker-1": offered,
+                "worker-2": other,
+            },
+        )
+
+        self.assertEqual(
+            {
+                "worker-1": WorkerCommandOfferStatus.OCCUPIED,
+                "worker-2": WorkerCommandOfferStatus.OFFERED,
+            },
+            result,
+        )
+        self.assertEqual(
+            occupied,
+            self.worker_command_runtime.consume_worker_command(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
+        )
+        self.assertEqual(
+            other,
+            self.worker_command_runtime.consume_worker_command(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-2",
+            ),
+        )
+
+    def test_authoritative_append_replaces_an_unconsumed_offer(self) -> None:
+        direct = self._worker_command("direct", "worker-1")
+        task = self._worker_command("task", "worker-1")
+        self.assertEqual(
+            {"worker-1": WorkerCommandOfferStatus.OFFERED},
+            self.worker_command_runtime.offer_worker_commands(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_commands_by_worker_id={"worker-1": direct},
+            ),
+        )
+
+        self.assertEqual(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_commands_by_worker_id={"worker-1": task},
+            ),
+        )
+        self.assertEqual(
+            task,
             self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",

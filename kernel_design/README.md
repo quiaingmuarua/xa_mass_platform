@@ -122,9 +122,9 @@ The scheduling planes are intentionally separate:
 Worker Delivery carries the already-assigned Command. It does not select a
 Worker, claim an Item, mutate scheduling score or decide finality.
 
-CONTROL_ONLY is outside this mainline. It is a Server-owned, caller-targeted
-management use case that reuses Worker Delivery and never enters Task
-scheduling or Result Routing.
+DIRECT_CALL is outside this mainline. It is a Server-owned, caller-targeted
+use case that offers Worker Commands into the existing delivery mailbox
+without selecting a Worker or entering Task scheduling and Result Routing.
 
 ## Owner Contract Standard
 

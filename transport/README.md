@@ -38,10 +38,11 @@ module map and common implementation boundaries.
 `transport/` groups local transport mechanisms and implementations. It does
 not change Kernel ownership. The Adapter delivers already-assigned commands;
 the Worker executes statically supplied business handlers. TASK execution and
-direct SYSTEM control reuse the same Delivery DTOs, Adapter Processes, physical
-connection, and Worker Dispatcher. Server owns CONTROL_ONLY admission,
-instance-local mailbox state, and remote-source priority; Transport does not
-introduce a CONTROL_ONLY mode field, score check, or second queue owner.
+caller-targeted DIRECT_CALL reuse the same Delivery DTOs, Adapter Processes,
+physical connection, and Worker Dispatcher. Server owns Direct Call admission
+and correlation; the delivery owner supplies the shared Worker mailbox.
+Transport does not introduce a Direct mode field, score check, or second queue
+owner.
 Adapter management events come from one immutable `platform.adapter.*`
 Handler map. Java and Android Workers prepend finite `platform.worker.*`
 Definitions before Host `extension.worker.*` Definitions. Event Names describe

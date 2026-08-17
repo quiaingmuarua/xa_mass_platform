@@ -86,13 +86,18 @@ Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
 TaskItem append / result load   -> Java Redis TaskRuntime provider
 Task Dispatch wake hint         -> Python HTTP application command
-DeliveryCommand consume           -> Java Redis WorkerCommandRuntime provider
+DeliveryCommand offer / consume   -> Java Redis WorkerCommandRuntime provider
 DeliveryReport append               -> Java Redis WorkerResultRuntime provider
 other score/candidate/scheduling -> no Server provider
 ```
 
 Unimplemented JVM owner operations fail explicitly. They are not forwarded to
 Python and do not silently select another provider.
+
+The JVM delivery slice implements the generic non-overwriting
+`offerWorkerCommands` operation used by Server DIRECT_CALL and the existing
+consume operations. Authoritative `appendWorkerCommands` remains an explicit
+JVM gap; Python scheduling continues to own that publication path.
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts
 the caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains

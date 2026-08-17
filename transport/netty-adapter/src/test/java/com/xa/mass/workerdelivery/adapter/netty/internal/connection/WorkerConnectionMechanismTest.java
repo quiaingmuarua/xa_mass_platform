@@ -497,7 +497,7 @@ class WorkerConnectionMechanismTest {
                     "platform.worker.properties.snapshot",
                     "200",
                     "{}",
-                    "control-only:v1:test"
+                    "direct-call:v1:test"
             ));
         }
 

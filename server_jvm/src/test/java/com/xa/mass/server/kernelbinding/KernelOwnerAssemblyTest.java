@@ -14,6 +14,8 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
+import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.lettuce.core.RedisClient;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,31 @@ class KernelOwnerAssemblyTest {
                             .isEqualTo(
                                     "acquire_hot_acquire_candidates"
                             );
+                });
+        org.mockito.Mockito.verifyNoInteractions(redisClient);
+    }
+
+    @Test
+    void authoritativeWorkerCommandAppendRemainsAnExplicitJvmGap() {
+        RedisClient redisClient = mock(RedisClient.class);
+        RedisWorkerCommandRuntime commands = new RedisWorkerCommandRuntime(
+                redisClient,
+                new WorkerDeliveryCodec(),
+                "test"
+        );
+
+        assertThatThrownBy(() -> commands.appendWorkerCommands(
+                "adapter-1",
+                Map.of()
+        ))
+                .isInstanceOf(KernelOperationNotImplementedException.class)
+                .satisfies(error -> {
+                    var notImplemented =
+                            (KernelOperationNotImplementedException) error;
+                    assertThat(notImplemented.contractName())
+                            .isEqualTo("WorkerCommandRuntime");
+                    assertThat(notImplemented.operationName())
+                            .isEqualTo("append_worker_commands");
                 });
         org.mockito.Mockito.verifyNoInteractions(redisClient);
     }

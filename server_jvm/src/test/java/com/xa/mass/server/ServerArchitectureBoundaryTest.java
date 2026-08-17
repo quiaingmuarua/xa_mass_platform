@@ -68,7 +68,7 @@ class ServerArchitectureBoundaryTest {
                 "com/xa/mass/server/api/v1"
         )))
                 .doesNotContain("WorkerControlController")
-                .doesNotContain("/workers/controls:call");
+                .doesNotContain("/workers/direct-calls");
     }
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerassembly"
@@ -91,8 +91,8 @@ class ServerArchitectureBoundaryTest {
     private static final Path TASK_BATCH_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/taskbatch"
     );
-    private static final Path CONTROL_CALL = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/control"
+    private static final Path DIRECT_CALL = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/directcall"
     );
     private static final Path WORKER_SCHEDULING = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerscheduling"
@@ -276,16 +276,18 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void controlCallOwnsOnlyBoundedServerMemoryAndReadOnlyAdmission()
+    void directCallUsesOwnerMailboxWithoutOwningSchedulingOrRedis()
             throws IOException {
-        String control = readSources(CONTROL_CALL);
-        assertThat(control)
-                .contains("ControlCallRegistry")
-                .contains("getScoreStates")
+        String direct = readSources(DIRECT_CALL);
+        assertThat(direct)
+                .contains("DirectCallRegistry")
                 .contains("currentEndpointManagerIds")
+                .contains("WorkerCommandRuntime")
+                .contains("offerWorkerCommands")
+                .doesNotContain("WorkerScoreCore")
+                .doesNotContain("getScoreStates")
                 .doesNotContain("rewriteCurrentScores")
                 .doesNotContain("releaseScoreHolds")
-                .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("WorkerResultRuntime")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskItem")
@@ -293,13 +295,14 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("workerCommandsByAdapter")
                 .doesNotContain("new Thread");
-        assertThat(Files.readString(CONTROL_CALL.resolve(
-                "ControlCallRegistry.java"
+        assertThat(Files.readString(DIRECT_CALL.resolve(
+                "DirectCallRegistry.java"
         )))
                 .doesNotContain("DeferredResult")
                 .doesNotContain("ResponseEntity")
-                .doesNotContain("server.api.v1.control");
+                .doesNotContain("server.api.v1.directcall");
     }
 
     @Test
@@ -316,7 +319,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("PythonKernelHttpTransport")
                 .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("WorkerBindingService")
-                .doesNotContain("ControlCall")
+                .doesNotContain("DirectCall")
                 .doesNotContain("Pacer")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("io.lettuce");

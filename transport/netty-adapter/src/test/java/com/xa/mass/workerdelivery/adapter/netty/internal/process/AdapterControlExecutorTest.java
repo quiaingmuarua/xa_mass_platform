@@ -141,7 +141,7 @@ class AdapterControlExecutorTest {
                 event,
                 System.currentTimeMillis() + 10_000,
                 payload,
-                "control-only:v1:test"
+                "direct-call:v1:test"
         );
     }
 }

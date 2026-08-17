@@ -53,7 +53,8 @@ WorkerScoreCore
   releaseScoreHolds
 
 WorkerCommandRuntime
-  point and bounded random batch consume
+  non-overwriting bounded offer plus point and bounded random batch consume;
+  authoritative append remains an explicit JVM gap
 
 WorkerResultRuntime
   append

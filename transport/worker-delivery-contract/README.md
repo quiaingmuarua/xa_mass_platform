@@ -59,7 +59,7 @@ For a Task command:
 - `forward` is opaque Result Routing context;
 - `executeBeforeMillis` is checked before execution starts.
 
-For a direct Server-owned control call:
+For a Server-owned Direct Call:
 
 - a Worker target uses `SYSTEM -> WORKER` and the Server-selected map key is
   the workerId;
@@ -67,12 +67,13 @@ For a direct Server-owned control call:
   response-local opaque entry key which Transport must ignore;
 - `DeliveryReport.fromCommand()` returns Worker or Adapter evidence to
   `dst=SYSTEM` while preserving `messageType` and `forward`;
-- the Server Control owner alone interprets that `forward` for waiter
+- the Server Direct Call owner alone interprets that `forward` for waiter
   correlation.
 
-`CONTROL_ONLY` is therefore not a Delivery DTO field or another protocol
-envelope. Pause-score admission, mailbox replacement, timeout, source priority,
-and aggregate HTTP results remain outside this transport-neutral module.
+`DIRECT_CALL` is therefore not a Delivery DTO field or another protocol
+envelope. Caller admission, Worker mailbox offer/replace policy, timeout,
+Adapter FIFO priority and aggregate HTTP results remain outside this
+transport-neutral module.
 
 The Worker supplies `src=WORKER`, `sourceId=workerId`, `outcomeCode`, and its
 opaque payload. An Adapter may instead report a pre-delivery rejection as

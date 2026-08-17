@@ -27,7 +27,7 @@ The visual projection is available in
 1. **Assignment dispatch** is Kernel resource allocation: scheduling evidence
    becomes an already-targeted `DeliveryCommand`.
 2. **Authority routing** is Server owner routing: an existing TASK or
-   CONTROL_ONLY authority is exposed to an Adapter, and a Result is routed to
+   DIRECT_CALL command is exposed to an Adapter, and a Result is routed to
    its TASK or SYSTEM owner.
 3. **Event dispatch** is Transport-local invocation: an Adapter or Worker
    resolves an already-delivered Command to a fixed handler.
@@ -46,23 +46,26 @@ API -> Kernel Task/Item truth -> assignment dispatch -> targeted Command
     -> Server TASK owner -> Kernel result routing
 ```
 
-CONTROL_ONLY follows:
+DIRECT_CALL follows:
 
 ```text
-caller-selected target -> Server admission + bounded in-memory correlation
+caller-selected target -> Server admission + bounded correlation
+    -> Adapter target: Server-memory FIFO
+    -> Worker target: non-overwriting offer to the shared Worker mailbox
     -> the same Adapter/Worker delivery path -> Server SYSTEM waiter
 ```
 
-CONTROL_ONLY bypasses Task scheduling because the caller already selected the
-target. It is not a Kernel Task type, reliable queue, persistent result owner,
-second Adapter Process, or permission for Server to select Workers. Worker
-pause remains scheduling-score truth; Server observes it only as best-effort
-admission evidence. Server treats `messageType` and opaque payload as event
-data; execution support is decided only by the statically assembled Adapter or
-Worker Handler map. API Session authorization is a future boundary, not
-an event whitelist inside CONTROL_ONLY.
+DIRECT_CALL bypasses Task scheduling because the caller already selected the
+target. It does not require pause and provides no scheduling exclusion,
+drain, preemption, reliable delivery or idempotency. A Worker Direct Command
+fills only an empty field in the existing Adapter-partitioned Worker Command
+Hash; a later TASK append may replace it until Adapter consumption. Once
+consumed, neither authority recalls the Command. Server treats `messageType`
+and opaque payload as event data; execution support is decided only by the
+statically assembled Adapter or Worker Handler map. API Session authorization
+is a future boundary, not an event whitelist inside DIRECT_CALL.
 
-Hosts register short Extension capability names, while TaskItem, Control Call
+Hosts register short Extension capability names, while TaskItem, Direct Call
 and Delivery always carry the full
 `(platform|extension).(worker|adapter).<capability>` Event Name. Owner-local
 `events.snapshot` handlers expose the immutable names loaded

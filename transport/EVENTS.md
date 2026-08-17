@@ -18,7 +18,7 @@ Event Names have this shape:
 identify the Command caller. `DeliveryCommand.src` remains invocation evidence
 and is not part of Worker Handler lookup. Extension Hosts register a short
 capability such as `string.md5`; TaskItem `eventCode`, WorkerGroup `eventCodes`,
-Control Call `messageType`, and Delivery Command `messageType` always carry the
+Direct Call `messageType`, and Delivery Command `messageType` always carry the
 full Event Name.
 
 ## Platform Worker Events
@@ -100,7 +100,7 @@ use cases, not Transport events:
 ```text
 Worker register and Endpoint bind
 pause-scheduling and resume-scheduling
-CONTROL_ONLY controls:call
+DIRECT_CALL /direct-calls
 Adapter Command consume and Result append
 Worker score lease, dirty, recovery, and Result Routing transitions
 ```

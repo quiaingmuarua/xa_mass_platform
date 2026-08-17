@@ -213,6 +213,11 @@ class WorkerCommandAppendStatus(Enum):
     REPLACED = "REPLACED"
 
 
+class WorkerCommandOfferStatus(Enum):
+    OFFERED = "OFFERED"
+    OCCUPIED = "OCCUPIED"
+
+
 class WorkerCommandRuntime(ABC):
     """Runtime owner for Adapter-partitioned Worker command mailboxes."""
 
@@ -223,6 +228,15 @@ class WorkerCommandRuntime(ABC):
         endpoint_manager_id: EndpointManagerId,
         worker_commands_by_worker_id: Mapping[WorkerId, DeliveryCommand],
     ) -> Mapping[WorkerId, WorkerCommandAppendStatus]:
+        pass
+
+    @abstractmethod
+    def offer_worker_commands(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        worker_commands_by_worker_id: Mapping[WorkerId, DeliveryCommand],
+    ) -> Mapping[WorkerId, WorkerCommandOfferStatus]:
         pass
 
     @abstractmethod

@@ -5,7 +5,7 @@ Status: current repository document index.
 ## Start Here
 
 1. [Repository Entry](../README.md) defines cross-module authority, dispatch
-   vocabulary and the TASK/CONTROL_ONLY mainlines.
+   vocabulary and the TASK/DIRECT_CALL paths.
 2. [Kernel Design Workspace](../kernel_design/README.md) leads to executable
    mechanism truth and owner documents.
 3. [Proof Lanes](../TESTING.md) defines what each deterministic, Redis-backed,

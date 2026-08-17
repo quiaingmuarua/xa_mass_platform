@@ -59,10 +59,10 @@ class RuntimeApiPythonIntegrationTest {
             "test.integration.observe";
     private static final String TEST_EVENT_CODE =
             "extension.worker." + TEST_CAPABILITY;
-    private static final String CONTROL_CAPABILITY =
-            "test.integration.control-snapshot";
-    private static final String CONTROL_EVENT_CODE =
-            "extension.worker." + CONTROL_CAPABILITY;
+    private static final String DIRECT_CAPABILITY =
+            "test.integration.direct-snapshot";
+    private static final String DIRECT_EVENT_CODE =
+            "extension.worker." + DIRECT_CAPABILITY;
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -230,12 +230,12 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void controlOnlyWorkerAndAdapterCallsTraverseWebSocketAdapter()
+    void directWorkerAndAdapterCallsTraverseWebSocketAdapterWithoutPause()
             throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "control-tools-" + suffix;
-        String clientWorkerKey = "control-worker-" + suffix;
+        String workerGroupId = "direct-tools-" + suffix;
+        String clientWorkerKey = "direct-worker-" + suffix;
 
         assertThat(send(
                 "PUT",
@@ -244,13 +244,13 @@ class RuntimeApiPythonIntegrationTest {
                         {
                           "eventCodes": ["%s", "%s"]
                         }
-                        """.formatted(TEST_EVENT_CODE, CONTROL_EVENT_CODE)
+                        """.formatted(TEST_EVENT_CODE, DIRECT_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
         BoundWorker boundWorker = registerAndBindWorker(
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
-                Map.of("runtime", "java-control")
+                Map.of("runtime", "java-direct")
         );
         String workerId = boundWorker.workerId();
         RunningWorker worker = startWorker(
@@ -258,32 +258,22 @@ class RuntimeApiPythonIntegrationTest {
                 clientWorkerKey,
                 workerId,
                 boundWorker.endpointUri(),
-                Map.of("runtime", "java-control"),
+                Map.of("runtime", "java-direct"),
                 TransportProfile.WEBSOCKET
         );
-        boolean paused = false;
         try {
             awaitWorkerRegistered(workerGroupId, workerId);
-            assertThat(send(
-                    "POST",
-                    "/api/v1/worker-groups/" + workerGroupId
-                            + "/workers/" + workerId
-                            + ":pause-scheduling",
-                    null
-            ).statusCode()).isEqualTo(200);
-            paused = true;
-
-            assertThat(observedControlPayload(workerControl(
+            assertThat(observedDirectPayload(workerDirectCall(
                     workerGroupId,
                     workerId,
-                    CONTROL_EVENT_CODE,
+                    DIRECT_EVENT_CODE,
                     "{}"
             ), workerId, "200"))
-                    .isEqualTo("{\"control\":\"observed\"}");
+                    .isEqualTo("{\"direct\":\"observed\"}");
 
             assertThat(Jsons.parseObject(
-                    observedControlPayload(
-                            adapterControl(
+                    observedDirectPayload(
+                            adapterDirectCall(
                                     "platform.adapter.probe",
                                     "null"
                             ),
@@ -294,7 +284,7 @@ class RuntimeApiPythonIntegrationTest {
                     .containsEntry("reachable", true);
 
             assertThat(Jsons.parseObject(
-                    observedControlPayload(workerControl(
+                    observedDirectPayload(workerDirectCall(
                             workerGroupId,
                             workerId,
                             WorkerManagementEventDefinitions.PROBE_EVENT,
@@ -303,7 +293,7 @@ class RuntimeApiPythonIntegrationTest {
             )).containsEntry("reachable", true);
 
             assertThat(Jsons.parseObject(
-                    observedControlPayload(workerControl(
+                    observedDirectPayload(workerDirectCall(
                             workerGroupId,
                             workerId,
                             WorkerManagementEventDefinitions
@@ -312,13 +302,13 @@ class RuntimeApiPythonIntegrationTest {
                     ), workerId, "200")
             )).containsEntry(
                     "properties",
-                    Map.of("runtime", "java-control")
+                    Map.of("runtime", "java-direct")
             );
 
             assertConnectionState(workerId, "CONNECTED");
             assertThat(Jsons.parseObject(
-                    observedControlPayload(
-                            adapterControl(
+                    observedDirectPayload(
+                            adapterDirectCall(
                                     "platform.adapter.worker-connections.close-current",
                                     workerIdsPayload(workerId)
                             ),
@@ -331,7 +321,7 @@ class RuntimeApiPythonIntegrationTest {
             );
 
             assertThat(Jsons.parseObject(
-                    observedControlPayload(workerControl(
+                    observedDirectPayload(workerDirectCall(
                             workerGroupId,
                             workerId,
                             WorkerManagementEventDefinitions.PROBE_EVENT,
@@ -340,20 +330,11 @@ class RuntimeApiPythonIntegrationTest {
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
         } finally {
-            if (paused) {
-                send(
-                        "POST",
-                        "/api/v1/worker-groups/" + workerGroupId
-                                + "/workers/" + workerId
-                                + ":resume-scheduling",
-                        null
-                );
-            }
             worker.close();
         }
     }
 
-    private HttpResponse<String> workerControl(
+    private HttpResponse<String> workerDirectCall(
             String workerGroupId,
             String workerId,
             String eventCode,
@@ -368,12 +349,12 @@ class RuntimeApiPythonIntegrationTest {
                 "POST",
                 "/api/v1/worker-delivery/endpoint-managers/"
                         + WEBSOCKET_ENDPOINT_MANAGER_ID
-                        + "/controls:call",
+                        + "/direct-calls",
                 JSON.writeValueAsString(request)
         );
     }
 
-    private HttpResponse<String> adapterControl(
+    private HttpResponse<String> adapterDirectCall(
             String eventCode,
             String opaquePayload
     ) throws Exception {
@@ -381,7 +362,7 @@ class RuntimeApiPythonIntegrationTest {
                 "POST",
                 "/api/v1/worker-delivery/endpoint-managers/"
                         + WEBSOCKET_ENDPOINT_MANAGER_ID
-                        + "/controls:call",
+                        + "/direct-calls",
                 JSON.writeValueAsString(Map.of(
                         "messageType", eventCode,
                         "opaquePayload", opaquePayload,
@@ -390,7 +371,7 @@ class RuntimeApiPythonIntegrationTest {
         );
     }
 
-    private static String observedControlPayload(
+    private static String observedDirectPayload(
             HttpResponse<String> response,
             String targetId,
             String outcomeCode
@@ -410,8 +391,8 @@ class RuntimeApiPythonIntegrationTest {
             throws Exception {
         Map<String, Object> payload =
                 Jsons.parseObject(
-                        observedControlPayload(
-                                adapterControl(
+                        observedDirectPayload(
+                                adapterDirectCall(
                                         "platform.adapter.worker-connections.snapshot",
                                         workerIdsPayload(workerId)
                                 ),
@@ -432,7 +413,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void pythonControlApiExposesOnlyTaskCommands() throws Exception {
+    void pythonCommandApiExposesOnlyTaskCommands() throws Exception {
         requireExternalRuntime();
         assertThat(sendKernel(
                 "POST",
@@ -640,9 +621,9 @@ class RuntimeApiPythonIntegrationTest {
                                 )
                         ),
                         WorkerEventDefinition.extension(
-                                CONTROL_CAPABILITY,
+                                DIRECT_CAPABILITY,
                                 WorkerEventParameterResolvers.jsonMap(),
-                                payload -> "{\"control\":\"observed\"}"
+                                payload -> "{\"direct\":\"observed\"}"
                         )
                 );
         return switch (transportProfile) {

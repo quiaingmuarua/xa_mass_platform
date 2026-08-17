@@ -8,7 +8,7 @@ import com.xa.mass.server.api.v1.TaskDataController;
 import com.xa.mass.server.api.v1.WorkerGroupTaskController;
 import com.xa.mass.server.api.v1.runtimeview.RuntimeViewController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
-import com.xa.mass.server.api.v1.workerdelivery.AdapterControlController;
+import com.xa.mass.server.api.v1.workerdelivery.AdapterDirectCallController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
@@ -28,7 +28,7 @@ import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelbinding.WorkerPropertyIndexProperties;
-import com.xa.mass.server.control.ControlCallService;
+import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
@@ -116,10 +116,10 @@ class ServerApplicationContextTest {
                 AdapterBatchDeliveryController.class
         )).isNotNull();
         assertThat(applicationContext.getBean(
-                AdapterControlController.class
+                AdapterDirectCallController.class
         )).isNotNull();
         assertThat(applicationContext.getBean(
-                ControlCallService.class
+                DirectCallService.class
         )).isNotNull();
         assertThat(applicationContext.getBeansOfType(
                 TaskScoreBandCore.class

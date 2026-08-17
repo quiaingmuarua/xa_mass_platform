@@ -179,6 +179,11 @@ class KernelOwnerContractManifestTest {
                                     .WorkerCommandAppendStatus.class
                     ),
                     Map.entry(
+                            "WorkerCommandOfferStatus",
+                            WorkerCommandRuntime
+                                    .WorkerCommandOfferStatus.class
+                    ),
+                    Map.entry(
                             "DeliveryEndpoint",
                             WorkerDeliveryProtocol.DeliveryEndpoint.class
                     ),

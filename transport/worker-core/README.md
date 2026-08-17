@@ -83,11 +83,11 @@ returns only `WorkerCommandOutcome`; it does not know workerId or construct a
 protocol Report. Transport owns Report routing and Worker source identity;
 Delivery defines no outer message or correlation ID.
 
-TASK and direct CONTROL_ONLY execution use this same path. A Host exposes an
+TASK and DIRECT_CALL execution use this same path. A Host exposes an
 additional Worker capability with
 `WorkerEventDefinition.extension("device.snapshot", ...)`, which registers
 the full name `extension.worker.device.snapshot`. Core does not add a
-CONTROL_ONLY mode, queue, executor, or special handler registry. Command
+Direct mode, queue, executor, or special handler registry. Command
 `src` remains invocation evidence and does not participate in Handler lookup.
 `DeliveryReport.fromCommand()` naturally sends the result back to
 `dst=SYSTEM` and preserves the Server-owned opaque `forward` value.
@@ -194,11 +194,9 @@ There is no local Command injection or Properties-refresh lifecycle method.
 Platform and extension capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
 messages. SYSTEM and TASK Commands share the same immutable Event Name map and
-serialized Client callback lane. A CONTROL_ONLY Handler therefore cannot
-preempt an already running TASK
-Handler and must remain fast, bounded, thread-safe, and non-blocking; network or
-disk workflows require another owner rather than a long-running management
-Handler. Worker Core neither reads the pause score nor enforces that policy.
+serialized Client callback lane. A Direct Command therefore cannot preempt an
+already running TASK Handler. Worker Core neither reads score nor implements
+authority priority; a synchronous Handler must remain bounded and thread-safe.
 
 ## Client Boundary
 

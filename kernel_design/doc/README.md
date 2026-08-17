@@ -10,9 +10,10 @@ scheduling status matrix.
 Task scheduling is the current control-flow mainline. Worker resource and score
 remain independent owner contracts used by that mainline; delivery routes,
 Adapter connectivity, and execution evidence are not a second Worker lifecycle
-system. The Server-memory CONTROL_ONLY management bypass reuses Worker Delivery
-after a pause-score admission read, but creates no Task, scheduling lane,
-persisted Worker mode, or Result Routing truth.
+system. DIRECT_CALL reuses Worker Delivery for a caller-selected target: its
+Server waiter and Adapter-target FIFO are memory-only, while Worker Commands
+use a non-overwriting offer to the existing delivery Hash. It creates no Task,
+scheduling lane, persisted Worker mode, score check, or Result Routing truth.
 
 The document families are grouped by design concern:
 

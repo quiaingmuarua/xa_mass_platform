@@ -69,9 +69,10 @@ Task score acquire
      -> Adapter rejection: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
      -> no result: Item claim and Worker lease expire naturally
 
-Auxiliary Server management path
-  -> paused-score admission for explicitly named Workers
-  -> instance-local CONTROL_ONLY mailbox and aggregate waiter
+Auxiliary Server direct path
+  -> caller-selected Workers bound to one Adapter
+  -> non-overwriting offer into the shared Worker Command Hash
+  -> instance-local Adapter FIFO and aggregate waiter
   -> the same Adapter commands:consume / results:append boundary
   -> SYSTEM Worker Definition or fixed Adapter-local control
   -> no Task, TaskItem, lease, or Result Routing truth
@@ -140,7 +141,8 @@ TaskItemDispatcher
   it owns no Task score, mailbox, or background lifecycle
 
 WorkerCommandRuntime
-  owns sparse Adapter HASH mailboxes; the mailbox is not lifecycle truth
+  owns sparse Adapter HASH mailboxes, authoritative append, non-overwriting
+  offer and destructive consume; the mailbox is not lifecycle truth
 
 WorkerResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth
@@ -180,7 +182,7 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with process-local first-seen Worker route verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, and Server-memory CONTROL_ONLY calls reusing the same Adapter Command/Report APIs | Authentication, distributed Control mailbox/waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with process-local first-seen Worker route verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, and caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
@@ -219,7 +221,8 @@ tr:{prefix}:task:{taskId}:results
   Task-local Item score and record/result HASHes
 
 wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
-  one sparse DeliveryCommand HASH per Adapter route
+  one shared sparse DeliveryCommand HASH per Adapter route; TASK append may
+  replace, while a generic offer fills only an empty worker field
 
 rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs

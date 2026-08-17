@@ -11,6 +11,11 @@ public interface WorkerCommandRuntime {
             Map<String, DeliveryCommand> workerCommandsByWorkerId
     );
 
+    Map<String, WorkerCommandOfferStatus> offerWorkerCommands(
+            String endpointManagerId,
+            Map<String, DeliveryCommand> workerCommandsByWorkerId
+    );
+
     @Nullable DeliveryCommand consumeWorkerCommand(
             String endpointManagerId,
             String workerId
@@ -24,5 +29,10 @@ public interface WorkerCommandRuntime {
     enum WorkerCommandAppendStatus {
         APPENDED,
         REPLACED
+    }
+
+    enum WorkerCommandOfferStatus {
+        OFFERED,
+        OCCUPIED
     }
 }

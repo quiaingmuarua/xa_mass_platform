@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -14,6 +15,7 @@ import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -208,6 +210,37 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
         assertThat(commands).hasSize(3);
         assertThat(callsAfter - callsBefore).isEqualTo(1);
+    }
+
+    @Test
+    void workerCommandOfferUsesTheExistingHashWithoutReplacingSlots() {
+        String key = commandKey("endpoint-1");
+        String existing = commandJson(System.currentTimeMillis() + 30_000);
+        redis.hset(key, "worker-occupied", existing);
+        DeliveryCommand direct = DeliveryCommand.create(
+                DeliveryEndpoint.SYSTEM,
+                DeliveryEndpoint.WORKER,
+                "platform.worker.probe",
+                System.currentTimeMillis() + 30_000,
+                "null",
+                "direct-call:v1:test"
+        );
+
+        assertThat(commandRuntime.offerWorkerCommands(
+                "endpoint-1",
+                Map.of(
+                        "worker-occupied", direct,
+                        "worker-empty", direct
+                )
+        )).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "worker-occupied", WorkerCommandOfferStatus.OCCUPIED,
+                "worker-empty", WorkerCommandOfferStatus.OFFERED
+        ));
+        assertThat(redis.hget(key, "worker-occupied")).isEqualTo(existing);
+        assertThat(commandRuntime.consumeWorkerCommand(
+                "endpoint-1",
+                "worker-empty"
+        )).isEqualTo(direct);
     }
 
     private void deleteKeys(java.util.Collection<String> keys) {

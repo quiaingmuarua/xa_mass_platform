@@ -236,7 +236,7 @@ class WorkerManagementEventDefinitionsTest {
                 eventCode,
                 Long.MAX_VALUE,
                 payload,
-                "control-call"
+                "direct-call"
         )).orElseThrow();
     }
 }

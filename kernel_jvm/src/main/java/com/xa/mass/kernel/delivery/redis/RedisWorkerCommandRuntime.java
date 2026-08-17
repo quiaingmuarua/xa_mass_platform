@@ -11,12 +11,31 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class RedisWorkerCommandRuntime
         implements WorkerCommandRuntime, AutoCloseable {
+
+    private static final String OFFER = """
+            local results = {}
+            for index = 1, #ARGV, 2 do
+                local worker_id = ARGV[index]
+                local encoded_command = ARGV[index + 1]
+                table.insert(
+                    results,
+                    redis.call(
+                        'HSETNX',
+                        KEYS[1],
+                        worker_id,
+                        encoded_command
+                    )
+                )
+            end
+            return results
+            """;
 
     private static final String CONSUME_ONE = """
             local current = redis.call('HGET', KEYS[1], ARGV[1])
@@ -74,6 +93,83 @@ public final class RedisWorkerCommandRuntime
                 "WorkerCommandRuntime",
                 "append_worker_commands"
         );
+    }
+
+    @Override
+    public Map<String, WorkerCommandOfferStatus> offerWorkerCommands(
+            String endpointManagerId,
+            Map<String, DeliveryCommand> workerCommandsByWorkerId
+    ) {
+        requireNonBlank(endpointManagerId, "endpointManagerId");
+        if (workerCommandsByWorkerId == null) {
+            throw new IllegalArgumentException(
+                    "workerCommandsByWorkerId must be present"
+            );
+        }
+        if (workerCommandsByWorkerId.isEmpty()) {
+            return Map.of();
+        }
+
+        long nowMillis = redisTimeMillis();
+        List<String> workerIds = new ArrayList<>(
+                workerCommandsByWorkerId.size()
+        );
+        List<String> arguments = new ArrayList<>(
+                workerCommandsByWorkerId.size() * 2
+        );
+        workerCommandsByWorkerId.forEach((workerId, command) -> {
+            requireNonBlank(workerId, "workerId");
+            if (command == null
+                    || command.executeBeforeMillis() <= nowMillis) {
+                throw new IllegalArgumentException(
+                        "Worker commands must have future deadlines"
+                );
+            }
+            workerIds.add(workerId);
+            arguments.add(workerId);
+            arguments.add(codec.encodeDeliveryCommand(command));
+        });
+
+        List<?> rawResults = commands().eval(
+                OFFER,
+                ScriptOutputType.MULTI,
+                new String[]{commandKey(endpointManagerId)},
+                arguments.toArray(String[]::new)
+        );
+        if (rawResults == null
+                || rawResults.size() != workerIds.size()) {
+            throw new IllegalStateException(
+                    "Redis Worker command offer returned an invalid response"
+            );
+        }
+        Map<String, WorkerCommandOfferStatus> results =
+                new LinkedHashMap<>();
+        for (int index = 0; index < workerIds.size(); index++) {
+            Object raw = rawResults.get(index);
+            long inserted;
+            try {
+                inserted = raw instanceof Number number
+                        ? number.longValue()
+                        : Long.parseLong(String.valueOf(raw));
+            } catch (NumberFormatException error) {
+                throw new IllegalStateException(
+                        "Redis Worker command offer returned an invalid response",
+                        error
+                );
+            }
+            if (inserted != 0L && inserted != 1L) {
+                throw new IllegalStateException(
+                        "Redis Worker command offer returned an invalid response"
+                );
+            }
+            results.put(
+                    workerIds.get(index),
+                    inserted == 1L
+                            ? WorkerCommandOfferStatus.OFFERED
+                            : WorkerCommandOfferStatus.OCCUPIED
+            );
+        }
+        return Collections.unmodifiableMap(results);
     }
 
     @Override

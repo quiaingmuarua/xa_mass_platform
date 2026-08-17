@@ -8,7 +8,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.server.control.ControlCallService;
+import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -31,19 +31,19 @@ public final class WorkerDeliveryService {
     private final WorkerCommandRuntime commandRuntime;
     private final WorkerResultRuntime resultRuntime;
     private final WorkerBindingService bindings;
-    private final ControlCallService controlCalls;
+    private final DirectCallService directCalls;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             WorkerResultRuntime resultRuntime,
             WorkerBindingService bindings,
-            ControlCallService controlCalls
+            DirectCallService directCalls
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
         this.bindings = bindings;
-        this.controlCalls = controlCalls;
+        this.directCalls = directCalls;
     }
 
     public void verifyWorkerRoute(
@@ -82,7 +82,7 @@ public final class WorkerDeliveryService {
         requireAdapterBatchIdentity(endpointManagerId, operation);
         List<DeliveryCommand> adapterCommands;
         try {
-            adapterCommands = controlCalls.consumeAdapterCommands(
+            adapterCommands = directCalls.consumeAdapterCommands(
                     endpointManagerId,
                     limit
             );
@@ -96,18 +96,12 @@ public final class WorkerDeliveryService {
         Map<String, DeliveryCommand> workerCommands = Map.of();
         if (remaining > 0) {
             try {
-                workerCommands = controlCalls.consumeWorkerCommands(
-                        endpointManagerId,
-                        remaining
+                workerCommands = activeCommands(
+                        commandRuntime.consumeWorkerCommands(
+                                endpointManagerId,
+                                remaining
+                        )
                 );
-                if (workerCommands.isEmpty()) {
-                    workerCommands = activeCommands(
-                            commandRuntime.consumeWorkerCommands(
-                                    endpointManagerId,
-                                    remaining
-                            )
-                    );
-                }
             } catch (RuntimeException error) {
                 if (adapterCommands.isEmpty()) {
                     if (error instanceof ServerException serverError) {
@@ -242,13 +236,13 @@ public final class WorkerDeliveryService {
             acceptedCount += taskResults.size();
         }
         if (!controlResults.isEmpty()) {
-            ControlCallService.ResultAppendCounts controlCounts =
-                    controlCalls.completeReports(
+            DirectCallService.ResultAppendCounts directCounts =
+                    directCalls.completeReports(
                             endpointManagerId,
                             controlResults
                     );
-            acceptedCount += controlCounts.acceptedCount();
-            rejectedCount += controlCounts.rejectedCount();
+            acceptedCount += directCounts.acceptedCount();
+            rejectedCount += directCounts.rejectedCount();
         }
         if (rejectedCount > 0) {
             LOGGER.log(

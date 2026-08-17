@@ -3,7 +3,7 @@ package com.xa.mass.server.workerdelivery;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
-import com.xa.mass.server.control.ControlCallService;
+import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,13 +24,13 @@ public class WorkerDeliveryConfiguration {
             WorkerCommandRuntime commandRuntime,
             WorkerResultRuntime resultRuntime,
             WorkerBindingService bindings,
-            ControlCallService controlCalls
+            DirectCallService directCalls
     ) {
         return new WorkerDeliveryService(
                 commandRuntime,
                 resultRuntime,
                 bindings,
-                controlCalls
+                directCalls
         );
     }
 }

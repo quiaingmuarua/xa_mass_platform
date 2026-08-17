@@ -103,7 +103,7 @@ Server may own:
 - bounded use-case orchestration;
 - Worker Identity and Endpoint Binding;
 - Runtime projections;
-- CONTROL_ONLY mailbox and request correlation;
+- DIRECT_CALL admission and request correlation;
 - configured Adapter and Scenario startup.
 
 Server must not own:
@@ -114,17 +114,19 @@ Server must not own:
 - Worker business handlers or Worker lifecycle;
 - Redis bypass around an owner contract.
 
-CONTROL_ONLY is an instance-local, best-effort Server use case. It observes the
-pause score for admission, but does not create a Kernel mode or strong lock.
+DIRECT_CALL is a caller-targeted, best-effort Server use case. It does not
+observe or change Worker score and creates no Kernel mode or strong lock.
 Its only public call route is scoped by `adapterId`; an optional same-Group
 `workerId -> opaquePayload` map supplies Worker targets and per-target input,
 not a WorkerGroup authority.
 The unified Adapter consume endpoint may prefix a response with the Adapter
-Control FIFO, then reads at most one Worker authority: CONTROL_ONLY when that
-Worker Hash yields any command, otherwise TASK. Adapter-local Commands route by
-`dst`; only Worker Command map keys carry workerId address meaning.
-Control Call passes `messageType` and opaque payload through without an event
-whitelist; future API Session authorization remains a separate owner.
+Direct FIFO, then consumes once from the shared Worker Command Hash. Worker
+Direct Calls use the owner `offer` operation and cannot replace an occupied
+slot; authoritative TASK append may replace an unconsumed Direct Command.
+Adapter-local Commands route by `dst`; only Worker Command map keys carry
+workerId address meaning. Direct Call passes `messageType` and opaque payload
+through without an event whitelist; future API Session authorization remains a
+separate owner.
 
 The default profile declares no Adapter instances and no Scenario WorkerGroup.
 

@@ -225,15 +225,13 @@ Result Routing decides whether their `forward` context remains valid.
 ### Command consumption round
 
 `DeliveryCommandProcess` owns one private queue and one fixed remote path.
-Server may place a bounded prefix from its Adapter Command FIFO in a
-`commands:consume` response. Remaining capacity comes from at most one Worker
-Hash: CONTROL_ONLY when it yields any live command, otherwise TASK. Server does
-not use TASK to fill a partial CONTROL_ONLY Worker batch. These are remote
-acquisition priorities, not local preemption: commands already present in the
-Adapter FIFO remain ahead, a full local queue postpones the next Server
-consume, and an already running Worker Handler is unaffected. Sustained
-Adapter Commands may delay all Worker acquisition; sustained CONTROL_ONLY
-Worker Commands may delay TASK acquisition.
+Server may place a bounded prefix from its Adapter Direct FIFO in a
+`commands:consume` response. Remaining capacity comes from one consume of the
+shared Worker Command Hash, whose fields may contain TASK or SYSTEM Commands.
+This is remote acquisition priority, not local preemption: commands already
+present in the Adapter FIFO remain ahead, a full local queue postpones the next
+Server consume, and an already running Worker Handler is unaffected. Sustained
+Adapter Commands may delay Worker acquisition.
 
 ```text
 while the queue is below its soft capacity
@@ -248,14 +246,13 @@ for each command exactly once this round
   -> dst=ADAPTER: ignore the entry key and dispatch through the immutable map
 ```
 
-TASK accepts `TASK -> WORKER`. CONTROL_ONLY accepts `SYSTEM -> WORKER` and
+TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SYSTEM -> WORKER` or
 `SYSTEM -> ADAPTER`. A Worker Command entry key is its workerId; an Adapter
 Command entry key is opaque and ignored. No active Channel is temporary while
-the deadline remains live. CONTROL_ONLY expiry creates no synthetic result;
+the deadline remains live. DIRECT_CALL expiry creates no synthetic result;
 the Server waiter owns timeout. The queue has no workerId index, and its soft
 capacity is a backpressure target rather than delivery truth. Adapter does not
-read Worker score or recheck pause: Server admission is the only current
-CONTROL_ONLY eligibility observation.
+read Worker score or know whether a SYSTEM Command came from DIRECT_CALL.
 
 The composition root installs a finite immutable Adapter event map. This is an
 execution surface, not a public registry or Server whitelist:
@@ -300,11 +297,11 @@ submit one mixed encoded-result batch to results:append
 ```
 
 Server routes each Report by `dst`: TASK enters Kernel Result truth and SYSTEM
-completes the Server-local Control waiter. Remote unavailability retains the
+completes the Server-local Direct Call waiter. Remote unavailability retains the
 whole mixed pending batch; protocol rejection drops it. Normal close performs
 one bounded best-effort final submit. Command and Report rounds remain
 independent. TASK and SYSTEM do not have separate retry policies inside the
-Adapter: a late CONTROL_ONLY Report may be retried with the mixed batch and is
+Adapter: a late DIRECT_CALL Report may be retried with the mixed batch and is
 then rejected by Server after its waiter has ended.
 
 Both queues are finite, soft-capacity, and private to their Process.

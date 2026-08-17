@@ -47,7 +47,8 @@ a Kernel mechanism decision.
 - Result Routing owns retry/finality policy and accepted evidence disposition.
 - Worker Delivery carries already-assigned work and never selects a Worker or
   claims a TaskItem.
-- CONTROL_ONLY is a Server use case and must not enter Kernel Task scheduling,
+- DIRECT_CALL is a Server use case. Its generic non-overwriting Worker Command
+  offer may use the delivery owner, but it must not enter Task scheduling,
   score encoding or Result Routing.
 - Event and wake paths are best-effort accelerators. Owner scans and exact
   rechecks preserve correctness.

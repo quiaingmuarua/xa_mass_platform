@@ -1,6 +1,6 @@
-package com.xa.mass.server.control;
+package com.xa.mass.server.directcall;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
@@ -8,27 +8,27 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-public class ControlCallConfiguration {
+public class DirectCallConfiguration {
 
     @Bean(destroyMethod = "close")
-    ControlCallRegistry controlCallRegistry(
-            ControlCallProperties properties
+    DirectCallRegistry directCallRegistry(
+            DirectCallProperties properties
     ) {
-        return new ControlCallRegistry(properties);
+        return new DirectCallRegistry(properties);
     }
 
     @Bean
-    ControlCallService controlCallService(
+    DirectCallService directCallService(
             WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScores,
+            WorkerCommandRuntime workerCommands,
             WorkerBindingService workerBindings,
             WorkerEndpointDirectory endpoints,
-            ControlCallRegistry registry,
-            ControlCallProperties properties
+            DirectCallRegistry registry,
+            DirectCallProperties properties
     ) {
-        return new ControlCallService(
+        return new DirectCallService(
                 workerCatalog,
-                workerScores,
+                workerCommands,
                 workerBindings,
                 endpoints,
                 registry,

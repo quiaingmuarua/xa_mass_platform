@@ -16,7 +16,7 @@ import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.control.ControlCallService;
+import com.xa.mass.server.directcall.DirectCallService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -42,9 +42,9 @@ class WorkerDeliveryHttpCompositionTest {
                             )
                     )
                     .withBean(
-                            ControlCallService.class,
+                            DirectCallService.class,
                             () -> org.mockito.Mockito.mock(
-                                    ControlCallService.class
+                                    DirectCallService.class
                             )
                     );
 

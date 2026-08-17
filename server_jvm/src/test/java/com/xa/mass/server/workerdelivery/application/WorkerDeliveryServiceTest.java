@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
-import com.xa.mass.server.control.ControlCallService;
+import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -36,7 +36,7 @@ class WorkerDeliveryServiceTest {
     private WorkerCommandRuntime commandRuntime;
     private WorkerResultRuntime resultRuntime;
     private WorkerBindingService bindings;
-    private ControlCallService controlCalls;
+    private DirectCallService directCalls;
     private WorkerDeliveryService service;
 
     @BeforeEach
@@ -44,14 +44,12 @@ class WorkerDeliveryServiceTest {
         commandRuntime = mock(WorkerCommandRuntime.class);
         resultRuntime = mock(WorkerResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
-        controlCalls = mock(ControlCallService.class);
-        when(controlCalls.consumeAdapterCommands(anyString(), anyInt()))
+        directCalls = mock(DirectCallService.class);
+        when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
                 .thenReturn(List.of());
-        when(controlCalls.consumeWorkerCommands(anyString(), anyInt()))
-                .thenReturn(Map.of());
-        when(controlCalls.completeReports(anyString(), anyList()))
+        when(directCalls.completeReports(anyString(), anyList()))
                 .thenAnswer(invocation ->
-                        new ControlCallService.ResultAppendCounts(
+                        new DirectCallService.ResultAppendCounts(
                                 invocation.<List<?>>getArgument(1).size(),
                                 0
                         ));
@@ -59,7 +57,7 @@ class WorkerDeliveryServiceTest {
                 commandRuntime,
                 resultRuntime,
                 bindings,
-                controlCalls
+                directCalls
         );
     }
 
@@ -88,7 +86,7 @@ class WorkerDeliveryServiceTest {
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
                 "null",
-                "control-only:v1:first"
+                "direct-call:v1:first"
         );
         DeliveryCommand second = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
@@ -96,9 +94,9 @@ class WorkerDeliveryServiceTest {
                 "platform.adapter.events.snapshot",
                 System.currentTimeMillis() + 10_000,
                 "null",
-                "control-only:v1:second"
+                "direct-call:v1:second"
         );
-        when(controlCalls.consumeAdapterCommands("endpoint-1", 2))
+        when(directCalls.consumeAdapterCommands("endpoint-1", 2))
                 .thenReturn(List.of(first, second));
 
         Map<String, DeliveryCommand> commands =
@@ -106,10 +104,6 @@ class WorkerDeliveryServiceTest {
 
         assertThat(commands.values()).containsExactly(first, second);
         assertThat(commands.keySet()).hasSize(2);
-        verify(controlCalls, never()).consumeWorkerCommands(
-                anyString(),
-                anyInt()
-        );
         verify(commandRuntime, never()).consumeWorkerCommands(
                 anyString(),
                 anyInt()
@@ -117,14 +111,14 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterPrefixUsesRemainingLimitFromControlWorkerHashOnly() {
+    void adapterPrefixUsesRemainingLimitFromSharedWorkerHash() {
         DeliveryCommand adapter = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
                 "null",
-                "control-only:v1:adapter"
+                "direct-call:v1:adapter"
         );
         DeliveryCommand control = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
@@ -132,30 +126,27 @@ class WorkerDeliveryServiceTest {
                 "platform.worker.properties.snapshot",
                 System.currentTimeMillis() + 10_000,
                 "{}",
-                "control-only:v1:test"
+                "direct-call:v1:test"
         );
-        when(controlCalls.consumeAdapterCommands("endpoint-1", 4))
+        when(directCalls.consumeAdapterCommands("endpoint-1", 4))
                 .thenReturn(List.of(adapter));
-        when(controlCalls.consumeWorkerCommands("endpoint-1", 3))
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 3))
                 .thenReturn(Map.of("worker-1", control));
 
         assertThat(service.consumeWorkerCommands("endpoint-1", 4).values())
                 .containsExactly(adapter, control);
-        verify(commandRuntime, never()).consumeWorkerCommands(
-                anyString(),
-                anyInt()
-        );
+        verify(commandRuntime).consumeWorkerCommands("endpoint-1", 3);
     }
 
     @Test
-    void emptyControlWorkerHashFallsBackToTaskWithTheRemainingLimit() {
+    void sharedWorkerHashUsesTheRemainingLimitOnce() {
         DeliveryCommand adapter = DeliveryCommand.create(
                 DeliveryEndpoint.SYSTEM,
                 DeliveryEndpoint.ADAPTER,
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
                 "null",
-                "control-only:v1:adapter"
+                "direct-call:v1:adapter"
         );
         DeliveryCommand task = DeliveryCommand.create(
                 DeliveryEndpoint.TASK,
@@ -165,7 +156,7 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "task-context"
         );
-        when(controlCalls.consumeAdapterCommands("endpoint-1", 4))
+        when(directCalls.consumeAdapterCommands("endpoint-1", 4))
                 .thenReturn(List.of(adapter));
         when(commandRuntime.consumeWorkerCommands("endpoint-1", 3))
                 .thenReturn(Map.of("entry:0", task));
@@ -180,7 +171,7 @@ class WorkerDeliveryServiceTest {
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElseThrow()).isNotEqualTo("entry:0");
-        verify(controlCalls).consumeWorkerCommands("endpoint-1", 3);
+        verify(commandRuntime).consumeWorkerCommands("endpoint-1", 3);
     }
 
     @Test
@@ -191,21 +182,18 @@ class WorkerDeliveryServiceTest {
                 "platform.adapter.probe",
                 System.currentTimeMillis() + 10_000,
                 "null",
-                "control-only:v1:adapter"
+                "direct-call:v1:adapter"
         );
-        when(controlCalls.consumeAdapterCommands("endpoint-1", 2))
+        when(directCalls.consumeAdapterCommands("endpoint-1", 2))
                 .thenReturn(List.of(adapter));
-        when(controlCalls.consumeWorkerCommands("endpoint-1", 1))
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 1))
                 .thenThrow(new IllegalStateException("unavailable"));
 
         Map<String, DeliveryCommand> commands =
                 service.consumeWorkerCommands("endpoint-1", 2);
 
         assertThat(commands.values()).containsExactly(adapter);
-        verify(commandRuntime, never()).consumeWorkerCommands(
-                anyString(),
-                anyInt()
-        );
+        verify(commandRuntime).consumeWorkerCommands("endpoint-1", 1);
     }
 
     @Test
@@ -297,10 +285,10 @@ class WorkerDeliveryServiceTest {
         );
         when(resultRuntime.appendWorkerResults(List.of(success)))
                 .thenReturn(1);
-        when(controlCalls.completeReports(
+        when(directCalls.completeReports(
                 "endpoint-1",
                 List.of(wrongDestination)
-        )).thenReturn(new ControlCallService.ResultAppendCounts(0, 1));
+        )).thenReturn(new DirectCallService.ResultAppendCounts(0, 1));
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
