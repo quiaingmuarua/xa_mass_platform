@@ -91,13 +91,11 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
     }
 
     @Override
-    public void close() {
-        synchronized (this) {
-            if (state == WorkerDeliveryAdapterState.CLOSED) {
-                return;
-            }
-            state = WorkerDeliveryAdapterState.STOPPING;
+    public synchronized void close() {
+        if (state == WorkerDeliveryAdapterState.CLOSED) {
+            return;
         }
+        state = WorkerDeliveryAdapterState.STOPPING;
 
         boolean interruptedOnEntry = Thread.interrupted();
         RuntimeException failure = interruptedOnEntry
@@ -123,9 +121,7 @@ final class NettyWorkerDeliveryAdapter implements WorkerDeliveryAdapter {
             failure = accumulate(failure, error);
         }
 
-        synchronized (this) {
-            state = WorkerDeliveryAdapterState.CLOSED;
-        }
+        state = WorkerDeliveryAdapterState.CLOSED;
         if (interruptedOnEntry) {
             Thread.currentThread().interrupt();
         }

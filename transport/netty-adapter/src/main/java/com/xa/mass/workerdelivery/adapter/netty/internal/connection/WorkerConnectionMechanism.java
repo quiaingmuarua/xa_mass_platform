@@ -297,9 +297,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        WorkerRouteRegistry.ActivationResult activation =
-                routes.completeVerificationAndActivate(workerId, channel);
-        if (!activation.accepted()) {
+        if (!routes.completeVerificationAndActivate(workerId, channel)) {
             routes.onChannelClosed(channel);
             networkServer.closeConnection(
                     channel,

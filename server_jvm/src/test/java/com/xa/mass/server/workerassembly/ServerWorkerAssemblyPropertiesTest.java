@@ -12,8 +12,8 @@ import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
-import com.xa.mass.workerdelivery.adapter.application
-        .WorkerDeliveryAdapterManager;
+import com.xa.mass.server.workerdelivery.adapter
+        .ServerWorkerDeliveryAdapterProperties;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.List;
 import java.util.Map;
@@ -89,8 +89,8 @@ class ServerWorkerAssemblyPropertiesTest {
         ).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context.getBean(
-                    WorkerDeliveryAdapterManager.class
-            ).adapters()).containsOnlyKeys("scenario-websocket");
+                    ServerWorkerDeliveryAdapterProperties.class
+            ).instanceConfigs()).containsOnlyKeys("scenario-websocket");
             ServerWorkerAssemblyProperties properties = context.getBean(
                     ServerWorkerAssemblyProperties.class
             );

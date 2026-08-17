@@ -2,13 +2,11 @@ package com.xa.mass.server.workerdelivery.adapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.net.Socket;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -77,18 +75,10 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
     }
 
     @Test
-    void serverStartsTheConcreteAdapterOwnedListener() {
-        WorkerDeliveryAdapterManager manager = applicationContext.getBean(
-                WorkerDeliveryAdapterManager.class
-        );
-        assertThat(manager.adapters()).containsOnlyKeys(
-                "embedded-websocket"
-        );
-        WorkerDeliveryAdapter adapter =
-                manager.requireAdapter("embedded-websocket");
-        assertThat(adapter.adapterId()).isEqualTo("embedded-websocket");
-        assertThat(adapter.state())
-                .isEqualTo(WorkerDeliveryAdapterState.RUNNING);
+    void serverStartsTheConcreteAdapterOwnedListener() throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", ADAPTER_PORT)) {
+            assertThat(socket.isConnected()).isTrue();
+        }
         assertThat(applicationContext.getBean(
                 ServerWorkerAssemblyLifecycleHost.class
         )).isNotNull();

@@ -1,10 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
 public enum WorkerDeliveryAdapterErrorCode {
-    INVALID_CONFIGURATION(
-            21001,
-            "Worker Delivery Adapter configuration is invalid"
-    ),
     LISTENER_START_FAILED(
             21002,
             "Worker Delivery Adapter listener could not start"

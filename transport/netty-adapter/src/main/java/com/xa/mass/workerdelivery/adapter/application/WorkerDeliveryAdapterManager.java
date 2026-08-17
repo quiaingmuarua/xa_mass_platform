@@ -3,9 +3,7 @@ package com.xa.mass.workerdelivery.adapter.application;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 public final class WorkerDeliveryAdapterManager implements AutoCloseable {
@@ -38,26 +36,6 @@ public final class WorkerDeliveryAdapterManager implements AutoCloseable {
                     "Duplicate Adapter ID: " + adapterId
             );
         }
-    }
-
-    public synchronized WorkerDeliveryAdapter requireAdapter(
-            String adapterId
-    ) {
-        WorkerDeliveryAdapter adapter = adapters.get(
-                requireAdapterId(adapterId)
-        );
-        if (adapter == null) {
-            throw new IllegalArgumentException(
-                    "Unknown Adapter ID: " + adapterId
-            );
-        }
-        return adapter;
-    }
-
-    public synchronized Map<String, WorkerDeliveryAdapter> adapters() {
-        return Collections.unmodifiableMap(
-                new LinkedHashMap<>(adapters)
-        );
     }
 
     public synchronized void start() {

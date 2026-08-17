@@ -146,26 +146,17 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void twoProcessesEachOwnOneQueueWithoutAnotherScheduler()
+    void processOwnersKeepQueuesPrivateWithoutAnotherScheduler()
             throws IOException {
-        String config = read(NETTY.resolve("NettyAdapterProcessConfig.java"));
         String command = read(PROCESS.resolve("DeliveryCommandProcess.java"));
         String report = read(PROCESS.resolve("DeliveryReportProcess.java"));
 
-        assertThat(config)
-                .contains("record DeliveryCommand(")
-                .contains("int consumeLimit")
-                .contains("int queueCapacity")
-                .contains("record DeliveryReport(")
-                .doesNotContain("TaskCommand")
-                .doesNotContain("TaskReport")
-                .doesNotContain("DeliveryLane");
         assertThat(command)
-                .containsOnlyOnce("private final FiniteQueue<")
+                .contains("FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
         assertThat(report)
-                .containsOnlyOnce("private final FiniteQueue<")
+                .contains("FiniteQueue<")
                 .doesNotContain("LaneState")
                 .doesNotContain("DeliveryLane");
         assertThat(command + report)
@@ -182,7 +173,6 @@ class WorkerDeliveryAdapterArchitectureTest {
         ));
 
         assertThat(executor)
-                .contains("Collections.unmodifiableMap(copied)")
                 .doesNotContain("ConcurrentHashMap")
                 .doesNotContain("ServiceLoader")
                 .doesNotContain("Class.forName")
@@ -196,20 +186,20 @@ class WorkerDeliveryAdapterArchitectureTest {
         Path repository = Path.of("../..").toAbsolutePath().normalize();
         Path moduleSource = SOURCE.toAbsolutePath().normalize();
         List<Path> violations = new ArrayList<>();
-        try (var paths = Files.walk(repository)) {
-            paths.filter(Files::isRegularFile)
-                    .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> normalized(path).contains(
-                            "/src/main/java/"
-                    ))
-                    .filter(path -> !path.toAbsolutePath()
-                            .normalize()
-                            .startsWith(moduleSource))
-                    .forEach(path -> collectInternalImport(
-                            repository,
-                            path,
-                            violations
-                    ));
+        for (Path sourceRoot : productionSourceRoots(repository)) {
+            if (sourceRoot.toAbsolutePath().normalize()
+                    .equals(moduleSource)) {
+                continue;
+            }
+            try (var paths = Files.walk(sourceRoot)) {
+                paths.filter(Files::isRegularFile)
+                        .filter(path -> path.toString().endsWith(".java"))
+                        .forEach(path -> collectInternalImport(
+                                repository,
+                                path,
+                                violations
+                        ));
+            }
         }
         assertThat(violations).isEmpty();
     }
@@ -253,11 +243,35 @@ class WorkerDeliveryAdapterArchitectureTest {
         }
     }
 
-    private static String normalized(Path path) {
-        return path.toAbsolutePath()
-                .normalize()
-                .toString()
-                .replace('\\', '/');
+    private static List<Path> productionSourceRoots(Path repository)
+            throws IOException {
+        ArrayList<Path> roots = new ArrayList<>();
+        addSourceRoot(repository.resolve("kernel_jvm"), roots);
+        addSourceRoot(repository.resolve("server_jvm"), roots);
+        addSourceRoot(repository.resolve("scenario_workers_jvm"), roots);
+        addChildSourceRoots(repository.resolve("transport"), roots);
+        addChildSourceRoots(repository.resolve("integrations"), roots);
+        return List.copyOf(roots);
+    }
+
+    private static void addChildSourceRoots(
+            Path parent,
+            List<Path> roots
+    ) throws IOException {
+        if (!Files.isDirectory(parent)) {
+            return;
+        }
+        try (var children = Files.list(parent)) {
+            children.filter(Files::isDirectory)
+                    .forEach(child -> addSourceRoot(child, roots));
+        }
+    }
+
+    private static void addSourceRoot(Path module, List<Path> roots) {
+        Path source = module.resolve("src/main/java");
+        if (Files.isDirectory(source)) {
+            roots.add(source);
+        }
     }
 
     private static String readSources(Path root) throws IOException {

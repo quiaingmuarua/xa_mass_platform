@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,13 +20,6 @@ class WorkerDeliveryAdapterManagerTest {
 
         manager.register(first);
         manager.register(second);
-
-        assertThat(manager.adapters())
-                .containsExactly(
-                        java.util.Map.entry("adapter-1", first),
-                        java.util.Map.entry("adapter-2", second)
-                );
-        assertThat(manager.requireAdapter("adapter-2")).isSameAs(second);
 
         manager.start();
         manager.start();
@@ -63,9 +57,6 @@ class WorkerDeliveryAdapterManagerTest {
         ))).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("before start");
 
-        assertThatThrownBy(() -> manager.requireAdapter("missing"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown");
         manager.close();
 
         WorkerDeliveryAdapterManager polling =
@@ -125,9 +116,9 @@ class WorkerDeliveryAdapterManagerTest {
                 true
         ));
 
-        RuntimeException failure = org.assertj.core.api.Assertions.catchThrowableOfType(
-                manager::close,
-                RuntimeException.class
+        RuntimeException failure = assertThrows(
+                RuntimeException.class,
+                manager::close
         );
 
         assertThat(events).containsExactly(

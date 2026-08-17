@@ -99,14 +99,16 @@ codec. Processes and connection mechanism never see the Client, URL, status,
 or HTTP JSON contract.
 
 WebSocket and Socket keep complete, separately understandable physical Server
-implementations. A test-only parameterized `NettyWorkerServer` behavior
-contract constrains their common lifecycle and normalized-text semantics; the
-production implementations do not share a lifecycle helper or base class.
+implementations. Parameterized tests constrain their common physical contract
+and only three cross-layer Adapter paths: Command/Result round trip, verified
+reconnect, and rejection flush-before-close. Production does not share a
+lifecycle helper or base class.
 
 `WorkerDeliveryAdapterManager` manages complete instances: register before
-start, start in order, and close in reverse order. Multiple instances in one
-JVM are meaningful only when they use different listener endpoints and
-different endpoint-manager mailboxes.
+start, start in order, and close in reverse order. It is a lifecycle owner, not
+an Adapter lookup or observation directory. Multiple instances in one JVM are
+meaningful only when they use different listener endpoints and different
+endpoint-manager mailboxes.
 
 Do not run competing Adapter instances for the same `endpointManagerId`.
 Throughput for one endpoint is controlled by consume limit, command queue
@@ -145,7 +147,7 @@ directory sees that identity. The first Channel becomes the one pending
 verification owner; another initial Channel for the same workerId is physically
 closed. Server confirms that the persisted Endpoint Binding points to this
 Adapter's `endpointManagerId`. Successful verification atomically records the
-workerId in the process-local verified set and activates
+verified route and activates
 `workerId -> current Channel` without an identity ACK. A definite Server 4xx
 rejection causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
@@ -162,7 +164,8 @@ the cancelled Channel.
 
 Ordinary disconnect removes only the exact active Channel. The verified workerId
 remains cached, so a later identity for the same workerId skips Server
-verification and atomically replaces the current Channel. This verified set is
+verification and atomically replaces the current Channel. The retained
+`Disconnected` route is
 not persistent Endpoint Binding, authentication, authorization, Worker online
 truth, or a Property cache. It has no TTL or implicit recheck and is cleared
 only when the Adapter closes or restarts. There is currently no unbind operation.
@@ -334,6 +337,10 @@ state STOPPING
    including one bounded final Result flush
 -> state CLOSED
 ```
+
+The aggregate serializes the complete public `start()` and `close()` lifecycle;
+a concurrent close caller cannot observe `CLOSED` before the owner that began
+network and Process shutdown has finished.
 
 `shutdownTimeout` is an owner-local budget, not one Adapter-wide deadline.
 Each physical Server computes one deadline for its listener, all child

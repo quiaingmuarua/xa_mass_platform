@@ -304,7 +304,7 @@ class WorkerRouteRegistryTest {
             assertThat(registry.completeVerificationAndActivate(
                     "worker-1",
                     first
-            ).accepted()).isFalse();
+            )).isFalse();
 
             verifyAndActivate(registry, "worker-1", second);
             assertThat(registry.deactivate("worker-1", first)).isFalse();
@@ -366,6 +366,6 @@ class WorkerRouteRegistryTest {
         assertThat(registry.completeVerificationAndActivate(
                 workerId,
                 channel
-        ).accepted()).isTrue();
+        )).isTrue();
     }
 }

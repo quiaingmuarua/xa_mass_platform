@@ -9,11 +9,16 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection
+        .WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection
+        .WorkerConnectionState;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
@@ -202,7 +207,7 @@ class DeliveryCommandProcessTest {
 
             assertThat(fixture.peer.server.requests())
                     .extracting(ScriptedHttpServer.Request::rawPath)
-                    .startsWith(
+                    .contains(
                             "/api/v1/worker-delivery/endpoint-managers/"
                                     + "adapter-1/commands:consume"
                     );
@@ -376,7 +381,12 @@ class DeliveryCommandProcessTest {
             assertThat(fixture.network.closeReasons).containsExactly(
                     AdapterConnectionCloseReason.CONTROL_REQUEST
             );
-            assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+            assertThat(fixture.connectionMechanism.connectionStates(
+                    List.of("worker-1")
+            )).containsEntry(
+                    "worker-1",
+                    WorkerConnectionState.DISCONNECTED
+            );
             assertThat(fixture.peer.appendedControlReports).singleElement()
                     .satisfies(encoded -> {
                         DeliveryReport report = CODEC.decodeDeliveryReport(
@@ -584,7 +594,6 @@ class DeliveryCommandProcessTest {
                         Duration.ofSeconds(2)
                 );
         private final DeliveryReportProcess reportProcess;
-        private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism connectionMechanism;
         private final DeliveryCommandProcess process;
@@ -601,7 +610,7 @@ class DeliveryCommandProcessTest {
                     reportCapacity
             );
             connectionMechanism = new WorkerConnectionMechanism(
-                    routes,
+                    new WorkerRouteRegistry(),
                     network,
                     new WorkerRouteRemoteApi(httpClient),
                     CODEC,
@@ -626,14 +635,42 @@ class DeliveryCommandProcessTest {
         }
 
         private void activate(String workerId) {
-            EmbeddedChannel channel = new EmbeddedChannel();
+            EmbeddedChannel channel = new EmbeddedChannel(
+                    new WorkerConnectionInboundHandler(connectionMechanism)
+            );
             channels.add(channel);
             network.workerIds.put(channel, workerId);
-            routes.admitIdentity(workerId, channel);
-            assertThat(routes.completeVerificationAndActivate(
-                    workerId,
-                    channel
-            ).accepted()).isTrue();
+            channel.writeInbound(CODEC.encodeDeliveryReport(
+                    DeliveryReport.create(
+                            WORKER,
+                            workerId,
+                            ADAPTER,
+                            WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
+                            "200",
+                            "null",
+                            ""
+                    )
+            ));
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(2).toNanos();
+            while (System.nanoTime() < deadline) {
+                channel.runPendingTasks();
+                if (connectionMechanism.connectionStates(
+                        List.of(workerId)
+                ).get(workerId) == WorkerConnectionState.CONNECTED) {
+                    return;
+                }
+                try {
+                    Thread.sleep(5);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(
+                            "Interrupted while activating Worker route",
+                            error
+                    );
+                }
+            }
+            throw new AssertionError("Worker route did not activate");
         }
 
         @Override

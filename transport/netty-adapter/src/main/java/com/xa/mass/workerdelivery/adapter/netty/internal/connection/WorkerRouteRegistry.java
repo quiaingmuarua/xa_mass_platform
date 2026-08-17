@@ -29,7 +29,7 @@ public final class WorkerRouteRegistry {
     private final ConcurrentMap<String, RouteState> routesByWorkerId =
             new ConcurrentHashMap<>();
 
-    public IdentityAdmission admitIdentity(
+    IdentityAdmission admitIdentity(
             String workerId,
             Channel channel
     ) {
@@ -99,7 +99,7 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public InboundInspection inspectInbound(Channel channel) {
+    InboundInspection inspectInbound(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
         String workerId = identifiedWorkerId(requiredChannel);
         if (workerId == null) {
@@ -126,7 +126,7 @@ public final class WorkerRouteRegistry {
         return new InboundInspection(InboundKind.INVALID, workerId);
     }
 
-    public ActivationResult completeVerificationAndActivate(
+    boolean completeVerificationAndActivate(
             String workerId,
             Channel expectedChannel
     ) {
@@ -142,7 +142,7 @@ public final class WorkerRouteRegistry {
                     || !requiredWorkerId.equals(
                     identifiedWorkerId(requiredChannel)
             )) {
-                return ActivationResult.failure();
+                return false;
             }
             if (!routesByWorkerId.replace(
                     requiredWorkerId,
@@ -151,11 +151,11 @@ public final class WorkerRouteRegistry {
             )) {
                 continue;
             }
-            return ActivationResult.success();
+            return true;
         }
     }
 
-    public boolean cancelVerification(
+    boolean cancelVerification(
             String workerId,
             Channel expectedChannel
     ) {
@@ -176,7 +176,7 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public Channel activeChannel(String workerId) {
+    Channel activeChannel(String workerId) {
         String requiredWorkerId = requireWorkerId(workerId);
         RouteState route = routesByWorkerId.get(requiredWorkerId);
         return route instanceof ConnectedRoute connected
@@ -184,7 +184,7 @@ public final class WorkerRouteRegistry {
                 : null;
     }
 
-    public Map<String, WorkerConnectionState> connectionStates(
+    Map<String, WorkerConnectionState> connectionStates(
             List<String> workerIds
     ) {
         List<String> requiredWorkerIds = requireWorkerIds(workerIds);
@@ -198,7 +198,7 @@ public final class WorkerRouteRegistry {
         return Collections.unmodifiableMap(states);
     }
 
-    public Map<String, Channel> detachActiveChannels(
+    Map<String, Channel> detachActiveChannels(
             List<String> workerIds
     ) {
         List<String> requiredWorkerIds = requireWorkerIds(workerIds);
@@ -223,7 +223,7 @@ public final class WorkerRouteRegistry {
         return Collections.unmodifiableMap(detached);
     }
 
-    public boolean deactivate(String workerId, Channel expectedChannel) {
+    boolean deactivate(String workerId, Channel expectedChannel) {
         String requiredWorkerId = requireWorkerId(workerId);
         Channel requiredChannel = Objects.requireNonNull(
                 expectedChannel,
@@ -246,7 +246,7 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public void onChannelClosed(Channel channel) {
+    void onChannelClosed(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
         String workerId = requiredChannel.attr(IDENTIFIED_WORKER_ID)
                 .getAndSet(null);
@@ -277,7 +277,7 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public void clear() {
+    void clear() {
         routesByWorkerId.clear();
     }
 
@@ -338,44 +338,33 @@ public final class WorkerRouteRegistry {
         return List.copyOf(workerIds);
     }
 
-    public enum IdentityAdmissionKind {
+    enum IdentityAdmissionKind {
         VERIFICATION_CLAIMED,
         VERIFICATION_BUSY,
         VERIFIED_ACTIVATED
     }
 
-    public record IdentityAdmission(
+    record IdentityAdmission(
             IdentityAdmissionKind kind,
             Channel replacedChannel
     ) {
 
-        public IdentityAdmission {
+        IdentityAdmission {
             Objects.requireNonNull(kind, "kind");
         }
     }
 
-    public enum InboundKind {
+    enum InboundKind {
         IDENTITY_REQUIRED,
         VERIFICATION_PENDING,
         VERIFIED,
         INVALID
     }
 
-    public record InboundInspection(InboundKind kind, String workerId) {
+    record InboundInspection(InboundKind kind, String workerId) {
 
-        public InboundInspection {
+        InboundInspection {
             Objects.requireNonNull(kind, "kind");
-        }
-    }
-
-    public record ActivationResult(boolean accepted) {
-
-        private static ActivationResult success() {
-            return new ActivationResult(true);
-        }
-
-        private static ActivationResult failure() {
-            return new ActivationResult(false);
         }
     }
 

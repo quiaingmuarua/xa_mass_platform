@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -72,15 +71,10 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                         + ".consume-limit=100"
         ).run(context -> {
             assertThat(context).hasNotFailed();
-            WorkerDeliveryAdapterManager manager = context.getBean(
-                    WorkerDeliveryAdapterManager.class
-            );
-            assertThat(manager.adapters().keySet())
+            assertThat(context.getBean(
+                    ServerWorkerDeliveryAdapterProperties.class
+            ).instanceConfigs().keySet())
                     .containsExactly("websocket-1", "socket-1");
-            assertThat(manager.requireAdapter("websocket-1").adapterId())
-                    .isEqualTo("websocket-1");
-            assertThat(manager.requireAdapter("socket-1").adapterId())
-                    .isEqualTo("socket-1");
         });
     }
 
@@ -89,8 +83,8 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context.getBean(
-                    WorkerDeliveryAdapterManager.class
-            ).adapters()).isEmpty();
+                    ServerWorkerDeliveryAdapterProperties.class
+            ).instanceConfigs()).isEmpty();
         });
     }
 

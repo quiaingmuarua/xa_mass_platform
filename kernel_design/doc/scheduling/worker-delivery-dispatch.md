@@ -305,10 +305,10 @@ the Worker Client may reconnect to the same Endpoint.
 
 Ordinary disconnect removes only the exact active Channel. The verified route
 remains in that Adapter process, so the next identity for the same workerId
-skips Server verification and replaces the current Channel. The verified set is
-not Endpoint Binding, authentication, authorization, Worker liveness, or Worker
-score truth. It has no TTL or periodic recheck, is cleared on Adapter
-close/restart, and currently has no system unbind operation.
+skips Server verification and replaces the current Channel. The retained
+disconnected route is not Endpoint Binding, authentication, authorization,
+Worker liveness, or Worker score truth. It has no TTL or periodic recheck, is
+cleared on Adapter close/restart, and currently has no system unbind operation.
 
 After route verification and connection activation they exchange direct
 protocol JSON:

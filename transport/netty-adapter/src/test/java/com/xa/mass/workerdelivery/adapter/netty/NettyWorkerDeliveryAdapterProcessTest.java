@@ -4,9 +4,12 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiesceP
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.QuiescePhase.BEFORE_NETWORK_CLOSE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteRegistry;
@@ -30,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class NettyWorkerDeliveryAdapterProcessTest {
@@ -118,8 +122,87 @@ class NettyWorkerDeliveryAdapterProcessTest {
         }
     }
 
+    @Test
+    void concurrentCloseHasOneSerializedLifecycleOwner() throws Exception {
+        CountDownLatch closeStarted = new CountDownLatch(1);
+        CountDownLatch releaseClose = new CountDownLatch(1);
+        AtomicInteger closeCalls = new AtomicInteger();
+        NettyWorkerServer network = mock(NettyWorkerServer.class);
+        doAnswer(invocation -> {
+            int attempt = closeCalls.incrementAndGet();
+            closeStarted.countDown();
+            if (attempt == 1
+                    && !releaseClose.await(2, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("close was not released");
+            }
+            return null;
+        }).when(network).close();
+        try (ScriptedHttpServer http = new ScriptedHttpServer(
+                request -> new Response(204, "")
+        )) {
+            List<String> events = new CopyOnWriteArrayList<>();
+            NettyWorkerDeliveryAdapter adapter = adapter(
+                    network,
+                    http,
+                    Duration.ofSeconds(1),
+                    List.of(scheduled(
+                            "noop",
+                            BEFORE_NETWORK_CLOSE,
+                            new RecordingProcess("noop", events)
+                    ))
+            );
+            adapter.start();
+            List<Throwable> failures = new CopyOnWriteArrayList<>();
+            CountDownLatch secondReturned = new CountDownLatch(1);
+
+            Thread first = Thread.startVirtualThread(() ->
+                    close(adapter, failures, null)
+            );
+            assertThat(closeStarted.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            Thread second = Thread.startVirtualThread(() ->
+                    close(adapter, failures, secondReturned)
+            );
+
+            assertThat(secondReturned.await(
+                    100,
+                    TimeUnit.MILLISECONDS
+            )).isFalse();
+            assertThat(closeCalls).hasValue(1);
+
+            releaseClose.countDown();
+            first.join(2_000);
+            second.join(2_000);
+
+            assertThat(first.isAlive()).isFalse();
+            assertThat(second.isAlive()).isFalse();
+            assertThat(failures).isEmpty();
+            assertThat(closeCalls).hasValue(1);
+            assertThat(adapter.state())
+                    .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
+        }
+    }
+
+    private static void close(
+            NettyWorkerDeliveryAdapter adapter,
+            List<Throwable> failures,
+            CountDownLatch returned
+    ) {
+        try {
+            adapter.close();
+        } catch (Throwable failure) {
+            failures.add(failure);
+        } finally {
+            if (returned != null) {
+                returned.countDown();
+            }
+        }
+    }
+
     private static NettyWorkerDeliveryAdapter adapter(
-            RecordingNetworkServer network,
+            NettyWorkerServer network,
             ScriptedHttpServer http,
             Duration shutdownTimeout,
             List<ScheduledAdapterProcess> processes
@@ -270,4 +353,5 @@ class NettyWorkerDeliveryAdapterProcessTest {
             events.add("network-close");
         }
     }
+
 }

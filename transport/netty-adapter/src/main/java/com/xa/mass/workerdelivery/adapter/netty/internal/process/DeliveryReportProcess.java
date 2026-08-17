@@ -71,6 +71,8 @@ public final class DeliveryReportProcess implements AdapterProcess {
                 pendingBatch = remaining;
             }
         }
+        // No scheduler round exists after this best-effort close attempt.
+        pendingBatch = null;
         reportQueue.clear();
         closeFinished = true;
     }

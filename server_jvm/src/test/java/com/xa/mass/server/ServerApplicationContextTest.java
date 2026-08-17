@@ -37,7 +37,8 @@ import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
+import com.xa.mass.server.workerdelivery.adapter
+        .ServerWorkerDeliveryAdapterProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -141,8 +142,8 @@ class ServerApplicationContextTest {
                 CandidateWarmupSchedule.class
         )).isEmpty();
         assertThat(applicationContext.getBean(
-                WorkerDeliveryAdapterManager.class
-        ).adapters()).isEmpty();
+                ServerWorkerDeliveryAdapterProperties.class
+        ).instanceConfigs()).isEmpty();
         assertThat(applicationContext.getBean(
                 ServerWorkerAssemblyLifecycleHost.class
         )).isNotNull();
