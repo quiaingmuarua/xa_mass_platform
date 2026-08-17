@@ -163,7 +163,9 @@ public final class WorkerConnectionMechanism {
         };
     }
 
-    public Map<String, Boolean> connectionStates(List<String> workerIds) {
+    public Map<String, WorkerConnectionState> connectionStates(
+            List<String> workerIds
+    ) {
         return routes.connectionStates(workerIds);
     }
 
@@ -305,7 +307,6 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        closeReplaced(activation.replacedChannel());
     }
 
     private void receiveBoundReport(

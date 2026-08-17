@@ -209,7 +209,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void connectionSnapshotReportsOnlyVerifiedActiveRoutes() {
+    void connectionSnapshotReportsCurrentRouteStates() {
         Fixture fixture = new Fixture();
         EmbeddedChannel active = new EmbeddedChannel();
         EmbeddedChannel pending = new EmbeddedChannel();
@@ -234,10 +234,10 @@ class WorkerConnectionMechanismTest {
                     "inactive",
                     "unknown"
             ))).containsExactly(
-                    Map.entry("active", true),
-                    Map.entry("pending", false),
-                    Map.entry("inactive", false),
-                    Map.entry("unknown", false)
+                    Map.entry("active", WorkerConnectionState.CONNECTED),
+                    Map.entry("pending", WorkerConnectionState.VERIFYING),
+                    Map.entry("inactive", WorkerConnectionState.DISCONNECTED),
+                    Map.entry("unknown", WorkerConnectionState.UNKNOWN)
             );
         } finally {
             active.finishAndReleaseAll();
@@ -271,6 +271,12 @@ class WorkerConnectionMechanismTest {
                     AdapterConnectionCloseReason.CONTROL_REQUEST
             );
             assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+            assertThat(fixture.mechanism.connectionStates(List.of(
+                    "worker-1"
+            ))).containsExactly(Map.entry(
+                    "worker-1",
+                    WorkerConnectionState.DISCONNECTED
+            ));
 
             assertThat(fixture.routes.admitIdentity(
                     "worker-1",

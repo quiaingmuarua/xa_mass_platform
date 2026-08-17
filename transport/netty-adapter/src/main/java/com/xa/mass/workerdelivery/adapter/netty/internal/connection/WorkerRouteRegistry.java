@@ -1,15 +1,16 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import io.netty.channel.Channel;
+import io.netty.util.AttributeKey;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Process-local Worker route truth for one Adapter instance.
@@ -19,12 +20,14 @@ import java.util.Set;
  */
 public final class WorkerRouteRegistry {
 
-    private final Object routeLock = new Object();
-    private final Set<String> verifiedWorkerIds = new HashSet<>();
-    private final Map<String, Channel> pendingVerifications = new HashMap<>();
-    private final Map<String, Channel> activeChannels = new HashMap<>();
-    private final Map<Channel, String> identifiedWorkerByChannel =
-            new IdentityHashMap<>();
+    private static final AttributeKey<String> IDENTIFIED_WORKER_ID =
+            AttributeKey.valueOf(
+                    WorkerRouteRegistry.class,
+                    "identifiedWorkerId"
+            );
+
+    private final ConcurrentMap<String, RouteState> routesByWorkerId =
+            new ConcurrentHashMap<>();
 
     public IdentityAdmission admitIdentity(
             String workerId,
@@ -32,63 +35,95 @@ public final class WorkerRouteRegistry {
     ) {
         String requiredWorkerId = requireWorkerId(workerId);
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
-        synchronized (routeLock) {
-            if (verifiedWorkerIds.contains(requiredWorkerId)) {
-                identifiedWorkerByChannel.put(
-                        requiredChannel,
-                        requiredWorkerId
-                );
-                Channel replaced = activeChannels.put(
-                        requiredWorkerId,
+        while (true) {
+            RouteState current = routesByWorkerId.get(requiredWorkerId);
+            if (current == null) {
+                VerifyingRoute verifying = new VerifyingRoute(
                         requiredChannel
                 );
+                if (routesByWorkerId.putIfAbsent(
+                        requiredWorkerId,
+                        verifying
+                ) != null) {
+                    continue;
+                }
+                identify(requiredChannel, requiredWorkerId);
                 return new IdentityAdmission(
-                        IdentityAdmissionKind.VERIFIED_ACTIVATED,
-                        distinctReplacement(replaced, requiredChannel)
+                        IdentityAdmissionKind.VERIFICATION_CLAIMED,
+                        null
                 );
             }
-            if (pendingVerifications.containsKey(requiredWorkerId)) {
+            if (current instanceof VerifyingRoute) {
                 return new IdentityAdmission(
                         IdentityAdmissionKind.VERIFICATION_BUSY,
                         null
                 );
             }
-            pendingVerifications.put(requiredWorkerId, requiredChannel);
-            identifiedWorkerByChannel.put(
-                    requiredChannel,
-                    requiredWorkerId
-            );
-            return new IdentityAdmission(
-                    IdentityAdmissionKind.VERIFICATION_CLAIMED,
-                    null
-            );
+            if (current instanceof ConnectedRoute connected) {
+                ConnectedRoute replacement = new ConnectedRoute(
+                        requiredChannel
+                );
+                if (!routesByWorkerId.replace(
+                        requiredWorkerId,
+                        current,
+                        replacement
+                )) {
+                    continue;
+                }
+                identify(requiredChannel, requiredWorkerId);
+                return new IdentityAdmission(
+                        IdentityAdmissionKind.VERIFIED_ACTIVATED,
+                        distinctReplacement(
+                                connected.channel(),
+                                requiredChannel
+                        )
+                );
+            }
+            if (current == DisconnectedRoute.INSTANCE) {
+                ConnectedRoute connected = new ConnectedRoute(
+                        requiredChannel
+                );
+                if (!routesByWorkerId.replace(
+                        requiredWorkerId,
+                        current,
+                        connected
+                )) {
+                    continue;
+                }
+                identify(requiredChannel, requiredWorkerId);
+                return new IdentityAdmission(
+                        IdentityAdmissionKind.VERIFIED_ACTIVATED,
+                        null
+                );
+            }
         }
     }
 
     public InboundInspection inspectInbound(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
-        synchronized (routeLock) {
-            String workerId = identifiedWorkerByChannel.get(requiredChannel);
-            if (workerId == null) {
-                return new InboundInspection(
-                        InboundKind.IDENTITY_REQUIRED,
-                        null
-                );
-            }
-            if (pendingVerifications.get(workerId) == requiredChannel) {
-                return new InboundInspection(
-                        InboundKind.VERIFICATION_PENDING,
-                        workerId
-                );
-            }
-            if (verifiedWorkerIds.contains(workerId)) {
-                return new InboundInspection(
-                        InboundKind.VERIFIED,
-                        workerId
-                );
-            }
-            return new InboundInspection(InboundKind.INVALID, workerId);
+        String workerId = identifiedWorkerId(requiredChannel);
+        if (workerId == null) {
+            return new InboundInspection(
+                    InboundKind.IDENTITY_REQUIRED,
+                    null
+            );
         }
+        RouteState route = routesByWorkerId.get(workerId);
+        if (route instanceof VerifyingRoute verifying
+                && verifying.channel() == requiredChannel) {
+            return new InboundInspection(
+                    InboundKind.VERIFICATION_PENDING,
+                    workerId
+            );
+        }
+        if (route instanceof ConnectedRoute
+                || route == DisconnectedRoute.INSTANCE) {
+            return new InboundInspection(
+                    InboundKind.VERIFIED,
+                    workerId
+            );
+        }
+        return new InboundInspection(InboundKind.INVALID, workerId);
     }
 
     public ActivationResult completeVerificationAndActivate(
@@ -100,23 +135,23 @@ public final class WorkerRouteRegistry {
                 expectedChannel,
                 "expectedChannel"
         );
-        synchronized (routeLock) {
-            if (pendingVerifications.get(requiredWorkerId)
-                    != requiredChannel
+        while (true) {
+            RouteState current = routesByWorkerId.get(requiredWorkerId);
+            if (!(current instanceof VerifyingRoute verifying)
+                    || verifying.channel() != requiredChannel
                     || !requiredWorkerId.equals(
-                    identifiedWorkerByChannel.get(requiredChannel)
+                    identifiedWorkerId(requiredChannel)
             )) {
-                return ActivationResult.rejected();
+                return ActivationResult.failure();
             }
-            pendingVerifications.remove(requiredWorkerId);
-            verifiedWorkerIds.add(requiredWorkerId);
-            Channel replaced = activeChannels.put(
+            if (!routesByWorkerId.replace(
                     requiredWorkerId,
-                    requiredChannel
-            );
-            return ActivationResult.accepted(
-                    distinctReplacement(replaced, requiredChannel)
-            );
+                    current,
+                    new ConnectedRoute(requiredChannel)
+            )) {
+                continue;
+            }
+            return ActivationResult.success();
         }
     }
 
@@ -129,36 +164,36 @@ public final class WorkerRouteRegistry {
                 expectedChannel,
                 "expectedChannel"
         );
-        synchronized (routeLock) {
-            if (pendingVerifications.get(requiredWorkerId)
-                    != requiredChannel) {
+        while (true) {
+            RouteState current = routesByWorkerId.get(requiredWorkerId);
+            if (!(current instanceof VerifyingRoute verifying)
+                    || verifying.channel() != requiredChannel) {
                 return false;
             }
-            pendingVerifications.remove(requiredWorkerId);
-            return true;
+            if (routesByWorkerId.remove(requiredWorkerId, current)) {
+                return true;
+            }
         }
     }
 
     public Channel activeChannel(String workerId) {
         String requiredWorkerId = requireWorkerId(workerId);
-        synchronized (routeLock) {
-            return activeChannels.get(requiredWorkerId);
-        }
+        RouteState route = routesByWorkerId.get(requiredWorkerId);
+        return route instanceof ConnectedRoute connected
+                ? connected.channel()
+                : null;
     }
 
-    public Map<String, Boolean> connectionStates(List<String> workerIds) {
+    public Map<String, WorkerConnectionState> connectionStates(
+            List<String> workerIds
+    ) {
         List<String> requiredWorkerIds = requireWorkerIds(workerIds);
-        Map<String, Boolean> states = new LinkedHashMap<>();
-        synchronized (routeLock) {
-            for (String workerId : requiredWorkerIds) {
-                Channel channel = activeChannels.get(workerId);
-                states.put(
-                        workerId,
-                        verifiedWorkerIds.contains(workerId)
-                                && channel != null
-                                && channel.isActive()
-                );
-            }
+        Map<String, WorkerConnectionState> states = new LinkedHashMap<>();
+        for (String workerId : requiredWorkerIds) {
+            states.put(
+                    workerId,
+                    connectionState(routesByWorkerId.get(workerId))
+            );
         }
         return Collections.unmodifiableMap(states);
     }
@@ -168,12 +203,21 @@ public final class WorkerRouteRegistry {
     ) {
         List<String> requiredWorkerIds = requireWorkerIds(workerIds);
         Map<String, Channel> detached = new LinkedHashMap<>();
-        synchronized (routeLock) {
-            for (String workerId : requiredWorkerIds) {
-                Channel channel = activeChannels.remove(workerId);
-                if (channel != null) {
-                    detached.put(workerId, channel);
+        for (String workerId : requiredWorkerIds) {
+            while (true) {
+                RouteState route = routesByWorkerId.get(workerId);
+                if (!(route instanceof ConnectedRoute connected)) {
+                    break;
                 }
+                if (!routesByWorkerId.replace(
+                        workerId,
+                        route,
+                        DisconnectedRoute.INSTANCE
+                )) {
+                    continue;
+                }
+                detached.put(workerId, connected.channel());
+                break;
             }
         }
         return Collections.unmodifiableMap(detached);
@@ -185,40 +229,71 @@ public final class WorkerRouteRegistry {
                 expectedChannel,
                 "expectedChannel"
         );
-        synchronized (routeLock) {
-            if (activeChannels.get(requiredWorkerId) != requiredChannel) {
+        while (true) {
+            RouteState route = routesByWorkerId.get(requiredWorkerId);
+            if (!(route instanceof ConnectedRoute connected)
+                    || connected.channel() != requiredChannel) {
                 return false;
             }
-            activeChannels.remove(requiredWorkerId);
+            if (!routesByWorkerId.replace(
+                    requiredWorkerId,
+                    route,
+                    DisconnectedRoute.INSTANCE
+            )) {
+                continue;
+            }
             return true;
         }
     }
 
     public void onChannelClosed(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
-        synchronized (routeLock) {
-            String workerId = identifiedWorkerByChannel.remove(
-                    requiredChannel
-            );
-            if (workerId == null) {
+        String workerId = requiredChannel.attr(IDENTIFIED_WORKER_ID)
+                .getAndSet(null);
+        if (workerId == null) {
+            return;
+        }
+        while (true) {
+            RouteState route = routesByWorkerId.get(workerId);
+            if (route instanceof VerifyingRoute verifying
+                    && verifying.channel() == requiredChannel) {
+                if (!routesByWorkerId.remove(workerId, route)) {
+                    continue;
+                }
                 return;
             }
-            if (pendingVerifications.get(workerId) == requiredChannel) {
-                pendingVerifications.remove(workerId);
+            if (route instanceof ConnectedRoute connected
+                    && connected.channel() == requiredChannel) {
+                if (!routesByWorkerId.replace(
+                        workerId,
+                        route,
+                        DisconnectedRoute.INSTANCE
+                )) {
+                    continue;
+                }
+                return;
             }
-            if (activeChannels.get(workerId) == requiredChannel) {
-                activeChannels.remove(workerId);
-            }
+            return;
         }
     }
 
     public void clear() {
-        synchronized (routeLock) {
-            verifiedWorkerIds.clear();
-            pendingVerifications.clear();
-            activeChannels.clear();
-            identifiedWorkerByChannel.clear();
+        routesByWorkerId.clear();
+    }
+
+    private static WorkerConnectionState connectionState(RouteState route) {
+        if (route == null) {
+            return WorkerConnectionState.UNKNOWN;
         }
+        if (route instanceof VerifyingRoute) {
+            return WorkerConnectionState.VERIFYING;
+        }
+        if (route instanceof ConnectedRoute connected) {
+            return connected.channel().isActive()
+                    ? WorkerConnectionState.CONNECTED
+                    : WorkerConnectionState.DISCONNECTED;
+        }
+        return WorkerConnectionState.DISCONNECTED;
     }
 
     private static Channel distinctReplacement(
@@ -226,6 +301,14 @@ public final class WorkerRouteRegistry {
             Channel replacement
     ) {
         return previous == replacement ? null : previous;
+    }
+
+    private static void identify(Channel channel, String workerId) {
+        channel.attr(IDENTIFIED_WORKER_ID).set(workerId);
+    }
+
+    private static String identifiedWorkerId(Channel channel) {
+        return channel.attr(IDENTIFIED_WORKER_ID).get();
     }
 
     private static String requireWorkerId(String workerId) {
@@ -285,14 +368,50 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    public record ActivationResult(boolean accepted, Channel replacedChannel) {
+    public record ActivationResult(boolean accepted) {
 
-        private static ActivationResult accepted(Channel replacedChannel) {
-            return new ActivationResult(true, replacedChannel);
+        private static ActivationResult success() {
+            return new ActivationResult(true);
         }
 
-        private static ActivationResult rejected() {
-            return new ActivationResult(false, null);
+        private static ActivationResult failure() {
+            return new ActivationResult(false);
         }
+    }
+
+    private sealed interface RouteState permits
+            VerifyingRoute,
+            ConnectedRoute,
+            DisconnectedRoute {
+    }
+
+    private static final class VerifyingRoute implements RouteState {
+
+        private final Channel channel;
+
+        private VerifyingRoute(Channel channel) {
+            this.channel = Objects.requireNonNull(channel, "channel");
+        }
+
+        private Channel channel() {
+            return channel;
+        }
+    }
+
+    private static final class ConnectedRoute implements RouteState {
+
+        private final Channel channel;
+
+        private ConnectedRoute(Channel channel) {
+            this.channel = Objects.requireNonNull(channel, "channel");
+        }
+
+        private Channel channel() {
+            return channel;
+        }
+    }
+
+    private enum DisconnectedRoute implements RouteState {
+        INSTANCE
     }
 }

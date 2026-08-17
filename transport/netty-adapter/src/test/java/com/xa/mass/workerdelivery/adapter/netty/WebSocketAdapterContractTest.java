@@ -150,6 +150,7 @@ class WebSocketAdapterContractTest {
             awaitRoutable(remoteApi, firstProbe);
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
+            assertConnectionState(remoteApi, "CONNECTED");
 
             first.sendClose(WebSocket.NORMAL_CLOSURE, "")
                     .get(2, TimeUnit.SECONDS);
@@ -157,6 +158,7 @@ class WebSocketAdapterContractTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
+            assertConnectionState(remoteApi, "DISCONNECTED");
 
             DeliveryCommand command = command(
                     "cached-during-disconnect"
@@ -180,6 +182,7 @@ class WebSocketAdapterContractTest {
             assertThat(new WorkerDeliveryCodec().decodeDeliveryCommand(
                     reconnectProbe.messages.getFirst()
             )).isEqualTo(command);
+            assertConnectionState(remoteApi, "CONNECTED");
         } finally {
             first.abort();
             if (reconnect != null) {
@@ -688,6 +691,17 @@ class WebSocketAdapterContractTest {
         );
     }
 
+    private static DeliveryCommand connectionSnapshotCommand() {
+        return DeliveryCommand.create(
+                SYSTEM,
+                ADAPTER,
+                "platform.adapter.worker-connections.snapshot",
+                System.currentTimeMillis() + 60_000,
+                Jsons.toJson(Map.of("workerIds", List.of(WORKER_ID))),
+                "control-only:v1:connection-snapshot"
+        );
+    }
+
     private static WebSocket connect(
             int port,
             Probe probe
@@ -785,6 +799,30 @@ class WebSocketAdapterContractTest {
             Thread.sleep(5);
         }
         throw new AssertionError("Expected Worker results were not appended");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void assertConnectionState(
+            TestRemoteApi remoteApi,
+            String expectedState
+    ) throws InterruptedException {
+        int previousCount = remoteApi.appendedResults.stream()
+                .mapToInt(List::size)
+                .sum();
+        remoteApi.batches.add(Map.of(
+                "opaque-connection-snapshot",
+                connectionSnapshotCommand()
+        ));
+        awaitResultCount(remoteApi, previousCount + 1);
+        String encoded = remoteApi.appendedResults.stream()
+                .flatMap(List::stream)
+                .toList()
+                .get(previousCount);
+        DeliveryReport report = new WorkerDeliveryCodec()
+                .decodeDeliveryReport(encoded);
+        Map<String, Object> payload = Jsons.parseObject(report.payload());
+        assertThat((Map<String, Object>) payload.get("stateByWorkerId"))
+                .containsEntry(WORKER_ID, expectedState);
     }
 
     private static void awaitVerification(TestRemoteApi remoteApi)

@@ -47,10 +47,11 @@ inbound Handler only forwards normalized text, inactive, and failure callbacks.
 The shared connection mechanism owns identity
 interpretation, first-seen route
 verification, Command routing, and Result ingress; its Registry alone owns
-verified, pending, active, and Channel-correlation truth. The selected physical
-Server owns its listener, EventLoop, all child Channels, complete Pipeline,
-framing, physical writes, asynchronous write failures, and close behavior.
-These are internal owners, not a public SPI or transport-kind branch.
+the single per-Worker route truth. Each identified Channel carries its Worker
+identity as Adapter-local Netty metadata for inbound correlation. The selected
+physical Server owns its listener, EventLoop, all child Channels, complete
+Pipeline, framing, physical writes, asynchronous write failures, and close
+behavior. These are internal owners, not a public SPI or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
@@ -199,15 +200,19 @@ Result. TASK backpressure closes the exact Channel; best-effort SYSTEM
 backpressure keeps it usable.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
-verified worker IDs, first-verification pending Channels, active
-`workerId -> Channel` routes, and Channel correlation as atomic truth. The
-connection mechanism selects a route and asks its physical Server to write a
-normalized command string. The WebSocket Server emits a text frame; the Socket
-Server emits one UTF-8 line. Those Servers also map semantic close reasons to a
-WebSocket close frame or TCP close. A verified reconnect replaces the current
-Channel for that workerId. Deactivation compares exact Channel identity, so a
-delayed close from an old Channel cannot remove its replacement or verified
-route.
+`workerId -> RouteState` truth. An absent route is unknown; verifying,
+connected, and disconnected routes are mutually exclusive. An identified
+Channel stores only its workerId as thread-safe Channel-local metadata. This is
+correlation, not a second route index or wire field. Per-Worker conditional
+transitions prevent an old Channel's late callback from changing a replacement
+route while still allowing its valid in-flight Result before physical close.
+The connection mechanism selects a route and asks its physical Server to write
+a normalized command string. The WebSocket Server emits a text frame; the
+Socket Server emits one UTF-8 line. Those Servers also map semantic close
+reasons to a WebSocket close frame or TCP close. A verified reconnect replaces
+the current Channel for that workerId. Deactivation compares exact Channel
+identity, so a delayed close from an old Channel cannot remove its replacement
+or verified route.
 Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
@@ -256,7 +261,7 @@ execution surface, not a public registry or Server whitelist:
 | --- | --- | --- |
 | `platform.adapter.probe` | `null` | Adapter identity and reachability |
 | `platform.adapter.events.snapshot` | `null` | sorted full `eventNames` |
-| `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `connectedByWorkerId` |
+| `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `stateByWorkerId` |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":[...]}` | `outcomeByWorkerId` |
 
 The Event snapshot is precomputed when the immutable map is assembled, includes
@@ -264,14 +269,19 @@ itself, and is process-local execution evidence rather than Server
 configuration or routing truth. Its reserved name cannot be replaced by another
 static Handler.
 
-Worker ID lists are unique, ordered and bounded to `1..100`. Snapshot
-`connected=true` means only that first route verification completed and the
-Adapter currently has an active Channel. It does not imply Binding validity,
-schedulability, writability or Worker idleness. Close-current atomically
-removes the observed active route and asks the physical Server to close that
-Channel (`1000` for WebSocket, TCP close for Socket). It preserves the
-process-local verified ID, so the existing Client reconnect path can install a
-new active Channel without another route verification.
+Worker ID lists are unique, ordered and bounded to `1..100`. Snapshot values
+are `UNKNOWN`, `VERIFYING`, `CONNECTED`, or `DISCONNECTED`. They are
+point-in-time Adapter route observations, not Binding validity, schedulability,
+writability, Worker idleness, or proof that the Worker process is alive.
+Anonymous physical Channels are not Worker routes. An Adapter restart clears
+the process-local verification cache, so the next identity starts from
+`UNKNOWN`. There is no application heartbeat; a silent half-open connection is
+reported disconnected only after the network stack, close, failure, or a write
+detects it. Close-current atomically moves the observed route to disconnected
+and asks the physical Server to close that Channel (`1000` for WebSocket, TCP
+close for Socket). It preserves the process-local verification cache, so the
+existing Client reconnect path can install a new active Channel without
+another route verification.
 
 ### Result ingress round
 
@@ -318,7 +328,7 @@ Close:
 state STOPPING
 -> AdapterProcessManager quiesces BEFORE_NETWORK_CLOSE processes
 -> close listener and every pre-identity, pending-verification, or bound Channel
--> clear verified, pending, and active route-directory state
+-> clear the remaining per-Worker route state; closed Channels release their metadata
 -> AdapterProcessManager quiesces AFTER_NETWORK_CLOSE processes
 -> AdapterProcessManager closes its scheduler and finishes processes in reverse order,
    including one bounded final Result flush

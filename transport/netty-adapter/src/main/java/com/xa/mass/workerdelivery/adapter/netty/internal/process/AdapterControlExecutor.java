@@ -55,14 +55,15 @@ public final class AdapterControlExecutor {
                     "reachable", true
             ));
         });
-        handlers.put(CONNECTION_SNAPSHOT_EVENT, payload -> Jsons.toJson(
-                Map.of(
-                        "connectedByWorkerId",
-                        connections.connectionStates(
-                                parseWorkerIds(payload)
-                        )
-                )
-        ));
+        handlers.put(CONNECTION_SNAPSHOT_EVENT, payload -> {
+            Map<String, String> encoded = new LinkedHashMap<>();
+            connections.connectionStates(parseWorkerIds(payload))
+                    .forEach((workerId, state) -> encoded.put(
+                            workerId,
+                            state.name()
+                    ));
+            return Jsons.toJson(Map.of("stateByWorkerId", encoded));
+        });
         handlers.put(CLOSE_CURRENT_EVENT, payload -> {
             Map<String, String> encoded = new LinkedHashMap<>();
             connections.closeCurrentConnections(parseWorkerIds(payload))

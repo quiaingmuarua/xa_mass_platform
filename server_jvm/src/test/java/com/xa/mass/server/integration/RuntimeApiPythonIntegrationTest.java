@@ -315,7 +315,7 @@ class RuntimeApiPythonIntegrationTest {
                     Map.of("runtime", "java-control")
             );
 
-            assertConnectionState(workerId, true);
+            assertConnectionState(workerId, "CONNECTED");
             assertThat(Jsons.parseObject(
                     observedControlPayload(
                             adapterControl(
@@ -338,7 +338,7 @@ class RuntimeApiPythonIntegrationTest {
                             "null"
                     ), workerId, "200")
             )).containsEntry("reachable", true);
-            assertConnectionState(workerId, true);
+            assertConnectionState(workerId, "CONNECTED");
         } finally {
             if (paused) {
                 send(
@@ -406,7 +406,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void assertConnectionState(String workerId, boolean connected)
+    private void assertConnectionState(String workerId, String state)
             throws Exception {
         Map<String, Object> payload =
                 Jsons.parseObject(
@@ -420,8 +420,8 @@ class RuntimeApiPythonIntegrationTest {
                         )
                 );
         assertThat((Map<String, Object>) payload.get(
-                "connectedByWorkerId"
-        )).containsEntry(workerId, connected);
+                "stateByWorkerId"
+        )).containsEntry(workerId, state);
     }
 
     private static String workerIdsPayload(String workerId) {

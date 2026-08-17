@@ -48,13 +48,21 @@ events. Their detailed semantics are owned by the
 | --- | --- | --- | --- |
 | `platform.adapter.probe` | `null` | Adapter identity and reachability | Observation only |
 | `platform.adapter.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observes the immutable Adapter event map |
-| `platform.adapter.worker-connections.snapshot` | `{"workerIds":["..."]}` | `{"connectedByWorkerId":{...}}` | Observes current Adapter-local active Channels |
+| `platform.adapter.worker-connections.snapshot` | `{"workerIds":["..."]}` | `{"stateByWorkerId":{"worker-1":"CONNECTED"}}` | Observes current Adapter-local route state |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
 
-Worker ID lists are unique, ordered, and bounded to `1..100`. A connected
-result means only that route verification completed and the Adapter currently
-has an active Channel. Closing the current Channel does not unbind, disable, or
-pause the Worker; the existing Client policy may reconnect it.
+Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
+are `UNKNOWN` when this Adapter process has not verified the Worker,
+`VERIFYING` during its first route verification, `CONNECTED` after verification
+with an active current Channel, and `DISCONNECTED` when verification is cached
+without an active current Channel. These states do not imply Binding validity,
+schedulability, writability, Worker idleness, or process liveness. Anonymous
+physical Channels do not become Worker routes until identity succeeds. Closing
+the current Channel does not unbind, disable, or pause the Worker; the existing
+Client policy may reconnect it. Adapter restart clears this process-local
+observation. There is no application heartbeat, so a silent half-open
+connection converges only after the network stack, close, failure, or a write
+detects it.
 
 ## Extension Boundary
 

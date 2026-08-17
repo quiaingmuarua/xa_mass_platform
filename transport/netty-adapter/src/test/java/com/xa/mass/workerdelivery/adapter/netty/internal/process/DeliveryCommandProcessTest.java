@@ -341,12 +341,12 @@ class DeliveryCommandProcessTest {
                         Map<String, Object> states =
                                 (Map<String, Object>) Jsons.parseObject(
                                         report.payload()
-                                ).get("connectedByWorkerId");
+                                ).get("stateByWorkerId");
                         assertThat(states.keySet())
                                 .containsExactlyElementsOf(workerIds);
                         assertThat(states).hasSize(100)
-                                .containsEntry("worker-1", true)
-                                .containsEntry("worker-100", false);
+                                .containsEntry("worker-1", "CONNECTED")
+                                .containsEntry("worker-100", "UNKNOWN");
                     });
         }
     }
