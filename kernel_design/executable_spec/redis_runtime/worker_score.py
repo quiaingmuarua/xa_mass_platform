@@ -115,35 +115,6 @@ redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
 """
 
-    _RECONCILE_HOT_ACQUIRE_SCRIPT: ClassVar[str] = """
-local key = KEYS[1]
-local worker_id = ARGV[1]
-local dirty_factor = tonumber(ARGV[2])
-
-local stored = redis.call("ZSCORE", key, worker_id)
-if not stored then
-  return {"stale"}
-end
-
-local stored_score = tonumber(stored)
-local abs_score = math.abs(stored_score)
-if abs_score <= 0 then
-  return {"invalid", stored_score}
-end
-
-local stored_dirty = abs_score % dirty_factor
-if stored_dirty ~= 0 and stored_dirty ~= 1 then
-  return {"invalid", stored_score}
-end
-if stored_score > 0 and stored_dirty == 1 then
-  return {"noop", stored_score}
-end
-
-local target_score = abs_score + (1 - stored_dirty)
-redis.call("ZADD", key, target_score, worker_id)
-return {"transitioned", target_score}
-"""
-
     COLD_TIME_SLOT: ClassVar[int] = 1
 
     def __init__(
@@ -290,15 +261,11 @@ return {"transitioned", target_score}
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
-        lane_rank: LaneRank,
     ) -> WorkerScoreTransitionResult:
-        if not self._valid_lane_rank(lane_rank):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
         initial_score = self._score(
             WorkerScorePolarity.HOT_ACQUIRE,
             self._current_time_slot(),
-            lane_rank,
+            self.MIN_LANE_RANK,
             self.MIN_DIRTY,
         )
         added_count = self.redis.zadd(
@@ -370,22 +337,6 @@ return {"transitioned", target_score}
                 strict=True,
             )
         }
-
-    def reconcile_worker_hot_acquire(
-        self,
-        *,
-        home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-    ) -> WorkerScoreTransitionResult:
-        return self._script_result(
-            self.redis.eval(
-                self._RECONCILE_HOT_ACQUIRE_SCRIPT,
-                1,
-                self._score_key(home_bucket_id),
-                worker_id,
-                self.dirty_factor,
-            )
-        )
 
     def acquire_observed_hot_score_leases(
         self,
@@ -529,7 +480,7 @@ return {"transitioned", target_score}
                     WorkerScoreTransitionStatus.INVALID
                 )
                 continue
-            polarity, _, _, dirty = observed
+            polarity, time_slot, _, dirty = observed
             if (
                 polarity is not WorkerScorePolarity.HOT_ACQUIRE
                 or dirty != self.MIN_DIRTY
@@ -538,7 +489,15 @@ return {"transitioned", target_score}
                     WorkerScoreTransitionStatus.INVALID
                 )
                 continue
-            pending_updates[worker_id] = (observed_score, -abs(observed_score))
+            pending_updates[worker_id] = (
+                observed_score,
+                self._score(
+                    WorkerScorePolarity.RECOVERY_RECHECK,
+                    time_slot,
+                    self.MIN_LANE_RANK,
+                    dirty,
+                ),
+            )
 
         return self._merge_batch_results(
             observed_scores,
@@ -568,23 +527,19 @@ return {"transitioned", target_score}
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
         observed_score: Score,
-        target_lane_rank: LaneRank,
     ) -> WorkerScoreTransitionResult:
-        if not self._valid_lane_rank(target_lane_rank):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
         observed = self._decode_score(observed_score)
         if observed is None:
             return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
 
         polarity, time_slot, _, dirty = observed
-        if self._abs_score(time_slot, target_lane_rank, dirty) < self.MIN_BASE:
+        if self._abs_score(time_slot, self.MIN_LANE_RANK, dirty) < self.MIN_BASE:
             return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
 
         next_score = self._score(
             WorkerScorePolarity(-int(polarity)),
             time_slot,
-            target_lane_rank,
+            self.MIN_LANE_RANK,
             dirty,
         )
         return self._cas_update(home_bucket_id, worker_id, observed_score, next_score)

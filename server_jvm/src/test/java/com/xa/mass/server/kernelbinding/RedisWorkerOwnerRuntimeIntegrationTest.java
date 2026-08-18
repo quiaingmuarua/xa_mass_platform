@@ -141,7 +141,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(initialScore.polarity())
                 .isEqualTo(WorkerScorePolarity.HOT_ACQUIRE);
         assertThat(initialScore.laneRank())
-                .isEqualTo(RedisWorkerRuntime.DEFAULT_INITIAL_LANE_RANK);
+                .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
 
         assertThat(catalog.patchWorkerPlatformProperties(
                 "group-1",

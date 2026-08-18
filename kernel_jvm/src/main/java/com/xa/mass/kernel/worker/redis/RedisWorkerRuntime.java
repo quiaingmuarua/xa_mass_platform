@@ -15,31 +15,15 @@ import java.util.Map;
 public final class RedisWorkerRuntime
         implements WorkerRuntime, AutoCloseable {
 
-    public static final int DEFAULT_INITIAL_LANE_RANK = 50;
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
     private final String prefix;
-    private final int initialLaneRank;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerRuntime(
             RedisClient redisClient,
             WorkerScoreCore scoreCore,
             String prefix
-    ) {
-        this(
-                redisClient,
-                scoreCore,
-                prefix,
-                DEFAULT_INITIAL_LANE_RANK
-        );
-    }
-
-    public RedisWorkerRuntime(
-            RedisClient redisClient,
-            WorkerScoreCore scoreCore,
-            String prefix,
-            int initialLaneRank
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
@@ -50,16 +34,9 @@ public final class RedisWorkerRuntime
         if (prefix == null || prefix.isBlank()) {
             throw new IllegalArgumentException("prefix must be non-blank");
         }
-        if (initialLaneRank < WorkerScoreCore.MIN_LANE_RANK
-                || initialLaneRank > WorkerScoreCore.MAX_LANE_RANK) {
-            throw new IllegalArgumentException(
-                    "initialLaneRank is out of range"
-            );
-        }
         this.redisClient = redisClient;
         this.scoreCore = scoreCore;
         this.prefix = prefix;
-        this.initialLaneRank = initialLaneRank;
     }
 
     @Override
@@ -179,8 +156,7 @@ public final class RedisWorkerRuntime
             WorkerScoreTransitionResult initialization =
                     scoreCore.initializeHotAcquireScore(
                             declaration.workerGroupId(),
-                            declaration.workerId(),
-                            initialLaneRank
+                            declaration.workerId()
                     );
             if (initialization.status()
                     == WorkerScoreTransitionStatus.TRANSITIONED) {

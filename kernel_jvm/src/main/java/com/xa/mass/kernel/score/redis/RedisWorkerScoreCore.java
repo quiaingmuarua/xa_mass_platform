@@ -89,35 +89,6 @@ public final class RedisWorkerScoreCore
             return {"transitioned", next_score}
             """;
 
-    private static final String RECONCILE_HOT_ACQUIRE_SCRIPT = """
-            local key = KEYS[1]
-            local worker_id = ARGV[1]
-            local dirty_factor = tonumber(ARGV[2])
-
-            local stored = redis.call("ZSCORE", key, worker_id)
-            if not stored then
-              return {"stale"}
-            end
-
-            local stored_score = tonumber(stored)
-            local abs_score = math.abs(stored_score)
-            if abs_score <= 0 then
-              return {"invalid", stored_score}
-            end
-
-            local stored_dirty = abs_score % dirty_factor
-            if stored_dirty ~= 0 and stored_dirty ~= 1 then
-              return {"invalid", stored_score}
-            end
-            if stored_score > 0 and stored_dirty == 1 then
-              return {"noop", stored_score}
-            end
-
-            local target_score = abs_score + (1 - stored_dirty)
-            redis.call("ZADD", key, target_score, worker_id)
-            return {"transitioned", target_score}
-            """;
-
     private final RedisClient redisClient;
     private final String prefix;
     private volatile StatefulRedisConnection<String, String> connection;
@@ -193,17 +164,10 @@ public final class RedisWorkerScoreCore
     @Override
     public WorkerScoreTransitionResult initializeHotAcquireScore(
             String homeBucketId,
-            String workerId,
-            int laneRank
+            String workerId
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         requireNonBlank(workerId, "workerId");
-        if (laneRank < MIN_LANE_RANK || laneRank > MAX_LANE_RANK) {
-            return new WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID,
-                    null
-            );
-        }
         long timeSlot = redisTimeMillis() / SLOT_MILLIS;
         if (timeSlot < MIN_TIME_SLOT || timeSlot > MAX_TIME_SLOT) {
             return new WorkerScoreTransitionResult(
@@ -212,7 +176,7 @@ public final class RedisWorkerScoreCore
             );
         }
         long initialScore = timeSlot * SLOT_FACTOR
-                + (long) laneRank * DIRTY_FACTOR
+                + (long) MIN_LANE_RANK * DIRTY_FACTOR
                 + MIN_DIRTY;
         Long added = commands().zadd(
                 scoreKey(homeBucketId),
@@ -240,23 +204,6 @@ public final class RedisWorkerScoreCore
                 WorkerScoreTransitionStatus.NOOP,
                 scoreToLong(stored)
         );
-    }
-
-    @Override
-    public WorkerScoreTransitionResult reconcileWorkerHotAcquire(
-            String homeBucketId,
-            String workerId
-    ) {
-        requireNonBlank(homeBucketId, "homeBucketId");
-        requireNonBlank(workerId, "workerId");
-        Object raw = commands().eval(
-                RECONCILE_HOT_ACQUIRE_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey(homeBucketId)},
-                workerId,
-                Integer.toString(DIRTY_FACTOR)
-        );
-        return scriptResult(raw);
     }
 
     @Override
@@ -360,8 +307,7 @@ public final class RedisWorkerScoreCore
     public WorkerScoreTransitionResult toggleCurrentPolarity(
             String homeBucketId,
             String workerId,
-            long observedScore,
-            int targetLaneRank
+            long observedScore
     ) {
         throw notImplemented("toggle_current_polarity");
     }

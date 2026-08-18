@@ -31,8 +31,7 @@ cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
 Only `KernelApplication` starts background scheduling. Java's direct Redis
 providers implement WorkerGroup upsert, Worker upsert,
 Task Item append/result read, and Worker Delivery consume/result-ingress
-operations. Java Worker upsert uses only score get/initialize. Java also implements a parity reconcile mechanism,
-but no production caller currently invokes it.
+operations. Java Worker upsert uses only score get/initialize.
 
 ## Application And Executable-Spec Commands
 
@@ -110,7 +109,7 @@ An explicit WorkerGroup upsert atomically replaces its `attributes` and
 scheduling partition identity. The replaced fields are control-plane catalog
 metadata and are not consulted by Matcher or Dispatch.
 
-First Worker upsert selects the default lane rank internally and initializes
+First Worker upsert fixes lane rank at zero and initializes
 the Worker HOT score without requiring the scheduling process to be running.
 Compatible repeat upsert repairs a missing owner, metadata, properties row, or
 score and replaces the complete `workerProperties` snapshot while preserving
@@ -335,9 +334,7 @@ or probe: it appends one caller-bounded Item batch, then loads the
 remaining message IDs together on each polling round. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
-for resource declaration: score read and missing-score initialization. The
-reconcile operation remains an owner mechanism with no production caller in
-this slice.
+for resource declaration: score read and missing-score initialization.
 Separate Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and

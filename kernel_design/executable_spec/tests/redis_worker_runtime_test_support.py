@@ -258,8 +258,6 @@ class FakeRedis:
 
 
 class RedisWorkerRuntimeFixture(unittest.TestCase):
-    LANE_RANK = 5
-
     def setUp(self) -> None:
         self.redis = FakeRedis()
         self.catalog = RedisWorkerResourceCatalog(self.redis, prefix="test")
@@ -271,7 +269,6 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             self.redis,
             self.score_band,
             prefix="test",
-            initial_lane_rank=self.LANE_RANK,
         )
         self.group = WorkerGroupDescriptor(
             worker_group_id="image-workers",

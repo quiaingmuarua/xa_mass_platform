@@ -55,7 +55,6 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             self.redis,
             self.score_band,
             prefix=self.prefix,
-            initial_lane_rank=5,
         )
         self.catalog = RedisWorkerResourceCatalog(
             self.redis,
@@ -456,7 +455,6 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             home_bucket_id=self.worker_group_id,
             worker_id=declaration.worker_id,
             observed_score=held.score,
-            target_lane_rank=held.lane_rank,
         )
         self.assertEqual(
             recovery_transition.status,
@@ -494,11 +492,108 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(current.polarity, WorkerScorePolarity.RECOVERY_RECHECK)
         self.assertEqual(current.score, recovery_transition.score)
         self.assertEqual(current.time_millis, held.time_millis)
-        self.assertEqual(current.lane_rank, 7)
+        self.assertEqual(current.lane_rank, 0)
         self.assertTrue(current.dirty)
         assert descriptor is not None
         self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
         self.assertEqual(descriptor.worker_properties, {"runtime": "java"})
+
+    def test_polarity_transitions_reset_lane_rank(self) -> None:
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id=self.worker_group_id,
+                attributes={},
+                event_codes=frozenset(),
+            )
+        )
+        worker_id = "worker-polarity"
+        registered = self.runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id=worker_id,
+                worker_group_id=self.worker_group_id,
+                endpoint_manager_id="endpoint-manager-1",
+                worker_properties={},
+            )
+        )
+        self.assertEqual(registered.status, WorkerRuntimeStatus.OK)
+        initial = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        assert initial is not None
+        self.assertEqual(initial.lane_rank, 0)
+
+        rewritten = self.score_band.rewrite_current_scores(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+            target_time_millis=(time.time_ns() // 1_000_000) + 10_000,
+            target_lane_rank=7,
+        )[worker_id]
+        self.assertEqual(
+            rewritten.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        hot = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        assert hot is not None
+
+        demoted = self.score_band.demote_observed_worker_leases_to_recovery(
+            home_bucket_id=self.worker_group_id,
+            observed_scores={worker_id: hot.score},
+        )[worker_id]
+        self.assertEqual(
+            demoted.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        recovery = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        assert recovery is not None
+        self.assertEqual(recovery.polarity, WorkerScorePolarity.RECOVERY_RECHECK)
+        self.assertEqual(recovery.time_millis, hot.time_millis)
+        self.assertEqual(recovery.lane_rank, 0)
+
+        reopened = self.score_band.toggle_current_polarity(
+            home_bucket_id=self.worker_group_id,
+            worker_id=worker_id,
+            observed_score=recovery.score,
+        )
+        self.assertEqual(
+            reopened.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        hot_again = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        assert hot_again is not None
+        self.assertEqual(hot_again.polarity, WorkerScorePolarity.HOT_ACQUIRE)
+        self.assertEqual(hot_again.time_millis, recovery.time_millis)
+        self.assertEqual(hot_again.lane_rank, 0)
+
+        toggled = self.score_band.toggle_current_polarity(
+            home_bucket_id=self.worker_group_id,
+            worker_id=worker_id,
+            observed_score=hot_again.score,
+        )
+        self.assertEqual(
+            toggled.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        recovery_again = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        assert recovery_again is not None
+        self.assertEqual(
+            recovery_again.polarity,
+            WorkerScorePolarity.RECOVERY_RECHECK,
+        )
+        self.assertEqual(recovery_again.time_millis, hot_again.time_millis)
+        self.assertEqual(recovery_again.lane_rank, 0)
 
     def test_upsert_preserves_active_lease_fence(
         self,

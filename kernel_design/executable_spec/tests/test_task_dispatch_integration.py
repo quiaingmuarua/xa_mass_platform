@@ -130,7 +130,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             self.worker_score,
             prefix=self.prefix,
-            initial_lane_rank=50,
         )
         property_index = MappedWorkerPropertyIndexRuntime(
             self.worker_catalog,

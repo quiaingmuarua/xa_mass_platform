@@ -110,7 +110,6 @@ class ResourcesCommandClientTest(unittest.TestCase):
             self.redis_client,
             self.score,
             prefix="resources-test",
-            initial_lane_rank=50,
         )
 
     def test_resource_commands_delegate_without_application_lifecycle(self) -> None:

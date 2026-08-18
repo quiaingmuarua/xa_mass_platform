@@ -141,20 +141,6 @@ Allocation may clear dirty only while acquiring a due Worker before fresh
 matching. Active dispatch validation rejects dirty and forces a later fresh
 allocation/match.
 
-The score owner exposes a reconciliation primitive:
-
-```text
-existing score
-  -> preserve timeSlot and laneRank
-  -> converge to HOT_ACQUIRE
-  -> set dirty=1
-```
-
-The primitive can invalidate old candidate evidence without releasing future
-holds or introducing a session epoch. It is not called by Worker resource
-upsert and has no production caller in this slice. A future explicit lifecycle
-operation must validate recovery evidence before using it.
-
 ## Result Disposition
 
 The opaque Worker fence returns through `ResultContext` together with its
@@ -185,21 +171,7 @@ owner accepts at most one applicable disposition. A duplicated copy of the same
 transport result is allowed to reach routing, but after the first applicable
 exact transition the old Worker fence is stale and cannot change newer truth.
 
-## Serviceability Reconciliation And Recovery Demotion
-
-```text
-reconcile_worker_hot_acquire(workerGroupId, workerId)
-```
-
-- Missing score returns `STALE`; WorkerRuntime owns initialization.
-- Positive clean becomes positive dirty.
-- Negative becomes positive dirty.
-- Positive dirty is `NOOP`.
-- timeSlot and laneRank are preserved; future holds remain future.
-
-This mechanism does not make resource upsert a reconnect or activation API.
-Current production upsert initializes a missing score and otherwise preserves
-the existing score exactly.
+## Recovery Demotion
 
 ```text
 demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
@@ -207,7 +179,7 @@ demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
 
 - Accepts only clean positive opaque lease scores.
 - Uses independent exact-score CAS.
-- Writes `-abs(observedScore)` and preserves the complete absolute coordinate.
+- Preserves timeSlot and dirty, then writes RECOVERY_RECHECK with laneRank `0`.
 - `STALE` does not affect Item outcome.
 
 Polarity is the kernel-owned classification of whether a Worker may participate

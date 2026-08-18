@@ -144,7 +144,6 @@
       "initialize_hot_acquire_score",
       "mark_current_lease_dirty",
       "observe_due_hot_scores",
-      "reconcile_worker_hot_acquire",
       "release_score_holds",
       "renew_active_hot_score_leases",
       "rewrite_current_scores",

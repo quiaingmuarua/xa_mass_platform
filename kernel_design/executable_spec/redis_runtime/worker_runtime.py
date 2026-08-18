@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from ..kernel.worker_score import (
-    LaneRank,
     WorkerId,
     WorkerScoreCore,
     WorkerScoreTransitionStatus,
@@ -566,21 +565,12 @@ class RedisWorkerRuntime(WorkerRuntime):
         score_band: WorkerScoreCore,
         *,
         prefix: str = "default",
-        initial_lane_rank: LaneRank = 50,
     ) -> None:
         if not prefix:
             raise ValueError("prefix must be non-empty")
-        if (
-            not isinstance(initial_lane_rank, int)
-            or not score_band.MIN_LANE_RANK
-            <= initial_lane_rank
-            <= score_band.MAX_LANE_RANK
-        ):
-            raise ValueError("initial_lane_rank is out of range")
         self.redis = redis_client
         self.score_band = score_band
         self.prefix = prefix
-        self.initial_lane_rank = initial_lane_rank
 
     def upsert_worker(
         self,
@@ -709,7 +699,6 @@ class RedisWorkerRuntime(WorkerRuntime):
             initialization = self.score_band.initialize_hot_acquire_score(
                 home_bucket_id=declaration.worker_group_id,
                 worker_id=declaration.worker_id,
-                lane_rank=self.initial_lane_rank,
             )
             if initialization.status == WorkerScoreTransitionStatus.TRANSITIONED:
                 score_created = True

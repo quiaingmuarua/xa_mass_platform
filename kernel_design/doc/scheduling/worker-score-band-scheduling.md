@@ -161,8 +161,13 @@ HOT_ACQUIRE
   priority / fairness / same-slot tie-break / admission anti-spin hint
 
 RECOVERY_RECHECK
-  retry count / failed recheck count / remaining recovery budget
+  recovery retryCount; 0 is the first validation and each later retry increments it
 ```
+
+This meaning is intentionally incompatible with older negative scores that
+encoded remaining budget. Deployments must clear or rebuild those persisted
+RECOVERY_RECHECK scores; the score owner does not provide a compatibility
+decoder or migration path.
 
 `dirty` is an assignment-continuation stale hint embedded in the worker score:
 
@@ -191,7 +196,7 @@ compare-and-write. Unmatched leases remain held until bounded expiry; allocation
 does not release them.
 
 Worker score is not a Worker resource mutation lease. Worker upsert
-establishes the initial HOT_ACQUIRE score using runtime-owned lane config, but
+establishes the initial HOT_ACQUIRE score with `laneRank=0`, but
 later Platform/Worker property or index writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
 truth without acquiring or renewing worker score. HOT admission scheduling is
@@ -282,8 +287,9 @@ pass recovery validation
   -> move polarity to HOT_ACQUIRE after declaration, gate, Adapter evidence,
      slot admission, and policy validation
 
-fail recovery validation with budget remaining
-  -> stay RECOVERY_RECHECK with later timeSlot and updated laneRank
+fail recovery validation and another retry is allowed
+  -> a future exact retry operation keeps RECOVERY_RECHECK, advances timeSlot,
+     and writes retryCount + 1
 
 exhaust recovery / cold park
   -> stay RECOVERY_RECHECK with too-old timeSlot and owner evidence explaining
@@ -310,8 +316,8 @@ Owner reset / verified recovery can preserve the too-old coordinate when moving 
 to HOT_ACQUIRE:
 
 ```text
--base(coldTooOldTimeSlot, recoveryLaneRank, dirty)
-  -> +base(coldTooOldTimeSlot, hotLaneRank, dirty)
+-base(coldTooOldTimeSlot, recoveryRetryCount, dirty)
+  -> +base(coldTooOldTimeSlot, 0, dirty)
 ```
 
 Because HOT_ACQUIRE scans old due coordinates, the recovered worker becomes
@@ -390,11 +396,9 @@ by routine recovery.
 
 Within the same `timeSlot`, reverse scan returns lower laneRank first because
 RECOVERY_RECHECK scores are negative. Within the same `timeSlot` and laneRank,
-it returns lower dirty first. First-slice policy should treat lower
-RECOVERY_RECHECK laneRank as more urgent / closer to exhaustion. Dirty is only a
-stale fence and must not be used as a priority signal. If a later policy wants
-higher retry budget to run first, it must encode the laneRank in reverse order
-instead of changing the scan primitive.
+it returns lower dirty first. Because RECOVERY_RECHECK laneRank is retryCount,
+the first validation (`0`) precedes retries (`1..N`) in the same slot. Dirty is
+only a stale fence and must not be used as a priority signal.
 
 First slice should prefer demand-driven or owner-controlled recovery recheck. Do
 not add a periodic worker-wide recovery-recheck scanner until a later design proves
@@ -481,9 +485,9 @@ RECOVERY_RECHECK -> HOT_ACQUIRE
 Polarity move always preserves `timeSlot`. This prevents disabled,
 draining, cooldown, or far-future holds from escaping when serviceability polarity
 changes, and it lets a recovered too-old RECOVERY_RECHECK score become
-immediately due in HOT_ACQUIRE. Polarity move must not implicitly inherit
-laneRank across lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have
-different meanings, so the target laneRank must be minted explicitly by policy.
+immediately due in HOT_ACQUIRE. Polarity move must not inherit laneRank across
+lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have different
+meanings, so every polarity move starts the target lane at `laneRank=0`.
 Polarity move preserves the dirty bit. Dirty score primitives are implemented;
 policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw external observation never writes dirty.
@@ -491,11 +495,9 @@ revalidate or renew. Raw external observation never writes dirty.
 Raw connect, heartbeat, keepalive, session, latency observation, and
 `WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
 Upsert initializes only a missing score and preserves every existing score
-exactly while replacing the Worker Properties snapshot.
-`reconcile_worker_hot_acquire`
-remains a score-owner mechanism, but has no production caller in this slice. A
-future explicit lifecycle operation must validate recovery evidence before
-invoking any RECOVERY_RECHECK-to-HOT_ACQUIRE transition.
+exactly while replacing the Worker Properties snapshot. A future explicit
+lifecycle operation must validate recovery evidence before invoking
+`toggle_current_polarity` for RECOVERY_RECHECK-to-HOT_ACQUIRE.
 
 ## Interface Rule
 
@@ -512,7 +514,8 @@ workerId
 limit
 observedScore returned by acquire/read when exact CAS is required
 targetTimeMillis when caller legitimately chooses a next visible/held time
-targetLaneRank when caller legitimately chooses lane-local priority / budget
+targetLaneRank when a same-polarity caller legitimately chooses HOT priority or
+RECOVERY retryCount
 ```
 
 Not caller-owned inputs:
@@ -576,11 +579,12 @@ slot contention / cooldown -> HOT_ACQUIRE with future timeSlot
 admission hold -> HOT_ACQUIRE with future timeSlot
 manual disable / drain observed as HOT_ACQUIRE -> HOT_ACQUIRE(PAUSE_TIME_SLOT)
 manual disable / drain observed as RECOVERY_RECHECK -> RECOVERY_RECHECK(PAUSE_TIME_SLOT)
-recovery-recheck failed with budget -> RECOVERY_RECHECK with later time/laneRank
+future recovery retry -> RECOVERY_RECHECK with later time and retryCount + 1
 ```
 
 This primitive cannot change HOT_ACQUIRE to RECOVERY_RECHECK or
-RECOVERY_RECHECK to HOT_ACQUIRE.
+RECOVERY_RECHECK to HOT_ACQUIRE. No production Recovery Pacer or exact retry
+increment operation exists in this slice.
 
 ### Release
 
@@ -642,8 +646,7 @@ not renew:
 toggle_current_polarity(
   homeBucketId,
   workerId,
-  observedScore,
-  targetLaneRank
+  observedScore
 )
 ```
 
@@ -654,9 +657,9 @@ storedScore must equal observedScore
 observedScore must decode to HOT_ACQUIRE or RECOVERY_RECHECK
 target polarity is opposite of stored polarity
 targetTimeSlot = stored timeSlot
-targetLaneRank is policy-owned and explicit
+targetLaneRank = 0
 targetDirty = stored dirty
-write signed score(targetPolarity, storedTimeSlot, targetLaneRank, storedDirty)
+write signed score(targetPolarity, storedTimeSlot, 0, storedDirty)
 ```
 
 Use HOT_ACQUIRE -> RECOVERY_RECHECK for owner-validated evidence that the Worker
@@ -675,8 +678,9 @@ RECOVERY_RECHECK too-old exhausted score
 ```
 
 Polarity move uses full `observedScore` CAS. If any coordinate has changed, the
-operation is stale and must not toggle again. The target still preserves
-timeSlot and dirty; `observedScore` is only the stale fence.
+operation is stale and must not toggle again. The target preserves timeSlot and
+dirty, resets laneRank to zero, and uses `observedScore` only as the stale
+fence.
 
 ### Recovery Exhausted / Cold Park
 
@@ -787,17 +791,11 @@ renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   dirty entries return STALE and caller must discard / rematch
 
-reconcile_worker_hot_acquire(homeBucketId, workerId)
-  missing score returns STALE so WorkerRuntime remains initialization owner
-  preserves timeSlot and laneRank
-  writes positive polarity and dirty=1
-  positive dirty score is NOOP
-
 demote_observed_worker_leases_to_recovery(homeBucketId, observedScores)
   each observed score must be a clean positive opaque lease fence
   independently requires storedScore == observedScore
-  writes -abs(observedScore)
-  preserves the complete absolute coordinate
+  preserves timeSlot and dirty
+  writes RECOVERY_RECHECK with laneRank=0
 ```
 
 These batch APIs operate on one WorkerGroup/ZSET key and shared target
@@ -895,9 +893,9 @@ needed.
 | HOT_ACQUIRE | candidate remains usable and no delay is needed | no rewrite, or HOT_ACQUIRE(nextTime, laneRank, dirty) | same polarity |
 | HOT_ACQUIRE | slot contention / cooldown / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
-| HOT_ACQUIRE | trusted Adapter rejection / failed serviceability validation | RECOVERY_RECHECK(sameTime, recoveryLaneRank, dirty) | owner-validated polarity move |
-| RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, hotLaneRank, dirty) | owner-validated polarity move |
-| RECOVERY_RECHECK | recovery validation fails and budget remains | RECOVERY_RECHECK(nextRecheckTime, laneRank', dirty) | same polarity |
+| HOT_ACQUIRE | trusted Adapter rejection / failed serviceability validation | RECOVERY_RECHECK(sameTime, 0, dirty) | exact observed-score demotion |
+| RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, 0, dirty) | owner-validated polarity move |
+| RECOVERY_RECHECK | recovery validation fails and retry remains | RECOVERY_RECHECK(nextRecheckTime, retryCount + 1, dirty) | future exact retry operation; not implemented in this slice |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
 | RECOVERY_RECHECK | owner hold / disabled / drain / maintenance | RECOVERY_RECHECK(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold + owner evidence |
 
@@ -952,10 +950,10 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| Worker upsert during Server Bind | only when score is missing | initialize HOT_ACQUIRE dirty=0; replace Worker Properties and preserve every existing score exactly |
+| Worker upsert during Server Bind | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; replace Worker Properties and preserve every existing score exactly |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
-| trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving the time coordinate |
+| trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving time/dirty and entering recovery at laneRank=0 |
 | future validated recovery lifecycle evidence | yes | an explicit lifecycle owner may invoke RECOVERY_RECHECK -> HOT_ACQUIRE after validation; no production caller exists yet |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
@@ -1009,11 +1007,11 @@ score due but worker disabled/draining
   if the owner hold fact is current
 
 HOT_ACQUIRE score due but serviceability validation fails strongly
-  move to RECOVERY_RECHECK by owner policy, preserving timeSlot
+  move to RECOVERY_RECHECK laneRank=0 by owner policy, preserving timeSlot/dirty
 
 RECOVERY_RECHECK score due but recovery validation fails
-  rewrite RECOVERY_RECHECK with next recheck time if budget remains, or write
-  a RECOVERY_RECHECK too-old cold coordinate if exhausted
+  a future exact retry operation writes next time and retryCount+1 if allowed,
+  or writes a RECOVERY_RECHECK too-old cold coordinate if exhausted
 
 score due but slot admission defers use
   rewrite HOT_ACQUIRE with future time or reject according to admission policy
@@ -1051,7 +1049,7 @@ no transport-driven positive refresh
 Policy owns:
 
 ```text
-initial HOT_ACQUIRE score
+initial HOT_ACQUIRE score time coordinate; laneRank is fixed at 0
 candidate ranking / laneRank meaning
 platform scheduling signature policy
 dirty mark invocation and continuation revalidation rule, only when a
@@ -1060,7 +1058,7 @@ cooldown duration
 admission hold interval
 manual hold / enable rule
 RECOVERY_RECHECK retry cadence
-RECOVERY_RECHECK initial retry budget
+RECOVERY_RECHECK maximum retry policy
 RECOVERY_RECHECK lookback window
 cold parked / owner-reset evidence rule
 negative evidence mapping

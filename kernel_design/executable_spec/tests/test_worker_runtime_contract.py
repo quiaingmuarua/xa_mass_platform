@@ -72,7 +72,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         )
         self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker"))
 
-    def test_worker_score_observation_and_lease_contract_is_unchanged(self) -> None:
+    def test_worker_score_observation_and_transition_contract_is_bounded(self) -> None:
         self.assertEqual(
             set(
                 inspect.signature(
@@ -114,12 +114,19 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             set(
                 inspect.signature(
-                    WorkerScoreCore.reconcile_worker_hot_acquire
+                    WorkerScoreCore.initialize_hot_acquire_score
                 ).parameters
             ),
             {"self", "home_bucket_id", "worker_id"},
         )
-
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerScoreCore.toggle_current_polarity
+                ).parameters
+            ),
+            {"self", "home_bucket_id", "worker_id", "observed_score"},
+        )
     def test_worker_catalog_reads_remain_group_local_and_bounded(self) -> None:
         self.assertEqual(
             set(

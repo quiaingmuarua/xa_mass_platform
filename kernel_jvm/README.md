@@ -48,7 +48,6 @@ WorkerPropertyIndexRuntime
 WorkerScoreCore
   getScoreStates
   initializeHotAcquireScore
-  reconcileWorkerHotAcquire (parity proof only; no production caller)
   rewriteCurrentScores
   releaseScoreHolds
 
@@ -60,9 +59,10 @@ WorkerResultRuntime
   append
 ```
 
-Worker score candidate acquisition, observed lease acquisition/renewal,
-demotion, dirty marking, polarity changes, and recovery exhaustion remain
-explicit gaps in the JVM provider. `rewriteCurrentScores` preserves polarity,
+Worker score initialization fixes laneRank at zero. Candidate acquisition,
+observed lease acquisition/renewal, demotion, dirty marking, polarity changes,
+and recovery exhaustion remain explicit gaps in the JVM provider.
+`rewriteCurrentScores` preserves polarity,
 lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed
 score as an exact CAS fence. Task creation, TaskItem record reads,

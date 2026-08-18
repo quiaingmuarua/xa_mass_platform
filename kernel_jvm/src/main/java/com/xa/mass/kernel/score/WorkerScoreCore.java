@@ -49,12 +49,6 @@ public interface WorkerScoreCore {
 
     WorkerScoreTransitionResult initializeHotAcquireScore(
             String homeBucketId,
-            String workerId,
-            int laneRank
-    );
-
-    WorkerScoreTransitionResult reconcileWorkerHotAcquire(
-            String homeBucketId,
             String workerId
     );
 
@@ -91,8 +85,7 @@ public interface WorkerScoreCore {
     WorkerScoreTransitionResult toggleCurrentPolarity(
             String homeBucketId,
             String workerId,
-            long observedScore,
-            int targetLaneRank
+            long observedScore
     );
 
     WorkerScoreTransitionResult exhaustRecoveryRecheck(

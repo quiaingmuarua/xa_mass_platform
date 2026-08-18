@@ -13,9 +13,6 @@ from ..redis_runtime import (
 from .application import KernelApplicationConfig
 
 
-_DEFAULT_INITIAL_WORKER_LANE_RANK = 50
-
-
 class ResourcesCommandClient:
     """Low-frequency resource commands independent of scheduler lifecycle."""
 
@@ -49,7 +46,6 @@ class ResourcesCommandClient:
             redis_client,
             worker_score,
             prefix=resolved_config.redis_prefix,
-            initial_lane_rank=_DEFAULT_INITIAL_WORKER_LANE_RANK,
         )
 
     @classmethod

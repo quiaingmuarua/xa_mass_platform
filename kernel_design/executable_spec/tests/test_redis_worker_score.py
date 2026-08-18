@@ -84,8 +84,6 @@ class FakeRedis:
 
         if "local target_min_abs_score" in script and "local target_lane_rank" in script:
             return self._eval_current_rewrite(key, argv)
-        if "target_score = abs_score + (1 - stored_dirty)" in script:
-            return self._eval_reconcile_hot_acquire(key, argv)
         if "local stored_dirty" in script:
             return self._eval_mark_lease_dirty(key, argv)
         if "local observed_score" in script:
@@ -143,28 +141,6 @@ class FakeRedis:
             return ["noop", stored]
 
         next_score = sign * (abs_score + 1)
-        self.zadd(key, {worker_id: next_score})
-        return ["transitioned", next_score]
-
-    def _eval_reconcile_hot_acquire(
-        self,
-        key: str,
-        argv: tuple[object, ...],
-    ) -> list[object]:
-        worker_id = str(argv[0])
-        dirty_factor = int(argv[1])
-        stored = self.zscore(key, worker_id)
-        if stored is None:
-            return ["stale"]
-        abs_score = abs(stored)
-        if abs_score <= 0:
-            return ["invalid", stored]
-        dirty = abs_score % dirty_factor
-        if dirty not in {0, 1}:
-            return ["invalid", stored]
-        if stored > 0 and dirty == 1:
-            return ["noop", stored]
-        next_score = abs_score + (1 - dirty)
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 
@@ -354,34 +330,26 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             ),
         )
 
-    def test_initialize_hot_acquire_score_uses_internal_time(self) -> None:
+    def test_initialize_hot_acquire_score_uses_internal_time_and_zero_lane(self) -> None:
         existing_score = self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 1)
         self.store_score("existing", existing_score)
 
         existing = self.kernel.initialize_hot_acquire_score(
             home_bucket_id=self.home_bucket_id,
             worker_id="existing",
-            lane_rank=7,
         )
         created = self.kernel.initialize_hot_acquire_score(
             home_bucket_id=self.home_bucket_id,
             worker_id="created",
-            lane_rank=7,
-        )
-        invalid = self.kernel.initialize_hot_acquire_score(
-            home_bucket_id=self.home_bucket_id,
-            worker_id="invalid",
-            lane_rank=100,
         )
 
         self.assertEqual(WorkerScoreTransitionStatus.NOOP, existing.status)
         self.assertEqual(existing_score, existing.score)
         self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, created.status)
         self.assertEqual(
-            self.score(WorkerScorePolarity.HOT_ACQUIRE, self.redis.now_slot, 7),
+            self.score(WorkerScorePolarity.HOT_ACQUIRE, self.redis.now_slot, 0),
             created.score,
         )
-        self.assertEqual(WorkerScoreTransitionStatus.INVALID, invalid.status)
 
     def test_rewrite_current_scores_preserves_polarity_lane_and_dirty(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 5, 1)
@@ -657,59 +625,6 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.NOOP, result.status)
         self.assertEqual(current, result.score)
 
-    def test_reconcile_worker_hot_acquire_sets_dirty_and_preserves_coordinate(self) -> None:
-        current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_030, 5, 0)
-        self.store_score("worker", current)
-
-        result = self.kernel.reconcile_worker_hot_acquire(
-            home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-        )
-        state = self.kernel.get_score_states(
-            home_bucket_id=self.home_bucket_id,
-            worker_ids=["worker"],
-        )["worker"]
-
-        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
-        self.assertEqual(self.millis(1_030), state.time_millis)
-        self.assertEqual(5, state.lane_rank)
-        self.assertEqual(1, state.dirty)
-
-    def test_reconcile_worker_hot_acquire_flips_negative_and_noops_positive_dirty(self) -> None:
-        current = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 1_030, 7, 0)
-        self.store_score("worker", current)
-
-        transitioned = self.kernel.reconcile_worker_hot_acquire(
-            home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-        )
-        noop = self.kernel.reconcile_worker_hot_acquire(
-            home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-        )
-        state = self.kernel.get_score_states(
-            home_bucket_id=self.home_bucket_id,
-            worker_ids=["worker"],
-        )["worker"]
-
-        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, transitioned.status)
-        self.assertEqual(WorkerScoreTransitionStatus.NOOP, noop.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
-        self.assertEqual(self.millis(1_030), state.time_millis)
-        self.assertEqual(7, state.lane_rank)
-        self.assertEqual(1, state.dirty)
-
-    def test_reconcile_worker_hot_acquire_returns_stale_for_missing_score(self) -> None:
-        result = self.kernel.reconcile_worker_hot_acquire(
-            home_bucket_id=self.home_bucket_id,
-            worker_id="missing",
-        )
-
-        self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
-
     def test_demote_observed_worker_leases_to_recovery_uses_exact_clean_hot_fence(self) -> None:
         observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_030, 5, 0)
         self.store_score("worker", observed)
@@ -731,7 +646,9 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
         self.assertIsNotNone(state)
         self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
-        self.assertEqual(abs(observed), abs(state.score))
+        self.assertEqual(self.millis(1_030), state.time_millis)
+        self.assertEqual(0, state.lane_rank)
+        self.assertEqual(0, state.dirty)
 
     def test_demote_observed_worker_leases_to_recovery_rejects_dirty_or_negative(self) -> None:
         dirty = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_030, 5, 1)
@@ -852,9 +769,8 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             home_bucket_id=self.home_bucket_id,
             worker_id="worker",
             observed_score=observed,
-            target_lane_rank=8,
         )
-        state = self.kernel.get_score_states(
+        recovery = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
         )["worker"]
@@ -862,17 +778,31 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             home_bucket_id=self.home_bucket_id,
             worker_id="worker",
             observed_score=observed,
-            target_lane_rank=3,
         )
+        assert recovery is not None
+        restored = self.kernel.toggle_current_polarity(
+            home_bucket_id=self.home_bucket_id,
+            worker_id="worker",
+            observed_score=recovery.score,
+        )
+        hot = self.kernel.get_score_states(
+            home_bucket_id=self.home_bucket_id,
+            worker_ids=["worker"],
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
-        self.assertEqual(self.millis(950), state.time_millis)
-        self.assertEqual(8, state.lane_rank)
-        self.assertEqual(1, state.dirty)
+        self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, recovery.polarity)
+        self.assertEqual(self.millis(950), recovery.time_millis)
+        self.assertEqual(0, recovery.lane_rank)
+        self.assertEqual(1, recovery.dirty)
         self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
-        self.assertEqual(state.score, stale.score)
+        self.assertEqual(recovery.score, stale.score)
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, restored.status)
+        self.assertIsNotNone(hot)
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, hot.polarity)
+        self.assertEqual(self.millis(950), hot.time_millis)
+        self.assertEqual(0, hot.lane_rank)
+        self.assertEqual(1, hot.dirty)
 
     def test_exhaust_recovery_recheck_writes_internal_cold_time(self) -> None:
         observed = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 950, 4, 1)

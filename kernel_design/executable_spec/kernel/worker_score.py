@@ -173,29 +173,11 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
-        lane_rank: LaneRank,
     ) -> WorkerScoreTransitionResult:
         """Create the first score for a validated worker.
 
         Initialization enters HOT_ACQUIRE. The implementation owns the initial
-        time coordinate; caller-provided lane_rank is policy-owned ordering /
-        budget / tie-break input.
-        """
-        pass
-
-    @abstractmethod
-    def reconcile_worker_hot_acquire(
-        self,
-        *,
-        home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-    ) -> WorkerScoreTransitionResult:
-        """Converge an existing Worker to HOT_ACQUIRE and dirty its lease.
-
-        Trusted serviceability evidence invokes this operation. The
-        implementation preserves time and lane rank, writes positive polarity,
-        and sets dirty=1. Missing score returns STALE so initialization remains
-        owned by WorkerRuntime. This operation never releases a hold.
+        time coordinate and always starts the HOT lane at lane_rank=0.
         """
         pass
 
@@ -266,7 +248,8 @@ class WorkerScoreCore(ABC):
 
         Trusted pre-execution rejection evidence invokes this operation. Each
         member is an independent exact-score CAS. The implementation preserves
-        the absolute score coordinate and only changes its sign.
+        the time coordinate and dirty bit, then enters RECOVERY_RECHECK with
+        lane_rank=0.
         """
         pass
 
@@ -295,16 +278,14 @@ class WorkerScoreCore(ABC):
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
         observed_score: Score,
-        target_lane_rank: LaneRank,
     ) -> WorkerScoreTransitionResult:
         """Move the current score to the opposite polarity.
 
         Implementations require storedScore == observed_score. The target
         polarity is simply the opposite sign. Time coordinate and dirty are
-        preserved; target_lane_rank is explicit because HOT_ACQUIRE and
-        RECOVERY_RECHECK lane_rank meanings are lane-local. Full observed-score
-        CAS is intentional here because cross-polarity writes are important
-        owner transitions.
+        preserved, and the target lane starts at lane_rank=0. Full
+        observed-score CAS is intentional here because cross-polarity writes
+        are important owner transitions.
         """
         pass
 
