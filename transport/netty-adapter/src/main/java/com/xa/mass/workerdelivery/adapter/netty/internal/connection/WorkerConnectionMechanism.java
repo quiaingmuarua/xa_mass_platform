@@ -55,7 +55,7 @@ public final class WorkerConnectionMechanism {
     );
 
     private final WorkerRouteRegistry routes;
-    private final WorkerObservationCache observations;
+    private final WorkerPropertiesCache propertiesCache;
     private final NettyWorkerServer networkServer;
     private final WorkerRouteRemoteApi routeRemoteApi;
     private final WorkerDeliveryCodec codec;
@@ -74,7 +74,7 @@ public final class WorkerConnectionMechanism {
             NettyWorkerObservationCacheConfig observationCacheConfig
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
-        observations = new WorkerObservationCache(observationCacheConfig);
+        propertiesCache = new WorkerPropertiesCache(observationCacheConfig);
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"
@@ -102,22 +102,13 @@ public final class WorkerConnectionMechanism {
             ChannelHandlerContext context,
             String encodedReport
     ) {
-        WorkerRouteRegistry.InboundInspection inbound =
-                routes.inspectInbound(context.channel());
-        switch (inbound.kind()) {
-            case IDENTITY_REQUIRED -> receiveIdentity(context, encodedReport);
-            case VERIFICATION_PENDING -> {
-                // First-verification input is deliberately not buffered.
-            }
-            case VERIFIED -> receiveBoundReport(
-                    context,
-                    inbound.workerId(),
-                    encodedReport
-            );
-            case INVALID -> close(
-                    context.channel(),
-                    AdapterConnectionCloseReason.TRANSPORT_ERROR
-            );
+        String workerId = routes.claimedWorkerId(context.channel());
+        if (workerId == null) {
+            receiveIdentity(context, encodedReport);
+        } else if (routes.hasVerificationEvidence(workerId)) {
+            receiveBoundReport(context, workerId, encodedReport);
+        } else {
+            // First-verification input is deliberately not buffered.
         }
     }
 
@@ -183,37 +174,21 @@ public final class WorkerConnectionMechanism {
         return routes.connectionStates(workerIds);
     }
 
-    public Map<String, WorkerObservationSnapshot> workerObservations(
+    public Map<String, WorkerPropertiesObservation> workerProperties(
             List<String> workerIds
     ) {
-        Map<String, WorkerObservationSnapshot> snapshots =
-                new LinkedHashMap<>();
-        routes.connectionStates(workerIds).forEach(
-                (workerId, connectionState) -> {
-                    WorkerObservationCache.PropertiesObservation properties =
-                            observations.observation(workerId);
-                    snapshots.put(
-                            workerId,
-                            properties == null
-                                    ? new WorkerObservationSnapshot(
-                                    connectionState,
-                                    WorkerObservationSnapshot
-                                            .PropertiesFreshness.UNKNOWN,
-                                    null,
-                                    null,
-                                    null
-                            )
-                                    : new WorkerObservationSnapshot(
-                                    connectionState,
-                                    properties.freshness(),
-                                    properties.version(),
-                                    properties.observedAtMillis(),
-                                    properties.properties()
-                            )
-                    );
-                }
+        List<String> requiredWorkerIds = List.copyOf(
+                Objects.requireNonNull(workerIds, "workerIds")
         );
-        return Collections.unmodifiableMap(snapshots);
+        Map<String, WorkerPropertiesObservation> observations =
+                new LinkedHashMap<>();
+        for (String workerId : requiredWorkerIds) {
+            observations.put(
+                    workerId,
+                    propertiesCache.observation(workerId)
+            );
+        }
+        return Collections.unmodifiableMap(observations);
     }
 
     public Map<String, CloseCurrentOutcome> closeCurrentConnections(
@@ -246,7 +221,7 @@ public final class WorkerConnectionMechanism {
 
     public void clear() {
         routes.clear();
-        observations.clear();
+        propertiesCache.clear();
     }
 
     private void receiveIdentity(
@@ -347,9 +322,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        WorkerRouteRegistry.VerificationActivation activation =
-                routes.completeVerificationAndActivate(workerId, channel);
-        if (!activation.completed()) {
+        if (!routes.completeVerification(workerId, channel)) {
             routes.onChannelClosed(channel);
             networkServer.closeConnection(
                     channel,
@@ -357,10 +330,7 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        if (activation.becameAvailable()) {
-            reportAvailability(workerId, true);
-        }
-        closeReplaced(activation.replacedChannel());
+        reportAvailability(workerId, true);
     }
 
     private void receiveBoundReport(
@@ -456,10 +426,10 @@ public final class WorkerConnectionMechanism {
                 }
                 properties.put(key, entry.getValue());
             }
-            WorkerObservationCache.ObservationWrite write =
-                    observations.observe(workerId, properties);
+            WorkerPropertiesCache.ObservationWrite write =
+                    propertiesCache.observe(workerId, properties);
             if (!routes.isCurrentConnected(workerId, currentChannel)) {
-                observations.rollback(write);
+                propertiesCache.rollback(write);
             }
         } catch (RuntimeException ignored) {
             // The original valid DeliveryReport still follows Result ingress.

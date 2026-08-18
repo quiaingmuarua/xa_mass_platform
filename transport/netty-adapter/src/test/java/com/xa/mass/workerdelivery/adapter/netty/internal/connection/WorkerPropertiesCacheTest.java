@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
-class WorkerObservationCacheTest {
+class WorkerPropertiesCacheTest {
 
     private static final String WORKER_ID = "worker-1";
     private static final long DEFAULT_BUDGET = 64L * 1024L * 1024L;
@@ -21,7 +21,7 @@ class WorkerObservationCacheTest {
     void observationsHaveAdapterEpochAndInstanceMonotonicRevision() {
         AtomicLong wall = new AtomicLong(1_000L);
         AtomicLong monotonic = new AtomicLong(10L);
-        WorkerObservationCache cache = cache(
+        WorkerPropertiesCache cache = cache(
                 DEFAULT_BUDGET,
                 wall::get,
                 monotonic::get
@@ -36,16 +36,10 @@ class WorkerObservationCacheTest {
         var third = cache.observation(WORKER_ID);
 
         assertThat(first.version()).isEqualTo(
-                new WorkerObservationSnapshot.PropertiesVersion(
-                        "epoch-1",
-                        1L
-                )
+                new WorkerPropertiesObservation.Version("epoch-1", 1L)
         );
         assertThat(third.version()).isEqualTo(
-                new WorkerObservationSnapshot.PropertiesVersion(
-                        "epoch-1",
-                        3L
-                )
+                new WorkerPropertiesObservation.Version("epoch-1", 3L)
         );
         assertThat(third.observedAtMillis()).isEqualTo(1_001L);
     }
@@ -53,7 +47,7 @@ class WorkerObservationCacheTest {
     @Test
     void stalePropertiesRemainUntilCapacityEvictionOrClear() {
         AtomicLong monotonic = new AtomicLong();
-        WorkerObservationCache cache = cache(
+        WorkerPropertiesCache cache = cache(
                 DEFAULT_BUDGET,
                 () -> 123L,
                 monotonic::get
@@ -64,14 +58,14 @@ class WorkerObservationCacheTest {
         var stale = cache.observation(WORKER_ID);
 
         assertThat(stale.freshness()).isEqualTo(
-                WorkerObservationSnapshot.PropertiesFreshness.STALE
+                WorkerPropertiesObservation.Freshness.STALE
         );
         assertThat(stale.properties()).containsEntry("battery", 87L);
     }
 
     @Test
     void propertiesAreDefensivelyCapturedAndReturned() {
-        WorkerObservationCache cache = cache(
+        WorkerPropertiesCache cache = cache(
                 DEFAULT_BUDGET,
                 () -> 123L,
                 () -> 456L
@@ -92,7 +86,7 @@ class WorkerObservationCacheTest {
 
     @Test
     void encodedBudgetEvictsEntriesAndRevisionIsNeverReused() {
-        WorkerObservationCache cache = cache(
+        WorkerPropertiesCache cache = cache(
                 64L,
                 () -> 123L,
                 () -> 456L
@@ -104,17 +98,24 @@ class WorkerObservationCacheTest {
         String evictedWorker = null;
         for (int index = 0; index < 100; index++) {
             String workerId = "worker-" + index;
-            if (cache.observation(workerId) == null) {
+            if (cache.observation(workerId).freshness()
+                    == WorkerPropertiesObservation.Freshness.UNKNOWN) {
                 evictedWorker = workerId;
                 break;
             }
         }
         assertThat(evictedWorker).isNotNull();
 
-        WorkerObservationCache.PropertiesObservation rewritten = null;
-        for (int attempt = 0; attempt < 10 && rewritten == null; attempt++) {
+        WorkerPropertiesObservation rewritten = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
             cache.observe(evictedWorker, Map.of("value", "rewritten"));
-            rewritten = cache.observation(evictedWorker);
+            WorkerPropertiesObservation candidate =
+                    cache.observation(evictedWorker);
+            if (candidate.freshness()
+                    != WorkerPropertiesObservation.Freshness.UNKNOWN) {
+                rewritten = candidate;
+                break;
+            }
         }
         assertThat(rewritten).isNotNull();
         assertThat(rewritten.version().revision()).isGreaterThan(100L);
@@ -122,13 +123,13 @@ class WorkerObservationCacheTest {
 
     @Test
     void staleRouteWriteCanRollbackWithoutRemovingANewerObservation() {
-        WorkerObservationCache cache = cache(
+        WorkerPropertiesCache cache = cache(
                 DEFAULT_BUDGET,
                 () -> 123L,
                 () -> 456L
         );
         cache.observe(WORKER_ID, Map.of("battery", 87L));
-        WorkerObservationCache.ObservationWrite stale = cache.observe(
+        WorkerPropertiesCache.ObservationWrite stale = cache.observe(
                 WORKER_ID,
                 Map.of("battery", 1L)
         );
@@ -136,7 +137,7 @@ class WorkerObservationCacheTest {
         assertThat(cache.observation(WORKER_ID).properties())
                 .containsEntry("battery", 87L);
 
-        WorkerObservationCache.ObservationWrite superseded = cache.observe(
+        WorkerPropertiesCache.ObservationWrite superseded = cache.observe(
                 WORKER_ID,
                 Map.of("battery", 2L)
         );
@@ -147,19 +148,25 @@ class WorkerObservationCacheTest {
     }
 
     @Test
-    void clearDropsProjectionAndAdapterEpochsAreIndependent() {
-        WorkerObservationCache first = new WorkerObservationCache(config(
+    void clearDropsPropertiesWithoutChangingAdapterEpoch() {
+        WorkerPropertiesCache first = new WorkerPropertiesCache(config(
                 DEFAULT_BUDGET
         ));
-        WorkerObservationCache second = new WorkerObservationCache(config(
+        WorkerPropertiesCache second = new WorkerPropertiesCache(config(
                 DEFAULT_BUDGET
         ));
         first.observe(WORKER_ID, Map.of());
 
         assertThat(first.adapterEpoch()).isNotEqualTo(second.adapterEpoch());
-        assertThat(first.observation("other-worker")).isNull();
+        assertThat(first.observation("other-worker").freshness())
+                .isEqualTo(WorkerPropertiesObservation.Freshness.UNKNOWN);
         first.clear();
-        assertThat(first.observation(WORKER_ID)).isNull();
+        WorkerPropertiesObservation cleared = first.observation(WORKER_ID);
+        assertThat(cleared.freshness())
+                .isEqualTo(WorkerPropertiesObservation.Freshness.UNKNOWN);
+        assertThat(cleared.version()).isNull();
+        assertThat(cleared.observedAtMillis()).isNull();
+        assertThat(cleared.properties()).isNull();
     }
 
     @Test
@@ -174,12 +181,12 @@ class WorkerObservationCacheTest {
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
-    private static WorkerObservationCache cache(
+    private static WorkerPropertiesCache cache(
             long budget,
             java.util.function.LongSupplier wallClock,
             java.util.function.LongSupplier monotonicClock
     ) {
-        return new WorkerObservationCache(
+        return new WorkerPropertiesCache(
                 config(budget),
                 "epoch-1",
                 wallClock,

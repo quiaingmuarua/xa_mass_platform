@@ -7,7 +7,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
  */
 public enum WorkerConnectionState {
     UNKNOWN,
-    VERIFYING,
     CONNECTED,
     DISCONNECTED
 }

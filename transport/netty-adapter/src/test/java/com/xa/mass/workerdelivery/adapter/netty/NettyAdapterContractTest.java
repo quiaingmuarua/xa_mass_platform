@@ -165,7 +165,7 @@ class NettyAdapterContractTest {
 
     @ParameterizedTest
     @EnumSource(Protocol.class)
-    void propertiesObservationSurvivesPhysicalReconnect(
+    void propertiesCacheSurvivesPhysicalReconnect(
             Protocol protocol
     ) throws Exception {
         TestRemoteApi remoteApi = new TestRemoteApi();
@@ -197,33 +197,35 @@ class NettyAdapterContractTest {
                 DeliveryCommand snapshot = DeliveryCommand.create(
                         SYSTEM,
                         ADAPTER,
-                        "platform.adapter.worker-observations.snapshot",
+                        "platform.adapter.worker-properties.snapshot",
                         System.currentTimeMillis() + 60_000,
                         Jsons.toJson(Map.of(
                                 "workerIds",
                                 List.of(WORKER_ID)
                         )),
-                        "direct-call:v1:observations"
+                        "direct-call:v1:properties-snapshot"
                 );
                 remoteApi.commandBatches.add(Map.of("opaque-1", snapshot));
 
                 DeliveryReport result = awaitReport(
                         remoteApi,
-                        "direct-call:v1:observations"
+                        "direct-call:v1:properties-snapshot"
                 );
                 assertThat(result.outcomeCode()).isEqualTo("200");
                 @SuppressWarnings("unchecked")
-                Map<String, Object> observations =
+                Map<String, Object> propertiesByWorkerId =
                         (Map<String, Object>) Jsons.parseObject(
                                 result.payload()
-                        ).get("observationsByWorkerId");
+                        ).get("propertiesByWorkerId");
                 @SuppressWarnings("unchecked")
                 Map<String, Object> worker = (Map<String, Object>)
-                        observations.get(WORKER_ID);
+                        propertiesByWorkerId.get(WORKER_ID);
                 assertThat(worker)
-                        .containsEntry("connectionState", "CONNECTED")
-                        .containsEntry("propertiesFreshness", "FRESH")
-                        .doesNotContainKey("workerGroupId");
+                        .containsEntry("freshness", "FRESH")
+                        .doesNotContainKeys(
+                                "connectionState",
+                                "workerGroupId"
+                        );
                 @SuppressWarnings("unchecked")
                 Map<String, Object> properties = (Map<String, Object>)
                         worker.get("properties");

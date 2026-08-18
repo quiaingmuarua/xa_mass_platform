@@ -50,12 +50,12 @@ events. Their detailed semantics are owned by the
 | `platform.adapter.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observes the immutable Adapter event map |
 | `platform.adapter.worker-connections.snapshot` | `{"workerIds":["..."]}` | `{"stateByWorkerId":{"worker-1":"CONNECTED"}}` | Observes current Adapter-local route state |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
-| `platform.adapter.worker-observations.snapshot` | `{"workerIds":["..."]}` | `{"observationsByWorkerId":{"worker-1":{...}}}` | Joins live route state with the Adapter-local latest Worker properties projection |
+| `platform.adapter.worker-properties.snapshot` | `{"workerIds":["..."]}` | `{"propertiesByWorkerId":{"worker-1":{...}}}` | Observes Adapter-local cached Worker properties |
 
 Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
-are `UNKNOWN` when this Adapter process has not verified the Worker,
-`VERIFYING` when no usable active route exists and a verification is in flight,
-`CONNECTED` after verification with an active current Channel, and
+are `UNKNOWN` when this Adapter process has no verification evidence, including
+while a first verification is pending, `CONNECTED` after verification with an
+active current Channel, and
 `DISCONNECTED` while retained verification evidence exists without an active
 current Channel. Disconnected evidence is finite and becomes `UNKNOWN` after
 its TTL or capacity eviction. These states do not imply Binding validity,
@@ -67,13 +67,18 @@ observation. There is no application heartbeat, so a silent half-open
 connection converges only after the network stack, close, failure, or a write
 detects it.
 
-An observation entry reports the live four-state `connectionState`,
-`propertiesFreshness`, an Adapter-epoch/Adapter-instance-revision version,
-wall-clock observation time, and properties. Workers without retained observed
-properties use `UNKNOWN` freshness and null property fields. `STALE` retains
-the last projection without time deletion; encoded-data capacity eviction or
-Adapter restart removes it. This cache is neither Worker resource truth nor
-evidence of Binding validity or schedulability.
+A properties entry reports `freshness`, an
+Adapter-epoch/Adapter-instance-revision `version`, `observedAtMillis`, and the
+cached `properties`. Workers without retained properties use `UNKNOWN`
+freshness and null observation fields. `STALE` retains the last projection
+without time deletion; encoded-data capacity eviction or Adapter restart
+removes it. This cache is neither Worker resource truth nor evidence of
+Binding validity or schedulability.
+
+Connection and properties are separate queries with no atomic join or common
+version. `CONNECTED` does not prove cached properties are fresh, and `FRESH`
+does not prove a current connection exists. A management caller that needs a
+combined view invokes both events and joins their ordered workerId maps.
 
 ## Adapter-Produced Evidence
 

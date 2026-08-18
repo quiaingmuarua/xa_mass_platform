@@ -287,11 +287,7 @@ class RuntimeApiPythonIntegrationTest {
             );
 
             assertConnectionState(workerId, "CONNECTED");
-            assertWorkerObservation(
-                    workerId,
-                    "CONNECTED",
-                    "FRESH"
-            );
+            assertWorkerProperties(workerId, "FRESH");
             assertThat(Jsons.parseObject(
                     observedDirectPayload(
                             adapterDirectCall(
@@ -315,11 +311,7 @@ class RuntimeApiPythonIntegrationTest {
                     ), workerId, "200")
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
-            assertWorkerObservation(
-                    workerId,
-                    "CONNECTED",
-                    "FRESH"
-            );
+            assertWorkerProperties(workerId, "FRESH");
             awaitAvailabilityEvidence(
                     workerId,
                     List.of(true, false, true)
@@ -403,36 +395,35 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void assertWorkerObservation(
+    private void assertWorkerProperties(
             String workerId,
-            String connectionState,
             String freshness
     ) throws Exception {
         Map<String, Object> payload = Jsons.parseObject(
                 observedDirectPayload(
                         adapterDirectCall(
-                                "platform.adapter.worker-observations.snapshot",
+                                "platform.adapter.worker-properties.snapshot",
                                 workerIdsPayload(workerId)
                         ),
                         WEBSOCKET_ENDPOINT_MANAGER_ID,
                         "200"
                 )
         );
-        Map<String, Object> observations = (Map<String, Object>) payload.get(
-                "observationsByWorkerId"
-        );
-        Map<String, Object> observation = (Map<String, Object>) observations
-                .get(workerId);
+        Map<String, Object> propertiesByWorkerId =
+                (Map<String, Object>) payload.get(
+                        "propertiesByWorkerId"
+                );
+        Map<String, Object> observation =
+                (Map<String, Object>) propertiesByWorkerId.get(workerId);
         assertThat(observation)
-                .doesNotContainKey("workerGroupId")
-                .containsEntry("connectionState", connectionState)
-                .containsEntry("propertiesFreshness", freshness)
+                .doesNotContainKeys("workerGroupId", "connectionState")
+                .containsEntry("freshness", freshness)
                 .containsEntry(
                         "properties",
                         Map.of("runtime", "java-direct")
                 );
-        assertThat(observation.get("propertiesVersion")).isNotNull();
-        assertThat(observation.get("propertiesObservedAtMillis")).isNotNull();
+        assertThat(observation.get("version")).isNotNull();
+        assertThat(observation.get("observedAtMillis")).isNotNull();
     }
 
     private static String workerIdsPayload(String workerId) {

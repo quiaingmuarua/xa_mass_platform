@@ -8,47 +8,51 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Repository-internal projection returned by Adapter observation events. */
-public record WorkerObservationSnapshot(
-        WorkerConnectionState connectionState,
-        PropertiesFreshness propertiesFreshness,
-        PropertiesVersion propertiesVersion,
-        Long propertiesObservedAtMillis,
+/** Repository-internal cached Worker properties projection. */
+public record WorkerPropertiesObservation(
+        Freshness freshness,
+        Version version,
+        Long observedAtMillis,
         Map<String, Object> properties
 ) {
 
-    public WorkerObservationSnapshot {
-        Objects.requireNonNull(connectionState, "connectionState");
-        Objects.requireNonNull(propertiesFreshness, "propertiesFreshness");
-        if (propertiesFreshness == PropertiesFreshness.UNKNOWN) {
-            if (propertiesVersion != null
-                    || propertiesObservedAtMillis != null
+    public WorkerPropertiesObservation {
+        Objects.requireNonNull(freshness, "freshness");
+        if (freshness == Freshness.UNKNOWN) {
+            if (version != null
+                    || observedAtMillis != null
                     || properties != null) {
                 throw new IllegalArgumentException(
                         "Unknown properties must not carry observation data"
                 );
             }
         } else {
-            Objects.requireNonNull(propertiesVersion, "propertiesVersion");
-            Objects.requireNonNull(
-                    propertiesObservedAtMillis,
-                    "propertiesObservedAtMillis"
-            );
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(observedAtMillis, "observedAtMillis");
             properties = freezeObject(
                     Objects.requireNonNull(properties, "properties")
             );
         }
     }
 
-    public enum PropertiesFreshness {
+    static WorkerPropertiesObservation unknown() {
+        return new WorkerPropertiesObservation(
+                Freshness.UNKNOWN,
+                null,
+                null,
+                null
+        );
+    }
+
+    public enum Freshness {
         FRESH,
         STALE,
         UNKNOWN
     }
 
-    public record PropertiesVersion(String adapterEpoch, long revision) {
+    public record Version(String adapterEpoch, long revision) {
 
-        public PropertiesVersion {
+        public Version {
             if (adapterEpoch == null || adapterEpoch.isBlank()) {
                 throw new IllegalArgumentException(
                         "adapterEpoch must be non-blank"

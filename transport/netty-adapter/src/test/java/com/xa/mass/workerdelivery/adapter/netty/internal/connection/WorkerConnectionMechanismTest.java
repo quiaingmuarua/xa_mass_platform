@@ -49,22 +49,21 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void successfulVerificationMovesDerivedPhaseToBound() {
+    void successfulVerificationMakesClaimedRouteDeliverable() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
-            assertThat(fixture.routes.inspectInbound(channel).kind())
-                    .isEqualTo(
-                            WorkerRouteRegistry.InboundKind
-                                    .VERIFICATION_PENDING
-                    );
+            assertThat(fixture.routes.claimedWorkerId(channel))
+                    .isEqualTo("worker-1");
+            assertThat(fixture.routes.hasVerificationEvidence("worker-1"))
+                    .isFalse();
 
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
 
-            assertThat(fixture.routes.inspectInbound(channel).kind())
-                    .isEqualTo(WorkerRouteRegistry.InboundKind.VERIFIED);
+            assertThat(fixture.routes.hasVerificationEvidence("worker-1"))
+                    .isTrue();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
         } finally {
@@ -298,7 +297,7 @@ class WorkerConnectionMechanismTest {
         EmbeddedChannel reconnect = new EmbeddedChannel();
         try {
             fixture.routes.admitIdentity("worker-1", active);
-            fixture.routes.completeVerificationAndActivate(
+            fixture.routes.completeVerification(
                     "worker-1",
                     active
             );
@@ -430,7 +429,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void currentConnectedPropertiesResultUpdatesObservationAndStillForwards() {
+    void currentConnectedPropertiesResultUpdatesCacheAndStillForwards() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         try {
@@ -447,17 +446,17 @@ class WorkerConnectionMechanismTest {
             );
             channel.writeInbound(encoded);
 
-            var snapshot = fixture.mechanism.workerObservations(
+            var snapshot = fixture.mechanism.workerProperties(
                     List.of("worker-1")
             ).get("worker-1");
-            assertThat(snapshot.connectionState()).isEqualTo(
-                    WorkerConnectionState.CONNECTED
+            assertThat(snapshot.freshness()).isEqualTo(
+                    WorkerPropertiesObservation.Freshness.FRESH
             );
-            assertThat(snapshot.propertiesFreshness()).isEqualTo(
-                    WorkerObservationSnapshot.PropertiesFreshness.FRESH
-            );
-            assertThat(snapshot.propertiesVersion().revision()).isEqualTo(1L);
+            assertThat(snapshot.version().revision()).isEqualTo(1L);
             assertThat(snapshot.properties()).containsEntry("battery", 87L);
+            assertThat(fixture.mechanism.connectionStates(
+                    List.of("worker-1")
+            )).containsEntry("worker-1", WorkerConnectionState.CONNECTED);
 
             fixture.reportProcess.round();
             assertThat(fixture.systemReports).containsExactly(encoded);
@@ -467,7 +466,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void staleChannelMalformedPayloadAndWorkerFailureDoNotUpdateObservation() {
+    void staleChannelMalformedPayloadAndWorkerFailureDoNotUpdateProperties() {
         Fixture fixture = new Fixture();
         EmbeddedChannel first = fixture.channel();
         EmbeddedChannel replacement = fixture.channel();
@@ -477,6 +476,11 @@ class WorkerConnectionMechanismTest {
             awaitBound(fixture, first);
             fixture.reportProcess.round();
             fixture.systemReports.clear();
+            first.writeInbound(fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"properties\":{\"battery\":87}}"
+            ));
 
             replacement.writeInbound(fixture.identity("worker-1"));
             awaitBound(fixture, replacement);
@@ -498,16 +502,17 @@ class WorkerConnectionMechanismTest {
                     "{\"properties\":{\"battery\":2}}"
             ));
 
-            var snapshot = fixture.mechanism.workerObservations(
+            var snapshot = fixture.mechanism.workerProperties(
                     List.of("worker-1")
             ).get("worker-1");
-            assertThat(snapshot.propertiesFreshness()).isEqualTo(
-                    WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN
+            assertThat(snapshot.freshness()).isEqualTo(
+                    WorkerPropertiesObservation.Freshness.FRESH
             );
-            assertThat(snapshot.properties()).isNull();
+            assertThat(snapshot.version().revision()).isEqualTo(1L);
+            assertThat(snapshot.properties()).containsEntry("battery", 87L);
 
             fixture.reportProcess.round();
-            assertThat(fixture.systemReports).hasSize(3);
+            assertThat(fixture.systemReports).hasSize(4);
         } finally {
             first.finishAndReleaseAll();
             replacement.finishAndReleaseAll();
@@ -515,7 +520,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void disconnectRetainsPropertiesAndClearDropsBothRouteAndObservation() {
+    void disconnectRetainsPropertiesAndClearDropsIndependentProjections() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
         channel.writeInbound(fixture.identity("worker-1"));
@@ -528,24 +533,24 @@ class WorkerConnectionMechanismTest {
         ));
 
         channel.finishAndReleaseAll();
-        var disconnected = fixture.mechanism.workerObservations(
+        var disconnected = fixture.mechanism.workerProperties(
                 List.of("worker-1")
         ).get("worker-1");
-        assertThat(disconnected.connectionState()).isEqualTo(
-                WorkerConnectionState.DISCONNECTED
-        );
         assertThat(disconnected.properties()).containsEntry("battery", 87L);
+        assertThat(fixture.mechanism.connectionStates(
+                List.of("worker-1")
+        )).containsEntry("worker-1", WorkerConnectionState.DISCONNECTED);
 
         fixture.mechanism.clear();
-        var cleared = fixture.mechanism.workerObservations(
+        var cleared = fixture.mechanism.workerProperties(
                 List.of("worker-1")
         ).get("worker-1");
-        assertThat(cleared.connectionState()).isEqualTo(
-                WorkerConnectionState.UNKNOWN
+        assertThat(cleared.freshness()).isEqualTo(
+                WorkerPropertiesObservation.Freshness.UNKNOWN
         );
-        assertThat(cleared.propertiesFreshness()).isEqualTo(
-                WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN
-        );
+        assertThat(fixture.mechanism.connectionStates(
+                List.of("worker-1")
+        )).containsEntry("worker-1", WorkerConnectionState.UNKNOWN);
     }
 
     private static void awaitBound(
@@ -555,8 +560,9 @@ class WorkerConnectionMechanismTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (System.nanoTime() < deadline) {
             channel.runPendingTasks();
-            if (fixture.routes.inspectInbound(channel).kind()
-                    == WorkerRouteRegistry.InboundKind.VERIFIED) {
+            if (fixture.routes.activeChannel(
+                    fixture.routes.claimedWorkerId(channel)
+            ) == channel) {
                 return;
             }
             Thread.onSpinWait();

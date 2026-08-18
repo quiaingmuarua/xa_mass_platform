@@ -129,9 +129,12 @@ defaults retain disconnected verification evidence for `10m` with at most
 data budget with a `5m` freshness window. These are Adapter-owned process-local
 policies; Server only validates configuration and passes the two finite config
 records into the Adapter factory. Callers read the properties projection by
-DIRECT_CALL to `platform.adapter.worker-observations.snapshot`. Server treats
-the event name, opaque input and result payload transparently: it owns neither
-cache contents nor version, freshness, TTL or eviction interpretation.
+DIRECT_CALL to `platform.adapter.worker-properties.snapshot`. Server treats the
+event name, opaque input and result payload transparently: it owns neither cache
+contents nor version, freshness, TTL or eviction interpretation. Live
+connection state remains a separate
+`platform.adapter.worker-connections.snapshot` call; Server does not join the
+two projections.
 
 ### Worker And Scenario Assembly
 

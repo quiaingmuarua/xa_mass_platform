@@ -84,12 +84,15 @@ applies when Server answers a remote Command consume request; it does not
 reorder commands already in the Adapter queue or preempt a Worker Handler
 already running on the connection callback lane.
 
-Within the connection owner, one per-Worker Route entry keeps active,
-verification and retained-verification facts atomic. Only disconnected
+Within the connection owner, one per-Worker Route entry is pending, connected,
+or retained disconnected verification evidence. Only disconnected
 verification evidence is TTL/capacity cached; active connections are never
-cache-evicted. The separate properties projection is capacity bounded but not
-time deleted: age changes `FRESH` to `STALE`, while eviction changes it to
-`UNKNOWN`. Neither cache is scheduling, Binding or Worker lifecycle truth.
+cache-evicted, and Channel metadata contains only the claimed workerId for
+callback correlation. The separate properties projection is capacity bounded
+but not time deleted: age changes `FRESH` to `STALE`, while eviction changes it
+to `UNKNOWN`. Connection and properties expose independent snapshots without
+an atomic join or shared version. Neither cache is scheduling, Binding or
+Worker lifecycle truth.
 
 See:
 

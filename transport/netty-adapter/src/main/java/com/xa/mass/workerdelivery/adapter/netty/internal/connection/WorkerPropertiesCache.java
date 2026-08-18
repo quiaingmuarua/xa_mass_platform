@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 
-/** Process-local latest Worker properties projection for one Adapter. */
-final class WorkerObservationCache {
+/** Process-local latest Worker properties cache for one Adapter. */
+final class WorkerPropertiesCache {
 
     private final Cache<String, CachedProperties> propertiesByWorkerId;
     private final String adapterEpoch;
@@ -22,7 +22,7 @@ final class WorkerObservationCache {
     private final LongSupplier monotonicNanos;
     private final AtomicLong observationRevision = new AtomicLong();
 
-    WorkerObservationCache(NettyWorkerObservationCacheConfig config) {
+    WorkerPropertiesCache(NettyWorkerObservationCacheConfig config) {
         this(
                 config,
                 UUID.randomUUID().toString(),
@@ -31,7 +31,7 @@ final class WorkerObservationCache {
         );
     }
 
-    WorkerObservationCache(
+    WorkerPropertiesCache(
             NettyWorkerObservationCacheConfig config,
             String adapterEpoch,
             LongSupplier wallClockMillis,
@@ -114,21 +114,21 @@ final class WorkerObservationCache {
         );
     }
 
-    PropertiesObservation observation(String workerId) {
+    WorkerPropertiesObservation observation(String workerId) {
         CachedProperties cached = propertiesByWorkerId.policy()
                 .getIfPresentQuietly(requireWorkerId(workerId));
         if (cached == null) {
-            return null;
+            return WorkerPropertiesObservation.unknown();
         }
         long ageNanos = monotonicNanos.getAsLong()
                 - cached.observedAtNanos();
-        WorkerObservationSnapshot.PropertiesFreshness freshness =
+        WorkerPropertiesObservation.Freshness freshness =
                 ageNanos <= freshnessNanos
-                        ? WorkerObservationSnapshot.PropertiesFreshness.FRESH
-                        : WorkerObservationSnapshot.PropertiesFreshness.STALE;
-        return new PropertiesObservation(
+                        ? WorkerPropertiesObservation.Freshness.FRESH
+                        : WorkerPropertiesObservation.Freshness.STALE;
+        return new WorkerPropertiesObservation(
                 freshness,
-                new WorkerObservationSnapshot.PropertiesVersion(
+                new WorkerPropertiesObservation.Version(
                         adapterEpoch,
                         cached.revision()
                 ),
@@ -165,20 +165,6 @@ final class WorkerObservationCache {
         return weight >= Integer.MAX_VALUE
                 ? Integer.MAX_VALUE
                 : (int) weight;
-    }
-
-    record PropertiesObservation(
-            WorkerObservationSnapshot.PropertiesFreshness freshness,
-            WorkerObservationSnapshot.PropertiesVersion version,
-            long observedAtMillis,
-            Map<String, Object> properties
-    ) {
-
-        PropertiesObservation {
-            Objects.requireNonNull(freshness, "freshness");
-            Objects.requireNonNull(version, "version");
-            Objects.requireNonNull(properties, "properties");
-        }
     }
 
     record ObservationWrite(

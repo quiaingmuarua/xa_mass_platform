@@ -9,8 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionState;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerObservationSnapshot;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerPropertiesObservation;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import java.util.ArrayList;
@@ -141,18 +140,17 @@ class AdapterEventDispatcherTest {
     }
 
     @Test
-    void defaultObservationEventReturnsOrderedRouteAndPropertyProjection() {
+    void defaultPropertiesEventReturnsOrderedCachedPropertiesOnly() {
         WorkerConnectionMechanism connections = mock(
                 WorkerConnectionMechanism.class
         );
-        Map<String, WorkerObservationSnapshot> snapshots =
+        Map<String, WorkerPropertiesObservation> snapshots =
                 new LinkedHashMap<>();
         snapshots.put(
                 "worker-1",
-                new WorkerObservationSnapshot(
-                        WorkerConnectionState.CONNECTED,
-                        WorkerObservationSnapshot.PropertiesFreshness.FRESH,
-                        new WorkerObservationSnapshot.PropertiesVersion(
+                new WorkerPropertiesObservation(
+                        WorkerPropertiesObservation.Freshness.FRESH,
+                        new WorkerPropertiesObservation.Version(
                                 "epoch-1",
                                 3L
                         ),
@@ -162,10 +160,9 @@ class AdapterEventDispatcherTest {
         );
         snapshots.put(
                 "stale",
-                new WorkerObservationSnapshot(
-                        WorkerConnectionState.DISCONNECTED,
-                        WorkerObservationSnapshot.PropertiesFreshness.STALE,
-                        new WorkerObservationSnapshot.PropertiesVersion(
+                new WorkerPropertiesObservation(
+                        WorkerPropertiesObservation.Freshness.STALE,
+                        new WorkerPropertiesObservation.Version(
                                 "epoch-1",
                                 2L
                         ),
@@ -175,15 +172,14 @@ class AdapterEventDispatcherTest {
         );
         snapshots.put(
                 "unknown",
-                new WorkerObservationSnapshot(
-                        WorkerConnectionState.UNKNOWN,
-                        WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN,
+                new WorkerPropertiesObservation(
+                        WorkerPropertiesObservation.Freshness.UNKNOWN,
                         null,
                         null,
                         null
                 )
         );
-        when(connections.workerObservations(List.of(
+        when(connections.workerProperties(List.of(
                 "worker-1",
                 "stale",
                 "unknown"
@@ -194,42 +190,61 @@ class AdapterEventDispatcherTest {
         );
 
         var report = dispatcher.dispatch(command(
-                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 "{\"workerIds\":[\"worker-1\",\"stale\",\"unknown\"]}"
         ));
 
         assertThat(report.outcomeCode()).isEqualTo("200");
+        Map<String, Object> payload = Jsons.parseObject(report.payload());
+        assertThat(payload).containsOnlyKeys("propertiesByWorkerId");
         @SuppressWarnings("unchecked")
-        Map<String, Object> observations = (Map<String, Object>) Jsons
-                .parseObject(report.payload())
-                .get("observationsByWorkerId");
-        assertThat(observations.keySet()).containsExactly(
+        Map<String, Object> properties = (Map<String, Object>) payload.get(
+                "propertiesByWorkerId"
+        );
+        assertThat(properties.keySet()).containsExactly(
                 "worker-1",
                 "stale",
                 "unknown"
         );
         @SuppressWarnings("unchecked")
-        Map<String, Object> connected = (Map<String, Object>) observations
+        Map<String, Object> fresh = (Map<String, Object>) properties
                 .get("worker-1");
-        assertThat(connected)
-                .containsEntry("connectionState", "CONNECTED")
-                .containsEntry("propertiesFreshness", "FRESH")
-                .containsEntry("propertiesObservedAtMillis", 123L)
-                .doesNotContainKey("workerGroupId");
+        assertThat(fresh)
+                .containsOnlyKeys(
+                        "freshness",
+                        "version",
+                        "observedAtMillis",
+                        "properties"
+                )
+                .containsEntry("freshness", "FRESH")
+                .containsEntry("observedAtMillis", 123L)
+                .containsEntry("properties", Map.of("battery", 87L))
+                .doesNotContainKeys("connectionState", "workerGroupId");
+        assertThat(fresh.get("version")).isEqualTo(Map.of(
+                "adapterEpoch",
+                "epoch-1",
+                "revision",
+                3L
+        ));
         @SuppressWarnings("unchecked")
-        Map<String, Object> stale = (Map<String, Object>) observations
+        Map<String, Object> stale = (Map<String, Object>) properties
                 .get("stale");
         assertThat(stale)
-                .containsEntry("connectionState", "DISCONNECTED")
-                .containsEntry("propertiesFreshness", "STALE")
+                .containsEntry("freshness", "STALE")
                 .containsEntry("properties", Map.of("battery", 40L));
         @SuppressWarnings("unchecked")
-        Map<String, Object> unknown = (Map<String, Object>) observations
+        Map<String, Object> unknown = (Map<String, Object>) properties
                 .get("unknown");
         assertThat(unknown)
-                .containsEntry("connectionState", "UNKNOWN")
-                .containsEntry("propertiesFreshness", "UNKNOWN")
-                .containsEntry("propertiesVersion", null)
+                .containsOnlyKeys(
+                        "freshness",
+                        "version",
+                        "observedAtMillis",
+                        "properties"
+                )
+                .containsEntry("freshness", "UNKNOWN")
+                .containsEntry("version", null)
+                .containsEntry("observedAtMillis", null)
                 .containsEntry("properties", null);
 
         var events = dispatcher.dispatch(command(
@@ -241,39 +256,58 @@ class AdapterEventDispatcherTest {
                 events.payload()
         ).get("eventNames");
         assertThat(eventNames)
-                .contains(
-                        AdapterEventDispatcher
-                                .WORKER_OBSERVATIONS_SNAPSHOT_EVENT
-                );
+                .contains(AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT)
+                .doesNotContain("platform.adapter.worker-observations.snapshot");
+
+        assertThat(dispatcher.dispatch(command(
+                "platform.adapter.worker-observations.snapshot",
+                "{\"workerIds\":[\"worker-1\"]}"
+        )).outcomeCode()).isEqualTo(Integer.toString(
+                WorkerDeliveryAdapterErrorCode.ADAPTER_EVENT_UNSUPPORTED.code()
+        ));
     }
 
     @Test
-    void observationEventAcceptsAtMostOneHundredUniqueWorkerIds() {
+    void propertiesEventAcceptsAtMostOneHundredUniqueWorkerIds() {
         WorkerConnectionMechanism connections = mock(
                 WorkerConnectionMechanism.class
         );
         List<String> workerIds = new ArrayList<>();
-        Map<String, WorkerObservationSnapshot> snapshots =
+        Map<String, WorkerPropertiesObservation> snapshots =
                 new LinkedHashMap<>();
         for (int index = 0; index < 100; index++) {
             String workerId = "worker-" + index;
             workerIds.add(workerId);
-            snapshots.put(workerId, new WorkerObservationSnapshot(
-                    WorkerConnectionState.UNKNOWN,
-                    WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN,
+            snapshots.put(workerId, new WorkerPropertiesObservation(
+                    WorkerPropertiesObservation.Freshness.UNKNOWN,
                     null,
                     null,
                     null
             ));
         }
-        when(connections.workerObservations(workerIds)).thenReturn(snapshots);
+        when(connections.workerProperties(workerIds)).thenReturn(snapshots);
         AdapterEventDispatcher dispatcher = AdapterEventDispatcher.defaults(
                 "adapter-1",
                 connections
         );
 
+        when(connections.workerProperties(List.of("worker-0")))
+                .thenReturn(Map.of(
+                        "worker-0",
+                        new WorkerPropertiesObservation(
+                                WorkerPropertiesObservation.Freshness.UNKNOWN,
+                                null,
+                                null,
+                                null
+                        )
+                ));
+        assertThat(dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                "{\"workerIds\":[\"worker-0\"]}"
+        )).outcomeCode()).isEqualTo("200");
+
         var accepted = dispatcher.dispatch(command(
-                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", workerIds))
         ));
         assertThat(accepted.outcomeCode()).isEqualTo("200");
@@ -281,8 +315,20 @@ class AdapterEventDispatcherTest {
         List<String> tooMany = new ArrayList<>(workerIds);
         tooMany.add("worker-100");
         assertThat(dispatcher.dispatch(command(
-                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", tooMany))
+        )).outcomeCode()).isEqualTo(Integer.toString(
+                WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
+        ));
+        assertThat(dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                "{\"workerIds\":[]}"
+        )).outcomeCode()).isEqualTo(Integer.toString(
+                WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
+        ));
+        assertThat(dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                "{\"workerIds\":[\"worker-1\",\"worker-1\"]}"
         )).outcomeCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));

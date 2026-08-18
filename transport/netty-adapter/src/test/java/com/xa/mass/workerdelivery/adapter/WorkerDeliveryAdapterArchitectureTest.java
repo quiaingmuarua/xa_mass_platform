@@ -182,13 +182,19 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void workerObservationProjectionDoesNotBecomeRouteOrLifecycleTruth()
+    void workerPropertiesProjectionDoesNotBecomeRouteOrLifecycleTruth()
             throws IOException {
         String registry = read(CONNECTION.resolve(
                 "WorkerRouteRegistry.java"
         ));
         String cache = read(CONNECTION.resolve(
-                "WorkerObservationCache.java"
+                "WorkerPropertiesCache.java"
+        ));
+        String observation = read(CONNECTION.resolve(
+                "WorkerPropertiesObservation.java"
+        ));
+        String dispatcher = read(PROCESS.resolve(
+                "AdapterEventDispatcher.java"
         ));
         String network = readSources(NETWORK);
 
@@ -197,13 +203,24 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("propertiesByWorkerId");
         assertThat(cache)
                 .doesNotContain("Channel")
+                .doesNotContain("WorkerConnectionState")
+                .doesNotContain("WorkerRouteRegistry")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("WorkerScore")
                 .doesNotContain("heartbeat")
                 .doesNotContain("probe(");
+        assertThat(observation)
+                .doesNotContain("Channel")
+                .doesNotContain("WorkerConnectionState")
+                .doesNotContain("WorkerRouteRegistry");
+        assertThat(dispatcher)
+                .contains("propertiesByWorkerId")
+                .doesNotContain("connectionState\"")
+                .doesNotContain("propertiesFreshness")
+                .doesNotContain("propertiesVersion");
         assertThat(network)
-                .doesNotContain("WorkerObservationCache")
-                .doesNotContain("WorkerObservationSnapshot");
+                .doesNotContain("WorkerPropertiesCache")
+                .doesNotContain("WorkerPropertiesObservation");
     }
 
     @Test
@@ -212,8 +229,8 @@ class WorkerDeliveryAdapterArchitectureTest {
         String registry = read(CONNECTION.resolve(
                 "WorkerRouteRegistry.java"
         ));
-        String observations = read(CONNECTION.resolve(
-                "WorkerObservationCache.java"
+        String properties = read(CONNECTION.resolve(
+                "WorkerPropertiesCache.java"
         ));
         String outsideConnection = readSources(APPLICATION)
                 + read(NETTY.resolve("NettyWorkerDeliveryAdapter.java"))
@@ -225,11 +242,17 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("activeChannels")
                 .doesNotContain("pendingVerifications")
                 .doesNotContain("verifiedWorkerIds")
+                .doesNotContain("ROUTE_VERIFIED")
+                .doesNotContain("AttributeKey<Boolean>")
+                .doesNotContain("verifyingChannel")
+                .doesNotContain("InboundKind")
+                .doesNotContain("InboundInspection")
+                .doesNotContain("VerificationActivation")
                 .doesNotContain("CacheLoader")
                 .doesNotContain("refreshAfterWrite")
                 .doesNotContain("removalListener")
                 .doesNotContain(".scheduler(");
-        assertThat(observations)
+        assertThat(properties)
                 .doesNotContain("expireAfter")
                 .doesNotContain("CacheLoader")
                 .doesNotContain("refreshAfterWrite")

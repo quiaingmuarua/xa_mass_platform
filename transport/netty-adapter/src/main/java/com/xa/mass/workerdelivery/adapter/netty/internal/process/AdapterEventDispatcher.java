@@ -5,7 +5,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
-import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerObservationSnapshot;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerPropertiesObservation;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -33,8 +33,8 @@ public final class AdapterEventDispatcher {
             "platform.adapter.worker-connections.snapshot";
     static final String CLOSE_CURRENT_EVENT =
             "platform.adapter.worker-connections.close-current";
-    static final String WORKER_OBSERVATIONS_SNAPSHOT_EVENT =
-            "platform.adapter.worker-observations.snapshot";
+    static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
+            "platform.adapter.worker-properties.snapshot";
     static final String EVENTS_SNAPSHOT_EVENT =
             "platform.adapter.events.snapshot";
 
@@ -76,15 +76,15 @@ public final class AdapterEventDispatcher {
                     ));
             return Jsons.toJson(Map.of("outcomeByWorkerId", encoded));
         });
-        handlers.put(WORKER_OBSERVATIONS_SNAPSHOT_EVENT, payload -> {
+        handlers.put(WORKER_PROPERTIES_SNAPSHOT_EVENT, payload -> {
             Map<String, Object> encoded = new LinkedHashMap<>();
-            connections.workerObservations(parseWorkerIds(payload))
+            connections.workerProperties(parseWorkerIds(payload))
                     .forEach((workerId, observation) -> encoded.put(
                             workerId,
-                            encodeObservation(observation)
+                            encodeProperties(observation)
                     ));
             return Jsons.toJson(Map.of(
-                    "observationsByWorkerId",
+                    "propertiesByWorkerId",
                     encoded
             ));
         });
@@ -259,32 +259,21 @@ public final class AdapterEventDispatcher {
         return List.copyOf(workerIds);
     }
 
-    private static Map<String, Object> encodeObservation(
-            WorkerObservationSnapshot observation
+    private static Map<String, Object> encodeProperties(
+            WorkerPropertiesObservation observation
     ) {
         Map<String, Object> encoded = new LinkedHashMap<>();
-        encoded.put(
-                "connectionState",
-                observation.connectionState().name()
-        );
-        encoded.put(
-                "propertiesFreshness",
-                observation.propertiesFreshness().name()
-        );
-        WorkerObservationSnapshot.PropertiesVersion version =
-                observation.propertiesVersion();
+        encoded.put("freshness", observation.freshness().name());
+        WorkerPropertiesObservation.Version version = observation.version();
         if (version == null) {
-            encoded.put("propertiesVersion", null);
+            encoded.put("version", null);
         } else {
             Map<String, Object> encodedVersion = new LinkedHashMap<>();
             encodedVersion.put("adapterEpoch", version.adapterEpoch());
             encodedVersion.put("revision", version.revision());
-            encoded.put("propertiesVersion", encodedVersion);
+            encoded.put("version", encodedVersion);
         }
-        encoded.put(
-                "propertiesObservedAtMillis",
-                observation.propertiesObservedAtMillis()
-        );
+        encoded.put("observedAtMillis", observation.observedAtMillis());
         encoded.put("properties", observation.properties());
         return encoded;
     }

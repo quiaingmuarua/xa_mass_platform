@@ -20,15 +20,10 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Process-local Worker route truth for one Adapter instance. */
 public final class WorkerRouteRegistry {
 
-    private static final AttributeKey<String> IDENTIFIED_WORKER_ID =
+    private static final AttributeKey<String> CLAIMED_WORKER_ID =
             AttributeKey.valueOf(
                     WorkerRouteRegistry.class,
-                    "identifiedWorkerId"
-            );
-    private static final AttributeKey<Boolean> ROUTE_VERIFIED =
-            AttributeKey.valueOf(
-                    WorkerRouteRegistry.class,
-                    "routeVerified"
+                    "claimedWorkerId"
             );
 
     private final Cache<String, RouteEntry> routesByWorkerId;
@@ -73,22 +68,31 @@ public final class WorkerRouteRegistry {
                     long now = ticker.read();
                     if (current == null) {
                         admission.set(verificationClaimed());
-                        return RouteEntry.verifying(
-                                requiredChannel,
-                                null,
-                                null
-                        );
+                        return RouteEntry.pending(requiredChannel);
                     }
-                    if (current.verifyingChannel() != null) {
+                    if (current.isPending()) {
                         admission.set(verificationBusy());
                         return current;
                     }
-                    if (verificationFresh(current, now)) {
-                        Channel previous = current.activeChannel();
+                    if (current.isConnected()) {
                         admission.set(new IdentityAdmission(
                                 IdentityAdmissionKind.VERIFIED_ACTIVATED,
-                                distinctReplacement(previous, requiredChannel),
-                                previous == null
+                                distinctReplacement(
+                                        current.channel(),
+                                        requiredChannel
+                                ),
+                                false
+                        ));
+                        return RouteEntry.connected(
+                                requiredChannel,
+                                current.verifiedAtNanos()
+                        );
+                    }
+                    if (verificationFresh(current, now)) {
+                        admission.set(new IdentityAdmission(
+                                IdentityAdmissionKind.VERIFIED_ACTIVATED,
+                                null,
+                                true
                         ));
                         return RouteEntry.connected(
                                 requiredChannel,
@@ -96,49 +100,32 @@ public final class WorkerRouteRegistry {
                         );
                     }
                     admission.set(verificationClaimed());
-                    return RouteEntry.verifying(
-                            requiredChannel,
-                            current.activeChannel(),
-                            current.activeChannel() == null
-                                    ? null
-                                    : current.verifiedAtNanos()
-                    );
+                    return RouteEntry.pending(requiredChannel);
                 }
         );
         IdentityAdmission result = admission.get();
-        if (result.kind() == IdentityAdmissionKind.VERIFICATION_CLAIMED) {
-            identify(requiredChannel, requiredWorkerId, false);
-        } else if (result.kind()
-                == IdentityAdmissionKind.VERIFIED_ACTIVATED) {
-            identify(requiredChannel, requiredWorkerId, true);
+        if (result.kind() != IdentityAdmissionKind.VERIFICATION_BUSY) {
+            requiredChannel.attr(CLAIMED_WORKER_ID).set(requiredWorkerId);
         }
         return result;
     }
 
-    InboundInspection inspectInbound(Channel channel) {
-        Channel requiredChannel = Objects.requireNonNull(channel, "channel");
-        String workerId = identifiedWorkerId(requiredChannel);
-        if (workerId == null) {
-            return new InboundInspection(
-                    InboundKind.IDENTITY_REQUIRED,
-                    null
-            );
-        }
-        RouteEntry route = quietRoute(workerId);
-        if (route != null
-                && route.verifyingChannel() == requiredChannel) {
-            return new InboundInspection(
-                    InboundKind.VERIFICATION_PENDING,
-                    workerId
-            );
-        }
-        if (isRouteVerified(requiredChannel)) {
-            return new InboundInspection(InboundKind.VERIFIED, workerId);
-        }
-        return new InboundInspection(InboundKind.INVALID, workerId);
+    String claimedWorkerId(Channel channel) {
+        return Objects.requireNonNull(channel, "channel")
+                .attr(CLAIMED_WORKER_ID)
+                .get();
     }
 
-    VerificationActivation completeVerificationAndActivate(
+    boolean hasVerificationEvidence(String workerId) {
+        RouteEntry route = quietRoute(requireWorkerId(workerId));
+        if (route == null || route.verifiedAtNanos() == null) {
+            return false;
+        }
+        return route.isConnected()
+                || verificationFresh(route, ticker.read());
+    }
+
+    boolean completeVerification(
             String workerId,
             Channel expectedChannel
     ) {
@@ -147,34 +134,25 @@ public final class WorkerRouteRegistry {
                 expectedChannel,
                 "expectedChannel"
         );
-        AtomicReference<VerificationActivation> activation =
-                new AtomicReference<>(VerificationActivation.notCompleted());
+        AtomicBoolean completed = new AtomicBoolean();
         routesByWorkerId.asMap().computeIfPresent(
                 requiredWorkerId,
                 (ignored, current) -> {
-                    if (current.verifyingChannel() != requiredChannel
+                    if (!current.isPending()
+                            || current.channel() != requiredChannel
                             || !requiredWorkerId.equals(
-                            identifiedWorkerId(requiredChannel)
+                            claimedWorkerId(requiredChannel)
                     )) {
                         return current;
                     }
-                    Channel previous = current.activeChannel();
-                    activation.set(new VerificationActivation(
-                            true,
-                            distinctReplacement(previous, requiredChannel),
-                            previous == null
-                    ));
+                    completed.set(true);
                     return RouteEntry.connected(
                             requiredChannel,
                             ticker.read()
                     );
                 }
         );
-        VerificationActivation result = activation.get();
-        if (result.completed()) {
-            requiredChannel.attr(ROUTE_VERIFIED).set(true);
-        }
-        return result;
+        return completed.get();
     }
 
     boolean cancelVerification(
@@ -190,11 +168,12 @@ public final class WorkerRouteRegistry {
         routesByWorkerId.asMap().computeIfPresent(
                 requiredWorkerId,
                 (ignored, current) -> {
-                    if (current.verifyingChannel() != requiredChannel) {
+                    if (!current.isPending()
+                            || current.channel() != requiredChannel) {
                         return current;
                     }
                     cancelled.set(true);
-                    return withoutVerifying(current, ticker.read());
+                    return null;
                 }
         );
         return cancelled.get();
@@ -202,7 +181,9 @@ public final class WorkerRouteRegistry {
 
     Channel activeChannel(String workerId) {
         RouteEntry route = quietRoute(requireWorkerId(workerId));
-        return route == null ? null : route.activeChannel();
+        return route != null && route.isConnected()
+                ? route.channel()
+                : null;
     }
 
     boolean isCurrentConnected(String workerId, Channel expectedChannel) {
@@ -212,7 +193,9 @@ public final class WorkerRouteRegistry {
                 "expectedChannel"
         );
         RouteEntry route = quietRoute(requiredWorkerId);
-        return route != null && route.activeChannel() == requiredChannel;
+        return route != null
+                && route.isConnected()
+                && route.channel() == requiredChannel;
     }
 
     Map<String, WorkerConnectionState> connectionStates(
@@ -234,11 +217,11 @@ public final class WorkerRouteRegistry {
             routesByWorkerId.asMap().computeIfPresent(
                     workerId,
                     (ignored, current) -> {
-                        if (current.activeChannel() == null) {
+                        if (!current.isConnected()) {
                             return current;
                         }
-                        removed.set(current.activeChannel());
-                        return withoutActive(current, ticker.read());
+                        removed.set(current.channel());
+                        return disconnectedOrAbsent(current, ticker.read());
                     }
             );
             if (removed.get() != null) {
@@ -258,11 +241,12 @@ public final class WorkerRouteRegistry {
         routesByWorkerId.asMap().computeIfPresent(
                 requiredWorkerId,
                 (ignored, current) -> {
-                    if (current.activeChannel() != requiredChannel) {
+                    if (!current.isConnected()
+                            || current.channel() != requiredChannel) {
                         return current;
                     }
                     deactivated.set(true);
-                    return withoutActive(current, ticker.read());
+                    return disconnectedOrAbsent(current, ticker.read());
                 }
         );
         return deactivated.get();
@@ -270,9 +254,8 @@ public final class WorkerRouteRegistry {
 
     String onChannelClosed(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
-        String workerId = requiredChannel.attr(IDENTIFIED_WORKER_ID)
+        String workerId = requiredChannel.attr(CLAIMED_WORKER_ID)
                 .getAndSet(null);
-        requiredChannel.attr(ROUTE_VERIFIED).set(null);
         if (workerId == null) {
             return null;
         }
@@ -280,16 +263,14 @@ public final class WorkerRouteRegistry {
         routesByWorkerId.asMap().computeIfPresent(
                 workerId,
                 (ignored, current) -> {
-                    RouteEntry updated = current;
-                    if (updated.verifyingChannel() == requiredChannel) {
-                        updated = withoutVerifying(updated, ticker.read());
+                    if (current.channel() != requiredChannel) {
+                        return current;
                     }
-                    if (updated != null
-                            && updated.activeChannel() == requiredChannel) {
-                        activeRemoved.set(true);
-                        updated = withoutActive(updated, ticker.read());
+                    if (current.isPending()) {
+                        return null;
                     }
-                    return updated;
+                    activeRemoved.set(true);
+                    return disconnectedOrAbsent(current, ticker.read());
                 }
         );
         return activeRemoved.get() ? workerId : null;
@@ -310,42 +291,18 @@ public final class WorkerRouteRegistry {
                 && now - verifiedAt < reconnectVerificationRetentionNanos;
     }
 
-    private RouteEntry withoutActive(RouteEntry route, long now) {
-        if (route.verifyingChannel() != null) {
-            return new RouteEntry(
-                    null,
-                    route.verifyingChannel(),
-                    route.verifiedAtNanos()
-            );
-        }
-        return verificationFresh(route, now)
-                ? RouteEntry.disconnected(route.verifiedAtNanos())
-                : null;
-    }
-
-    private RouteEntry withoutVerifying(RouteEntry route, long now) {
-        if (route.activeChannel() != null) {
-            return new RouteEntry(
-                    route.activeChannel(),
-                    null,
-                    route.verifiedAtNanos()
-            );
-        }
+    private RouteEntry disconnectedOrAbsent(RouteEntry route, long now) {
         return verificationFresh(route, now)
                 ? RouteEntry.disconnected(route.verifiedAtNanos())
                 : null;
     }
 
     private static WorkerConnectionState connectionState(RouteEntry route) {
-        if (route == null) {
+        if (route == null || route.isPending()) {
             return WorkerConnectionState.UNKNOWN;
         }
-        if (route.activeChannel() != null
-                && route.activeChannel().isActive()) {
+        if (route.isConnected() && route.channel().isActive()) {
             return WorkerConnectionState.CONNECTED;
-        }
-        if (route.verifyingChannel() != null) {
-            return WorkerConnectionState.VERIFYING;
         }
         return WorkerConnectionState.DISCONNECTED;
     }
@@ -371,23 +328,6 @@ public final class WorkerRouteRegistry {
             Channel replacement
     ) {
         return previous == replacement ? null : previous;
-    }
-
-    private static void identify(
-            Channel channel,
-            String workerId,
-            boolean verified
-    ) {
-        channel.attr(IDENTIFIED_WORKER_ID).set(workerId);
-        channel.attr(ROUTE_VERIFIED).set(verified);
-    }
-
-    private static String identifiedWorkerId(Channel channel) {
-        return channel.attr(IDENTIFIED_WORKER_ID).get();
-    }
-
-    private static boolean isRouteVerified(Channel channel) {
-        return Boolean.TRUE.equals(channel.attr(ROUTE_VERIFIED).get());
     }
 
     private static String requireWorkerId(String workerId) {
@@ -434,89 +374,50 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    record VerificationActivation(
-            boolean completed,
-            Channel replacedChannel,
-            boolean becameAvailable
-    ) {
-
-        private static VerificationActivation notCompleted() {
-            return new VerificationActivation(false, null, false);
-        }
-    }
-
-    enum InboundKind {
-        IDENTITY_REQUIRED,
-        VERIFICATION_PENDING,
-        VERIFIED,
-        INVALID
-    }
-
-    record InboundInspection(InboundKind kind, String workerId) {
-
-        InboundInspection {
-            Objects.requireNonNull(kind, "kind");
-        }
-    }
-
     private record RouteEntry(
-            Channel activeChannel,
-            Channel verifyingChannel,
+            Channel channel,
             Long verifiedAtNanos
     ) {
 
         private RouteEntry {
-            if (activeChannel == null
-                    && verifyingChannel == null
-                    && verifiedAtNanos == null) {
+            if (channel == null && verifiedAtNanos == null) {
                 throw new IllegalArgumentException(
-                        "route entry must contain route evidence"
-                );
-            }
-            if (activeChannel != null && activeChannel == verifyingChannel) {
-                throw new IllegalArgumentException(
-                        "active and verifying Channel must differ"
-                );
-            }
-            if (activeChannel != null && verifiedAtNanos == null) {
-                throw new IllegalArgumentException(
-                        "active route must have verification evidence"
+                        "route entry must contain a Channel or verification"
                 );
             }
         }
 
-        private static RouteEntry verifying(
-                Channel verifyingChannel,
-                Channel activeChannel,
-                Long verifiedAtNanos
-        ) {
+        private static RouteEntry pending(Channel channel) {
             return new RouteEntry(
-                    activeChannel,
-                    Objects.requireNonNull(
-                            verifyingChannel,
-                            "verifyingChannel"
-                    ),
-                    verifiedAtNanos
+                    Objects.requireNonNull(channel, "channel"),
+                    null
             );
         }
 
         private static RouteEntry connected(
-                Channel activeChannel,
+                Channel channel,
                 long verifiedAtNanos
         ) {
             return new RouteEntry(
-                    Objects.requireNonNull(activeChannel, "activeChannel"),
-                    null,
+                    Objects.requireNonNull(channel, "channel"),
                     verifiedAtNanos
             );
         }
 
         private static RouteEntry disconnected(long verifiedAtNanos) {
-            return new RouteEntry(null, null, verifiedAtNanos);
+            return new RouteEntry(null, verifiedAtNanos);
+        }
+
+        private boolean isPending() {
+            return channel != null && verifiedAtNanos == null;
+        }
+
+        private boolean isConnected() {
+            return channel != null && verifiedAtNanos != null;
         }
 
         private boolean isDisconnectedCache() {
-            return activeChannel == null && verifyingChannel == null;
+            return channel == null;
         }
     }
 

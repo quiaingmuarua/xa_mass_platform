@@ -366,9 +366,9 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("adapter.netty.internal")
                 .doesNotContain(
                         "adapter.netty.internal.connection"
-                                + ".WorkerObservationCache"
+                                + ".WorkerPropertiesCache"
                 )
-                .doesNotContain("WorkerObservationSnapshot")
+                .doesNotContain("WorkerPropertiesObservation")
                 .doesNotContain("io.netty")
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("WorkerWebSocketHandler")

@@ -47,7 +47,7 @@ inbound Handler only forwards normalized text, inactive, and failure callbacks.
 The shared connection mechanism owns identity
 interpretation, route verification, Command routing, and Result ingress; its
 Registry alone owns
-the single per-Worker route truth. Each identified Channel carries its Worker
+the single per-Worker route truth. Each claimed Channel carries only its Worker
 identity as Adapter-local Netty metadata for inbound correlation. The selected
 physical Server owns its listener, EventLoop, all child Channels, complete
 Pipeline, framing, physical writes, asynchronous write failures, and close
@@ -143,13 +143,14 @@ Every physical connection sends this identity first. Adapter requires
 `src=WORKER`, a non-blank opaque `sourceId`, and exact `null` payload. It does
 not parse the workerId format.
 
-Each Adapter process verifies a workerId remotely only the first time its route
-directory sees that identity. The first Channel becomes the one pending
-verification owner; another initial Channel for the same workerId is physically
-closed. Server confirms that the workerId's current Endpoint Binding points to
-this Adapter's `endpointManagerId`. Successful verification atomically activates
-`workerId -> current Channel` without an identity ACK. No WorkerGroup metadata
-is stored on the Channel or route. A definite Server 4xx
+Each Adapter process verifies a workerId remotely when it has no current route
+or retained verification evidence. The first Channel atomically claims the
+single pending Route entry; another initial Channel for the same workerId is
+physically closed. Server confirms that the workerId's current Endpoint Binding
+points to this Adapter's `endpointManagerId`. Successful verification
+atomically turns that same entry into `workerId -> current Channel` without an
+identity ACK. No WorkerGroup metadata is stored on the Channel or route. A
+definite Server 4xx
 rejection causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
 and close the physical Channel after the write flushes. Remote API unavailability
@@ -163,13 +164,14 @@ buffer. If that Channel disconnects, its exact pending entry is cancelled and a
 later connection may start verification again. A late callback cannot activate
 the cancelled Channel.
 
-Ordinary disconnect removes only the exact active Channel. The verified workerId
-remains cached, so a later identity for the same workerId skips Server
-verification. WorkerGroup does not participate in route admission, route state,
-or availability evidence. The retained `Disconnected` route is
-not persistent Endpoint Binding, authentication, authorization, Worker online
-truth, or a Property cache. It has no TTL or implicit recheck and is cleared
-only when the Adapter closes or restarts. There is currently no unbind operation.
+Ordinary disconnect removes only the exact active Channel. Fresh verification
+evidence remains cached, so a later identity for the same workerId can skip
+Server verification. WorkerGroup does not participate in route admission, route
+state, or availability evidence. The retained `Disconnected` route is not
+persistent Endpoint Binding, authentication, authorization, Worker online
+truth, or a Property cache. It is bounded by the configured retention and
+capacity and is always cleared when the Adapter closes or restarts. There is
+currently no unbind operation.
 
 After connection activation:
 
@@ -184,9 +186,10 @@ mailbox configuration, not from a URL path or message field.
 After the physical Pipeline normalizes input to `String`, one sharable
 `WorkerConnectionInboundHandler` forwards Netty callbacks to the instance's
 `WorkerConnectionMechanism`. The Handler stores no connection-local state. The
-mechanism validates the first Report, coordinates optional first verification,
-and dynamically derives each inbound Channel's phase from
-`WorkerRouteRegistry`. The callback Handler remains installed for the full
+mechanism validates the first Report and coordinates optional asynchronous
+verification. Later input is accepted only when the claimed workerId has
+verification evidence in `WorkerRouteRegistry`; input received while the
+single Route entry is pending is dropped. The callback Handler remains installed for the full
 physical connection; there is no phase enum, Session, or Pipeline replacement. The fixed
 identity Report is not routed through an
 event registry or plugin dispatcher. Adapter-directed Reports never enter the
@@ -205,11 +208,12 @@ backpressure keeps it usable.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
 `workerId -> RouteEntry` truth in one Caffeine cache. One immutable entry holds
-the current active Channel, an optional concurrent verification Channel and the
-last successful verification time; these facts are never split into parallel
-active/pending/verified maps. An identified Channel stores only its workerId and
-whether that Channel completed route verification as thread-safe Channel-local
-metadata. This is correlation, not a second route index or wire field.
+exactly one pending Channel, one connected Channel plus verification time, or
+disconnected verification evidence; these facts are never split into parallel
+active/pending/verified maps. A claimed Channel stores only its workerId as
+thread-safe Channel-local metadata. That attribute answers which Worker a
+Channel claimed for callback correlation; it does not say whether verification
+succeeded and is not a second route index or wire field.
 Per-Worker `ConcurrentMap.compute` transitions prevent an old Channel's late
 callback from changing a replacement route while still allowing its valid
 in-flight Result before physical close.
@@ -224,18 +228,19 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
-Successful route verification is retained for ten minutes by default. A
-reconnect inside that window activates locally without renewing the evidence.
-After it expires, a new Channel is verified remotely while an existing active
-Channel remains usable; success replaces the old Channel and refreshes the
-evidence, while failure leaves the old route intact. Only disconnected evidence
-participates in the configured capacity (`100000` by default). Active and
-verifying entries have zero cache weight and no time expiry; physical Channel
-resources, not the disconnected-cache budget, bound them. Disconnected evidence
-is removed by TTL or capacity pressure and then projects as `UNKNOWN`. Cache
-eviction never emits availability evidence.
+Successful route verification is retained for ten minutes by default after a
+disconnect. A reconnect inside that window activates locally without renewing
+the evidence. A current connected route remains trusted for its physical
+lifetime even after that time; a new Channel replaces it locally and preserves
+the original verification time. Once no current Channel remains, expired
+evidence is discarded and the next identity verifies remotely. Only
+disconnected evidence participates in the configured capacity (`100000` by
+default). Connected and pending entries have zero cache weight and no time
+expiry; physical Channel resources, not the disconnected-cache budget, bound
+them. Disconnected evidence is removed by TTL or capacity pressure and then
+projects as `UNKNOWN`. Cache eviction never emits availability evidence.
 
-Each Adapter also owns one `WorkerObservationCache` beside the Registry. It is
+Each Adapter also owns one `WorkerPropertiesCache` beside the Registry. It is
 not route truth: it stores only the most recent successful
 `platform.worker.properties.snapshot` observed from the exact current
 connected Channel. A replaced old Channel may still submit valid in-flight
@@ -318,7 +323,7 @@ execution surface, not a public registry or Server whitelist:
 | `platform.adapter.events.snapshot` | `null` | sorted full `eventNames` |
 | `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `stateByWorkerId` |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":[...]}` | `outcomeByWorkerId` |
-| `platform.adapter.worker-observations.snapshot` | `{"workerIds":[...]}` | ordered `observationsByWorkerId` containing live route state and the last properties projection |
+| `platform.adapter.worker-properties.snapshot` | `{"workerIds":[...]}` | ordered `propertiesByWorkerId` containing cached properties, freshness and version |
 
 The Event snapshot is precomputed when the immutable map is assembled, includes
 itself, and is process-local execution evidence rather than Server
@@ -326,7 +331,9 @@ configuration or routing truth. Its reserved name cannot be replaced by another
 static Handler.
 
 Worker ID lists are unique, ordered and bounded to `1..100`. Snapshot values
-are `UNKNOWN`, `VERIFYING`, `CONNECTED`, or `DISCONNECTED`. They are
+are `UNKNOWN`, `CONNECTED`, or `DISCONNECTED`. A pending first
+verification deliberately projects as `UNKNOWN`; it is not a separately
+published lifecycle state. These values are
 point-in-time Adapter route observations, not Binding validity, schedulability,
 writability, Worker idleness, or proof that the Worker process is alive.
 Anonymous physical Channels are not Worker routes. An Adapter restart clears
@@ -339,10 +346,10 @@ close for Socket). It preserves the process-local verification cache, so the
 existing Client reconnect path can install a new active Channel without
 another route verification.
 
-Worker observations join the current four-state route projection with the last
-properties snapshot. Properties freshness is `FRESH`, `STALE`, or `UNKNOWN`;
-stale observations retain their last value and version. The default freshness
-window is five minutes. Adapter configuration owns two finite policy blocks:
+Worker connection state and cached properties are deliberately separate query
+surfaces. Properties freshness is `FRESH`, `STALE`, or `UNKNOWN`; stale values
+retain their last data and version. The default freshness window is five
+minutes. Adapter configuration owns two finite policy blocks:
 
 ```yaml
 route-cache:
@@ -353,12 +360,14 @@ observation-cache:
   maximum-encoded-bytes: 67108864
 ```
 
-`CONNECTED`, fresh properties, current Binding and scheduling eligibility
-remain independent facts. The Adapter does not automatically probe a Worker or
-publish attribute changes to Server or Kernel. Entries are keyed by workerId
-and do not repeat the caller-owned WorkerGroup. Both caches use caller-thread
-maintenance only: no loader, refresh, listener, scheduler or cleanup thread is
-installed.
+The two snapshot events do not call each other and have no atomic join or
+shared version. `CONNECTED`, fresh properties, current Binding and scheduling
+eligibility remain independent facts. A caller needing a combined view invokes
+both events and joins by workerId. The Adapter does not automatically probe a
+Worker or publish attribute changes to Server or Kernel. Entries are keyed by
+workerId and do not repeat the caller-owned WorkerGroup. Both caches use
+caller-thread maintenance only: no loader, refresh, listener, scheduler or
+cleanup thread is installed.
 
 ### Result ingress round
 
