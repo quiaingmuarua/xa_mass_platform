@@ -48,6 +48,7 @@ import org.junit.jupiter.api.Test;
 
 class DeliveryCommandProcessTest {
 
+
     private static final WorkerDeliveryCodec CODEC = new WorkerDeliveryCodec();
 
     @Test
@@ -211,11 +212,10 @@ class DeliveryCommandProcessTest {
                             "/api/v1/worker-delivery/endpoint-managers/"
                                     + "adapter-1/commands:consume"
                     );
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> {
-                        DeliveryReport report = CODEC.decodeDeliveryReport(
-                                encoded
-                        );
+            assertThat(fixture.peer.controlReports(
+                    "platform.adapter.probe"
+            )).singleElement()
+                    .satisfies(report -> {
                         assertThat(report).isEqualTo(
                                 DeliveryReport.fromCommand(
                                         probe,
@@ -265,11 +265,11 @@ class DeliveryCommandProcessTest {
 
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
-            assertThat(fixture.peer.appendedControlReports)
+            assertThat(fixture.peer.controlReportsExcluding(
+                    "platform.adapter.worker-availability.changed"
+            ))
                     .hasSize(2)
-                    .extracting(encoded -> CODEC.decodeDeliveryReport(
-                            encoded
-                    ).messageType())
+                    .extracting(DeliveryReport::messageType)
                     .containsExactlyInAnyOrder(
                             "platform.adapter.probe",
                             AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT
@@ -293,11 +293,10 @@ class DeliveryCommandProcessTest {
             fixture.process.round();
             fixture.reportProcess.round();
 
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> {
-                        DeliveryReport report = CODEC.decodeDeliveryReport(
-                                encoded
-                        );
+            assertThat(fixture.peer.controlReports(
+                    AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT
+            )).singleElement()
+                    .satisfies(report -> {
                         assertThat(report.outcomeCode()).isEqualTo("200");
                         assertThat(Jsons.parseObject(report.payload()).get(
                                 "eventNames"
@@ -306,7 +305,8 @@ class DeliveryCommandProcessTest {
                                 "platform.adapter.probe",
                                 "platform.adapter.worker-connections."
                                         + "close-current",
-                                "platform.adapter.worker-connections.snapshot"
+                                "platform.adapter.worker-connections.snapshot",
+                                "platform.adapter.worker-observations.snapshot"
                         ));
                     });
         }
@@ -336,11 +336,10 @@ class DeliveryCommandProcessTest {
             fixture.process.round();
             fixture.reportProcess.round();
 
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> {
-                        DeliveryReport report = CODEC.decodeDeliveryReport(
-                                encoded
-                        );
+            assertThat(fixture.peer.controlReports(
+                    "platform.adapter.worker-connections.snapshot"
+            )).singleElement()
+                    .satisfies(report -> {
                         assertThat(report.outcomeCode()).isEqualTo("200");
                         @SuppressWarnings("unchecked")
                         Map<String, Object> states =
@@ -387,11 +386,10 @@ class DeliveryCommandProcessTest {
                     "worker-1",
                     WorkerConnectionState.DISCONNECTED
             );
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> {
-                        DeliveryReport report = CODEC.decodeDeliveryReport(
-                                encoded
-                        );
+            assertThat(fixture.peer.controlReports(
+                    "platform.adapter.worker-connections.close-current"
+            )).singleElement()
+                    .satisfies(report -> {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> outcomes =
                                 (Map<String, Object>) Jsons.parseObject(
@@ -616,7 +614,8 @@ class DeliveryCommandProcessTest {
                     CODEC,
                     reportProcess,
                     "adapter-1",
-                    Duration.ofSeconds(1)
+                    Duration.ofSeconds(1),
+                    Duration.ofMinutes(5)
             );
             process = new DeliveryCommandProcess(
                     new DeliveryCommandRemoteApi(httpClient, CODEC),
@@ -692,6 +691,22 @@ class DeliveryCommandProcessTest {
         );
         private int failures;
         private String responseBodyOverride;
+
+        private List<DeliveryReport> controlReports(String eventName) {
+            return appendedControlReports.stream()
+                    .map(CODEC::decodeDeliveryReport)
+                    .filter(report -> eventName.equals(report.messageType()))
+                    .toList();
+        }
+
+        private List<DeliveryReport> controlReportsExcluding(
+                String eventName
+        ) {
+            return appendedControlReports.stream()
+                    .map(CODEC::decodeDeliveryReport)
+                    .filter(report -> !eventName.equals(report.messageType()))
+                    .toList();
+        }
 
         private synchronized Response handle(
                 ScriptedHttpServer.Request request

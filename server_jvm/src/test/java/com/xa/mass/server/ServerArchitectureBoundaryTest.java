@@ -50,6 +50,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path DELIVERY_APPLICATION = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/application"
     );
+    private static final Path WORKER_CHANGE_INBOX = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerdelivery/workerchange"
+    );
     private static final Path DELIVERY_ADAPTER_HOST = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/adapter"
     );
@@ -101,7 +104,7 @@ class ServerArchitectureBoundaryTest {
             "com/xa/mass/server/api/v1/WorkerSchedulingController.java"
     );
     @Test
-    void serverDependsOnKernelContractsWithoutOwningRedisKeys()
+    void serverUsesKernelContractsAndKeepsRedisInNamedOwners()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
@@ -141,7 +144,8 @@ class ServerArchitectureBoundaryTest {
                 KERNEL_ASSEMBLY,
                 DELIVERY_ASSEMBLY,
                 WORKER_IDENTITY,
-                WORKER_BINDING
+                WORKER_BINDING,
+                WORKER_CHANGE_INBOX
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
@@ -150,6 +154,15 @@ class ServerArchitectureBoundaryTest {
                 WORKER_IDENTITY,
                 WORKER_BINDING
         )).doesNotContain("\"wi:");
+        assertThat(readSourcesExcluding(
+                SERVER_SOURCE,
+                WORKER_CHANGE_INBOX
+        )).doesNotContain("\"we:");
+        assertThat(readSources(WORKER_CHANGE_INBOX))
+                .contains("io.lettuce")
+                .doesNotContain("WorkerScoreCore")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("Pacer");
     }
 
     @Test
@@ -270,9 +283,14 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("@RestController")
                 .doesNotContain("WorkerDeliveryHttpContract");
         assertThat(readSources(DELIVERY_APPLICATION))
+                .contains("WorkerChangeReportIngress")
+                .contains("WorkerChangeInbox")
+                .doesNotContain("WorkerChangeResultRuntime")
                 .doesNotContain(".server.api")
                 .doesNotContain(".delivery.redis")
-                .doesNotContain("io.lettuce");
+                .doesNotContain("io.lettuce")
+                .doesNotContain("WorkerScoreCore")
+                .doesNotContain("Pacer");
     }
 
     @Test
@@ -346,6 +364,8 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("adapter.netty.internal")
+                .doesNotContain("WorkerObservationCache")
+                .doesNotContain("WorkerObservationSnapshot")
                 .doesNotContain("io.netty")
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("WorkerWebSocketHandler")
@@ -393,6 +413,8 @@ class ServerArchitectureBoundaryTest {
         assertThat(deliveryAssembly)
                 .contains("RedisWorkerCommandRuntime")
                 .contains("RedisWorkerResultRuntime")
+                .contains("RedisWorkerChangeInbox")
+                .doesNotContain("RedisWorkerChangeResultRuntime")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskResourceCatalog")
                 .doesNotContain("WorkerRuntime")
@@ -408,8 +430,15 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("AssembledWorkerResourceCatalog")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("WorkerResultRuntime")
+                .doesNotContain("WorkerChangeResultRuntime")
                 .doesNotContain("RedisWorkerCommandRuntime")
-                .doesNotContain("RedisWorkerResultRuntime");
+                .doesNotContain("RedisWorkerResultRuntime")
+                .doesNotContain("RedisWorkerChangeResultRuntime");
+
+        assertThat(readSources(KERNEL_SOURCE))
+                .doesNotContain("WorkerChangeInbox")
+                .doesNotContain("WorkerChangeResultRuntime")
+                .doesNotContain("route-change-inbox");
     }
 
     @Test

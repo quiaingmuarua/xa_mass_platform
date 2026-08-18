@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelbinding;
 
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -15,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -23,8 +23,6 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisTaskOwnerRuntimeIntegrationTest {
 
-    private static final String REDIS_URL =
-            System.getenv("KERNEL_DESIGN_REDIS_URL");
     private String prefix;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
@@ -34,10 +32,6 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        Assumptions.assumeTrue(
-                REDIS_URL != null && !REDIS_URL.isBlank(),
-                "KERNEL_DESIGN_REDIS_URL is not configured"
-        );
         prefix = "java-task-owner-" + UUID.randomUUID();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);

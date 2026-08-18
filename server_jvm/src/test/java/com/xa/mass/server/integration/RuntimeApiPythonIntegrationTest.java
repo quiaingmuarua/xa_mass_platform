@@ -1,5 +1,8 @@
 package com.xa.mass.server.integration;
 
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.KERNEL_BASE_URL;
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_PREFIX;
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
@@ -15,6 +18,8 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.net.http.HttpClient;
@@ -22,6 +27,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +35,6 @@ import java.util.Optional;
 import java.util.UUID;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,15 +44,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
 
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "integration-test"})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @Tag("runtime-boundary")
 class RuntimeApiPythonIntegrationTest {
 
-    private static final String KERNEL_URL =
-            System.getenv("KERNEL_COMMAND_INTEGRATION_URL");
-    private static final String REDIS_URL =
-            System.getenv("KERNEL_DESIGN_REDIS_URL");
     private static final int SERVER_PORT = availablePort();
     private static final int[] ACTIVE_ADAPTER_PORTS =
             availablePorts(2);
@@ -65,33 +66,14 @@ class RuntimeApiPythonIntegrationTest {
             "extension.worker." + DIRECT_CAPABILITY;
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final WorkerDeliveryCodec DELIVERY_CODEC =
+            new WorkerDeliveryCodec();
 
     @LocalServerPort
     private int port;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
-        registry.add(
-                "xa.mass.kernel.base-url",
-                () -> configured(
-                        KERNEL_URL,
-                        "http://127.0.0.1:18080"
-                )
-        );
-        registry.add(
-                "xa.mass.kernel-redis.redis-url",
-                () -> configured(
-                        REDIS_URL,
-                        "redis://127.0.0.1:6379/15"
-                )
-        );
-        registry.add(
-                "xa.mass.kernel-redis.redis-prefix",
-                () -> System.getenv().getOrDefault(
-                        "KERNEL_DESIGN_REDIS_PREFIX",
-                        "default"
-                )
-        );
         registry.add(
                 "server.port",
                 () -> Integer.toString(SERVER_PORT)
@@ -150,7 +132,6 @@ class RuntimeApiPythonIntegrationTest {
     @Test
     void explicitWorkerSchedulingUsesWorkerIdThenMatchesPropertyProjections()
             throws Exception {
-        requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "indexed-tools-" + suffix;
         String clientWorkerKey = "indexed-worker-" + suffix;
@@ -232,7 +213,6 @@ class RuntimeApiPythonIntegrationTest {
     @Test
     void directWorkerAndAdapterCallsTraverseWebSocketAdapterWithoutPause()
             throws Exception {
-        requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "direct-tools-" + suffix;
         String clientWorkerKey = "direct-worker-" + suffix;
@@ -263,6 +243,7 @@ class RuntimeApiPythonIntegrationTest {
         );
         try {
             awaitWorkerRegistered(workerGroupId, workerId);
+            byte[] scoreBeforeRouteChanges = workerScoreBytes(workerGroupId);
             assertThat(observedDirectPayload(workerDirectCall(
                     workerGroupId,
                     workerId,
@@ -306,6 +287,11 @@ class RuntimeApiPythonIntegrationTest {
             );
 
             assertConnectionState(workerId, "CONNECTED");
+            assertWorkerObservation(
+                    workerId,
+                    "CONNECTED",
+                    "FRESH"
+            );
             assertThat(Jsons.parseObject(
                     observedDirectPayload(
                             adapterDirectCall(
@@ -329,6 +315,17 @@ class RuntimeApiPythonIntegrationTest {
                     ), workerId, "200")
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
+            assertWorkerObservation(
+                    workerId,
+                    "CONNECTED",
+                    "FRESH"
+            );
+            awaitAvailabilityEvidence(
+                    workerId,
+                    List.of(true, false, true)
+            );
+            assertThat(workerScoreBytes(workerGroupId))
+                    .containsExactly(scoreBeforeRouteChanges);
         } finally {
             worker.close();
         }
@@ -405,6 +402,39 @@ class RuntimeApiPythonIntegrationTest {
         )).containsEntry(workerId, state);
     }
 
+    @SuppressWarnings("unchecked")
+    private void assertWorkerObservation(
+            String workerId,
+            String connectionState,
+            String freshness
+    ) throws Exception {
+        Map<String, Object> payload = Jsons.parseObject(
+                observedDirectPayload(
+                        adapterDirectCall(
+                                "platform.adapter.worker-observations.snapshot",
+                                workerIdsPayload(workerId)
+                        ),
+                        WEBSOCKET_ENDPOINT_MANAGER_ID,
+                        "200"
+                )
+        );
+        Map<String, Object> observations = (Map<String, Object>) payload.get(
+                "observationsByWorkerId"
+        );
+        Map<String, Object> observation = (Map<String, Object>) observations
+                .get(workerId);
+        assertThat(observation)
+                .doesNotContainKey("workerGroupId")
+                .containsEntry("connectionState", connectionState)
+                .containsEntry("propertiesFreshness", freshness)
+                .containsEntry(
+                        "properties",
+                        Map.of("runtime", "java-direct")
+                );
+        assertThat(observation.get("propertiesVersion")).isNotNull();
+        assertThat(observation.get("propertiesObservedAtMillis")).isNotNull();
+    }
+
     private static String workerIdsPayload(String workerId) {
         return Jsons.toJson(Map.of(
                 "workerIds",
@@ -412,9 +442,84 @@ class RuntimeApiPythonIntegrationTest {
         ));
     }
 
+    private static void awaitAvailabilityEvidence(
+            String workerId,
+            List<Boolean> expected
+    ) throws Exception {
+        RedisClient client = RedisClient.create(REDIS_URL);
+        try (var connection = client.connect(StringCodec.UTF8)) {
+            var redis = connection.sync();
+            String key = "we:{" + redisPrefix()
+                    + "}:route-change-inbox";
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(5).toNanos();
+            while (System.nanoTime() < deadline) {
+                List<Boolean> observed = new ArrayList<>();
+                for (String encoded : redis.lrange(key, 0, -1)) {
+                    DeliveryReport report;
+                    try {
+                        report = DELIVERY_CODEC.decodeDeliveryReport(encoded);
+                    } catch (IllegalArgumentException ignored) {
+                        continue;
+                    }
+                    Map<String, Object> payload = Jsons.parseObject(
+                            report.payload()
+                    );
+                    if (workerId.equals(payload.get("workerId"))
+                            && payload.get("available")
+                            instanceof Boolean available) {
+                        observed.add(available);
+                    }
+                }
+                if (containsInOrder(observed, expected)) {
+                    return;
+                }
+                Thread.sleep(20);
+            }
+        } finally {
+            client.shutdown();
+        }
+        throw new AssertionError(
+                "Worker availability evidence did not converge to "
+                        + expected
+        );
+    }
+
+    private static boolean containsInOrder(
+            List<Boolean> observed,
+            List<Boolean> expected
+    ) {
+        int expectedIndex = 0;
+        for (Boolean value : observed) {
+            if (expectedIndex < expected.size()
+                    && expected.get(expectedIndex).equals(value)) {
+                expectedIndex++;
+            }
+        }
+        return expectedIndex == expected.size();
+    }
+
+    private static byte[] workerScoreBytes(String workerGroupId) {
+        RedisClient client = RedisClient.create(REDIS_URL);
+        try (var connection = client.connect(StringCodec.UTF8)) {
+            byte[] encoded = connection.sync().dump(
+                    "wr:" + redisPrefix() + ":score:" + workerGroupId
+            );
+            if (encoded == null) {
+                throw new AssertionError("Worker score key is missing");
+            }
+            return encoded;
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    private static String redisPrefix() {
+        return REDIS_PREFIX;
+    }
+
     @Test
     void pythonCommandApiExposesOnlyTaskCommands() throws Exception {
-        requireExternalRuntime();
         assertThat(sendKernel(
                 "POST",
                 "/tasks/missing/items",
@@ -436,7 +541,6 @@ class RuntimeApiPythonIntegrationTest {
             String taskType,
             TransportProfile transportProfile
     ) throws Exception {
-        requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "integration-tools-" + suffix;
         String clientWorkerKey = "worker-" + suffix;
@@ -901,7 +1005,7 @@ class RuntimeApiPythonIntegrationTest {
             String body
     ) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(KERNEL_URL + path))
+                .uri(URI.create(KERNEL_BASE_URL + path))
                 .header("Content-Type", "application/json")
                 .method(
                         method,
@@ -920,20 +1024,6 @@ class RuntimeApiPythonIntegrationTest {
                                 StandardCharsets.UTF_8
                         )
                 );
-    }
-
-    private static void requireExternalRuntime() {
-        Assumptions.assumeTrue(
-                KERNEL_URL != null
-                        && !KERNEL_URL.isBlank()
-                        && REDIS_URL != null
-                        && !REDIS_URL.isBlank(),
-                "Kernel Runtime Server and Redis are not configured"
-        );
-    }
-
-    private static String configured(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
     }
 
     private static int availablePort() {

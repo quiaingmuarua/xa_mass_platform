@@ -39,7 +39,10 @@ public final class WorkerRouteRemoteApi {
         });
     }
 
-    private static String routePath(String adapterId, String workerId) {
+    private static String routePath(
+            String adapterId,
+            String workerId
+    ) {
         return "/api/v1/worker-delivery/endpoint-managers/"
                 + WorkerDeliveryHttpClient.encodePathSegment(adapterId)
                 + "/workers/"

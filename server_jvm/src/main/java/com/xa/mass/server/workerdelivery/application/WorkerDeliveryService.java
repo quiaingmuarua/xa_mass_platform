@@ -1,5 +1,7 @@
 package com.xa.mass.server.workerdelivery.application;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
+
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -9,6 +11,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.directcall.DirectCallService;
+import com.xa.mass.server.directcall.DirectCallRegistry;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -32,24 +35,30 @@ public final class WorkerDeliveryService {
     private final WorkerResultRuntime resultRuntime;
     private final WorkerBindingService bindings;
     private final DirectCallService directCalls;
+    private final WorkerChangeReportIngress workerChanges;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             WorkerResultRuntime resultRuntime,
             WorkerBindingService bindings,
-            DirectCallService directCalls
+            DirectCallService directCalls,
+            WorkerChangeReportIngress workerChanges
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
         this.bindings = bindings;
         this.directCalls = directCalls;
+        this.workerChanges = workerChanges;
     }
 
     public void verifyWorkerRoute(
             String endpointManagerId,
             String workerId
     ) {
+        String operation = "workerDelivery.verifyWorkerRoute";
+        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
+        requireNonBlank(workerId, "workerId", operation);
         bindings.requireCurrentEndpoint(endpointManagerId, workerId);
     }
 
@@ -200,7 +209,8 @@ public final class WorkerDeliveryService {
             );
         }
 
-        List<DeliveryReport> controlResults = new ArrayList<>();
+        List<DeliveryReport> directCallResults = new ArrayList<>();
+        List<DeliveryReport> workerChangeResults = new ArrayList<>();
         List<DeliveryReport> taskResults = new ArrayList<>();
         int rejectedCount = 0;
         for (String encodedWorkerResult : encodedWorkerResults) {
@@ -215,8 +225,16 @@ public final class WorkerDeliveryService {
                 );
                 if (result == null) {
                     rejectedCount++;
-                } else if (result.dst() == DeliveryEndpoint.SYSTEM) {
-                    controlResults.add(result);
+                } else if (result.dst() == DeliveryEndpoint.SYSTEM
+                        && result.forward().startsWith(
+                        DirectCallRegistry.FORWARD_PREFIX
+                )) {
+                    directCallResults.add(result);
+                } else if (result.dst() == DeliveryEndpoint.SYSTEM
+                        && WORKER_CHANGE_RESULT_FORWARD.equals(
+                        result.forward()
+                )) {
+                    workerChangeResults.add(result);
                 } else if (acceptableTaskBatchReport(
                         endpointManagerId,
                         result
@@ -235,14 +253,23 @@ public final class WorkerDeliveryService {
             appendResults(taskResults, operation);
             acceptedCount += taskResults.size();
         }
-        if (!controlResults.isEmpty()) {
+        if (!directCallResults.isEmpty()) {
             DirectCallService.ResultAppendCounts directCounts =
                     directCalls.completeReports(
                             endpointManagerId,
-                            controlResults
+                            directCallResults
                     );
             acceptedCount += directCounts.acceptedCount();
             rejectedCount += directCounts.rejectedCount();
+        }
+        if (!workerChangeResults.isEmpty()) {
+            WorkerChangeReportIngress.AppendCounts workerChangeCounts =
+                    workerChanges.append(
+                            endpointManagerId,
+                            workerChangeResults
+                    );
+            acceptedCount += workerChangeCounts.acceptedCount();
+            rejectedCount += workerChangeCounts.rejectedCount();
         }
         if (rejectedCount > 0) {
             LOGGER.log(

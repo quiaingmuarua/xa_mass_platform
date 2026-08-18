@@ -77,6 +77,17 @@ fallback lookup. The
 platform events owned by Transport; concrete Extension contracts remain with
 their capability Owners.
 
+Long-lived identity reports the Server-issued workerId route. Best-effort
+Adapter-produced route-availability SYSTEM evidence carries that workerId only;
+Server validates its Adapter source and current Binding before appending it to
+a bounded Server-owned Worker Change inbox. That inbox is neither current
+network-state truth nor a scheduling input: this phase has no Kernel consumer,
+Pacer, probe policy, or score mutation.
+
+The Adapter may also retain the latest explicitly observed Worker properties
+as a process-local, versioned projection. It is queried through an Adapter
+DIRECT_CALL and is deliberately not copied into Server or Kernel truth.
+
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a
 scheduling coordinate rather than a resource lock, separate assignment and
 result-routing planes, the frozen Netty Adapter three-layer structure, and the

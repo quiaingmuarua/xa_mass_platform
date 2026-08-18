@@ -94,6 +94,19 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
+    void rejectsBlankWorkerIdentity() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new TextMessageWorkerTransport(
+                        new FakeTextMessageClient(),
+                        " ",
+                        command -> Optional.empty(),
+                        new RecordingListener()
+                )
+        );
+    }
+
+    @Test
     void rejectedIdentitySendClosesCurrentConnectionForReconnect() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         TextMessageWorkerTransport transport = transport(

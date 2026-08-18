@@ -44,6 +44,7 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
+            Duration observationFreshness,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -54,6 +55,7 @@ public final class NettyWorkerDeliveryAdapters {
                 listenHost,
                 listenPort,
                 processConfigs,
+                observationFreshness,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -69,6 +71,7 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteApiBaseUrl,
                 remoteRequestTimeout,
                 processConfigs,
+                observationFreshness,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -81,6 +84,7 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
+            Duration observationFreshness,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -91,6 +95,7 @@ public final class NettyWorkerDeliveryAdapters {
                 listenHost,
                 listenPort,
                 processConfigs,
+                observationFreshness,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -106,6 +111,7 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteApiBaseUrl,
                 remoteRequestTimeout,
                 processConfigs,
+                observationFreshness,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -117,6 +123,7 @@ public final class NettyWorkerDeliveryAdapters {
             URI remoteApiBaseUrl,
             Duration remoteRequestTimeout,
             List<NettyAdapterProcessConfig> processConfigs,
+            Duration observationFreshness,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -151,7 +158,8 @@ public final class NettyWorkerDeliveryAdapters {
                         codec,
                         reportProcess,
                         adapterId,
-                        sendTimeLimit
+                        sendTimeLimit,
+                        observationFreshness
                 );
         WorkerConnectionInboundHandler connectionInboundHandler =
                 new WorkerConnectionInboundHandler(connectionMechanism);
@@ -214,6 +222,7 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
+            Duration observationFreshness,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -237,6 +246,7 @@ public final class NettyWorkerDeliveryAdapters {
                     "listenPort must be between 1 and 65535"
             );
         }
+        requirePositive(observationFreshness, "observationFreshness");
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");
         Objects.requireNonNull(processConfigs, "processConfigs");

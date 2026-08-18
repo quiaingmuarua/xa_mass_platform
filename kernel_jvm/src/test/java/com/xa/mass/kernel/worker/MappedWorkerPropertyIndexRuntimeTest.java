@@ -232,6 +232,17 @@ class MappedWorkerPropertyIndexRuntimeTest {
         }
 
         @Override
+        public Map<String, String> getWorkerGroupIds(List<String> workerIds) {
+            var result = new LinkedHashMap<String, String>();
+            for (String workerId : workerIds) {
+                result.put(workerId, "worker-1".equals(workerId)
+                        ? "group-1"
+                        : null);
+            }
+            return result;
+        }
+
+        @Override
         public Map<String, WorkerDescriptor> sampleWorkerDescriptors(
                 String workerGroupId,
                 int sampleLimit

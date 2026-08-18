@@ -92,7 +92,9 @@ Example Worker Properties row:
 {"arch":"arm64","region":"cn-east"}
 ```
 
-`worker-id-owners` is an identity fence, not a global query catalog.
+`worker-id-owners` is the immutable identity fence and backs only the bounded
+explicit-ID `get_worker_group_ids` owner read. It is not a global query catalog,
+Worker discovery source, or Transport routing structure.
 
 Worker upsert intentionally remains multi-stage:
 

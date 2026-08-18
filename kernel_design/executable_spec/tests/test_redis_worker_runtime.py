@@ -226,6 +226,57 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             WorkerRuntimeStatus.NOOP,
         )
 
+    def test_worker_group_lookup_reads_only_explicit_worker_owners(self) -> None:
+        self.upsert_group()
+        self.upsert_worker(self.worker_declaration("worker-1"))
+        other_group = WorkerGroupDescriptor(
+            worker_group_id="other-workers",
+            attributes={},
+            event_codes=frozenset(),
+        )
+        self.assertEqual(
+            self.catalog.upsert_worker_group(descriptor=other_group).status,
+            WorkerRuntimeStatus.OK,
+        )
+        self.upsert_worker(
+            self.worker_declaration(
+                "worker-2",
+                worker_group_id="other-workers",
+            )
+        )
+
+        owners = self.catalog.get_worker_group_ids(
+            worker_ids=["worker-2", "missing", "worker-1"]
+        )
+
+        self.assertEqual(
+            list(owners.items()),
+            [
+                ("worker-2", "other-workers"),
+                ("missing", None),
+                ("worker-1", "image-workers"),
+            ],
+        )
+        self.assertEqual(
+            self.redis.hmget_calls[-1],
+            (
+                "wr:test:worker-id-owners",
+                ("worker-2", "missing", "worker-1"),
+            ),
+        )
+
+    def test_worker_group_lookup_rejects_unbounded_or_invalid_ids(self) -> None:
+        self.assertEqual(
+            self.catalog.get_worker_group_ids(worker_ids=[]),
+            {},
+        )
+        with self.assertRaisesRegex(ValueError, "at most 100"):
+            self.catalog.get_worker_group_ids(
+                worker_ids=[f"worker-{index}" for index in range(101)]
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty strings"):
+            self.catalog.get_worker_group_ids(worker_ids=[""])
+
     def test_upsert_repairs_missing_score_and_refreshes_properties(self) -> None:
         self.upsert_group()
         declaration = self.worker_declaration(

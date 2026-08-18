@@ -250,8 +250,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      KERNEL_DESIGN_REDIS_URL: redis://127.0.0.1:6379/15
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0
@@ -300,9 +298,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      KERNEL_COMMAND_INTEGRATION_URL: http://127.0.0.1:18080
-      KERNEL_DESIGN_REDIS_URL: redis://127.0.0.1:6379/15
-      KERNEL_DESIGN_REDIS_PREFIX: default
       XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON: >-
         {"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}
     steps:

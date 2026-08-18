@@ -50,6 +50,7 @@ events. Their detailed semantics are owned by the
 | `platform.adapter.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observes the immutable Adapter event map |
 | `platform.adapter.worker-connections.snapshot` | `{"workerIds":["..."]}` | `{"stateByWorkerId":{"worker-1":"CONNECTED"}}` | Observes current Adapter-local route state |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
+| `platform.adapter.worker-observations.snapshot` | `{"workerIds":["..."]}` | `{"observationsByWorkerId":{"worker-1":{...}}}` | Joins live route state with the Adapter-local latest Worker properties projection |
 
 Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
 are `UNKNOWN` when this Adapter process has not verified the Worker,
@@ -63,6 +64,29 @@ Client policy may reconnect it. Adapter restart clears this process-local
 observation. There is no application heartbeat, so a silent half-open
 connection converges only after the network stack, close, failure, or a write
 detects it.
+
+An observation entry reports the live four-state `connectionState`,
+`propertiesFreshness`, an Adapter-epoch/per-Worker-revision
+version, wall-clock observation time, and properties. Workers without observed
+properties use `UNKNOWN` freshness and null property fields. `STALE` retains
+the last projection. This cache is cleared on Adapter restart and is neither
+Worker resource truth nor evidence of Binding validity or schedulability.
+
+## Adapter-Produced Evidence
+
+The following Event Name is produced by the connection mechanism; it is not an
+Adapter Handler and therefore does not appear in
+`platform.adapter.events.snapshot`:
+
+| Event Name | Report | Payload | Meaning |
+| --- | --- | --- | --- |
+| `platform.adapter.worker-availability.changed` | `ADAPTER -> SYSTEM`, outcome `200`, forward `worker-change:v1` | `{"workerId":"...","available":true|false}` | A verified Adapter-local route changed between available and unavailable |
+
+`available=true` means this Adapter currently owns a verified active route.
+It does not mean schedulable, idle, writable, permanently bound, or absolutely
+alive. Evidence is best effort: it shares the existing bounded Report Process
+and may be dropped under backpressure without closing the Worker connection.
+It is not a network-state projection or a score transition.
 
 ## Extension Boundary
 
@@ -86,7 +110,7 @@ They bypass the Adapter/Worker Event Definition maps:
 
 | Message type | Direction | Transport meaning |
 | --- | --- | --- |
-| `worker.connection.identify` | `WORKER -> ADAPTER` Report | Declares the Worker identity for a newly opened physical connection |
+| `worker.connection.identify` | `WORKER -> ADAPTER` Report | Declares the Server-issued `workerId` for a newly opened physical connection; payload is `null` |
 | `worker.connection.close` | `ADAPTER -> WORKER` Command | Ends the current Worker run without producing a Delivery Report |
 
 Their DTO and direction contracts are owned by the

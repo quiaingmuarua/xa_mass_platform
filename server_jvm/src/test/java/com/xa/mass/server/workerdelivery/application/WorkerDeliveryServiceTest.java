@@ -37,6 +37,7 @@ class WorkerDeliveryServiceTest {
     private WorkerResultRuntime resultRuntime;
     private WorkerBindingService bindings;
     private DirectCallService directCalls;
+    private WorkerChangeReportIngress workerChanges;
     private WorkerDeliveryService service;
 
     @BeforeEach
@@ -45,6 +46,7 @@ class WorkerDeliveryServiceTest {
         resultRuntime = mock(WorkerResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
         directCalls = mock(DirectCallService.class);
+        workerChanges = mock(WorkerChangeReportIngress.class);
         when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
                 .thenReturn(List.of());
         when(directCalls.completeReports(anyString(), anyList()))
@@ -57,7 +59,8 @@ class WorkerDeliveryServiceTest {
                 commandRuntime,
                 resultRuntime,
                 bindings,
-                directCalls
+                directCalls,
+                workerChanges
         );
     }
 
@@ -329,6 +332,70 @@ class WorkerDeliveryServiceTest {
         assertThat(counts.acceptedCount()).isEqualTo(1);
         assertThat(counts.rejectedCount()).isEqualTo(1);
         verify(resultRuntime).appendWorkerResults(List.of(success));
+    }
+
+    @Test
+    void adapterBatchRoutesTaskDirectCallAndWorkerChangeToTheirOwners() {
+        DeliveryReport task = result(COMMAND_ID, "200");
+        DeliveryReport direct = DeliveryReport.create(
+                DeliveryEndpoint.WORKER,
+                "worker-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.worker.probe",
+                "200",
+                "{}",
+                "direct-call:v1:test"
+        );
+        DeliveryReport change = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-availability.changed",
+                "200",
+                "{\"workerId\":\"worker-1\","
+                        + "\"available\":true}",
+                "worker-change:v1"
+        );
+        DeliveryReport unknownSystem = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.unknown",
+                "200",
+                "{}",
+                "unknown"
+        );
+        when(resultRuntime.appendWorkerResults(List.of(task))).thenReturn(1);
+        when(directCalls.completeReports("endpoint-1", List.of(direct)))
+                .thenReturn(new DirectCallService.ResultAppendCounts(1, 0));
+        when(workerChanges.append("endpoint-1", List.of(change)))
+                .thenReturn(new WorkerChangeReportIngress.AppendCounts(1, 0));
+
+        var counts = service.appendAdapterResults(
+                "endpoint-1",
+                List.of(
+                        codec.encodeDeliveryReport(task),
+                        codec.encodeDeliveryReport(direct),
+                        codec.encodeDeliveryReport(change),
+                        codec.encodeDeliveryReport(unknownSystem)
+                )
+        );
+
+        assertThat(counts.acceptedCount()).isEqualTo(3);
+        assertThat(counts.rejectedCount()).isEqualTo(1);
+        verify(resultRuntime).appendWorkerResults(List.of(task));
+        verify(directCalls).completeReports("endpoint-1", List.of(direct));
+        verify(workerChanges).append("endpoint-1", List.of(change));
+    }
+
+    @Test
+    void routeVerificationUsesCurrentBindingOnly() {
+        service.verifyWorkerRoute("endpoint-1", "worker-1");
+
+        verify(bindings).requireCurrentEndpoint(
+                "endpoint-1",
+                "worker-1"
+        );
     }
 
     @Test

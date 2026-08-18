@@ -2,6 +2,8 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
@@ -17,6 +19,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServ
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.WorkerRouteRemoteApi;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -28,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
 
 /**
@@ -39,11 +43,18 @@ import java.util.concurrent.CompletionException;
  */
 public final class WorkerConnectionMechanism {
 
+    private static final Set<String> PROPERTIES_PAYLOAD_FIELDS = Set.of(
+            "properties"
+    );
+    private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
+            "platform.worker.properties.snapshot";
+
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionMechanism.class.getName()
     );
 
     private final WorkerRouteRegistry routes;
+    private final WorkerObservationCache observations;
     private final NettyWorkerServer networkServer;
     private final WorkerRouteRemoteApi routeRemoteApi;
     private final WorkerDeliveryCodec codec;
@@ -58,9 +69,11 @@ public final class WorkerConnectionMechanism {
             WorkerDeliveryCodec codec,
             DeliveryReportProcess reportProcess,
             String adapterId,
-            Duration sendTimeLimit
+            Duration sendTimeLimit,
+            Duration observationFreshness
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
+        observations = new WorkerObservationCache(observationFreshness);
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"
@@ -108,12 +121,12 @@ public final class WorkerConnectionMechanism {
     }
 
     void channelInactive(Channel channel) {
-        routes.onChannelClosed(channel);
+        reportUnavailable(routes.onChannelClosed(channel));
     }
 
     void channelFailed(Channel channel, Throwable failure) {
         Objects.requireNonNull(failure, "failure");
-        routes.onChannelClosed(channel);
+        reportUnavailable(routes.onChannelClosed(channel));
         networkServer.closeConnection(
                 channel,
                 AdapterConnectionCloseReason.TRANSPORT_ERROR
@@ -169,12 +182,43 @@ public final class WorkerConnectionMechanism {
         return routes.connectionStates(workerIds);
     }
 
+    public Map<String, WorkerObservationSnapshot> workerObservations(
+            List<String> workerIds
+    ) {
+        Map<String, WorkerObservationSnapshot> snapshots =
+                new LinkedHashMap<>();
+        routes.connectionStates(workerIds).forEach(
+                (workerId, connectionState) -> {
+                    WorkerObservationCache.PropertiesObservation properties =
+                            observations.observation(workerId);
+                    snapshots.put(
+                            workerId,
+                            properties == null
+                                    ? new WorkerObservationSnapshot(
+                                    connectionState,
+                                    WorkerObservationSnapshot
+                                            .PropertiesFreshness.UNKNOWN,
+                                    null,
+                                    null,
+                                    null
+                            )
+                                    : new WorkerObservationSnapshot(
+                                    connectionState,
+                                    properties.freshness(),
+                                    properties.version(),
+                                    properties.observedAtMillis(),
+                                    properties.properties()
+                            )
+                    );
+                }
+        );
+        return Collections.unmodifiableMap(snapshots);
+    }
+
     public Map<String, CloseCurrentOutcome> closeCurrentConnections(
             List<String> workerIds
     ) {
-        Map<String, Channel> detached = routes.detachActiveChannels(
-                workerIds
-        );
+        Map<String, Channel> detached = routes.detachActiveChannels(workerIds);
         List<String> requiredWorkerIds = List.copyOf(workerIds);
         Map<String, CloseCurrentOutcome> outcomes = new LinkedHashMap<>();
         for (String workerId : requiredWorkerIds) {
@@ -183,6 +227,7 @@ public final class WorkerConnectionMechanism {
                 outcomes.put(workerId, CloseCurrentOutcome.NOT_CONNECTED);
                 continue;
             }
+            reportAvailability(workerId, false);
             boolean active = channel.isActive();
             networkServer.closeConnection(
                     channel,
@@ -200,6 +245,7 @@ public final class WorkerConnectionMechanism {
 
     public void clear() {
         routes.clear();
+        observations.clear();
     }
 
     private void receiveIdentity(
@@ -241,9 +287,12 @@ public final class WorkerConnectionMechanism {
                     channel,
                     AdapterConnectionCloseReason.VERIFICATION_IN_PROGRESS
             );
-            case VERIFIED_ACTIVATED -> closeReplaced(
-                    admission.replacedChannel()
-            );
+            case VERIFIED_ACTIVATED -> {
+                if (admission.becameAvailable()) {
+                    reportAvailability(workerId, true);
+                }
+                closeReplaced(admission.replacedChannel());
+            }
             case VERIFICATION_CLAIMED -> verifyRoute(
                     context,
                     workerId
@@ -305,6 +354,7 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
+        reportAvailability(workerId, true);
     }
 
     private void receiveBoundReport(
@@ -342,6 +392,7 @@ public final class WorkerConnectionMechanism {
             logDrop("dropWorkerOutcome", report);
             return;
         }
+        observePropertiesResult(context.channel(), report);
         boolean taskReport = report.dst() == TASK;
         switch (reportProcess.ingress(List.of(encodedReport))) {
             case ACCEPTED -> {
@@ -368,6 +419,44 @@ public final class WorkerConnectionMechanism {
                     logDrop("dropControlResultBufferClosed", report);
                 }
             }
+        }
+    }
+
+    void observePropertiesResult(
+            Channel currentChannel,
+            DeliveryReport report
+    ) {
+        Objects.requireNonNull(currentChannel, "currentChannel");
+        Objects.requireNonNull(report, "report");
+        if (!WORKER_PROPERTIES_SNAPSHOT_EVENT.equals(report.messageType())
+                || !"200".equals(report.outcomeCode())) {
+            return;
+        }
+        String workerId = report.sourceId();
+        if (!routes.isCurrentConnected(workerId, currentChannel)) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = Jsons.parseObject(report.payload());
+            Object rawProperties = payload.get("properties");
+            if (!payload.keySet().equals(PROPERTIES_PAYLOAD_FIELDS)
+                    || !(rawProperties instanceof Map<?, ?> values)) {
+                return;
+            }
+            Map<String, Object> properties = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : values.entrySet()) {
+                if (!(entry.getKey() instanceof String key)) {
+                    return;
+                }
+                properties.put(key, entry.getValue());
+            }
+            WorkerObservationCache.ObservationWrite write =
+                    observations.observe(workerId, properties);
+            if (!routes.isCurrentConnected(workerId, currentChannel)) {
+                observations.rollback(write);
+            }
+        } catch (RuntimeException ignored) {
+            // The original valid DeliveryReport still follows Result ingress.
         }
     }
 
@@ -410,7 +499,9 @@ public final class WorkerConnectionMechanism {
             Channel channel,
             AdapterConnectionCloseReason reason
     ) {
-        routes.deactivate(workerId, channel);
+        if (routes.deactivate(workerId, channel)) {
+            reportAvailability(workerId, false);
+        }
         networkServer.closeConnection(channel, reason);
     }
 
@@ -418,7 +509,7 @@ public final class WorkerConnectionMechanism {
             Channel channel,
             AdapterConnectionCloseReason reason
     ) {
-        routes.onChannelClosed(channel);
+        reportUnavailable(routes.onChannelClosed(channel));
         networkServer.closeConnection(channel, reason);
     }
 
@@ -448,8 +539,63 @@ public final class WorkerConnectionMechanism {
                 report.messageType()
         )
                 && "200".equals(report.outcomeCode())
-                && report.forward().isEmpty()
-                && "null".equals(report.payload());
+                && "null".equals(report.payload())
+                && report.forward().isEmpty();
+    }
+
+    private void reportUnavailable(String workerId) {
+        if (workerId != null) {
+            reportAvailability(workerId, false);
+        }
+    }
+
+    private void reportAvailability(
+            String workerId,
+            boolean available
+    ) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("workerId", workerId);
+            payload.put("available", available);
+            DeliveryReport report = DeliveryReport.create(
+                    ADAPTER,
+                    adapterId,
+                    SYSTEM,
+                    ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME,
+                    "200",
+                    Jsons.toJson(payload),
+                    WORKER_CHANGE_RESULT_FORWARD
+            );
+            DeliveryReportProcess.ReportIngressStatus status =
+                    reportProcess.ingress(List.of(
+                            codec.encodeDeliveryReport(report)
+                    ));
+            if (status != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
+                LOGGER.log(
+                        System.Logger.Level.WARNING,
+                        "errorCode={0} operation={1} adapterId={2} "
+                                + "workerId={3} ingressStatus={4}",
+                        WorkerDeliveryAdapterErrorCode
+                                .WORKER_MESSAGE_INVALID.code(),
+                        "netty.reportWorkerAvailability",
+                        adapterId,
+                        workerId,
+                        status
+                );
+            }
+        } catch (RuntimeException error) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "errorCode={0} operation={1} adapterId={2} "
+                            + "workerId={3} failureType={4}",
+                    WorkerDeliveryAdapterErrorCode.WORKER_MESSAGE_INVALID
+                            .code(),
+                    "netty.reportWorkerAvailability",
+                    adapterId,
+                    workerId,
+                    error.getClass().getName()
+            );
+        }
     }
 
     private static boolean isDefiniteRouteRejection(Throwable failure) {

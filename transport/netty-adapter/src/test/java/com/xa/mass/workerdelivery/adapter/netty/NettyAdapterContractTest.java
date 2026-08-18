@@ -1,8 +1,11 @@
 package com.xa.mass.workerdelivery.adapter.netty;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,12 +90,10 @@ class NettyAdapterContractTest {
             String encodedReport = codec.encodeDeliveryReport(report);
             worker.send(encodedReport);
 
-            assertThat(remoteApi.resultAppended.await(
-                    WAIT.toMillis(),
-                    TimeUnit.MILLISECONDS
-            )).isTrue();
-            assertThat(remoteApi.appendedResults)
-                    .containsExactly(List.of(encodedReport));
+            awaitResult(remoteApi, encodedReport);
+            assertThat(remoteApi.appendedResults.stream()
+                    .flatMap(List::stream))
+                    .contains(encodedReport);
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
         } finally {
@@ -134,6 +135,101 @@ class NettyAdapterContractTest {
             assertThat(remoteApi.verificationCount).hasValue(1);
             assertThat(remoteApi.verifiedWorkerIds)
                     .containsExactly(WORKER_ID);
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Protocol.class)
+    void adapterShutdownReportsTheCurrentRouteUnavailable(
+            Protocol protocol
+    ) throws Exception {
+        TestRemoteApi remoteApi = new TestRemoteApi();
+        int port = availablePort();
+        WorkerDeliveryAdapter adapter = adapter(protocol, port, remoteApi);
+        adapter.start();
+
+        try (WorkerPeer worker = connect(protocol, port)) {
+            worker.send(identity());
+            awaitAvailability(remoteApi, protocol.adapterId, true);
+
+            adapter.close();
+
+            assertThat(worker.awaitClosed()).isTrue();
+            awaitAvailability(remoteApi, protocol.adapterId, false);
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(Protocol.class)
+    void propertiesObservationSurvivesPhysicalReconnect(
+            Protocol protocol
+    ) throws Exception {
+        TestRemoteApi remoteApi = new TestRemoteApi();
+        int port = availablePort();
+        WorkerDeliveryAdapter adapter = adapter(protocol, port, remoteApi);
+        adapter.start();
+
+        try {
+            try (WorkerPeer first = connect(protocol, port)) {
+                first.send(identity());
+                awaitAvailability(remoteApi, protocol.adapterId, true);
+                first.send(codec.encodeDeliveryReport(DeliveryReport.create(
+                        WORKER,
+                        WORKER_ID,
+                        SYSTEM,
+                        "platform.worker.properties.snapshot",
+                        "200",
+                        "{\"properties\":{\"battery\":87}}",
+                        "direct-call:v1:properties"
+                )));
+                awaitReport(remoteApi, "direct-call:v1:properties");
+            }
+            awaitAvailability(remoteApi, protocol.adapterId, false);
+            remoteApi.appendedResults.clear();
+
+            try (WorkerPeer reconnect = connect(protocol, port)) {
+                reconnect.send(identity());
+                awaitAvailability(remoteApi, protocol.adapterId, true);
+                DeliveryCommand snapshot = DeliveryCommand.create(
+                        SYSTEM,
+                        ADAPTER,
+                        "platform.adapter.worker-observations.snapshot",
+                        System.currentTimeMillis() + 60_000,
+                        Jsons.toJson(Map.of(
+                                "workerIds",
+                                List.of(WORKER_ID)
+                        )),
+                        "direct-call:v1:observations"
+                );
+                remoteApi.commandBatches.add(Map.of("opaque-1", snapshot));
+
+                DeliveryReport result = awaitReport(
+                        remoteApi,
+                        "direct-call:v1:observations"
+                );
+                assertThat(result.outcomeCode()).isEqualTo("200");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> observations =
+                        (Map<String, Object>) Jsons.parseObject(
+                                result.payload()
+                        ).get("observationsByWorkerId");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> worker = (Map<String, Object>)
+                        observations.get(WORKER_ID);
+                assertThat(worker)
+                        .containsEntry("connectionState", "CONNECTED")
+                        .containsEntry("propertiesFreshness", "FRESH")
+                        .doesNotContainKey("workerGroupId");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> properties = (Map<String, Object>)
+                        worker.get("properties");
+                assertThat(properties).containsEntry("battery", 87L);
+            }
+            assertThat(remoteApi.verificationCount).hasValue(1);
         } finally {
             adapter.close();
         }
@@ -197,6 +293,7 @@ class NettyAdapterContractTest {
                     "127.0.0.1",
                     port,
                     processes,
+                    Duration.ofMinutes(5),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(1)
             );
@@ -207,6 +304,7 @@ class NettyAdapterContractTest {
                     "127.0.0.1",
                     port,
                     processes,
+                    Duration.ofMinutes(5),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(1)
             );
@@ -233,6 +331,91 @@ class NettyAdapterContractTest {
                 "null",
                 ""
         ));
+    }
+
+    private static void awaitResult(
+            TestRemoteApi remoteApi,
+            String expected
+    ) {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (remoteApi.appendedResults.stream()
+                    .flatMap(List::stream)
+                    .anyMatch(expected::equals)) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("Expected DeliveryReport was not appended");
+    }
+
+    private DeliveryReport awaitReport(
+            TestRemoteApi remoteApi,
+            String forward
+    ) {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (System.nanoTime() < deadline) {
+            DeliveryReport found = remoteApi.appendedResults.stream()
+                    .flatMap(List::stream)
+                    .map(codec::decodeDeliveryReport)
+                    .filter(report -> forward.equals(report.forward()))
+                    .findFirst()
+                    .orElse(null);
+            if (found != null) {
+                return found;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError(
+                "Expected DeliveryReport forward=" + forward
+        );
+    }
+
+    private void awaitAvailability(
+            TestRemoteApi remoteApi,
+            String adapterId,
+            boolean expectedAvailable
+    ) {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (System.nanoTime() < deadline) {
+            boolean observed = remoteApi.appendedResults.stream()
+                    .flatMap(List::stream)
+                    .map(codec::decodeDeliveryReport)
+                    .anyMatch(report -> isAvailability(
+                            report,
+                            adapterId,
+                            expectedAvailable
+                    ));
+            if (observed) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError(
+                "Expected Worker availability=" + expectedAvailable
+        );
+    }
+
+    private static boolean isAvailability(
+            DeliveryReport report,
+            String adapterId,
+            boolean expectedAvailable
+    ) {
+        if (report.src() != ADAPTER
+                || !adapterId.equals(report.sourceId())
+                || report.dst() != SYSTEM
+                || !ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME.equals(
+                report.messageType()
+        )
+                || !"200".equals(report.outcomeCode())
+                || !WORKER_CHANGE_RESULT_FORWARD.equals(report.forward())) {
+            return false;
+        }
+        Map<String, Object> payload = Jsons.parseObject(report.payload());
+        return WORKER_ID.equals(payload.get("workerId"))
+                && Boolean.valueOf(expectedAvailable).equals(
+                payload.get("available")
+        );
     }
 
     private static DeliveryCommand taskCommand(String marker) {
@@ -441,7 +624,6 @@ class NettyAdapterContractTest {
         private final List<String> verifiedWorkerIds =
                 new CopyOnWriteArrayList<>();
         private final AtomicInteger verificationCount = new AtomicInteger();
-        private final CountDownLatch resultAppended = new CountDownLatch(1);
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
@@ -461,7 +643,6 @@ class NettyAdapterContractTest {
                         request.body()
                 ).get("results");
                 appendedResults.add(List.copyOf(results));
-                resultAppended.countDown();
                 return new Response(202, Jsons.toJson(Map.of(
                         "acceptedCount",
                         results.size(),

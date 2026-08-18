@@ -5,6 +5,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerObservationSnapshot;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -32,6 +33,8 @@ public final class AdapterControlExecutor {
             "platform.adapter.worker-connections.snapshot";
     static final String CLOSE_CURRENT_EVENT =
             "platform.adapter.worker-connections.close-current";
+    static final String WORKER_OBSERVATIONS_SNAPSHOT_EVENT =
+            "platform.adapter.worker-observations.snapshot";
     static final String EVENTS_SNAPSHOT_EVENT =
             "platform.adapter.events.snapshot";
 
@@ -72,6 +75,18 @@ public final class AdapterControlExecutor {
                             outcome.wireValue()
                     ));
             return Jsons.toJson(Map.of("outcomeByWorkerId", encoded));
+        });
+        handlers.put(WORKER_OBSERVATIONS_SNAPSHOT_EVENT, payload -> {
+            Map<String, Object> encoded = new LinkedHashMap<>();
+            connections.workerObservations(parseWorkerIds(payload))
+                    .forEach((workerId, observation) -> encoded.put(
+                            workerId,
+                            encodeObservation(observation)
+                    ));
+            return Jsons.toJson(Map.of(
+                    "observationsByWorkerId",
+                    encoded
+            ));
         });
         return new AdapterControlExecutor(adapterId, handlers);
     }
@@ -242,6 +257,36 @@ public final class AdapterControlExecutor {
             workerIds.add(workerId);
         }
         return List.copyOf(workerIds);
+    }
+
+    private static Map<String, Object> encodeObservation(
+            WorkerObservationSnapshot observation
+    ) {
+        Map<String, Object> encoded = new LinkedHashMap<>();
+        encoded.put(
+                "connectionState",
+                observation.connectionState().name()
+        );
+        encoded.put(
+                "propertiesFreshness",
+                observation.propertiesFreshness().name()
+        );
+        WorkerObservationSnapshot.PropertiesVersion version =
+                observation.propertiesVersion();
+        if (version == null) {
+            encoded.put("propertiesVersion", null);
+        } else {
+            Map<String, Object> encodedVersion = new LinkedHashMap<>();
+            encodedVersion.put("adapterEpoch", version.adapterEpoch());
+            encodedVersion.put("revision", version.revision());
+            encoded.put("propertiesVersion", encodedVersion);
+        }
+        encoded.put(
+                "propertiesObservedAtMillis",
+                observation.propertiesObservedAtMillis()
+        );
+        encoded.put("properties", observation.properties());
+        return encoded;
     }
 
     @FunctionalInterface

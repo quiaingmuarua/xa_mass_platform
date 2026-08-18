@@ -229,6 +229,31 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             )
         return result
 
+    def get_worker_group_ids(
+        self,
+        *,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, WorkerGroupId | None]:
+        if len(worker_ids) > self.MAX_WORKER_GROUP_LOOKUP_LIMIT:
+            raise ValueError(
+                "workerIds must contain at most "
+                f"{self.MAX_WORKER_GROUP_LOOKUP_LIMIT} entries"
+            )
+        if any(not _valid_id(worker_id) for worker_id in worker_ids):
+            raise ValueError("workerIds must contain only non-empty strings")
+        if not worker_ids:
+            return {}
+
+        owner_rows = self.redis.hmget(
+            _worker_id_owners_key(self.prefix),
+            list(worker_ids),
+        )
+        result: dict[WorkerId, WorkerGroupId | None] = {}
+        for worker_id, raw_owner in zip(worker_ids, owner_rows, strict=True):
+            owner = self._decode_optional_text(raw_owner)
+            result[worker_id] = owner if _valid_id(owner) else None
+        return result
+
     def sample_worker_descriptors(
         self,
         *,

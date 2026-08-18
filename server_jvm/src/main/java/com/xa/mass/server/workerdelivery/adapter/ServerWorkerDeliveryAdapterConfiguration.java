@@ -30,6 +30,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "listen-host",
             "listen-port",
             "processes",
+            "observation-freshness",
             "send-time-limit"
     );
     private static final Set<String> COMMAND_PROCESS_FIELDS = Set.of(
@@ -112,6 +113,12 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 Duration.ofSeconds(5),
                 adapterId
         );
+        Duration observationFreshness = optionalDuration(
+                object,
+                "observation-freshness",
+                Duration.ofMinutes(5),
+                adapterId
+        );
         return switch (type) {
             case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
@@ -120,6 +127,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     processConfigs,
+                    observationFreshness,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );
@@ -130,6 +138,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     processConfigs,
+                    observationFreshness,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );

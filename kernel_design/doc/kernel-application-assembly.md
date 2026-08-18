@@ -410,12 +410,12 @@ Delivery has no outer message or correlation ID.
 
 The Worker host knows its WorkerGroup/client key for Register and Bind, then
 receives the platform-issued WorkerId and public endpoint URI. The Worker
-Transport knows only that WorkerId, endpoint URI, Worker Delivery contracts,
-and statically provided event definitions. It does not know an endpoint-manager
-ID or import Kernel owners. Polling, WebSocket, and Socket share one serial
+Transport knows the WorkerId, endpoint URI, Worker Delivery contracts, and
+statically provided event definitions. It does not know a WorkerGroup or an
+endpoint-manager ID or import Kernel owners. Polling, WebSocket, and Socket share one serial
 execution core; long-lived transports first send an Adapter-directed identity
-`DeliveryReport(src=WORKER, sourceId=workerId, payload="null")` before command
-exchange.
+`DeliveryReport(src=WORKER, sourceId=workerId,
+payload="null")` before command exchange.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
@@ -430,10 +430,13 @@ parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers Register and establish Endpoint Binding before connecting; the Bind
 control call carries the complete Worker Properties snapshot. The connection
-identity Report carries workerId in `sourceId`, and the Adapter asks Server to
-verify that the persisted route points to itself before activating the Channel
-without an ACK.
-KernelApplication does not own or expose connection facts.
+identity Report carries WorkerId in `sourceId` and exact `null` payload; the
+Adapter asks Server only whether that WorkerId's persisted
+Binding points to the receiving Endpoint Manager before activating the Channel
+without an ACK. Effective route changes return through the existing Adapter
+Result API into a Server-owned bounded inbox, where Server separately validates
+the Adapter source and current Binding. Kernel has no
+contract, provider, consumer or score policy for that evidence in this slice.
 
 The Python Runtime Server remains the Task scheduling command host and
 mechanism oracle. Java Worker resource ingress, TaskData, and Worker Delivery

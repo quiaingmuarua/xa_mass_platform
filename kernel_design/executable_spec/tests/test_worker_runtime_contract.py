@@ -58,6 +58,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             {
                 "get_worker_descriptors",
                 "get_worker_group_descriptors",
+                "get_worker_group_ids",
                 "patch_worker_platform_properties",
                 "sample_worker_descriptors",
                 "upsert_worker_group",
@@ -131,6 +132,14 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             set(
                 inspect.signature(
+                    WorkerResourceCatalog.get_worker_group_ids
+                ).parameters
+            ),
+            {"self", "worker_ids"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
                     WorkerResourceCatalog.patch_worker_platform_properties
                 ).parameters
             ),
@@ -146,6 +155,10 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         )
         self.assertEqual(
             WorkerResourceCatalog.MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT,
+            100,
+        )
+        self.assertEqual(
+            WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT,
             100,
         )
         self.assertEqual(

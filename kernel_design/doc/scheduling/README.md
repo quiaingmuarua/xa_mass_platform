@@ -163,8 +163,8 @@ Worker Delivery Dispatch
   and network ordering, while its `AdapterProcessManager` owns the fixed
   Command/Report Process set and its single scheduler; one
   shared connection mechanism plus route
-  Registry owns process-local verified/pending/active/correlation state,
-  identity, routing, and Result ingress; one complete WebSocket or line-Socket
+  Registry owns one process-local per-Worker route state and Channel-local
+  identity correlation, routing, and Result ingress; one complete WebSocket or line-Socket
   Server owns the listener, EventLoop, all physical child Channels, full
   Pipeline, framing, writes, and close behavior. Server only
   binds instance config and invokes lifecycle; neither path selects Workers
@@ -182,7 +182,7 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with process-local first-seen Worker route verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, and caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding and bounded route-change evidence inbox, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed first-seen route verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, and caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation | Kernel evidence consumer/score policy, authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
@@ -226,6 +226,7 @@ wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
 
 rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs
+
 ```
 
 These are current mechanism boundaries, not claims of unlimited throughput.

@@ -34,6 +34,7 @@ import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
@@ -82,6 +83,9 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(WorkerResultRuntime.class))
                 .isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerChangeInbox.class
+        )).isNotNull();
         assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class
         )).isNotNull();

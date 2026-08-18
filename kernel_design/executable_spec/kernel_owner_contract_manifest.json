@@ -39,7 +39,8 @@
       "TIME_SLOT_FACTOR": 100000000000
     },
     "WorkerResourceCatalog": {
-      "MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT": 100
+      "MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT": 100,
+      "MAX_WORKER_GROUP_LOOKUP_LIMIT": 100
     },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
@@ -125,6 +126,7 @@
     "WorkerResourceCatalog": [
         "get_worker_descriptors",
         "get_worker_group_descriptors",
+        "get_worker_group_ids",
         "patch_worker_platform_properties",
         "sample_worker_descriptors",
         "upsert_worker_group"

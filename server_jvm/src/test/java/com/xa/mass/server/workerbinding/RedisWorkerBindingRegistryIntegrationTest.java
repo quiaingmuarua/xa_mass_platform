@@ -1,5 +1,6 @@
 package com.xa.mass.server.workerbinding;
 
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 
@@ -13,7 +14,6 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -21,8 +21,6 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerBindingRegistryIntegrationTest {
 
-    private static final String REDIS_URL =
-            System.getenv("KERNEL_DESIGN_REDIS_URL");
     private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
     private String prefix;
@@ -32,10 +30,6 @@ class RedisWorkerBindingRegistryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        Assumptions.assumeTrue(
-                REDIS_URL != null && !REDIS_URL.isBlank(),
-                "KERNEL_DESIGN_REDIS_URL is not configured"
-        );
         prefix = "worker-binding-" + UUID.randomUUID();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);

@@ -168,6 +168,7 @@ class WorkerResourceCatalog(ABC):
     """
 
     MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100
+    MAX_WORKER_GROUP_LOOKUP_LIMIT = 100
 
     @abstractmethod
     def upsert_worker_group(
@@ -193,6 +194,15 @@ class WorkerResourceCatalog(ABC):
         worker_ids: Sequence[WorkerId],
     ) -> Mapping[WorkerId, WorkerDescriptor | None]:
         """Read one bounded worker batch inside one explicit worker group."""
+        pass
+
+    @abstractmethod
+    def get_worker_group_ids(
+        self,
+        *,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, WorkerGroupId | None]:
+        """Resolve immutable Group owners for one bounded explicit Worker set."""
         pass
 
     @abstractmethod

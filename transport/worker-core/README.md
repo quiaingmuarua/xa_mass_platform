@@ -137,8 +137,11 @@ replayed.
 
 On every physical connection open, Transport first sends
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
-`messageType=worker.connection.identify,payload="null",forward="")`. Identity
-has no message ID or correlation value. A failed identity send asks
+`messageType=worker.connection.identify,`
+`payload="null",forward="")`. `PreparedWorker` and the Transport factory carry
+only the prepared workerId and Endpoint; WorkerGroup remains a Register/Bind
+control-plane coordinate owned by Preparation. Identity has no message ID or
+correlation value. A failed identity send asks
 the Client to close the current physical connection and consume its normal
 reconnect budget. A non-expired `ADAPTER/worker.connection.close` Command is
 the only protocol event that directly ends the current run. It is consumed by

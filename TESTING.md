@@ -13,7 +13,7 @@ boundary named below.
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
+| Redis Owner | Java Redis providers plus Server-owned Identity, Binding and Worker Change inbox preserve their real Redis contracts, including bounded FIFO evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves an unpaused Worker DIRECT_CALL plus Adapter connection observe/close/reconnect through the unified APIs | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
@@ -28,15 +28,22 @@ result is not attributed to a particular Worker.
 
 ## Local Commands
 
-Set the real Redis location before running Redis-backed proofs:
+Server integration proofs use the checked `integration-test` profile:
+
+```text
+Python Kernel  http://127.0.0.1:18080
+Redis          redis://127.0.0.1:6379/15
+```
+
+The profile configures addresses but does not start either dependency. Strict
+proof tasks fail with the underlying connection error when a dependency is not
+running.
+
+The Python Kernel Oracle is a separate proof owner and still uses its explicit
+Redis test switch:
 
 ```powershell
 $env:KERNEL_DESIGN_REDIS_URL = "redis://127.0.0.1:6379/15"
-```
-
-Kernel Oracle:
-
-```powershell
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
 ```
@@ -61,10 +68,9 @@ Redis Owner:
 .\gradlew.bat :server_jvm:redisOwnerIntegrationTest
 ```
 
-Runtime Boundary additionally requires a healthy Python Kernel at `18080`:
+Runtime Boundary requires a healthy Python Kernel at `18080`:
 
 ```powershell
-$env:KERNEL_COMMAND_INTEGRATION_URL = "http://127.0.0.1:18080"
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
 

@@ -57,8 +57,7 @@ tasks.named('bootRun') {
 def registerStrictIntegrationTest = {
     String taskName,
     String descriptionText,
-    String tag,
-    List<String> requiredEnvironment ->
+    String tag ->
     tasks.register(taskName, Test) {
         description = descriptionText
         group = 'verification'
@@ -69,19 +68,6 @@ def registerStrictIntegrationTest = {
         }
         shouldRunAfter tasks.named('test')
         outputs.upToDateWhen { false }
-
-        doFirst {
-            requiredEnvironment.each { variableName ->
-                String value = System.getenv(variableName)
-                if (value == null || value.isBlank()) {
-                    throw new GradleException(
-                            taskName
-                                    + ' requires environment variable '
-                                    + variableName
-                    )
-                }
-            }
-        }
 
         afterSuite { descriptor, result ->
             if (descriptor.parent != null) {
@@ -107,16 +93,11 @@ def registerStrictIntegrationTest = {
 registerStrictIntegrationTest(
         'redisOwnerIntegrationTest',
         'Runs Server-owned and Kernel-owner Redis contract proofs.',
-        'redis-owner',
-        ['KERNEL_DESIGN_REDIS_URL']
+        'redis-owner'
 )
 
 registerStrictIntegrationTest(
         'runtimeBoundaryIntegrationTest',
         'Runs the Java Server boundary against Redis and the Python Kernel.',
-        'runtime-boundary',
-        [
-                'KERNEL_DESIGN_REDIS_URL',
-                'KERNEL_COMMAND_INTEGRATION_URL'
-        ]
+        'runtime-boundary'
 )

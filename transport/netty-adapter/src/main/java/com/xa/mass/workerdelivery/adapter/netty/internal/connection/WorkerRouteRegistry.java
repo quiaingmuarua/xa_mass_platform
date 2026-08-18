@@ -12,12 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * Process-local Worker route truth for one Adapter instance.
- *
- * <p>This owner performs only atomic route-state transitions. It never
- * writes to, closes, or otherwise operates on a physical Channel.
- */
+/** Process-local Worker route truth for one Adapter instance. */
 public final class WorkerRouteRegistry {
 
     private static final AttributeKey<String> IDENTIFIED_WORKER_ID =
@@ -29,18 +24,13 @@ public final class WorkerRouteRegistry {
     private final ConcurrentMap<String, RouteState> routesByWorkerId =
             new ConcurrentHashMap<>();
 
-    IdentityAdmission admitIdentity(
-            String workerId,
-            Channel channel
-    ) {
+    IdentityAdmission admitIdentity(String workerId, Channel channel) {
         String requiredWorkerId = requireWorkerId(workerId);
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
         while (true) {
             RouteState current = routesByWorkerId.get(requiredWorkerId);
             if (current == null) {
-                VerifyingRoute verifying = new VerifyingRoute(
-                        requiredChannel
-                );
+                VerifyingRoute verifying = new VerifyingRoute(requiredChannel);
                 if (routesByWorkerId.putIfAbsent(
                         requiredWorkerId,
                         verifying
@@ -50,13 +40,15 @@ public final class WorkerRouteRegistry {
                 identify(requiredChannel, requiredWorkerId);
                 return new IdentityAdmission(
                         IdentityAdmissionKind.VERIFICATION_CLAIMED,
-                        null
+                        null,
+                        false
                 );
             }
             if (current instanceof VerifyingRoute) {
                 return new IdentityAdmission(
                         IdentityAdmissionKind.VERIFICATION_BUSY,
-                        null
+                        null,
+                        false
                 );
             }
             if (current instanceof ConnectedRoute connected) {
@@ -76,7 +68,8 @@ public final class WorkerRouteRegistry {
                         distinctReplacement(
                                 connected.channel(),
                                 requiredChannel
-                        )
+                        ),
+                        false
                 );
             }
             if (current == DisconnectedRoute.INSTANCE) {
@@ -93,7 +86,8 @@ public final class WorkerRouteRegistry {
                 identify(requiredChannel, requiredWorkerId);
                 return new IdentityAdmission(
                         IdentityAdmissionKind.VERIFIED_ACTIVATED,
-                        null
+                        null,
+                        true
                 );
             }
         }
@@ -118,10 +112,7 @@ public final class WorkerRouteRegistry {
         }
         if (route instanceof ConnectedRoute
                 || route == DisconnectedRoute.INSTANCE) {
-            return new InboundInspection(
-                    InboundKind.VERIFIED,
-                    workerId
-            );
+            return new InboundInspection(InboundKind.VERIFIED, workerId);
         }
         return new InboundInspection(InboundKind.INVALID, workerId);
     }
@@ -184,6 +175,17 @@ public final class WorkerRouteRegistry {
                 : null;
     }
 
+    boolean isCurrentConnected(String workerId, Channel expectedChannel) {
+        String requiredWorkerId = requireWorkerId(workerId);
+        Channel requiredChannel = Objects.requireNonNull(
+                expectedChannel,
+                "expectedChannel"
+        );
+        RouteState route = routesByWorkerId.get(requiredWorkerId);
+        return route instanceof ConnectedRoute connected
+                && connected.channel() == requiredChannel;
+    }
+
     Map<String, WorkerConnectionState> connectionStates(
             List<String> workerIds
     ) {
@@ -198,9 +200,7 @@ public final class WorkerRouteRegistry {
         return Collections.unmodifiableMap(states);
     }
 
-    Map<String, Channel> detachActiveChannels(
-            List<String> workerIds
-    ) {
+    Map<String, Channel> detachActiveChannels(List<String> workerIds) {
         List<String> requiredWorkerIds = requireWorkerIds(workerIds);
         Map<String, Channel> detached = new LinkedHashMap<>();
         for (String workerId : requiredWorkerIds) {
@@ -246,12 +246,12 @@ public final class WorkerRouteRegistry {
         }
     }
 
-    void onChannelClosed(Channel channel) {
+    String onChannelClosed(Channel channel) {
         Channel requiredChannel = Objects.requireNonNull(channel, "channel");
         String workerId = requiredChannel.attr(IDENTIFIED_WORKER_ID)
                 .getAndSet(null);
         if (workerId == null) {
-            return;
+            return null;
         }
         while (true) {
             RouteState route = routesByWorkerId.get(workerId);
@@ -260,7 +260,7 @@ public final class WorkerRouteRegistry {
                 if (!routesByWorkerId.remove(workerId, route)) {
                     continue;
                 }
-                return;
+                return null;
             }
             if (route instanceof ConnectedRoute connected
                     && connected.channel() == requiredChannel) {
@@ -271,9 +271,9 @@ public final class WorkerRouteRegistry {
                 )) {
                     continue;
                 }
-                return;
+                return workerId;
             }
-            return;
+            return null;
         }
     }
 
@@ -346,7 +346,8 @@ public final class WorkerRouteRegistry {
 
     record IdentityAdmission(
             IdentityAdmissionKind kind,
-            Channel replacedChannel
+            Channel replacedChannel,
+            boolean becameAvailable
     ) {
 
         IdentityAdmission {

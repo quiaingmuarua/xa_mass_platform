@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class WorkerRouteRegistryTest {
 
     @Test
-    void identityAdmissionOwnsFirstVerificationAsOneAtomicOperation() {
+    void firstIdentityOwnsOneVerificationClaim() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
@@ -30,6 +30,7 @@ class WorkerRouteRegistryTest {
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFICATION_CLAIMED
             );
+            assertThat(claimed.becameAvailable()).isFalse();
             assertThat(busy.kind()).isEqualTo(
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFICATION_BUSY
@@ -47,8 +48,7 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void concurrentFirstIdentityHasOneClaimAndOneBusyChannel()
-            throws Exception {
+    void concurrentFirstIdentityStillHasOneClaim() throws Exception {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
@@ -67,30 +67,14 @@ class WorkerRouteRegistryTest {
                     });
 
             start.countDown();
-            var firstAdmission = firstResult.get(5, TimeUnit.SECONDS);
-            var secondAdmission = secondResult.get(5, TimeUnit.SECONDS);
-
             assertThat(List.of(
-                    firstAdmission.kind(),
-                    secondAdmission.kind()
+                    firstResult.get(5, TimeUnit.SECONDS).kind(),
+                    secondResult.get(5, TimeUnit.SECONDS).kind()
             )).containsExactlyInAnyOrder(
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFICATION_CLAIMED,
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFICATION_BUSY
-            );
-
-            EmbeddedChannel claimed = firstAdmission.kind()
-                    == WorkerRouteRegistry.IdentityAdmissionKind
-                    .VERIFICATION_CLAIMED
-                    ? first
-                    : second;
-            EmbeddedChannel busy = claimed == first ? second : first;
-            assertThat(registry.inspectInbound(claimed).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.VERIFICATION_PENDING
-            );
-            assertThat(registry.inspectInbound(busy).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
             );
         } finally {
             executor.shutdownNow();
@@ -100,33 +84,55 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void verifiedReconnectReplacesActiveWithoutLosingOldCorrelation() {
+    void firstVerificationInstallsTheCurrentWorkerRoute() {
+        WorkerRouteRegistry registry = new WorkerRouteRegistry();
+        EmbeddedChannel channel = new EmbeddedChannel();
+        try {
+            assertThat(registry.admitIdentity("worker-1", channel).kind())
+                    .isEqualTo(
+                            WorkerRouteRegistry.IdentityAdmissionKind
+                                    .VERIFICATION_CLAIMED
+                    );
+            assertThat(registry.completeVerificationAndActivate(
+                    "worker-1",
+                    channel
+            )).isTrue();
+
+            assertThat(registry.activeChannel("worker-1")).isSameAs(channel);
+            assertThat(registry.isCurrentConnected("worker-1", channel))
+                    .isTrue();
+            assertThat(registry.inspectInbound(channel).kind()).isEqualTo(
+                    WorkerRouteRegistry.InboundKind.VERIFIED
+            );
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void connectedReplacementDoesNotCreateAnAvailabilityTransition() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel replacement = new EmbeddedChannel();
         try {
             verifyAndActivate(registry, "worker-1", first);
 
-            var reconnect = registry.admitIdentity(
+            var admission = registry.admitIdentity(
                     "worker-1",
                     replacement
             );
 
-            assertThat(reconnect.kind()).isEqualTo(
+            assertThat(admission.kind()).isEqualTo(
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFIED_ACTIVATED
             );
-            assertThat(reconnect.replacedChannel()).isSameAs(first);
+            assertThat(admission.replacedChannel()).isSameAs(first);
+            assertThat(admission.becameAvailable()).isFalse();
+            assertThat(registry.onChannelClosed(first)).isNull();
             assertThat(registry.activeChannel("worker-1"))
                     .isSameAs(replacement);
-            assertThat(registry.inspectInbound(first).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.VERIFIED
-            );
-
-            registry.onChannelClosed(first);
-
-            assertThat(registry.activeChannel("worker-1"))
-                    .isSameAs(replacement);
+            assertThat(registry.isCurrentConnected("worker-1", first))
+                    .isFalse();
         } finally {
             first.finishAndReleaseAll();
             replacement.finishAndReleaseAll();
@@ -134,62 +140,15 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void reconnectAndOldInactiveConvergeOnReplacement() throws Exception {
-        WorkerRouteRegistry registry = new WorkerRouteRegistry();
-        EmbeddedChannel first = new EmbeddedChannel();
-        EmbeddedChannel replacement = new EmbeddedChannel();
-        CountDownLatch start = new CountDownLatch(1);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            verifyAndActivate(registry, "worker-1", first);
-            Future<WorkerRouteRegistry.IdentityAdmission> reconnect =
-                    executor.submit(() -> {
-                        start.await();
-                        return registry.admitIdentity(
-                                "worker-1",
-                                replacement
-                        );
-                    });
-            Future<?> inactive = executor.submit(() -> {
-                start.await();
-                registry.onChannelClosed(first);
-                return null;
-            });
-
-            start.countDown();
-            assertThat(reconnect.get(5, TimeUnit.SECONDS).kind()).isEqualTo(
-                    WorkerRouteRegistry.IdentityAdmissionKind
-                            .VERIFIED_ACTIVATED
-            );
-            inactive.get(5, TimeUnit.SECONDS);
-
-            assertThat(registry.activeChannel("worker-1"))
-                    .isSameAs(replacement);
-            assertThat(registry.connectionStates(List.of("worker-1")))
-                    .containsExactly(Map.entry(
-                            "worker-1",
-                            WorkerConnectionState.CONNECTED
-                    ));
-        } finally {
-            executor.shutdownNow();
-            first.finishAndReleaseAll();
-            replacement.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void ordinaryDisconnectPreservesVerificationForFastReconnect() {
+    void disconnectAndReconnectExposeExactAvailabilityTransitions() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel reconnect = new EmbeddedChannel();
         try {
             verifyAndActivate(registry, "worker-1", first);
-            registry.onChannelClosed(first);
 
-            assertThat(registry.activeChannel("worker-1")).isNull();
-            assertThat(registry.inspectInbound(first).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
-            );
+            assertThat(registry.onChannelClosed(first)).isEqualTo("worker-1");
+            assertThat(registry.onChannelClosed(first)).isNull();
             assertThat(registry.connectionStates(List.of("worker-1")))
                     .containsExactly(Map.entry(
                             "worker-1",
@@ -201,6 +160,7 @@ class WorkerRouteRegistryTest {
                     WorkerRouteRegistry.IdentityAdmissionKind
                             .VERIFIED_ACTIVATED
             );
+            assertThat(admission.becameAvailable()).isTrue();
             assertThat(registry.activeChannel("worker-1"))
                     .isSameAs(reconnect);
         } finally {
@@ -210,45 +170,67 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void connectionSnapshotDerivesAllStatesWithoutCreatingRoutes() {
+    void detachAndDeactivateOnlyTransitionTheExactCurrentChannel() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
-        EmbeddedChannel active = new EmbeddedChannel();
-        EmbeddedChannel verifying = new EmbeddedChannel();
-        EmbeddedChannel inactive = new EmbeddedChannel();
-        EmbeddedChannel unknown = new EmbeddedChannel();
+        EmbeddedChannel first = new EmbeddedChannel();
+        EmbeddedChannel second = new EmbeddedChannel();
         try {
-            verifyAndActivate(registry, "active", active);
-            registry.admitIdentity("verifying", verifying);
-            verifyAndActivate(registry, "inactive", inactive);
-            inactive.close();
+            verifyAndActivate(registry, "worker-1", first);
+            verifyAndActivate(registry, "worker-2", second);
 
+            assertThat(registry.detachActiveChannels(List.of(
+                    "worker-1",
+                    "missing"
+            ))).containsExactly(Map.entry("worker-1", first));
+            assertThat(registry.deactivate("worker-2", first)).isFalse();
+            assertThat(registry.deactivate("worker-2", second)).isTrue();
+            assertThat(registry.deactivate("worker-2", second)).isFalse();
             assertThat(registry.connectionStates(List.of(
-                    "active",
-                    "verifying",
-                    "inactive",
-                    "unknown"
+                    "worker-1",
+                    "worker-2"
             ))).containsExactly(
-                    Map.entry("active", WorkerConnectionState.CONNECTED),
-                    Map.entry("verifying", WorkerConnectionState.VERIFYING),
-                    Map.entry("inactive", WorkerConnectionState.DISCONNECTED),
-                    Map.entry("unknown", WorkerConnectionState.UNKNOWN)
+                    Map.entry(
+                            "worker-1",
+                            WorkerConnectionState.DISCONNECTED
+                    ),
+                    Map.entry(
+                            "worker-2",
+                            WorkerConnectionState.DISCONNECTED
+                    )
             );
-
-            assertThat(registry.admitIdentity("unknown", unknown).kind())
-                    .isEqualTo(
-                            WorkerRouteRegistry.IdentityAdmissionKind
-                                    .VERIFICATION_CLAIMED
-                    );
         } finally {
-            active.finishAndReleaseAll();
-            verifying.finishAndReleaseAll();
-            inactive.finishAndReleaseAll();
-            unknown.finishAndReleaseAll();
+            first.finishAndReleaseAll();
+            second.finishAndReleaseAll();
         }
     }
 
     @Test
-    void connectionSnapshotRequiresOneToOneHundredUniqueWorkerIds() {
+    void connectionSnapshotDoesNotCreateRouteTruth() {
+        WorkerRouteRegistry registry = new WorkerRouteRegistry();
+        EmbeddedChannel active = new EmbeddedChannel();
+        EmbeddedChannel verifying = new EmbeddedChannel();
+        try {
+            verifyAndActivate(registry, "active", active);
+            registry.admitIdentity("verifying", verifying);
+
+            assertThat(registry.connectionStates(List.of(
+                    "active",
+                    "verifying",
+                    "unknown"
+            ))).containsExactly(
+                    Map.entry("active", WorkerConnectionState.CONNECTED),
+                    Map.entry("verifying", WorkerConnectionState.VERIFYING),
+                    Map.entry("unknown", WorkerConnectionState.UNKNOWN)
+            );
+            assertThat(registry.activeChannel("unknown")).isNull();
+        } finally {
+            active.finishAndReleaseAll();
+            verifying.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void snapshotsRequireOneToOneHundredUniqueWorkerIds() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         List<String> tooMany = new ArrayList<>();
         for (int index = 0; index < 101; index++) {
@@ -266,35 +248,7 @@ class WorkerRouteRegistryTest {
     }
 
     @Test
-    void cancellationInvalidatesThatChannelAndAllowsAnotherClaim() {
-        WorkerRouteRegistry registry = new WorkerRouteRegistry();
-        EmbeddedChannel first = new EmbeddedChannel();
-        EmbeddedChannel retry = new EmbeddedChannel();
-        try {
-            registry.admitIdentity("worker-1", first);
-            assertThat(registry.cancelVerification("worker-1", first))
-                    .isTrue();
-            assertThat(registry.inspectInbound(first).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.INVALID
-            );
-            registry.onChannelClosed(first);
-            assertThat(registry.inspectInbound(first).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
-            );
-
-            assertThat(registry.admitIdentity("worker-1", retry).kind())
-                    .isEqualTo(
-                            WorkerRouteRegistry.IdentityAdmissionKind
-                                    .VERIFICATION_CLAIMED
-                    );
-        } finally {
-            first.finishAndReleaseAll();
-            retry.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void lateCompletionAndOldDeactivationCannotChangeCurrentRoute() {
+    void staleCompletionAndClearCannotRestoreAnOldRoute() {
         WorkerRouteRegistry registry = new WorkerRouteRegistry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
@@ -307,46 +261,15 @@ class WorkerRouteRegistryTest {
             )).isFalse();
 
             verifyAndActivate(registry, "worker-1", second);
-            assertThat(registry.deactivate("worker-1", first)).isFalse();
-            assertThat(registry.activeChannel("worker-1")).isSameAs(second);
-        } finally {
-            first.finishAndReleaseAll();
-            second.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void registriesAreInstanceLocalAndClearRemovesRouteTruth() {
-        WorkerRouteRegistry firstRegistry = new WorkerRouteRegistry();
-        WorkerRouteRegistry secondRegistry = new WorkerRouteRegistry();
-        EmbeddedChannel first = new EmbeddedChannel();
-        EmbeddedChannel second = new EmbeddedChannel();
-        try {
-            verifyAndActivate(firstRegistry, "worker-1", first);
-            verifyAndActivate(secondRegistry, "worker-1", second);
-            firstRegistry.clear();
-
-            assertThat(firstRegistry.activeChannel("worker-1")).isNull();
-            assertThat(firstRegistry.connectionStates(List.of("worker-1")))
+            registry.clear();
+            assertThat(registry.activeChannel("worker-1")).isNull();
+            assertThat(registry.isCurrentConnected("worker-1", second))
+                    .isFalse();
+            assertThat(registry.connectionStates(List.of("worker-1")))
                     .containsExactly(Map.entry(
                             "worker-1",
                             WorkerConnectionState.UNKNOWN
                     ));
-            assertThat(firstRegistry.inspectInbound(first).kind())
-                    .isEqualTo(
-                            WorkerRouteRegistry.InboundKind.INVALID
-                    );
-            firstRegistry.onChannelClosed(first);
-            assertThat(firstRegistry.inspectInbound(first).kind()).isEqualTo(
-                    WorkerRouteRegistry.InboundKind.IDENTITY_REQUIRED
-            );
-            assertThat(firstRegistry.admitIdentity("worker-1", first).kind())
-                    .isEqualTo(
-                            WorkerRouteRegistry.IdentityAdmissionKind
-                                    .VERIFICATION_CLAIMED
-                    );
-            assertThat(secondRegistry.activeChannel("worker-1"))
-                    .isSameAs(second);
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();

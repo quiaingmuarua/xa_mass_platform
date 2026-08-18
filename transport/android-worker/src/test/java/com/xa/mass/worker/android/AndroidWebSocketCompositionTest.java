@@ -99,7 +99,10 @@ public class AndroidWebSocketCompositionTest {
             WorkerPreparation preparation = new WorkerPreparation() {
                 @Override
                 public PreparedWorker prepare() {
-                    return new PreparedWorker(WORKER_ID, socketUri);
+                    return new PreparedWorker(
+                            WORKER_ID,
+                            socketUri
+                    );
                 }
 
                 @Override

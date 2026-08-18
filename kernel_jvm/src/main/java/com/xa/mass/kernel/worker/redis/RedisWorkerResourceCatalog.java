@@ -173,6 +173,37 @@ public final class RedisWorkerResourceCatalog
     }
 
     @Override
+    public Map<String, @Nullable String> getWorkerGroupIds(
+            List<String> workerIds
+    ) {
+        requireIds(workerIds, "workerIds");
+        if (workerIds.size() > MAX_WORKER_GROUP_LOOKUP_LIMIT) {
+            throw new IllegalArgumentException(
+                    "workerIds must contain at most "
+                            + MAX_WORKER_GROUP_LOOKUP_LIMIT
+                            + " entries"
+            );
+        }
+        if (workerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<KeyValue<String, String>> loaded = commands().hmget(
+                WorkerRedisSupport.workerIdOwnersKey(prefix),
+                workerIds.toArray(String[]::new)
+        );
+        var owners = new LinkedHashMap<String, @Nullable String>();
+        for (int index = 0; index < workerIds.size(); index++) {
+            KeyValue<String, String> value = loaded.get(index);
+            String owner = value.hasValue() ? value.getValue() : null;
+            owners.put(
+                    workerIds.get(index),
+                    owner != null && !owner.isEmpty() ? owner : null
+            );
+        }
+        return owners;
+    }
+
+    @Override
     public Map<String, WorkerDescriptor> sampleWorkerDescriptors(
             String workerGroupId,
             int sampleLimit

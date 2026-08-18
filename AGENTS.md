@@ -104,6 +104,7 @@ Server may own:
 - Worker Identity and Endpoint Binding;
 - Runtime projections;
 - DIRECT_CALL admission and request correlation;
+- validated bounded Worker route-change evidence inboxes without score policy;
 - configured Adapter and Scenario startup.
 
 Server must not own:
@@ -169,6 +170,10 @@ Rules:
   private HTTP client owns raw HTTP mechanics only.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
+- Registry routes only by `workerId`; long-lived identity and Adapter-produced
+  availability evidence do not carry `workerGroupId` or add Group route state.
+- Adapter-local Worker property observation is a separate projection cache;
+  it must not be folded into RouteState or copied into Server/Kernel truth.
 - The inbound Handler only adapts Netty callbacks.
 - The physical Server owns listener, EventLoop, all child Channels, framing,
   physical writes and close behavior.

@@ -181,6 +181,31 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
+    void workerObservationProjectionDoesNotBecomeRouteOrLifecycleTruth()
+            throws IOException {
+        String registry = read(CONNECTION.resolve(
+                "WorkerRouteRegistry.java"
+        ));
+        String cache = read(CONNECTION.resolve(
+                "WorkerObservationCache.java"
+        ));
+        String network = readSources(NETWORK);
+
+        assertThat(registry)
+                .doesNotContain("CachedProperties")
+                .doesNotContain("propertiesByWorkerId");
+        assertThat(cache)
+                .doesNotContain("Channel")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("WorkerScore")
+                .doesNotContain("heartbeat")
+                .doesNotContain("probe(");
+        assertThat(network)
+                .doesNotContain("WorkerObservationCache")
+                .doesNotContain("WorkerObservationSnapshot");
+    }
+
+    @Test
     void repositoryConsumersCannotImportInternalConstructionTypes()
             throws IOException {
         Path repository = Path.of("../..").toAbsolutePath().normalize();

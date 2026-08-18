@@ -27,6 +27,7 @@ import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.workerdelivery.application.WorkerChangeReportIngress;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -115,7 +116,8 @@ class DirectCallControllerTest {
                 commandRuntime,
                 resultRuntime,
                 bindings,
-                directCalls
+                directCalls,
+                mock(WorkerChangeReportIngress.class)
         );
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();

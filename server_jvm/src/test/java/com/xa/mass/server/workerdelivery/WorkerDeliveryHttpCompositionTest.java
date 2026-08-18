@@ -16,6 +16,7 @@ import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.server.directcall.DirectCallService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -42,6 +43,12 @@ class WorkerDeliveryHttpCompositionTest {
                             )
                     )
                     .withBean(
+                            WorkerResourceCatalog.class,
+                            () -> org.mockito.Mockito.mock(
+                                    WorkerResourceCatalog.class
+                            )
+                    )
+                    .withBean(
                             DirectCallService.class,
                             () -> org.mockito.Mockito.mock(
                                     DirectCallService.class
@@ -53,6 +60,9 @@ class WorkerDeliveryHttpCompositionTest {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
             assertThat(context).hasSingleBean(WorkerResultRuntime.class);
+            assertThat(context).hasSingleBean(
+                    WorkerChangeInbox.class
+            );
             assertThat(context).hasSingleBean(WorkerDeliveryService.class);
             assertThat(context)
                     .hasSingleBean(WorkerPointDeliveryController.class);
@@ -68,9 +78,7 @@ class WorkerDeliveryHttpCompositionTest {
             assertThat(context).doesNotHaveBean(
                     com.xa.mass.kernel.worker.WorkerRuntime.class
             );
-            assertThat(context).doesNotHaveBean(
-                    WorkerResourceCatalog.class
-            );
+            assertThat(context).hasSingleBean(WorkerResourceCatalog.class);
             assertThat(context).doesNotHaveBean(
                     TaskLifecycleCommands.class
             );

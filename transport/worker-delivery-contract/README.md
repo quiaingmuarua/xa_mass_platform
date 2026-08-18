@@ -103,14 +103,33 @@ WebSocket and line Socket send a direct `DeliveryReport` as their first value:
 ```
 
 The Adapter consumes this Adapter-directed Report locally and takes the opaque
-worker ID from `sourceId` without interpreting its format. The first occurrence
-of that worker ID in one Adapter process is passed to Server route verification;
-success is cached process-locally, so later physical reconnects identify and
-activate a replacement Channel without another Server read. There is no ACK.
+route identity from `sourceId`; the payload is exactly `null`. The first
+workerId occurrence in one Adapter process is passed to Server route
+verification at
+`/endpoint-managers/{adapterId}/workers/{workerId}:verify-binding`; success is
+cached process-locally, so later physical reconnects for that workerId activate
+a replacement Channel without another Server read. There is no ACK.
 Polling sends no identity Report; Server verifies its persisted
 `system-polling` route on each point request.
 Identity reporting does not create or update Endpoint Binding and is not
 authentication, heartbeat, property-index update, or endpoint migration.
+
+The Adapter may also produce a normal `DeliveryReport` when that verified
+route changes availability:
+
+```text
+src=ADAPTER
+dst=SYSTEM
+messageType=platform.adapter.worker-availability.changed
+outcomeCode=200
+payload={workerId, available}
+forward=worker-change:v1
+```
+
+This is best-effort connection evidence carried through the existing Result
+path. WorkerGroup remains outside this Transport report. It is not a Handler
+event, Worker online truth, or scheduling-score
+transition, and introduces no additional transport envelope.
 
 The fixed connection-lifecycle control event is
 `ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields

@@ -24,7 +24,7 @@ owns:
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one `WorkerConnectionMechanism` and `WorkerRouteRegistry`
+one `WorkerConnectionMechanism`, `WorkerRouteRegistry`, and observation cache
 one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
 one `DeliveryCommandProcess` with one private Command queue
@@ -139,16 +139,16 @@ Adapter-directed identity Report:
 ```
 
 Every physical connection sends this identity first. Adapter requires
-`src=WORKER` and a non-blank `sourceId`, but does not parse the workerId format.
-The identity payload is exactly `"null"`.
+`src=WORKER`, a non-blank opaque `sourceId`, and exact `null` payload. It does
+not parse the workerId format.
 
 Each Adapter process verifies a workerId remotely only the first time its route
 directory sees that identity. The first Channel becomes the one pending
 verification owner; another initial Channel for the same workerId is physically
-closed. Server confirms that the persisted Endpoint Binding points to this
-Adapter's `endpointManagerId`. Successful verification atomically records the
-verified route and activates
-`workerId -> current Channel` without an identity ACK. A definite Server 4xx
+closed. Server confirms that the workerId's current Endpoint Binding points to
+this Adapter's `endpointManagerId`. Successful verification atomically activates
+`workerId -> current Channel` without an identity ACK. No WorkerGroup metadata
+is stored on the Channel or route. A definite Server 4xx
 rejection causes the Adapter to write
 `DeliveryCommand(ADAPTER -> WORKER, worker.connection.close, payload="null")`
 and close the physical Channel after the write flushes. Remote API unavailability
@@ -164,8 +164,8 @@ the cancelled Channel.
 
 Ordinary disconnect removes only the exact active Channel. The verified workerId
 remains cached, so a later identity for the same workerId skips Server
-verification and atomically replaces the current Channel. The retained
-`Disconnected` route is
+verification. WorkerGroup does not participate in route admission, route state,
+or availability evidence. The retained `Disconnected` route is
 not persistent Endpoint Binding, authentication, authorization, Worker online
 truth, or a Property cache. It has no TTL or implicit recheck and is cleared
 only when the Adapter closes or restarts. There is currently no unbind operation.
@@ -220,6 +220,37 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
+Each Adapter also owns one `WorkerObservationCache` beside the Registry. It is
+not route truth: it stores only the most recent successful
+`platform.worker.properties.snapshot` observed from the exact current
+connected Channel. A replaced old Channel may still submit valid in-flight
+evidence, but it cannot refresh this projection. Properties survive ordinary
+disconnect and reconnect, carry an Adapter-epoch plus per-Worker revision, and
+are cleared with the Adapter. Freshness uses owner-local monotonic elapsed time;
+the wall-clock observation time is output only for callers.
+
+### Worker route-change evidence
+
+`WorkerConnectionMechanism` emits
+`platform.adapter.worker-availability.changed` through the existing Report
+Process when route truth changes effectively:
+
+```text
+first verification success                 -> available=true
+Disconnected -> Connected reconnect         -> available=true
+current Channel loss/send failure/detach    -> available=false
+Adapter shutdown of a current route         -> available=false, best effort
+```
+
+Verification start or failure, same-worker connection replacement, stale old
+Channel callbacks, snapshots, and repeated disconnected observations emit
+nothing. The Report is `ADAPTER -> SYSTEM`, uses outcome `200`, carries the
+routed `workerId` plus `available`, and fixes `forward=worker-change:v1`.
+It shares the one private Result queue; full or closed ingress drops this
+evidence without closing the Worker Channel. The Adapter performs no score
+read, score write, debounce, heartbeat, generation tracking, or reliable
+retry.
+
 ## Delivery Processes
 
 ### Command consumption round
@@ -263,6 +294,7 @@ execution surface, not a public registry or Server whitelist:
 | `platform.adapter.events.snapshot` | `null` | sorted full `eventNames` |
 | `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `stateByWorkerId` |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":[...]}` | `outcomeByWorkerId` |
+| `platform.adapter.worker-observations.snapshot` | `{"workerIds":[...]}` | ordered `observationsByWorkerId` containing live route state and the last properties projection |
 
 The Event snapshot is precomputed when the immutable map is assembled, includes
 itself, and is process-local execution evidence rather than Server
@@ -283,6 +315,15 @@ close for Socket). It preserves the process-local verification cache, so the
 existing Client reconnect path can install a new active Channel without
 another route verification.
 
+Worker observations join the current four-state route projection with the last
+properties snapshot. Properties freshness is `FRESH`, `STALE`, or `UNKNOWN`;
+stale observations retain their last value and version. The default freshness
+window is five minutes and can be changed per Adapter with
+`observation-freshness`. `CONNECTED`, fresh properties, current Binding and
+scheduling eligibility remain independent facts. The Adapter does not
+automatically probe a Worker or publish attribute changes to Server or Kernel.
+Entries are keyed by workerId and do not repeat the caller-owned WorkerGroup.
+
 ### Result ingress round
 
 `DeliveryReportProcess` owns one private queue, one pending batch, and the
@@ -296,13 +337,14 @@ otherwise            -> drain the queue once
 submit one mixed encoded-result batch to results:append
 ```
 
-Server routes each Report by `dst`: TASK enters Kernel Result truth and SYSTEM
-completes the Server-local Direct Call waiter. Remote unavailability retains the
-whole mixed pending batch; protocol rejection drops it. Normal close performs
-one bounded best-effort final submit. Command and Report rounds remain
-independent. TASK and SYSTEM do not have separate retry policies inside the
-Adapter: a late DIRECT_CALL Report may be retried with the mixed batch and is
-then rejected by Server after its waiter has ended.
+Server routes each Report by `dst` and opaque `forward`: TASK enters Kernel
+Result truth, `direct-call:v1:*` completes a Server-local waiter, and
+`worker-change:v1` enters the Server-owned bounded evidence inbox. Remote
+unavailability retains the whole mixed pending batch; protocol rejection drops
+it. Normal close performs one bounded best-effort final submit. Command and
+Report rounds remain independent. TASK and SYSTEM do not have separate retry
+policies inside the Adapter: a late DIRECT_CALL Report may be retried with the
+mixed batch and is then rejected by Server after its waiter has ended.
 
 Both queues are finite, soft-capacity, and private to their Process.
 `estimatedSize` is advisory. Adapter failure can lose queued commands or

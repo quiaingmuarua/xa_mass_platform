@@ -20,7 +20,10 @@ class WorkerRouteRemoteApiTest {
         try (ScriptedHttpServer server = new ScriptedHttpServer(
                 request -> new Response(204, "")
         )) {
-            remoteApi(server).verify("adapter/one", "worker two")
+            remoteApi(server).verify(
+                    "adapter/one",
+                    "worker two"
+            )
                     .toCompletableFuture()
                     .join();
 

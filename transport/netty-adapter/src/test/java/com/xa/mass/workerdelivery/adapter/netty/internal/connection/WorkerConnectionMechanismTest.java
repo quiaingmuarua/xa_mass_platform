@@ -72,6 +72,108 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
+    void reportsOnlyEffectiveAvailabilityTransitions() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel first = fixture.channel();
+        EmbeddedChannel reconnect = null;
+        try {
+            first.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, first);
+            fixture.reportProcess.round();
+            assertAvailability(fixture, true);
+
+            fixture.controlReports.clear();
+            first.finishAndReleaseAll();
+            fixture.reportProcess.round();
+            assertAvailability(fixture, false);
+
+            fixture.controlReports.clear();
+            reconnect = fixture.channel();
+            reconnect.writeInbound(fixture.identity("worker-1"));
+            awaitBound(fixture, reconnect);
+            fixture.reportProcess.round();
+            assertAvailability(fixture, true);
+            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+        } finally {
+            if (first.isOpen()) {
+                first.finishAndReleaseAll();
+            }
+            if (reconnect != null) {
+                reconnect.finishAndReleaseAll();
+            }
+        }
+    }
+
+    @Test
+    void identityRejectsLegacyWorkerGroupPayloadBeforeVerification() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity(
+                    "worker-1",
+                    Jsons.toJson(Map.of("workerGroupId", "group-1"))
+            ));
+
+            assertThat(channel.isActive()).isFalse();
+            assertThat(fixture.remoteApi.verificationCalls).isZero();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void overlappingReconnectUsesWorkerIdAsTheOnlyRouteIdentity() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel current = fixture.channel();
+        EmbeddedChannel replacement = fixture.channel();
+        try {
+            current.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, current);
+            fixture.reportProcess.round();
+            fixture.controlReports.clear();
+
+            replacement.writeInbound(fixture.identity("worker-1"));
+
+            assertThat(replacement.isActive()).isTrue();
+            assertThat(fixture.routes.activeChannel("worker-1"))
+                    .isSameAs(replacement);
+            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+            assertThat(fixture.controlReports).isEmpty();
+
+            replacement.finishAndReleaseAll();
+            fixture.reportProcess.round();
+            assertAvailability(fixture, false);
+        } finally {
+            current.finishAndReleaseAll();
+            if (replacement.isOpen()) {
+                replacement.finishAndReleaseAll();
+            }
+        }
+    }
+
+    @Test
+    void droppedAvailabilityEvidenceDoesNotCloseTheWorker() {
+        Fixture fixture = new Fixture(1);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+                    .isEqualTo(
+                            DeliveryReportProcess.ReportIngressStatus.ACCEPTED
+                    );
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void messagesDuringVerificationAreDroppedInsteadOfBuffered() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
@@ -342,6 +444,8 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
+            fixture.reportProcess.round();
+            fixture.controlReports.clear();
 
             channel.writeInbound(fixture.systemResult("worker-1"));
             fixture.reportProcess.round();
@@ -368,6 +472,8 @@ class WorkerConnectionMechanismTest {
         channel.writeInbound(fixture.identity("worker-1"));
         fixture.remoteApi.currentVerification().complete(null);
         awaitBound(fixture, channel);
+        fixture.reportProcess.round();
+        fixture.controlReports.clear();
         assertThat(fixture.reportProcess.ingress(List.of("occupied")))
                 .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
 
@@ -378,6 +484,125 @@ class WorkerConnectionMechanismTest {
                 AdapterConnectionCloseReason.RESULT_BUFFER_FULL
         );
         channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void currentConnectedPropertiesResultUpdatesObservationAndStillForwards() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+            fixture.reportProcess.round();
+            fixture.controlReports.clear();
+
+            String encoded = fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"properties\":{\"battery\":87}}"
+            );
+            channel.writeInbound(encoded);
+
+            var snapshot = fixture.mechanism.workerObservations(
+                    List.of("worker-1")
+            ).get("worker-1");
+            assertThat(snapshot.connectionState()).isEqualTo(
+                    WorkerConnectionState.CONNECTED
+            );
+            assertThat(snapshot.propertiesFreshness()).isEqualTo(
+                    WorkerObservationSnapshot.PropertiesFreshness.FRESH
+            );
+            assertThat(snapshot.propertiesVersion().revision()).isEqualTo(1L);
+            assertThat(snapshot.properties()).containsEntry("battery", 87L);
+
+            fixture.reportProcess.round();
+            assertThat(fixture.controlReports).containsExactly(encoded);
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void staleChannelMalformedPayloadAndWorkerFailureDoNotUpdateObservation() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel first = fixture.channel();
+        EmbeddedChannel replacement = fixture.channel();
+        try {
+            first.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, first);
+            fixture.reportProcess.round();
+            fixture.controlReports.clear();
+
+            replacement.writeInbound(fixture.identity("worker-1"));
+            awaitBound(fixture, replacement);
+
+            String stale = fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"properties\":{\"battery\":1}}"
+            );
+            first.writeInbound(stale);
+            replacement.writeInbound(fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"unexpected\":true}"
+            ));
+            replacement.writeInbound(fixture.propertiesResult(
+                    "worker-1",
+                    "3303",
+                    "{\"properties\":{\"battery\":2}}"
+            ));
+
+            var snapshot = fixture.mechanism.workerObservations(
+                    List.of("worker-1")
+            ).get("worker-1");
+            assertThat(snapshot.propertiesFreshness()).isEqualTo(
+                    WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN
+            );
+            assertThat(snapshot.properties()).isNull();
+
+            fixture.reportProcess.round();
+            assertThat(fixture.controlReports).hasSize(3);
+        } finally {
+            first.finishAndReleaseAll();
+            replacement.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void disconnectRetainsPropertiesAndClearDropsBothRouteAndObservation() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        channel.writeInbound(fixture.identity("worker-1"));
+        fixture.remoteApi.currentVerification().complete(null);
+        awaitBound(fixture, channel);
+        channel.writeInbound(fixture.propertiesResult(
+                "worker-1",
+                "200",
+                "{\"properties\":{\"battery\":87}}"
+        ));
+
+        channel.finishAndReleaseAll();
+        var disconnected = fixture.mechanism.workerObservations(
+                List.of("worker-1")
+        ).get("worker-1");
+        assertThat(disconnected.connectionState()).isEqualTo(
+                WorkerConnectionState.DISCONNECTED
+        );
+        assertThat(disconnected.properties()).containsEntry("battery", 87L);
+
+        fixture.mechanism.clear();
+        var cleared = fixture.mechanism.workerObservations(
+                List.of("worker-1")
+        ).get("worker-1");
+        assertThat(cleared.connectionState()).isEqualTo(
+                WorkerConnectionState.UNKNOWN
+        );
+        assertThat(cleared.propertiesFreshness()).isEqualTo(
+                WorkerObservationSnapshot.PropertiesFreshness.UNKNOWN
+        );
     }
 
     private static void awaitBound(
@@ -409,6 +634,28 @@ class WorkerConnectionMechanismTest {
             Thread.onSpinWait();
         }
         throw new AssertionError("Route verification request did not start");
+    }
+
+    private static void assertAvailability(
+            Fixture fixture,
+            boolean expected
+    ) {
+        assertThat(fixture.controlReports).singleElement()
+                .satisfies(encoded -> {
+                    DeliveryReport report = fixture.codec
+                            .decodeDeliveryReport(encoded);
+                    assertThat(report.messageType()).isEqualTo(
+                            "platform.adapter.worker-availability.changed"
+                    );
+                    assertThat(report.forward()).isEqualTo(
+                            "worker-change:v1"
+                    );
+                    assertThat(Jsons.parseObject(report.payload()))
+                            .containsExactlyInAnyOrderEntriesOf(Map.of(
+                                    "workerId", "worker-1",
+                                    "available", expected
+                            ));
+                });
     }
 
     private final class Fixture {
@@ -443,7 +690,8 @@ class WorkerConnectionMechanismTest {
                         codec,
                         reportProcess,
                         "adapter-1",
-                        Duration.ofSeconds(1)
+                        Duration.ofSeconds(1),
+                        Duration.ofMinutes(5)
                 );
             inboundHandler = new WorkerConnectionInboundHandler(mechanism);
         }
@@ -501,14 +749,34 @@ class WorkerConnectionMechanismTest {
             ));
         }
 
+        private String propertiesResult(
+                String workerId,
+                String outcomeCode,
+                String payload
+        ) {
+            return codec.encodeDeliveryReport(DeliveryReport.create(
+                    WORKER,
+                    workerId,
+                    SYSTEM,
+                    "platform.worker.properties.snapshot",
+                    outcomeCode,
+                    payload,
+                    "direct-call:v1:properties"
+            ));
+        }
+
         private String identity(String workerId) {
+            return identity(workerId, "null");
+        }
+
+        private String identity(String workerId, String payload) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
                     WORKER,
                     workerId,
                     ADAPTER,
                     WORKER_CONNECTION_IDENTIFY_EVENT_CODE,
                     "200",
-                    "null",
+                    payload,
                     ""
             ));
         }

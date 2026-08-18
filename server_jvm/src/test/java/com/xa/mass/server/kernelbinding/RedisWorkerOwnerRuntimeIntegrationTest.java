@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelbinding;
 
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -26,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -34,8 +34,6 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerOwnerRuntimeIntegrationTest {
 
-    private static final String REDIS_URL =
-            System.getenv("KERNEL_DESIGN_REDIS_URL");
     private String prefix;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
@@ -48,10 +46,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        Assumptions.assumeTrue(
-                REDIS_URL != null && !REDIS_URL.isBlank(),
-                "KERNEL_DESIGN_REDIS_URL is not configured"
-        );
         prefix = "java-worker-owner-" + UUID.randomUUID();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
@@ -234,6 +228,48 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workerIdOwnersKey(), "worker-1"))
                 .isEqualTo("group-1");
+    }
+
+    @Test
+    void resolvesBoundedWorkerGroupOwnersWithoutDescriptorScan() {
+        assertThat(catalog.upsertWorkerGroup(group(
+                "group-1",
+                Map.of(),
+                Set.of()
+        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(catalog.upsertWorkerGroup(group(
+                "group-2",
+                Map.of(),
+                Set.of()
+        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(runtime.upsertWorker(worker(
+                "worker-1",
+                "group-1",
+                "endpoint-1",
+                Map.of()
+        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(runtime.upsertWorker(worker(
+                "worker-2",
+                "group-2",
+                "endpoint-1",
+                Map.of()
+        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+
+        Map<String, String> owners = catalog.getWorkerGroupIds(List.of(
+                "worker-2",
+                "missing",
+                "worker-1"
+        ));
+
+        assertThat(owners.keySet()).containsExactly(
+                "worker-2",
+                "missing",
+                "worker-1"
+        );
+        assertThat(owners)
+                .containsEntry("worker-2", "group-2")
+                .containsEntry("missing", null)
+                .containsEntry("worker-1", "group-1");
     }
 
     @Test

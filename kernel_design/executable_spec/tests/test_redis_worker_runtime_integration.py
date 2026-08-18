@@ -200,6 +200,15 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
 
         self.assertEqual(WorkerRuntimeStatus.OK, first.status)
         self.assertEqual(WorkerRuntimeStatus.CONFLICT, conflict.status)
+        self.assertEqual(
+            self.catalog.get_worker_group_ids(
+                worker_ids=("shared-worker", "missing-worker")
+            ),
+            {
+                "shared-worker": self.worker_group_id,
+                "missing-worker": None,
+            },
+        )
         self.assertIsNone(
             self.catalog.get_worker_descriptors(
                 worker_group_id="audio-workers",

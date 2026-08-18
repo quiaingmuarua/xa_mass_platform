@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelbinding;
 
+import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
@@ -9,6 +10,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.server.workerdelivery.workerchange.RedisWorkerChangeInbox;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -19,7 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -27,26 +28,22 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
-    private static final String REDIS_URL =
-            System.getenv("KERNEL_DESIGN_REDIS_URL");
     private String prefix;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisWorkerCommandRuntime commandRuntime;
     private RedisWorkerResultRuntime resultRuntime;
+    private RedisWorkerChangeInbox changeInbox;
+    private WorkerDeliveryCodec codec;
 
     @BeforeEach
     void setUp() {
-        Assumptions.assumeTrue(
-                REDIS_URL != null && !REDIS_URL.isBlank(),
-                "KERNEL_DESIGN_REDIS_URL is not configured"
-        );
         prefix = "java-worker-delivery-" + UUID.randomUUID();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        codec = new WorkerDeliveryCodec();
         commandRuntime = new RedisWorkerCommandRuntime(
                 redisClient,
                 codec,
@@ -57,6 +54,12 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec,
                 prefix
         );
+        changeInbox = new RedisWorkerChangeInbox(
+                redisClient,
+                codec,
+                prefix,
+                2
+        );
     }
 
     @AfterEach
@@ -64,12 +67,16 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         if (redis != null) {
             deleteKeys(redis.keys("wd:" + prefix + ":*"));
             deleteKeys(redis.keys("rr:" + prefix + ":*"));
+            deleteKeys(redis.keys("we:{" + prefix + "}:*"));
         }
         if (commandRuntime != null) {
             commandRuntime.close();
         }
         if (resultRuntime != null) {
             resultRuntime.close();
+        }
+        if (changeInbox != null) {
+            changeInbox.close();
         }
         if (connection != null) {
             connection.close();
@@ -243,6 +250,25 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         )).isEqualTo(direct);
     }
 
+    @Test
+    void workerChangeInboxAcceptsOnlyTheRemainingFifoPrefix() {
+        DeliveryReport first = workerChange("worker-1", true);
+        DeliveryReport second = workerChange("worker-2", false);
+        DeliveryReport rejected = workerChange("worker-3", true);
+
+        assertThat(changeInbox.append(List.of(
+                first,
+                second,
+                rejected
+        ))).isEqualTo(2);
+        assertThat(redis.lrange(changeInboxKey(), 0, -1))
+                .extracting(codec::decodeDeliveryReport)
+                .containsExactly(first, second);
+        assertThat(changeInbox.append(
+                List.of(rejected)
+        )).isZero();
+    }
+
     private void deleteKeys(java.util.Collection<String> keys) {
         if (!keys.isEmpty()) {
             redis.del(keys.toArray(String[]::new));
@@ -256,6 +282,10 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     private String resultKey(String outcomeClass) {
         return "rr:" + prefix + ":worker-results:" + outcomeClass;
+    }
+
+    private String changeInboxKey() {
+        return "we:{" + prefix + "}:route-change-inbox";
     }
 
     private long commandCalls(String command) {
@@ -300,6 +330,25 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 outcomeCode,
                 "null",
                 forward
+        );
+    }
+
+    private static DeliveryReport workerChange(
+            String workerId,
+            boolean available
+    ) {
+        return DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-availability.changed",
+                "200",
+                "{\"workerId\":\""
+                        + workerId
+                        + "\",\"available\":"
+                        + available
+                        + "}",
+                "worker-change:v1"
         );
     }
 }

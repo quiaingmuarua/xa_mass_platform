@@ -46,6 +46,19 @@ class _Catalog(WorkerResourceCatalog):
             for worker_id in worker_ids
         }
 
+    def get_worker_group_ids(self, *, worker_ids):
+        return {
+            worker_id: next(
+                (
+                    group_id
+                    for group_id in self.groups
+                    if (group_id, worker_id) in self.workers
+                ),
+                None,
+            )
+            for worker_id in worker_ids
+        }
+
     def sample_worker_descriptors(self, *, worker_group_id, sample_limit):
         raise NotImplementedError
 

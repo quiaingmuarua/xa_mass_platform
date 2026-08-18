@@ -41,6 +41,8 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.listen-port=18083",
                 "xa.mass.worker-delivery.adapter.instances"
+                        + ".websocket-1.observation-freshness=2m",
+                "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.processes[0].type=DELIVERY_COMMAND",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.processes[0]"
@@ -93,6 +95,8 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertAdapterFailed("type=OTHER");
         assertAdapterFailed("unexpected=true");
         assertAdapterFailed("listen-port=0");
+        assertAdapterFailed("observation-freshness=0ms");
+        assertAdapterFailed("observation-freshness=-1s");
         assertAdapterFailed(
                 "processes[0].consume-limit=0"
         );

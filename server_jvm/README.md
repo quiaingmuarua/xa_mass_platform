@@ -50,6 +50,7 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and dispatch wake | Python Kernel HTTP |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
+| Verified Worker route-change evidence | Server validation plus bounded Java Redis Worker Change inbox append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | WorkerGroup RPC and Task Batch | Server-bounded use cases over existing owners |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
@@ -113,6 +114,21 @@ Workers. There is no in-process or Redis shortcut. Adapter lifecycle,
 scheduler, queues, current route registry and physical Channels remain owned by
 `transport/netty-adapter`.
 
+Long-lived Worker identity carries `workerId` in the Report source and exact
+`null` payload. Adapter routing, first-seen verification, and availability
+evidence use only workerId; WorkerGroup remains outside the Transport route.
+Effective verified-route availability changes return as standard Adapter SYSTEM
+Reports through the existing `results:append` path. Server validates the
+Adapter source and current Binding, then appends the original evidence to the bounded
+`WorkerChangeInbox`. Server does not project online state, start
+a consumer, or read/write Worker score in this slice.
+
+Adapter instances may set `observation-freshness` (default `5m`) for their
+process-local Worker properties projection. Callers read that projection by
+DIRECT_CALL to `platform.adapter.worker-observations.snapshot`. Server treats
+the event name, opaque input and result payload transparently: it owns neither
+the cache nor its version/freshness interpretation.
+
 ### Worker And Scenario Assembly
 
 The default profile starts no Adapter and no Scenario Worker. An explicit
@@ -147,7 +163,12 @@ WorkerGroup RPC wait           30s default / 60s maximum
 DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server
+Worker Change inbox capacity   10000 per Redis prefix
 ```
+
+The Server-owned Inbox uses
+`we:{redisPrefix}:route-change-inbox`. It is not a Kernel Result Runtime key,
+current connectivity truth, or a scheduling input.
 
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a
@@ -197,13 +218,15 @@ Kernel control API and Kernel Redis connection.
 ```text
 ./gradlew :server_jvm:test
 
-KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
-  ./gradlew :server_jvm:redisOwnerIntegrationTest
+./gradlew :server_jvm:redisOwnerIntegrationTest
 
-KERNEL_COMMAND_INTEGRATION_URL=http://127.0.0.1:18080 \
-KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
-  ./gradlew :server_jvm:runtimeBoundaryIntegrationTest
+./gradlew :server_jvm:runtimeBoundaryIntegrationTest
 ```
+
+The two integration tasks use the checked `integration-test` profile with
+Redis at `redis://127.0.0.1:6379/15` and the Python Kernel at
+`http://127.0.0.1:18080`. The profile supplies addresses only; the external
+services must already be running and connection failures fail the proof.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a

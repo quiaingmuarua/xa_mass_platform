@@ -11,8 +11,8 @@ The control and connection vocabulary is deliberately split by Owner:
 | --- | --- | --- |
 | Identity Register | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
 | Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
-| Connection identity Report | Worker sends `worker.connection.identify` with `src=WORKER` and `sourceId=workerId` to declare every physical Channel; the Adapter may initiate first-seen route verification | persistent Endpoint Binding or authentication |
-| Route Verification | Server read-only compares the persisted route with the receiving endpoint; Adapter caches first success for that workerId until process close/restart | authentication, online truth, or persistent Binding |
+| Connection identity Report | Worker sends `worker.connection.identify` with `src=WORKER/sourceId=workerId` and exact `null` payload | persistent Endpoint Binding, WorkerGroup membership, or authentication |
+| Route Verification | Server read-only compares the workerId's persisted Binding with the receiving endpoint; Adapter caches the first successful workerId route until process close/restart | authentication, online truth, or persistent Binding |
 | Connection Activation | Adapter installs its process-local current Channel | Worker resource, online, or attribute truth |
 | Assignment / Result Fence | Kernel validates lease and opaque Result Routing evidence | connection state |
 
@@ -99,7 +99,8 @@ Long-lived connection control uses those same DTOs:
 Worker -> Adapter
   DeliveryReport(src=WORKER, sourceId=<workerId>, dst=ADAPTER,
                messageType=worker.connection.identify,
-               outcomeCode=200, payload="null", forward="")
+               outcomeCode=200,
+               payload="null", forward="")
 
 Adapter -> Worker
   DeliveryCommand(src=ADAPTER, dst=WORKER,
@@ -272,11 +273,13 @@ authority-specific Worker queue. Worker entry keys are workerId addresses.
 Adapter entry keys are response-local, opaque, and ignored by Adapter dispatch,
 which relies on `dst`.
 
-The Adapter result endpoint accepts a mixed encoded batch: `dst=TASK` is
-validated and appended through the Kernel Result owner, while `dst=SYSTEM` is
-correlated with the Server-local Direct Call waiter. The response reports combined
-accepted and rejected counts. Remote unavailability keeps the Adapter's one
-pending batch for retry.
+The Adapter result endpoint accepts a mixed encoded batch. `dst=TASK` is
+validated and appended through the Kernel Result owner. `dst=SYSTEM` is routed
+by opaque `forward`: `direct-call:v1:*` is correlated with the Server-local
+Direct Call waiter, while exact `worker-change:v1` evidence is validated and
+appended to the Server-owned bounded Worker Change inbox. Other SYSTEM Reports
+are rejected. The response reports combined accepted and rejected counts.
+Remote unavailability keeps the Adapter's one pending batch for retry.
 
 Priority is limited to the Adapter Direct FIFO prefix. It does not reorder
 commands already present in the Adapter's local FIFO, preempt an in-flight
@@ -294,7 +297,7 @@ An active Adapter consumes one endpoint-manager mailbox and maintains current
 transport routes:
 
 ```text
-workerId -> current connection
+workerId -> current route state
 ```
 
 WebSocket and line Socket first receive a strict identity `DeliveryReport`:
@@ -312,11 +315,13 @@ WebSocket and line Socket first receive a strict identity `DeliveryReport`:
 ```
 
 Every physical connection sends identity first. When one Adapter process sees a
-workerId for the first time, exactly one Channel becomes its pending
-verification owner and asks Server whether the persisted Worker Binding points
-to this Adapter's endpoint-manager ID. Another initial Channel for the same
-workerId is physically closed. Only successful route verification records the
-process-local verified workerId and installs the active Channel; no ACK is sent.
+workerId for the first time, exactly one Channel becomes its pending verification
+owner and asks Server through
+`/endpoint-managers/{adapterId}/workers/{workerId}:verify-binding` whether its
+persisted Worker Binding points to this Adapter. Another initial Channel for the
+same workerId is physically closed. Only successful route verification installs
+the active Channel; no ACK is sent. WorkerGroup is absent from the identity,
+Channel metadata, and Adapter route state.
 Adapter does not invoke Kernel Worker upsert. A definite 4xx rejection emits
 `ADAPTER/worker.connection.close` and closes the physical connection after
 flush. Remote API unavailability or 5xx only closes the physical connection, so
@@ -324,7 +329,8 @@ the Worker Client may reconnect to the same Endpoint.
 
 Ordinary disconnect removes only the exact active Channel. The verified route
 remains in that Adapter process, so the next identity for the same workerId
-skips Server verification and replaces the current Channel. The retained
+skips Server verification and replaces the current Channel. WorkerGroup does not
+participate in route admission or availability evidence. The retained
 disconnected route is not Endpoint Binding, authentication, authorization,
 Worker liveness, or Worker score truth. It has no TTL or periodic recheck, is
 cleared on Adapter close/restart, and currently has no system unbind operation.
@@ -381,6 +387,17 @@ dropped without closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
 the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
+
+Effective route transitions also generate one standard
+`DeliveryReport(ADAPTER -> SYSTEM)` with
+`messageType=platform.adapter.worker-availability.changed`, outcome `200`,
+payload `{workerId, available}`, and
+`forward=worker-change:v1`. First verification and a reconnect from retained
+`DISCONNECTED` emit `available=true`; loss or explicit detach of the exact
+current Channel emits `available=false`. Replacement and stale Channel
+callbacks do not emit. This evidence shares the existing bounded Result
+Process, may be lost or duplicated, and never closes a Worker on backpressure.
+It is neither network-state truth nor permission to mutate score.
 
 One finite construction factory returns only the public Adapter contract. It
 instantiates one package-private Adapter scheduling mechanism per endpoint and

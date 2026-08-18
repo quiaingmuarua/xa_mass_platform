@@ -223,7 +223,8 @@ class NettyWorkerDeliveryAdapterProcessTest {
                 new WorkerDeliveryCodec(),
                 reports,
                 "adapter-1",
-                Duration.ofSeconds(1)
+                Duration.ofSeconds(1),
+                Duration.ofMinutes(5)
         );
         WorkerConnectionInboundHandler inboundHandler =
                 new WorkerConnectionInboundHandler(connection);

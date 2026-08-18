@@ -96,6 +96,19 @@ endpointManagerId
 The first accepted WorkerId also fixes its WorkerGroup owner. Conflicting
 identity declarations do not alter the descriptor or score.
 
+Kernel resource consumers that receive Worker-id-only evidence may resolve one
+bounded explicit Worker set through:
+
+```python
+get_worker_group_ids(worker_ids) -> worker_id/worker_group_id map
+```
+
+The lookup reads immutable ownership established by Worker upsert. Missing
+entries remain missing; it does not discover Workers, scan Groups, prove that a
+descriptor or score exists, or expose a Transport requirement. In particular,
+Worker and Adapter messages continue to use the globally unique `workerId`
+without carrying `workerGroupId` for routing.
+
 ### Platform Properties
 
 The query projection is:
