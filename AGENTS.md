@@ -104,7 +104,7 @@ Server may own:
 - Worker Identity and Endpoint Binding;
 - Runtime projections;
 - DIRECT_CALL admission and request correlation;
-- validated bounded Worker route-change evidence inboxes without score policy;
+- bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter and Scenario startup.
 
 Server must not own:
@@ -121,9 +121,11 @@ Its only public call route is scoped by `adapterId`; an optional same-Group
 `workerId -> opaquePayload` map supplies Worker targets and per-target input,
 not a WorkerGroup authority.
 The unified Adapter consume endpoint may prefix a response with the Adapter
-Direct FIFO, then consumes once from the shared Worker Command Hash. Worker
-Direct Calls use the owner `offer` operation and cannot replace an occupied
-slot; authoritative TASK append may replace an unconsumed Direct Command.
+Direct FIFO, then consumes once from the shared Worker Command Hash. Only
+remaining response capacity may carry one Kernel Serviceability Adapter
+snapshot Command. Worker Direct Calls use the owner `offer` operation and
+cannot replace an occupied slot; authoritative TASK append may replace an
+unconsumed Direct Command.
 Adapter-local Commands route by `dst`; only Worker Command map keys carry
 workerId address meaning. Direct Call passes `messageType` and opaque payload
 through without an event whitelist; future API Session authorization remains a
@@ -182,8 +184,8 @@ Rules:
 - Caffeine is connection-owner storage infrastructure only. Do not leak it to
   Server, Process, Remote API or physical Network owners, and do not install a
   loader, refresh, listener, scheduler or removal side effect.
-- Registry routes only by `workerId`; long-lived identity and Adapter-produced
-  availability evidence do not carry `workerGroupId` or add Group route state.
+- Registry routes only by `workerId`; long-lived identity and Kernel-requested
+  Adapter snapshots do not add WorkerGroup state to the route owner.
 - Adapter-local Worker property observation is a separate projection cache;
   it must not be folded into RouteEntry or copied into Server/Kernel truth.
 - Connection snapshots read Route truth; properties snapshots pass through the

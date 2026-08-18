@@ -51,6 +51,12 @@ class WorkerScoreTransitionResult:
     score: Score | None = None
 
 
+@dataclass(frozen=True)
+class WorkerServiceabilityCheck:
+    check_started_at_millis: TimeMillis
+    serviceable: bool
+
+
 class WorkerScoreCore(ABC):
     """Worker score core interface.
 
@@ -302,8 +308,29 @@ class WorkerScoreCore(ABC):
         Recovery exhausted / cold parked is represented by a too-old
         RECOVERY_RECHECK time coordinate, not a far-future hold. Implementations must
         require storedScore == observed_score and source polarity
-        RECOVERY_RECHECK. The implementation mints the cold coordinate internally
-        using its recovery lookback policy. Dirty and lane_rank are preserved.
+        RECOVERY_RECHECK. The implementation owns a fixed near-zero cold
+        coordinate and excludes it explicitly from every routine recovery
+        range. Dirty and lane_rank are preserved.
+        """
+        pass
+
+    @abstractmethod
+    def apply_worker_serviceability_checks(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        checks_by_worker_id: Mapping[WorkerId, WorkerServiceabilityCheck],
+        max_recovery_attempts: int,
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Apply bounded Adapter-route serviceability observations.
+
+        Each Worker is an independent atomic score transition. A check may
+        change only a score whose stored time coordinate is older than the
+        check start. Serviceable evidence enters HOT_ACQUIRE at lane_rank=0;
+        unavailable HOT evidence enters RECOVERY_RECHECK at lane_rank=0;
+        unavailable RECOVERY_RECHECK evidence increments its retryCount and
+        eventually moves to the owner-internal cold coordinate. Dirty is
+        preserved throughout. Callers neither observe nor construct scores.
         """
         pass
 

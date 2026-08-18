@@ -15,6 +15,7 @@ from .worker_score import WorkerId
 class DeliveryEndpoint(Enum):
     TASK = "TASK"
     SYSTEM = "SYSTEM"
+    KERNEL = "KERNEL"
     ADAPTER = "ADAPTER"
     WORKER = "WORKER"
 

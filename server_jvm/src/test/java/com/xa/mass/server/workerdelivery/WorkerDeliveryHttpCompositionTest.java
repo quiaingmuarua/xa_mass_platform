@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -16,7 +17,6 @@ import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.server.directcall.DirectCallService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -61,7 +61,7 @@ class WorkerDeliveryHttpCompositionTest {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
             assertThat(context).hasSingleBean(WorkerResultRuntime.class);
             assertThat(context).hasSingleBean(
-                    WorkerChangeInbox.class
+                    WorkerServiceabilityRuntime.class
             );
             assertThat(context).hasSingleBean(WorkerDeliveryService.class);
             assertThat(context)

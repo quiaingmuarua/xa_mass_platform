@@ -15,6 +15,8 @@ from ..scheduling import (
     TaskDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
+    WorkerServiceabilityDispatchConfig,
+    WorkerServiceabilityResultConfig,
 )
 from ..kernel import (
     TaskCreationResult,
@@ -31,12 +33,18 @@ from ..scheduling import ResultRoutingConfig
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
 from .result_routing_application import ResultRoutingApplicationConfig
+from .worker_serviceability_application import (
+    WorkerServiceabilityDispatchApplicationConfig,
+    WorkerServiceabilityResultApplicationConfig,
+)
 
 
 _DEFAULT_REDIS_URL = "redis://localhost:6379/15"
 _DEFAULT_REDIS_PREFIX = "default"
 _DEFAULT_PACER_INTERVAL_MILLIS = 100
 _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
+_DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS = 1_000
+_DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS = 100
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 _DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 _REDIS_HASH_INDEX = "redis-hash"
@@ -131,6 +139,47 @@ def _reject_unknown(
 
 
 @dataclass(frozen=True, slots=True)
+class WorkerServiceabilityConfig:
+    worker_group_ids: tuple[str, ...]
+    dispatch_interval_millis: int = _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS
+    result_interval_millis: int = _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS
+    stale_hot_after_millis: int = 300_000
+    recovery_retry_interval_millis: int = 60_000
+    max_recovery_attempts: int = 5
+    hot_scan_limit: int = 80
+    recovery_scan_limit: int = 20
+    result_report_limit: int = 10
+
+    def __post_init__(self) -> None:
+        if isinstance(self.worker_group_ids, (str, bytes)):
+            raise ValueError("serviceability WorkerGroup ids must be a sequence")
+        for value, name in (
+            (self.dispatch_interval_millis, "serviceability dispatch interval"),
+            (self.result_interval_millis, "serviceability result interval"),
+            (self.stale_hot_after_millis, "stale HOT duration"),
+            (self.recovery_retry_interval_millis, "recovery retry interval"),
+            (self.max_recovery_attempts, "max recovery attempts"),
+            (self.hot_scan_limit, "HOT scan limit"),
+            (self.recovery_scan_limit, "recovery scan limit"),
+            (self.result_report_limit, "result Report limit"),
+        ):
+            _positive_integer(value, name=name)
+        groups = tuple(self.worker_group_ids)
+        dispatch = WorkerServiceabilityDispatchConfig(
+            worker_group_ids=groups,
+            stale_hot_after_millis=self.stale_hot_after_millis,
+            recovery_retry_interval_millis=self.recovery_retry_interval_millis,
+            hot_scan_limit=self.hot_scan_limit,
+            recovery_scan_limit=self.recovery_scan_limit,
+        )
+        WorkerServiceabilityResultConfig(
+            max_recovery_attempts=self.max_recovery_attempts,
+            result_report_limit=self.result_report_limit,
+        )
+        object.__setattr__(self, "worker_group_ids", dispatch.worker_group_ids)
+
+
+@dataclass(frozen=True, slots=True)
 class KernelApplicationConfig:
     redis_url: str = _DEFAULT_REDIS_URL
     redis_prefix: str = _DEFAULT_REDIS_PREFIX
@@ -140,6 +189,7 @@ class KernelApplicationConfig:
     result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
     running_task_soft_limit: int = _DEFAULT_RUNNING_TASK_SOFT_LIMIT
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
+    worker_serviceability: WorkerServiceabilityConfig | None = None
     worker_property_indexes: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
@@ -168,6 +218,13 @@ class KernelApplicationConfig:
             name="running Task soft limit",
         )
         _positive_integer(self.stop_timeout_millis, name="stop timeout")
+        if self.worker_serviceability is not None and not isinstance(
+            self.worker_serviceability,
+            WorkerServiceabilityConfig,
+        ):
+            raise TypeError(
+                "worker_serviceability must be WorkerServiceabilityConfig or None"
+            )
         indexes = dict(self.worker_property_indexes)
         for property_field, implementation in indexes.items():
             if not _valid_index_field(property_field):
@@ -207,6 +264,7 @@ class KernelApplicationConfig:
                     "assignmentDispatch",
                     "systemPolicy",
                     "resultRouting",
+                    "workerServiceability",
                     "stopTimeoutMillis",
                 }
             ),
@@ -252,6 +310,79 @@ class KernelApplicationConfig:
             allowed=frozenset({"runningTaskSoftLimit"}),
             name="systemPolicy config",
         )
+
+        serviceability_config: WorkerServiceabilityConfig | None = None
+        if "workerServiceability" in config:
+            raw_serviceability = _mapping(
+                config["workerServiceability"],
+                name="workerServiceability config",
+            )
+            _reject_unknown(
+                raw_serviceability,
+                allowed=frozenset(
+                    {
+                        "workerGroupIds",
+                        "dispatchIntervalMillis",
+                        "resultIntervalMillis",
+                        "staleHotAfterMillis",
+                        "recoveryRetryIntervalMillis",
+                        "maxRecoveryAttempts",
+                        "hotScanLimit",
+                        "recoveryScanLimit",
+                        "resultReportLimit",
+                    }
+                ),
+                name="workerServiceability config",
+            )
+            raw_group_ids = raw_serviceability.get("workerGroupIds")
+            if not isinstance(raw_group_ids, list):
+                raise ValueError(
+                    "workerServiceability workerGroupIds must be an array"
+                )
+            serviceability_config = WorkerServiceabilityConfig(
+                worker_group_ids=tuple(raw_group_ids),
+                dispatch_interval_millis=_positive_integer(
+                    raw_serviceability.get(
+                        "dispatchIntervalMillis",
+                        _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS,
+                    ),
+                    name="serviceability dispatch interval",
+                ),
+                result_interval_millis=_positive_integer(
+                    raw_serviceability.get(
+                        "resultIntervalMillis",
+                        _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS,
+                    ),
+                    name="serviceability result interval",
+                ),
+                stale_hot_after_millis=_positive_integer(
+                    raw_serviceability.get("staleHotAfterMillis", 300_000),
+                    name="stale HOT duration",
+                ),
+                recovery_retry_interval_millis=_positive_integer(
+                    raw_serviceability.get(
+                        "recoveryRetryIntervalMillis",
+                        60_000,
+                    ),
+                    name="recovery retry interval",
+                ),
+                max_recovery_attempts=_positive_integer(
+                    raw_serviceability.get("maxRecoveryAttempts", 5),
+                    name="max recovery attempts",
+                ),
+                hot_scan_limit=_positive_integer(
+                    raw_serviceability.get("hotScanLimit", 80),
+                    name="HOT scan limit",
+                ),
+                recovery_scan_limit=_positive_integer(
+                    raw_serviceability.get("recoveryScanLimit", 20),
+                    name="recovery scan limit",
+                ),
+                result_report_limit=_positive_integer(
+                    raw_serviceability.get("resultReportLimit", 10),
+                    name="result Report limit",
+                ),
+            )
 
         defaults = _DEFAULT_KERNEL_APPLICATION_CONFIG
         return cls(
@@ -302,6 +433,7 @@ class KernelApplicationConfig:
                 config.get("stopTimeoutMillis", defaults.stop_timeout_millis),
                 name="stop timeout",
             ),
+            worker_serviceability=serviceability_config,
             worker_property_indexes=_parse_worker_property_index_registry(
                 worker_property_index_registry_json
             ),
@@ -592,6 +724,50 @@ class KernelApplication:
                     ),
                 ),
                 interval_millis=config.result_routing_interval_millis,
+            ),
+            worker_serviceability_dispatch=(
+                None
+                if config.worker_serviceability is None
+                else WorkerServiceabilityDispatchApplicationConfig(
+                    dispatch=WorkerServiceabilityDispatchConfig(
+                        worker_group_ids=(
+                            config.worker_serviceability.worker_group_ids
+                        ),
+                        stale_hot_after_millis=(
+                            config.worker_serviceability.stale_hot_after_millis
+                        ),
+                        recovery_retry_interval_millis=(
+                            config.worker_serviceability
+                            .recovery_retry_interval_millis
+                        ),
+                        hot_scan_limit=(
+                            config.worker_serviceability.hot_scan_limit
+                        ),
+                        recovery_scan_limit=(
+                            config.worker_serviceability.recovery_scan_limit
+                        ),
+                    ),
+                    interval_millis=(
+                        config.worker_serviceability.dispatch_interval_millis
+                    ),
+                )
+            ),
+            worker_serviceability_result=(
+                None
+                if config.worker_serviceability is None
+                else WorkerServiceabilityResultApplicationConfig(
+                    result=WorkerServiceabilityResultConfig(
+                        max_recovery_attempts=(
+                            config.worker_serviceability.max_recovery_attempts
+                        ),
+                        result_report_limit=(
+                            config.worker_serviceability.result_report_limit
+                        ),
+                    ),
+                    interval_millis=(
+                        config.worker_serviceability.result_interval_millis
+                    ),
+                )
             ),
             stop_timeout_millis=config.stop_timeout_millis,
         )

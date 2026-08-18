@@ -78,6 +78,12 @@
       "append_worker_results",
       "consume_worker_results"
     ],
+    "WorkerServiceabilityRuntime": [
+      "append_probe_results",
+      "consume_probe_requests",
+      "consume_probe_results",
+      "offer_probe_requests"
+    ],
     "TaskItemScoreBandCore": [
       "acquire_item_score_candidates",
       "get_item_score_states",
@@ -138,6 +144,7 @@
       "acquire_hot_acquire_candidates",
       "acquire_observed_hot_score_leases",
       "acquire_recovery_recheck_candidates",
+      "apply_worker_serviceability_checks",
       "demote_observed_worker_leases_to_recovery",
       "exhaust_recovery_recheck",
       "get_score_states",
@@ -253,6 +260,10 @@
     "WorkerScoreTransitionResult": [
       "status",
       "score"
+    ],
+    "WorkerServiceabilityCheck": [
+      "check_started_at_millis",
+      "serviceable"
     ]
   },
   "enums": {
@@ -310,9 +321,15 @@
       "OFFERED",
       "OCCUPIED"
     ],
+    "ProbeRequestOfferStatus": [
+      "OFFERED",
+      "ALREADY_REQUESTED",
+      "CAPACITY"
+    ],
     "DeliveryEndpoint": [
       "TASK",
       "SYSTEM",
+      "KERNEL",
       "ADAPTER",
       "WORKER"
     ],

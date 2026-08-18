@@ -71,6 +71,25 @@ result.messageType = command.messageType
 result.forward = command.forward
 ```
 
+`DeliveryEndpoint.KERNEL` is the result-owner coordinate for internal Kernel
+evidence. Its first production consumer is Worker Serviceability:
+
+```text
+Command
+  src=KERNEL, dst=ADAPTER
+  messageType=platform.adapter.worker-connections.snapshot
+
+expected Report
+  src=ADAPTER, dst=KERNEL
+  same messageType and opaque worker-serviceability forward
+```
+
+The optional Kernel Dispatch Pacer writes Adapter-scoped probe request HASH
+fields. Server constructs the Command only after higher-priority sources leave
+response capacity, Adapter executes its existing connection-snapshot Handler,
+and Server appends the `ADAPTER -> KERNEL` Report to the Kernel result handoff.
+`KERNEL` does not authorize Server or Transport to call a score owner.
+
 Delivery defines no outer message or correlation ID.
 `DeliveryReport.fromCommand()` routes the Report to the Command source and
 copies only `messageType` plus opaque `forward`. TaskItem `messageId` remains
@@ -269,17 +288,19 @@ For each consume request, Server first consumes the Adapter Direct FIFO up to
 the request limit. With the remaining capacity it calls
 `WorkerCommandRuntime.consumeWorkerCommands` exactly once. That shared Hash may
 contain TASK or SYSTEM Commands for different Worker fields; there is no
-authority-specific Worker queue. Worker entry keys are workerId addresses.
-Adapter entry keys are response-local, opaque, and ignored by Adapter dispatch,
-which relies on `dst`.
+authority-specific Worker queue. If capacity still remains, Server may consume
+up to 100 Adapter-partitioned Serviceability request fields and add one
+`KERNEL -> ADAPTER` connection-snapshot Command. Worker entry keys are workerId
+addresses. Adapter and Serviceability entry keys are response-local, opaque,
+and ignored by Adapter dispatch, which relies on `dst`.
 
-The Adapter result endpoint accepts a mixed encoded batch. `dst=TASK` is
-validated and appended through the Kernel Result owner. `dst=SYSTEM` is routed
-by opaque `forward`: `direct-call:v1:*` is correlated with the Server-local
-Direct Call waiter, while exact `worker-change:v1` evidence is validated and
-appended to the Server-owned bounded Worker Change inbox. Other SYSTEM Reports
-are rejected. The response reports combined accepted and rejected counts.
-Remote unavailability keeps the Adapter's one pending batch for retry.
+The Adapter result endpoint accepts a mixed encoded batch and selects its owner
+by `dst`. TASK is validated and appended through the Task Result owner; SYSTEM
+is handed to the Direct Call owner; KERNEL accepts only path-consistent Adapter
+reports and appends them to `WorkerServiceabilityRuntime`. Each selected owner
+performs its own forward and payload validation. The response reports combined
+accepted and rejected counts. Remote unavailability keeps the Adapter's one
+pending batch for retry.
 
 Priority is limited to the Adapter Direct FIFO prefix. It does not reorder
 commands already present in the Adapter's local FIFO, preempt an in-flight
@@ -381,23 +402,13 @@ type and opaque forward context. If a send has started and later fails, delivery
 
 Bound Worker Reports declaring the bound workerId and using `200` or
 Worker-owned `3...` enter the single Result queue for `dst=TASK` or
-`dst=SYSTEM`, preserving their original encoded JSON. A full or closed queue
-still closes the Channel for TASK backpressure; best-effort SYSTEM evidence is
-dropped without closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
+`dst=SYSTEM`, preserving their original encoded JSON. Adapter-local KERNEL
+snapshot results enter that same queue. A full or closed queue still closes the
+Channel for TASK backpressure; best-effort SYSTEM evidence is dropped without
+closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
 the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.
-
-Effective route transitions also generate one standard
-`DeliveryReport(ADAPTER -> SYSTEM)` with
-`messageType=platform.adapter.worker-availability.changed`, outcome `200`,
-payload `{workerId, available}`, and
-`forward=worker-change:v1`. First verification and a reconnect from retained
-`DISCONNECTED` emit `available=true`; loss or explicit detach of the exact
-current Channel emits `available=false`. Replacement and stale Channel
-callbacks do not emit. This evidence shares the existing bounded Result
-Process, may be lost or duplicated, and never closes a Worker on backpressure.
-It is neither network-state truth nor permission to mutate score.
 
 One finite construction factory returns only the public Adapter contract. It
 instantiates one package-private Adapter scheduling mechanism per endpoint and
@@ -503,7 +514,7 @@ contract.
 - Worker sends each Result once; a failed send is lost. Adapter queues are
   process-local and can be lost.
 - Adapter batch retry can duplicate a DeliveryReport at Server ingress.
-- A mixed TASK/SYSTEM pending batch is retried as one unit; a DIRECT_CALL
+- A mixed TASK/SYSTEM/KERNEL pending batch is retried as one unit; a DIRECT_CALL
   waiter may already have timed out when its late evidence reaches Server.
 - Instance-local Adapter Direct FIFO and waiter state require Adapter HTTP
   affinity to the Server process that accepted the call.

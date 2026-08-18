@@ -6,11 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
+import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
-import com.xa.mass.server.workerdelivery.workerchange.RedisWorkerChangeInbox;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -34,7 +34,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     private RedisCommands<String, String> redis;
     private RedisWorkerCommandRuntime commandRuntime;
     private RedisWorkerResultRuntime resultRuntime;
-    private RedisWorkerChangeInbox changeInbox;
+    private RedisWorkerServiceabilityRuntime serviceabilityRuntime;
     private WorkerDeliveryCodec codec;
 
     @BeforeEach
@@ -54,7 +54,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec,
                 prefix
         );
-        changeInbox = new RedisWorkerChangeInbox(
+        serviceabilityRuntime = new RedisWorkerServiceabilityRuntime(
                 redisClient,
                 codec,
                 prefix,
@@ -67,7 +67,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         if (redis != null) {
             deleteKeys(redis.keys("wd:" + prefix + ":*"));
             deleteKeys(redis.keys("rr:" + prefix + ":*"));
-            deleteKeys(redis.keys("we:{" + prefix + "}:*"));
+            deleteKeys(redis.keys("ws:{" + prefix + "}:*"));
         }
         if (commandRuntime != null) {
             commandRuntime.close();
@@ -75,8 +75,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         if (resultRuntime != null) {
             resultRuntime.close();
         }
-        if (changeInbox != null) {
-            changeInbox.close();
+        if (serviceabilityRuntime != null) {
+            serviceabilityRuntime.close();
         }
         if (connection != null) {
             connection.close();
@@ -251,20 +251,34 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void workerChangeInboxAcceptsOnlyTheRemainingFifoPrefix() {
-        DeliveryReport first = workerChange("worker-1", true);
-        DeliveryReport second = workerChange("worker-2", false);
-        DeliveryReport rejected = workerChange("worker-3", true);
+    void serviceabilityBridgeConsumesRequestsAndAppendsTheRemainingPrefix() {
+        String requestKey = serviceabilityRequestKey("endpoint-1");
+        redis.hset(requestKey, "worker-1", "1");
+        redis.hset(requestKey, "worker-2", "1");
+        redis.hset(requestKey, "worker-3", "1");
 
-        assertThat(changeInbox.append(List.of(
+        List<String> consumed = serviceabilityRuntime.consumeProbeRequests(
+                "endpoint-1",
+                2
+        );
+        assertThat(consumed).hasSize(2).doesNotHaveDuplicates();
+        assertThat(redis.hlen(requestKey)).isEqualTo(1);
+
+        DeliveryReport first = serviceabilityResult("worker-1", "CONNECTED");
+        DeliveryReport second = serviceabilityResult("worker-2", "UNKNOWN");
+        DeliveryReport rejected = serviceabilityResult(
+                "worker-3",
+                "DISCONNECTED"
+        );
+        assertThat(serviceabilityRuntime.appendProbeResults(List.of(
                 first,
                 second,
                 rejected
         ))).isEqualTo(2);
-        assertThat(redis.lrange(changeInboxKey(), 0, -1))
+        assertThat(redis.lrange(serviceabilityResultKey(), 0, -1))
                 .extracting(codec::decodeDeliveryReport)
                 .containsExactly(first, second);
-        assertThat(changeInbox.append(
+        assertThat(serviceabilityRuntime.appendProbeResults(
                 List.of(rejected)
         )).isZero();
     }
@@ -284,8 +298,13 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         return "rr:" + prefix + ":worker-results:" + outcomeClass;
     }
 
-    private String changeInboxKey() {
-        return "we:{" + prefix + "}:route-change-inbox";
+    private String serviceabilityRequestKey(String adapterId) {
+        return "ws:{" + prefix + "}:adapter:"
+                + adapterId + ":probe-requests";
+    }
+
+    private String serviceabilityResultKey() {
+        return "ws:{" + prefix + "}:probe-results";
     }
 
     private long commandCalls(String command) {
@@ -333,22 +352,22 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         );
     }
 
-    private static DeliveryReport workerChange(
+    private static DeliveryReport serviceabilityResult(
             String workerId,
-            boolean available
+            String state
     ) {
         return DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
-                DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-availability.changed",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connections.snapshot",
                 "200",
-                "{\"workerId\":\""
+                "{\"stateByWorkerId\":{\""
                         + workerId
-                        + "\",\"available\":"
-                        + available
-                        + "}",
-                "worker-change:v1"
+                        + "\":\""
+                        + state
+                        + "\"}}",
+                "worker-serviceability:v1:123"
         );
     }
 }

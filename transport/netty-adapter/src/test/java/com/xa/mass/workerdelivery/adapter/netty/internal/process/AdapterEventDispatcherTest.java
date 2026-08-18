@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
+import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionState;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerPropertiesObservation;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -137,6 +139,55 @@ class AdapterEventDispatcherTest {
                 Map.of("extension.adapter.custom", payload -> payload)
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("platform.adapter");
+    }
+
+    @Test
+    void kernelCanOnlyExecuteTheWorkerConnectionSnapshot() {
+        WorkerConnectionMechanism connections = mock(
+                WorkerConnectionMechanism.class
+        );
+        when(connections.connectionStates(List.of("worker-1")))
+                .thenReturn(Map.of(
+                        "worker-1",
+                        WorkerConnectionState.CONNECTED
+                ));
+        AdapterEventDispatcher dispatcher = AdapterEventDispatcher.defaults(
+                "adapter-1",
+                connections
+        );
+
+        DeliveryCommand snapshot = DeliveryCommand.create(
+                KERNEL,
+                ADAPTER,
+                AdapterEventDispatcher.CONNECTION_SNAPSHOT_EVENT,
+                System.currentTimeMillis() + 10_000,
+                "{\"workerIds\":[\"worker-1\"]}",
+                "worker-serviceability:v1:123"
+        );
+        var report = dispatcher.dispatch(snapshot);
+
+        assertThat(report.src()).isEqualTo(ADAPTER);
+        assertThat(report.dst()).isEqualTo(KERNEL);
+        assertThat(report.outcomeCode()).isEqualTo("200");
+        assertThat(Jsons.parseObject(report.payload()))
+                .containsEntry(
+                        "stateByWorkerId",
+                        Map.of("worker-1", "CONNECTED")
+                );
+
+        DeliveryCommand forbidden = DeliveryCommand.create(
+                KERNEL,
+                ADAPTER,
+                AdapterEventDispatcher.CLOSE_CURRENT_EVENT,
+                System.currentTimeMillis() + 10_000,
+                "{\"workerIds\":[\"worker-1\"]}",
+                "worker-serviceability:v1:123"
+        );
+        assertThat(dispatcher.dispatch(forbidden).outcomeCode())
+                .isEqualTo(Integer.toString(
+                        WorkerDeliveryAdapterErrorCode
+                                .ADAPTER_COMMAND_INVALID.code()
+                ));
     }
 
     @Test

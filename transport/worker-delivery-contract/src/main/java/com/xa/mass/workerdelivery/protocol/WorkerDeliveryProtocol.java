@@ -10,10 +10,6 @@ public final class WorkerDeliveryProtocol {
             "worker.connection.identify";
     public static final String WORKER_CONNECTION_CLOSE_EVENT_CODE =
             "worker.connection.close";
-    public static final String ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME =
-            "platform.adapter.worker-availability.changed";
-    public static final String WORKER_CHANGE_RESULT_FORWARD =
-            "worker-change:v1";
     private static final String SUCCESS_OUTCOME_CODE = "200";
 
     private WorkerDeliveryProtocol() {
@@ -22,6 +18,7 @@ public final class WorkerDeliveryProtocol {
     public enum DeliveryEndpoint {
         TASK("TASK"),
         SYSTEM("SYSTEM"),
+        KERNEL("KERNEL"),
         ADAPTER("ADAPTER"),
         WORKER("WORKER");
 

@@ -322,6 +322,16 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
+    public Map<String, WorkerScoreTransitionResult>
+            applyWorkerServiceabilityChecks(
+                    String homeBucketId,
+                    Map<String, WorkerServiceabilityCheck> checksByWorkerId,
+                    int maxRecoveryAttempts
+            ) {
+        throw notImplemented("apply_worker_serviceability_checks");
+    }
+
+    @Override
     public Map<String, WorkerScoreTransitionResult> releaseScoreHolds(
             String homeBucketId,
             Map<String, Long> observedScores,

@@ -19,6 +19,7 @@ from .worker_score import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
+    WorkerServiceabilityCheck,
 )
 from .worker_runtime import (
     AttributeName,
@@ -84,6 +85,10 @@ from .worker_delivery import (
     encode_delivery_report,
 )
 from .worker_result_runtime import WorkerResultRuntime
+from .worker_serviceability import (
+    ProbeRequestOfferStatus,
+    WorkerServiceabilityRuntime,
+)
 
 __all__ = [
     "CandidateId",
@@ -106,6 +111,7 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
+    "WorkerServiceabilityCheck",
     "AttributeName",
     "AttributeValue",
     "MappedWorkerPropertyIndexRuntime",
@@ -155,6 +161,8 @@ __all__ = [
     "DeliveryReport",
     "DeliveryReportOutcomeClass",
     "WorkerResultRuntime",
+    "ProbeRequestOfferStatus",
+    "WorkerServiceabilityRuntime",
     "classify_delivery_report_outcome_code",
     "TaskResourceCatalog",
     "TaskRuntime",

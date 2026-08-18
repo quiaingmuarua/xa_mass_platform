@@ -13,5 +13,19 @@
   },
   "resultRouting": {
     "intervalMillis": 20
+  },
+  "workerServiceability": {
+    "workerGroupIds": [
+      "scenario-phone-number-workers",
+      "scenario-string-utils-workers"
+    ],
+    "dispatchIntervalMillis": 1000,
+    "resultIntervalMillis": 100,
+    "staleHotAfterMillis": 300000,
+    "recoveryRetryIntervalMillis": 60000,
+    "maxRecoveryAttempts": 5,
+    "hotScanLimit": 80,
+    "recoveryScanLimit": 20,
+    "resultReportLimit": 10
   }
 }

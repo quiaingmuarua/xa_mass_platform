@@ -18,6 +18,7 @@ from .kernel import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
+    WorkerServiceabilityCheck,
     AttributeName,
     AttributeValue,
     MappedWorkerPropertyIndexRuntime,
@@ -67,6 +68,8 @@ from .kernel import (
     DeliveryReport,
     DeliveryReportOutcomeClass,
     WorkerResultRuntime,
+    ProbeRequestOfferStatus,
+    WorkerServiceabilityRuntime,
     SUCCESS_OUTCOME_CODE,
     classify_delivery_report_outcome_code,
 )
@@ -93,6 +96,10 @@ from .scheduling import (
     WorkerCandidateAcquisition,
     WorkerResultEvidence,
     WorkerResultHandler,
+    WorkerServiceabilityDispatchConfig,
+    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityResultConfig,
+    WorkerServiceabilityResultPacer,
 )
 from .redis_runtime import (
     RedisCandidateWorkerCache,
@@ -107,6 +114,7 @@ from .redis_runtime import (
     RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
     RedisWorkerResultRuntime,
+    RedisWorkerServiceabilityRuntime,
 )
 __all__ = [
     "CandidateWorkerCache",
@@ -124,6 +132,7 @@ __all__ = [
     "RedisTaskRuntime",
     "RedisWorkerScoreCore",
     "RedisWorkerResultRuntime",
+    "RedisWorkerServiceabilityRuntime",
     "RedisHashWorkerPropertyIndex",
     "RedisHashWorkerPropertyIndexProvider",
     "RedisWorkerResourceCatalog",
@@ -140,6 +149,7 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
+    "WorkerServiceabilityCheck",
     "AttributeName",
     "AttributeValue",
     "CandidateId",
@@ -209,8 +219,14 @@ __all__ = [
     "DeliveryReport",
     "DeliveryReportOutcomeClass",
     "WorkerResultRuntime",
+    "ProbeRequestOfferStatus",
+    "WorkerServiceabilityRuntime",
     "SUCCESS_OUTCOME_CODE",
     "WorkerResultEvidence",
     "WorkerResultHandler",
+    "WorkerServiceabilityDispatchConfig",
+    "WorkerServiceabilityDispatchPacer",
+    "WorkerServiceabilityResultConfig",
+    "WorkerServiceabilityResultPacer",
     "classify_delivery_report_outcome_code",
 ]

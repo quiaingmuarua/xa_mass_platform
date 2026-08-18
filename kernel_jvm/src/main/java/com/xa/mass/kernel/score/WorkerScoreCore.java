@@ -94,6 +94,12 @@ public interface WorkerScoreCore {
             long observedScore
     );
 
+    Map<String, WorkerScoreTransitionResult> applyWorkerServiceabilityChecks(
+            String homeBucketId,
+            Map<String, WorkerServiceabilityCheck> checksByWorkerId,
+            int maxRecoveryAttempts
+    );
+
     Map<String, WorkerScoreTransitionResult> releaseScoreHolds(
             String homeBucketId,
             Map<String, Long> observedScores,
@@ -162,5 +168,11 @@ public interface WorkerScoreCore {
         public WorkerScoreObservation {
             Objects.requireNonNull(workerId, "workerId");
         }
+    }
+
+    record WorkerServiceabilityCheck(
+            long checkStartedAtMillis,
+            boolean serviceable
+    ) {
     }
 }

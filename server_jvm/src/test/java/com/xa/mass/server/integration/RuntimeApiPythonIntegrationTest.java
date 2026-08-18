@@ -20,6 +20,7 @@ import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.net.http.HttpClient;
@@ -243,7 +244,6 @@ class RuntimeApiPythonIntegrationTest {
         );
         try {
             awaitWorkerRegistered(workerGroupId, workerId);
-            byte[] scoreBeforeRouteChanges = workerScoreBytes(workerGroupId);
             assertThat(observedDirectPayload(workerDirectCall(
                     workerGroupId,
                     workerId,
@@ -312,12 +312,7 @@ class RuntimeApiPythonIntegrationTest {
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
             assertWorkerProperties(workerId);
-            awaitAvailabilityEvidence(
-                    workerId,
-                    List.of(true, false, true)
-            );
-            assertThat(workerScoreBytes(workerGroupId))
-                    .containsExactly(scoreBeforeRouteChanges);
+            awaitServiceabilitySnapshot(workerId);
         } finally {
             worker.close();
         }
@@ -434,37 +429,48 @@ class RuntimeApiPythonIntegrationTest {
         ));
     }
 
-    private static void awaitAvailabilityEvidence(
-            String workerId,
-            List<Boolean> expected
-    ) throws Exception {
+    private static void awaitServiceabilitySnapshot(String workerId)
+            throws Exception {
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
-            String key = "we:{" + redisPrefix()
-                    + "}:route-change-inbox";
+            String requestKey = "ws:{" + redisPrefix()
+                    + "}:adapter:" + WEBSOCKET_ENDPOINT_MANAGER_ID
+                    + ":probe-requests";
+            String resultKey = "ws:{" + redisPrefix()
+                    + "}:probe-results";
+            redis.hset(requestKey, workerId, "1");
             long deadline = System.nanoTime()
                     + Duration.ofSeconds(5).toNanos();
             while (System.nanoTime() < deadline) {
-                List<Boolean> observed = new ArrayList<>();
-                for (String encoded : redis.lrange(key, 0, -1)) {
+                for (String encoded : redis.lrange(resultKey, 0, -1)) {
                     DeliveryReport report;
                     try {
                         report = DELIVERY_CODEC.decodeDeliveryReport(encoded);
                     } catch (IllegalArgumentException ignored) {
                         continue;
                     }
-                    Map<String, Object> payload = Jsons.parseObject(
-                            report.payload()
-                    );
-                    if (workerId.equals(payload.get("workerId"))
-                            && payload.get("available")
-                            instanceof Boolean available) {
-                        observed.add(available);
+                    if (report.src() != DeliveryEndpoint.ADAPTER
+                            || report.dst() != DeliveryEndpoint.KERNEL
+                            || !WEBSOCKET_ENDPOINT_MANAGER_ID.equals(
+                            report.sourceId()
+                    )
+                            || !"platform.adapter.worker-connections.snapshot"
+                            .equals(report.messageType())
+                            || !report.forward().startsWith(
+                            "worker-serviceability:v1:"
+                    )) {
+                        continue;
                     }
-                }
-                if (containsInOrder(observed, expected)) {
-                    return;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> states = (Map<String, Object>)
+                            Jsons.parseObject(report.payload()).get(
+                                    "stateByWorkerId"
+                            );
+                    if (states != null
+                            && "CONNECTED".equals(states.get(workerId))) {
+                        return;
+                    }
                 }
                 Thread.sleep(20);
             }
@@ -472,38 +478,8 @@ class RuntimeApiPythonIntegrationTest {
             client.shutdown();
         }
         throw new AssertionError(
-                "Worker availability evidence did not converge to "
-                        + expected
+                "Worker serviceability snapshot did not reach the result LIST"
         );
-    }
-
-    private static boolean containsInOrder(
-            List<Boolean> observed,
-            List<Boolean> expected
-    ) {
-        int expectedIndex = 0;
-        for (Boolean value : observed) {
-            if (expectedIndex < expected.size()
-                    && expected.get(expectedIndex).equals(value)) {
-                expectedIndex++;
-            }
-        }
-        return expectedIndex == expected.size();
-    }
-
-    private static byte[] workerScoreBytes(String workerGroupId) {
-        RedisClient client = RedisClient.create(REDIS_URL);
-        try (var connection = client.connect(StringCodec.UTF8)) {
-            byte[] encoded = connection.sync().dump(
-                    "wr:" + redisPrefix() + ":score:" + workerGroupId
-            );
-            if (encoded == null) {
-                throw new AssertionError("Worker score key is missing");
-            }
-            return encoded;
-        } finally {
-            client.shutdown();
-        }
     }
 
     private static String redisPrefix() {

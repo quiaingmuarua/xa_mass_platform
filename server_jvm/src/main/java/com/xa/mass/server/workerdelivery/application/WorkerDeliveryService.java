@@ -1,17 +1,16 @@
 package com.xa.mass.server.workerdelivery.application;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
-
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.directcall.DirectCallService;
-import com.xa.mass.server.directcall.DirectCallRegistry;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -26,6 +25,12 @@ import java.util.Set;
 public final class WorkerDeliveryService {
 
     private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
+    private static final String SERVICEABILITY_EVENT =
+            "platform.adapter.worker-connections.snapshot";
+    private static final String SERVICEABILITY_FORWARD_PREFIX =
+            "worker-serviceability:v1:";
+    private static final int SERVICEABILITY_PROBE_LIMIT = 100;
+    private static final long SERVICEABILITY_COMMAND_VALIDITY_MILLIS = 5_000L;
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerDeliveryService.class.getName()
@@ -35,7 +40,7 @@ public final class WorkerDeliveryService {
     private final WorkerResultRuntime resultRuntime;
     private final WorkerBindingService bindings;
     private final DirectCallService directCalls;
-    private final WorkerChangeReportIngress workerChanges;
+    private final WorkerServiceabilityRuntime serviceability;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
@@ -43,13 +48,13 @@ public final class WorkerDeliveryService {
             WorkerResultRuntime resultRuntime,
             WorkerBindingService bindings,
             DirectCallService directCalls,
-            WorkerChangeReportIngress workerChanges
+            WorkerServiceabilityRuntime serviceability
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
         this.bindings = bindings;
         this.directCalls = directCalls;
-        this.workerChanges = workerChanges;
+        this.serviceability = serviceability;
     }
 
     public void verifyWorkerRoute(
@@ -103,6 +108,7 @@ public final class WorkerDeliveryService {
 
         int remaining = limit - adapterCommands.size();
         Map<String, DeliveryCommand> workerCommands = Map.of();
+        RuntimeException workerSourceFailure = null;
         if (remaining > 0) {
             try {
                 workerCommands = activeCommands(
@@ -112,17 +118,62 @@ public final class WorkerDeliveryService {
                         )
                 );
             } catch (RuntimeException error) {
-                if (adapterCommands.isEmpty()) {
-                    if (error instanceof ServerException serverError) {
-                        throw serverError;
-                    }
-                    throw unavailable(operation, error);
-                }
-                logLowerPrioritySourceFailure(endpointManagerId, error);
+                workerSourceFailure = error;
                 workerCommands = Map.of();
             }
         }
-        return combineCommands(adapterCommands, workerCommands);
+        remaining -= workerCommands.size();
+        DeliveryCommand serviceabilityCommand = remaining > 0
+                ? consumeServiceabilityCommand(endpointManagerId)
+                : null;
+        if (workerSourceFailure != null) {
+            if (adapterCommands.isEmpty()
+                    && serviceabilityCommand == null) {
+                if (workerSourceFailure instanceof ServerException serverError) {
+                    throw serverError;
+                }
+                throw unavailable(operation, workerSourceFailure);
+            }
+            logLowerPrioritySourceFailure(
+                    endpointManagerId,
+                    workerSourceFailure
+            );
+        }
+        return combineCommands(
+                adapterCommands,
+                workerCommands,
+                serviceabilityCommand
+        );
+    }
+
+    private DeliveryCommand consumeServiceabilityCommand(
+            String endpointManagerId
+    ) {
+        List<String> workerIds;
+        try {
+            workerIds = serviceability.consumeProbeRequests(
+                    endpointManagerId,
+                    SERVICEABILITY_PROBE_LIMIT
+            );
+        } catch (RuntimeException error) {
+            logLowerPrioritySourceFailure(endpointManagerId, error);
+            return null;
+        }
+        if (workerIds.isEmpty()) {
+            return null;
+        }
+        long checkStartedAtMillis = System.currentTimeMillis();
+        return DeliveryCommand.create(
+                DeliveryEndpoint.KERNEL,
+                DeliveryEndpoint.ADAPTER,
+                SERVICEABILITY_EVENT,
+                Math.addExact(
+                        checkStartedAtMillis,
+                        SERVICEABILITY_COMMAND_VALIDITY_MILLIS
+                ),
+                Jsons.toJson(Map.of("workerIds", workerIds)),
+                SERVICEABILITY_FORWARD_PREFIX + checkStartedAtMillis
+        );
     }
 
     private static Map<String, DeliveryCommand> activeCommands(
@@ -140,7 +191,8 @@ public final class WorkerDeliveryService {
 
     private static Map<String, DeliveryCommand> combineCommands(
             List<DeliveryCommand> adapterCommands,
-            Map<String, DeliveryCommand> workerCommands
+            Map<String, DeliveryCommand> workerCommands,
+            DeliveryCommand serviceabilityCommand
     ) {
         Map<String, DeliveryCommand> combined = new LinkedHashMap<>();
         Set<String> occupied = new HashSet<>(workerCommands.keySet());
@@ -154,6 +206,13 @@ public final class WorkerDeliveryService {
             combined.put(entryKey, command);
         }
         combined.putAll(workerCommands);
+        if (serviceabilityCommand != null) {
+            String entryKey;
+            do {
+                entryKey = OPAQUE_COMMAND_ENTRY_PREFIX + ordinal++;
+            } while (occupied.contains(entryKey));
+            combined.put(entryKey, serviceabilityCommand);
+        }
         return Collections.unmodifiableMap(combined);
     }
 
@@ -210,7 +269,7 @@ public final class WorkerDeliveryService {
         }
 
         List<DeliveryReport> directCallResults = new ArrayList<>();
-        List<DeliveryReport> workerChangeResults = new ArrayList<>();
+        List<DeliveryReport> kernelResults = new ArrayList<>();
         List<DeliveryReport> taskResults = new ArrayList<>();
         int rejectedCount = 0;
         for (String encodedWorkerResult : encodedWorkerResults) {
@@ -225,16 +284,12 @@ public final class WorkerDeliveryService {
                 );
                 if (result == null) {
                     rejectedCount++;
-                } else if (result.dst() == DeliveryEndpoint.SYSTEM
-                        && result.forward().startsWith(
-                        DirectCallRegistry.FORWARD_PREFIX
-                )) {
+                } else if (result.dst() == DeliveryEndpoint.SYSTEM) {
                     directCallResults.add(result);
-                } else if (result.dst() == DeliveryEndpoint.SYSTEM
-                        && WORKER_CHANGE_RESULT_FORWARD.equals(
-                        result.forward()
-                )) {
-                    workerChangeResults.add(result);
+                } else if (result.dst() == DeliveryEndpoint.KERNEL
+                        && result.src() == DeliveryEndpoint.ADAPTER
+                        && endpointManagerId.equals(result.sourceId())) {
+                    kernelResults.add(result);
                 } else if (acceptableTaskBatchReport(
                         endpointManagerId,
                         result
@@ -262,14 +317,15 @@ public final class WorkerDeliveryService {
             acceptedCount += directCounts.acceptedCount();
             rejectedCount += directCounts.rejectedCount();
         }
-        if (!workerChangeResults.isEmpty()) {
-            WorkerChangeReportIngress.AppendCounts workerChangeCounts =
-                    workerChanges.append(
-                            endpointManagerId,
-                            workerChangeResults
-                    );
-            acceptedCount += workerChangeCounts.acceptedCount();
-            rejectedCount += workerChangeCounts.rejectedCount();
+        if (!kernelResults.isEmpty()) {
+            try {
+                int accepted = serviceability.appendProbeResults(kernelResults);
+                acceptedCount += accepted;
+                rejectedCount += kernelResults.size() - accepted;
+            } catch (RuntimeException error) {
+                rejectedCount += kernelResults.size();
+                logLowerPrioritySourceFailure(endpointManagerId, error);
+            }
         }
         if (rejectedCount > 0) {
             LOGGER.log(

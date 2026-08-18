@@ -35,6 +35,7 @@ The executable specification currently proves:
 - Task admission, candidate warmup, Task dispatch and Result Routing;
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
+- optional Adapter-route Worker serviceability discovery and score convergence;
 - Kernel application assembly and the Python Runtime Server command boundary.
 
 The authoritative implementation-status table lives in
@@ -126,6 +127,13 @@ DIRECT_CALL is outside this mainline. It is a Server-owned, caller-targeted
 use case that offers Worker Commands into the existing delivery mailbox
 without selecting a Worker or entering Task scheduling and Result Routing.
 
+Worker Serviceability is a separate optional Kernel policy. It scans only
+explicitly configured WorkerGroups, asks the owning Adapter for bounded route
+snapshots through a best-effort Runtime, and lets WorkerScoreCore fence any
+resulting polarity/retry transition. It remains disabled when the optional
+Kernel configuration is absent; when enabled, the existing Server consume and
+result endpoints provide the Adapter bridge without owning score policy.
+
 ## Owner Contract Standard
 
 Every new Kernel operation is a long-lived cost commitment. Prefer:
@@ -156,6 +164,7 @@ to the change:
 - [Task Dispatch](doc/scheduling/task-dispatch-pacer.md)
 - [Result Routing](doc/scheduling/result-routing-scheduling.md)
 - [Worker Delivery](doc/scheduling/worker-delivery-dispatch.md)
+- [Worker Serviceability](doc/scheduling/worker-serviceability-scheduling.md)
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
 
 Redis documents describe current owner storage shapes; they are not public APIs

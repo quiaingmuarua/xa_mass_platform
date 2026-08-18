@@ -50,7 +50,7 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and dispatch wake | Python Kernel HTTP |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Verified Worker route-change evidence | Server validation plus bounded Java Redis Worker Change inbox append |
+| Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus Java Redis Kernel-result append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | WorkerGroup RPC and Task Batch | Server-bounded use cases over existing owners |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
@@ -82,8 +82,10 @@ Worker Command already offered to Redis.
 
 Adapter-targeted calls enter a bounded Server-memory FIFO. Adapter Commands are
 consumed first; any remaining response capacity is filled by exactly one
-bounded consume from the shared Worker Command Hash. Only a Worker Command map
-key is its workerId; Adapter Command keys are response-local and opaque.
+bounded consume from the shared Worker Command Hash. If capacity still remains,
+Server may consume up to 100 coalesced Kernel Serviceability requests and add
+one Adapter snapshot Command. Only a Worker Command map key is its workerId;
+Adapter and Kernel Command keys are response-local and opaque.
 Exact route schemas are available from the running Server:
 
 ```text
@@ -115,13 +117,15 @@ scheduler, queues, current route registry and physical Channels remain owned by
 `transport/netty-adapter`.
 
 Long-lived Worker identity carries `workerId` in the Report source and exact
-`null` payload. Adapter routing, retained verification, and availability
-evidence use only workerId; WorkerGroup remains outside the Transport route.
-Effective verified-route availability changes return as standard Adapter SYSTEM
-Reports through the existing `results:append` path. Server validates the
-Adapter source and current Binding, then appends the original evidence to the bounded
-`WorkerChangeInbox`. Server does not project online state, start
-a consumer, or read/write Worker score in this slice.
+`null` payload. Adapter routing and retained verification use only workerId;
+WorkerGroup remains outside the Transport route. The optional Kernel
+Serviceability Dispatch Pacer writes Adapter-partitioned probe requests. Server
+destructively consumes a bounded request set only at the lowest Command-response
+priority and constructs one `KERNEL -> ADAPTER`
+`platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
+Result path routes its `ADAPTER -> KERNEL` Report into the bounded Kernel
+Serviceability result handoff. Server neither interprets the snapshot as online
+truth nor invokes the Worker score owner.
 
 Adapter instances may configure `route-cache` and `properties-cache`. The
 defaults retain disconnected verification evidence for `10m` with at most
@@ -172,12 +176,15 @@ WorkerGroup RPC wait           30s default / 60s maximum
 DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server
-Worker Change inbox capacity   10000 per Redis prefix
+Serviceability probe requests  10000 per Adapter HASH
+Serviceability probe results   10000 per Redis prefix
 ```
 
-The Server-owned Inbox uses
-`we:{redisPrefix}:route-change-inbox`. It is not a Kernel Result Runtime key,
-current connectivity truth, or a scheduling input.
+The optional Serviceability handoff uses
+`ws:{redisPrefix}:adapter:{adapterId}:probe-requests` and
+`ws:{redisPrefix}:probe-results`. These are Kernel-owned best-effort handoffs,
+not current connectivity truth. Server implements only the bounded Adapter
+request consume and Result append needed by its HTTP bridge.
 
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a

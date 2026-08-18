@@ -262,40 +262,20 @@ encoded properties bytes and may evict a connected Worker's properties without
 changing its route. Management reads are quiet; only a successful current-
 Channel properties result refreshes an entry.
 
-### Worker route-change evidence
-
-`WorkerConnectionMechanism` emits
-`platform.adapter.worker-availability.changed` through the existing Report
-Process when route truth changes effectively:
-
-```text
-first verification success                 -> available=true
-Disconnected -> Connected reconnect         -> available=true
-current Channel loss/send failure/detach    -> available=false
-Adapter shutdown of a current route         -> available=false, best effort
-```
-
-Verification start or failure, same-worker connection replacement, stale old
-Channel callbacks, snapshots, and repeated disconnected observations emit
-nothing. The Report is `ADAPTER -> SYSTEM`, uses outcome `200`, carries the
-routed `workerId` plus `available`, and fixes `forward=worker-change:v1`.
-It shares the one private Result queue; full or closed ingress drops this
-evidence without closing the Worker Channel. The Adapter performs no score
-read, score write, debounce, heartbeat, generation tracking, or reliable
-retry.
-
 ## Delivery Processes
 
 ### Command consumption round
 
 `DeliveryCommandProcess` owns one private queue and one fixed remote path.
 Server may place a bounded prefix from its Adapter Direct FIFO in a
-`commands:consume` response. Remaining capacity comes from one consume of the
-shared Worker Command Hash, whose fields may contain TASK or SYSTEM Commands.
-This is remote acquisition priority, not local preemption: commands already
-present in the Adapter FIFO remain ahead, a full local queue postpones the next
-Server consume, and an already running Worker Handler is unaffected. Sustained
-Adapter Commands may delay Worker acquisition.
+`commands:consume` response. Remaining capacity first comes from one consume of
+the shared Worker Command Hash, whose fields may contain TASK or SYSTEM
+Commands. If capacity still remains, Server may add one bounded Kernel
+Serviceability Adapter snapshot Command. This is remote acquisition priority,
+not local preemption: commands already present in the Adapter FIFO remain
+ahead, a full local queue postpones the next Server consume, and an already
+running Worker Handler is unaffected. Sustained higher-priority Commands may
+starve Serviceability acquisition by design.
 
 ```text
 while the queue is below its soft capacity
@@ -311,12 +291,14 @@ for each command exactly once this round
 ```
 
 TASK accepts `TASK -> WORKER`. DIRECT_CALL uses `SYSTEM -> WORKER` or
-`SYSTEM -> ADAPTER`. A Worker Command entry key is its workerId; an Adapter
+`SYSTEM -> ADAPTER`. Worker Serviceability uses only `KERNEL -> ADAPTER` with
+`platform.adapter.worker-connections.snapshot`; every other KERNEL Adapter
+event is rejected. A Worker Command entry key is its workerId; an Adapter
 Command entry key is opaque and ignored. No active Channel is temporary while
 the deadline remains live. DIRECT_CALL expiry creates no synthetic result;
 the Server waiter owns timeout. The queue has no workerId index, and its soft
 capacity is a backpressure target rather than delivery truth. Adapter does not
-read Worker score or know whether a SYSTEM Command came from DIRECT_CALL.
+read Worker score or interpret Serviceability policy.
 
 The composition root installs a finite immutable Adapter event map. This is an
 execution surface, not a public registry or Server whitelist:
@@ -382,9 +364,9 @@ another complete Map, and advance the one Worker-level `updatedAtMillis`.
 ### Result ingress round
 
 `DeliveryReportProcess` owns one private queue, one pending batch, and the
-single `results:append` path. Qualified TASK and SYSTEM reports preserve their
-original encoded JSON and enter through the same concrete `ingress(...)`
-operation.
+single `results:append` path. Qualified TASK, SYSTEM, and Adapter-local KERNEL
+reports preserve their original encoded JSON and enter through the same
+concrete `ingress(...)` operation.
 
 ```text
 pending batch exists -> retry it first
@@ -392,14 +374,15 @@ otherwise            -> drain the queue once
 submit one mixed encoded-result batch to results:append
 ```
 
-Server routes each Report by `dst` and opaque `forward`: TASK enters Kernel
-Result truth, `direct-call:v1:*` completes a Server-local waiter, and
-`worker-change:v1` enters the Server-owned bounded evidence inbox. Remote
-unavailability retains the whole mixed pending batch; protocol rejection drops
-it. Normal close performs one bounded best-effort final submit. Command and
-Report rounds remain independent. TASK and SYSTEM do not have separate retry
-policies inside the Adapter: a late DIRECT_CALL Report may be retried with the
-mixed batch and is then rejected by Server after its waiter has ended.
+Server selects the receiving owner by Report `dst`: TASK enters Kernel Task
+Result truth, SYSTEM enters the Server-local Direct Call owner, and KERNEL
+enters the Kernel Worker Serviceability result handoff. Owner-local correlation
+then interprets opaque `forward`. Remote unavailability retains the whole mixed
+pending batch; protocol rejection drops it. Normal close performs one bounded
+best-effort final submit. Command and Report rounds remain independent. The
+destinations do not have separate retry policies inside the Adapter: a late
+DIRECT_CALL Report may be retried with the mixed batch and is then rejected by
+Server after its waiter has ended.
 
 Both queues are finite, soft-capacity, and private to their Process.
 `estimatedSize` is advisory. Adapter failure can lose queued commands or

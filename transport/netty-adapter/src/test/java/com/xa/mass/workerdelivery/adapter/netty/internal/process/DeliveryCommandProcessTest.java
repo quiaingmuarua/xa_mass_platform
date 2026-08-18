@@ -222,9 +222,9 @@ class DeliveryCommandProcessTest {
 
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
-            assertThat(fixture.peer.systemReportsExcluding(
-                    "platform.adapter.worker-availability.changed"
-            ))
+            assertThat(fixture.peer.appendedSystemReports.stream()
+                    .map(CODEC::decodeDeliveryReport)
+                    .toList())
                     .hasSize(2)
                     .extracting(DeliveryReport::messageType)
                     .containsExactlyInAnyOrder(
@@ -433,15 +433,6 @@ class DeliveryCommandProcessTest {
         );
         private int failures;
         private String responseBodyOverride;
-
-        private List<DeliveryReport> systemReportsExcluding(
-                String eventName
-        ) {
-            return appendedSystemReports.stream()
-                    .map(CODEC::decodeDeliveryReport)
-                    .filter(report -> !eventName.equals(report.messageType()))
-                    .toList();
-        }
 
         private synchronized Response handle(
                 ScriptedHttpServer.Request request

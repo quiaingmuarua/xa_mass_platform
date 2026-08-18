@@ -68,6 +68,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
 
         self.assertEqual(expected, KernelApplicationConfig.from_json())
         self.assertEqual(expected, KernelApplicationConfig.from_json("{}"))
+        self.assertIsNone(expected.worker_serviceability)
 
     def test_partial_json_overrides_only_public_process_coordinates(self) -> None:
         config = KernelApplicationConfig.from_json(
@@ -99,6 +100,45 @@ class KernelApplicationConfigTest(unittest.TestCase):
             {"index.worker.region": "redis-hash"},
             config.worker_property_indexes,
         )
+
+    def test_serviceability_is_optional_and_strictly_bounded(self) -> None:
+        config = KernelApplicationConfig.from_json(
+            json.dumps(
+                {
+                    "workerServiceability": {
+                        "workerGroupIds": ["group-a", "group-b"],
+                        "dispatchIntervalMillis": 2_000,
+                        "resultIntervalMillis": 200,
+                        "staleHotAfterMillis": 600_000,
+                        "recoveryRetryIntervalMillis": 120_000,
+                        "maxRecoveryAttempts": 4,
+                        "hotScanLimit": 70,
+                        "recoveryScanLimit": 30,
+                        "resultReportLimit": 20,
+                    }
+                }
+            )
+        )
+
+        self.assertIsNotNone(config.worker_serviceability)
+        serviceability = config.worker_serviceability
+        assert serviceability is not None
+        self.assertEqual(("group-a", "group-b"), serviceability.worker_group_ids)
+        self.assertEqual(2_000, serviceability.dispatch_interval_millis)
+        self.assertEqual(200, serviceability.result_interval_millis)
+        self.assertEqual(4, serviceability.max_recovery_attempts)
+
+        invalid_configs = (
+            '{"workerServiceability": {}}',
+            '{"workerServiceability": {"workerGroupIds": []}}',
+            '{"workerServiceability": {"workerGroupIds": ["a", "a"]}}',
+            '{"workerServiceability": {"workerGroupIds": ["a"], "unknown": 1}}',
+            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '"hotScanLimit": 81, "recoveryScanLimit": 20}}',
+        )
+        for config_json in invalid_configs:
+            with self.subTest(config_json=config_json), self.assertRaises(ValueError):
+                KernelApplicationConfig.from_json(config_json)
 
     def test_unknown_malformed_and_non_positive_values_are_rejected(self) -> None:
         invalid_configs = (
@@ -176,6 +216,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 "result_routing_interval_millis",
                 "running_task_soft_limit",
                 "stop_timeout_millis",
+                "worker_serviceability",
                 "worker_property_indexes",
             ],
             [field.name for field in fields(KernelApplicationConfig)],
@@ -265,6 +306,34 @@ class KernelApplicationTest(unittest.TestCase):
             internal.result_routing.routing.per_outcome_batch_limit,
         )
         self.assertEqual(100, internal.result_routing.interval_millis)
+        self.assertIsNone(internal.worker_serviceability_dispatch)
+        self.assertIsNone(internal.worker_serviceability_result)
+
+    def test_constructs_enabled_serviceability_process_configs(self) -> None:
+        config = KernelApplicationConfig.from_json(
+            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+        )
+
+        KernelApplication(config)
+
+        call = self.from_url.call_args
+        internal = call.kwargs["config"]
+        self.assertEqual(
+            ("group-a",),
+            internal.worker_serviceability_dispatch.dispatch.worker_group_ids,
+        )
+        self.assertEqual(
+            1_000,
+            internal.worker_serviceability_dispatch.interval_millis,
+        )
+        self.assertEqual(
+            5,
+            internal.worker_serviceability_result.result.max_recovery_attempts,
+        )
+        self.assertEqual(
+            100,
+            internal.worker_serviceability_result.interval_millis,
+        )
 
     def test_dispatch_wake_is_a_bounded_application_hint(self) -> None:
         self.process._task_dispatch_wake_inbox.offer.return_value = 2
@@ -601,10 +670,14 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
         process._config = Mock(
             assignment_dispatch="assignment-config",
             result_routing="result-config",
+            worker_serviceability_dispatch=None,
+            worker_serviceability_result=None,
             stop_timeout_millis=123,
         )
         process._assignment_dispatch_application = Mock()
         process._result_routing_application = Mock()
+        process._worker_serviceability_dispatch_application = None
+        process._worker_serviceability_result_application = None
         order: list[str] = []
         process._result_routing_application.start.side_effect = (
             lambda **_kwargs: order.append("result-start")
@@ -650,6 +723,42 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
 
         self.assertEqual(
             ["result-start", "assignment-start", "result-stop"],
+            order,
+        )
+
+    def test_serviceability_lifecycle_sits_between_result_and_assignment(self) -> None:
+        process, order = self.process()
+        process._config.worker_serviceability_result = "service-result-config"
+        process._config.worker_serviceability_dispatch = "service-dispatch-config"
+        process._worker_serviceability_result_application = Mock()
+        process._worker_serviceability_dispatch_application = Mock()
+        process._worker_serviceability_result_application.start.side_effect = (
+            lambda **_kwargs: order.append("service-result-start")
+        )
+        process._worker_serviceability_dispatch_application.start.side_effect = (
+            lambda **_kwargs: order.append("service-dispatch-start")
+        )
+        process._worker_serviceability_dispatch_application.stop.side_effect = (
+            lambda **_kwargs: order.append("service-dispatch-stop")
+        )
+        process._worker_serviceability_result_application.stop.side_effect = (
+            lambda **_kwargs: order.append("service-result-stop")
+        )
+
+        process.start()
+        process.stop()
+
+        self.assertEqual(
+            [
+                "result-start",
+                "service-result-start",
+                "service-dispatch-start",
+                "assignment-start",
+                "assignment-stop",
+                "service-dispatch-stop",
+                "service-result-stop",
+                "result-stop",
+            ],
             order,
         )
 

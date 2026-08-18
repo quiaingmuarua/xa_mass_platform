@@ -27,6 +27,7 @@ from ..kernel import (
 from .application import (
     KernelApplication,
     KernelApplicationConfig,
+    WorkerServiceabilityConfig,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -43,6 +44,7 @@ __all__ = [
     "EndpointManagerId",
     "KernelApplication",
     "KernelApplicationConfig",
+    "WorkerServiceabilityConfig",
     "MessageId",
     "ResourcesCommandClient",
     "SYSTEM_POLLING_ENDPOINT_MANAGER_ID",

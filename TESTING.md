@@ -13,7 +13,7 @@ boundary named below.
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity, Binding and Worker Change inbox preserve their real Redis contracts, including bounded FIFO evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
+| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Kernel-result append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves an unpaused Worker DIRECT_CALL plus Adapter connection observe/close/reconnect through the unified APIs | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |

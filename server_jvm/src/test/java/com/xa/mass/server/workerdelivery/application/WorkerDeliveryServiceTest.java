@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -37,7 +38,7 @@ class WorkerDeliveryServiceTest {
     private WorkerResultRuntime resultRuntime;
     private WorkerBindingService bindings;
     private DirectCallService directCalls;
-    private WorkerChangeReportIngress workerChanges;
+    private WorkerServiceabilityRuntime serviceability;
     private WorkerDeliveryService service;
 
     @BeforeEach
@@ -46,7 +47,9 @@ class WorkerDeliveryServiceTest {
         resultRuntime = mock(WorkerResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
         directCalls = mock(DirectCallService.class);
-        workerChanges = mock(WorkerChangeReportIngress.class);
+        serviceability = mock(WorkerServiceabilityRuntime.class);
+        when(serviceability.consumeProbeRequests(anyString(), anyInt()))
+                .thenReturn(List.of());
         when(directCalls.consumeAdapterCommands(anyString(), anyInt()))
                 .thenReturn(List.of());
         when(directCalls.completeReports(anyString(), anyList()))
@@ -60,7 +63,7 @@ class WorkerDeliveryServiceTest {
                 resultRuntime,
                 bindings,
                 directCalls,
-                workerChanges
+                serviceability
         );
     }
 
@@ -108,6 +111,10 @@ class WorkerDeliveryServiceTest {
         assertThat(commands.values()).containsExactly(first, second);
         assertThat(commands.keySet()).hasSize(2);
         verify(commandRuntime, never()).consumeWorkerCommands(
+                anyString(),
+                anyInt()
+        );
+        verify(serviceability, never()).consumeProbeRequests(
                 anyString(),
                 anyInt()
         );
@@ -175,6 +182,92 @@ class WorkerDeliveryServiceTest {
                 .findFirst()
                 .orElseThrow()).isNotEqualTo("entry:0");
         verify(commandRuntime).consumeWorkerCommands("endpoint-1", 3);
+    }
+
+    @Test
+    void workerCommandsFillTheLimitBeforeProbeRequestsAreRead() {
+        DeliveryCommand task = DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
+                "test.event",
+                System.currentTimeMillis() + 10_000,
+                "{}",
+                "task-context"
+        );
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 1))
+                .thenReturn(Map.of("worker-1", task));
+
+        assertThat(service.consumeWorkerCommands("endpoint-1", 1))
+                .containsExactly(Map.entry("worker-1", task));
+
+        verify(serviceability, never()).consumeProbeRequests(
+                anyString(),
+                anyInt()
+        );
+    }
+
+    @Test
+    void remainingCapacityAddsOneLowPriorityServiceabilityCommand() {
+        DeliveryCommand task = DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
+                "test.event",
+                System.currentTimeMillis() + 10_000,
+                "{}",
+                "task-context"
+        );
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 3))
+                .thenReturn(Map.of("worker-1", task));
+        when(serviceability.consumeProbeRequests("endpoint-1", 100))
+                .thenReturn(List.of("worker-2", "worker-3"));
+        long before = System.currentTimeMillis();
+
+        Map<String, DeliveryCommand> commands =
+                service.consumeWorkerCommands("endpoint-1", 3);
+
+        assertThat(commands).hasSize(2).containsEntry("worker-1", task);
+        DeliveryCommand probe = commands.values().stream()
+                .filter(command -> command.src() == DeliveryEndpoint.KERNEL)
+                .findFirst()
+                .orElseThrow();
+        assertThat(probe.dst()).isEqualTo(DeliveryEndpoint.ADAPTER);
+        assertThat(probe.messageType()).isEqualTo(
+                "platform.adapter.worker-connections.snapshot"
+        );
+        assertThat(probe.payload()).isEqualTo(
+                "{\"workerIds\":[\"worker-2\",\"worker-3\"]}"
+        );
+        assertThat(probe.forward()).startsWith(
+                "worker-serviceability:v1:"
+        );
+        long checkStartedAt = Long.parseLong(probe.forward().substring(
+                "worker-serviceability:v1:".length()
+        ));
+        assertThat(checkStartedAt).isBetween(
+                before,
+                System.currentTimeMillis()
+        );
+        assertThat(probe.executeBeforeMillis())
+                .isEqualTo(checkStartedAt + 5_000L);
+    }
+
+    @Test
+    void probeRuntimeFailureDoesNotDiscardHigherPriorityCommands() {
+        DeliveryCommand task = DeliveryCommand.create(
+                DeliveryEndpoint.TASK,
+                DeliveryEndpoint.WORKER,
+                "test.event",
+                System.currentTimeMillis() + 10_000,
+                "{}",
+                "task-context"
+        );
+        when(commandRuntime.consumeWorkerCommands("endpoint-1", 2))
+                .thenReturn(Map.of("worker-1", task));
+        when(serviceability.consumeProbeRequests("endpoint-1", 100))
+                .thenThrow(new IllegalStateException("unavailable"));
+
+        assertThat(service.consumeWorkerCommands("endpoint-1", 2))
+                .containsExactly(Map.entry("worker-1", task));
     }
 
     @Test
@@ -335,7 +428,30 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
-    void adapterBatchRoutesTaskDirectCallAndWorkerChangeToTheirOwners() {
+    void kernelResultCapacityFailureIsBestEffortAndDoesNotRetryTheBatch() {
+        DeliveryReport kernel = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connections.snapshot",
+                "200",
+                "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
+                "worker-serviceability:v1:123"
+        );
+        when(serviceability.appendProbeResults(List.of(kernel)))
+                .thenReturn(0);
+
+        var counts = service.appendAdapterResults(
+                "endpoint-1",
+                List.of(codec.encodeDeliveryReport(kernel))
+        );
+
+        assertThat(counts.acceptedCount()).isZero();
+        assertThat(counts.rejectedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void adapterBatchRoutesTaskDirectCallAndKernelToTheirOwners() {
         DeliveryReport task = result(COMMAND_ID, "200");
         DeliveryReport direct = DeliveryReport.create(
                 DeliveryEndpoint.WORKER,
@@ -346,15 +462,14 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "direct-call:v1:test"
         );
-        DeliveryReport change = DeliveryReport.create(
+        DeliveryReport kernel = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
-                DeliveryEndpoint.SYSTEM,
-                "platform.adapter.worker-availability.changed",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connections.snapshot",
                 "200",
-                "{\"workerId\":\"worker-1\","
-                        + "\"available\":true}",
-                "worker-change:v1"
+                "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
+                "worker-serviceability:v1:123"
         );
         DeliveryReport unknownSystem = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
@@ -366,17 +481,19 @@ class WorkerDeliveryServiceTest {
                 "unknown"
         );
         when(resultRuntime.appendWorkerResults(List.of(task))).thenReturn(1);
-        when(directCalls.completeReports("endpoint-1", List.of(direct)))
-                .thenReturn(new DirectCallService.ResultAppendCounts(1, 0));
-        when(workerChanges.append("endpoint-1", List.of(change)))
-                .thenReturn(new WorkerChangeReportIngress.AppendCounts(1, 0));
+        when(directCalls.completeReports(
+                "endpoint-1",
+                List.of(direct, unknownSystem)
+        )).thenReturn(new DirectCallService.ResultAppendCounts(1, 1));
+        when(serviceability.appendProbeResults(List.of(kernel)))
+                .thenReturn(1);
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
                 List.of(
                         codec.encodeDeliveryReport(task),
                         codec.encodeDeliveryReport(direct),
-                        codec.encodeDeliveryReport(change),
+                        codec.encodeDeliveryReport(kernel),
                         codec.encodeDeliveryReport(unknownSystem)
                 )
         );
@@ -384,8 +501,11 @@ class WorkerDeliveryServiceTest {
         assertThat(counts.acceptedCount()).isEqualTo(3);
         assertThat(counts.rejectedCount()).isEqualTo(1);
         verify(resultRuntime).appendWorkerResults(List.of(task));
-        verify(directCalls).completeReports("endpoint-1", List.of(direct));
-        verify(workerChanges).append("endpoint-1", List.of(change));
+        verify(directCalls).completeReports(
+                "endpoint-1",
+                List.of(direct, unknownSystem)
+        );
+        verify(serviceability).appendProbeResults(List.of(kernel));
     }
 
     @Test

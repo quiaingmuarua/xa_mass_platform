@@ -180,6 +180,17 @@ The optional JSON contract is:
   "resultRouting": {
     "intervalMillis": 100
   },
+  "workerServiceability": {
+    "workerGroupIds": ["scenario-phone-number-workers"],
+    "dispatchIntervalMillis": 1000,
+    "resultIntervalMillis": 100,
+    "staleHotAfterMillis": 300000,
+    "recoveryRetryIntervalMillis": 60000,
+    "maxRecoveryAttempts": 5,
+    "hotScanLimit": 80,
+    "recoveryScanLimit": 20,
+    "resultReportLimit": 10
+  },
   "systemPolicy": {
     "runningTaskSoftLimit": 100
   },
@@ -187,7 +198,10 @@ The optional JSON contract is:
 }
 ```
 
-Every field may be omitted. Unknown fields, malformed JSON, empty strings,
+Every top-level field may be omitted. `workerServiceability` is disabled when
+absent; when present it requires `workerGroupIds` with 1..100 unique explicit
+Groups and all other fields use the shown defaults. Its HOT plus RECOVERY scan
+limits may total at most 100. Unknown fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
 scan, lease, claim, score, lane, ADMISSION priority-recheck step, maximum
 empty-recheck count, and empty-recheck interval remain internal constants.
@@ -218,11 +232,15 @@ KernelApplication.start()
   -> reject duplicate start
   -> Redis PING fail-fast
   -> start result-routing loop
+  -> if configured, start serviceability-result loop
+  -> if configured, start serviceability-dispatch loop
   -> start allocation, activation, and Task-dispatch loops
 
 KernelApplication.stop()
   -> no-op before start or after clean stop
   -> stop assignment-dispatch loops
+  -> stop serviceability-dispatch loop
+  -> stop serviceability-result loop
   -> stop result-routing loop
   -> keep the application started if stop times out
 ```
@@ -241,7 +259,9 @@ public Worker Delivery HTTP operations.
 
 ## Background Loop Contract
 
-`KernelApplication` composes two independent internal applications:
+`KernelApplication` always composes Assignment Dispatch and Result Routing. It
+also composes two independent Worker Serviceability applications only when the
+optional configuration is present:
 
 ```text
 AssignmentDispatchApplication
@@ -251,6 +271,12 @@ AssignmentDispatchApplication
 
 ResultRoutingApplication
   -> DeliveryReport-routing loop
+
+WorkerServiceabilityResultApplication
+  -> Adapter route-snapshot Result loop
+
+WorkerServiceabilityDispatchApplication
+  -> configured-Group stale-score discovery loop
 ```
 
 The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
@@ -283,10 +309,12 @@ failed round before continuing. A slow round therefore cannot create overlap or
 a catch-up burst, and one pacer's latency or failure does not block another
 pacer.
 
-Result routing has a separate non-daemon thread and cadence. Kernel startup
-starts result routing before assignment-dispatch; shutdown stops
-assignment-dispatch before result routing. Partial startup rolls back any
-already-started internal application.
+Result routing has a separate non-daemon thread and cadence. Each enabled
+Serviceability application owns one additional non-daemon thread. Kernel
+startup orders Result Routing, Serviceability Result, Serviceability Dispatch,
+then Assignment Dispatch; shutdown reverses that order. Partial startup rolls
+back any already-started internal application. The Serviceability Runtime is
+not constructed when the optional configuration is absent.
 
 `stopTimeoutMillis` is one shared deadline for joining all internal threads.
 Stop signals interrupt loop waits but do not cancel an in-flight Redis call or

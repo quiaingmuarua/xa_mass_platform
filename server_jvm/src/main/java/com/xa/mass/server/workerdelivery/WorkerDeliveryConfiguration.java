@@ -2,11 +2,10 @@ package com.xa.mass.server.workerdelivery;
 
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.application.WorkerChangeReportIngress;
-import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -22,30 +21,19 @@ public class WorkerDeliveryConfiguration {
     }
 
     @Bean
-    WorkerChangeReportIngress workerChangeReportIngress(
-            WorkerChangeInbox inbox,
-            WorkerBindingService bindings
-    ) {
-        return new WorkerChangeReportIngress(
-                inbox,
-                bindings
-        );
-    }
-
-    @Bean
     WorkerDeliveryService workerDeliveryService(
             WorkerCommandRuntime commandRuntime,
             WorkerResultRuntime resultRuntime,
             WorkerBindingService bindings,
             DirectCallService directCalls,
-            WorkerChangeReportIngress workerChanges
+            WorkerServiceabilityRuntime serviceability
     ) {
         return new WorkerDeliveryService(
                 commandRuntime,
                 resultRuntime,
                 bindings,
                 directCalls,
-                workerChanges
+                serviceability
         );
     }
 }

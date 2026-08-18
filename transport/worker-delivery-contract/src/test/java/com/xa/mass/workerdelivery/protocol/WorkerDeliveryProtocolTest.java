@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.protocol;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -127,6 +128,7 @@ final class WorkerDeliveryProtocolTest {
     void endpointWireValuesAreExplicit() {
         assertEquals(TASK, DeliveryEndpoint.fromWire("TASK"));
         assertEquals(SYSTEM, DeliveryEndpoint.fromWire("SYSTEM"));
+        assertEquals(KERNEL, DeliveryEndpoint.fromWire("KERNEL"));
         assertEquals(ADAPTER, DeliveryEndpoint.fromWire("ADAPTER"));
         assertEquals(WORKER, DeliveryEndpoint.fromWire("WORKER"));
         assertThrows(

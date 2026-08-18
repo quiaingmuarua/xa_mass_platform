@@ -77,12 +77,15 @@ fallback lookup. The
 platform events owned by Transport; concrete Extension contracts remain with
 their capability Owners.
 
-Long-lived identity reports the Server-issued workerId route. Best-effort
-Adapter-produced route-availability SYSTEM evidence carries that workerId only;
-Server validates its Adapter source and current Binding before appending it to
-a bounded Server-owned Worker Change inbox. That inbox is neither current
-network-state truth nor a scheduling input: this phase has no Kernel consumer,
-Pacer, probe policy, or score mutation.
+Long-lived identity reports the Server-issued workerId route. When the optional
+Kernel Worker Serviceability policy is enabled, its Dispatch Pacer writes
+coalesced, Adapter-partitioned probe requests. Server consumes those requests
+only after Adapter Direct and Worker Command capacity, constructs one bounded
+`KERNEL -> ADAPTER` connection-snapshot Command, and returns the resulting
+`ADAPTER -> KERNEL` Report to the Kernel-owned result handoff. Only the Kernel
+Result Pacer may interpret that evidence and ask the Worker score owner to
+converge a scheduling coordinate; Server and Transport never mirror connection
+state or write score.
 
 The Adapter may also retain the latest explicitly observed Worker properties
 as a process-local, versioned projection. It is queried through an Adapter

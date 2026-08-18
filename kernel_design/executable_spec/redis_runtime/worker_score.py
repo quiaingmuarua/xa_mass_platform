@@ -14,6 +14,7 @@ from ..kernel.worker_score import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
+    WorkerServiceabilityCheck,
 )
 
 
@@ -115,7 +116,73 @@ redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
 """
 
-    COLD_TIME_SLOT: ClassVar[int] = 1
+    _APPLY_SERVICEABILITY_CHECK_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local worker_id = ARGV[1]
+local check_started_at_millis = tonumber(ARGV[2])
+local serviceable = tonumber(ARGV[3])
+local max_recovery_attempts = tonumber(ARGV[4])
+local cold_park_time_slot = tonumber(ARGV[5])
+local slot_millis = tonumber(ARGV[6])
+local slot_factor = tonumber(ARGV[7])
+local dirty_factor = tonumber(ARGV[8])
+
+local redis_time = redis.call("TIME")
+local now_millis = tonumber(redis_time[1]) * 1000
+  + math.floor(tonumber(redis_time[2]) / 1000)
+local now_time_slot = math.floor(now_millis / slot_millis)
+local check_time_slot = math.floor(check_started_at_millis / slot_millis)
+if check_time_slot > now_time_slot then
+  return {"invalid"}
+end
+
+local stored = redis.call("ZSCORE", key, worker_id)
+if not stored then
+  return {"stale"}
+end
+
+local stored_score = tonumber(stored)
+local abs_score = math.abs(stored_score)
+if abs_score <= 0 then
+  return {"invalid", stored_score}
+end
+
+local stored_time_slot = math.floor(abs_score / slot_factor)
+if stored_time_slot >= check_time_slot then
+  return {"stale", stored_score}
+end
+
+local slot_remainder = abs_score % slot_factor
+local stored_lane_rank = math.floor(slot_remainder / dirty_factor)
+local stored_dirty = slot_remainder % dirty_factor
+local target_time_slot = check_time_slot
+local target_lane_rank = 0
+local target_sign = 1
+
+if serviceable == 0 then
+  target_sign = -1
+  if stored_score < 0 then
+    target_lane_rank = stored_lane_rank + 1
+    if target_lane_rank >= max_recovery_attempts then
+      target_time_slot = cold_park_time_slot
+      target_lane_rank = max_recovery_attempts
+    end
+  end
+end
+
+local target_abs_score = target_time_slot * slot_factor
+  + target_lane_rank * dirty_factor
+  + stored_dirty
+if target_abs_score <= 0 then
+  return {"invalid", stored_score}
+end
+
+local target_score = target_sign * target_abs_score
+redis.call("ZADD", key, target_score, worker_id)
+return {"transitioned", target_score}
+"""
+
+    COLD_PARK_TIME_SLOT: ClassVar[int] = WorkerScoreCore.MIN_TIME_SLOT + 1
 
     def __init__(
         self,
@@ -243,9 +310,11 @@ return {"transitioned", target_score}
             return []
 
         window_start = max(
-            self.MIN_TIME_SLOT,
+            self.COLD_PARK_TIME_SLOT + 1,
             now_time_slot - self.recovery_lookback_slots,
         )
+        if due_time_slot < window_start:
+            return []
         max_score = -self._abs_score(window_start, self.MIN_LANE_RANK, self.MIN_DIRTY)
         min_score = -self._abs_score(due_time_slot, self.MAX_LANE_RANK, self.MAX_DIRTY)
         return self._range_worker_candidates(
@@ -561,11 +630,82 @@ return {"transitioned", target_score}
 
         next_score = self._score(
             WorkerScorePolarity.RECOVERY_RECHECK,
-            self.COLD_TIME_SLOT,
+            self.COLD_PARK_TIME_SLOT,
             lane_rank,
             dirty,
         )
         return self._cas_update(home_bucket_id, worker_id, observed_score, next_score)
+
+    def apply_worker_serviceability_checks(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        checks_by_worker_id: Mapping[WorkerId, WorkerServiceabilityCheck],
+        max_recovery_attempts: int,
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not checks_by_worker_id:
+            return {}
+        if (
+            isinstance(max_recovery_attempts, bool)
+            or not isinstance(max_recovery_attempts, int)
+            or not self._valid_lane_rank(max_recovery_attempts)
+            or max_recovery_attempts == self.MIN_LANE_RANK
+        ):
+            return self._uniform_results(
+                checks_by_worker_id,
+                WorkerScoreTransitionStatus.INVALID,
+            )
+
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        valid_checks: dict[WorkerId, WorkerServiceabilityCheck] = {}
+        for worker_id, check in checks_by_worker_id.items():
+            if (
+                not isinstance(check, WorkerServiceabilityCheck)
+                or not isinstance(check.serviceable, bool)
+                or isinstance(check.check_started_at_millis, bool)
+                or not isinstance(check.check_started_at_millis, int)
+                or check.check_started_at_millis <= 0
+                or not self._valid_time_millis(check.check_started_at_millis)
+            ):
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+            else:
+                valid_checks[worker_id] = check
+
+        persisted_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        if valid_checks:
+            key = self._score_key(home_bucket_id)
+            with self.redis.pipeline(transaction=False) as pipe:
+                for worker_id, check in valid_checks.items():
+                    pipe.eval(
+                        self._APPLY_SERVICEABILITY_CHECK_SCRIPT,
+                        1,
+                        key,
+                        worker_id,
+                        check.check_started_at_millis,
+                        1 if check.serviceable else 0,
+                        max_recovery_attempts,
+                        self.COLD_PARK_TIME_SLOT,
+                        self.SLOT_MILLIS,
+                        self.slot_factor,
+                        self.dirty_factor,
+                    )
+                raw_results = pipe.execute()
+            persisted_results = {
+                worker_id: self._script_result(raw_result)
+                for worker_id, raw_result in zip(
+                    valid_checks,
+                    raw_results,
+                    strict=True,
+                )
+            }
+
+        return {
+            worker_id: immediate_results.get(worker_id)
+            or persisted_results[worker_id]
+            for worker_id in checks_by_worker_id
+        }
 
     def release_score_holds(
         self,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Mapping
 
 from ..kernel.worker_runtime import MappedWorkerPropertyIndexRuntime
@@ -16,6 +17,8 @@ from ..scheduling import (
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
+    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityResultPacer,
 )
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
@@ -29,6 +32,7 @@ from ..redis_runtime import (
     RedisWorkerResourceCatalog,
     RedisWorkerScoreCore,
     RedisWorkerResultRuntime,
+    RedisWorkerServiceabilityRuntime,
 )
 from ..redis_runtime.assignment_dispatch import RedisCandidateWarmupSchedule
 from .assignment_dispatch_application import (
@@ -38,6 +42,12 @@ from .assignment_dispatch_application import (
 from .result_routing_application import (
     ResultRoutingApplication,
     ResultRoutingApplicationConfig,
+)
+from .worker_serviceability_application import (
+    WorkerServiceabilityDispatchApplication,
+    WorkerServiceabilityDispatchApplicationConfig,
+    WorkerServiceabilityResultApplication,
+    WorkerServiceabilityResultApplicationConfig,
 )
 
 
@@ -49,6 +59,12 @@ class _RedisKernelProcessConfig:
     worker_property_indexes: Mapping[str, str]
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
+    worker_serviceability_dispatch: (
+        WorkerServiceabilityDispatchApplicationConfig | None
+    )
+    worker_serviceability_result: (
+        WorkerServiceabilityResultApplicationConfig | None
+    )
     stop_timeout_millis: int
 
     def __post_init__(self) -> None:
@@ -65,6 +81,12 @@ class _RedisKernelProcessConfig:
             raise ValueError("unsupported Worker property index implementation")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
+        if (self.worker_serviceability_dispatch is None) != (
+            self.worker_serviceability_result is None
+        ):
+            raise ValueError(
+                "serviceability dispatch and result must be configured together"
+            )
 
 
 class _RedisKernelProcess:
@@ -203,6 +225,35 @@ class _RedisKernelProcess:
                 worker_result_handlers=result_routing_policies.default_worker_result_handlers(),
             )
         )
+        self._worker_serviceability_dispatch_application: (
+            WorkerServiceabilityDispatchApplication | None
+        ) = None
+        self._worker_serviceability_result_application: (
+            WorkerServiceabilityResultApplication | None
+        ) = None
+        if config.worker_serviceability_dispatch is not None:
+            serviceability_runtime = RedisWorkerServiceabilityRuntime(
+                redis_client,
+                prefix=config.prefix,
+            )
+            self._worker_serviceability_result_application = (
+                WorkerServiceabilityResultApplication(
+                    WorkerServiceabilityResultPacer(
+                        serviceability_runtime,
+                        self._worker_resource_catalog,
+                        self._worker_score,
+                    )
+                )
+            )
+            self._worker_serviceability_dispatch_application = (
+                WorkerServiceabilityDispatchApplication(
+                    WorkerServiceabilityDispatchPacer(
+                        self._worker_score,
+                        self._worker_resource_catalog,
+                        serviceability_runtime,
+                    )
+                )
+            )
 
     @classmethod
     def from_url(
@@ -225,34 +276,74 @@ class _RedisKernelProcess:
     def start(self) -> None:
         self._redis.ping()
         self._result_routing_application.start(config=self._config.result_routing)
+        started_serviceability_result = False
+        started_serviceability_dispatch = False
         try:
+            if self._worker_serviceability_result_application is not None:
+                assert self._config.worker_serviceability_result is not None
+                self._worker_serviceability_result_application.start(
+                    config=self._config.worker_serviceability_result,
+                )
+                started_serviceability_result = True
+            if self._worker_serviceability_dispatch_application is not None:
+                assert self._config.worker_serviceability_dispatch is not None
+                self._worker_serviceability_dispatch_application.start(
+                    config=self._config.worker_serviceability_dispatch,
+                )
+                started_serviceability_dispatch = True
             self._assignment_dispatch_application.start(
                 config=self._config.assignment_dispatch,
             )
         except Exception as start_error:
-            try:
-                self._result_routing_application.stop(
-                    timeout_millis=self._config.stop_timeout_millis,
-                )
-            except Exception as rollback_error:
+            rollback_error: Exception | None = None
+            rollback_deadline = (
+                monotonic() + self._config.stop_timeout_millis / 1_000
+            )
+            for started, application in (
+                (
+                    started_serviceability_dispatch,
+                    self._worker_serviceability_dispatch_application,
+                ),
+                (
+                    started_serviceability_result,
+                    self._worker_serviceability_result_application,
+                ),
+                (True, self._result_routing_application),
+            ):
+                if not started or application is None:
+                    continue
+                try:
+                    application.stop(
+                        timeout_millis=self._remaining_timeout_millis(
+                            rollback_deadline
+                        ),
+                    )
+                except Exception as error:
+                    rollback_error = rollback_error or error
+            if rollback_error is not None:
                 raise start_error from rollback_error
             raise
 
     def stop(self) -> None:
-        assignment_error: Exception | None = None
-        try:
-            self._assignment_dispatch_application.stop(
-                timeout_millis=self._config.stop_timeout_millis,
-            )
-        except Exception as error:
-            assignment_error = error
-        try:
-            self._result_routing_application.stop(
-                timeout_millis=self._config.stop_timeout_millis,
-            )
-        except Exception as result_error:
-            if assignment_error is not None:
-                raise assignment_error from result_error
-            raise
-        if assignment_error is not None:
-            raise assignment_error
+        first_error: Exception | None = None
+        deadline = monotonic() + self._config.stop_timeout_millis / 1_000
+        for application in (
+            self._assignment_dispatch_application,
+            self._worker_serviceability_dispatch_application,
+            self._worker_serviceability_result_application,
+            self._result_routing_application,
+        ):
+            if application is None:
+                continue
+            try:
+                application.stop(
+                    timeout_millis=self._remaining_timeout_millis(deadline),
+                )
+            except Exception as error:
+                first_error = first_error or error
+        if first_error is not None:
+            raise first_error
+
+    @staticmethod
+    def _remaining_timeout_millis(deadline: float) -> int:
+        return max(1, int((deadline - monotonic()) * 1_000))

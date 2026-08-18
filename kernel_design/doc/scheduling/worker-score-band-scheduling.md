@@ -373,7 +373,10 @@ RECOVERY_RECHECK does not scan `0..now`. It scans a bounded recent window:
 
 ```text
 recoveryLookbackSlots = ceil(recoveryLookbackMillis / SLOT_MILLIS)
-recoveryWindowStartTimeSlot = nowTimeSlot - recoveryLookbackSlots
+recoveryWindowStartTimeSlot = max(
+  coldParkTimeSlot + 1,
+  nowTimeSlot - recoveryLookbackSlots
+)
 dueTimeSlot = nowTimeSlot - 1
 absolute timeSlot in [recoveryWindowStartTimeSlot, dueTimeSlot]
 ```
@@ -392,7 +395,9 @@ the recovery window, reverse numeric order returns the oldest window coordinate
 first. Scores at or newer than `nowTimeSlot` are current-slot boundary,
 future retry delay, or hold coordinates and are not scanned. Scores older than
 `recoveryWindowStartTimeSlot` are exhausted / cold parked and are not scanned
-by routine recovery.
+by routine recovery. The lower bound explicitly starts above the owner-internal
+cold coordinate, so cold entries remain excluded even when the configured
+lookback reaches the beginning of the valid time range.
 
 Within the same `timeSlot`, reverse scan returns lower laneRank first because
 RECOVERY_RECHECK scores are negative. Within the same `timeSlot` and laneRank,
@@ -400,11 +405,13 @@ it returns lower dirty first. Because RECOVERY_RECHECK laneRank is retryCount,
 the first validation (`0`) precedes retries (`1..N`) in the same slot. Dirty is
 only a stale fence and must not be used as a priority signal.
 
-First slice should prefer demand-driven or owner-controlled recovery recheck. Do
-not add a periodic worker-wide recovery-recheck scanner until a later design proves
-the liveness invariant and cost. Without demand or an owner-controlled recheck
-round, RECOVERY_RECHECK has no wall-clock guarantee to become HOT_ACQUIRE or
-parked exactly when its coordinate becomes due.
+The optional Worker Serviceability Pacer performs bounded recovery discovery
+for explicitly configured WorkerGroups. It does not globally discover Groups,
+lease candidates, or infer serviceability from the score. It asks the owning
+Adapter for a route snapshot and only the later returned evidence may invoke a
+score transition. When the feature is disabled or evidence is lost,
+RECOVERY_RECHECK has no wall-clock guarantee to move or park exactly when its
+coordinate becomes due.
 
 `observedScore` remains an opaque full-score fence for operations that lower or
 replace a specific existing coordinate, including release, polarity move,
@@ -682,6 +689,41 @@ operation is stale and must not toggle again. The target preserves timeSlot and
 dirty, resets laneRank to zero, and uses `observedScore` only as the stale
 fence.
 
+### Worker Serviceability Check
+
+The serviceability result policy uses one bounded score-owner operation rather
+than decoding observed scores in the Pacer:
+
+```text
+apply_worker_serviceability_checks(
+  homeBucketId,
+  checksByWorkerId = {workerId: (checkStartedAtMillis, serviceable)},
+  maxRecoveryAttempts
+)
+```
+
+Each Worker runs in an independent same-key Redis script. The Score owner floors
+the timestamp to its slot, rejects a future check, and writes only when the
+stored timeSlot is older than the check slot. The dirty bit is preserved.
+
+```text
+serviceable
+  -> HOT_ACQUIRE(check slot, laneRank=0)
+
+unserviceable from HOT_ACQUIRE
+  -> RECOVERY_RECHECK(check slot, retryCount=0)
+
+unserviceable from RECOVERY_RECHECK
+  -> RECOVERY_RECHECK(check slot, retryCount+1)
+
+retryCount reaches maxRecoveryAttempts
+  -> RECOVERY_RECHECK(owner-internal cold slot)
+```
+
+This timestamp fence protects newer Task leases, releases, holds, and checks
+without exposing an opaque score to the Pacer. It is not a connection-state
+timestamp and does not turn Worker score into Transport truth.
+
 ### Recovery Exhausted / Cold Park
 
 Recovery exhausted is a RECOVERY_RECHECK same-polarity operation that writes a
@@ -700,10 +742,11 @@ Rules:
 ```text
 storedScore must equal observedScore
 stored polarity must be RECOVERY_RECHECK
-coldTimeSlot is minted internally from the routine recovery lookback policy
+coldParkTimeSlot is the fixed owner-internal near-zero valid time coordinate
+routine recovery ranges always start above coldParkTimeSlot
 targetLaneRank = stored laneRank
 targetDirty = stored dirty
-write RECOVERY_RECHECK(coldTimeSlot, targetLaneRank, targetDirty)
+write RECOVERY_RECHECK(coldParkTimeSlot, targetLaneRank, targetDirty)
 ```
 
 This removes the worker from routine RECOVERY_RECHECK scans without converting

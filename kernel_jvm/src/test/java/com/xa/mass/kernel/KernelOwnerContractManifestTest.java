@@ -9,6 +9,7 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerPropertyIndex;
@@ -67,7 +68,11 @@ class KernelOwnerContractManifestTest {
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
             ),
-            Map.entry("WorkerResultRuntime", WorkerResultRuntime.class)
+            Map.entry("WorkerResultRuntime", WorkerResultRuntime.class),
+            Map.entry(
+                    "WorkerServiceabilityRuntime",
+                    WorkerServiceabilityRuntime.class
+            )
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
@@ -136,6 +141,10 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "WorkerScoreTransitionResult",
                     WorkerScoreCore.WorkerScoreTransitionResult.class
+            ),
+            Map.entry(
+                    "WorkerServiceabilityCheck",
+                    WorkerScoreCore.WorkerServiceabilityCheck.class
             )
     );
 
@@ -182,6 +191,11 @@ class KernelOwnerContractManifestTest {
                             "WorkerCommandOfferStatus",
                             WorkerCommandRuntime
                                     .WorkerCommandOfferStatus.class
+                    ),
+                    Map.entry(
+                            "ProbeRequestOfferStatus",
+                            WorkerServiceabilityRuntime
+                                    .ProbeRequestOfferStatus.class
                     ),
                     Map.entry(
                             "DeliveryEndpoint",

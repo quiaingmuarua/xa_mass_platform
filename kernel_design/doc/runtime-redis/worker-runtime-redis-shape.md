@@ -19,9 +19,9 @@ WorkerPropertyIndexRuntime property projection HASH values
 WorkerScoreCore            Worker scheduling score ZSET
 ```
 
-Delivery mailboxes and Worker results use their own `wd:` and `rr:`
-namespaces. Task assignment, connection state, and execution truth never enter
-the Worker resource keys.
+Delivery mailboxes, Worker results, and optional serviceability evidence use
+their own `wd:`, `rr:`, and `ws:` namespaces. Task assignment, connection
+state, and execution truth never enter the Worker resource keys.
 
 ## WorkerGroup Descriptors
 

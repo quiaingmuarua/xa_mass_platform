@@ -80,7 +80,7 @@ class WorkerDeliveryProtocolTest(unittest.TestCase):
             tuple(field.name for field in fields(DeliveryReport)),
         )
         self.assertEqual(
-            ("TASK", "SYSTEM", "ADAPTER", "WORKER"),
+            ("TASK", "SYSTEM", "KERNEL", "ADAPTER", "WORKER"),
             tuple(endpoint.value for endpoint in DeliveryEndpoint),
         )
 

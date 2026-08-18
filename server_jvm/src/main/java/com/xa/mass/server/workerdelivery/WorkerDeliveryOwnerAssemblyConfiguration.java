@@ -4,9 +4,9 @@ import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.server.kernelredis.KernelRedisProperties;
-import com.xa.mass.server.workerdelivery.workerchange.RedisWorkerChangeInbox;
-import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.lettuce.core.RedisClient;
 import org.springframework.context.annotation.Bean;
@@ -14,8 +14,6 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 public class WorkerDeliveryOwnerAssemblyConfiguration {
-
-    private static final int WORKER_CHANGE_INBOX_CAPACITY = 10_000;
 
     @Bean(destroyMethod = "close")
     WorkerCommandRuntime workerCommandRuntime(
@@ -44,16 +42,15 @@ public class WorkerDeliveryOwnerAssemblyConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    WorkerChangeInbox workerChangeInbox(
+    WorkerServiceabilityRuntime workerServiceabilityRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
             KernelRedisProperties properties
     ) {
-        return new RedisWorkerChangeInbox(
+        return new RedisWorkerServiceabilityRuntime(
                 redisClient,
                 codec,
-                properties.redisPrefix(),
-                WORKER_CHANGE_INBOX_CAPACITY
+                properties.redisPrefix()
         );
     }
 }

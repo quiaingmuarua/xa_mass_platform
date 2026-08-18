@@ -30,6 +30,12 @@ from .worker_candidate import (
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
 )
+from .worker_serviceability import (
+    WorkerServiceabilityDispatchConfig,
+    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityResultConfig,
+    WorkerServiceabilityResultPacer,
+)
 from ..kernel.assignment_dispatch_runtime import CandidateId
 
 __all__ = [
@@ -56,4 +62,8 @@ __all__ = [
     "WorkerCandidateMatcher",
     "WorkerResultEvidence",
     "WorkerResultHandler",
+    "WorkerServiceabilityDispatchConfig",
+    "WorkerServiceabilityDispatchPacer",
+    "WorkerServiceabilityResultConfig",
+    "WorkerServiceabilityResultPacer",
 ]

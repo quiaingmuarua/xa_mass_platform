@@ -19,6 +19,7 @@ Package responsibilities:
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
 | `delivery` | DeliveryCommand and DeliveryReport runtime contracts |
+| `serviceability` | Adapter probe request/result handoff contract only |
 | owner-local `redis` packages | Selected Redis implementations |
 
 The current implemented provider subset is:
@@ -57,11 +58,17 @@ WorkerCommandRuntime
 
 WorkerResultRuntime
   append
+
+WorkerServiceabilityRuntime
+  consumeProbeRequests
+  appendProbeResults
 ```
 
 Worker score initialization fixes laneRank at zero. Candidate acquisition,
 observed lease acquisition/renewal, demotion, dirty marking, polarity changes,
 and recovery exhaustion remain explicit gaps in the JVM provider.
+The new `applyWorkerServiceabilityChecks` contract is also an explicit JVM
+provider gap because no Java production caller owns the Pacer in this slice.
 `rewriteCurrentScores` preserves polarity,
 lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed
@@ -74,6 +81,12 @@ the complete owner has migrated.
 Every other translated operation is explicit and throws
 `KernelOperationNotImplementedException` when invoked by a partial provider.
 There are no default-method fallbacks.
+
+`RedisWorkerServiceabilityRuntime` implements only the two operations required
+by the Java Server bridge: destructive Adapter request consume and bounded
+Kernel-result append. Request offer, Result consume, both Pacers, and all score
+policy remain Python Kernel responsibilities; invoking either unimplemented JVM
+operation fails explicitly.
 
 The shared
 [`kernel_owner_contract_manifest.json`](../kernel_design/executable_spec/kernel_owner_contract_manifest.json)

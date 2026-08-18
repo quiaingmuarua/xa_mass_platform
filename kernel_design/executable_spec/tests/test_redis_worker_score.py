@@ -4,6 +4,7 @@ import unittest
 
 from kernel_design.executable_spec import (
     RedisWorkerScoreCore,
+    WorkerServiceabilityCheck,
     WorkerScorePolarity,
     WorkerScoreTransitionStatus,
 )
@@ -82,6 +83,8 @@ class FakeRedis:
         key = str(args[0])
         argv = args[1:]
 
+        if "local check_started_at_millis" in script:
+            return self._eval_serviceability_check(key, argv)
         if "local target_min_abs_score" in script and "local target_lane_rank" in script:
             return self._eval_current_rewrite(key, argv)
         if "local stored_dirty" in script:
@@ -89,6 +92,57 @@ class FakeRedis:
         if "local observed_score" in script:
             return self._eval_cas_update(key, argv)
         raise ValueError("unsupported fake redis script")
+
+    def _eval_serviceability_check(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        worker_id = str(argv[0])
+        check_started_at_millis = int(argv[1])
+        serviceable = int(argv[2])
+        max_recovery_attempts = int(argv[3])
+        cold_park_time_slot = int(argv[4])
+        slot_millis = int(argv[5])
+        slot_factor = int(argv[6])
+        dirty_factor = int(argv[7])
+        check_time_slot = check_started_at_millis // slot_millis
+        if check_time_slot > self.now_millis // slot_millis:
+            return ["invalid"]
+
+        stored = self.zscore(key, worker_id)
+        if stored is None:
+            return ["stale"]
+        abs_score = abs(stored)
+        if abs_score <= 0:
+            return ["invalid", stored]
+        stored_time_slot = abs_score // slot_factor
+        if stored_time_slot >= check_time_slot:
+            return ["stale", stored]
+
+        slot_remainder = abs_score % slot_factor
+        stored_lane_rank = slot_remainder // dirty_factor
+        stored_dirty = slot_remainder % dirty_factor
+        target_time_slot = check_time_slot
+        target_lane_rank = 0
+        target_sign = 1
+        if serviceable == 0:
+            target_sign = -1
+            if stored < 0:
+                target_lane_rank = stored_lane_rank + 1
+                if target_lane_rank >= max_recovery_attempts:
+                    target_time_slot = cold_park_time_slot
+                    target_lane_rank = max_recovery_attempts
+
+        next_score = target_sign * (
+            target_time_slot * slot_factor
+            + target_lane_rank * dirty_factor
+            + stored_dirty
+        )
+        if abs(next_score) <= 0:
+            return ["invalid", stored]
+        self.zadd(key, {worker_id: next_score})
+        return ["transitioned", next_score]
 
     def _eval_current_rewrite(self, key: str, argv: tuple[object, ...]) -> list[object]:
         worker_id = str(argv[0])
@@ -324,6 +378,29 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
 
         self.assertEqual(
             [("window-start", window_start), ("middle", middle)],
+            self.kernel.acquire_recovery_recheck_candidates(
+                home_bucket_id=self.home_bucket_id,
+                limit=10,
+            ),
+        )
+
+    def test_recovery_scan_explicitly_excludes_cold_park_coordinate(self) -> None:
+        self.redis.now_millis = self.millis(self.kernel.COLD_PARK_TIME_SLOT + 2)
+        parked = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            self.kernel.COLD_PARK_TIME_SLOT,
+            5,
+        )
+        due = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            self.kernel.COLD_PARK_TIME_SLOT + 1,
+            0,
+        )
+        self.store_score("parked", parked)
+        self.store_score("due", due)
+
+        self.assertEqual(
+            [("due", due)],
             self.kernel.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.home_bucket_id,
                 limit=10,
@@ -821,7 +898,10 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
-        self.assertEqual(self.millis(self.kernel.COLD_TIME_SLOT), state.time_millis)
+        self.assertEqual(
+            self.millis(self.kernel.COLD_PARK_TIME_SLOT),
+            state.time_millis,
+        )
         self.assertEqual(4, state.lane_rank)
         self.assertEqual(1, state.dirty)
         self.assertEqual(
@@ -843,6 +923,116 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         )
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
+
+    def test_serviceability_success_enters_hot_zero_lane_and_preserves_dirty(self) -> None:
+        self.store_score(
+            "worker-1",
+            self.score(WorkerScorePolarity.RECOVERY_RECHECK, 900, 3, 1),
+        )
+
+        result = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(95_050, True),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+
+        expected = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 0, 1)
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertEqual(expected, result.score)
+        self.assertEqual(expected, self.redis.zscore(self.score_key, "worker-1"))
+
+    def test_serviceability_failure_demotes_hot_to_recovery_zero_lane(self) -> None:
+        self.store_score(
+            "worker-1",
+            self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 7, 1),
+        )
+
+        result = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(95_099, False),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+
+        expected = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 950, 0, 1)
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertEqual(expected, result.score)
+
+    def test_serviceability_recovery_failures_increment_then_cold_park(self) -> None:
+        self.store_score(
+            "worker-1",
+            self.score(WorkerScorePolarity.RECOVERY_RECHECK, 900, 3),
+        )
+
+        retried = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(95_000, False),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+        self.assertEqual(
+            self.score(WorkerScorePolarity.RECOVERY_RECHECK, 950, 4),
+            retried.score,
+        )
+
+        parked = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(96_000, False),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+        self.assertEqual(
+            self.score(
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                self.kernel.COLD_PARK_TIME_SLOT,
+                5,
+            ),
+            parked.score,
+        )
+
+    def test_serviceability_check_does_not_overwrite_newer_score(self) -> None:
+        stored = self.score(WorkerScorePolarity.HOT_ACQUIRE, 960, 2)
+        self.store_score("worker-1", stored)
+
+        result = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(96_099, False),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(stored, result.score)
+        self.assertEqual(stored, self.redis.zscore(self.score_key, "worker-1"))
+
+    def test_serviceability_check_rejects_future_and_invalid_attempt_limit(self) -> None:
+        stored = self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 0)
+        self.store_score("worker-1", stored)
+
+        future = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(100_100, True),
+            },
+            max_recovery_attempts=5,
+        )["worker-1"]
+        invalid_limit = self.kernel.apply_worker_serviceability_checks(
+            home_bucket_id=self.home_bucket_id,
+            checks_by_worker_id={
+                "worker-1": WorkerServiceabilityCheck(95_000, True),
+            },
+            max_recovery_attempts=0,
+        )["worker-1"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.INVALID, future.status)
+        self.assertEqual(WorkerScoreTransitionStatus.INVALID, invalid_limit.status)
+        self.assertEqual(stored, self.redis.zscore(self.score_key, "worker-1"))
 
     def test_release_score_holds_preserve_polarity_lane_and_dirty(self) -> None:
         held = self.score(

@@ -150,6 +150,14 @@ WorkerResultRuntime
 ResultRoutingPacer
   bounded-consumes, decodes, groups, and delegates owner-local evidence
 
+WorkerServiceabilityRuntime
+  owns Adapter-partitioned coalesced probe requests and one bounded batch
+  Report handoff; neither structure is current connection or score truth
+
+WorkerServiceabilityDispatchPacer / ResultPacer
+  discover old configured-Group score coordinates and translate valid Adapter
+  route snapshots into one bounded WorkerScore owner call
+
 ResultRoutingBuiltinPolicies or replacement handlers
   compose Task and Worker owner operations without owning their truth
 
@@ -178,11 +186,12 @@ Worker Delivery Dispatch
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact recovery demotion, result disposition, and one-WorkerId/one-slot invariant implemented | Recovery lifecycle evidence, retry operation, probe cadence, and ranking |
+| Worker serviceability | Adapter-scoped request HASH, bounded Report LIST, explicit-Group Dispatch Pacer, lowest-priority Server/Adapter snapshot bridge, Result Pacer, and atomic score convergence implemented; absent configuration disables it | Polling evidence and production policy tuning |
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding and bounded route-change evidence inbox, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, and caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation | Kernel evidence consumer/score policy, authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
@@ -227,6 +236,10 @@ wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
 rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs
 
+ws:{prefix}:adapter:{adapterId}:probe-requests
+ws:{prefix}:probe-results
+  coalesced Adapter route-probe requests and bounded batch Report evidence
+
 ```
 
 These are current mechanism boundaries, not claims of unlimited throughput.
@@ -259,6 +272,7 @@ from five documents:
 3. [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
 4. [Task Dispatch Pacer](task-dispatch-pacer.md)
 5. [Result-Routing Scheduling](result-routing-scheduling.md)
+6. [Worker Serviceability Scheduling](worker-serviceability-scheduling.md)
 
 Read owner details only when changing that owner:
 
@@ -295,6 +309,7 @@ kernel_design/executable_spec/
     assignment_dispatch_runtime.py
     result_context.py
     worker_result_runtime.py
+    worker_serviceability.py
     worker_delivery.py
   scheduling/
     worker_candidate/
@@ -304,6 +319,7 @@ kernel_design/executable_spec/
     task_worker_allocation.py
     task_dispatch.py
     result_routing.py
+    worker_serviceability.py
   redis_runtime/
     task_score_band.py
     worker_score.py
@@ -312,11 +328,13 @@ kernel_design/executable_spec/
     worker_runtime.py
     assignment_dispatch.py
     result_routing.py
+    worker_serviceability.py
     worker_delivery.py
   assembly/
     application.py
     assignment_dispatch_application.py
     result_routing_application.py
+    worker_serviceability_application.py
 ```
 
 ## Guardrails

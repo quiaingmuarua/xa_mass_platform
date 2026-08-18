@@ -1,9 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.netty;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
@@ -142,7 +140,7 @@ class NettyAdapterContractTest {
 
     @ParameterizedTest
     @EnumSource(Protocol.class)
-    void adapterShutdownReportsTheCurrentRouteUnavailable(
+    void adapterShutdownClosesTheCurrentRoute(
             Protocol protocol
     ) throws Exception {
         TestRemoteApi remoteApi = new TestRemoteApi();
@@ -152,12 +150,11 @@ class NettyAdapterContractTest {
 
         try (WorkerPeer worker = connect(protocol, port)) {
             worker.send(identity());
-            awaitAvailability(remoteApi, protocol.adapterId, true);
+            awaitVerified(remoteApi);
 
             adapter.close();
 
             assertThat(worker.awaitClosed()).isTrue();
-            awaitAvailability(remoteApi, protocol.adapterId, false);
         } finally {
             adapter.close();
         }
@@ -176,7 +173,13 @@ class NettyAdapterContractTest {
         try {
             try (WorkerPeer first = connect(protocol, port)) {
                 first.send(identity());
-                awaitAvailability(remoteApi, protocol.adapterId, true);
+                DeliveryCommand firstBarrier = taskCommand("first-barrier");
+                remoteApi.commandBatches.add(Map.of(
+                        WORKER_ID,
+                        firstBarrier
+                ));
+                assertThat(codec.decodeDeliveryCommand(first.receive()))
+                        .isEqualTo(firstBarrier);
                 first.send(codec.encodeDeliveryReport(DeliveryReport.create(
                         WORKER,
                         WORKER_ID,
@@ -188,12 +191,17 @@ class NettyAdapterContractTest {
                 )));
                 awaitReport(remoteApi, "direct-call:v1:properties");
             }
-            awaitAvailability(remoteApi, protocol.adapterId, false);
             remoteApi.appendedResults.clear();
 
             try (WorkerPeer reconnect = connect(protocol, port)) {
                 reconnect.send(identity());
-                awaitAvailability(remoteApi, protocol.adapterId, true);
+                DeliveryCommand routeBarrier = taskCommand("reconnect-barrier");
+                remoteApi.commandBatches.add(Map.of(
+                        WORKER_ID,
+                        routeBarrier
+                ));
+                assertThat(codec.decodeDeliveryCommand(reconnect.receive()))
+                        .isEqualTo(routeBarrier);
                 DeliveryCommand snapshot = DeliveryCommand.create(
                         SYSTEM,
                         ADAPTER,
@@ -388,51 +396,15 @@ class NettyAdapterContractTest {
         );
     }
 
-    private void awaitAvailability(
-            TestRemoteApi remoteApi,
-            String adapterId,
-            boolean expectedAvailable
-    ) {
+    private static void awaitVerified(TestRemoteApi remoteApi) {
         long deadline = System.nanoTime() + WAIT.toNanos();
         while (System.nanoTime() < deadline) {
-            boolean observed = remoteApi.appendedResults.stream()
-                    .flatMap(List::stream)
-                    .map(codec::decodeDeliveryReport)
-                    .anyMatch(report -> isAvailability(
-                            report,
-                            adapterId,
-                            expectedAvailable
-                    ));
-            if (observed) {
+            if (remoteApi.verifiedWorkerIds.contains(WORKER_ID)) {
                 return;
             }
             Thread.onSpinWait();
         }
-        throw new AssertionError(
-                "Expected Worker availability=" + expectedAvailable
-        );
-    }
-
-    private static boolean isAvailability(
-            DeliveryReport report,
-            String adapterId,
-            boolean expectedAvailable
-    ) {
-        if (report.src() != ADAPTER
-                || !adapterId.equals(report.sourceId())
-                || report.dst() != SYSTEM
-                || !ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME.equals(
-                report.messageType()
-        )
-                || !"200".equals(report.outcomeCode())
-                || !WORKER_CHANGE_RESULT_FORWARD.equals(report.forward())) {
-            return false;
-        }
-        Map<String, Object> payload = Jsons.parseObject(report.payload());
-        return WORKER_ID.equals(payload.get("workerId"))
-                && Boolean.valueOf(expectedAvailable).equals(
-                payload.get("available")
-        );
+        throw new AssertionError("Expected Worker route verification");
     }
 
     private static DeliveryCommand taskCommand(String marker) {

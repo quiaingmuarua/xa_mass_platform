@@ -38,12 +38,13 @@ DeliveryReport(
 `src` and `dst` use the explicit wire enum:
 
 ```text
-TASK | SYSTEM | ADAPTER | WORKER
+TASK | SYSTEM | KERNEL | ADAPTER | WORKER
 ```
 
 The DTO layer validates structure, not route policy. Current Worker execution
-uses `TASK|SYSTEM|ADAPTER -> WORKER`; the receiving Owner validates the route
-combination. `sourceId` is an opaque, non-blank identifier in the `src`
+uses `TASK|SYSTEM|ADAPTER -> WORKER`; Kernel Serviceability uses
+`KERNEL -> ADAPTER`. The receiving Owner validates the route combination.
+`sourceId` is an opaque, non-blank identifier in the `src`
 namespace. Workers use `workerId`; Adapters use `adapterId`. It is consistency
 evidence, not authentication.
 
@@ -114,22 +115,27 @@ Polling sends no identity Report; Server verifies its persisted
 Identity reporting does not create or update Endpoint Binding and is not
 authentication, heartbeat, property-index update, or endpoint migration.
 
-The Adapter may also produce a normal `DeliveryReport` when that verified
-route changes availability:
+The optional Kernel Worker Serviceability policy queries current Adapter route
+state through the same DTOs:
 
 ```text
-src=ADAPTER
-dst=SYSTEM
-messageType=platform.adapter.worker-availability.changed
-outcomeCode=200
-payload={workerId, available}
-forward=worker-change:v1
+Command
+  src=KERNEL
+  dst=ADAPTER
+  messageType=platform.adapter.worker-connections.snapshot
+  payload={workerIds:[...]}
+  forward=worker-serviceability:v1:<checkStartedAtMillis>
+
+Report
+  src=ADAPTER
+  dst=KERNEL
+  same messageType and forward
+  payload={stateByWorkerId:{...}}
 ```
 
-This is best-effort connection evidence carried through the existing Result
-path. WorkerGroup remains outside this Transport report. It is not a Handler
-event, Worker online truth, or scheduling-score
-transition, and introduces no additional transport envelope.
+This is a normal Adapter Handler invocation and Report, not a third envelope.
+The Server transports the evidence to the Kernel-owned handoff; Transport does
+not interpret snapshot state or mutate scheduling score.
 
 The fixed connection-lifecycle control event is
 `ADAPTER -> WORKER / worker.connection.close`. Its payload and forward fields

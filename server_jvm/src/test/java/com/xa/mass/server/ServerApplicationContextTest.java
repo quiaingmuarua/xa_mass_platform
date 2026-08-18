@@ -18,6 +18,8 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.MappedWorkerPropertyIndexRuntime;
@@ -34,7 +36,6 @@ import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.workerchange.WorkerChangeInbox;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
@@ -84,8 +85,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(WorkerResultRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(
-                WorkerChangeInbox.class
-        )).isNotNull();
+                WorkerServiceabilityRuntime.class
+        )).isInstanceOf(RedisWorkerServiceabilityRuntime.class);
         assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class
         )).isNotNull();

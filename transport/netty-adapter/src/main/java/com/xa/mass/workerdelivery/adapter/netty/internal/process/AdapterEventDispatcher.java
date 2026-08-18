@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
@@ -137,7 +138,11 @@ public final class AdapterEventDispatcher {
 
     DeliveryReport dispatch(DeliveryCommand command) {
         Objects.requireNonNull(command, "command");
-        if (command.src() != SYSTEM || command.dst() != ADAPTER) {
+        boolean systemEvent = command.src() == SYSTEM;
+        boolean kernelSnapshot = command.src() == KERNEL
+                && CONNECTION_SNAPSHOT_EVENT.equals(command.messageType());
+        if (command.dst() != ADAPTER
+                || (!systemEvent && !kernelSnapshot)) {
             return result(
                     command,
                     WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID,

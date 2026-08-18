@@ -2,8 +2,6 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CHANGE_RESULT_FORWARD;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
@@ -114,14 +112,14 @@ public final class WorkerConnectionMechanism {
 
     void channelInactive(Channel channel) {
         String workerId = routes.claimedWorkerId(channel);
-        reportUnavailable(routes.onChannelClosed(channel));
+        routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
     }
 
     void channelFailed(Channel channel, Throwable failure) {
         Objects.requireNonNull(failure, "failure");
         String workerId = routes.claimedWorkerId(channel);
-        reportUnavailable(routes.onChannelClosed(channel));
+        routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(
                 channel,
@@ -215,7 +213,6 @@ public final class WorkerConnectionMechanism {
                 outcomes.put(workerId, CloseCurrentOutcome.NOT_CONNECTED);
                 continue;
             }
-            reportAvailability(workerId, false);
             invalidatePropertiesIfRouteForgotten(workerId);
             boolean active = channel.isActive();
             networkServer.closeConnection(
@@ -277,9 +274,6 @@ public final class WorkerConnectionMechanism {
                     AdapterConnectionCloseReason.VERIFICATION_IN_PROGRESS
             );
             case VERIFIED_ACTIVATED -> {
-                if (admission.becameAvailable()) {
-                    reportAvailability(workerId, true);
-                }
                 closeReplaced(admission.replacedChannel());
             }
             case VERIFICATION_CLAIMED -> {
@@ -343,7 +337,6 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        reportAvailability(workerId, true);
     }
 
     private void receiveBoundReport(
@@ -488,9 +481,7 @@ public final class WorkerConnectionMechanism {
             Channel channel,
             AdapterConnectionCloseReason reason
     ) {
-        if (routes.deactivate(workerId, channel)) {
-            reportAvailability(workerId, false);
-        }
+        routes.deactivate(workerId, channel);
         invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(channel, reason);
     }
@@ -500,7 +491,7 @@ public final class WorkerConnectionMechanism {
             AdapterConnectionCloseReason reason
     ) {
         String workerId = routes.claimedWorkerId(channel);
-        reportUnavailable(routes.onChannelClosed(channel));
+        routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(channel, reason);
     }
@@ -539,61 +530,6 @@ public final class WorkerConnectionMechanism {
                 && "200".equals(report.outcomeCode())
                 && "null".equals(report.payload())
                 && report.forward().isEmpty();
-    }
-
-    private void reportUnavailable(String workerId) {
-        if (workerId != null) {
-            reportAvailability(workerId, false);
-        }
-    }
-
-    private void reportAvailability(
-            String workerId,
-            boolean available
-    ) {
-        try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("workerId", workerId);
-            payload.put("available", available);
-            DeliveryReport report = DeliveryReport.create(
-                    ADAPTER,
-                    adapterId,
-                    SYSTEM,
-                    ADAPTER_WORKER_AVAILABILITY_CHANGED_EVENT_NAME,
-                    "200",
-                    Jsons.toJson(payload),
-                    WORKER_CHANGE_RESULT_FORWARD
-            );
-            DeliveryReportProcess.ReportIngressStatus status =
-                    reportProcess.ingress(List.of(
-                            codec.encodeDeliveryReport(report)
-                    ));
-            if (status != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
-                LOGGER.log(
-                        System.Logger.Level.WARNING,
-                        "errorCode={0} operation={1} adapterId={2} "
-                                + "workerId={3} ingressStatus={4}",
-                        WorkerDeliveryAdapterErrorCode
-                                .WORKER_MESSAGE_INVALID.code(),
-                        "netty.reportWorkerAvailability",
-                        adapterId,
-                        workerId,
-                        status
-                );
-            }
-        } catch (RuntimeException error) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "errorCode={0} operation={1} adapterId={2} "
-                            + "workerId={3} failureType={4}",
-                    WorkerDeliveryAdapterErrorCode.WORKER_MESSAGE_INVALID
-                            .code(),
-                    "netty.reportWorkerAvailability",
-                    adapterId,
-                    workerId,
-                    error.getClass().getName()
-            );
-        }
     }
 
     private static boolean isDefiniteRouteRejection(Throwable failure) {

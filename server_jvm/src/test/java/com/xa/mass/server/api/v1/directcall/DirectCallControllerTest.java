@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.server.api.ApiExceptionHandler;
@@ -27,7 +28,6 @@ import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.application.WorkerChangeReportIngress;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -117,7 +117,7 @@ class DirectCallControllerTest {
                 resultRuntime,
                 bindings,
                 directCalls,
-                mock(WorkerChangeReportIngress.class)
+                mock(WorkerServiceabilityRuntime.class)
         );
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();

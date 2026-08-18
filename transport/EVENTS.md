@@ -52,6 +52,13 @@ events. Their detailed semantics are owned by the
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":["..."]}` | `{"outcomeByWorkerId":{...}}` | Atomically removes and physically closes each observed current Channel |
 | `platform.adapter.worker-properties.snapshot` | `{"workerIds":["..."]}` | `{"propertiesByWorkerId":{"worker-1":{...}}}` | Observes Adapter-local cached Worker properties |
 
+All Adapter events are callable through the ordinary `SYSTEM -> ADAPTER`
+Direct Call path. The Kernel may call only
+`platform.adapter.worker-connections.snapshot`, using `KERNEL -> ADAPTER`, for
+the optional Worker Serviceability convergence policy. The resulting
+`ADAPTER -> KERNEL` Report is ordinary Delivery evidence; Transport does not
+interpret or write Worker score.
+
 Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
 are `UNKNOWN` when this Adapter process has no verification evidence, including
 while a first verification is pending, `CONNECTED` after verification with an
@@ -82,22 +89,6 @@ version. `CONNECTED` does not prove properties exist or are recent, and cached
 properties may remain while the route is `DISCONNECTED` but still verified. A
 management caller that needs a combined view invokes both events and joins
 their ordered workerId maps.
-
-## Adapter-Produced Evidence
-
-The following Event Name is produced by the connection mechanism; it is not an
-Adapter Handler and therefore does not appear in
-`platform.adapter.events.snapshot`:
-
-| Event Name | Report | Payload | Meaning |
-| --- | --- | --- | --- |
-| `platform.adapter.worker-availability.changed` | `ADAPTER -> SYSTEM`, outcome `200`, forward `worker-change:v1` | `{"workerId":"...","available":true|false}` | A verified Adapter-local route changed between available and unavailable |
-
-`available=true` means this Adapter currently owns a verified active route.
-It does not mean schedulable, idle, writable, permanently bound, or absolutely
-alive. Evidence is best effort: it shares the existing bounded Report Process
-and may be dropped under backpressure without closing the Worker connection.
-It is not a network-state projection or a score transition.
 
 ## Extension Boundary
 

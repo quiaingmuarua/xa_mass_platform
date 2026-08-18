@@ -75,40 +75,6 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void reportsOnlyEffectiveAvailabilityTransitions() {
-        Fixture fixture = new Fixture();
-        EmbeddedChannel first = fixture.channel();
-        EmbeddedChannel reconnect = null;
-        try {
-            first.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
-            awaitBound(fixture, first);
-            fixture.reportProcess.round();
-            assertAvailability(fixture, true);
-
-            fixture.systemReports.clear();
-            first.finishAndReleaseAll();
-            fixture.reportProcess.round();
-            assertAvailability(fixture, false);
-
-            fixture.systemReports.clear();
-            reconnect = fixture.channel();
-            reconnect.writeInbound(fixture.identity("worker-1"));
-            awaitBound(fixture, reconnect);
-            fixture.reportProcess.round();
-            assertAvailability(fixture, true);
-            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
-        } finally {
-            if (first.isOpen()) {
-                first.finishAndReleaseAll();
-            }
-            if (reconnect != null) {
-                reconnect.finishAndReleaseAll();
-            }
-        }
-    }
-
-    @Test
     void identityRejectsLegacyWorkerGroupPayloadBeforeVerification() {
         Fixture fixture = new Fixture();
         EmbeddedChannel channel = fixture.channel();
@@ -146,33 +112,17 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.systemReports).isEmpty();
 
             replacement.finishAndReleaseAll();
-            fixture.reportProcess.round();
-            assertAvailability(fixture, false);
+            assertThat(fixture.mechanism.connectionStates(List.of(
+                    "worker-1"
+            ))).containsEntry(
+                    "worker-1",
+                    WorkerConnectionState.DISCONNECTED
+            );
         } finally {
             current.finishAndReleaseAll();
             if (replacement.isOpen()) {
                 replacement.finishAndReleaseAll();
             }
-        }
-    }
-
-    @Test
-    void droppedAvailabilityEvidenceDoesNotCloseTheWorker() {
-        Fixture fixture = new Fixture(1);
-        EmbeddedChannel channel = fixture.channel();
-        try {
-            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
-                    .isEqualTo(
-                            DeliveryReportProcess.ReportIngressStatus.ACCEPTED
-                    );
-            channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
-            awaitBound(fixture, channel);
-
-            assertThat(channel.isActive()).isTrue();
-            assertThat(fixture.network.closedChannels).isEmpty();
-        } finally {
-            channel.finishAndReleaseAll();
         }
     }
 
@@ -673,28 +623,6 @@ class WorkerConnectionMechanismTest {
             Thread.onSpinWait();
         }
         throw new AssertionError("Route verification request did not start");
-    }
-
-    private static void assertAvailability(
-            Fixture fixture,
-            boolean expected
-    ) {
-        assertThat(fixture.systemReports).singleElement()
-                .satisfies(encoded -> {
-                    DeliveryReport report = fixture.codec
-                            .decodeDeliveryReport(encoded);
-                    assertThat(report.messageType()).isEqualTo(
-                            "platform.adapter.worker-availability.changed"
-                    );
-                    assertThat(report.forward()).isEqualTo(
-                            "worker-change:v1"
-                    );
-                    assertThat(Jsons.parseObject(report.payload()))
-                            .containsExactlyInAnyOrderEntriesOf(Map.of(
-                                    "workerId", "worker-1",
-                                    "available", expected
-                            ));
-                });
     }
 
     private final class Fixture {
