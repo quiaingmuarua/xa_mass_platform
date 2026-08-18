@@ -2,13 +2,11 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 
@@ -16,43 +14,24 @@ import java.util.function.LongSupplier;
 final class WorkerPropertiesCache {
 
     private final Cache<String, CachedProperties> propertiesByWorkerId;
-    private final String adapterEpoch;
-    private final long freshnessNanos;
     private final LongSupplier wallClockMillis;
-    private final LongSupplier monotonicNanos;
-    private final AtomicLong observationRevision = new AtomicLong();
 
-    WorkerPropertiesCache(NettyWorkerObservationCacheConfig config) {
+    WorkerPropertiesCache(NettyWorkerPropertiesCacheConfig config) {
         this(
                 config,
-                UUID.randomUUID().toString(),
-                System::currentTimeMillis,
-                System::nanoTime
+                System::currentTimeMillis
         );
     }
 
     WorkerPropertiesCache(
-            NettyWorkerObservationCacheConfig config,
-            String adapterEpoch,
-            LongSupplier wallClockMillis,
-            LongSupplier monotonicNanos
+            NettyWorkerPropertiesCacheConfig config,
+            LongSupplier wallClockMillis
     ) {
-        NettyWorkerObservationCacheConfig requiredConfig =
+        NettyWorkerPropertiesCacheConfig requiredConfig =
                 Objects.requireNonNull(config, "config");
-        freshnessNanos = requiredConfig.freshness().toNanos();
-        if (adapterEpoch == null || adapterEpoch.isBlank()) {
-            throw new IllegalArgumentException(
-                    "adapterEpoch must be non-blank"
-            );
-        }
-        this.adapterEpoch = adapterEpoch;
         this.wallClockMillis = Objects.requireNonNull(
                 wallClockMillis,
                 "wallClockMillis"
-        );
-        this.monotonicNanos = Objects.requireNonNull(
-                monotonicNanos,
-                "monotonicNanos"
         );
         propertiesByWorkerId = Caffeine.newBuilder()
                 .maximumWeight(requiredConfig.maximumEncodedBytes())
@@ -70,8 +49,7 @@ final class WorkerPropertiesCache {
         String encodedProperties = Jsons.toJson(
                 Objects.requireNonNull(properties, "properties")
         );
-        long observedAtMillis = wallClockMillis.getAsLong();
-        long observedAtNanos = monotonicNanos.getAsLong();
+        long currentTimeMillis = wallClockMillis.getAsLong();
         AtomicReference<CachedProperties> previous = new AtomicReference<>();
         AtomicReference<CachedProperties> written = new AtomicReference<>();
         propertiesByWorkerId.asMap().compute(
@@ -79,9 +57,7 @@ final class WorkerPropertiesCache {
                 (ignored, current) -> {
                     previous.set(current);
                     CachedProperties replacement = new CachedProperties(
-                            nextRevision(),
-                            observedAtMillis,
-                            observedAtNanos,
+                            nextUpdatedAtMillis(current, currentTimeMillis),
                             encodedProperties
                     );
                     written.set(replacement);
@@ -120,21 +96,14 @@ final class WorkerPropertiesCache {
         if (cached == null) {
             return WorkerPropertiesObservation.unknown();
         }
-        long ageNanos = monotonicNanos.getAsLong()
-                - cached.observedAtNanos();
-        WorkerPropertiesObservation.Freshness freshness =
-                ageNanos <= freshnessNanos
-                        ? WorkerPropertiesObservation.Freshness.FRESH
-                        : WorkerPropertiesObservation.Freshness.STALE;
         return new WorkerPropertiesObservation(
-                freshness,
-                new WorkerPropertiesObservation.Version(
-                        adapterEpoch,
-                        cached.revision()
-                ),
-                cached.observedAtMillis(),
+                cached.updatedAtMillis(),
                 Jsons.parseObject(cached.encodedProperties())
         );
+    }
+
+    void invalidate(String workerId) {
+        propertiesByWorkerId.invalidate(requireWorkerId(workerId));
     }
 
     void clear() {
@@ -142,18 +111,17 @@ final class WorkerPropertiesCache {
         propertiesByWorkerId.cleanUp();
     }
 
-    String adapterEpoch() {
-        return adapterEpoch;
-    }
-
-    private long nextRevision() {
-        while (true) {
-            long current = observationRevision.get();
-            long next = Math.addExact(current, 1L);
-            if (observationRevision.compareAndSet(current, next)) {
-                return next;
-            }
+    private static long nextUpdatedAtMillis(
+            CachedProperties current,
+            long currentTimeMillis
+    ) {
+        if (current == null) {
+            return currentTimeMillis;
         }
+        return Math.max(
+                currentTimeMillis,
+                Math.addExact(current.updatedAtMillis(), 1L)
+        );
     }
 
     private static int encodedWeight(
@@ -180,18 +148,11 @@ final class WorkerPropertiesCache {
     }
 
     private record CachedProperties(
-            long revision,
-            long observedAtMillis,
-            long observedAtNanos,
+            long updatedAtMillis,
             String encodedProperties
     ) {
 
         private CachedProperties {
-            if (revision <= 0) {
-                throw new IllegalArgumentException(
-                        "revision must be positive"
-                );
-            }
             Objects.requireNonNull(encodedProperties, "encodedProperties");
         }
     }

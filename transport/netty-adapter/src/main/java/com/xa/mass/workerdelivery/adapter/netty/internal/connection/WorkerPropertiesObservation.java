@@ -10,60 +10,29 @@ import java.util.Objects;
 
 /** Repository-internal cached Worker properties projection. */
 public record WorkerPropertiesObservation(
-        Freshness freshness,
-        Version version,
-        Long observedAtMillis,
+        Long updatedAtMillis,
         Map<String, Object> properties
 ) {
 
     public WorkerPropertiesObservation {
-        Objects.requireNonNull(freshness, "freshness");
-        if (freshness == Freshness.UNKNOWN) {
-            if (version != null
-                    || observedAtMillis != null
-                    || properties != null) {
-                throw new IllegalArgumentException(
-                        "Unknown properties must not carry observation data"
-                );
-            }
-        } else {
-            Objects.requireNonNull(version, "version");
-            Objects.requireNonNull(observedAtMillis, "observedAtMillis");
+        if ((updatedAtMillis == null) != (properties == null)) {
+            throw new IllegalArgumentException(
+                    "updatedAtMillis and properties must both be present "
+                            + "or both be absent"
+            );
+        }
+        if (properties != null) {
             properties = freezeObject(
-                    Objects.requireNonNull(properties, "properties")
+                    properties
             );
         }
     }
 
     static WorkerPropertiesObservation unknown() {
         return new WorkerPropertiesObservation(
-                Freshness.UNKNOWN,
-                null,
                 null,
                 null
         );
-    }
-
-    public enum Freshness {
-        FRESH,
-        STALE,
-        UNKNOWN
-    }
-
-    public record Version(String adapterEpoch, long revision) {
-
-        public Version {
-            if (adapterEpoch == null || adapterEpoch.isBlank()) {
-                throw new IllegalArgumentException(
-                        "adapterEpoch must be non-blank"
-                );
-            }
-            if (revision <= 0) {
-                throw new IllegalArgumentException(
-                        "revision must be positive"
-                );
-            }
-        }
     }
 
     @SuppressWarnings("unchecked")

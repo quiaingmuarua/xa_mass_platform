@@ -45,7 +45,7 @@ public final class NettyWorkerDeliveryAdapters {
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
             NettyWorkerRouteCacheConfig routeCacheConfig,
-            NettyWorkerObservationCacheConfig observationCacheConfig,
+            NettyWorkerPropertiesCacheConfig propertiesCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -57,7 +57,7 @@ public final class NettyWorkerDeliveryAdapters {
                 listenPort,
                 processConfigs,
                 routeCacheConfig,
-                observationCacheConfig,
+                propertiesCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -74,7 +74,7 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteRequestTimeout,
                 processConfigs,
                 routeCacheConfig,
-                observationCacheConfig,
+                propertiesCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -88,7 +88,7 @@ public final class NettyWorkerDeliveryAdapters {
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
             NettyWorkerRouteCacheConfig routeCacheConfig,
-            NettyWorkerObservationCacheConfig observationCacheConfig,
+            NettyWorkerPropertiesCacheConfig propertiesCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -100,7 +100,7 @@ public final class NettyWorkerDeliveryAdapters {
                 listenPort,
                 processConfigs,
                 routeCacheConfig,
-                observationCacheConfig,
+                propertiesCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -117,7 +117,7 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteRequestTimeout,
                 processConfigs,
                 routeCacheConfig,
-                observationCacheConfig,
+                propertiesCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -130,7 +130,7 @@ public final class NettyWorkerDeliveryAdapters {
             Duration remoteRequestTimeout,
             List<NettyAdapterProcessConfig> processConfigs,
             NettyWorkerRouteCacheConfig routeCacheConfig,
-            NettyWorkerObservationCacheConfig observationCacheConfig,
+            NettyWorkerPropertiesCacheConfig propertiesCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -166,7 +166,7 @@ public final class NettyWorkerDeliveryAdapters {
                         reportProcess,
                         adapterId,
                         sendTimeLimit,
-                        observationCacheConfig
+                        propertiesCacheConfig
                 );
         WorkerConnectionInboundHandler connectionInboundHandler =
                 new WorkerConnectionInboundHandler(connectionMechanism);
@@ -230,7 +230,7 @@ public final class NettyWorkerDeliveryAdapters {
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
             NettyWorkerRouteCacheConfig routeCacheConfig,
-            NettyWorkerObservationCacheConfig observationCacheConfig,
+            NettyWorkerPropertiesCacheConfig propertiesCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -256,8 +256,8 @@ public final class NettyWorkerDeliveryAdapters {
         }
         Objects.requireNonNull(routeCacheConfig, "routeCacheConfig");
         Objects.requireNonNull(
-                observationCacheConfig,
-                "observationCacheConfig"
+                propertiesCacheConfig,
+                "propertiesCacheConfig"
         );
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");

@@ -229,8 +229,7 @@ class NettyWorkerDeliveryAdapterProcessTest {
                 reports,
                 "adapter-1",
                 Duration.ofSeconds(1),
-                new NettyWorkerObservationCacheConfig(
-                        Duration.ofMinutes(5),
+                new NettyWorkerPropertiesCacheConfig(
                         64L * 1024L * 1024L
                 )
         );

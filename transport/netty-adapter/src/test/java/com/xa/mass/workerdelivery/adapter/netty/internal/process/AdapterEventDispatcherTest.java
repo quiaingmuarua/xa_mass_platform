@@ -149,23 +149,13 @@ class AdapterEventDispatcherTest {
         snapshots.put(
                 "worker-1",
                 new WorkerPropertiesObservation(
-                        WorkerPropertiesObservation.Freshness.FRESH,
-                        new WorkerPropertiesObservation.Version(
-                                "epoch-1",
-                                3L
-                        ),
                         123L,
                         Map.of("battery", 87L)
                 )
         );
         snapshots.put(
-                "stale",
+                "older",
                 new WorkerPropertiesObservation(
-                        WorkerPropertiesObservation.Freshness.STALE,
-                        new WorkerPropertiesObservation.Version(
-                                "epoch-1",
-                                2L
-                        ),
                         100L,
                         Map.of("battery", 40L)
                 )
@@ -173,15 +163,13 @@ class AdapterEventDispatcherTest {
         snapshots.put(
                 "unknown",
                 new WorkerPropertiesObservation(
-                        WorkerPropertiesObservation.Freshness.UNKNOWN,
-                        null,
                         null,
                         null
                 )
         );
         when(connections.workerProperties(List.of(
                 "worker-1",
-                "stale",
+                "older",
                 "unknown"
         ))).thenReturn(snapshots);
         AdapterEventDispatcher dispatcher = AdapterEventDispatcher.defaults(
@@ -191,7 +179,7 @@ class AdapterEventDispatcherTest {
 
         var report = dispatcher.dispatch(command(
                 AdapterEventDispatcher.WORKER_PROPERTIES_SNAPSHOT_EVENT,
-                "{\"workerIds\":[\"worker-1\",\"stale\",\"unknown\"]}"
+                "{\"workerIds\":[\"worker-1\",\"older\",\"unknown\"]}"
         ));
 
         assertThat(report.outcomeCode()).isEqualTo("200");
@@ -203,7 +191,7 @@ class AdapterEventDispatcherTest {
         );
         assertThat(properties.keySet()).containsExactly(
                 "worker-1",
-                "stale",
+                "older",
                 "unknown"
         );
         @SuppressWarnings("unchecked")
@@ -211,40 +199,33 @@ class AdapterEventDispatcherTest {
                 .get("worker-1");
         assertThat(fresh)
                 .containsOnlyKeys(
-                        "freshness",
-                        "version",
-                        "observedAtMillis",
+                        "updatedAtMillis",
                         "properties"
                 )
-                .containsEntry("freshness", "FRESH")
-                .containsEntry("observedAtMillis", 123L)
+                .containsEntry("updatedAtMillis", 123L)
                 .containsEntry("properties", Map.of("battery", 87L))
-                .doesNotContainKeys("connectionState", "workerGroupId");
-        assertThat(fresh.get("version")).isEqualTo(Map.of(
-                "adapterEpoch",
-                "epoch-1",
-                "revision",
-                3L
-        ));
+                .doesNotContainKeys(
+                        "connectionState",
+                        "workerGroupId",
+                        "freshness",
+                        "version",
+                        "observedAtMillis"
+                );
         @SuppressWarnings("unchecked")
-        Map<String, Object> stale = (Map<String, Object>) properties
-                .get("stale");
-        assertThat(stale)
-                .containsEntry("freshness", "STALE")
+        Map<String, Object> older = (Map<String, Object>) properties
+                .get("older");
+        assertThat(older)
+                .containsEntry("updatedAtMillis", 100L)
                 .containsEntry("properties", Map.of("battery", 40L));
         @SuppressWarnings("unchecked")
         Map<String, Object> unknown = (Map<String, Object>) properties
                 .get("unknown");
         assertThat(unknown)
                 .containsOnlyKeys(
-                        "freshness",
-                        "version",
-                        "observedAtMillis",
+                        "updatedAtMillis",
                         "properties"
                 )
-                .containsEntry("freshness", "UNKNOWN")
-                .containsEntry("version", null)
-                .containsEntry("observedAtMillis", null)
+                .containsEntry("updatedAtMillis", null)
                 .containsEntry("properties", null);
 
         var events = dispatcher.dispatch(command(
@@ -279,8 +260,6 @@ class AdapterEventDispatcherTest {
             String workerId = "worker-" + index;
             workerIds.add(workerId);
             snapshots.put(workerId, new WorkerPropertiesObservation(
-                    WorkerPropertiesObservation.Freshness.UNKNOWN,
-                    null,
                     null,
                     null
             ));
@@ -295,8 +274,6 @@ class AdapterEventDispatcherTest {
                 .thenReturn(Map.of(
                         "worker-0",
                         new WorkerPropertiesObservation(
-                                WorkerPropertiesObservation.Freshness.UNKNOWN,
-                                null,
                                 null,
                                 null
                         )

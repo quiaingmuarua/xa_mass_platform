@@ -3,7 +3,7 @@ package com.xa.mass.server.workerdelivery.adapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapters;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
@@ -30,9 +30,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     private static final Duration DEFAULT_RECONNECT_VERIFICATION_RETENTION =
             Duration.ofMinutes(10);
     private static final long DEFAULT_MAXIMUM_DISCONNECTED_WORKERS = 100_000L;
-    private static final Duration DEFAULT_OBSERVATION_FRESHNESS =
-            Duration.ofMinutes(5);
-    private static final long DEFAULT_MAXIMUM_OBSERVATION_BYTES =
+    private static final long DEFAULT_MAXIMUM_PROPERTIES_BYTES =
             64L * 1024L * 1024L;
 
     private static final Set<String> INSTANCE_FIELDS = Set.of(
@@ -41,15 +39,14 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "listen-port",
             "processes",
             "route-cache",
-            "observation-cache",
+            "properties-cache",
             "send-time-limit"
     );
     private static final Set<String> ROUTE_CACHE_FIELDS = Set.of(
             "reconnect-verification-retention",
             "maximum-disconnected-workers"
     );
-    private static final Set<String> OBSERVATION_CACHE_FIELDS = Set.of(
-            "freshness",
+    private static final Set<String> PROPERTIES_CACHE_FIELDS = Set.of(
             "maximum-encoded-bytes"
     );
     private static final Set<String> COMMAND_PROCESS_FIELDS = Set.of(
@@ -134,8 +131,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         );
         NettyWorkerRouteCacheConfig routeCacheConfig =
                 parseRouteCacheConfig(object, adapterId);
-        NettyWorkerObservationCacheConfig observationCacheConfig =
-                parseObservationCacheConfig(object, adapterId);
+        NettyWorkerPropertiesCacheConfig propertiesCacheConfig =
+                parsePropertiesCacheConfig(object, adapterId);
         return switch (type) {
             case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
@@ -145,7 +142,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenPort,
                     processConfigs,
                     routeCacheConfig,
-                    observationCacheConfig,
+                    propertiesCacheConfig,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );
@@ -157,7 +154,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenPort,
                     processConfigs,
                     routeCacheConfig,
-                    observationCacheConfig,
+                    propertiesCacheConfig,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );
@@ -201,38 +198,31 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         );
     }
 
-    private static NettyWorkerObservationCacheConfig
-            parseObservationCacheConfig(
+    private static NettyWorkerPropertiesCacheConfig
+            parsePropertiesCacheConfig(
             ObjectNode adapter,
             String adapterId
     ) {
-        JsonNode value = adapter.get("observation-cache");
+        JsonNode value = adapter.get("properties-cache");
         if (value == null) {
-            return new NettyWorkerObservationCacheConfig(
-                    DEFAULT_OBSERVATION_FRESHNESS,
-                    DEFAULT_MAXIMUM_OBSERVATION_BYTES
+            return new NettyWorkerPropertiesCacheConfig(
+                    DEFAULT_MAXIMUM_PROPERTIES_BYTES
             );
         }
         if (!(value instanceof ObjectNode object)) {
-            throw invalid(adapterId, "observation-cache must be an object");
+            throw invalid(adapterId, "properties-cache must be an object");
         }
         rejectUnknownFields(
                 object,
-                OBSERVATION_CACHE_FIELDS,
+                PROPERTIES_CACHE_FIELDS,
                 adapterId,
-                "observation-cache"
+                "properties-cache"
         );
-        return new NettyWorkerObservationCacheConfig(
-                optionalDuration(
-                        object,
-                        "freshness",
-                        DEFAULT_OBSERVATION_FRESHNESS,
-                        adapterId
-                ),
+        return new NettyWorkerPropertiesCacheConfig(
                 optionalLong(
                         object,
                         "maximum-encoded-bytes",
-                        DEFAULT_MAXIMUM_OBSERVATION_BYTES,
+                        DEFAULT_MAXIMUM_PROPERTIES_BYTES,
                         adapterId
                 )
         );

@@ -287,7 +287,7 @@ class RuntimeApiPythonIntegrationTest {
             );
 
             assertConnectionState(workerId, "CONNECTED");
-            assertWorkerProperties(workerId, "FRESH");
+            assertWorkerProperties(workerId);
             assertThat(Jsons.parseObject(
                     observedDirectPayload(
                             adapterDirectCall(
@@ -311,7 +311,7 @@ class RuntimeApiPythonIntegrationTest {
                     ), workerId, "200")
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
-            assertWorkerProperties(workerId, "FRESH");
+            assertWorkerProperties(workerId);
             awaitAvailabilityEvidence(
                     workerId,
                     List.of(true, false, true)
@@ -395,10 +395,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private void assertWorkerProperties(
-            String workerId,
-            String freshness
-    ) throws Exception {
+    private void assertWorkerProperties(String workerId) throws Exception {
         Map<String, Object> payload = Jsons.parseObject(
                 observedDirectPayload(
                         adapterDirectCall(
@@ -416,14 +413,18 @@ class RuntimeApiPythonIntegrationTest {
         Map<String, Object> observation =
                 (Map<String, Object>) propertiesByWorkerId.get(workerId);
         assertThat(observation)
-                .doesNotContainKeys("workerGroupId", "connectionState")
-                .containsEntry("freshness", freshness)
+                .doesNotContainKeys(
+                        "workerGroupId",
+                        "connectionState",
+                        "freshness",
+                        "version",
+                        "observedAtMillis"
+                )
                 .containsEntry(
                         "properties",
                         Map.of("runtime", "java-direct")
                 );
-        assertThat(observation.get("version")).isNotNull();
-        assertThat(observation.get("observedAtMillis")).isNotNull();
+        assertThat(observation.get("updatedAtMillis")).isNotNull();
     }
 
     private static String workerIdsPayload(String workerId) {

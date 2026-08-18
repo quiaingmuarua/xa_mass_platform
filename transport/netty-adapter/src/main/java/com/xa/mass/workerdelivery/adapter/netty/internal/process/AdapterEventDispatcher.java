@@ -263,17 +263,7 @@ public final class AdapterEventDispatcher {
             WorkerPropertiesObservation observation
     ) {
         Map<String, Object> encoded = new LinkedHashMap<>();
-        encoded.put("freshness", observation.freshness().name());
-        WorkerPropertiesObservation.Version version = observation.version();
-        if (version == null) {
-            encoded.put("version", null);
-        } else {
-            Map<String, Object> encodedVersion = new LinkedHashMap<>();
-            encodedVersion.put("adapterEpoch", version.adapterEpoch());
-            encodedVersion.put("revision", version.revision());
-            encoded.put("version", encodedVersion);
-        }
-        encoded.put("observedAtMillis", observation.observedAtMillis());
+        encoded.put("updatedAtMillis", observation.updatedAtMillis());
         encoded.put("properties", observation.properties());
         return encoded;
     }

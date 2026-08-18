@@ -67,18 +67,21 @@ observation. There is no application heartbeat, so a silent half-open
 connection converges only after the network stack, close, failure, or a write
 detects it.
 
-A properties entry reports `freshness`, an
-Adapter-epoch/Adapter-instance-revision `version`, `observedAtMillis`, and the
-cached `properties`. Workers without retained properties use `UNKNOWN`
-freshness and null observation fields. `STALE` retains the last projection
-without time deletion; encoded-data capacity eviction or Adapter restart
-removes it. This cache is neither Worker resource truth nor evidence of
-Binding validity or schedulability.
+A properties entry reports Adapter-written `updatedAtMillis` and the complete
+cached `properties`. Both fields are null when the Adapter has no visible
+projection. Successive writes to a retained entry strictly increase the
+millisecond value, but after route identity loss, capacity eviction, or Adapter
+restart the next observation is a new baseline rather than a comparable global
+version. The cache has no independent freshness window: retained route
+verification evidence gates visibility, while a separate encoded-data budget
+may evict properties without affecting the connection. This cache is neither
+Worker resource truth nor evidence of Binding validity or schedulability.
 
 Connection and properties are separate queries with no atomic join or common
-version. `CONNECTED` does not prove cached properties are fresh, and `FRESH`
-does not prove a current connection exists. A management caller that needs a
-combined view invokes both events and joins their ordered workerId maps.
+version. `CONNECTED` does not prove properties exist or are recent, and cached
+properties may remain while the route is `DISCONNECTED` but still verified. A
+management caller that needs a combined view invokes both events and joins
+their ordered workerId maps.
 
 ## Adapter-Produced Evidence
 

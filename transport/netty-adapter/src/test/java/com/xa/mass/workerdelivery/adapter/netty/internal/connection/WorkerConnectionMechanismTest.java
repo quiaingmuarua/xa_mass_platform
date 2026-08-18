@@ -7,9 +7,10 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.Deliver
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.benmanes.caffeine.cache.Ticker;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -449,10 +451,7 @@ class WorkerConnectionMechanismTest {
             var snapshot = fixture.mechanism.workerProperties(
                     List.of("worker-1")
             ).get("worker-1");
-            assertThat(snapshot.freshness()).isEqualTo(
-                    WorkerPropertiesObservation.Freshness.FRESH
-            );
-            assertThat(snapshot.version().revision()).isEqualTo(1L);
+            assertThat(snapshot.updatedAtMillis()).isNotNull();
             assertThat(snapshot.properties()).containsEntry("battery", 87L);
             assertThat(fixture.mechanism.connectionStates(
                     List.of("worker-1")
@@ -505,10 +504,7 @@ class WorkerConnectionMechanismTest {
             var snapshot = fixture.mechanism.workerProperties(
                     List.of("worker-1")
             ).get("worker-1");
-            assertThat(snapshot.freshness()).isEqualTo(
-                    WorkerPropertiesObservation.Freshness.FRESH
-            );
-            assertThat(snapshot.version().revision()).isEqualTo(1L);
+            assertThat(snapshot.updatedAtMillis()).isNotNull();
             assertThat(snapshot.properties()).containsEntry("battery", 87L);
 
             fixture.reportProcess.round();
@@ -531,26 +527,120 @@ class WorkerConnectionMechanismTest {
                 "200",
                 "{\"properties\":{\"battery\":87}}"
         ));
+        Long updatedAtMillis = fixture.mechanism.workerProperties(
+                List.of("worker-1")
+        ).get("worker-1").updatedAtMillis();
 
         channel.finishAndReleaseAll();
         var disconnected = fixture.mechanism.workerProperties(
                 List.of("worker-1")
         ).get("worker-1");
         assertThat(disconnected.properties()).containsEntry("battery", 87L);
+        assertThat(disconnected.updatedAtMillis()).isEqualTo(updatedAtMillis);
         assertThat(fixture.mechanism.connectionStates(
                 List.of("worker-1")
         )).containsEntry("worker-1", WorkerConnectionState.DISCONNECTED);
+
+        EmbeddedChannel reconnect = fixture.channel();
+        reconnect.writeInbound(fixture.identity("worker-1"));
+        awaitBound(fixture, reconnect);
+        var reconnected = fixture.mechanism.workerProperties(
+                List.of("worker-1")
+        ).get("worker-1");
+        assertThat(reconnected.updatedAtMillis()).isEqualTo(updatedAtMillis);
+        assertThat(reconnected.properties()).containsEntry("battery", 87L);
+        assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
 
         fixture.mechanism.clear();
         var cleared = fixture.mechanism.workerProperties(
                 List.of("worker-1")
         ).get("worker-1");
-        assertThat(cleared.freshness()).isEqualTo(
-                WorkerPropertiesObservation.Freshness.UNKNOWN
-        );
+        assertThat(cleared.updatedAtMillis()).isNull();
+        assertThat(cleared.properties()).isNull();
         assertThat(fixture.mechanism.connectionStates(
                 List.of("worker-1")
         )).containsEntry("worker-1", WorkerConnectionState.UNKNOWN);
+        reconnect.finishAndReleaseAll();
+    }
+
+    @Test
+    void activePropertiesSurviveRetentionButDisappearWithRouteIdentity() {
+        MutableTicker ticker = new MutableTicker();
+        Duration retention = Duration.ofMinutes(10);
+        WorkerRouteRegistry routes = new WorkerRouteRegistry(
+                new NettyWorkerRouteCacheConfig(retention, 100_000L),
+                ticker
+        );
+        Fixture fixture = new Fixture(10, routes);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+            channel.writeInbound(fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"properties\":{\"battery\":87}}"
+            ));
+
+            ticker.advance(retention.plusNanos(1L));
+            assertThat(fixture.mechanism.workerProperties(
+                    List.of("worker-1")
+            ).get("worker-1").properties()).containsEntry("battery", 87L);
+
+            channel.finishAndReleaseAll();
+            WorkerPropertiesObservation unknown =
+                    fixture.mechanism.workerProperties(
+                            List.of("worker-1")
+                    ).get("worker-1");
+            assertThat(unknown.updatedAtMillis()).isNull();
+            assertThat(unknown.properties()).isNull();
+            assertThat(fixture.mechanism.connectionStates(
+                    List.of("worker-1")
+            )).containsEntry("worker-1", WorkerConnectionState.UNKNOWN);
+        } finally {
+            if (channel.isOpen()) {
+                channel.finishAndReleaseAll();
+            }
+        }
+    }
+
+    @Test
+    void newFirstVerificationClaimDropsPreviousRouteProperties() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel first = fixture.channel();
+        EmbeddedChannel reconnect = null;
+        try {
+            first.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, first);
+            first.writeInbound(fixture.propertiesResult(
+                    "worker-1",
+                    "200",
+                    "{\"properties\":{\"battery\":87}}"
+            ));
+            first.finishAndReleaseAll();
+            fixture.routes.clear();
+
+            reconnect = fixture.channel();
+            reconnect.writeInbound(fixture.identity("worker-1"));
+            awaitVerificationCalls(fixture.remoteApi, 2);
+            WorkerPropertiesObservation unknown =
+                    fixture.mechanism.workerProperties(
+                            List.of("worker-1")
+                    ).get("worker-1");
+            assertThat(unknown.updatedAtMillis()).isNull();
+            assertThat(unknown.properties()).isNull();
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, reconnect);
+        } finally {
+            if (first.isOpen()) {
+                first.finishAndReleaseAll();
+            }
+            if (reconnect != null) {
+                reconnect.finishAndReleaseAll();
+            }
+        }
     }
 
     private static void awaitBound(
@@ -616,12 +706,7 @@ class WorkerConnectionMechanismTest {
         private final List<String> systemReports = new ArrayList<>();
         private final ScriptedHttpServer reportServer;
         private final DeliveryReportProcess reportProcess;
-        private final WorkerRouteRegistry routes = new WorkerRouteRegistry(
-                new NettyWorkerRouteCacheConfig(
-                        Duration.ofMinutes(10),
-                        100_000L
-                )
-        );
+        private final WorkerRouteRegistry routes;
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism mechanism;
         private final WorkerConnectionInboundHandler inboundHandler;
@@ -631,6 +716,22 @@ class WorkerConnectionMechanismTest {
         }
 
         private Fixture(int reportCapacity) {
+            this(
+                    reportCapacity,
+                    new WorkerRouteRegistry(
+                            new NettyWorkerRouteCacheConfig(
+                                    Duration.ofMinutes(10),
+                                    100_000L
+                            )
+                    )
+            );
+        }
+
+        private Fixture(
+                int reportCapacity,
+                WorkerRouteRegistry routes
+        ) {
+            this.routes = routes;
             reportServer = reportServer();
             reportProcess = new DeliveryReportProcess(
                     new DeliveryReportRemoteApi(client(reportServer)),
@@ -645,8 +746,7 @@ class WorkerConnectionMechanismTest {
                         reportProcess,
                         "adapter-1",
                         Duration.ofSeconds(1),
-                        new NettyWorkerObservationCacheConfig(
-                                Duration.ofMinutes(5),
+                        new NettyWorkerPropertiesCacheConfig(
                                 64L * 1024L * 1024L
                         )
                 );
@@ -830,6 +930,20 @@ class WorkerConnectionMechanismTest {
 
         @Override
         public void close() {
+        }
+    }
+
+    private static final class MutableTicker implements Ticker {
+
+        private final AtomicLong nanos = new AtomicLong();
+
+        @Override
+        public long read() {
+            return nanos.get();
+        }
+
+        private void advance(Duration duration) {
+            nanos.addAndGet(duration.toNanos());
         }
     }
 }

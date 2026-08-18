@@ -176,8 +176,9 @@ Rules:
   and pending routes cannot be evicted by cache policy. A Channel attribute
   contains only the claimed workerId for callback correlation and never mirrors
   verification truth. The independent
-  properties projection is capacity bounded, not time deleted; freshness is
-  observation metadata rather than retention policy.
+  properties projection is capacity bounded, not time deleted. Its visibility
+  follows retained route verification evidence, coordinated only by the
+  connection mechanism.
 - Caffeine is connection-owner storage infrastructure only. Do not leak it to
   Server, Process, Remote API or physical Network owners, and do not install a
   loader, refresh, listener, scheduler or removal side effect.
@@ -185,8 +186,9 @@ Rules:
   availability evidence do not carry `workerGroupId` or add Group route state.
 - Adapter-local Worker property observation is a separate projection cache;
   it must not be folded into RouteEntry or copied into Server/Kernel truth.
-- Connection snapshots read only Route truth; properties snapshots read only
-  the properties cache. They have no atomic join or shared version.
+- Connection snapshots read Route truth; properties snapshots pass through the
+  Route evidence gate and then read the properties cache. They have no atomic
+  join or shared version.
 - The inbound Handler only adapts Netty callbacks.
 - The physical Server owns listener, EventLoop, all child Channels, framing,
   physical writes and close behavior.

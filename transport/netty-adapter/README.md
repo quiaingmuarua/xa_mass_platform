@@ -24,7 +24,7 @@ owns:
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one `WorkerConnectionMechanism`, `WorkerRouteRegistry`, and observation cache
+one `WorkerConnectionMechanism`, `WorkerRouteRegistry`, and properties cache
 one sharable `WorkerConnectionInboundHandler` adapting Netty callbacks
 one complete `WebSocketNettyWorkerServer` or `SocketNettyWorkerServer`
 one `DeliveryCommandProcess` with one private Command queue
@@ -56,7 +56,7 @@ behavior. These are internal owners, not a public SPI or transport-kind branch.
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
 `NettyAdapterProcessConfig`, `NettyWorkerRouteCacheConfig`,
-`NettyWorkerObservationCacheConfig`, and `NettyWorkerDeliveryAdapters`. Java types
+`NettyWorkerPropertiesCacheConfig`, and `NettyWorkerDeliveryAdapters`. Java types
 under `netty.internal` are `public` only where repository packages must
 collaborate without JPMS; they are repository-internal and carry no external
 compatibility promise.
@@ -245,18 +245,22 @@ not route truth: it stores only the most recent successful
 `platform.worker.properties.snapshot` observed from the exact current
 connected Channel. A replaced old Channel may still submit valid in-flight
 evidence, but it cannot refresh this projection. Properties survive ordinary
-disconnect and reconnect, carry an Adapter-epoch plus Adapter-instance revision,
-and are cleared with the Adapter. Revisions are never reused after an entry is
-evicted; rollback may leave a gap. Freshness uses owner-local monotonic elapsed
-time; the wall-clock observation time is output only for callers.
+disconnect and reconnect while route verification evidence is retained. Each
+entry contains the complete properties Map and an Adapter-written
+`updatedAtMillis`. The time is strictly increasing for successive writes to a
+retained entry, including same-millisecond updates or a short wall-clock
+rollback. It is observation metadata, not a cross-restart version or CAS fence.
 
-The properties cache has no time-based removal. `FRESH` becomes `STALE` after
-the configured window, but the value remains observable until a newer snapshot,
-capacity eviction or Adapter close. Capacity is a 64 MiB encoded-data budget by
-default, weighted by UTF-8 workerId plus encoded properties bytes. Management
-snapshot reads are quiet and do not improve cache admission/retention; a new
-properties result does. Caffeine uses its bounded admission/eviction policy,
-not a strict LRU or an exact JVM heap measurement.
+Properties have no independent time expiry. The connection mechanism gates
+every read with current route verification evidence: losing that evidence by
+TTL, route-cache capacity, or explicit clear makes the properties projection
+`UNKNOWN`. A new first-verification claim also clears any previous route
+lifetime's properties. No Caffeine removal callback joins the two owners;
+inaccessible residue is removed lazily and remains bounded by the independent
+64 MiB encoded-data budget. That budget is weighted by UTF-8 workerId plus
+encoded properties bytes and may evict a connected Worker's properties without
+changing its route. Management reads are quiet; only a successful current-
+Channel properties result refreshes an entry.
 
 ### Worker route-change evidence
 
@@ -323,7 +327,7 @@ execution surface, not a public registry or Server whitelist:
 | `platform.adapter.events.snapshot` | `null` | sorted full `eventNames` |
 | `platform.adapter.worker-connections.snapshot` | `{"workerIds":[...]}` | `stateByWorkerId` |
 | `platform.adapter.worker-connections.close-current` | `{"workerIds":[...]}` | `outcomeByWorkerId` |
-| `platform.adapter.worker-properties.snapshot` | `{"workerIds":[...]}` | ordered `propertiesByWorkerId` containing cached properties, freshness and version |
+| `platform.adapter.worker-properties.snapshot` | `{"workerIds":[...]}` | ordered `propertiesByWorkerId` containing `updatedAtMillis` and cached properties |
 
 The Event snapshot is precomputed when the immutable map is assembled, includes
 itself, and is process-local execution evidence rather than Server
@@ -347,27 +351,33 @@ existing Client reconnect path can install a new active Channel without
 another route verification.
 
 Worker connection state and cached properties are deliberately separate query
-surfaces. Properties freshness is `FRESH`, `STALE`, or `UNKNOWN`; stale values
-retain their last data and version. The default freshness window is five
-minutes. Adapter configuration owns two finite policy blocks:
+surfaces. A properties entry is known only when both `updatedAtMillis` and
+`properties` are non-null. Route identity loss, properties capacity eviction,
+or Adapter restart produces null fields. Adapter configuration owns two finite
+policy blocks:
 
 ```yaml
 route-cache:
   reconnect-verification-retention: 10m
   maximum-disconnected-workers: 100000
-observation-cache:
-  freshness: 5m
+properties-cache:
   maximum-encoded-bytes: 67108864
 ```
 
 The two snapshot events do not call each other and have no atomic join or
-shared version. `CONNECTED`, fresh properties, current Binding and scheduling
+shared version. `CONNECTED`, cached properties, current Binding and scheduling
 eligibility remain independent facts. A caller needing a combined view invokes
-both events and joins by workerId. The Adapter does not automatically probe a
-Worker or publish attribute changes to Server or Kernel. Entries are keyed by
-workerId and do not repeat the caller-owned WorkerGroup. Both caches use
-caller-thread maintenance only: no loader, refresh, listener, scheduler or
-cleanup thread is installed.
+both events and joins by workerId. `updatedAtMillis` is comparable only within
+one retained entry lifetime; after UNKNOWN or Adapter restart, the next value is
+a new baseline. The Adapter does not automatically probe a Worker or publish
+attribute changes to Server or Kernel. Entries are keyed by workerId and do not
+repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
+only: no loader, refresh, listener, scheduler or cleanup thread is installed.
+
+The current Worker event supplies a complete properties snapshot. There is no
+partial-update or per-property timestamp contract. A future patch event must
+start from a complete baseline, define deletion tombstones, atomically merge to
+another complete Map, and advance the one Worker-level `updatedAtMillis`.
 
 ### Result ingress round
 

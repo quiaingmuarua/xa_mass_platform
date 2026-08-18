@@ -221,10 +221,13 @@ class NettyAdapterContractTest {
                 Map<String, Object> worker = (Map<String, Object>)
                         propertiesByWorkerId.get(WORKER_ID);
                 assertThat(worker)
-                        .containsEntry("freshness", "FRESH")
+                        .containsKey("updatedAtMillis")
                         .doesNotContainKeys(
                                 "connectionState",
-                                "workerGroupId"
+                                "workerGroupId",
+                                "freshness",
+                                "version",
+                                "observedAtMillis"
                         );
                 @SuppressWarnings("unchecked")
                 Map<String, Object> properties = (Map<String, Object>)
@@ -299,8 +302,7 @@ class NettyAdapterContractTest {
                             Duration.ofMinutes(10),
                             100_000L
                     ),
-                    new NettyWorkerObservationCacheConfig(
-                            Duration.ofMinutes(5),
+                    new NettyWorkerPropertiesCacheConfig(
                             64L * 1024L * 1024L
                     ),
                     Duration.ofSeconds(1),
@@ -317,8 +319,7 @@ class NettyAdapterContractTest {
                             Duration.ofMinutes(10),
                             100_000L
                     ),
-                    new NettyWorkerObservationCacheConfig(
-                            Duration.ofMinutes(5),
+                    new NettyWorkerPropertiesCacheConfig(
                             64L * 1024L * 1024L
                     ),
                     Duration.ofSeconds(1),

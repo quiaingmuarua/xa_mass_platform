@@ -47,9 +47,7 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                         + ".websocket-1.route-cache"
                         + ".maximum-disconnected-workers=2000",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-1.observation-cache.freshness=1m",
-                "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-1.observation-cache"
+                        + ".websocket-1.properties-cache"
                         + ".maximum-encoded-bytes=1048576",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.processes[0].type=DELIVERY_COMMAND",
@@ -111,9 +109,11 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertAdapterFailed("route-cache.verification-retention=2m");
         assertAdapterFailed("route-cache.maximum-disconnected-workers=0");
         assertAdapterFailed("route-cache.unknown=true");
-        assertAdapterFailed("observation-cache.freshness=-1s");
-        assertAdapterFailed("observation-cache.maximum-encoded-bytes=0");
-        assertAdapterFailed("observation-cache.unknown=true");
+        assertAdapterFailed("observation-cache.freshness=1m");
+        assertAdapterFailed("observation-cache.maximum-encoded-bytes=1");
+        assertAdapterFailed("properties-cache.maximum-encoded-bytes=0");
+        assertAdapterFailed("properties-cache.freshness=1m");
+        assertAdapterFailed("properties-cache.unknown=true");
         assertAdapterFailed(
                 "processes[0].consume-limit=0"
         );

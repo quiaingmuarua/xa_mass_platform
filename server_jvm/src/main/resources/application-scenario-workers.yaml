@@ -17,8 +17,7 @@ xa:
             route-cache:
               reconnect-verification-retention: 10m
               maximum-disconnected-workers: 100000
-            observation-cache:
-              freshness: 5m
+            properties-cache:
               maximum-encoded-bytes: 67108864
             processes:
               - type: DELIVERY_COMMAND

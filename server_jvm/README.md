@@ -123,15 +123,17 @@ Adapter source and current Binding, then appends the original evidence to the bo
 `WorkerChangeInbox`. Server does not project online state, start
 a consumer, or read/write Worker score in this slice.
 
-Adapter instances may configure `route-cache` and `observation-cache`. The
+Adapter instances may configure `route-cache` and `properties-cache`. The
 defaults retain disconnected verification evidence for `10m` with at most
-`100000` disconnected Workers, and retain properties under a `64 MiB` encoded
-data budget with a `5m` freshness window. These are Adapter-owned process-local
-policies; Server only validates configuration and passes the two finite config
-records into the Adapter factory. Callers read the properties projection by
+`100000` disconnected Workers, and bound properties by a `64 MiB` encoded-data
+budget. Properties have no Server-defined freshness window; their visibility
+follows retained Adapter route identity and may also be lost under properties
+capacity pressure. These are Adapter-owned process-local policies; Server only
+validates configuration and passes the two finite config records into the
+Adapter factory. Callers read the properties projection by
 DIRECT_CALL to `platform.adapter.worker-properties.snapshot`. Server treats the
 event name, opaque input and result payload transparently: it owns neither cache
-contents nor version, freshness, TTL or eviction interpretation. Live
+contents nor update time, route gate, TTL or eviction interpretation. Live
 connection state remains a separate
 `platform.adapter.worker-connections.snapshot` call; Server does not join the
 two projections.

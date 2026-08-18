@@ -193,6 +193,9 @@ class WorkerDeliveryAdapterArchitectureTest {
         String observation = read(CONNECTION.resolve(
                 "WorkerPropertiesObservation.java"
         ));
+        String mechanism = read(CONNECTION.resolve(
+                "WorkerConnectionMechanism.java"
+        ));
         String dispatcher = read(PROCESS.resolve(
                 "AdapterEventDispatcher.java"
         ));
@@ -208,19 +211,37 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("WorkerScore")
                 .doesNotContain("heartbeat")
-                .doesNotContain("probe(");
+                .doesNotContain("probe(")
+                .doesNotContain("freshnessNanos")
+                .doesNotContain("adapterEpoch")
+                .doesNotContain("observationRevision")
+                .doesNotContain("monotonicNanos");
         assertThat(observation)
                 .doesNotContain("Channel")
                 .doesNotContain("WorkerConnectionState")
-                .doesNotContain("WorkerRouteRegistry");
+                .doesNotContain("WorkerRouteRegistry")
+                .doesNotContain("Freshness")
+                .doesNotContain("Version")
+                .doesNotContain("observedAtMillis");
+        assertThat(mechanism)
+                .contains("routes.hasVerificationEvidence(workerId)")
+                .contains("propertiesCache.invalidate(workerId)");
         assertThat(dispatcher)
                 .contains("propertiesByWorkerId")
+                .contains("updatedAtMillis")
                 .doesNotContain("connectionState\"")
                 .doesNotContain("propertiesFreshness")
-                .doesNotContain("propertiesVersion");
+                .doesNotContain("propertiesVersion")
+                .doesNotContain("observedAtMillis");
         assertThat(network)
                 .doesNotContain("WorkerPropertiesCache")
                 .doesNotContain("WorkerPropertiesObservation");
+        assertThat(Files.exists(NETTY.resolve(
+                "NettyWorkerObservationCacheConfig.java"
+        ))).isFalse();
+        assertThat(Files.exists(NETTY.resolve(
+                "NettyWorkerPropertiesCacheConfig.java"
+        ))).isTrue();
     }
 
     @Test

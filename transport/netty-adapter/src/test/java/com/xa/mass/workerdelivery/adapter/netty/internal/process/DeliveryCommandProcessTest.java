@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection
         .WorkerConnectionInboundHandler;
@@ -355,8 +355,7 @@ class DeliveryCommandProcessTest {
                     reportProcess,
                     "adapter-1",
                     Duration.ofSeconds(1),
-                    new NettyWorkerObservationCacheConfig(
-                            Duration.ofMinutes(5),
+                    new NettyWorkerPropertiesCacheConfig(
                             64L * 1024L * 1024L
                     )
             );

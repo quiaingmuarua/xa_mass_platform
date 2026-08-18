@@ -14,7 +14,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
-import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerPropertiesCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -71,10 +71,10 @@ public final class WorkerConnectionMechanism {
             DeliveryReportProcess reportProcess,
             String adapterId,
             Duration sendTimeLimit,
-            NettyWorkerObservationCacheConfig observationCacheConfig
+            NettyWorkerPropertiesCacheConfig propertiesCacheConfig
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
-        propertiesCache = new WorkerPropertiesCache(observationCacheConfig);
+        propertiesCache = new WorkerPropertiesCache(propertiesCacheConfig);
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"
@@ -113,12 +113,16 @@ public final class WorkerConnectionMechanism {
     }
 
     void channelInactive(Channel channel) {
+        String workerId = routes.claimedWorkerId(channel);
         reportUnavailable(routes.onChannelClosed(channel));
+        invalidatePropertiesIfRouteForgotten(workerId);
     }
 
     void channelFailed(Channel channel, Throwable failure) {
         Objects.requireNonNull(failure, "failure");
+        String workerId = routes.claimedWorkerId(channel);
         reportUnavailable(routes.onChannelClosed(channel));
+        invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(
                 channel,
                 AdapterConnectionCloseReason.TRANSPORT_ERROR
@@ -183,10 +187,18 @@ public final class WorkerConnectionMechanism {
         Map<String, WorkerPropertiesObservation> observations =
                 new LinkedHashMap<>();
         for (String workerId : requiredWorkerIds) {
-            observations.put(
-                    workerId,
-                    propertiesCache.observation(workerId)
-            );
+            if (!routes.hasVerificationEvidence(workerId)) {
+                propertiesCache.invalidate(workerId);
+                observations.put(
+                        workerId,
+                        WorkerPropertiesObservation.unknown()
+                );
+            } else {
+                observations.put(
+                        workerId,
+                        propertiesCache.observation(workerId)
+                );
+            }
         }
         return Collections.unmodifiableMap(observations);
     }
@@ -204,6 +216,7 @@ public final class WorkerConnectionMechanism {
                 continue;
             }
             reportAvailability(workerId, false);
+            invalidatePropertiesIfRouteForgotten(workerId);
             boolean active = channel.isActive();
             networkServer.closeConnection(
                     channel,
@@ -269,10 +282,10 @@ public final class WorkerConnectionMechanism {
                 }
                 closeReplaced(admission.replacedChannel());
             }
-            case VERIFICATION_CLAIMED -> verifyRoute(
-                    context,
-                    workerId
-            );
+            case VERIFICATION_CLAIMED -> {
+                propertiesCache.invalidate(workerId);
+                verifyRoute(context, workerId);
+            }
         }
     }
 
@@ -478,6 +491,7 @@ public final class WorkerConnectionMechanism {
         if (routes.deactivate(workerId, channel)) {
             reportAvailability(workerId, false);
         }
+        invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(channel, reason);
     }
 
@@ -485,8 +499,16 @@ public final class WorkerConnectionMechanism {
             Channel channel,
             AdapterConnectionCloseReason reason
     ) {
+        String workerId = routes.claimedWorkerId(channel);
         reportUnavailable(routes.onChannelClosed(channel));
+        invalidatePropertiesIfRouteForgotten(workerId);
         networkServer.closeConnection(channel, reason);
+    }
+
+    private void invalidatePropertiesIfRouteForgotten(String workerId) {
+        if (workerId != null && !routes.hasVerificationEvidence(workerId)) {
+            propertiesCache.invalidate(workerId);
+        }
     }
 
     private void closeReplaced(Channel replacedChannel) {
