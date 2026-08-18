@@ -34,6 +34,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                         "api project(':transport:worker-delivery-contract')"
                 )
                 .contains("io.netty:netty-transport")
+                .contains("com.github.ben-manes.caffeine:caffeine")
                 .doesNotContain("spring-boot")
                 .doesNotContain("project(':server_jvm')")
                 .doesNotContain("project(':kernel_jvm')")
@@ -168,11 +169,11 @@ class WorkerDeliveryAdapterArchitectureTest {
     @Test
     void adapterEventsRemainAStaticImmutableExecutionMap()
             throws IOException {
-        String executor = read(PROCESS.resolve(
-                "AdapterControlExecutor.java"
+        String dispatcher = read(PROCESS.resolve(
+                "AdapterEventDispatcher.java"
         ));
 
-        assertThat(executor)
+        assertThat(dispatcher)
                 .doesNotContain("ConcurrentHashMap")
                 .doesNotContain("ServiceLoader")
                 .doesNotContain("Class.forName")
@@ -203,6 +204,39 @@ class WorkerDeliveryAdapterArchitectureTest {
         assertThat(network)
                 .doesNotContain("WorkerObservationCache")
                 .doesNotContain("WorkerObservationSnapshot");
+    }
+
+    @Test
+    void cachePolicyDoesNotEscapeConnectionOwners()
+            throws IOException {
+        String registry = read(CONNECTION.resolve(
+                "WorkerRouteRegistry.java"
+        ));
+        String observations = read(CONNECTION.resolve(
+                "WorkerObservationCache.java"
+        ));
+        String outsideConnection = readSources(APPLICATION)
+                + read(NETTY.resolve("NettyWorkerDeliveryAdapter.java"))
+                + readSources(NETWORK)
+                + readSources(PROCESS)
+                + readSources(REMOTE);
+
+        assertThat(registry)
+                .doesNotContain("activeChannels")
+                .doesNotContain("pendingVerifications")
+                .doesNotContain("verifiedWorkerIds")
+                .doesNotContain("CacheLoader")
+                .doesNotContain("refreshAfterWrite")
+                .doesNotContain("removalListener")
+                .doesNotContain(".scheduler(");
+        assertThat(observations)
+                .doesNotContain("expireAfter")
+                .doesNotContain("CacheLoader")
+                .doesNotContain("refreshAfterWrite")
+                .doesNotContain("removalListener")
+                .doesNotContain(".scheduler(");
+        assertThat(outsideConnection)
+                .doesNotContain("com.github.benmanes.caffeine");
     }
 
     @Test

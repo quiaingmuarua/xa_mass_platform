@@ -293,7 +293,14 @@ class NettyAdapterContractTest {
                     "127.0.0.1",
                     port,
                     processes,
-                    Duration.ofMinutes(5),
+                    new NettyWorkerRouteCacheConfig(
+                            Duration.ofMinutes(10),
+                            100_000L
+                    ),
+                    new NettyWorkerObservationCacheConfig(
+                            Duration.ofMinutes(5),
+                            64L * 1024L * 1024L
+                    ),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(1)
             );
@@ -304,7 +311,14 @@ class NettyAdapterContractTest {
                     "127.0.0.1",
                     port,
                     processes,
-                    Duration.ofMinutes(5),
+                    new NettyWorkerRouteCacheConfig(
+                            Duration.ofMinutes(10),
+                            100_000L
+                    ),
+                    new NettyWorkerObservationCacheConfig(
+                            Duration.ofMinutes(5),
+                            64L * 1024L * 1024L
+                    ),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(1)
             );

@@ -19,20 +19,20 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-class AdapterControlExecutorTest {
+class AdapterEventDispatcherTest {
 
     @Test
     void staticallyAssembledHandlerMapDispatchesCustomEvent() {
-        Map<String, AdapterControlExecutor.AdapterControlHandler> handlers =
+        Map<String, AdapterEventDispatcher.AdapterEventHandler> handlers =
                 new LinkedHashMap<>();
         handlers.put("platform.adapter.custom", payload -> payload);
-        AdapterControlExecutor executor = new AdapterControlExecutor(
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
                 "adapter-1",
                 handlers
         );
         handlers.clear();
 
-        var report = executor.execute(command(
+        var report = dispatcher.dispatch(command(
                 "platform.adapter.custom",
                 "{\"value\":1}"
         ));
@@ -43,18 +43,18 @@ class AdapterControlExecutorTest {
 
     @Test
     void eventSnapshotDescribesTheExactImmutableHandlerMap() {
-        Map<String, AdapterControlExecutor.AdapterControlHandler> handlers =
+        Map<String, AdapterEventDispatcher.AdapterEventHandler> handlers =
                 new LinkedHashMap<>();
         handlers.put("platform.adapter.zeta", payload -> payload);
         handlers.put("platform.adapter.alpha", payload -> payload);
-        AdapterControlExecutor executor = new AdapterControlExecutor(
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
                 "adapter-1",
                 handlers
         );
         handlers.clear();
 
-        var report = executor.execute(command(
-                AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+        var report = dispatcher.dispatch(command(
+                AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                 "null"
         ));
 
@@ -69,71 +69,71 @@ class AdapterControlExecutorTest {
 
     @Test
     void eventSnapshotIsReservedAndRequiresNullPayload() {
-        assertThatThrownBy(() -> new AdapterControlExecutor(
+        assertThatThrownBy(() -> new AdapterEventDispatcher(
                 "adapter-1",
                 Map.of(
-                        AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+                        AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                         payload -> payload
                 )
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reserved");
 
-        AdapterControlExecutor executor = new AdapterControlExecutor(
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
                 "adapter-1",
                 Map.of()
         );
-        assertThat(executor.execute(command(
-                AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+        assertThat(dispatcher.dispatch(command(
+                AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                 "{}"
         )).outcomeCode()).isEqualTo(Integer.toString(
-                WorkerDeliveryAdapterErrorCode.CONTROL_COMMAND_INVALID.code()
+                WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
     }
 
     @Test
     void handlerFailureIsAnObservedExecutionFailure() {
-        AdapterControlExecutor executor = new AdapterControlExecutor(
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
                 "adapter-1",
                 Map.of("platform.adapter.failure", payload -> {
                     throw new Exception("failed");
                 })
         );
 
-        var report = executor.execute(command(
+        var report = dispatcher.dispatch(command(
                 "platform.adapter.failure",
                 "null"
         ));
 
         assertThat(report.outcomeCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode
-                        .CONTROL_EVENT_EXECUTION_FAILED.code()
+                        .ADAPTER_EVENT_EXECUTION_FAILED.code()
         ));
         assertThat(report.payload()).isEqualTo("null");
     }
 
     @Test
     void handlerIllegalArgumentFailureIsNotMisclassifiedAsInvalidPayload() {
-        AdapterControlExecutor executor = new AdapterControlExecutor(
+        AdapterEventDispatcher dispatcher = new AdapterEventDispatcher(
                 "adapter-1",
                 Map.of("platform.adapter.failure", payload -> {
                     throw new IllegalArgumentException("handler bug");
                 })
         );
 
-        var report = executor.execute(command(
+        var report = dispatcher.dispatch(command(
                 "platform.adapter.failure",
                 "null"
         ));
 
         assertThat(report.outcomeCode()).isEqualTo(Integer.toString(
                 WorkerDeliveryAdapterErrorCode
-                        .CONTROL_EVENT_EXECUTION_FAILED.code()
+                        .ADAPTER_EVENT_EXECUTION_FAILED.code()
         ));
     }
 
     @Test
     void handlerMapRejectsNonPlatformAdapterEventNames() {
-        assertThatThrownBy(() -> new AdapterControlExecutor(
+        assertThatThrownBy(() -> new AdapterEventDispatcher(
                 "adapter-1",
                 Map.of("extension.adapter.custom", payload -> payload)
         )).isInstanceOf(IllegalArgumentException.class)
@@ -188,13 +188,13 @@ class AdapterControlExecutorTest {
                 "stale",
                 "unknown"
         ))).thenReturn(snapshots);
-        AdapterControlExecutor executor = AdapterControlExecutor.defaults(
+        AdapterEventDispatcher dispatcher = AdapterEventDispatcher.defaults(
                 "adapter-1",
                 connections
         );
 
-        var report = executor.execute(command(
-                AdapterControlExecutor.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+        var report = dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
                 "{\"workerIds\":[\"worker-1\",\"stale\",\"unknown\"]}"
         ));
 
@@ -232,8 +232,8 @@ class AdapterControlExecutorTest {
                 .containsEntry("propertiesVersion", null)
                 .containsEntry("properties", null);
 
-        var events = executor.execute(command(
-                AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+        var events = dispatcher.dispatch(command(
+                AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                 "null"
         ));
         @SuppressWarnings("unchecked")
@@ -242,7 +242,7 @@ class AdapterControlExecutorTest {
         ).get("eventNames");
         assertThat(eventNames)
                 .contains(
-                        AdapterControlExecutor
+                        AdapterEventDispatcher
                                 .WORKER_OBSERVATIONS_SNAPSHOT_EVENT
                 );
     }
@@ -267,24 +267,24 @@ class AdapterControlExecutorTest {
             ));
         }
         when(connections.workerObservations(workerIds)).thenReturn(snapshots);
-        AdapterControlExecutor executor = AdapterControlExecutor.defaults(
+        AdapterEventDispatcher dispatcher = AdapterEventDispatcher.defaults(
                 "adapter-1",
                 connections
         );
 
-        var accepted = executor.execute(command(
-                AdapterControlExecutor.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+        var accepted = dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", workerIds))
         ));
         assertThat(accepted.outcomeCode()).isEqualTo("200");
 
         List<String> tooMany = new ArrayList<>(workerIds);
         tooMany.add("worker-100");
-        assertThat(executor.execute(command(
-                AdapterControlExecutor.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
+        assertThat(dispatcher.dispatch(command(
+                AdapterEventDispatcher.WORKER_OBSERVATIONS_SNAPSHOT_EVENT,
                 Jsons.toJson(Map.of("workerIds", tooMany))
         )).outcomeCode()).isEqualTo(Integer.toString(
-                WorkerDeliveryAdapterErrorCode.CONTROL_COMMAND_INVALID.code()
+                WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID.code()
         ));
     }
 

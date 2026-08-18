@@ -170,10 +170,19 @@ Rules:
   private HTTP client owns raw HTTP mechanics only.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
+- Registry keeps one atomic Route entry per workerId; do not split active,
+  verifying and retained-verification facts across parallel Maps.
+- Only disconnected verification evidence may be TTL/capacity cached. Active
+  and verifying routes cannot be evicted by cache policy. The independent
+  properties projection is capacity bounded, not time deleted; freshness is
+  observation metadata rather than retention policy.
+- Caffeine is connection-owner storage infrastructure only. Do not leak it to
+  Server, Process, Remote API or physical Network owners, and do not install a
+  loader, refresh, listener, scheduler or removal side effect.
 - Registry routes only by `workerId`; long-lived identity and Adapter-produced
   availability evidence do not carry `workerGroupId` or add Group route state.
 - Adapter-local Worker property observation is a separate projection cache;
-  it must not be folded into RouteState or copied into Server/Kernel truth.
+  it must not be folded into RouteEntry or copied into Server/Kernel truth.
 - The inbound Handler only adapts Netty callbacks.
 - The physical Server owns listener, EventLoop, all child Channels, framing,
   physical writes and close behavior.

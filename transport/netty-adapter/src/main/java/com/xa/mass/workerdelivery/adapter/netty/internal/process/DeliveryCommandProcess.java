@@ -36,7 +36,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     private final WorkerConnectionMechanism connectionMechanism;
     private final DeliveryReportProcess reportProcess;
     private final WorkerDeliveryCodec codec;
-    private final AdapterControlExecutor adapterControlExecutor;
+    private final AdapterEventDispatcher adapterEventDispatcher;
     private final String adapterId;
     private final int commandConsumeLimit;
     private final LongSupplier nowMillis;
@@ -46,7 +46,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     public DeliveryCommandProcess(
             DeliveryCommandRemoteApi remoteApi,
             WorkerConnectionMechanism connectionMechanism,
-            AdapterControlExecutor adapterControlExecutor,
+            AdapterEventDispatcher adapterEventDispatcher,
             DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
@@ -56,7 +56,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         this(
                 remoteApi,
                 connectionMechanism,
-                adapterControlExecutor,
+                adapterEventDispatcher,
                 reportProcess,
                 codec,
                 adapterId,
@@ -69,7 +69,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     DeliveryCommandProcess(
             DeliveryCommandRemoteApi remoteApi,
             WorkerConnectionMechanism connectionMechanism,
-            AdapterControlExecutor adapterControlExecutor,
+            AdapterEventDispatcher adapterEventDispatcher,
             DeliveryReportProcess reportProcess,
             WorkerDeliveryCodec codec,
             String adapterId,
@@ -82,9 +82,9 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 connectionMechanism,
                 "connectionMechanism"
         );
-        this.adapterControlExecutor = Objects.requireNonNull(
-                adapterControlExecutor,
-                "adapterControlExecutor"
+        this.adapterEventDispatcher = Objects.requireNonNull(
+                adapterEventDispatcher,
+                "adapterEventDispatcher"
         );
         this.reportProcess = Objects.requireNonNull(
                 reportProcess,
@@ -174,7 +174,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
     ) {
         DeliveryCommand command = queued.command();
         if (command.dst() == ADAPTER) {
-            offerControlResult(adapterControlExecutor.execute(command));
+            offerAdapterEventResult(adapterEventDispatcher.dispatch(command));
             return WorkerConnectionMechanism.DeliveryAttempt.STARTED;
         }
         if (isTaskWorkerCommand(queued)
@@ -239,7 +239,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
-    private void offerControlResult(DeliveryReport report) {
+    private void offerAdapterEventResult(DeliveryReport report) {
         if (reportProcess.ingress(List.of(
                 codec.encodeDeliveryReport(report)
         )) != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
@@ -248,7 +248,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                     "adapterId={0} messageType={1} message={2}",
                     adapterId,
                     report.messageType(),
-                    "Adapter Control Result was dropped"
+                    "Adapter Event Result was dropped"
             );
         }
     }
@@ -273,7 +273,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                         + "messageType={4}",
                 (command.src() == SYSTEM
                         ? WorkerDeliveryAdapterErrorCode
-                        .CONTROL_COMMAND_INVALID
+                        .ADAPTER_COMMAND_INVALID
                         : WorkerDeliveryAdapterErrorCode
                         .WORKER_MESSAGE_INVALID).code(),
                 "deliveryCommand.validateTarget",

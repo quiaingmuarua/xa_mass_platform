@@ -217,14 +217,22 @@ class NettyWorkerDeliveryAdapterProcessTest {
                 10
         );
         WorkerConnectionMechanism connection = new WorkerConnectionMechanism(
-                new WorkerRouteRegistry(),
+                new WorkerRouteRegistry(
+                        new NettyWorkerRouteCacheConfig(
+                                Duration.ofMinutes(10),
+                                100_000L
+                        )
+                ),
                 network,
                 new WorkerRouteRemoteApi(client),
                 new WorkerDeliveryCodec(),
                 reports,
                 "adapter-1",
                 Duration.ofSeconds(1),
-                Duration.ofMinutes(5)
+                new NettyWorkerObservationCacheConfig(
+                        Duration.ofMinutes(5),
+                        64L * 1024L * 1024L
+                )
         );
         WorkerConnectionInboundHandler inboundHandler =
                 new WorkerConnectionInboundHandler(connection);

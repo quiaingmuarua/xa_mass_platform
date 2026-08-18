@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -83,12 +85,12 @@ class WorkerConnectionMechanismTest {
             fixture.reportProcess.round();
             assertAvailability(fixture, true);
 
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
             first.finishAndReleaseAll();
             fixture.reportProcess.round();
             assertAvailability(fixture, false);
 
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
             reconnect = fixture.channel();
             reconnect.writeInbound(fixture.identity("worker-1"));
             awaitBound(fixture, reconnect);
@@ -132,7 +134,7 @@ class WorkerConnectionMechanismTest {
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, current);
             fixture.reportProcess.round();
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
 
             replacement.writeInbound(fixture.identity("worker-1"));
 
@@ -140,7 +142,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(replacement);
             assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
-            assertThat(fixture.controlReports).isEmpty();
+            assertThat(fixture.systemReports).isEmpty();
 
             replacement.finishAndReleaseAll();
             fixture.reportProcess.round();
@@ -188,27 +190,6 @@ class WorkerConnectionMechanismTest {
                     .isSameAs(channel);
         } finally {
             channel.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void verifiedReconnectSkipsGatewayAndReplacesPhysicalChannel() {
-        Fixture fixture = new Fixture();
-        EmbeddedChannel first = fixture.channel();
-        first.writeInbound(fixture.identity("worker-1"));
-        fixture.remoteApi.currentVerification().complete(null);
-        awaitBound(fixture, first);
-        first.finishAndReleaseAll();
-
-        EmbeddedChannel reconnect = fixture.channel();
-        try {
-            reconnect.writeInbound(fixture.identity("worker-1"));
-
-            awaitVerificationCalls(fixture.remoteApi, 1);
-            assertThat(fixture.routes.activeChannel("worker-1"))
-                    .isSameAs(reconnect);
-        } finally {
-            reconnect.finishAndReleaseAll();
         }
     }
 
@@ -311,44 +292,6 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void connectionSnapshotReportsCurrentRouteStates() {
-        Fixture fixture = new Fixture();
-        EmbeddedChannel active = new EmbeddedChannel();
-        EmbeddedChannel pending = new EmbeddedChannel();
-        EmbeddedChannel inactive = new EmbeddedChannel();
-        try {
-            fixture.routes.admitIdentity("active", active);
-            fixture.routes.completeVerificationAndActivate(
-                    "active",
-                    active
-            );
-            fixture.routes.admitIdentity("pending", pending);
-            fixture.routes.admitIdentity("inactive", inactive);
-            fixture.routes.completeVerificationAndActivate(
-                    "inactive",
-                    inactive
-            );
-            inactive.close();
-
-            assertThat(fixture.mechanism.connectionStates(List.of(
-                    "active",
-                    "pending",
-                    "inactive",
-                    "unknown"
-            ))).containsExactly(
-                    Map.entry("active", WorkerConnectionState.CONNECTED),
-                    Map.entry("pending", WorkerConnectionState.VERIFYING),
-                    Map.entry("inactive", WorkerConnectionState.DISCONNECTED),
-                    Map.entry("unknown", WorkerConnectionState.UNKNOWN)
-            );
-        } finally {
-            active.finishAndReleaseAll();
-            pending.finishAndReleaseAll();
-            inactive.finishAndReleaseAll();
-        }
-    }
-
-    @Test
     void closeCurrentDetachesOnlyCurrentRouteAndPreservesVerification() {
         Fixture fixture = new Fixture();
         EmbeddedChannel active = new EmbeddedChannel();
@@ -370,7 +313,7 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.network.closedChannels)
                     .containsExactly(active);
             assertThat(fixture.network.closeReasons).containsExactly(
-                    AdapterConnectionCloseReason.CONTROL_REQUEST
+                    AdapterConnectionCloseReason.MANAGEMENT_REQUEST
             );
             assertThat(fixture.routes.activeChannel("worker-1")).isNull();
             assertThat(fixture.mechanism.connectionStates(List.of(
@@ -437,7 +380,7 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
-    void systemResultUsesControlLaneWithoutClosingOnBackpressure() {
+    void systemResultBackpressureDoesNotCloseTheWorker() {
         Fixture fixture = new Fixture(1);
         EmbeddedChannel channel = fixture.channel();
         try {
@@ -445,11 +388,11 @@ class WorkerConnectionMechanismTest {
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
             fixture.reportProcess.round();
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
 
             channel.writeInbound(fixture.systemResult("worker-1"));
             fixture.reportProcess.round();
-            assertThat(fixture.controlReports)
+            assertThat(fixture.systemReports)
                     .containsExactly(fixture.systemResult("worker-1"));
 
             assertThat(fixture.reportProcess.ingress(List.of("occupied")))
@@ -473,7 +416,7 @@ class WorkerConnectionMechanismTest {
         fixture.remoteApi.currentVerification().complete(null);
         awaitBound(fixture, channel);
         fixture.reportProcess.round();
-        fixture.controlReports.clear();
+        fixture.systemReports.clear();
         assertThat(fixture.reportProcess.ingress(List.of("occupied")))
                 .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
 
@@ -495,7 +438,7 @@ class WorkerConnectionMechanismTest {
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
             fixture.reportProcess.round();
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
 
             String encoded = fixture.propertiesResult(
                     "worker-1",
@@ -517,7 +460,7 @@ class WorkerConnectionMechanismTest {
             assertThat(snapshot.properties()).containsEntry("battery", 87L);
 
             fixture.reportProcess.round();
-            assertThat(fixture.controlReports).containsExactly(encoded);
+            assertThat(fixture.systemReports).containsExactly(encoded);
         } finally {
             channel.finishAndReleaseAll();
         }
@@ -533,7 +476,7 @@ class WorkerConnectionMechanismTest {
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, first);
             fixture.reportProcess.round();
-            fixture.controlReports.clear();
+            fixture.systemReports.clear();
 
             replacement.writeInbound(fixture.identity("worker-1"));
             awaitBound(fixture, replacement);
@@ -564,7 +507,7 @@ class WorkerConnectionMechanismTest {
             assertThat(snapshot.properties()).isNull();
 
             fixture.reportProcess.round();
-            assertThat(fixture.controlReports).hasSize(3);
+            assertThat(fixture.systemReports).hasSize(3);
         } finally {
             first.finishAndReleaseAll();
             replacement.finishAndReleaseAll();
@@ -640,7 +583,7 @@ class WorkerConnectionMechanismTest {
             Fixture fixture,
             boolean expected
     ) {
-        assertThat(fixture.controlReports).singleElement()
+        assertThat(fixture.systemReports).singleElement()
                 .satisfies(encoded -> {
                     DeliveryReport report = fixture.codec
                             .decodeDeliveryReport(encoded);
@@ -664,10 +607,15 @@ class WorkerConnectionMechanismTest {
         private final PendingRouteHttpPeer remoteApi =
                 new PendingRouteHttpPeer();
         private final List<String> reports = new ArrayList<>();
-        private final List<String> controlReports = new ArrayList<>();
+        private final List<String> systemReports = new ArrayList<>();
         private final ScriptedHttpServer reportServer;
         private final DeliveryReportProcess reportProcess;
-        private final WorkerRouteRegistry routes = new WorkerRouteRegistry();
+        private final WorkerRouteRegistry routes = new WorkerRouteRegistry(
+                new NettyWorkerRouteCacheConfig(
+                        Duration.ofMinutes(10),
+                        100_000L
+                )
+        );
         private final FakeNetworkServer network = new FakeNetworkServer();
         private final WorkerConnectionMechanism mechanism;
         private final WorkerConnectionInboundHandler inboundHandler;
@@ -691,7 +639,10 @@ class WorkerConnectionMechanismTest {
                         reportProcess,
                         "adapter-1",
                         Duration.ofSeconds(1),
-                        Duration.ofMinutes(5)
+                        new NettyWorkerObservationCacheConfig(
+                                Duration.ofMinutes(5),
+                                64L * 1024L * 1024L
+                        )
                 );
             inboundHandler = new WorkerConnectionInboundHandler(mechanism);
         }
@@ -711,7 +662,7 @@ class WorkerConnectionMechanismTest {
                 List<String> batch = (List<String>) body.get("results");
                 for (String encoded : batch) {
                     if (codec.decodeDeliveryReport(encoded).dst() == SYSTEM) {
-                        controlReports.add(encoded);
+                        systemReports.add(encoded);
                     } else {
                         reports.add(encoded);
                     }

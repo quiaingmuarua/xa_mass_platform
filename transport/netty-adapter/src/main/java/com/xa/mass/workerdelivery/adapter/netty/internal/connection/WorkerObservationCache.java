@@ -1,28 +1,30 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
 import com.xa.mass.workerdelivery.json.Jsons;
-import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
 
 /** Process-local latest Worker properties projection for one Adapter. */
 final class WorkerObservationCache {
 
-    private final ConcurrentMap<String, CachedProperties> propertiesByWorkerId =
-            new ConcurrentHashMap<>();
+    private final Cache<String, CachedProperties> propertiesByWorkerId;
     private final String adapterEpoch;
     private final long freshnessNanos;
     private final LongSupplier wallClockMillis;
     private final LongSupplier monotonicNanos;
+    private final AtomicLong observationRevision = new AtomicLong();
 
-    WorkerObservationCache(Duration freshness) {
+    WorkerObservationCache(NettyWorkerObservationCacheConfig config) {
         this(
-                freshness,
+                config,
                 UUID.randomUUID().toString(),
                 System::currentTimeMillis,
                 System::nanoTime
@@ -30,27 +32,14 @@ final class WorkerObservationCache {
     }
 
     WorkerObservationCache(
-            Duration freshness,
+            NettyWorkerObservationCacheConfig config,
             String adapterEpoch,
             LongSupplier wallClockMillis,
             LongSupplier monotonicNanos
     ) {
-        Objects.requireNonNull(freshness, "freshness");
-        if (freshness.isZero()
-                || freshness.isNegative()
-                || freshness.toMillis() <= 0) {
-            throw new IllegalArgumentException(
-                    "freshness must be at least one millisecond"
-            );
-        }
-        try {
-            freshnessNanos = freshness.toNanos();
-        } catch (ArithmeticException error) {
-            throw new IllegalArgumentException(
-                    "freshness is too large",
-                    error
-            );
-        }
+        NettyWorkerObservationCacheConfig requiredConfig =
+                Objects.requireNonNull(config, "config");
+        freshnessNanos = requiredConfig.freshness().toNanos();
         if (adapterEpoch == null || adapterEpoch.isBlank()) {
             throw new IllegalArgumentException(
                     "adapterEpoch must be non-blank"
@@ -65,6 +54,12 @@ final class WorkerObservationCache {
                 monotonicNanos,
                 "monotonicNanos"
         );
+        propertiesByWorkerId = Caffeine.newBuilder()
+                .maximumWeight(requiredConfig.maximumEncodedBytes())
+                .weigher((String workerId, CachedProperties cached) ->
+                        encodedWeight(workerId, cached.encodedProperties()))
+                .executor(Runnable::run)
+                .build();
     }
 
     ObservationWrite observe(
@@ -79,12 +74,12 @@ final class WorkerObservationCache {
         long observedAtNanos = monotonicNanos.getAsLong();
         AtomicReference<CachedProperties> previous = new AtomicReference<>();
         AtomicReference<CachedProperties> written = new AtomicReference<>();
-        propertiesByWorkerId.compute(
+        propertiesByWorkerId.asMap().compute(
                 requiredWorkerId,
                 (ignored, current) -> {
                     previous.set(current);
                     CachedProperties replacement = new CachedProperties(
-                            nextRevision(current),
+                            nextRevision(),
                             observedAtMillis,
                             observedAtNanos,
                             encodedProperties
@@ -106,13 +101,13 @@ final class WorkerObservationCache {
                 "write"
         );
         if (requiredWrite.previous() == null) {
-            propertiesByWorkerId.remove(
+            propertiesByWorkerId.asMap().remove(
                     requiredWrite.workerId(),
                     requiredWrite.written()
             );
             return;
         }
-        propertiesByWorkerId.replace(
+        propertiesByWorkerId.asMap().replace(
                 requiredWrite.workerId(),
                 requiredWrite.written(),
                 requiredWrite.previous()
@@ -120,9 +115,8 @@ final class WorkerObservationCache {
     }
 
     PropertiesObservation observation(String workerId) {
-        CachedProperties cached = propertiesByWorkerId.get(
-                requireWorkerId(workerId)
-        );
+        CachedProperties cached = propertiesByWorkerId.policy()
+                .getIfPresentQuietly(requireWorkerId(workerId));
         if (cached == null) {
             return null;
         }
@@ -144,18 +138,33 @@ final class WorkerObservationCache {
     }
 
     void clear() {
-        propertiesByWorkerId.clear();
+        propertiesByWorkerId.invalidateAll();
+        propertiesByWorkerId.cleanUp();
     }
 
     String adapterEpoch() {
         return adapterEpoch;
     }
 
-    private static long nextRevision(CachedProperties current) {
-        if (current == null) {
-            return 1L;
+    private long nextRevision() {
+        while (true) {
+            long current = observationRevision.get();
+            long next = Math.addExact(current, 1L);
+            if (observationRevision.compareAndSet(current, next)) {
+                return next;
+            }
         }
-        return Math.addExact(current.revision(), 1L);
+    }
+
+    private static int encodedWeight(
+            String workerId,
+            String encodedProperties
+    ) {
+        long weight = (long) workerId.getBytes(StandardCharsets.UTF_8).length
+                + encodedProperties.getBytes(StandardCharsets.UTF_8).length;
+        return weight >= Integer.MAX_VALUE
+                ? Integer.MAX_VALUE
+                : (int) weight;
     }
 
     record PropertiesObservation(

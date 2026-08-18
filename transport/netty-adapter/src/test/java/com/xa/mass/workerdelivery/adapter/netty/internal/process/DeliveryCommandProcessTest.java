@@ -14,6 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection
         .WorkerConnectionInboundHandler;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
@@ -188,66 +190,21 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
-    void unifiedCommandSourceExecutesAdapterProbe() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            DeliveryCommand probe = controlCommand(
-                    ADAPTER,
-                    "platform.adapter.probe",
-                    "null",
-                    2_000
-            );
-            fixture.peer.batches.add(Map.of(
-                    "opaque-probe-entry",
-                    probe
-            ));
-            fixture.peer.batches.add(commands("worker-1"));
-            fixture.activate("worker-1");
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.server.requests())
-                    .extracting(ScriptedHttpServer.Request::rawPath)
-                    .contains(
-                            "/api/v1/worker-delivery/endpoint-managers/"
-                                    + "adapter-1/commands:consume"
-                    );
-            assertThat(fixture.peer.controlReports(
-                    "platform.adapter.probe"
-            )).singleElement()
-                    .satisfies(report -> {
-                        assertThat(report).isEqualTo(
-                                DeliveryReport.fromCommand(
-                                        probe,
-                                        ADAPTER,
-                                        "adapter-1",
-                                        "200",
-                                        report.payload()
-                                )
-                        );
-                        assertThat(Jsons.parseObject(report.payload()))
-                                .containsEntry("adapterId", "adapter-1")
-                                .containsEntry("reachable", true);
-                    });
-        }
-    }
-
-    @Test
     void oneQueueDispatchesMultipleOpaqueAdapterEntriesAndAWorkerEntry() {
         try (Fixture fixture = new Fixture(3, 3, 10)) {
-            DeliveryCommand probe = controlCommand(
+            DeliveryCommand probe = systemCommand(
                     ADAPTER,
                     "platform.adapter.probe",
                     "null",
                     2_000
             );
-            DeliveryCommand events = controlCommand(
+            DeliveryCommand events = systemCommand(
                     ADAPTER,
-                    AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
+                    AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT,
                     "null",
                     2_000
             );
-            DeliveryCommand worker = controlCommand(
+            DeliveryCommand worker = systemCommand(
                     WORKER,
                     "platform.worker.probe",
                     "null",
@@ -265,273 +222,51 @@ class DeliveryCommandProcessTest {
 
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
-            assertThat(fixture.peer.controlReportsExcluding(
+            assertThat(fixture.peer.systemReportsExcluding(
                     "platform.adapter.worker-availability.changed"
             ))
                     .hasSize(2)
                     .extracting(DeliveryReport::messageType)
                     .containsExactlyInAnyOrder(
                             "platform.adapter.probe",
-                            AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT
+                            AdapterEventDispatcher.EVENTS_SNAPSHOT_EVENT
                     );
         }
     }
 
     @Test
-    void unifiedCommandSourceReportsTheStaticAdapterEvents() {
+    void systemWorkerCommandUsesTheExistingConnectionRoute() {
         try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.batches.add(Map.of(
-                    "opaque-events-entry",
-                    controlCommand(
-                            ADAPTER,
-                            AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT,
-                            "null",
-                            2_000
-                    )
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.controlReports(
-                    AdapterControlExecutor.EVENTS_SNAPSHOT_EVENT
-            )).singleElement()
-                    .satisfies(report -> {
-                        assertThat(report.outcomeCode()).isEqualTo("200");
-                        assertThat(Jsons.parseObject(report.payload()).get(
-                                "eventNames"
-                        )).isEqualTo(List.of(
-                                "platform.adapter.events.snapshot",
-                                "platform.adapter.probe",
-                                "platform.adapter.worker-connections."
-                                        + "close-current",
-                                "platform.adapter.worker-connections.snapshot",
-                                "platform.adapter.worker-observations.snapshot"
-                        ));
-                    });
-        }
-    }
-
-    @Test
-    void connectionSnapshotIsBoundedToExplicitWorkerIds() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.activate("worker-1");
-            List<String> workerIds = new ArrayList<>();
-            for (int index = 1; index <= 100; index++) {
-                workerIds.add("worker-" + index);
-            }
-            fixture.peer.batches.add(Map.of(
-                    "opaque-snapshot-entry",
-                    controlCommand(
-                            ADAPTER,
-                            "platform.adapter.worker-connections.snapshot",
-                            Jsons.toJson(Map.of(
-                                    "workerIds",
-                                    workerIds
-                            )),
-                            2_000
-                    )
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.controlReports(
-                    "platform.adapter.worker-connections.snapshot"
-            )).singleElement()
-                    .satisfies(report -> {
-                        assertThat(report.outcomeCode()).isEqualTo("200");
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> states =
-                                (Map<String, Object>) Jsons.parseObject(
-                                        report.payload()
-                                ).get("stateByWorkerId");
-                        assertThat(states.keySet())
-                                .containsExactlyElementsOf(workerIds);
-                        assertThat(states).hasSize(100)
-                                .containsEntry("worker-1", "CONNECTED")
-                                .containsEntry("worker-100", "UNKNOWN");
-                    });
-        }
-    }
-
-    @Test
-    void closeCurrentUsesTheConnectionAndPhysicalNetworkOwners() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.activate("worker-1");
-            fixture.peer.batches.add(Map.of(
-                    "opaque-close-entry",
-                    controlCommand(
-                            ADAPTER,
-                            "platform.adapter.worker-connections.close-current",
-                            Jsons.toJson(Map.of(
-                                    "workerIds",
-                                    List.of("worker-1", "worker-2")
-                            )),
-                            2_000
-                    )
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.network.closedWorkerIds)
-                    .containsExactly("worker-1");
-            assertThat(fixture.network.closeReasons).containsExactly(
-                    AdapterConnectionCloseReason.CONTROL_REQUEST
-            );
-            assertThat(fixture.connectionMechanism.connectionStates(
-                    List.of("worker-1")
-            )).containsEntry(
-                    "worker-1",
-                    WorkerConnectionState.DISCONNECTED
-            );
-            assertThat(fixture.peer.controlReports(
-                    "platform.adapter.worker-connections.close-current"
-            )).singleElement()
-                    .satisfies(report -> {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> outcomes =
-                                (Map<String, Object>) Jsons.parseObject(
-                                        report.payload()
-                                ).get("outcomeByWorkerId");
-                        assertThat(outcomes).containsExactly(
-                                Map.entry("worker-1", "close-started"),
-                                Map.entry("worker-2", "not-connected")
-                        );
-                    });
-        }
-    }
-
-    @Test
-    void connectionControlRejectsDuplicateOrUnknownPayloadFields() {
-        List<String> invalidPayloads = new ArrayList<>(List.of(
-                "{\"workerIds\":[\"w1\",\"w1\"]}",
-                "{\"workerIds\":[\"w1\"],\"extra\":true}",
-                "{\"workerIds\":[]}"
-        ));
-        List<String> tooManyWorkerIds = new ArrayList<>();
-        for (int index = 0; index < 101; index++) {
-            tooManyWorkerIds.add("worker-" + index);
-        }
-        invalidPayloads.add(Jsons.toJson(Map.of(
-                "workerIds",
-                tooManyWorkerIds
-        )));
-        for (String payload : invalidPayloads) {
-            try (Fixture fixture = new Fixture(1, 2, 10)) {
-                fixture.peer.batches.add(Map.of(
-                        "opaque-invalid-entry",
-                        controlCommand(
-                                ADAPTER,
-                                "platform.adapter.worker-connections.snapshot",
-                                payload,
-                                2_000
-                        )
-                ));
-
-                fixture.process.round();
-                fixture.reportProcess.round();
-
-                assertThat(fixture.peer.appendedControlReports)
-                        .singleElement()
-                        .satisfies(encoded -> assertThat(
-                                CODEC.decodeDeliveryReport(encoded)
-                                        .outcomeCode()
-                        ).isEqualTo(Integer.toString(
-                                WorkerDeliveryAdapterErrorCode
-                                        .CONTROL_COMMAND_INVALID.code()
-                        )));
-            }
-        }
-    }
-
-    @Test
-    void controlWorkerCommandUsesTheExistingConnectionRoute() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            DeliveryCommand control = controlCommand(
+            DeliveryCommand systemCommand = systemCommand(
                     WORKER,
                     "worker.observe",
                     "{}",
                     2_000
             );
-            fixture.peer.batches.add(Map.of("worker-1", control));
+            fixture.peer.batches.add(Map.of("worker-1", systemCommand));
             fixture.activate("worker-1");
 
             fixture.process.round();
 
             assertThat(fixture.network.writtenWorkerIds)
                     .containsExactly("worker-1");
-            assertThat(fixture.peer.appendedControlReports).isEmpty();
+            assertThat(fixture.peer.appendedSystemReports).isEmpty();
         }
     }
 
     @Test
-    void unsupportedAdapterControlProducesObservedAdapterError() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            DeliveryCommand unsupported = controlCommand(
-                    ADAPTER,
-                    "extension.adapter.unknown",
-                    "null",
-                    2_000
-            );
-            fixture.peer.batches.add(Map.of(
-                    "opaque-unsupported-entry",
-                    unsupported
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> assertThat(
-                            CODEC.decodeDeliveryReport(encoded).outcomeCode()
-                    ).isEqualTo(Integer.toString(
-                            WorkerDeliveryAdapterErrorCode
-                                    .CONTROL_EVENT_UNSUPPORTED.code()
-                    )));
-        }
-    }
-
-    @Test
-    void adapterProbeRejectsANonNullPayload() {
-        try (Fixture fixture = new Fixture(1, 2, 10)) {
-            fixture.peer.batches.add(Map.of(
-                    "opaque-invalid-probe-entry",
-                    controlCommand(
-                            ADAPTER,
-                            "platform.adapter.probe",
-                            "{}",
-                            2_000
-                    )
-            ));
-
-            fixture.process.round();
-            fixture.reportProcess.round();
-
-            assertThat(fixture.peer.appendedControlReports).singleElement()
-                    .satisfies(encoded -> assertThat(
-                            CODEC.decodeDeliveryReport(encoded).outcomeCode()
-                    ).isEqualTo(Integer.toString(
-                            WorkerDeliveryAdapterErrorCode
-                                    .CONTROL_COMMAND_INVALID.code()
-                    )));
-        }
-    }
-
-    @Test
-    void expiredOrMisaddressedControlDoesNotFabricateResult() {
+    void expiredOrMisaddressedSystemCommandDoesNotFabricateResult() {
         try (Fixture fixture = new Fixture(2, 2, 10)) {
             fixture.peer.batches.add(Map.of(
                     "worker-expired",
-                    controlCommand(
+                    systemCommand(
                             WORKER,
                             "worker.observe",
                             "{}",
                             1_000
                     ),
                     "opaque-worker-entry",
-                    controlCommand(
+                    systemCommand(
                             WORKER,
                             "worker.observe",
                             "{}",
@@ -542,7 +277,7 @@ class DeliveryCommandProcessTest {
             fixture.process.round();
             fixture.reportProcess.round();
 
-            assertThat(fixture.peer.appendedControlReports).isEmpty();
+            assertThat(fixture.peer.appendedSystemReports).isEmpty();
             assertThat(fixture.peer.appendedReports).isEmpty();
         }
     }
@@ -566,7 +301,7 @@ class DeliveryCommandProcessTest {
         );
     }
 
-    private static DeliveryCommand controlCommand(
+    private static DeliveryCommand systemCommand(
             com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
                     .DeliveryEndpoint destination,
             String event,
@@ -608,19 +343,27 @@ class DeliveryCommandProcessTest {
                     reportCapacity
             );
             connectionMechanism = new WorkerConnectionMechanism(
-                    new WorkerRouteRegistry(),
+                    new WorkerRouteRegistry(
+                            new NettyWorkerRouteCacheConfig(
+                                    Duration.ofMinutes(10),
+                                    100_000L
+                            )
+                    ),
                     network,
                     new WorkerRouteRemoteApi(httpClient),
                     CODEC,
                     reportProcess,
                     "adapter-1",
                     Duration.ofSeconds(1),
-                    Duration.ofMinutes(5)
+                    new NettyWorkerObservationCacheConfig(
+                            Duration.ofMinutes(5),
+                            64L * 1024L * 1024L
+                    )
             );
             process = new DeliveryCommandProcess(
                     new DeliveryCommandRemoteApi(httpClient, CODEC),
                     connectionMechanism,
-                    AdapterControlExecutor.defaults(
+                    AdapterEventDispatcher.defaults(
                             "adapter-1",
                             connectionMechanism
                     ),
@@ -685,24 +428,17 @@ class DeliveryCommandProcessTest {
                 new ArrayDeque<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
         private final List<String> appendedReports = new ArrayList<>();
-        private final List<String> appendedControlReports = new ArrayList<>();
+        private final List<String> appendedSystemReports = new ArrayList<>();
         private final ScriptedHttpServer server = new ScriptedHttpServer(
                 this::handle
         );
         private int failures;
         private String responseBodyOverride;
 
-        private List<DeliveryReport> controlReports(String eventName) {
-            return appendedControlReports.stream()
-                    .map(CODEC::decodeDeliveryReport)
-                    .filter(report -> eventName.equals(report.messageType()))
-                    .toList();
-        }
-
-        private List<DeliveryReport> controlReportsExcluding(
+        private List<DeliveryReport> systemReportsExcluding(
                 String eventName
         ) {
-            return appendedControlReports.stream()
+            return appendedSystemReports.stream()
                     .map(CODEC::decodeDeliveryReport)
                     .filter(report -> !eventName.equals(report.messageType()))
                     .toList();
@@ -732,7 +468,7 @@ class DeliveryCommandProcessTest {
                 for (String report : reports) {
                     try {
                         if (CODEC.decodeDeliveryReport(report).dst() == SYSTEM) {
-                            appendedControlReports.add(report);
+                            appendedSystemReports.add(report);
                         } else {
                             appendedReports.add(report);
                         }

@@ -3,6 +3,8 @@ package com.xa.mass.server.workerdelivery.adapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.netty.NettyAdapterProcessConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerRouteCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerDeliveryAdapters;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
@@ -25,13 +27,30 @@ import tools.jackson.databind.node.ObjectNode;
 )
 public class ServerWorkerDeliveryAdapterConfiguration {
 
+    private static final Duration DEFAULT_RECONNECT_VERIFICATION_RETENTION =
+            Duration.ofMinutes(10);
+    private static final long DEFAULT_MAXIMUM_DISCONNECTED_WORKERS = 100_000L;
+    private static final Duration DEFAULT_OBSERVATION_FRESHNESS =
+            Duration.ofMinutes(5);
+    private static final long DEFAULT_MAXIMUM_OBSERVATION_BYTES =
+            64L * 1024L * 1024L;
+
     private static final Set<String> INSTANCE_FIELDS = Set.of(
             "type",
             "listen-host",
             "listen-port",
             "processes",
-            "observation-freshness",
+            "route-cache",
+            "observation-cache",
             "send-time-limit"
+    );
+    private static final Set<String> ROUTE_CACHE_FIELDS = Set.of(
+            "reconnect-verification-retention",
+            "maximum-disconnected-workers"
+    );
+    private static final Set<String> OBSERVATION_CACHE_FIELDS = Set.of(
+            "freshness",
+            "maximum-encoded-bytes"
     );
     private static final Set<String> COMMAND_PROCESS_FIELDS = Set.of(
             "type",
@@ -113,12 +132,10 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 Duration.ofSeconds(5),
                 adapterId
         );
-        Duration observationFreshness = optionalDuration(
-                object,
-                "observation-freshness",
-                Duration.ofMinutes(5),
-                adapterId
-        );
+        NettyWorkerRouteCacheConfig routeCacheConfig =
+                parseRouteCacheConfig(object, adapterId);
+        NettyWorkerObservationCacheConfig observationCacheConfig =
+                parseObservationCacheConfig(object, adapterId);
         return switch (type) {
             case "WEBSOCKET" -> NettyWorkerDeliveryAdapters.webSocket(
                     adapterId,
@@ -127,7 +144,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     processConfigs,
-                    observationFreshness,
+                    routeCacheConfig,
+                    observationCacheConfig,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );
@@ -138,12 +156,86 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     processConfigs,
-                    observationFreshness,
+                    routeCacheConfig,
+                    observationCacheConfig,
                     sendTimeLimit,
                     httpProperties.requestTimeout()
             );
             default -> throw invalid(adapterId, "unsupported adapter type");
         };
+    }
+
+    private static NettyWorkerRouteCacheConfig parseRouteCacheConfig(
+            ObjectNode adapter,
+            String adapterId
+    ) {
+        JsonNode value = adapter.get("route-cache");
+        if (value == null) {
+            return new NettyWorkerRouteCacheConfig(
+                    DEFAULT_RECONNECT_VERIFICATION_RETENTION,
+                    DEFAULT_MAXIMUM_DISCONNECTED_WORKERS
+            );
+        }
+        if (!(value instanceof ObjectNode object)) {
+            throw invalid(adapterId, "route-cache must be an object");
+        }
+        rejectUnknownFields(
+                object,
+                ROUTE_CACHE_FIELDS,
+                adapterId,
+                "route-cache"
+        );
+        return new NettyWorkerRouteCacheConfig(
+                optionalDuration(
+                        object,
+                        "reconnect-verification-retention",
+                        DEFAULT_RECONNECT_VERIFICATION_RETENTION,
+                        adapterId
+                ),
+                optionalLong(
+                        object,
+                        "maximum-disconnected-workers",
+                        DEFAULT_MAXIMUM_DISCONNECTED_WORKERS,
+                        adapterId
+                )
+        );
+    }
+
+    private static NettyWorkerObservationCacheConfig
+            parseObservationCacheConfig(
+            ObjectNode adapter,
+            String adapterId
+    ) {
+        JsonNode value = adapter.get("observation-cache");
+        if (value == null) {
+            return new NettyWorkerObservationCacheConfig(
+                    DEFAULT_OBSERVATION_FRESHNESS,
+                    DEFAULT_MAXIMUM_OBSERVATION_BYTES
+            );
+        }
+        if (!(value instanceof ObjectNode object)) {
+            throw invalid(adapterId, "observation-cache must be an object");
+        }
+        rejectUnknownFields(
+                object,
+                OBSERVATION_CACHE_FIELDS,
+                adapterId,
+                "observation-cache"
+        );
+        return new NettyWorkerObservationCacheConfig(
+                optionalDuration(
+                        object,
+                        "freshness",
+                        DEFAULT_OBSERVATION_FRESHNESS,
+                        adapterId
+                ),
+                optionalLong(
+                        object,
+                        "maximum-encoded-bytes",
+                        DEFAULT_MAXIMUM_OBSERVATION_BYTES,
+                        adapterId
+                )
+        );
     }
 
     private static List<NettyAdapterProcessConfig> parseProcessConfigs(
@@ -416,6 +508,41 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 adapterId,
                 field + " must be an integer"
         );
+    }
+
+    private static long optionalLong(
+            ObjectNode object,
+            String field,
+            long defaultValue,
+            String adapterId
+    ) {
+        JsonNode value = object.get(field);
+        if (value == null) {
+            return defaultValue;
+        }
+        long parsed;
+        if (value.isIntegralNumber() && value.canConvertToLong()) {
+            parsed = value.longValue();
+        } else if (value.isTextual()) {
+            try {
+                parsed = Long.parseLong(value.textValue());
+            } catch (NumberFormatException error) {
+                throw invalid(
+                        adapterId,
+                        field + " must be an integer",
+                        error
+                );
+            }
+        } else {
+            throw invalid(adapterId, field + " must be an integer");
+        }
+        if (parsed <= 0) {
+            throw invalid(
+                    adapterId,
+                    field + " must be a positive integer"
+            );
+        }
+        return parsed;
     }
 
     private static Duration optionalDuration(

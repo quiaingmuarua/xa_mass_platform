@@ -19,8 +19,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Static event dispatch for Adapter-targeted control commands. */
-public final class AdapterControlExecutor {
+/** Static local event dispatch for Adapter-targeted commands. */
+public final class AdapterEventDispatcher {
 
     private static final Pattern PLATFORM_ADAPTER_EVENT_PATTERN =
             Pattern.compile(
@@ -39,18 +39,18 @@ public final class AdapterControlExecutor {
             "platform.adapter.events.snapshot";
 
     private static final System.Logger LOGGER = System.getLogger(
-            AdapterControlExecutor.class.getName()
+            AdapterEventDispatcher.class.getName()
     );
 
     private final String adapterId;
-    private final Map<String, AdapterControlHandler> handlers;
+    private final Map<String, AdapterEventHandler> handlers;
 
-    public static AdapterControlExecutor defaults(
+    public static AdapterEventDispatcher defaults(
             String adapterId,
             WorkerConnectionMechanism connections
     ) {
         Objects.requireNonNull(connections, "connections");
-        Map<String, AdapterControlHandler> handlers = new LinkedHashMap<>();
+        Map<String, AdapterEventHandler> handlers = new LinkedHashMap<>();
         handlers.put(PROBE_EVENT, payload -> {
             requireNullPayload(payload);
             return Jsons.toJson(Map.of(
@@ -88,25 +88,25 @@ public final class AdapterControlExecutor {
                     encoded
             ));
         });
-        return new AdapterControlExecutor(adapterId, handlers);
+        return new AdapterEventDispatcher(adapterId, handlers);
     }
 
-    AdapterControlExecutor(
+    AdapterEventDispatcher(
             String adapterId,
-            Map<String, AdapterControlHandler> handlers
+            Map<String, AdapterEventHandler> handlers
     ) {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
         Objects.requireNonNull(handlers, "handlers");
-        Map<String, AdapterControlHandler> copied = new LinkedHashMap<>();
+        Map<String, AdapterEventHandler> copied = new LinkedHashMap<>();
         handlers.forEach((eventCode, handler) -> {
             if (eventCode == null
                     || !PLATFORM_ADAPTER_EVENT_PATTERN
                             .matcher(eventCode)
                             .matches()) {
                 throw new IllegalArgumentException(
-                        "Adapter control eventCode must be a "
+                        "Adapter eventCode must be a "
                                 + "platform.adapter event"
                 );
             }
@@ -135,20 +135,20 @@ public final class AdapterControlExecutor {
         this.handlers = Collections.unmodifiableMap(copied);
     }
 
-    DeliveryReport execute(DeliveryCommand command) {
+    DeliveryReport dispatch(DeliveryCommand command) {
         Objects.requireNonNull(command, "command");
         if (command.src() != SYSTEM || command.dst() != ADAPTER) {
             return result(
                     command,
-                    WorkerDeliveryAdapterErrorCode.CONTROL_COMMAND_INVALID,
+                    WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID,
                     "null"
             );
         }
-        AdapterControlHandler handler = handlers.get(command.messageType());
+        AdapterEventHandler handler = handlers.get(command.messageType());
         if (handler == null) {
             return result(
                     command,
-                    WorkerDeliveryAdapterErrorCode.CONTROL_EVENT_UNSUPPORTED,
+                    WorkerDeliveryAdapterErrorCode.ADAPTER_EVENT_UNSUPPORTED,
                     "null"
             );
         }
@@ -158,13 +158,13 @@ public final class AdapterControlExecutor {
             payload = handler.execute(command.payload());
             if (payload == null || payload.isBlank()) {
                 throw new IllegalStateException(
-                        "Adapter control result must be present"
+                        "Adapter event result must be present"
                 );
             }
-        } catch (InvalidControlPayloadException error) {
+        } catch (InvalidAdapterEventPayloadException error) {
             return result(
                     command,
-                    WorkerDeliveryAdapterErrorCode.CONTROL_COMMAND_INVALID,
+                    WorkerDeliveryAdapterErrorCode.ADAPTER_COMMAND_INVALID,
                     "null"
             );
         } catch (Exception error) {
@@ -173,8 +173,8 @@ public final class AdapterControlExecutor {
                     "errorCode={0} operation={1} adapterId={2} "
                             + "messageType={3} failureType={4}",
                     WorkerDeliveryAdapterErrorCode
-                            .CONTROL_EVENT_EXECUTION_FAILED.code(),
-                    "adapterControl.execute",
+                            .ADAPTER_EVENT_EXECUTION_FAILED.code(),
+                    "adapterEvent.dispatch",
                     adapterId,
                     command.messageType(),
                     error.getClass().getName()
@@ -182,7 +182,7 @@ public final class AdapterControlExecutor {
             return result(
                     command,
                     WorkerDeliveryAdapterErrorCode
-                            .CONTROL_EVENT_EXECUTION_FAILED,
+                            .ADAPTER_EVENT_EXECUTION_FAILED,
                     "null"
             );
         }
@@ -211,8 +211,8 @@ public final class AdapterControlExecutor {
 
     private static void requireNullPayload(String payload) {
         if (!"null".equals(payload)) {
-            throw new InvalidControlPayloadException(
-                    "Adapter control payload must be null"
+            throw new InvalidAdapterEventPayloadException(
+                    "Adapter event payload must be null"
             );
         }
     }
@@ -222,21 +222,21 @@ public final class AdapterControlExecutor {
         try {
             parsed = Jsons.parseObject(payload);
         } catch (RuntimeException error) {
-            throw new InvalidControlPayloadException(
-                    "Control payload must be a JSON object",
+            throw new InvalidAdapterEventPayloadException(
+                    "Adapter event payload must be a JSON object",
                     error
             );
         }
         if (parsed.size() != 1 || !parsed.containsKey("workerIds")) {
-            throw new InvalidControlPayloadException(
-                    "Control payload must contain only workerIds"
+            throw new InvalidAdapterEventPayloadException(
+                    "Adapter event payload must contain only workerIds"
             );
         }
         Object rawWorkerIds = parsed.get("workerIds");
         if (!(rawWorkerIds instanceof List<?> values)
                 || values.isEmpty()
                 || values.size() > 100) {
-            throw new InvalidControlPayloadException(
+            throw new InvalidAdapterEventPayloadException(
                     "workerIds must contain between 1 and 100 entries"
             );
         }
@@ -245,12 +245,12 @@ public final class AdapterControlExecutor {
         for (Object value : values) {
             if (!(value instanceof String workerId)
                     || workerId.isBlank()) {
-                throw new InvalidControlPayloadException(
+                throw new InvalidAdapterEventPayloadException(
                         "workerIds must contain non-blank strings"
                 );
             }
             if (!unique.add(workerId)) {
-                throw new InvalidControlPayloadException(
+                throw new InvalidAdapterEventPayloadException(
                         "workerIds must be unique"
                 );
             }
@@ -290,18 +290,18 @@ public final class AdapterControlExecutor {
     }
 
     @FunctionalInterface
-    interface AdapterControlHandler {
+    interface AdapterEventHandler {
         String execute(String payload) throws Exception;
     }
 
-    private static final class InvalidControlPayloadException
+    private static final class InvalidAdapterEventPayloadException
             extends IllegalArgumentException {
 
-        private InvalidControlPayloadException(String message) {
+        private InvalidAdapterEventPayloadException(String message) {
             super(message);
         }
 
-        private InvalidControlPayloadException(
+        private InvalidAdapterEventPayloadException(
                 String message,
                 Throwable cause
         ) {

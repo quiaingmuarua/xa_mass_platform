@@ -115,7 +115,7 @@ scheduler, queues, current route registry and physical Channels remain owned by
 `transport/netty-adapter`.
 
 Long-lived Worker identity carries `workerId` in the Report source and exact
-`null` payload. Adapter routing, first-seen verification, and availability
+`null` payload. Adapter routing, retained verification, and availability
 evidence use only workerId; WorkerGroup remains outside the Transport route.
 Effective verified-route availability changes return as standard Adapter SYSTEM
 Reports through the existing `results:append` path. Server validates the
@@ -123,11 +123,15 @@ Adapter source and current Binding, then appends the original evidence to the bo
 `WorkerChangeInbox`. Server does not project online state, start
 a consumer, or read/write Worker score in this slice.
 
-Adapter instances may set `observation-freshness` (default `5m`) for their
-process-local Worker properties projection. Callers read that projection by
+Adapter instances may configure `route-cache` and `observation-cache`. The
+defaults retain disconnected verification evidence for `10m` with at most
+`100000` disconnected Workers, and retain properties under a `64 MiB` encoded
+data budget with a `5m` freshness window. These are Adapter-owned process-local
+policies; Server only validates configuration and passes the two finite config
+records into the Adapter factory. Callers read the properties projection by
 DIRECT_CALL to `platform.adapter.worker-observations.snapshot`. Server treats
 the event name, opaque input and result payload transparently: it owns neither
-the cache nor its version/freshness interpretation.
+cache contents nor version, freshness, TTL or eviction interpretation.
 
 ### Worker And Scenario Assembly
 

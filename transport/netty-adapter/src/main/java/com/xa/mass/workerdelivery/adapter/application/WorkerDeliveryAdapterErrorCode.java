@@ -37,17 +37,17 @@ public enum WorkerDeliveryAdapterErrorCode {
             23003,
             "Worker message is invalid"
     ),
-    CONTROL_COMMAND_INVALID(
+    ADAPTER_COMMAND_INVALID(
             23004,
-            "Adapter control command is invalid"
+            "Adapter-targeted command is invalid"
     ),
-    CONTROL_EVENT_UNSUPPORTED(
+    ADAPTER_EVENT_UNSUPPORTED(
             23005,
-            "Adapter control event is unsupported"
+            "Adapter event is unsupported"
     ),
-    CONTROL_EVENT_EXECUTION_FAILED(
+    ADAPTER_EVENT_EXECUTION_FAILED(
             23006,
-            "Adapter control event execution failed"
+            "Adapter event execution failed"
     );
 
     private final int code;

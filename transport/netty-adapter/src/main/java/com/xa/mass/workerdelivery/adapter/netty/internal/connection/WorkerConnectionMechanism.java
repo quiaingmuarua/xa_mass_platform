@@ -14,6 +14,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.netty.NettyWorkerObservationCacheConfig;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.AdapterConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWriteAttempt;
@@ -70,10 +71,10 @@ public final class WorkerConnectionMechanism {
             DeliveryReportProcess reportProcess,
             String adapterId,
             Duration sendTimeLimit,
-            Duration observationFreshness
+            NettyWorkerObservationCacheConfig observationCacheConfig
     ) {
         this.routes = Objects.requireNonNull(routes, "routes");
-        observations = new WorkerObservationCache(observationFreshness);
+        observations = new WorkerObservationCache(observationCacheConfig);
         this.networkServer = Objects.requireNonNull(
                 networkServer,
                 "networkServer"
@@ -231,7 +232,7 @@ public final class WorkerConnectionMechanism {
             boolean active = channel.isActive();
             networkServer.closeConnection(
                     channel,
-                    AdapterConnectionCloseReason.CONTROL_REQUEST
+                    AdapterConnectionCloseReason.MANAGEMENT_REQUEST
             );
             outcomes.put(
                     workerId,
@@ -346,7 +347,9 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        if (!routes.completeVerificationAndActivate(workerId, channel)) {
+        WorkerRouteRegistry.VerificationActivation activation =
+                routes.completeVerificationAndActivate(workerId, channel);
+        if (!activation.completed()) {
             routes.onChannelClosed(channel);
             networkServer.closeConnection(
                     channel,
@@ -354,7 +357,10 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
-        reportAvailability(workerId, true);
+        if (activation.becameAvailable()) {
+            reportAvailability(workerId, true);
+        }
+        closeReplaced(activation.replacedChannel());
     }
 
     private void receiveBoundReport(
@@ -405,7 +411,7 @@ public final class WorkerConnectionMechanism {
                             AdapterConnectionCloseReason.RESULT_BUFFER_FULL
                     );
                 } else {
-                    logDrop("dropControlResultBufferFull", report);
+                    logDrop("dropSystemResultBufferFull", report);
                 }
             }
             case CLOSED -> {
@@ -416,7 +422,7 @@ public final class WorkerConnectionMechanism {
                             AdapterConnectionCloseReason.ADAPTER_STOPPING
                     );
                 } else {
-                    logDrop("dropControlResultBufferClosed", report);
+                    logDrop("dropSystemResultBufferClosed", report);
                 }
             }
         }

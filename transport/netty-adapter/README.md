@@ -45,8 +45,8 @@ business-neutral process infrastructure and owns only thread-safe FIFO storage
 with soft-capacity ingress; it is never passed between owners. The stateless
 inbound Handler only forwards normalized text, inactive, and failure callbacks.
 The shared connection mechanism owns identity
-interpretation, first-seen route
-verification, Command routing, and Result ingress; its Registry alone owns
+interpretation, route verification, Command routing, and Result ingress; its
+Registry alone owns
 the single per-Worker route truth. Each identified Channel carries its Worker
 identity as Adapter-local Netty metadata for inbound correlation. The selected
 physical Server owns its listener, EventLoop, all child Channels, complete
@@ -55,7 +55,8 @@ behavior. These are internal owners, not a public SPI or transport-kind branch.
 
 The supported construction surface is deliberately limited to
 `WorkerDeliveryAdapter`, `WorkerDeliveryAdapterManager`,
-`NettyAdapterProcessConfig`, and `NettyWorkerDeliveryAdapters`. Java types
+`NettyAdapterProcessConfig`, `NettyWorkerRouteCacheConfig`,
+`NettyWorkerObservationCacheConfig`, and `NettyWorkerDeliveryAdapters`. Java types
 under `netty.internal` are `public` only where repository packages must
 collaborate without JPMS; they are repository-internal and carry no external
 compatibility promise.
@@ -203,12 +204,15 @@ Result. TASK backpressure closes the exact Channel; best-effort SYSTEM
 backpressure keeps it usable.
 
 Each Adapter constructs one `WorkerRouteRegistry`. It owns the process-local
-`workerId -> RouteState` truth. An absent route is unknown; verifying,
-connected, and disconnected routes are mutually exclusive. An identified
-Channel stores only its workerId as thread-safe Channel-local metadata. This is
-correlation, not a second route index or wire field. Per-Worker conditional
-transitions prevent an old Channel's late callback from changing a replacement
-route while still allowing its valid in-flight Result before physical close.
+`workerId -> RouteEntry` truth in one Caffeine cache. One immutable entry holds
+the current active Channel, an optional concurrent verification Channel and the
+last successful verification time; these facts are never split into parallel
+active/pending/verified maps. An identified Channel stores only its workerId and
+whether that Channel completed route verification as thread-safe Channel-local
+metadata. This is correlation, not a second route index or wire field.
+Per-Worker `ConcurrentMap.compute` transitions prevent an old Channel's late
+callback from changing a replacement route while still allowing its valid
+in-flight Result before physical close.
 The connection mechanism selects a route and asks its physical Server to write
 a normalized command string. The WebSocket Server emits a text frame; the
 Socket Server emits one UTF-8 line. Those Servers also map semantic close
@@ -220,14 +224,34 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
+Successful route verification is retained for ten minutes by default. A
+reconnect inside that window activates locally without renewing the evidence.
+After it expires, a new Channel is verified remotely while an existing active
+Channel remains usable; success replaces the old Channel and refreshes the
+evidence, while failure leaves the old route intact. Only disconnected evidence
+participates in the configured capacity (`100000` by default). Active and
+verifying entries have zero cache weight and no time expiry; physical Channel
+resources, not the disconnected-cache budget, bound them. Disconnected evidence
+is removed by TTL or capacity pressure and then projects as `UNKNOWN`. Cache
+eviction never emits availability evidence.
+
 Each Adapter also owns one `WorkerObservationCache` beside the Registry. It is
 not route truth: it stores only the most recent successful
 `platform.worker.properties.snapshot` observed from the exact current
 connected Channel. A replaced old Channel may still submit valid in-flight
 evidence, but it cannot refresh this projection. Properties survive ordinary
-disconnect and reconnect, carry an Adapter-epoch plus per-Worker revision, and
-are cleared with the Adapter. Freshness uses owner-local monotonic elapsed time;
-the wall-clock observation time is output only for callers.
+disconnect and reconnect, carry an Adapter-epoch plus Adapter-instance revision,
+and are cleared with the Adapter. Revisions are never reused after an entry is
+evicted; rollback may leave a gap. Freshness uses owner-local monotonic elapsed
+time; the wall-clock observation time is output only for callers.
+
+The properties cache has no time-based removal. `FRESH` becomes `STALE` after
+the configured window, but the value remains observable until a newer snapshot,
+capacity eviction or Adapter close. Capacity is a 64 MiB encoded-data budget by
+default, weighted by UTF-8 workerId plus encoded properties bytes. Management
+snapshot reads are quiet and do not improve cache admission/retention; a new
+properties result does. Caffeine uses its bounded admission/eviction policy,
+not a strict LRU or an exact JVM heap measurement.
 
 ### Worker route-change evidence
 
@@ -318,11 +342,23 @@ another route verification.
 Worker observations join the current four-state route projection with the last
 properties snapshot. Properties freshness is `FRESH`, `STALE`, or `UNKNOWN`;
 stale observations retain their last value and version. The default freshness
-window is five minutes and can be changed per Adapter with
-`observation-freshness`. `CONNECTED`, fresh properties, current Binding and
-scheduling eligibility remain independent facts. The Adapter does not
-automatically probe a Worker or publish attribute changes to Server or Kernel.
-Entries are keyed by workerId and do not repeat the caller-owned WorkerGroup.
+window is five minutes. Adapter configuration owns two finite policy blocks:
+
+```yaml
+route-cache:
+  reconnect-verification-retention: 10m
+  maximum-disconnected-workers: 100000
+observation-cache:
+  freshness: 5m
+  maximum-encoded-bytes: 67108864
+```
+
+`CONNECTED`, fresh properties, current Binding and scheduling eligibility
+remain independent facts. The Adapter does not automatically probe a Worker or
+publish attribute changes to Server or Kernel. Entries are keyed by workerId
+and do not repeat the caller-owned WorkerGroup. Both caches use caller-thread
+maintenance only: no loader, refresh, listener, scheduler or cleanup thread is
+installed.
 
 ### Result ingress round
 

@@ -117,7 +117,7 @@ class DeliveryReportProcessTest {
     void completedCloseRejectsLateReportsAndFlushesOnce() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
-            process.ingress(List.of("report-1", "control-report"));
+            process.ingress(List.of("report-1", "system-report"));
 
             process.quiesce();
             assertThat(process.ingress(List.of("late")))
@@ -126,7 +126,7 @@ class DeliveryReportProcessTest {
             process.finishAfterSchedulerStop();
 
             assertThat(peer.attempts).containsExactly(
-                    List.of("report-1", "control-report")
+                    List.of("report-1", "system-report")
             );
         }
     }

@@ -11,7 +11,7 @@ import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerRouteR
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.NettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.SocketNettyWorkerServer;
 import com.xa.mass.workerdelivery.adapter.netty.internal.network.WebSocketNettyWorkerServer;
-import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterControlExecutor;
+import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterEventDispatcher;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.AdapterProcessManager;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryCommandProcess;
 import com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess;
@@ -44,7 +44,8 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
-            Duration observationFreshness,
+            NettyWorkerRouteCacheConfig routeCacheConfig,
+            NettyWorkerObservationCacheConfig observationCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -55,7 +56,8 @@ public final class NettyWorkerDeliveryAdapters {
                 listenHost,
                 listenPort,
                 processConfigs,
-                observationFreshness,
+                routeCacheConfig,
+                observationCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -71,7 +73,8 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteApiBaseUrl,
                 remoteRequestTimeout,
                 processConfigs,
-                observationFreshness,
+                routeCacheConfig,
+                observationCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -84,7 +87,8 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
-            Duration observationFreshness,
+            NettyWorkerRouteCacheConfig routeCacheConfig,
+            NettyWorkerObservationCacheConfig observationCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -95,7 +99,8 @@ public final class NettyWorkerDeliveryAdapters {
                 listenHost,
                 listenPort,
                 processConfigs,
-                observationFreshness,
+                routeCacheConfig,
+                observationCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -111,7 +116,8 @@ public final class NettyWorkerDeliveryAdapters {
                 remoteApiBaseUrl,
                 remoteRequestTimeout,
                 processConfigs,
-                observationFreshness,
+                routeCacheConfig,
+                observationCacheConfig,
                 sendTimeLimit,
                 shutdownTimeout
         );
@@ -123,7 +129,8 @@ public final class NettyWorkerDeliveryAdapters {
             URI remoteApiBaseUrl,
             Duration remoteRequestTimeout,
             List<NettyAdapterProcessConfig> processConfigs,
-            Duration observationFreshness,
+            NettyWorkerRouteCacheConfig routeCacheConfig,
+            NettyWorkerObservationCacheConfig observationCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -149,7 +156,7 @@ public final class NettyWorkerDeliveryAdapters {
                 adapterId,
                 reportConfig.queueCapacity()
         );
-        WorkerRouteRegistry routes = new WorkerRouteRegistry();
+        WorkerRouteRegistry routes = new WorkerRouteRegistry(routeCacheConfig);
         WorkerConnectionMechanism connectionMechanism =
                 new WorkerConnectionMechanism(
                         routes,
@@ -159,19 +166,19 @@ public final class NettyWorkerDeliveryAdapters {
                         reportProcess,
                         adapterId,
                         sendTimeLimit,
-                        observationFreshness
+                        observationCacheConfig
                 );
         WorkerConnectionInboundHandler connectionInboundHandler =
                 new WorkerConnectionInboundHandler(connectionMechanism);
-        AdapterControlExecutor adapterControlExecutor =
-                AdapterControlExecutor.defaults(
+        AdapterEventDispatcher adapterEventDispatcher =
+                AdapterEventDispatcher.defaults(
                         adapterId,
                         connectionMechanism
                 );
         DeliveryCommandProcess commandProcess = new DeliveryCommandProcess(
                 commandRemoteApi,
                 connectionMechanism,
-                adapterControlExecutor,
+                adapterEventDispatcher,
                 reportProcess,
                 codec,
                 adapterId,
@@ -222,7 +229,8 @@ public final class NettyWorkerDeliveryAdapters {
             String listenHost,
             int listenPort,
             List<NettyAdapterProcessConfig> processConfigs,
-            Duration observationFreshness,
+            NettyWorkerRouteCacheConfig routeCacheConfig,
+            NettyWorkerObservationCacheConfig observationCacheConfig,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
@@ -246,7 +254,11 @@ public final class NettyWorkerDeliveryAdapters {
                     "listenPort must be between 1 and 65535"
             );
         }
-        requirePositive(observationFreshness, "observationFreshness");
+        Objects.requireNonNull(routeCacheConfig, "routeCacheConfig");
+        Objects.requireNonNull(
+                observationCacheConfig,
+                "observationCacheConfig"
+        );
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");
         Objects.requireNonNull(processConfigs, "processConfigs");

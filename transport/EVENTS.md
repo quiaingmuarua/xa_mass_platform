@@ -54,9 +54,11 @@ events. Their detailed semantics are owned by the
 
 Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
 are `UNKNOWN` when this Adapter process has not verified the Worker,
-`VERIFYING` during its first route verification, `CONNECTED` after verification
-with an active current Channel, and `DISCONNECTED` when verification is cached
-without an active current Channel. These states do not imply Binding validity,
+`VERIFYING` when no usable active route exists and a verification is in flight,
+`CONNECTED` after verification with an active current Channel, and
+`DISCONNECTED` while retained verification evidence exists without an active
+current Channel. Disconnected evidence is finite and becomes `UNKNOWN` after
+its TTL or capacity eviction. These states do not imply Binding validity,
 schedulability, writability, Worker idleness, or process liveness. Anonymous
 physical Channels do not become Worker routes until identity succeeds. Closing
 the current Channel does not unbind, disable, or pause the Worker; the existing
@@ -66,11 +68,12 @@ connection converges only after the network stack, close, failure, or a write
 detects it.
 
 An observation entry reports the live four-state `connectionState`,
-`propertiesFreshness`, an Adapter-epoch/per-Worker-revision
-version, wall-clock observation time, and properties. Workers without observed
+`propertiesFreshness`, an Adapter-epoch/Adapter-instance-revision version,
+wall-clock observation time, and properties. Workers without retained observed
 properties use `UNKNOWN` freshness and null property fields. `STALE` retains
-the last projection. This cache is cleared on Adapter restart and is neither
-Worker resource truth nor evidence of Binding validity or schedulability.
+the last projection without time deletion; encoded-data capacity eviction or
+Adapter restart removes it. This cache is neither Worker resource truth nor
+evidence of Binding validity or schedulability.
 
 ## Adapter-Produced Evidence
 

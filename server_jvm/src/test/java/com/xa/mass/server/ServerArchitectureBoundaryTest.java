@@ -364,7 +364,10 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("adapter.netty.internal")
-                .doesNotContain("WorkerObservationCache")
+                .doesNotContain(
+                        "adapter.netty.internal.connection"
+                                + ".WorkerObservationCache"
+                )
                 .doesNotContain("WorkerObservationSnapshot")
                 .doesNotContain("io.netty")
                 .doesNotContain("WebSocketSession")

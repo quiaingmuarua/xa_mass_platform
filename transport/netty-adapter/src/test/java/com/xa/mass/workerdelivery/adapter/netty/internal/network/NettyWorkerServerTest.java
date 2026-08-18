@@ -257,7 +257,7 @@ class NettyWorkerServerTest {
     }
 
     @Test
-    void webSocketControlCloseUsesNormalClosure() throws Exception {
+    void webSocketManagementCloseUsesNormalClosure() throws Exception {
         int port = availablePort();
         RecordingStringHandler handler = new RecordingStringHandler();
         NettyWorkerServer server = Protocol.WEBSOCKET.server(
@@ -273,7 +273,7 @@ class NettyWorkerServerTest {
 
             server.closeConnection(
                     handler.channel,
-                    AdapterConnectionCloseReason.CONTROL_REQUEST
+                    AdapterConnectionCloseReason.MANAGEMENT_REQUEST
             );
 
             assertThat(probe.closed.await(2, TimeUnit.SECONDS)).isTrue();
@@ -285,7 +285,7 @@ class NettyWorkerServerTest {
     }
 
     @Test
-    void socketControlCloseUsesTcpClose() throws Exception {
+    void socketManagementCloseUsesTcpClose() throws Exception {
         int port = availablePort();
         RecordingStringHandler handler = new RecordingStringHandler();
         NettyWorkerServer server = Protocol.SOCKET.server(
@@ -301,7 +301,7 @@ class NettyWorkerServerTest {
 
             server.closeConnection(
                     handler.channel,
-                    AdapterConnectionCloseReason.CONTROL_REQUEST
+                    AdapterConnectionCloseReason.MANAGEMENT_REQUEST
             );
 
             assertThat(peer.awaitClosed()).isTrue();
