@@ -5,13 +5,13 @@ import com.xa.mass.integration.workercapability.cli.WorkerCapabilityIntegrationD
 import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
 import com.xa.mass.integration.workercapability.runtimeapi.TaskBatchApiClient;
 import com.xa.mass.integration.workercapability.runtimeapi.TaskBatchApiClient.RunResult;
+import com.xa.mass.integration.workercapability.acceptance.TaskBatchEvidence;
 import com.xa.mass.integration.workercapability.acceptance.WorkerCapabilityAcceptance;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -82,10 +82,6 @@ public final class WorkerCapabilityRpcMain {
                 "result-dir",
                 "results"
         ));
-        Path scenarioWorkerLabRoot = absolutePath(options.path(
-                "scenario-worker-lab-root",
-                "../../data/scenario-workers"
-        ));
         long maximumWaitMillis = options.positiveLong(
                 "maximum-wait-millis",
                 WorkerCapabilityIntegrationDefaults.MAXIMUM_WAIT_MILLIS
@@ -115,18 +111,22 @@ public final class WorkerCapabilityRpcMain {
                 proofResultDirectory
         );
 
-        List<String> phoneLines = readFirstTenLines(
-                phoneSeedPath,
-                "phone-seed.txt"
+        Path evidenceFile = proofResultDirectory.resolve(
+                "task-batch-evidence.json"
         );
-        List<String> stringLines = readFirstTenLines(
-                stringSeedPath,
-                "string-seed.txt"
-        );
-        String phoneRemote = "phone-seed-" + proofId + ".txt";
-        String stringRemote = "string-seed-" + proofId + ".txt";
+        List<RunResult> runs = new ArrayList<>();
         List<Map<String, Object>> allResults = new ArrayList<>();
         try {
+            List<String> phoneLines = readFirstTenLines(
+                    phoneSeedPath,
+                    "phone-seed.txt"
+            );
+            List<String> stringLines = readFirstTenLines(
+                    stringSeedPath,
+                    "string-seed.txt"
+            );
+            String phoneRemote = "phone-seed-" + proofId + ".txt";
+            String stringRemote = "string-seed-" + proofId + ".txt";
             taskBatch.uploadInput(
                     phoneRemote,
                     String.join("\n", phoneLines)
@@ -146,6 +146,7 @@ public final class WorkerCapabilityRpcMain {
                         inputFile,
                         maximumWaitMillis
                 );
+                runs.add(run);
                 requireRunSummary(
                         run,
                         batch,
@@ -154,32 +155,30 @@ public final class WorkerCapabilityRpcMain {
                 String output = taskBatch.downloadOutput(
                         run.outputFile()
                 );
-                Files.writeString(
-                        proofResultDirectory.resolve(run.outputFile()),
-                        output,
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE_NEW,
-                        StandardOpenOption.WRITE
-                );
                 allResults.addAll(parseJsonLines(output, run.outputFile()));
             }
+            WorkerCapabilityAcceptance.Summary summary =
+                    WorkerCapabilityAcceptance.verify(allResults);
+            TaskBatchEvidence.writeSucceeded(
+                    evidenceFile,
+                    proofId,
+                    runs,
+                    summary
+            );
         } catch (IOException | RuntimeException error) {
-            removeEmptyProofResultDirectory(
-                    proofResultDirectory,
+            writeFailureEvidence(
+                    evidenceFile,
+                    proofId,
+                    runs,
+                    allResults,
                     error
             );
             throw error;
         }
-
-        WorkerCapabilityAcceptance.verify(
-                allResults,
-                scenarioWorkerLabRoot
-        );
         LOG.log(
                 System.Logger.Level.INFO,
-                "Verified 6 Server Task Batch outputs, 60 results, and "
-                        + "20 persistent Worker identities in "
-                        + proofResultDirectory
+                "Verified 6 Server Task Batches and 60 correlated results; "
+                        + "safe evidence=" + evidenceFile
         );
     }
 
@@ -254,16 +253,30 @@ public final class WorkerCapabilityRpcMain {
         Files.createDirectory(proofResultDirectory);
     }
 
-    private static void removeEmptyProofResultDirectory(
-            Path proofResultDirectory,
+    private static void writeFailureEvidence(
+            Path evidenceFile,
+            String proofId,
+            List<RunResult> runs,
+            List<Map<String, Object>> results,
             Throwable primaryFailure
     ) {
-        try (var files = Files.list(proofResultDirectory)) {
-            if (files.findAny().isEmpty()) {
-                Files.delete(proofResultDirectory);
-            }
-        } catch (IOException cleanupFailure) {
-            primaryFailure.addSuppressed(cleanupFailure);
+        try {
+            RuntimeException failure = primaryFailure
+                    instanceof RuntimeException runtimeFailure
+                    ? runtimeFailure
+                    : new IllegalStateException(
+                            "Task Batch proof failed",
+                            primaryFailure
+                    );
+            TaskBatchEvidence.writeFailed(
+                    evidenceFile,
+                    proofId,
+                    runs,
+                    results,
+                    failure
+            );
+        } catch (IOException | RuntimeException evidenceFailure) {
+            primaryFailure.addSuppressed(evidenceFailure);
         }
     }
 

@@ -159,8 +159,12 @@ python -m compileall -q kernel_design/executable_spec
   :transport:netty-adapter:build \
   :scenario_workers_jvm:build \
   :server_jvm:build \
-  :integrations:worker-capability-rpc:build
+  :integrations:worker-capability-rpc:build \
+  :integrations:worker-fleet-acceptance:build
 ```
 
-Real Redis, cross-process, Task Batch, Android and frontend proofs have
-separate prerequisites and commands in the proof registry.
+Real Redis, cross-process Runtime Boundary, Worker Fleet, Task Batch, Android,
+and frontend proofs have separate prerequisites and commands in the proof
+registry. Strict owner/capability tests fix structures and business values;
+cross-process acceptance fixes stable identity, count, ownership, correlation,
+protocol-status, and restart relationships without freezing evolving payloads.

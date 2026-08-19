@@ -25,6 +25,7 @@ jobs:
       jvm_contracts: ${{ steps.filter.outputs.jvm_contracts }}
       redis_owner: ${{ steps.filter.outputs.redis_owner }}
       runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
+      worker_fleet: ${{ steps.filter.outputs.worker_fleet }}
       task_batch: ${{ steps.filter.outputs.task_batch }}
       android_host: ${{ steps.filter.outputs.android_host }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -50,6 +51,7 @@ jobs:
               - 'transport/java-worker/**'
               - 'transport/netty-adapter/**'
               - 'integrations/worker-capability-rpc/**'
+              - 'integrations/worker-fleet-acceptance/**'
               - 'kernel_design/executable_spec/**'
               - 'build.gradle'
               - 'settings.gradle'
@@ -103,6 +105,25 @@ jobs:
               - 'transport/java-worker/**'
               - 'transport/netty-adapter/**'
               - 'integrations/worker-capability-rpc/**'
+              - 'build.gradle'
+              - 'settings.gradle'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '.github/workflows/proof-ci.yml'
+              - '!**/*.md'
+            worker_fleet:
+              - 'kernel_design/executable_spec/**'
+              - 'kernel_design/runtime_server/**'
+              - 'kernel_jvm/**'
+              - 'scenario_workers_jvm/**'
+              - 'server_jvm/**'
+              - 'transport/worker-delivery-contract/**'
+              - 'transport/worker-core/**'
+              - 'transport/java-worker/**'
+              - 'transport/netty-adapter/**'
+              - 'integrations/worker-fleet-acceptance/**'
               - 'build.gradle'
               - 'settings.gradle'
               - 'gradle.properties'
@@ -214,6 +235,7 @@ jobs:
           :scenario_workers_jvm:build
           :server_jvm:build
           :integrations:worker-capability-rpc:build
+          :integrations:worker-fleet-acceptance:build
       - name: Summarize JVM proof
         if: always()
         run: >-
@@ -297,9 +319,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON: >-
-        {"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0
@@ -368,6 +387,192 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  worker-fleet:
+    name: Worker Fleet
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_fleet == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+      - name: Build Worker Fleet acceptance artifacts
+        run: >-
+          ./gradlew --no-daemon
+          :server_jvm:bootJar
+          :integrations:worker-fleet-acceptance:classes
+      - name: Prepare isolated Fleet Lab
+        run: |
+          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
+          mkdir -p "$proof_root/data" "$proof_root/evidence"
+          test ! -e "$proof_root/data/scenario-workers"
+      - name: Start Scenario Kernel
+        run: |
+          python -m kernel_design.runtime_server \
+            --config integrations/worker-capability-rpc/kernel-config.json \
+            > fleet-kernel.log 2>&1 &
+          echo $! > fleet-kernel.pid
+          for attempt in $(seq 1 60); do
+            if python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat fleet-kernel.log
+          exit 1
+      - name: Start initial Scenario Worker Host
+        run: |
+          server_jar=$(find server_jvm/build/libs \
+            -name 'xa-mass-server-jvm-*.jar' \
+            ! -name '*-plain.jar' -print -quit)
+          test -n "$server_jar"
+          lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
+          task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
+          java -jar "$server_jar" \
+            --spring.profiles.active=scenario-workers \
+            --xa.mass.worker-assembly.sandbox-root="$lab_root" \
+            --xa.mass.task-batch.root="$task_root" \
+            > fleet-server-initial.log 2>&1 &
+          echo $! > fleet-server.pid
+          for attempt in $(seq 1 90); do
+            if python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat fleet-server-initial.log
+          exit 1
+      - name: Prove initial Worker Fleet
+        run: >-
+          ./gradlew --no-daemon
+          :integrations:worker-fleet-acceptance:runFleetAcceptance
+          --args="--phase=initial
+          --proof-id=ci-worker-fleet
+          --server-base-url=http://127.0.0.1:18082
+          --fleet-spec=$GITHUB_WORKSPACE/integrations/worker-fleet-acceptance/fleet-spec.json
+          --scenario-worker-lab-root=$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers
+          --evidence-file=$GITHUB_WORKSPACE/build/worker-fleet-proof/evidence/initial.json
+          --maximum-wait-millis=30000
+          --request-timeout-millis=120000"
+      - name: Stop initial Host gracefully
+        run: |
+          pid=$(cat fleet-server.pid)
+          kill "$pid"
+          for attempt in $(seq 1 15); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              rm -f fleet-server.pid
+              exit 0
+            fi
+            sleep 1
+          done
+          kill -9 "$pid" 2>/dev/null || true
+          rm -f fleet-server.pid
+          echo "Scenario Worker Host did not stop within 15 seconds"
+          exit 1
+      - name: Restart the same Scenario Worker Host
+        run: |
+          server_jar=$(find server_jvm/build/libs \
+            -name 'xa-mass-server-jvm-*.jar' \
+            ! -name '*-plain.jar' -print -quit)
+          test -n "$server_jar"
+          lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
+          task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
+          java -jar "$server_jar" \
+            --spring.profiles.active=scenario-workers \
+            --xa.mass.worker-assembly.sandbox-root="$lab_root" \
+            --xa.mass.task-batch.root="$task_root" \
+            > fleet-server-restart.log 2>&1 &
+          echo $! > fleet-server.pid
+          for attempt in $(seq 1 90); do
+            if python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat fleet-server-restart.log
+          exit 1
+      - name: Prove restarted Worker Fleet
+        run: >-
+          ./gradlew --no-daemon
+          :integrations:worker-fleet-acceptance:runFleetAcceptance
+          --args="--phase=restart
+          --proof-id=ci-worker-fleet
+          --server-base-url=http://127.0.0.1:18082
+          --fleet-spec=$GITHUB_WORKSPACE/integrations/worker-fleet-acceptance/fleet-spec.json
+          --scenario-worker-lab-root=$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers
+          --evidence-file=$GITHUB_WORKSPACE/build/worker-fleet-proof/evidence/restart.json
+          --baseline-file=$GITHUB_WORKSPACE/build/worker-fleet-proof/evidence/initial.json
+          --maximum-wait-millis=30000
+          --request-timeout-millis=120000"
+      - name: Summarize Worker Fleet proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Worker Fleet:** replicas=20, connected=20, probe=20, properties=20, restartIdentity=matched" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Worker Fleet:** failed; inspect safe evidence and process logs" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Stop Worker Fleet processes
+        if: always()
+        run: |
+          for pid_file in fleet-server.pid fleet-kernel.pid; do
+            if [ ! -f "$pid_file" ]; then
+              continue
+            fi
+            pid=$(cat "$pid_file")
+            kill "$pid" 2>/dev/null || true
+            for attempt in $(seq 1 15); do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                break
+              fi
+              sleep 1
+            done
+            kill -9 "$pid" 2>/dev/null || true
+          done
+      - name: Upload Worker Fleet evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-fleet-${{ github.run_attempt }}
+          path: |
+            build/worker-fleet-proof/evidence/*.json
+            fleet-kernel.log
+            fleet-server-initial.log
+            fleet-server-restart.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   task-batch:
     name: Task Batch
     needs: changes
@@ -386,9 +591,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON: >-
-        {"index.worker.region":"redis-hash"}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0
@@ -444,7 +646,7 @@ jobs:
           done
           cat scenario-server.log
           exit 1
-      - name: Verify 20 Workers and 6 Server Task Batch runs
+      - name: Verify 6 Server Task Batch runs
         run: >-
           ./gradlew --no-daemon
           :integrations:worker-capability-rpc:runRpcScenario
@@ -456,7 +658,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Task Batch:** workers=20, batches=6, results=60" \
+            echo "- **Task Batch:** batches=6, submitted=60, completed=60" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **Task Batch:** failed; inspect uploaded evidence" \
@@ -596,6 +798,7 @@ jobs:
       - jvm-contracts
       - redis-owner
       - runtime-boundary
+      - worker-fleet
       - task-batch
       - android-host
       - frontend
@@ -613,6 +816,8 @@ jobs:
       REDIS_OWNER_RESULT: ${{ needs.redis-owner.result }}
       RUNTIME_BOUNDARY_SELECTED: ${{ needs.changes.outputs.runtime_boundary }}
       RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
+      WORKER_FLEET_SELECTED: ${{ needs.changes.outputs.worker_fleet }}
+      WORKER_FLEET_RESULT: ${{ needs.worker-fleet.result }}
       TASK_BATCH_SELECTED: ${{ needs.changes.outputs.task_batch }}
       TASK_BATCH_RESULT: ${{ needs.task-batch.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
@@ -658,6 +863,8 @@ jobs:
             "Redis Owner" "$REDIS_OWNER_SELECTED" "$REDIS_OWNER_RESULT"
           check_lane \
             "Runtime Boundary" "$RUNTIME_BOUNDARY_SELECTED" "$RUNTIME_BOUNDARY_RESULT"
+          check_lane \
+            "Worker Fleet" "$WORKER_FLEET_SELECTED" "$WORKER_FLEET_RESULT"
           check_lane \
             "Task Batch" "$TASK_BATCH_SELECTED" "$TASK_BATCH_RESULT"
           check_lane \

@@ -55,6 +55,10 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 "Redis",
                 "RpcProcess",
                 "WorkerGroupRpcClient",
+                "scenario-worker-lab-root",
+                "workerId",
+                "workerProperties",
+                "resolve(run.outputFile())",
                 "/api/v1/worker-groups/"
         }) {
             assertFalse(

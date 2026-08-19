@@ -15,16 +15,32 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Adapter-evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, the public Adapter Network Runtime View, exact Adapter Route evidence through the Kernel Result Pacer, periodic snapshot compensation, and current score convergence | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python Kernel, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks and closes 60 submitted inputs to 60 uniquely correlated results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Task Batch` command uploads two text fixtures, executes six explicit
 WorkerGroup/Event/Payload-key batches, downloads six successful JSONL outputs,
-and validates exactly 60 results. The Lab proof
-additionally requires 20 persistent, globally unique canonical Worker IDs. A
-result is not attributed to a particular Worker.
+and validates exactly 60 results, ten per expected Group/Event combination,
+with globally unique Message IDs. It does not attribute a result to a
+particular Worker or freeze capability-specific Result fields and values.
+
+Owner and capability unit tests remain the strict place for DTO shape,
+validation rules, and exact business values such as phone parsing, digest, and
+Base64 semantics. Cross-process acceptance instead fixes stable relationships:
+identity sets, counts, Group/Event ownership, correlation, protocol outcomes,
+and restart continuity. This lets compatible payload or Properties evolution
+proceed without weakening the mechanism proof.
+
+The separate `Worker Fleet` lane starts the real Scenario Host on an isolated,
+initially absent Lab root. Its initial phase relates the exact configured
+client keys to 20 unique Lab Worker IDs, connected Adapter routes, one probe
+Result per target, and same-round Worker/Adapter Properties observations. CI
+then terminates the Host, requires shutdown within 15 seconds, restarts the
+same Host with Redis, Kernel, and Lab retained, and requires the complete
+client-key-to-Worker-ID mapping and all live relationships to close again.
 
 ## Local Commands
 
@@ -59,7 +75,8 @@ Non-Android JVM contracts:
   :transport:netty-adapter:build `
   :scenario_workers_jvm:build `
   :server_jvm:build `
-  :integrations:worker-capability-rpc:build
+  :integrations:worker-capability-rpc:build `
+  :integrations:worker-fleet-acceptance:build
 ```
 
 Redis Owner:
@@ -110,9 +127,10 @@ retry/cold policy, or the final meaning of positive and negative evidence. It
 also does not prove distributed Direct Call waiter correlation, Binding
 generation fencing, clock synchronization, or reliable evidence delivery.
 
-Task Batch process startup and the Android real-device acceptance procedure
-are documented by their owning modules:
+Worker Fleet, Task Batch process startup, and the Android real-device
+acceptance procedure are documented by their owning modules:
 
+- [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
 - [`integrations/worker-capability-rpc`](integrations/worker-capability-rpc/README.md)
 - [`xa-android/worker-demo`](xa-android/worker-demo/README.md)
 
@@ -174,17 +192,20 @@ Representative selection rules:
 - Docs Contract runs on every workflow invocation; documentation-only changes
   otherwise reach only `Proof Gate`;
 - the human overview additionally runs the Frontend lane;
-- Netty Adapter changes run JVM Contracts, Runtime Boundary, and Task Batch;
+- Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet, and
+  Task Batch;
 - Task-Batch-only changes run JVM Contracts and Task Batch;
+- Worker-Fleet-only changes run JVM Contracts and Worker Fleet;
 - Android-only changes run Android Host;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
-  Task Batch, and Android proofs;
+  Worker Fleet, Task Batch, and Android proofs;
 - Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
-  Runtime, and Task Batch proofs.
+  Runtime, Worker Fleet, and Task Batch proofs.
 
-CI uploads failed JUnit reports and process logs for seven days. Task Batch
-uploads its complete or partial JSONL evidence on every run. Failures are not
-automatically retried.
+CI uploads failed JUnit reports and process logs for seven days. Worker Fleet
+and Task Batch upload only schema-versioned safe evidence: IDs, relation sets,
+run summaries, counts, and differences. They do not upload full Worker Result,
+Task output, or Properties content. Failures are not automatically retried.
 
 ## Deliberate Non-Goals
 

@@ -11,15 +11,18 @@ phone-seed.txt / string-seed.txt
   -> POST /api/v1/task-batches/input-files/{fileName}
   -> six POST /api/v1/task-batches/runs
   -> six GET /api/v1/task-batches/output-files/{fileName}
-  -> downloaded JSONL validation
-  -> persistent Worker identity validation
+  -> in-memory JSONL relationship validation
+  -> safe Task Batch evidence
 ```
 
 The client supplies six explicit WorkerGroup/Event/Payload-key cases. Server
 owns line-to-Payload conversion, one batch Item append, pending-result polling,
 and authoritative output files. This integration verifies six successful runs,
 ten results per batch, sixty total results, globally unique Message IDs,
-and twenty persistent canonical Worker IDs across the two JVM Lab Groups.
+and each row's expected WorkerGroup/Event ownership. It deliberately does not
+assert capability-specific Result fields or values and does not prove Worker
+identity; those responsibilities belong to capability unit tests and Worker
+Fleet acceptance respectively.
 
 ## Run
 
@@ -38,7 +41,6 @@ Optional arguments use `--name=value`:
 --phone-seed-path=phone-seed.txt
 --string-seed-path=string-seed.txt
 --result-dir=results
---scenario-worker-lab-root=../../data/scenario-workers
 --maximum-wait-millis=30000
 --request-timeout-millis=120000
 ```
@@ -47,7 +49,11 @@ Optional arguments use `--name=value`:
 run creates its own monotonic Task Batch run ID. Uploaded inputs and published
 Server outputs are permanent local Lab files and are cleaned manually. A run
 that exhausts its wait budget is `partial`; this acceptance requires all six runs
-to be `succeeded`.
+to be `succeeded`. The integration does not copy downloaded JSONL into its
+artifact directory. It writes only `task-batch-evidence.json`, containing the
+proof ID, six run summaries, counts, Group/Event values, Message IDs, and safe
+missing/duplicate information; no Task input, Worker Result, or Properties
+content is persisted by this client.
 
 Unit proof:
 

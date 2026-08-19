@@ -155,8 +155,17 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 ./gradlew :scenario_workers_jvm:test
 ```
 
-The repository-level acceptance in
-[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/)
-starts Redis, Python Kernel, Server, Adapter, and the Lab Workers, then proves
-20 persistent, globally unique identities and 60 successful Group-scoped RPC
-results. RPC rows deliberately do not claim which Worker executed them.
+Repository-level acceptance starts Redis, Python Kernel, Server, Adapter, and
+these Lab Workers through two independent clients:
+
+- [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
+  the exact two-by-ten replica topology, stable Lab identity mapping, Adapter
+  routes, probe execution, Properties observation, and identity reuse across a
+  real Server/Scenario Host restart;
+- [`worker-capability-rpc`](../integrations/worker-capability-rpc/) proves six
+  Group/Event Task Batches close 60 submitted inputs to 60 uniquely correlated
+  results.
+
+Task Batch rows deliberately do not claim which Worker executed them, and
+Fleet acceptance does not freeze dynamic Properties or business Result
+payloads.

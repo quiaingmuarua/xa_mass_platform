@@ -2,6 +2,7 @@ package com.xa.mass.integration.workercapability;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -16,7 +17,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -49,8 +49,6 @@ class WorkerCapabilityRpcMainTest {
                 "strings.txt",
                 List.of("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
         );
-        Path workerLab = temporaryDirectory.resolve("scenario-workers");
-        createWorkerLab(workerLab);
         Path results = temporaryDirectory.resolve("results");
 
         try (FakeTaskBatchServer server = FakeTaskBatchServer.start()) {
@@ -60,7 +58,6 @@ class WorkerCapabilityRpcMainTest {
                     "--phone-seed-path=" + phoneSeed,
                     "--string-seed-path=" + stringSeed,
                     "--result-dir=" + results,
-                    "--scenario-worker-lab-root=" + workerLab,
                     "--maximum-wait-millis=40000",
                     "--request-timeout-millis=10000"
             });
@@ -78,20 +75,28 @@ class WorkerCapabilityRpcMainTest {
         try (var files = Files.list(proofResults)) {
             outputFiles = files.sorted().toList();
         }
-        assertEquals(6, outputFiles.size());
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (Path outputFile : outputFiles) {
-            Files.readAllLines(outputFile, StandardCharsets.UTF_8)
-                    .stream()
-                    .map(Jsons::parseObject)
-                    .forEach(rows::add);
-        }
-        assertEquals(60, rows.size());
-        rows.forEach(row -> {
-            assertFalse(row.containsKey("taskId"));
-            assertFalse(row.containsKey("workerId"));
-            assertFalse(row.containsKey("score"));
-        });
+        assertEquals(1, outputFiles.size());
+        assertEquals(
+                "task-batch-evidence.json",
+                outputFiles.get(0).getFileName().toString()
+        );
+        String encoded = Files.readString(
+                outputFiles.get(0),
+                StandardCharsets.UTF_8
+        );
+        Map<String, Object> evidence = Jsons.parseObject(encoded);
+        assertEquals("succeeded", evidence.get("status"));
+        assertEquals(6, ((Number) evidence.get("batchCount")).intValue());
+        assertEquals(60, ((Number) evidence.get("inputCount")).intValue());
+        assertEquals(60, ((Number) evidence.get("resultCount")).intValue());
+        assertEquals(0, ((Number) evidence.get("remainingCount")).intValue());
+        assertEquals(60, ((List<?>) evidence.get("messageIds")).size());
+        assertEquals(Map.of(), evidence.get("missingResultCounts"));
+        assertEquals(List.of(), evidence.get("duplicateMessageIds"));
+        assertFalse(encoded.contains("result-0"));
+        assertFalse(encoded.contains("evolvedPayload"));
+        assertFalse(encoded.contains("valid"));
+        assertTrue(encoded.contains("extension.worker.string.md5"));
     }
 
     private Path writeLines(String name, List<String> lines)
@@ -101,62 +106,37 @@ class WorkerCapabilityRpcMainTest {
         return path;
     }
 
-    private static void createWorkerLab(Path root) throws IOException {
-        for (String group : List.of(
-                "scenario-phone-number-workers",
-                "scenario-string-utils-workers"
-        )) {
-            Path directory = Files.createDirectories(root.resolve(group));
-            for (int index = 0; index < 10; index++) {
-                Files.writeString(
-                        directory.resolve("worker-" + index + ".json"),
-                        Jsons.toJson(Map.of(
-                                "schemaVersion", 1,
-                                "workerId", UUID.randomUUID().toString()
-                        )),
-                        StandardCharsets.UTF_8
-                );
-            }
-        }
-    }
-
     private static final class FakeTaskBatchServer implements AutoCloseable {
         private static final Map<String, Expected> EXPECTED = Map.of(
                 "extension.worker.phonenumber.e164",
                 new Expected(
                         "scenario-phone-number-workers",
-                        "rawNumber",
-                        "e164"
+                        "rawNumber"
                 ),
                 "extension.worker.phonenumber.country",
                 new Expected(
                         "scenario-phone-number-workers",
-                        "rawNumber",
-                        "countryCallingCode"
+                        "rawNumber"
                 ),
                 "extension.worker.phonenumber.original-carrier",
                 new Expected(
                         "scenario-phone-number-workers",
-                        "rawNumber",
-                        "originalCarrier"
+                        "rawNumber"
                 ),
                 "extension.worker.string.md5",
                 new Expected(
                         "scenario-string-utils-workers",
-                        "value",
-                        "md5"
+                        "value"
                 ),
                 "extension.worker.string.sha1",
                 new Expected(
                         "scenario-string-utils-workers",
-                        "value",
-                        "sha1"
+                        "value"
                 ),
                 "extension.worker.string.base64.encode",
                 new Expected(
                         "scenario-string-utils-workers",
-                        "value",
-                        "base64"
+                        "value"
                 )
         );
 
@@ -258,8 +238,8 @@ class WorkerCapabilityRpcMainTest {
                 row.put(
                         "result",
                         Map.of(
-                                "valid", true,
-                                expected.resultField(), "result-" + index
+                                "evolvedPayload",
+                                Map.of("value", "result-" + index)
                         )
                 );
                 encoded.add(Jsons.toJson(row));
@@ -338,8 +318,7 @@ class WorkerCapabilityRpcMainTest {
 
         private record Expected(
                 String workerGroupId,
-                String inputField,
-                String resultField
+                String inputField
         ) {
         }
     }
