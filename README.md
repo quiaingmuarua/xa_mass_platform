@@ -119,7 +119,8 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) owns the finite JVM Scenario
   capabilities and persistent local Lab Worker assembly.
 - [`xa-android/`](xa-android/) owns reusable Android capabilities, a loopback
-  capability probe and the demo Worker host.
+  capability/Host control surface, the demo Worker host, and its Emulator
+  acceptance driver.
 - [`integrations/`](integrations/) contains external acceptance clients; it
   owns no Kernel, Server or Transport mechanism.
 - [`frontend/`](frontend/) is the read-only Runtime viewer, Task Batch Lab,
@@ -163,8 +164,9 @@ python -m compileall -q kernel_design/executable_spec
   :integrations:worker-fleet-acceptance:build
 ```
 
-Real Redis, cross-process Runtime Boundary, Worker Fleet, Task Batch, Android,
-and frontend proofs have separate prerequisites and commands in the proof
-registry. Strict owner/capability tests fix structures and business values;
-cross-process acceptance fixes stable identity, count, ownership, correlation,
-protocol-status, and restart relationships without freezing evolving payloads.
+Real Redis, cross-process Runtime Boundary, Worker Fleet, Task Batch, Android
+Emulator, real-device Android, and frontend proofs have separate prerequisites
+and commands in the proof registry. Strict owner/capability tests fix
+structures and business values; cross-process acceptance fixes stable
+identity, count, ownership, correlation, protocol-status, and restart
+relationships without freezing evolving payloads.

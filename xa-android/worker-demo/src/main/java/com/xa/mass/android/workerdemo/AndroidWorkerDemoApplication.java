@@ -37,7 +37,11 @@ public final class AndroidWorkerDemoApplication extends Application {
         );
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
                 CAPABILITY_HTTP_PORT,
-                demoCapabilities.definitions()
+                AndroidWorkerHostEvents.assemble(
+                        demoCapabilities.definitions(),
+                        worker,
+                        demoCapabilities
+                )
         );
         try {
             capabilityHttpServer.start();

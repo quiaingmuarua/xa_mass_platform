@@ -131,6 +131,8 @@ repository demo excludes the Android Worker preference file from backup.
 ./gradlew :transport:android-worker:assembleDebug
 ```
 
-There is currently no instrumentation source set. Real-device WorkerGroup RPC
-acceptance belongs to `xa-android/worker-demo` and remains manual;
-hosted CI proves only the Debug host and local protocol boundary.
+There is no instrumentation or UI-automation source set. The path-selected
+API 33 Emulator Worker acceptance belongs to `xa-android/worker-demo` and
+proves this assembly through the real Server/Adapter route. Real-device
+WorkerGroup RPC remains a separate manual proof for vendor systems, physical
+Battery behavior, and background execution limits.

@@ -18,6 +18,7 @@ boundary named below.
 | Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python Kernel, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks and closes 60 submitted inputs to 60 uniquely correlated results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
+| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python Kernel, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
@@ -41,6 +42,16 @@ Result per target, and same-round Worker/Adapter Properties observations. CI
 then terminates the Host, requires shutdown within 15 seconds, restarts the
 same Host with Redis, Kernel, and Lab retained, and requires the complete
 client-key-to-Worker-ID mapping and all live relationships to close again.
+
+The `Android Emulator Worker` lane installs the Demo APK on one API 33
+Emulator. ADB is limited to installation, process lifecycle, and loopback port
+mapping. Device-local lifecycle control and observation use the Demo's fixed
+NanoHTTP Events; Worker and Adapter observations use public Runtime APIs. The
+proof checks initial execution and Properties observation, explicit
+stop/start, retry exhaustion while the Server is down, absence of automatic
+restart, explicit recovery, and Worker ID continuity after App process
+restart. It fixes relationship and count invariants without storing Battery,
+device Properties, opaque Results, or business Payloads.
 
 ## Local Commands
 
@@ -127,8 +138,8 @@ retry/cold policy, or the final meaning of positive and negative evidence. It
 also does not prove distributed Direct Call waiter correlation, Binding
 generation fencing, clock synchronization, or reliable evidence delivery.
 
-Worker Fleet, Task Batch process startup, and the Android real-device
-acceptance procedure are documented by their owning modules:
+Worker Fleet, Task Batch process startup, and Android Emulator/real-device
+acceptance are documented by their owning modules:
 
 - [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
 - [`integrations/worker-capability-rpc`](integrations/worker-capability-rpc/README.md)
@@ -150,6 +161,13 @@ python -m unittest discover `
   -s xa-android/worker-demo/host `
   -p "test_*.py"
 ```
+
+The hosted Emulator proof is intentionally workflow-owned because it requires
+KVM, an APK artifact from `Android Host`, Redis, Kernel and Server process
+orchestration, and ADB port mapping. Its checked orchestration is
+`.github/scripts/run_android_emulator_worker.sh`; its standard-library
+acceptance driver is
+`xa-android/worker-demo/host/android_worker_acceptance.py`.
 
 Frontend:
 
@@ -193,23 +211,28 @@ Representative selection rules:
   otherwise reach only `Proof Gate`;
 - the human overview additionally runs the Frontend lane;
 - Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet, and
-  Task Batch;
+  Task Batch; WebSocket/Route production changes also run Android Emulator
+  Worker;
 - Task-Batch-only changes run JVM Contracts and Task Batch;
 - Worker-Fleet-only changes run JVM Contracts and Worker Fleet;
-- Android-only changes run Android Host;
+- Android test-only changes run Android Host; Android production, Manifest,
+  build, or Emulator driver changes also run Android Emulator Worker;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
-  Worker Fleet, Task Batch, and Android proofs;
+  Worker Fleet, Task Batch, Android Host, and Android Emulator proofs;
 - Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
   Runtime, Worker Fleet, and Task Batch proofs.
 
-CI uploads failed JUnit reports and process logs for seven days. Worker Fleet
-and Task Batch upload only schema-versioned safe evidence: IDs, relation sets,
-run summaries, counts, and differences. They do not upload full Worker Result,
-Task output, or Properties content. Failures are not automatically retried.
+CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
+Task Batch, and Android Emulator upload only schema-versioned safe evidence:
+IDs, relation sets, run summaries, counts, and differences. Android adds
+filtered logs but no screenshot or video. These lanes do not upload full
+Worker Result, Task output, Properties content, or business Payload. Failures
+are not automatically retried.
 
 ## Deliberate Non-Goals
 
 There is no coverage threshold, multi-JDK or multi-OS matrix, flaky-test retry,
-browser visual regression, Android emulator gate, performance test, or soak
-lane. The Android real-device WorkerGroup RPC is a manual acceptance proof and must
-not be represented as a normal hosted-runner E2E test.
+browser visual regression, Android API matrix, UI automation, performance
+test, or soak lane. The Android real-device WorkerGroup RPC remains a separate
+manual proof for vendor systems, physical Battery behavior, and background
+execution limits; the hosted Emulator lane does not claim those properties.

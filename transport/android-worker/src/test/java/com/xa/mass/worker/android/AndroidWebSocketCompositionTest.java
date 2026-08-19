@@ -64,6 +64,7 @@ public class AndroidWebSocketCompositionTest {
         );
 
         CountDownLatch resultReceived = new CountDownLatch(1);
+        CountDownLatch connectionTerminated = new CountDownLatch(1);
         AtomicReference<DeliveryReport> identity =
                 new AtomicReference<>();
         AtomicReference<DeliveryReport> result =
@@ -81,6 +82,24 @@ public class AndroidWebSocketCompositionTest {
                 }
                 result.set(codec.decodeDeliveryReport(text));
                 resultReceived.countDown();
+            }
+
+            @Override
+            public void onClosed(
+                    WebSocket webSocket,
+                    int code,
+                    String reason
+            ) {
+                connectionTerminated.countDown();
+            }
+
+            @Override
+            public void onFailure(
+                    WebSocket webSocket,
+                    Throwable error,
+                    Response response
+            ) {
+                connectionTerminated.countDown();
             }
         };
 
@@ -152,6 +171,10 @@ public class AndroidWebSocketCompositionTest {
             } finally {
                 worker.close();
                 platform.close();
+                assertTrue(connectionTerminated.await(
+                        5,
+                        TimeUnit.SECONDS
+                ));
             }
         }
 

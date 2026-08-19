@@ -28,6 +28,7 @@ jobs:
       worker_fleet: ${{ steps.filter.outputs.worker_fleet }}
       task_batch: ${{ steps.filter.outputs.task_batch }}
       android_host: ${{ steps.filter.outputs.android_host }}
+      android_emulator: ${{ steps.filter.outputs.android_emulator }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -145,6 +146,49 @@ jobs:
               - 'gradlew.bat'
               - '.github/workflows/proof-ci.yml'
               - '.github/scripts/summarize_junit.py'
+              - '!**/*.md'
+            android_emulator:
+              - 'transport/worker-delivery-contract/src/main/**'
+              - 'transport/worker-delivery-contract/build.gradle'
+              - 'transport/worker-core/src/main/**'
+              - 'transport/worker-core/build.gradle'
+              - 'transport/android-worker/src/main/**'
+              - 'transport/android-worker/build.gradle'
+              - 'transport/netty-adapter/src/main/**'
+              - 'transport/netty-adapter/build.gradle'
+              - 'xa-android/**/src/main/**'
+              - 'xa-android/**/src/debug/**'
+              - 'xa-android/**/build.gradle'
+              - 'xa-android/worker-demo/host/android_worker_acceptance.py'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/WorkerBindingController.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/WorkerGroupTaskController.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/WorkerIdentityController.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/directcall/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskItemRequest.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskRpcCall*.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskType.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/WorkerBinding*.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/WorkerIdentity*.java'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/runtimeview/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/workerdelivery/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/directcall/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/runtimeview/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/taskdata/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/workerassembly/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/workerbinding/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/workerdelivery/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/workeridentity/**'
+              - 'server_jvm/src/main/java/com/xa/mass/server/workerscheduling/**'
+              - 'server_jvm/src/main/resources/application-scenario-workers.yaml'
+              - 'server_jvm/src/main/resources/application.yaml'
+              - 'server_jvm/build.gradle'
+              - 'build.gradle'
+              - 'gradle.properties'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '.github/scripts/run_android_emulator_worker.sh'
+              - '.github/workflows/proof-ci.yml'
               - '!**/*.md'
             frontend:
               - 'frontend/**'
@@ -698,6 +742,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.android_host == 'true' ||
+      needs.changes.outputs.android_emulator == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -727,6 +772,17 @@ jobs:
           python -m unittest discover
           -s xa-android/worker-demo/host
           -p "test_*.py"
+      - name: Upload Android Worker Demo APK
+        if: >-
+          needs.changes.outputs.android_emulator == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-worker-demo-apk
+          path: xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
       - name: Summarize Android proof
         if: always()
         run: >-
@@ -748,6 +804,96 @@ jobs:
             xa-android/worker-demo/build/test-results/testDebugUnitTest/**
             xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
             build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  android-emulator-worker:
+    name: Android Emulator Worker
+    needs:
+      - changes
+      - android-host
+    if: >-
+      always() &&
+      (needs.changes.outputs.android_emulator == 'true' ||
+      github.event_name == 'workflow_dispatch') &&
+      needs.android-host.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    concurrency:
+      group: android-emulator-worker-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ANDROID_API_LEVEL: "33"
+      ANDROID_WORKER_PROOF_ROOT: ${{ github.workspace }}/build/android-emulator-proof
+      ANDROID_WORKER_APK: ${{ github.workspace }}/build/android-emulator-proof/apk/xa-mass-android-worker-demo-debug.apk
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+      - name: Download Android Worker Demo APK
+        uses: actions/download-artifact@v8.0.0
+        with:
+          name: android-worker-demo-apk
+          path: build/android-emulator-proof/apk
+      - name: Build Scenario Server
+        run: ./gradlew --no-daemon :server_jvm:bootJar
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prove Android Worker on API 33 Emulator
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 33
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -camera-back none
+          script: bash .github/scripts/run_android_emulator_worker.sh
+      - name: Summarize Android Emulator Worker proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Android Emulator Worker:** API=33, lifecycle=closed, identity=stable, route=connected, probe=observed, processRestart=matched" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Android Emulator Worker:** failed; inspect safe evidence and filtered logs" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Android Emulator Worker evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-emulator-worker-${{ github.run_attempt }}
+          path: |
+            build/android-emulator-proof/evidence/*.json
+            build/android-emulator-proof/logs/kernel.log
+            build/android-emulator-proof/logs/server-*.log
+            build/android-emulator-proof/logs/android-filtered.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -801,6 +947,7 @@ jobs:
       - worker-fleet
       - task-batch
       - android-host
+      - android-emulator-worker
       - frontend
       - docs-contract
     runs-on: ubuntu-24.04
@@ -820,8 +967,10 @@ jobs:
       WORKER_FLEET_RESULT: ${{ needs.worker-fleet.result }}
       TASK_BATCH_SELECTED: ${{ needs.changes.outputs.task_batch }}
       TASK_BATCH_RESULT: ${{ needs.task-batch.result }}
-      ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host }}
+      ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
+      ANDROID_EMULATOR_SELECTED: ${{ needs.changes.outputs.android_emulator }}
+      ANDROID_EMULATOR_RESULT: ${{ needs.android-emulator-worker.result }}
       FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
       DOCS_RESULT: ${{ needs.docs-contract.result }}
@@ -869,6 +1018,8 @@ jobs:
             "Task Batch" "$TASK_BATCH_SELECTED" "$TASK_BATCH_RESULT"
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
+          check_lane \
+            "Android Emulator Worker" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
           check_lane \
             "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
           check_lane \

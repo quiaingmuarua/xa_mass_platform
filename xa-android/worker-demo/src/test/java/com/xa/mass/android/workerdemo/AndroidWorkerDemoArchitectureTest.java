@@ -116,6 +116,9 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains(
                 "AndroidCapabilityHttpServer.create("
         ));
+        assertTrue(application.contains(
+                "AndroidWorkerHostEvents.assemble("
+        ));
         assertTrue(application.contains("capabilityHttpServer.start();"));
         assertTrue(application.contains("catch (IOException error)"));
         assertTrue(application.indexOf("capabilityHttpServer.start();")
@@ -167,6 +170,10 @@ public class AndroidWorkerDemoArchitectureTest {
         ));
         assertFalse(source.contains("AndroidDemoEvents"));
         assertFalse(source.contains("AndroidWebSocketWorkerRuntime"));
+        assertFalse(application.substring(
+                application.indexOf("AndroidWorker.create("),
+                application.indexOf("AndroidCapabilityHttpServer.create(")
+        ).contains("AndroidWorkerHostEvents"));
     }
 
     private static String readSource(Path project, String fileName)
