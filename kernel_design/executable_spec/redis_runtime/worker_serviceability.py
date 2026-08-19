@@ -50,8 +50,8 @@ return worker_ids
 """
 
 
-_APPEND_PROBE_RESULTS_SCRIPT = """
--- worker_serviceability_append_probe_results
+_APPEND_ADAPTER_EVIDENCE_RESULTS_SCRIPT = """
+-- worker_serviceability_append_adapter_evidence_results
 local remaining = tonumber(ARGV[1]) - redis.call('LLEN', KEYS[1])
 if remaining <= 0 then
   return 0
@@ -133,7 +133,7 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
             raise RuntimeError("Redis probe consume returned an invalid response")
         return worker_ids
 
-    def append_probe_results(
+    def append_adapter_evidence_results(
         self,
         *,
         reports: Sequence[DeliveryReport],
@@ -142,7 +142,7 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
         if not bounded:
             return 0
         if len(bounded) > self.MAX_BATCH_SIZE:
-            raise ValueError("Probe result append exceeds 100 Reports")
+            raise ValueError("Adapter evidence append exceeds 100 Reports")
         encoded: list[str] = []
         for report in bounded:
             if (
@@ -150,17 +150,23 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
                 or report.src is not DeliveryEndpoint.ADAPTER
                 or report.dst is not DeliveryEndpoint.KERNEL
             ):
-                raise ValueError("Probe Report source or destination is invalid")
+                raise ValueError(
+                    "Adapter evidence source or destination is invalid"
+                )
             encoded.append(encode_delivery_report(report))
         return int(self.redis.eval(
-            _APPEND_PROBE_RESULTS_SCRIPT,
+            _APPEND_ADAPTER_EVIDENCE_RESULTS_SCRIPT,
             1,
             self._results_key(),
             self.result_capacity,
             *encoded,
         ))
 
-    def consume_probe_results(self, *, limit: int) -> tuple[DeliveryReport, ...]:
+    def consume_adapter_evidence_results(
+        self,
+        *,
+        limit: int,
+    ) -> tuple[DeliveryReport, ...]:
         self._require_limit(limit)
         with self.redis.pipeline(transaction=True) as pipeline:
             for _ in range(limit):
@@ -183,7 +189,7 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
         return f"ws:{{{self.prefix}}}:adapter:{adapter_id}:probe-requests"
 
     def _results_key(self) -> str:
-        return f"ws:{{{self.prefix}}}:probe-results"
+        return f"ws:{{{self.prefix}}}:adapter-evidence-results"
 
     @classmethod
     def _bounded_worker_ids(

@@ -79,9 +79,9 @@
       "consume_worker_results"
     ],
     "WorkerServiceabilityRuntime": [
-      "append_probe_results",
+      "append_adapter_evidence_results",
+      "consume_adapter_evidence_results",
       "consume_probe_requests",
-      "consume_probe_results",
       "offer_probe_requests"
     ],
     "TaskItemScoreBandCore": [
@@ -145,7 +145,6 @@
       "acquire_observed_hot_score_leases",
       "acquire_recovery_recheck_candidates",
       "apply_worker_serviceability_checks",
-      "demote_observed_worker_leases_to_recovery",
       "exhaust_recovery_recheck",
       "get_score_states",
       "initialize_hot_acquire_score",

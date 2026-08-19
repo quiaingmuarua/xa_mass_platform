@@ -131,7 +131,7 @@ class WorkerServiceabilityResultApplication:
                     "stop_event": stop_event,
                     "interval_millis": config.interval_millis,
                     "operation": partial(
-                        self.pacer.route_probe_results,
+                        self.pacer.route_adapter_evidence,
                         config=config.result,
                     ),
                     "loop_name": "result",

@@ -149,6 +149,7 @@ class WorkerServiceabilityConfig:
     hot_scan_limit: int = 80
     recovery_scan_limit: int = 20
     result_report_limit: int = 10
+    evidence_max_age_millis: int = 30_000
 
     def __post_init__(self) -> None:
         if isinstance(self.worker_group_ids, (str, bytes)):
@@ -162,6 +163,7 @@ class WorkerServiceabilityConfig:
             (self.hot_scan_limit, "HOT scan limit"),
             (self.recovery_scan_limit, "recovery scan limit"),
             (self.result_report_limit, "result Report limit"),
+            (self.evidence_max_age_millis, "Adapter evidence max age"),
         ):
             _positive_integer(value, name=name)
         groups = tuple(self.worker_group_ids)
@@ -175,6 +177,7 @@ class WorkerServiceabilityConfig:
         WorkerServiceabilityResultConfig(
             max_recovery_attempts=self.max_recovery_attempts,
             result_report_limit=self.result_report_limit,
+            evidence_max_age_millis=self.evidence_max_age_millis,
         )
         object.__setattr__(self, "worker_group_ids", dispatch.worker_group_ids)
 
@@ -330,6 +333,7 @@ class KernelApplicationConfig:
                         "hotScanLimit",
                         "recoveryScanLimit",
                         "resultReportLimit",
+                        "evidenceMaxAgeMillis",
                     }
                 ),
                 name="workerServiceability config",
@@ -381,6 +385,10 @@ class KernelApplicationConfig:
                 result_report_limit=_positive_integer(
                     raw_serviceability.get("resultReportLimit", 10),
                     name="result Report limit",
+                ),
+                evidence_max_age_millis=_positive_integer(
+                    raw_serviceability.get("evidenceMaxAgeMillis", 30_000),
+                    name="Adapter evidence max age",
                 ),
             )
 
@@ -762,6 +770,9 @@ class KernelApplication:
                         ),
                         result_report_limit=(
                             config.worker_serviceability.result_report_limit
+                        ),
+                        evidence_max_age_millis=(
+                            config.worker_serviceability.evidence_max_age_millis
                         ),
                     ),
                     interval_millis=(

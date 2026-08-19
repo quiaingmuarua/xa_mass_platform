@@ -82,13 +82,21 @@ Command
 expected Report
   src=ADAPTER, dst=KERNEL
   same messageType and opaque worker-serviceability forward
+
+or Adapter-produced Route evidence
+  src=ADAPTER, dst=KERNEL
+  messageType=platform.adapter.worker-connection.changed
+  forward=worker-serviceability-evidence:v1
 ```
 
 The optional Kernel Dispatch Pacer writes Adapter-scoped probe request HASH
 fields. Server constructs the Command only after higher-priority sources leave
 response capacity, Adapter executes its existing connection-snapshot Handler,
 and Server appends the `ADAPTER -> KERNEL` Report to the Kernel result handoff.
-`KERNEL` does not authorize Server or Transport to call a score owner.
+The Adapter also emits one-Worker evidence for exact verified Route
+connected/disconnected transitions through the same Result Process and Server
+append boundary. `KERNEL` does not authorize Server or Transport to call a
+score owner.
 
 Delivery defines no outer message or correlation ID.
 `DeliveryReport.fromCommand()` routes the Report to the Command source and
@@ -353,8 +361,10 @@ remains in that Adapter process, so the next identity for the same workerId
 skips Server verification and replaces the current Channel. WorkerGroup does not
 participate in route admission or availability evidence. The retained
 disconnected route is not Endpoint Binding, authentication, authorization,
-Worker liveness, or Worker score truth. It has no TTL or periodic recheck, is
-cleared on Adapter close/restart, and currently has no system unbind operation.
+Worker liveness, or Worker score truth. It has no periodic recheck; its
+verification evidence is bounded by Adapter-local retention and disconnected
+cache capacity, is cleared on Adapter close/restart, and currently has no
+system unbind operation.
 
 After route verification and connection activation they exchange direct
 protocol JSON:
@@ -402,10 +412,11 @@ type and opaque forward context. If a send has started and later fails, delivery
 
 Bound Worker Reports declaring the bound workerId and using `200` or
 Worker-owned `3...` enter the single Result queue for `dst=TASK` or
-`dst=SYSTEM`, preserving their original encoded JSON. Adapter-local KERNEL
-snapshot results enter that same queue. A full or closed queue still closes the
+`dst=SYSTEM`, preserving their original encoded JSON. Adapter-produced KERNEL
+snapshot and Route-change Reports enter that same queue. A full or closed queue still closes the
 Channel for TASK backpressure; best-effort SYSTEM evidence is dropped without
-closing it. Adapter-generated TASK `COMMAND_EXPIRED` enters
+closing it; best-effort KERNEL evidence is also dropped without closing a
+Worker Channel. Adapter-generated TASK `COMMAND_EXPIRED` enters
 the same queue. DIRECT_CALL expiry creates no synthetic evidence because the
 Server waiter owns timeout. There is no command/result coupling, ACK, durable
 Adapter queue, or exactly-once promise.

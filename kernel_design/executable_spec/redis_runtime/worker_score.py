@@ -531,49 +531,6 @@ return {"transitioned", target_score}
             self._pipeline_cas_updates(home_bucket_id, pending_updates),
         )
 
-    def demote_observed_worker_leases_to_recovery(
-        self,
-        *,
-        home_bucket_id: HomeBucketId,
-        observed_scores: Mapping[WorkerId, Score],
-    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
-        if not observed_scores:
-            return {}
-
-        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
-        pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
-        for worker_id, observed_score in observed_scores.items():
-            observed = self._decode_score(observed_score)
-            if observed is None:
-                immediate_results[worker_id] = WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID
-                )
-                continue
-            polarity, time_slot, _, dirty = observed
-            if (
-                polarity is not WorkerScorePolarity.HOT_ACQUIRE
-                or dirty != self.MIN_DIRTY
-            ):
-                immediate_results[worker_id] = WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID
-                )
-                continue
-            pending_updates[worker_id] = (
-                observed_score,
-                self._score(
-                    WorkerScorePolarity.RECOVERY_RECHECK,
-                    time_slot,
-                    self.MIN_LANE_RANK,
-                    dirty,
-                ),
-            )
-
-        return self._merge_batch_results(
-            observed_scores,
-            immediate_results,
-            self._pipeline_cas_updates(home_bucket_id, pending_updates),
-        )
-
     def mark_current_lease_dirty(
         self,
         *,

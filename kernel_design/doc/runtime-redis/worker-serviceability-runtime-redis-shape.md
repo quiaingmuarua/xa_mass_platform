@@ -9,7 +9,7 @@ ws:{prefix}:adapter:{adapterId}:probe-requests
   HASH field = workerId
   value       = "1"
 
-ws:{prefix}:probe-results
+ws:{prefix}:adapter-evidence-results
   LIST item = canonical encoded DeliveryReport
 ```
 
@@ -33,14 +33,14 @@ implements consumption only, because it is the bounded Adapter HTTP bridge.
 
 ## Result LIST
 
-`append_probe_results` accepts at most 100 standard `ADAPTER -> KERNEL`
-DeliveryReports. One report may contain a route snapshot for up to 100 Workers.
-The append Lua script accepts the prefix that fits under the 10,000-item limit
-and reports its count.
+`append_adapter_evidence_results` accepts at most 100 standard
+`ADAPTER -> KERNEL` DeliveryReports. A Route-change Report carries one Worker;
+a periodic snapshot Report may carry up to 100. The append Lua script accepts
+the prefix that fits under the 10,000-item limit and reports its count.
 
-`consume_probe_results` destructively removes at most 100 items from the head.
-Corrupt or wrong-endpoint entries are discarded. There is no pending batch,
-lease, replay, or result HASH.
+`consume_adapter_evidence_results` destructively removes at most 100 items from
+the head. Corrupt or wrong-endpoint entries are discarded. There is no pending
+batch, lease, replay, or result HASH.
 
 The Java Server provider implements append only. Python Kernel owns destructive
 result consumption and all interpretation or score policy.

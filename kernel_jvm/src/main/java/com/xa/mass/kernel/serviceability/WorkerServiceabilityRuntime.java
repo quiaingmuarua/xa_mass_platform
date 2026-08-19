@@ -13,9 +13,9 @@ public interface WorkerServiceabilityRuntime {
 
     List<String> consumeProbeRequests(String adapterId, int limit);
 
-    int appendProbeResults(List<DeliveryReport> reports);
+    int appendAdapterEvidenceResults(List<DeliveryReport> reports);
 
-    List<DeliveryReport> consumeProbeResults(int limit);
+    List<DeliveryReport> consumeAdapterEvidenceResults(int limit);
 
     enum ProbeRequestOfferStatus {
         OFFERED,

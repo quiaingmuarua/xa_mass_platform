@@ -77,18 +77,20 @@ fallback lookup. The
 platform events owned by Transport; concrete Extension contracts remain with
 their capability Owners.
 
-Long-lived identity reports the Server-issued workerId route. When the optional
-Kernel Worker Serviceability policy is enabled, its Dispatch Pacer writes
-coalesced, Adapter-partitioned probe requests. Server consumes those requests
-only after Adapter Direct and Worker Command capacity, constructs one bounded
-`KERNEL -> ADAPTER` connection-snapshot Command, and returns the resulting
-`ADAPTER -> KERNEL` Report to the Kernel-owned result handoff. Only the Kernel
-Result Pacer may interpret that evidence and ask the Worker score owner to
+Long-lived identity reports the Server-issued workerId route. The Adapter emits
+best-effort `ADAPTER -> KERNEL` evidence for exact connected/disconnected Route
+transitions. When the optional Kernel Worker Serviceability policy is enabled,
+its Dispatch Pacer also writes coalesced, Adapter-partitioned probe requests as
+loss and drift compensation. Server constructs bounded `KERNEL -> ADAPTER`
+connection-snapshot Commands only after higher-priority delivery sources and
+transparently appends both Report forms to the Kernel evidence handoff. Only
+the Kernel Result Pacer interprets them and asks the Worker score owner to
 converge a scheduling coordinate; Server and Transport never mirror connection
-state or write score.
+state or write score. Evidence age, scan cadence, positive/negative mapping and
+recovery limits are current Kernel policy, not cross-module contracts.
 
 The Adapter may also retain the latest explicitly observed Worker properties
-as a process-local, versioned projection. It is queried through an Adapter
+as a process-local timestamped projection. It is queried through an Adapter
 DIRECT_CALL and is deliberately not copied into Server or Kernel truth.
 
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a

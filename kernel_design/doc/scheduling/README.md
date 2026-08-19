@@ -66,7 +66,7 @@ Task score acquire
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
      -> Worker failure: keep Item claim coordinate + Worker exact release
-     -> Adapter rejection: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
+     -> Adapter rejection: keep Item claim coordinate + Worker exact release
      -> no result: Item claim and Worker lease expire naturally
 
 Auxiliary Server direct path
@@ -185,8 +185,8 @@ Worker Delivery Dispatch
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact recovery demotion, result disposition, and one-WorkerId/one-slot invariant implemented | Recovery lifecycle evidence, retry operation, probe cadence, and ranking |
-| Worker serviceability | Adapter-scoped request HASH, bounded Report LIST, explicit-Group Dispatch Pacer, lowest-priority Server/Adapter snapshot bridge, Result Pacer, and atomic score convergence implemented; absent configuration disables it | Polling evidence and production policy tuning |
+| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
+| Worker serviceability | Adapter Route-change evidence, Adapter-scoped request HASH, bounded evidence LIST, explicit-Group compensation Dispatch Pacer, lowest-priority Server/Adapter snapshot bridge, Result Pacer, and atomic score convergence implemented; absent configuration disables the Pacers | Polling evidence and production policy tuning |
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
@@ -237,8 +237,8 @@ rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs
 
 ws:{prefix}:adapter:{adapterId}:probe-requests
-ws:{prefix}:probe-results
-  coalesced Adapter route-probe requests and bounded batch Report evidence
+ws:{prefix}:adapter-evidence-results
+  coalesced Adapter route-probe requests and bounded Adapter Report evidence
 
 ```
 

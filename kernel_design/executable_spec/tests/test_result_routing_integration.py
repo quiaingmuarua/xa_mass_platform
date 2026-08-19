@@ -243,7 +243,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 time.sleep(self.worker_score.SLOT_MILLIS / 1_000)
         self.assertIn("worker-1", worker_candidates)
 
-    def test_adapter_rejection_demotes_and_resource_refresh_preserves_recovery(
+    def test_adapter_rejection_releases_and_resource_refresh_preserves_hot(
         self,
     ) -> None:
         self.resources.upsert_worker_group(
@@ -296,6 +296,13 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             time.sleep(0.02)
         self.assertIsNotNone(command)
         assert command is not None
+        leased_state = self.worker_score.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        self.assertIsNotNone(leased_state)
+        assert leased_state is not None
+        self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, leased_state.polarity)
         accepted = self.result_commands.append_worker_results(
             results=(
                 DeliveryReport.from_command(
@@ -309,25 +316,26 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(1, accepted)
 
-        recovery_state = None
+        released_state = None
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            recovery_state = self.worker_score.get_score_states(
+            released_state = self.worker_score.get_score_states(
                 home_bucket_id="image-workers",
                 worker_ids=["worker-1"],
             )["worker-1"]
             if (
-                recovery_state is not None
-                and recovery_state.polarity is WorkerScorePolarity.RECOVERY_RECHECK
+                released_state is not None
+                and released_state.polarity is WorkerScorePolarity.HOT_ACQUIRE
+                and released_state.score != leased_state.score
             ):
                 break
             time.sleep(0.02)
 
-        self.assertIsNotNone(recovery_state)
-        assert recovery_state is not None
+        self.assertIsNotNone(released_state)
+        assert released_state is not None
         self.assertIs(
-            WorkerScorePolarity.RECOVERY_RECHECK,
-            recovery_state.polarity,
+            WorkerScorePolarity.HOT_ACQUIRE,
+            released_state.polarity,
         )
 
         self.resources.upsert_worker(
@@ -337,7 +345,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             home_bucket_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
-        self.assertEqual(recovery_state, refreshed_state)
+        self.assertEqual(released_state, refreshed_state)
         self.assertEqual(
             0,
             self.redis.exists(

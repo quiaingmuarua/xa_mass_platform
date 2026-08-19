@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -68,10 +69,86 @@ class WorkerConnectionMechanismTest {
                     .isTrue();
             assertThat(fixture.routes.activeChannel("worker-1"))
                     .isSameAs(channel);
+
+            fixture.reportProcess.round();
+            assertThat(fixture.evidenceReports).hasSize(1);
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(0),
+                    "worker-1",
+                    "CONNECTED"
+            );
         } finally {
             channel.finishAndReleaseAll();
         }
         assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+    }
+
+    @Test
+    void disconnectedReconnectReportsOnlyExactAvailabilityTransitions() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel first = fixture.channel();
+        EmbeddedChannel replacement = fixture.channel();
+        EmbeddedChannel reconnect = fixture.channel();
+        try {
+            first.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, first);
+
+            replacement.writeInbound(fixture.identity("worker-1"));
+            awaitBound(fixture, replacement);
+            first.finishAndReleaseAll();
+            fixture.reportProcess.round();
+            assertThat(fixture.evidenceReports).hasSize(1);
+
+            replacement.finishAndReleaseAll();
+            reconnect.writeInbound(fixture.identity("worker-1"));
+            awaitBound(fixture, reconnect);
+            fixture.reportProcess.round();
+
+            assertThat(fixture.evidenceReports).hasSize(3);
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(0),
+                    "worker-1",
+                    "CONNECTED"
+            );
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(1),
+                    "worker-1",
+                    "DISCONNECTED"
+            );
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(2),
+                    "worker-1",
+                    "CONNECTED"
+            );
+            assertThat(fixture.remoteApi.verificationCalls).isEqualTo(1);
+        } finally {
+            if (first.isOpen()) {
+                first.finishAndReleaseAll();
+            }
+            if (replacement.isOpen()) {
+                replacement.finishAndReleaseAll();
+            }
+            reconnect.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void evidenceQueuePressureNeverClosesVerifiedWorkerChannel() {
+        Fixture fixture = new Fixture(1);
+        assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+                .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+
+            assertThat(channel.isActive()).isTrue();
+            assertThat(fixture.network.closedChannels).isEmpty();
+        } finally {
+            channel.finishAndReleaseAll();
+        }
     }
 
     @Test
@@ -243,6 +320,41 @@ class WorkerConnectionMechanismTest {
     }
 
     @Test
+    void definiteWriteFailureDetachesOnlyCurrentRouteAndReportsUnavailable() {
+        Fixture fixture = new Fixture();
+        EmbeddedChannel channel = fixture.channel();
+        try {
+            channel.writeInbound(fixture.identity("worker-1"));
+            fixture.remoteApi.currentVerification().complete(null);
+            awaitBound(fixture, channel);
+            fixture.reportProcess.round();
+
+            fixture.network.nextWriteAttempt = TextWriteAttempt.UNKNOWN;
+            DeliveryCommand command = DeliveryCommand.create(
+                    TASK,
+                    WORKER,
+                    "test.observe",
+                    2_000,
+                    "{}",
+                    "context"
+            );
+            assertThat(fixture.mechanism.deliver("worker-1", command))
+                    .isEqualTo(DeliveryAttempt.UNKNOWN);
+            fixture.reportProcess.round();
+
+            assertThat(fixture.routes.activeChannel("worker-1")).isNull();
+            assertThat(fixture.evidenceReports).hasSize(2);
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(1),
+                    "worker-1",
+                    "DISCONNECTED"
+            );
+        } finally {
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void closeCurrentDetachesOnlyCurrentRouteAndPreservesVerification() {
         Fixture fixture = new Fixture();
         EmbeddedChannel active = new EmbeddedChannel();
@@ -273,6 +385,13 @@ class WorkerConnectionMechanismTest {
                     "worker-1",
                     WorkerConnectionState.DISCONNECTED
             ));
+            fixture.reportProcess.round();
+            assertThat(fixture.evidenceReports).hasSize(1);
+            fixture.assertConnectionEvidence(
+                    fixture.evidenceReports.get(0),
+                    "worker-1",
+                    "DISCONNECTED"
+            );
 
             assertThat(fixture.routes.admitIdentity(
                     "worker-1",
@@ -632,6 +751,7 @@ class WorkerConnectionMechanismTest {
                 new PendingRouteHttpPeer();
         private final List<String> reports = new ArrayList<>();
         private final List<String> systemReports = new ArrayList<>();
+        private final List<String> evidenceReports = new ArrayList<>();
         private final ScriptedHttpServer reportServer;
         private final DeliveryReportProcess reportProcess;
         private final WorkerRouteRegistry routes;
@@ -695,8 +815,11 @@ class WorkerConnectionMechanismTest {
                 @SuppressWarnings("unchecked")
                 List<String> batch = (List<String>) body.get("results");
                 for (String encoded : batch) {
-                    if (codec.decodeDeliveryReport(encoded).dst() == SYSTEM) {
+                    var report = codec.decodeDeliveryReport(encoded);
+                    if (report.dst() == SYSTEM) {
                         systemReports.add(encoded);
+                    } else if (report.dst() == KERNEL) {
+                        evidenceReports.add(encoded);
                     } else {
                         reports.add(encoded);
                     }
@@ -708,6 +831,34 @@ class WorkerConnectionMechanismTest {
             });
             httpServers.add(server);
             return server;
+        }
+
+        private void assertConnectionEvidence(
+                String encodedReport,
+                String workerId,
+                String state
+        ) {
+            DeliveryReport report = codec.decodeDeliveryReport(encodedReport);
+            assertThat(report.src()).isEqualTo(ADAPTER);
+            assertThat(report.sourceId()).isEqualTo("adapter-1");
+            assertThat(report.dst()).isEqualTo(KERNEL);
+            assertThat(report.messageType()).isEqualTo(
+                    "platform.adapter.worker-connection.changed"
+            );
+            assertThat(report.outcomeCode()).isEqualTo("200");
+            assertThat(report.forward()).isEqualTo(
+                    "worker-serviceability-evidence:v1"
+            );
+            Map<String, Object> payload = Jsons.parseObject(report.payload());
+            assertThat(payload).containsOnlyKeys(
+                    "workerId",
+                    "state",
+                    "observedAtMillis"
+            );
+            assertThat(payload).containsEntry("workerId", workerId);
+            assertThat(payload).containsEntry("state", state);
+            assertThat(payload.get("observedAtMillis"))
+                    .isInstanceOf(Number.class);
         }
 
         private String taskResult(String workerId) {
@@ -820,6 +971,7 @@ class WorkerConnectionMechanismTest {
         private final List<Channel> closedChannels = new ArrayList<>();
         private final List<AdapterConnectionCloseReason> closeReasons =
                 new ArrayList<>();
+        private TextWriteAttempt nextWriteAttempt = TextWriteAttempt.STARTED;
 
         @Override
         public void start(ChannelHandler sharedConnectionHandler) {
@@ -829,6 +981,11 @@ class WorkerConnectionMechanismTest {
         public TextWriteAttempt writeText(Channel channel, String message) {
             if (!channel.isActive() || !channel.isWritable()) {
                 return TextWriteAttempt.RETRY_LATER;
+            }
+            TextWriteAttempt attempt = nextWriteAttempt;
+            nextWriteAttempt = TextWriteAttempt.STARTED;
+            if (attempt != TextWriteAttempt.STARTED) {
+                return attempt;
             }
             writtenMessages.add(message);
             return TextWriteAttempt.STARTED;

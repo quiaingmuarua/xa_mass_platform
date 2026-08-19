@@ -101,8 +101,14 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
             forward="worker-serviceability:v1:1000",
         )
 
-        self.assertEqual(1, self.runtime.append_probe_results(reports=(report,)))
-        self.assertEqual((report,), self.runtime.consume_probe_results(limit=1))
+        self.assertEqual(
+            1,
+            self.runtime.append_adapter_evidence_results(reports=(report,)),
+        )
+        self.assertEqual(
+            (report,),
+            self.runtime.consume_adapter_evidence_results(limit=1),
+        )
 
     def test_score_check_is_fenced_by_newer_score_time(self) -> None:
         now_millis = self.redis.time()[0] * 1_000

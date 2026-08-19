@@ -228,6 +228,19 @@ Different Adapter instances never share a Session, cache, or Channel registry.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 
+The mechanism emits one best-effort
+`platform.adapter.worker-connection.changed` Report when an exact Route
+transition first becomes connected or loses its current connected Channel.
+The payload contains only `workerId`, `CONNECTED|DISCONNECTED`, and the
+Adapter-observed wall-clock time; the Report is `ADAPTER -> KERNEL` with fixed
+`worker-serviceability-evidence:v1` forward. First verification success and a
+disconnected-cache reconnect produce `CONNECTED`. Exact inactive, write
+failure, management close, and Adapter shutdown produce `DISCONNECTED`.
+Connected-Channel replacement, pending verification, verification failure,
+duplicate removal, and stale old-Channel callbacks produce no evidence. A full
+or closed Result queue drops this evidence without closing the Worker Channel.
+WorkerGroup remains outside Route state and payload.
+
 Successful route verification is retained for ten minutes by default after a
 disconnect. A reconnect inside that window activates locally without renewing
 the evidence. A current connected route remains trusted for its physical
@@ -364,9 +377,9 @@ another complete Map, and advance the one Worker-level `updatedAtMillis`.
 ### Result ingress round
 
 `DeliveryReportProcess` owns one private queue, one pending batch, and the
-single `results:append` path. Qualified TASK, SYSTEM, and Adapter-local KERNEL
-reports preserve their original encoded JSON and enter through the same
-concrete `ingress(...)` operation.
+single `results:append` path. Qualified Worker TASK/SYSTEM Reports and
+Adapter-produced KERNEL Reports enter through the same concrete `ingress(...)`
+operation. Worker Reports preserve their original encoded JSON.
 
 ```text
 pending batch exists -> retry it first

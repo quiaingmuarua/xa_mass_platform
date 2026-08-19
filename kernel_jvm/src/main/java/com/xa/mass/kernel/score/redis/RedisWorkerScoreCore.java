@@ -285,17 +285,6 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public Map<String, WorkerScoreTransitionResult>
-            demoteObservedWorkerLeasesToRecovery(
-                    String homeBucketId,
-                    Map<String, Long> observedScores
-            ) {
-        throw notImplemented(
-                "demote_observed_worker_leases_to_recovery"
-        );
-    }
-
-    @Override
     public WorkerScoreTransitionResult markCurrentLeaseDirty(
             String homeBucketId,
             String workerId

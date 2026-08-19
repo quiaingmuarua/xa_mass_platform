@@ -88,7 +88,7 @@ class ResultRoutingBuiltinPolicies:
         return {
             DeliveryReportOutcomeClass.SUCCESS: self.release_worker_score_holds,
             DeliveryReportOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
-            DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.demote_worker_score_holds_to_recovery,
+            DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.release_worker_score_holds,
         }
 
     def store_task_success_results(
@@ -123,18 +123,6 @@ class ResultRoutingBuiltinPolicies:
             home_bucket_id=worker_group_id,
             observed_scores=self._latest_worker_scores(results),
             release_time_millis=self._current_time_millis(),
-        )
-
-    def demote_worker_score_holds_to_recovery(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        results: tuple[WorkerResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        self.worker_score.demote_observed_worker_leases_to_recovery(
-            home_bucket_id=worker_group_id,
-            observed_scores=self._latest_worker_scores(results),
         )
 
     @staticmethod

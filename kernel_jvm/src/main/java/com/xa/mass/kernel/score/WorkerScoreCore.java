@@ -71,12 +71,6 @@ public interface WorkerScoreCore {
             long targetTimeMillis
     );
 
-    Map<String, WorkerScoreTransitionResult>
-            demoteObservedWorkerLeasesToRecovery(
-                    String homeBucketId,
-                    Map<String, Long> observedScores
-            );
-
     WorkerScoreTransitionResult markCurrentLeaseDirty(
             String homeBucketId,
             String workerId

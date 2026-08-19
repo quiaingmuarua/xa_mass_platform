@@ -22,8 +22,11 @@ from ..kernel.worker_serviceability import (
 _SYSTEM_POLLING_ENDPOINT = "system-polling"
 _PROBE_EVENT = "platform.adapter.worker-connections.snapshot"
 _PROBE_FORWARD_PREFIX = "worker-serviceability:v1:"
+_CONNECTION_CHANGED_EVENT = "platform.adapter.worker-connection.changed"
+_CONNECTION_EVIDENCE_FORWARD = "worker-serviceability-evidence:v1"
 _CONNECTED = "CONNECTED"
 _UNAVAILABLE_STATES = frozenset({"DISCONNECTED", "UNKNOWN"})
+_CONNECTION_STATES = frozenset({_CONNECTED, "DISCONNECTED"})
 
 
 def _current_time_millis() -> int:
@@ -68,6 +71,7 @@ class WorkerServiceabilityDispatchConfig:
 class WorkerServiceabilityResultConfig:
     max_recovery_attempts: int = 5
     result_report_limit: int = 10
+    evidence_max_age_millis: int = 30_000
 
     def __post_init__(self) -> None:
         if any(
@@ -75,13 +79,18 @@ class WorkerServiceabilityResultConfig:
             for value in (
                 self.max_recovery_attempts,
                 self.result_report_limit,
+                self.evidence_max_age_millis,
             )
         ):
-            raise ValueError("serviceability result limits must be integers")
+            raise ValueError(
+                "serviceability result configuration must use integers"
+            )
         if not 1 <= self.max_recovery_attempts <= WorkerScoreCore.MAX_LANE_RANK:
             raise ValueError("max recovery attempts must be in 1..99")
         if not 1 <= self.result_report_limit <= 100:
             raise ValueError("result Report limit must be in 1..100")
+        if self.evidence_max_age_millis <= 0:
+            raise ValueError("Adapter evidence max age must be positive")
 
 
 class WorkerServiceabilityDispatchPacer:
@@ -190,69 +199,156 @@ class WorkerServiceabilityDispatchPacer:
 
 
 class WorkerServiceabilityResultPacer:
-    """Apply best-effort Adapter route snapshots to Worker scores."""
+    """Apply best-effort Adapter route evidence to Worker scores."""
 
     def __init__(
         self,
         runtime: WorkerServiceabilityRuntime,
         worker_catalog: WorkerResourceCatalog,
         worker_score: WorkerScoreCore,
+        *,
+        clock_millis: Callable[[], int] = _current_time_millis,
     ) -> None:
         self.runtime = runtime
         self.worker_catalog = worker_catalog
         self.worker_score = worker_score
+        self._clock_millis = clock_millis
 
-    def route_probe_results(
+    def route_adapter_evidence(
         self,
         *,
         config: WorkerServiceabilityResultConfig,
     ) -> int:
-        reports = self.runtime.consume_probe_results(
+        reports = self.runtime.consume_adapter_evidence_results(
             limit=config.result_report_limit,
         )
-        applied = 0
+        now_millis = self._clock_millis()
+        latest_checks: dict[str, WorkerServiceabilityCheck] = {}
         for report in reports:
-            decoded = self._decode_report(report)
+            decoded = self._decode_report(
+                report,
+                now_millis=now_millis,
+                evidence_max_age_millis=config.evidence_max_age_millis,
+            )
             if decoded is None:
                 continue
             check_started_at_millis, serviceable_by_worker_id = decoded
-            group_ids = self.worker_catalog.get_worker_group_ids(
-                worker_ids=tuple(serviceable_by_worker_id),
-            )
-            checks_by_group: dict[
-                str, dict[str, WorkerServiceabilityCheck]
-            ] = defaultdict(dict)
             for worker_id, serviceable in serviceable_by_worker_id.items():
-                worker_group_id = group_ids.get(worker_id)
-                if worker_group_id is None:
-                    continue
-                checks_by_group[worker_group_id][worker_id] = (
-                    WorkerServiceabilityCheck(
-                        check_started_at_millis=check_started_at_millis,
-                        serviceable=serviceable,
-                    )
+                check = WorkerServiceabilityCheck(
+                    check_started_at_millis=check_started_at_millis,
+                    serviceable=serviceable,
                 )
-            for worker_group_id, checks in checks_by_group.items():
-                self.worker_score.apply_worker_serviceability_checks(
-                    home_bucket_id=worker_group_id,
-                    checks_by_worker_id=checks,
-                    max_recovery_attempts=config.max_recovery_attempts,
-                )
-                applied += len(checks)
+                previous = latest_checks.get(worker_id)
+                if (
+                    previous is None
+                    or check.check_started_at_millis
+                    >= previous.check_started_at_millis
+                ):
+                    latest_checks[worker_id] = check
+        if not latest_checks:
+            return 0
+
+        group_ids: dict[str, str | None] = {}
+        worker_ids = tuple(latest_checks)
+        lookup_limit = WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT
+        for offset in range(
+            0,
+            len(worker_ids),
+            lookup_limit,
+        ):
+            chunk = worker_ids[offset:offset + lookup_limit]
+            group_ids.update(
+                self.worker_catalog.get_worker_group_ids(worker_ids=chunk)
+            )
+
+        checks_by_group: dict[
+            str, dict[str, WorkerServiceabilityCheck]
+        ] = defaultdict(dict)
+        for worker_id, check in latest_checks.items():
+            worker_group_id = group_ids.get(worker_id)
+            if worker_group_id is not None:
+                checks_by_group[worker_group_id][worker_id] = check
+
+        applied = 0
+        for worker_group_id, checks in checks_by_group.items():
+            self.worker_score.apply_worker_serviceability_checks(
+                home_bucket_id=worker_group_id,
+                checks_by_worker_id=checks,
+                max_recovery_attempts=config.max_recovery_attempts,
+            )
+            applied += len(checks)
         return applied
 
     @staticmethod
     def _decode_report(
         report: DeliveryReport,
+        *,
+        now_millis: int,
+        evidence_max_age_millis: int,
     ) -> tuple[int, dict[str, bool]] | None:
         if (
             report.src is not DeliveryEndpoint.ADAPTER
             or report.dst is not DeliveryEndpoint.KERNEL
-            or report.message_type != _PROBE_EVENT
             or report.outcome_code != "200"
             or not report.source_id
-            or not report.forward.startswith(_PROBE_FORWARD_PREFIX)
         ):
+            return None
+        if report.message_type == _CONNECTION_CHANGED_EVENT:
+            decoded = WorkerServiceabilityResultPacer._decode_connection_change(
+                report
+            )
+        elif report.message_type == _PROBE_EVENT:
+            decoded = WorkerServiceabilityResultPacer._decode_probe_snapshot(
+                report
+            )
+        else:
+            return None
+        if decoded is None:
+            return None
+        check_started_at_millis, serviceable_by_worker_id = decoded
+        evidence_age_millis = now_millis - check_started_at_millis
+        if (
+            evidence_age_millis < 0
+            or evidence_age_millis > evidence_max_age_millis
+        ):
+            return None
+        return check_started_at_millis, serviceable_by_worker_id
+
+    @staticmethod
+    def _decode_connection_change(
+        report: DeliveryReport,
+    ) -> tuple[int, dict[str, bool]] | None:
+        if report.forward != _CONNECTION_EVIDENCE_FORWARD:
+            return None
+        try:
+            payload = json.loads(report.payload)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict) or set(payload) != {
+            "workerId",
+            "state",
+            "observedAtMillis",
+        }:
+            return None
+        worker_id = payload["workerId"]
+        state = payload["state"]
+        observed_at_millis = payload["observedAtMillis"]
+        if (
+            not isinstance(worker_id, str)
+            or not worker_id
+            or state not in _CONNECTION_STATES
+            or isinstance(observed_at_millis, bool)
+            or not isinstance(observed_at_millis, int)
+            or observed_at_millis <= 0
+        ):
+            return None
+        return observed_at_millis, {worker_id: state == _CONNECTED}
+
+    @staticmethod
+    def _decode_probe_snapshot(
+        report: DeliveryReport,
+    ) -> tuple[int, dict[str, bool]] | None:
+        if not report.forward.startswith(_PROBE_FORWARD_PREFIX):
             return None
         raw_check_started = report.forward[len(_PROBE_FORWARD_PREFIX):]
         if not raw_check_started.isdigit():

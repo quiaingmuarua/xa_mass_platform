@@ -270,7 +270,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             {
                 DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
                 DeliveryReportOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
-                DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.release_worker_score_holds,
             },
             self.builtin_policies.default_worker_result_handlers(),
         )
@@ -417,17 +417,17 @@ class ResultRoutingPacerTest(unittest.TestCase):
             self.worker_score.release_score_holds.call_args_list,
         )
 
-    def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
+    def test_adapter_rejection_only_releases_exact_worker_lease(self) -> None:
         rejection = self.result(outcome_code="23002", payload=None)
         self.queues[DeliveryReportOutcomeClass.ADAPTER_REJECTION] = (rejection,)
 
         self.assertEqual(1, self.route())
 
-        self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once_with(
+        self.worker_score.release_score_holds.assert_called_once_with(
             home_bucket_id="image-workers",
             observed_scores={"worker-1": 201},
+            release_time_millis=self.NOW_MILLIS,
         )
-        self.worker_score.release_score_holds.assert_not_called()
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
 
@@ -439,8 +439,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
         self.assertEqual(2, self.route())
 
-        self.worker_score.release_score_holds.assert_called_once()
-        self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once()
+        self.assertEqual(2, self.worker_score.release_score_holds.call_count)
 
     def test_result_context_supplies_worker_disposition_bucket(self) -> None:
         self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
@@ -476,7 +475,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_score_holds.assert_not_called()
-        self.worker_score.demote_observed_worker_leases_to_recovery.assert_not_called()
 
     def test_each_lane_uses_its_own_bounded_consume(self) -> None:
         self.assertEqual(0, self.route())

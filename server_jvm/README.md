@@ -50,7 +50,7 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and dispatch wake | Python Kernel HTTP |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus Java Redis Kernel-result append |
+| Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus transparent Java Redis Adapter-evidence append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | WorkerGroup RPC and Task Batch | Server-bounded use cases over existing owners |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
@@ -123,9 +123,11 @@ Serviceability Dispatch Pacer writes Adapter-partitioned probe requests. Server
 destructively consumes a bounded request set only at the lowest Command-response
 priority and constructs one `KERNEL -> ADAPTER`
 `platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
-Result path routes its `ADAPTER -> KERNEL` Report into the bounded Kernel
-Serviceability result handoff. Server neither interprets the snapshot as online
-truth nor invokes the Worker score owner.
+Result path routes all `ADAPTER -> KERNEL` Reports into the bounded Kernel
+Serviceability evidence handoff. This includes periodic snapshots and
+Adapter-produced single-Worker Route changes. Server parses neither event nor
+payload semantics, does not resolve WorkerGroup, and never invokes the Worker
+score owner.
 
 Adapter instances may configure `route-cache` and `properties-cache`. The
 defaults retain disconnected verification evidence for `10m` with at most
@@ -177,14 +179,14 @@ DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server
 Serviceability probe requests  10000 per Adapter HASH
-Serviceability probe results   10000 per Redis prefix
+Serviceability evidence       10000 per Redis prefix
 ```
 
 The optional Serviceability handoff uses
 `ws:{redisPrefix}:adapter:{adapterId}:probe-requests` and
-`ws:{redisPrefix}:probe-results`. These are Kernel-owned best-effort handoffs,
-not current connectivity truth. Server implements only the bounded Adapter
-request consume and Result append needed by its HTTP bridge.
+`ws:{redisPrefix}:adapter-evidence-results`. These are Kernel-owned best-effort
+handoffs, not current connectivity truth. Server implements only the bounded
+Adapter request consume and Adapter-evidence append needed by its HTTP bridge.
 
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a

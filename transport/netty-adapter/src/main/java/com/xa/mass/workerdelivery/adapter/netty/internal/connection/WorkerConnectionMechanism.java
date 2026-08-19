@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.connection;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -47,6 +48,10 @@ public final class WorkerConnectionMechanism {
     );
     private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
             "platform.worker.properties.snapshot";
+    private static final String WORKER_CONNECTION_CHANGED_EVENT =
+            "platform.adapter.worker-connection.changed";
+    private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
+            "worker-serviceability-evidence:v1";
 
     private static final System.Logger LOGGER = System.getLogger(
             WorkerConnectionMechanism.class.getName()
@@ -112,15 +117,17 @@ public final class WorkerConnectionMechanism {
 
     void channelInactive(Channel channel) {
         String workerId = routes.claimedWorkerId(channel);
-        routes.onChannelClosed(channel);
+        String disconnectedWorkerId = routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
+        reportDisconnected(disconnectedWorkerId);
     }
 
     void channelFailed(Channel channel, Throwable failure) {
         Objects.requireNonNull(failure, "failure");
         String workerId = routes.claimedWorkerId(channel);
-        routes.onChannelClosed(channel);
+        String disconnectedWorkerId = routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
+        reportDisconnected(disconnectedWorkerId);
         networkServer.closeConnection(
                 channel,
                 AdapterConnectionCloseReason.TRANSPORT_ERROR
@@ -214,6 +221,7 @@ public final class WorkerConnectionMechanism {
                 continue;
             }
             invalidatePropertiesIfRouteForgotten(workerId);
+            reportConnectionChanged(workerId, "DISCONNECTED");
             boolean active = channel.isActive();
             networkServer.closeConnection(
                     channel,
@@ -274,6 +282,9 @@ public final class WorkerConnectionMechanism {
                     AdapterConnectionCloseReason.VERIFICATION_IN_PROGRESS
             );
             case VERIFIED_ACTIVATED -> {
+                if (admission.becameAvailable()) {
+                    reportConnectionChanged(workerId, "CONNECTED");
+                }
                 closeReplaced(admission.replacedChannel());
             }
             case VERIFICATION_CLAIMED -> {
@@ -337,6 +348,7 @@ public final class WorkerConnectionMechanism {
             );
             return;
         }
+        reportConnectionChanged(workerId, "CONNECTED");
     }
 
     private void receiveBoundReport(
@@ -481,8 +493,11 @@ public final class WorkerConnectionMechanism {
             Channel channel,
             AdapterConnectionCloseReason reason
     ) {
-        routes.deactivate(workerId, channel);
+        boolean disconnected = routes.deactivate(workerId, channel);
         invalidatePropertiesIfRouteForgotten(workerId);
+        if (disconnected) {
+            reportConnectionChanged(workerId, "DISCONNECTED");
+        }
         networkServer.closeConnection(channel, reason);
     }
 
@@ -491,9 +506,65 @@ public final class WorkerConnectionMechanism {
             AdapterConnectionCloseReason reason
     ) {
         String workerId = routes.claimedWorkerId(channel);
-        routes.onChannelClosed(channel);
+        String disconnectedWorkerId = routes.onChannelClosed(channel);
         invalidatePropertiesIfRouteForgotten(workerId);
+        reportDisconnected(disconnectedWorkerId);
         networkServer.closeConnection(channel, reason);
+    }
+
+    private void reportDisconnected(String workerId) {
+        if (workerId != null) {
+            reportConnectionChanged(workerId, "DISCONNECTED");
+        }
+    }
+
+    private void reportConnectionChanged(String workerId, String state) {
+        try {
+            DeliveryReport evidence = DeliveryReport.create(
+                    ADAPTER,
+                    adapterId,
+                    KERNEL,
+                    WORKER_CONNECTION_CHANGED_EVENT,
+                    "200",
+                    Jsons.toJson(Map.of(
+                            "workerId", workerId,
+                            "state", state,
+                            "observedAtMillis", System.currentTimeMillis()
+                    )),
+                    WORKER_SERVICEABILITY_EVIDENCE_FORWARD
+            );
+            DeliveryReportProcess.ReportIngressStatus status =
+                    reportProcess.ingress(List.of(
+                            codec.encodeDeliveryReport(evidence)
+                    ));
+            if (status != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
+                LOGGER.log(
+                        System.Logger.Level.WARNING,
+                        "errorCode={0} operation={1} adapterId={2} "
+                                + "workerId={3} state={4} queueStatus={5}",
+                        WorkerDeliveryAdapterErrorCode
+                                .DELIVERY_INTERRUPTED.code(),
+                        "workerConnection.reportRouteEvidence",
+                        adapterId,
+                        workerId,
+                        state,
+                        status
+                );
+            }
+        } catch (RuntimeException error) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "errorCode={0} operation={1} adapterId={2} "
+                            + "workerId={3} state={4} message={5}",
+                    WorkerDeliveryAdapterErrorCode
+                            .WORKER_MESSAGE_INVALID.code(),
+                    "workerConnection.reportRouteEvidence",
+                    adapterId,
+                    workerId,
+                    state,
+                    error.getMessage()
+            );
+        }
     }
 
     private void invalidatePropertiesIfRouteForgotten(String workerId) {

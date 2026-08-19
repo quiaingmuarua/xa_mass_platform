@@ -104,8 +104,8 @@ score == 0
 HOT_ACQUIRE does not mean immediately acquirable or physically connected. The
 sign selects the ordinary-allocation versus recovery-validation lane; the
 decoded `timeSlot` answers whether a HOT Worker is due, leased, held, disabled,
-draining, or cooling down. A trusted Adapter pre-execution rejection may demote
-only polarity while preserving the existing time coordinate.
+draining, or cooling down. Task result disposition releases an exact lease but
+does not infer scheduling serviceability from the outcome class.
 
 `abs(score)` is decoded the same way for both polarities:
 
@@ -150,7 +150,7 @@ HOT_ACQUIRE
 
 RECOVERY_RECHECK
   recovery validation coordinate interpreted through a recent lookback window
-  examples: Adapter rejection recheck, stale endpoint validation, reconnect evidence backoff,
+  examples: failed Adapter Route serviceability checks, stale endpoint validation,
   future retry delay, too-old recovery exhausted / cold parked
 ```
 
@@ -272,7 +272,7 @@ score = -base(timeSlot, laneRank, dirty)
 Typical inputs:
 
 ```text
-trusted Adapter pre-execution rejection
+newer Adapter Route evidence that the Worker is unavailable
 owner-validated evidence that TaskItem serviceability is uncertain
 stale endpoint observation requiring recovery validation
 recoverable dispatch gate block requiring a probe
@@ -481,7 +481,7 @@ Polarity move rule:
 ```text
 HOT_ACQUIRE -> RECOVERY_RECHECK
   scheduling-serviceability demotion
-  examples: trusted Adapter pre-execution rejection or failed owner validation
+  examples: newer unavailable Route evidence or failed owner validation
 
 RECOVERY_RECHECK -> HOT_ACQUIRE
   validated recovery transition
@@ -489,22 +489,23 @@ RECOVERY_RECHECK -> HOT_ACQUIRE
   policy validation
 ```
 
-Polarity move always preserves `timeSlot`. This prevents disabled,
-draining, cooldown, or far-future holds from escaping when serviceability polarity
-changes, and it lets a recovered too-old RECOVERY_RECHECK score become
-immediately due in HOT_ACQUIRE. Polarity move must not inherit laneRank across
+The generic exact `toggle_current_polarity` operation preserves `timeSlot`.
+`apply_worker_serviceability_checks` instead requires the stored time slot to
+be older than the Adapter observation and writes that observation slot. This
+fences newer leases and holds without exposing an opaque score to the Pacer.
+Polarity moves must not inherit laneRank across
 lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have different
 meanings, so every polarity move starts the target lane at `laneRank=0`.
 Polarity move preserves the dirty bit. Dirty score primitives are implemented;
 policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw external observation never writes dirty.
 
-Raw connect, heartbeat, keepalive, session, latency observation, and
+Raw socket, heartbeat, keepalive, session, latency observation, and
 `WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
 Upsert initializes only a missing score and preserves every existing score
-exactly while replacing the Worker Properties snapshot. A future explicit
-lifecycle operation must validate recovery evidence before invoking
-`toggle_current_polarity` for RECOVERY_RECHECK-to-HOT_ACQUIRE.
+exactly while replacing the Worker Properties snapshot. Only normalized
+Adapter Route evidence interpreted by the Kernel Serviceability Result Pacer
+uses the evidence-time transition; Transport never calls the score owner.
 
 ## Interface Rule
 
@@ -834,11 +835,6 @@ renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   dirty entries return STALE and caller must discard / rematch
 
-demote_observed_worker_leases_to_recovery(homeBucketId, observedScores)
-  each observed score must be a clean positive opaque lease fence
-  independently requires storedScore == observedScore
-  preserves timeSlot and dirty
-  writes RECOVERY_RECHECK with laneRank=0
 ```
 
 These batch APIs operate on one WorkerGroup/ZSET key and shared target
@@ -936,7 +932,8 @@ needed.
 | HOT_ACQUIRE | candidate remains usable and no delay is needed | no rewrite, or HOT_ACQUIRE(nextTime, laneRank, dirty) | same polarity |
 | HOT_ACQUIRE | slot contention / cooldown / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
-| HOT_ACQUIRE | trusted Adapter rejection / failed serviceability validation | RECOVERY_RECHECK(sameTime, 0, dirty) | exact observed-score demotion |
+| HOT_ACQUIRE | Adapter rejection result | exact lease release, polarity preserved | complete observed-score CAS |
+| HOT_ACQUIRE | newer Adapter Route evidence says unavailable | RECOVERY_RECHECK(evidenceTime, 0, dirty) | stored time must be older than evidence time |
 | RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, 0, dirty) | owner-validated polarity move |
 | RECOVERY_RECHECK | recovery validation fails and retry remains | RECOVERY_RECHECK(nextRecheckTime, retryCount + 1, dirty) | future exact retry operation; not implemented in this slice |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
@@ -996,13 +993,13 @@ assignment-dispatch worker selection path.
 | Worker upsert during Server Bind | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; replace Worker Properties and preserve every existing score exactly |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
-| trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving time/dirty and entering recovery at laneRank=0 |
-| future validated recovery lifecycle evidence | yes | an explicit lifecycle owner may invoke RECOVERY_RECHECK -> HOT_ACQUIRE after validation; no production caller exists yet |
+| trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
+| newer Adapter Route evidence | yes | Serviceability Result Pacer applies HOT/RECOVERY using the evidence-time fence |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
-| raw connected / reconnect / session refresh | no | local observation only |
+| raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |
 | trusted Worker execution result (`200` or Worker-owned `3...`) | yes | exact release of the correlated Worker lease fence |
-| trusted Adapter pre-execution rejection (`COMMAND_EXPIRED` for command expiry) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
+| trusted Adapter pre-execution rejection (`COMMAND_EXPIRED` for command expiry) | yes | exact release of the correlated Worker lease fence, preserving polarity |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |
 | read projection / trace | no | diagnostics only |
 
@@ -1021,8 +1018,8 @@ time-lowering operations:
 manual disable / drain / maintenance:
   owner gate fact and same-polarity hold score write
 
-trusted serviceability demotion:
-  owner block fact and HOT_ACQUIRE -> RECOVERY_RECHECK polarity move
+trusted serviceability evidence:
+  stored score time must be older than Adapter observed time before polarity move
 
 validated recovery:
   validated owner facts and RECOVERY_RECHECK -> HOT_ACQUIRE polarity move

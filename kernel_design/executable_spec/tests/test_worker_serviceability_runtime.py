@@ -42,7 +42,7 @@ class FakeRedis:
             for worker_id in worker_ids:
                 del row[worker_id]
             return worker_ids
-        if "worker_serviceability_append_probe_results" in script:
+        if "worker_serviceability_append_adapter_evidence_results" in script:
             capacity = int(argv[0])
             row = self.lists.setdefault(key, [])
             accepted = min(capacity - len(row), len(argv) - 1)
@@ -164,11 +164,11 @@ class RedisWorkerServiceabilityRuntimeTest(unittest.TestCase):
 
         self.assertEqual(
             1,
-            self.runtime.append_probe_results(reports=(report,)),
+            self.runtime.append_adapter_evidence_results(reports=(report,)),
         )
         self.assertEqual(
             (report,),
-            self.runtime.consume_probe_results(limit=1),
+            self.runtime.consume_adapter_evidence_results(limit=1),
         )
 
     def test_result_capacity_accepts_whole_report_items_only(self) -> None:
@@ -179,9 +179,12 @@ class RedisWorkerServiceabilityRuntimeTest(unittest.TestCase):
 
         self.assertEqual(
             2,
-            self.runtime.append_probe_results(reports=reports),
+            self.runtime.append_adapter_evidence_results(reports=reports),
         )
-        self.assertEqual(reports[:2], self.runtime.consume_probe_results(limit=3))
+        self.assertEqual(
+            reports[:2],
+            self.runtime.consume_adapter_evidence_results(limit=3),
+        )
 
     def test_corrupt_or_wrong_owner_results_are_consumed_and_skipped(self) -> None:
         key = self.runtime._results_key()
@@ -196,7 +199,10 @@ class RedisWorkerServiceabilityRuntimeTest(unittest.TestCase):
         )
         self.redis.lists[key] = ["{bad-json", encode_delivery_report(wrong)]
 
-        self.assertEqual((), self.runtime.consume_probe_results(limit=2))
+        self.assertEqual(
+            (),
+            self.runtime.consume_adapter_evidence_results(limit=2),
+        )
         self.assertEqual([], self.redis.lists[key])
 
     def test_input_bounds_are_strict(self) -> None:
@@ -211,7 +217,7 @@ class RedisWorkerServiceabilityRuntimeTest(unittest.TestCase):
                 limit=101,
             )
         with self.assertRaises(ValueError):
-            self.runtime.append_probe_results(
+            self.runtime.append_adapter_evidence_results(
                 reports=(
                     DeliveryReport.create(
                         src=DeliveryEndpoint.WORKER,

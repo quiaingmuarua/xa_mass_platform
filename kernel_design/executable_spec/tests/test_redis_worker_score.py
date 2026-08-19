@@ -702,48 +702,6 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.NOOP, result.status)
         self.assertEqual(current, result.score)
 
-    def test_demote_observed_worker_leases_to_recovery_uses_exact_clean_hot_fence(self) -> None:
-        observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_030, 5, 0)
-        self.store_score("worker", observed)
-
-        result = self.kernel.demote_observed_worker_leases_to_recovery(
-            home_bucket_id=self.home_bucket_id,
-            observed_scores={"worker": observed},
-        )["worker"]
-        stale = self.kernel.demote_observed_worker_leases_to_recovery(
-            home_bucket_id=self.home_bucket_id,
-            observed_scores={"worker": observed},
-        )["worker"]
-        state = self.kernel.get_score_states(
-            home_bucket_id=self.home_bucket_id,
-            worker_ids=["worker"],
-        )["worker"]
-
-        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
-        self.assertEqual(self.millis(1_030), state.time_millis)
-        self.assertEqual(0, state.lane_rank)
-        self.assertEqual(0, state.dirty)
-
-    def test_demote_observed_worker_leases_to_recovery_rejects_dirty_or_negative(self) -> None:
-        dirty = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_030, 5, 1)
-        negative = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 1_030, 6, 0)
-        self.store_score("dirty", dirty)
-        self.store_score("negative", negative)
-
-        results = self.kernel.demote_observed_worker_leases_to_recovery(
-            home_bucket_id=self.home_bucket_id,
-            observed_scores={"dirty": dirty, "negative": negative},
-        )
-
-        self.assertEqual(WorkerScoreTransitionStatus.INVALID, results["dirty"].status)
-        self.assertEqual(
-            WorkerScoreTransitionStatus.INVALID,
-            results["negative"].status,
-        )
-
     def test_renew_active_hot_score_leases_return_independent_batch_results(
         self,
     ) -> None:

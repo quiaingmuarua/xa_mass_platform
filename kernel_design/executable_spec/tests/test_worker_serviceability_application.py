@@ -31,7 +31,7 @@ class FakeResultPacer:
         self.called = threading.Event()
         self.calls = 0
 
-    def route_probe_results(self, *, config: object) -> int:
+    def route_adapter_evidence(self, *, config: object) -> int:
         self.calls += 1
         self.called.set()
         return 0

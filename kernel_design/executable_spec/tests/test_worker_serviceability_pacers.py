@@ -67,6 +67,7 @@ class FakeCatalog:
         self.descriptors_by_group: dict[str, dict[str, WorkerDescriptor | None]] = {}
         self.group_by_worker: dict[str, str | None] = {}
         self.descriptor_reads: list[tuple[str, tuple[str, ...]]] = []
+        self.group_reads: list[tuple[str, ...]] = []
 
     def get_worker_descriptors(
         self, *, worker_group_id: str, worker_ids: tuple[str, ...]
@@ -78,6 +79,7 @@ class FakeCatalog:
     def get_worker_group_ids(
         self, *, worker_ids: tuple[str, ...]
     ) -> dict[str, str | None]:
+        self.group_reads.append(worker_ids)
         return {worker_id: self.group_by_worker.get(worker_id) for worker_id in worker_ids}
 
 
@@ -93,7 +95,11 @@ class FakeRuntime:
         self.offers.append((adapter_id, worker_ids))
         return {worker_id: self.offer_status for worker_id in worker_ids}
 
-    def consume_probe_results(self, *, limit: int) -> tuple[DeliveryReport, ...]:
+    def consume_adapter_evidence_results(
+        self,
+        *,
+        limit: int,
+    ) -> tuple[DeliveryReport, ...]:
         consumed = tuple(self.reports[:limit])
         del self.reports[:limit]
         return consumed
@@ -141,6 +147,35 @@ def probe_report(
             payload_override
             if payload_override is not None
             else json.dumps({"stateByWorkerId": states})
+        ),
+        forward=forward,
+    )
+
+
+def connection_report(
+    worker_id: str,
+    state: str,
+    *,
+    observed_at_millis: int = 98_000,
+    forward: str = "worker-serviceability-evidence:v1",
+    payload_override: str | None = None,
+) -> DeliveryReport:
+    return DeliveryReport.create(
+        src=DeliveryEndpoint.ADAPTER,
+        source_id="adapter-a",
+        dst=DeliveryEndpoint.KERNEL,
+        message_type="platform.adapter.worker-connection.changed",
+        outcome_code="200",
+        payload=(
+            payload_override
+            if payload_override is not None
+            else json.dumps(
+                {
+                    "workerId": worker_id,
+                    "state": state,
+                    "observedAtMillis": observed_at_millis,
+                }
+            )
         ),
         forward=forward,
     )
@@ -234,6 +269,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             self.runtime,
             self.catalog,
             self.score,
+            clock_millis=lambda: 100_000,
         )
         self.config = WorkerServiceabilityResultConfig()
 
@@ -253,7 +289,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             "worker-c": "group-b",
         }
 
-        applied = self.pacer.route_probe_results(config=self.config)
+        applied = self.pacer.route_adapter_evidence(config=self.config)
 
         self.assertEqual(3, applied)
         by_group = {group: checks for group, checks, _ in self.score.applied}
@@ -268,7 +304,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
     def test_missing_worker_owner_is_skipped(self) -> None:
         self.runtime.reports.append(probe_report({"missing": "CONNECTED"}))
 
-        self.assertEqual(0, self.pacer.route_probe_results(config=self.config))
+        self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
         self.assertEqual([], self.score.applied)
 
     def test_malformed_or_failed_report_is_dropped_without_score_write(self) -> None:
@@ -288,8 +324,75 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         )
         self.catalog.group_by_worker["worker-a"] = "group-a"
 
-        self.assertEqual(0, self.pacer.route_probe_results(config=self.config))
+        self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
         self.assertEqual([], self.score.applied)
+
+    def test_connection_changes_apply_both_polarities_without_probe_offer(self) -> None:
+        self.runtime.reports.extend(
+            (
+                connection_report("connected", "CONNECTED", observed_at_millis=98_000),
+                connection_report(
+                    "disconnected",
+                    "DISCONNECTED",
+                    observed_at_millis=99_000,
+                ),
+            )
+        )
+        self.catalog.group_by_worker = {
+            "connected": "group-a",
+            "disconnected": "group-a",
+        }
+
+        self.assertEqual(
+            2,
+            self.pacer.route_adapter_evidence(config=self.config),
+        )
+
+        checks = self.score.applied[0][1]
+        self.assertTrue(checks["connected"].serviceable)
+        self.assertFalse(checks["disconnected"].serviceable)
+        self.assertEqual([], self.runtime.offers)
+
+    def test_connection_evidence_age_and_future_time_are_rejected(self) -> None:
+        self.runtime.reports.extend(
+            (
+                connection_report(
+                    "expired",
+                    "DISCONNECTED",
+                    observed_at_millis=69_999,
+                ),
+                connection_report(
+                    "future",
+                    "CONNECTED",
+                    observed_at_millis=100_001,
+                ),
+            )
+        )
+        self.catalog.group_by_worker = {
+            "expired": "group-a",
+            "future": "group-a",
+        }
+
+        self.assertEqual(
+            0,
+            self.pacer.route_adapter_evidence(config=self.config),
+        )
+        self.assertEqual([], self.catalog.group_reads)
+        self.assertEqual([], self.score.applied)
+
+    def test_worker_group_lookup_is_chunked_at_one_hundred_ids(self) -> None:
+        first = {f"worker-{index}": "CONNECTED" for index in range(100)}
+        second = {"worker-100": "DISCONNECTED"}
+        self.runtime.reports.extend((probe_report(first), probe_report(second)))
+        self.catalog.group_by_worker = {
+            worker_id: "group-a" for worker_id in (*first, *second)
+        }
+
+        self.assertEqual(
+            101,
+            self.pacer.route_adapter_evidence(config=self.config),
+        )
+        self.assertEqual([100, 1], [len(batch) for batch in self.catalog.group_reads])
 
     def test_configs_reject_unbounded_or_invalid_policy(self) -> None:
         with self.assertRaises(ValueError):
@@ -302,6 +405,8 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             )
         with self.assertRaises(ValueError):
             WorkerServiceabilityResultConfig(max_recovery_attempts=0)
+        with self.assertRaises(ValueError):
+            WorkerServiceabilityResultConfig(evidence_max_age_millis=0)
 
 
 if __name__ == "__main__":

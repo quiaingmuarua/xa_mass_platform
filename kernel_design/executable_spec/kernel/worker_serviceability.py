@@ -16,7 +16,7 @@ class ProbeRequestOfferStatus(Enum):
 
 
 class WorkerServiceabilityRuntime(ABC):
-    """Best-effort Adapter probe requests and batch result handoff."""
+    """Best-effort Adapter probe requests and Adapter evidence handoff."""
 
     MAX_BATCH_SIZE = 100
 
@@ -39,7 +39,7 @@ class WorkerServiceabilityRuntime(ABC):
         pass
 
     @abstractmethod
-    def append_probe_results(
+    def append_adapter_evidence_results(
         self,
         *,
         reports: Sequence[DeliveryReport],
@@ -47,7 +47,7 @@ class WorkerServiceabilityRuntime(ABC):
         pass
 
     @abstractmethod
-    def consume_probe_results(
+    def consume_adapter_evidence_results(
         self,
         *,
         limit: int,

@@ -59,6 +59,23 @@ the optional Worker Serviceability convergence policy. The resulting
 `ADAPTER -> KERNEL` Report is ordinary Delivery evidence; Transport does not
 interpret or write Worker score.
 
+The Adapter also produces, but does not register as a callable Handler:
+
+```text
+platform.adapter.worker-connection.changed
+  ADAPTER -> KERNEL
+  payload={"workerId":"...","state":"CONNECTED|DISCONNECTED",
+           "observedAtMillis":...}
+  forward=worker-serviceability-evidence:v1
+```
+
+One Report represents one exact Route availability transition. It carries no
+WorkerGroup, Binding, Properties, generation, or score. Several Reports may be
+submitted together by the existing Result Process. Queue pressure drops this
+best-effort evidence without closing the Worker Channel.
+How Kernel weighs this evidence or maps it to a scheduling coordinate is
+policy, not part of the Transport event contract.
+
 Worker ID lists are unique, ordered, and bounded to `1..100`. Snapshot states
 are `UNKNOWN` when this Adapter process has no verification evidence, including
 while a first verification is pending, `CONNECTED` after verification with an

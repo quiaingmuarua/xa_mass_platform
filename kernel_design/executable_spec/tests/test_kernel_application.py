@@ -115,6 +115,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                         "hotScanLimit": 70,
                         "recoveryScanLimit": 30,
                         "resultReportLimit": 20,
+                        "evidenceMaxAgeMillis": 45_000,
                     }
                 }
             )
@@ -127,6 +128,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(2_000, serviceability.dispatch_interval_millis)
         self.assertEqual(200, serviceability.result_interval_millis)
         self.assertEqual(4, serviceability.max_recovery_attempts)
+        self.assertEqual(45_000, serviceability.evidence_max_age_millis)
 
         invalid_configs = (
             '{"workerServiceability": {}}',
@@ -329,6 +331,10 @@ class KernelApplicationTest(unittest.TestCase):
         self.assertEqual(
             5,
             internal.worker_serviceability_result.result.max_recovery_attempts,
+        )
+        self.assertEqual(
+            30_000,
+            internal.worker_serviceability_result.result.evidence_max_age_millis,
         )
         self.assertEqual(
             100,

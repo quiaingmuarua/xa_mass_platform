@@ -539,10 +539,11 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )[worker_id]
         assert hot is not None
 
-        demoted = self.score_band.demote_observed_worker_leases_to_recovery(
+        demoted = self.score_band.toggle_current_polarity(
             home_bucket_id=self.worker_group_id,
-            observed_scores={worker_id: hot.score},
-        )[worker_id]
+            worker_id=worker_id,
+            observed_score=hot.score,
+        )
         self.assertEqual(
             demoted.status,
             WorkerScoreTransitionStatus.TRANSITIONED,

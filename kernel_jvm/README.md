@@ -61,12 +61,12 @@ WorkerResultRuntime
 
 WorkerServiceabilityRuntime
   consumeProbeRequests
-  appendProbeResults
+  appendAdapterEvidenceResults
 ```
 
 Worker score initialization fixes laneRank at zero. Candidate acquisition,
-observed lease acquisition/renewal, demotion, dirty marking, polarity changes,
-and recovery exhaustion remain explicit gaps in the JVM provider.
+observed lease acquisition/renewal, dirty marking, polarity changes, and
+recovery exhaustion remain explicit gaps in the JVM provider.
 The new `applyWorkerServiceabilityChecks` contract is also an explicit JVM
 provider gap because no Java production caller owns the Pacer in this slice.
 `rewriteCurrentScores` preserves polarity,

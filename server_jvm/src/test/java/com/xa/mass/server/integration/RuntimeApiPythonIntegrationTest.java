@@ -11,6 +11,9 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
@@ -18,9 +21,6 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.net.http.HttpClient;
@@ -38,6 +38,7 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
@@ -65,13 +66,16 @@ class RuntimeApiPythonIntegrationTest {
             "test.integration.direct-snapshot";
     private static final String DIRECT_EVENT_CODE =
             "extension.worker." + DIRECT_CAPABILITY;
+    private static final String SERVICEABILITY_WORKER_GROUP_ID =
+            "serviceability-runtime-boundary";
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
-    private static final WorkerDeliveryCodec DELIVERY_CODEC =
-            new WorkerDeliveryCodec();
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private WorkerScoreCore workerScores;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
@@ -312,9 +316,99 @@ class RuntimeApiPythonIntegrationTest {
             )).containsEntry("reachable", true);
             assertConnectionState(workerId, "CONNECTED");
             assertWorkerProperties(workerId);
-            awaitServiceabilitySnapshot(workerId);
         } finally {
             worker.close();
+        }
+    }
+
+    @Test
+    void exactRouteEvidenceConvergesWorkerScoreThroughKernelResultPacer()
+            throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String workerGroupId = SERVICEABILITY_WORKER_GROUP_ID;
+        String clientWorkerKey = "serviceability-worker-" + suffix;
+
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId,
+                """
+                        {
+                          "eventCodes": ["%s"]
+                        }
+                        """.formatted(TEST_EVENT_CODE)
+        ).statusCode()).isEqualTo(200);
+        BoundWorker boundWorker = registerAndBindWorker(
+                workerGroupId,
+                clientWorkerKey,
+                TransportProfile.WEBSOCKET,
+                Map.of("runtime", "serviceability-e2e")
+        );
+        String workerId = boundWorker.workerId();
+        awaitWorkerRegistered(workerGroupId, workerId);
+
+        WorkerScoreState initial = awaitWorkerScore(
+                workerGroupId,
+                workerId,
+                WorkerScorePolarity.HOT_ACQUIRE,
+                Long.MIN_VALUE
+        );
+        awaitNextScoreSlot(initial.timeMillis());
+
+        RunningWorker first = startWorker(
+                workerGroupId,
+                clientWorkerKey,
+                workerId,
+                boundWorker.endpointUri(),
+                Map.of("runtime", "serviceability-e2e"),
+                TransportProfile.WEBSOCKET
+        );
+        RunningWorker reconnected = null;
+        try {
+            awaitConnectionState(workerId, "CONNECTED");
+            WorkerScoreState connected = awaitWorkerScore(
+                    workerGroupId,
+                    workerId,
+                    WorkerScorePolarity.HOT_ACQUIRE,
+                    initial.timeMillis()
+            );
+
+            awaitNextScoreSlot(connected.timeMillis());
+            first.close();
+            first = null;
+            awaitConnectionState(workerId, "DISCONNECTED");
+            WorkerScoreState disconnected = awaitWorkerScore(
+                    workerGroupId,
+                    workerId,
+                    WorkerScorePolarity.RECOVERY_RECHECK,
+                    connected.timeMillis()
+            );
+
+            awaitNextScoreSlot(disconnected.timeMillis());
+            reconnected = startWorker(
+                    workerGroupId,
+                    clientWorkerKey,
+                    workerId,
+                    boundWorker.endpointUri(),
+                    Map.of("runtime", "serviceability-e2e"),
+                    TransportProfile.WEBSOCKET
+            );
+            awaitConnectionState(workerId, "CONNECTED");
+            WorkerScoreState restored = awaitWorkerScore(
+                    workerGroupId,
+                    workerId,
+                    WorkerScorePolarity.HOT_ACQUIRE,
+                    disconnected.timeMillis()
+            );
+            assertThat(restored.laneRank())
+                    .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
+            awaitServiceabilitySnapshot(workerGroupId, workerId);
+        } finally {
+            if (first != null) {
+                first.close();
+            }
+            if (reconnected != null) {
+                reconnected.close();
+            }
         }
     }
 
@@ -370,9 +464,13 @@ class RuntimeApiPythonIntegrationTest {
         return target.get("opaqueResultPayload").asText();
     }
 
-    @SuppressWarnings("unchecked")
     private void assertConnectionState(String workerId, String state)
             throws Exception {
+        assertThat(connectionState(workerId)).isEqualTo(state);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String connectionState(String workerId) throws Exception {
         Map<String, Object> payload =
                 Jsons.parseObject(
                         observedDirectPayload(
@@ -384,9 +482,9 @@ class RuntimeApiPythonIntegrationTest {
                                 "200"
                         )
                 );
-        assertThat((Map<String, Object>) payload.get(
+        return (String) ((Map<String, Object>) payload.get(
                 "stateByWorkerId"
-        )).containsEntry(workerId, state);
+        )).get(workerId);
     }
 
     @SuppressWarnings("unchecked")
@@ -429,57 +527,88 @@ class RuntimeApiPythonIntegrationTest {
         ));
     }
 
-    private static void awaitServiceabilitySnapshot(String workerId)
-            throws Exception {
+    private void awaitServiceabilitySnapshot(
+            String workerGroupId,
+            String workerId
+    ) throws Exception {
+        WorkerScoreState before = awaitWorkerScore(
+                workerGroupId,
+                workerId,
+                WorkerScorePolarity.HOT_ACQUIRE,
+                Long.MIN_VALUE
+        );
+        awaitNextScoreSlot(before.timeMillis());
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
             String requestKey = "ws:{" + redisPrefix()
                     + "}:adapter:" + WEBSOCKET_ENDPOINT_MANAGER_ID
                     + ":probe-requests";
-            String resultKey = "ws:{" + redisPrefix()
-                    + "}:probe-results";
             redis.hset(requestKey, workerId, "1");
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(5).toNanos();
-            while (System.nanoTime() < deadline) {
-                for (String encoded : redis.lrange(resultKey, 0, -1)) {
-                    DeliveryReport report;
-                    try {
-                        report = DELIVERY_CODEC.decodeDeliveryReport(encoded);
-                    } catch (IllegalArgumentException ignored) {
-                        continue;
-                    }
-                    if (report.src() != DeliveryEndpoint.ADAPTER
-                            || report.dst() != DeliveryEndpoint.KERNEL
-                            || !WEBSOCKET_ENDPOINT_MANAGER_ID.equals(
-                            report.sourceId()
-                    )
-                            || !"platform.adapter.worker-connections.snapshot"
-                            .equals(report.messageType())
-                            || !report.forward().startsWith(
-                            "worker-serviceability:v1:"
-                    )) {
-                        continue;
-                    }
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> states = (Map<String, Object>)
-                            Jsons.parseObject(report.payload()).get(
-                                    "stateByWorkerId"
-                            );
-                    if (states != null
-                            && "CONNECTED".equals(states.get(workerId))) {
-                        return;
-                    }
-                }
-                Thread.sleep(20);
-            }
         } finally {
             client.shutdown();
         }
-        throw new AssertionError(
-                "Worker serviceability snapshot did not reach the result LIST"
+        awaitWorkerScore(
+                workerGroupId,
+                workerId,
+                WorkerScorePolarity.HOT_ACQUIRE,
+                before.timeMillis()
         );
+    }
+
+    private void awaitConnectionState(String workerId, String expectedState)
+            throws Exception {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (expectedState.equals(connectionState(workerId))) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError(
+                "Worker connection state did not become " + expectedState
+        );
+    }
+
+    private WorkerScoreState awaitWorkerScore(
+            String workerGroupId,
+            String workerId,
+            WorkerScorePolarity expectedPolarity,
+            long afterTimeMillis
+    ) throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            WorkerScoreState state = workerScores.getScoreStates(
+                    workerGroupId,
+                    List.of(workerId)
+            ).get(workerId);
+            if (state != null
+                    && state.polarity() == expectedPolarity
+                    && state.timeMillis() > afterTimeMillis) {
+                return state;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError(
+                "Worker score did not become " + expectedPolarity
+        );
+    }
+
+    private static void awaitNextScoreSlot(long scoreTimeMillis)
+            throws InterruptedException {
+        long scoreSlot = scoreTimeMillis / WorkerScoreCore.SLOT_MILLIS;
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (System.currentTimeMillis() / WorkerScoreCore.SLOT_MILLIS
+                    > scoreSlot) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Wall clock did not advance to next score slot");
     }
 
     private static String redisPrefix() {

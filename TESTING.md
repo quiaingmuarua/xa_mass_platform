@@ -13,8 +13,8 @@ boundary named below.
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Kernel-result append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves an unpaused Worker DIRECT_CALL plus Adapter connection observe/close/reconnect through the unified APIs | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Adapter-evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
+| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, exact Adapter Route evidence through the Kernel Result Pacer, periodic snapshot compensation, and current score convergence | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
@@ -68,18 +68,43 @@ Redis Owner:
 .\gradlew.bat :server_jvm:redisOwnerIntegrationTest
 ```
 
-Runtime Boundary requires a healthy Python Kernel at `18080`:
+Runtime Boundary requires a healthy Python Kernel at `18080`. Start that
+process with the checked proof configuration so the Serviceability Result
+Pacer is active:
 
 ```powershell
+$env:XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON = `
+  '{"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}'
+
+python -m kernel_design.runtime_server `
+  --host 127.0.0.1 --port 18080 `
+  --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json
+
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
 
 The same proof invokes an unpaused real WebSocket Worker through DIRECT_CALL,
 exercises a custom SYSTEM handler and the default probe/properties/events
 handlers, observes and closes its current Adapter Channel, and proves
-transparent reconnect. It proves the current shared Worker mailbox and unified
-Adapter HTTP path; it is not evidence for distributed Direct Call waiter
-correlation.
+transparent reconnect. A dedicated Worker also proves the full current
+Serviceability behavior:
+
+```text
+physical WebSocket connect
+  -> exact CONNECTED evidence -> Kernel Result Pacer -> newer HOT score
+explicit Worker shutdown
+  -> exact DISCONNECTED evidence -> Kernel Result Pacer -> RECOVERY score
+same Worker identity reconnect
+  -> exact CONNECTED evidence -> Kernel Result Pacer -> newer HOT score
+periodic request
+  -> Adapter snapshot evidence -> Kernel Result Pacer -> newer check time
+```
+
+This is both cross-boundary mechanism proof and behavior proof for the current
+policy. It deliberately does not freeze evidence age, discovery cadence,
+retry/cold policy, or the final meaning of positive and negative evidence. It
+also does not prove distributed Direct Call waiter correlation, Binding
+generation fencing, clock synchronization, or reliable evidence delivery.
 
 Task Batch process startup and the Android real-device acceptance procedure
 are documented by their owning modules:

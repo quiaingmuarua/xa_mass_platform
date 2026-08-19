@@ -22,13 +22,6 @@ class RedisWorkerScoreCoreTest {
             );
 
             assertOperation(
-                    "demote_observed_worker_leases_to_recovery",
-                    () -> scoreCore.demoteObservedWorkerLeasesToRecovery(
-                            "group-1",
-                            Map.of("worker-1", 1L)
-                    )
-            );
-            assertOperation(
                     "toggle_current_polarity",
                     () -> scoreCore.toggleCurrentPolarity(
                             "group-1",

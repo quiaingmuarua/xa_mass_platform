@@ -318,6 +318,7 @@ jobs:
         run: |
           python -m kernel_design.runtime_server \
             --host 127.0.0.1 --port 18080 \
+            --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json \
             > runtime-kernel.log 2>&1 &
           echo $! > runtime-kernel.pid
           for attempt in $(seq 1 30); do

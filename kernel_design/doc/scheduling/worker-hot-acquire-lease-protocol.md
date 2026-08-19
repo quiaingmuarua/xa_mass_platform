@@ -22,7 +22,7 @@ due HOT observation
   -> optional CandidateWorkerCache handoff
   -> PRECOMPUTED acquisition exact validate/renew and rematch
   -> ResultContext(workerLeaseScore)
-  -> result exact release or RECOVERY_RECHECK demotion
+  -> result exact release
 ```
 
 There is no separate reservation store, attempt lifecycle, lease token model,
@@ -153,9 +153,13 @@ metadata to recover the Worker score bucket:
   -> exact release preserving positive polarity
 
 Adapter rejection
-  -> a trusted Adapter confirmed this attempt did not enter Worker execution
-  -> exact CAS from HOT_ACQUIRE to RECOVERY_RECHECK
+  -> delivery definitively ended before Worker execution entry
+  -> exact release preserving positive polarity
 ```
+
+For Adapter rejection, release proves only that this exact lease no longer
+needs to be held. It does not prove the Worker is connected or serviceable;
+Adapter Route evidence and the Serviceability Pacer own that classification.
 
 A Worker Delivery Dispatch producer emits evidence only; it never mutates
 score. The polling Worker endpoint accepts only `200` and Worker-owned `3...`.
@@ -165,22 +169,13 @@ deferred. Result routing invokes WorkerScoreCore and treats Worker disposition
 independently from Item movement.
 
 Every result submits its own exact lease evidence without cross-class winner
-aggregation. Stale evidence cannot release or demote a newer lease. Conflicting
+aggregation. Stale evidence cannot release a newer lease. Conflicting
 classes for one exact lease violate the one-logical-outcome protocol; the score
 owner accepts at most one applicable disposition. A duplicated copy of the same
 transport result is allowed to reach routing, but after the first applicable
 exact transition the old Worker fence is stale and cannot change newer truth.
 
-## Recovery Demotion
-
-```text
-demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
-```
-
-- Accepts only clean positive opaque lease scores.
-- Uses independent exact-score CAS.
-- Preserves timeSlot and dirty, then writes RECOVERY_RECHECK with laneRank `0`.
-- `STALE` does not affect Item outcome.
+## Scheduling Serviceability
 
 Polarity is the kernel-owned classification of whether a Worker may participate
 in normal TaskItem scheduling:
@@ -195,10 +190,10 @@ RECOVERY_RECHECK
   excluded from ordinary allocation; may enter only recovery validation
 ```
 
-This is not a physical connection or socket state. Adapter, Worker, and endpoint
-manager observations are evidence. Execution evidence, pre-execution rejection,
-and future explicit recovery probes make the kernel classification converge
-when scheduling or recovery work requires it. With no demand, bounded
+This is not a physical connection or socket state. Adapter Route changes and
+periodic Adapter snapshots are evidence interpreted by the independent Worker
+Serviceability Result Pacer. Task results only release their correlated lease;
+they do not change polarity. With no demand or fresh evidence, bounded
 classification lag is allowed.
 
 ## Failure Matrix
@@ -216,7 +211,7 @@ classification lag is allowed.
 | Long-lived Adapter | command expired before execution entry | may emit `WorkerDeliveryAdapterErrorCode.COMMAND_EXPIRED` through Adapter batch ingress |
 | Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
 | Result | `200` or Worker failure | exact release |
-| Result | Adapter rejection | exact RECOVERY_RECHECK demotion |
+| Result | Adapter rejection | exact release; no online inference |
 | Result | malformed/missing evidence | no guessed mutation; expiry recovers |
 
 No branch adds a repair scanner, compensation queue, distributed lock, or
@@ -235,7 +230,7 @@ cross-owner transaction.
 | TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable TaskType, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
-| Future trusted Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
+| Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
 

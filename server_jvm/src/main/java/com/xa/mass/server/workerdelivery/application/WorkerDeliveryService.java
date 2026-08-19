@@ -319,7 +319,9 @@ public final class WorkerDeliveryService {
         }
         if (!kernelResults.isEmpty()) {
             try {
-                int accepted = serviceability.appendProbeResults(kernelResults);
+                int accepted = serviceability.appendAdapterEvidenceResults(
+                        kernelResults
+                );
                 acceptedCount += accepted;
                 rejectedCount += kernelResults.size() - accepted;
             } catch (RuntimeException error) {

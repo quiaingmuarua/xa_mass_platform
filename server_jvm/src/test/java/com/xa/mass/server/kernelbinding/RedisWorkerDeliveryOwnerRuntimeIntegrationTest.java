@@ -270,7 +270,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 "worker-3",
                 "DISCONNECTED"
         );
-        assertThat(serviceabilityRuntime.appendProbeResults(List.of(
+        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(List.of(
                 first,
                 second,
                 rejected
@@ -278,7 +278,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         assertThat(redis.lrange(serviceabilityResultKey(), 0, -1))
                 .extracting(codec::decodeDeliveryReport)
                 .containsExactly(first, second);
-        assertThat(serviceabilityRuntime.appendProbeResults(
+        assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(
                 List.of(rejected)
         )).isZero();
     }
@@ -304,7 +304,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     }
 
     private String serviceabilityResultKey() {
-        return "ws:{" + prefix + "}:probe-results";
+        return "ws:{" + prefix + "}:adapter-evidence-results";
     }
 
     private long commandCalls(String command) {

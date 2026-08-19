@@ -244,22 +244,6 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def demote_observed_worker_leases_to_recovery(
-        self,
-        *,
-        home_bucket_id: HomeBucketId,
-        observed_scores: Mapping[WorkerId, Score],
-    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
-        """Demote exact clean HOT lease observations to RECOVERY_RECHECK.
-
-        Trusted pre-execution rejection evidence invokes this operation. Each
-        member is an independent exact-score CAS. The implementation preserves
-        the time coordinate and dirty bit, then enters RECOVERY_RECHECK with
-        lane_rank=0.
-        """
-        pass
-
-    @abstractmethod
     def mark_current_lease_dirty(
         self,
         *,

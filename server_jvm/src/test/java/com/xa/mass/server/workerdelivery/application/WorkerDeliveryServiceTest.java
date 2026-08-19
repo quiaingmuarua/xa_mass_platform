@@ -438,7 +438,7 @@ class WorkerDeliveryServiceTest {
                 "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                 "worker-serviceability:v1:123"
         );
-        when(serviceability.appendProbeResults(List.of(kernel)))
+        when(serviceability.appendAdapterEvidenceResults(List.of(kernel)))
                 .thenReturn(0);
 
         var counts = service.appendAdapterResults(
@@ -471,6 +471,16 @@ class WorkerDeliveryServiceTest {
                 "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
                 "worker-serviceability:v1:123"
         );
+        DeliveryReport routeChange = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connection.changed",
+                "200",
+                "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
+                        + "\"observedAtMillis\":123}",
+                "worker-serviceability-evidence:v1"
+        );
         DeliveryReport unknownSystem = DeliveryReport.create(
                 DeliveryEndpoint.ADAPTER,
                 "endpoint-1",
@@ -485,8 +495,10 @@ class WorkerDeliveryServiceTest {
                 "endpoint-1",
                 List.of(direct, unknownSystem)
         )).thenReturn(new DirectCallService.ResultAppendCounts(1, 1));
-        when(serviceability.appendProbeResults(List.of(kernel)))
-                .thenReturn(1);
+        when(serviceability.appendAdapterEvidenceResults(List.of(
+                kernel,
+                routeChange
+        ))).thenReturn(2);
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
@@ -494,18 +506,22 @@ class WorkerDeliveryServiceTest {
                         codec.encodeDeliveryReport(task),
                         codec.encodeDeliveryReport(direct),
                         codec.encodeDeliveryReport(kernel),
+                        codec.encodeDeliveryReport(routeChange),
                         codec.encodeDeliveryReport(unknownSystem)
                 )
         );
 
-        assertThat(counts.acceptedCount()).isEqualTo(3);
+        assertThat(counts.acceptedCount()).isEqualTo(4);
         assertThat(counts.rejectedCount()).isEqualTo(1);
         verify(resultRuntime).appendWorkerResults(List.of(task));
         verify(directCalls).completeReports(
                 "endpoint-1",
                 List.of(direct, unknownSystem)
         );
-        verify(serviceability).appendProbeResults(List.of(kernel));
+        verify(serviceability).appendAdapterEvidenceResults(List.of(
+                kernel,
+                routeChange
+        ));
     }
 
     @Test

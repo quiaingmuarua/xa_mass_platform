@@ -23,7 +23,7 @@ WORKER_FAILURE
   -> WorkerScoreCore exact release
 
 ADAPTER_REJECTION
-  -> WorkerScoreCore exact RECOVERY_RECHECK demotion
+  -> WorkerScoreCore exact release
 ```
 
 It does not select Workers, claim Items, actively retry failed Items, refresh
@@ -144,8 +144,8 @@ container for built-in result-routing policies. It owns the default policy
 dependencies and exposes each policy as a named callable method.
 `default_task_result_handlers()` and `default_worker_result_handlers()` only
 compose those methods into the standard mappings: SUCCESS stores/promotes Task
-results, SUCCESS and WORKER_FAILURE release Worker score holds, and
-ADAPTER_REJECTION demotes exact score holds to recovery. Assembly chooses
+results, while SUCCESS, WORKER_FAILURE, and ADAPTER_REJECTION all release their
+exact Worker score holds. Assembly chooses
 these defaults explicitly; callers may replace a whole mapping or compose a
 custom mapping from individual built-in methods and custom handlers.
 
@@ -184,11 +184,13 @@ due, normal TaskItem acquisition retries it without a result-owned retry write.
 ```text
 consume ADAPTER_REJECTION
 -> decode valid ResultContext values
--> exact-demote each correlated Worker lease to RECOVERY_RECHECK
+-> exact-release each correlated Worker lease
 -> do not mutate Item score
 ```
 
-The Item again becomes retryable through its existing claim coordinate.
+Release only ends the exact assignment lease and preserves HOT polarity. It is
+not evidence that the Worker is currently connected. The Item again becomes
+retryable through its existing claim coordinate.
 
 ## Worker Fence Semantics
 
@@ -200,7 +202,7 @@ Within one outcome batch, repeated results for the same Worker collapse to the
 last opaque `workerLeaseScore` in queue order. Queue arrival order does not
 guarantee lease-coordinate recency, so this is only a bounded best-effort
 selection. If the selected value is an older fence, exact CAS returns `STALE`;
-the consequence is only that release or demotion is not immediate, and normal
+the consequence is only that release is not immediate, and normal
 lease expiry restores liveness. Older scores are not retried one by one because
 one Worker has only one current score. There is no cross-class winner map.
 

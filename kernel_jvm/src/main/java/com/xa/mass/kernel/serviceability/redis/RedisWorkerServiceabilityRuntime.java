@@ -36,7 +36,7 @@ public final class RedisWorkerServiceabilityRuntime
             return worker_ids
             """;
 
-    private static final String APPEND_PROBE_RESULTS = """
+    private static final String APPEND_ADAPTER_EVIDENCE_RESULTS = """
             local remaining = tonumber(ARGV[1]) - redis.call('LLEN', KEYS[1])
             if remaining <= 0 then
                 return 0
@@ -136,7 +136,7 @@ public final class RedisWorkerServiceabilityRuntime
     }
 
     @Override
-    public int appendProbeResults(List<DeliveryReport> reports) {
+    public int appendAdapterEvidenceResults(List<DeliveryReport> reports) {
         if (reports == null) {
             throw new IllegalArgumentException("reports must be present");
         }
@@ -145,7 +145,7 @@ public final class RedisWorkerServiceabilityRuntime
         }
         if (reports.size() > MAX_BATCH_SIZE) {
             throw new IllegalArgumentException(
-                    "Probe result append exceeds 100 Reports"
+                    "Adapter evidence append exceeds 100 Reports"
             );
         }
         List<String> arguments = new ArrayList<>(reports.size() + 1);
@@ -155,13 +155,13 @@ public final class RedisWorkerServiceabilityRuntime
                     || report.src() != DeliveryEndpoint.ADAPTER
                     || report.dst() != DeliveryEndpoint.KERNEL) {
                 throw new IllegalArgumentException(
-                        "Probe Report source or destination is invalid"
+                        "Adapter evidence source or destination is invalid"
                 );
             }
             arguments.add(codec.encodeDeliveryReport(report));
         }
         Long accepted = commands().eval(
-                APPEND_PROBE_RESULTS,
+                APPEND_ADAPTER_EVIDENCE_RESULTS,
                 ScriptOutputType.INTEGER,
                 new String[]{resultKey()},
                 arguments.toArray(String[]::new)
@@ -170,17 +170,17 @@ public final class RedisWorkerServiceabilityRuntime
                 || accepted < 0L
                 || accepted > reports.size()) {
             throw new IllegalStateException(
-                    "Redis probe append returned an invalid response"
+                    "Redis Adapter evidence append returned an invalid response"
             );
         }
         return accepted.intValue();
     }
 
     @Override
-    public List<DeliveryReport> consumeProbeResults(int limit) {
+    public List<DeliveryReport> consumeAdapterEvidenceResults(int limit) {
         throw new KernelOperationNotImplementedException(
                 "WorkerServiceabilityRuntime",
-                "consume_probe_results"
+                "consume_adapter_evidence_results"
         );
     }
 
@@ -208,7 +208,7 @@ public final class RedisWorkerServiceabilityRuntime
     }
 
     private String resultKey() {
-        return "ws:{" + prefix + "}:probe-results";
+        return "ws:{" + prefix + "}:adapter-evidence-results";
     }
 
     private static void requireLimit(int limit) {

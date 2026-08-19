@@ -1,0 +1,16 @@
+{
+  "workerServiceability": {
+    "workerGroupIds": [
+      "serviceability-runtime-boundary"
+    ],
+    "dispatchIntervalMillis": 1000,
+    "resultIntervalMillis": 20,
+    "staleHotAfterMillis": 300000,
+    "recoveryRetryIntervalMillis": 60000,
+    "maxRecoveryAttempts": 5,
+    "hotScanLimit": 80,
+    "recoveryScanLimit": 20,
+    "resultReportLimit": 100,
+    "evidenceMaxAgeMillis": 30000
+  }
+}

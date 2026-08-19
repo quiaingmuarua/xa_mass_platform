@@ -186,6 +186,7 @@ The optional JSON contract is:
     "resultIntervalMillis": 100,
     "staleHotAfterMillis": 300000,
     "recoveryRetryIntervalMillis": 60000,
+    "evidenceMaxAgeMillis": 30000,
     "maxRecoveryAttempts": 5,
     "hotScanLimit": 80,
     "recoveryScanLimit": 20,
