@@ -107,7 +107,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             json.dumps(
                 {
                     "workerServiceability": {
-                        "workerGroupIds": ["group-a", "group-b"],
+                        "taskScanLimit": 42,
                         "dispatchIntervalMillis": 2_000,
                         "resultIntervalMillis": 200,
                         "recoveryRetryIntervalMillis": 120_000,
@@ -129,7 +129,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertIsNotNone(config.worker_serviceability)
         serviceability = config.worker_serviceability
         assert serviceability is not None
-        self.assertEqual(("group-a", "group-b"), serviceability.worker_group_ids)
+        self.assertEqual(42, serviceability.task_scan_limit)
         self.assertEqual(2_000, serviceability.dispatch_interval_millis)
         self.assertEqual(200, serviceability.result_interval_millis)
         self.assertEqual(
@@ -144,7 +144,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         )
 
         defaults = KernelApplicationConfig.from_json(
-            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+            '{"workerServiceability":{}}'
         ).worker_serviceability
         assert defaults is not None
         self.assertEqual(10_000, defaults.probe_sweep_restart_delay_millis)
@@ -153,7 +153,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             defaults.probe_excluded_endpoint_manager_ids,
         )
         no_exclusions = KernelApplicationConfig.from_json(
-            '{"workerServiceability":{"workerGroupIds":["group-a"],'
+            '{"workerServiceability":{'
             '"probeExcludedEndpointManagerIds":[]}}'
         ).worker_serviceability
         assert no_exclusions is not None
@@ -161,7 +161,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
 
     def test_serviceability_mints_one_aligned_internal_hot_floor(self) -> None:
         enabled = KernelApplicationConfig.from_json(
-            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+            '{"workerServiceability":{}}'
         )
         internal = KernelApplication._internal_process_config(enabled)
         self.assertIsNotNone(internal.hot_eligibility_floor_millis)
@@ -178,17 +178,18 @@ class KernelApplicationConfigTest(unittest.TestCase):
         )
 
         invalid_configs = (
-            '{"workerServiceability": {}}',
-            '{"workerServiceability": {"workerGroupIds": []}}',
-            '{"workerServiceability": {"workerGroupIds": ["a", "a"]}}',
-            '{"workerServiceability": {"workerGroupIds": ["a"], "unknown": 1}}',
-            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '{"workerServiceability": {"workerGroupIds": ["a"]}}',
+            '{"workerServiceability": {"taskScanLimit": 0}}',
+            '{"workerServiceability": {"taskScanLimit": 101}}',
+            '{"workerServiceability": {"taskScanLimit": true}}',
+            '{"workerServiceability": {"unknown": 1}}',
+            '{"workerServiceability": {'
             '"hotScanLimit": 81, "recoveryScanLimit": 20}}',
-            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '{"workerServiceability": {'
             '"staleHotAfterMillis": 1}}',
-            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '{"workerServiceability": {'
             '"probeExcludedEndpointManagerIds": ["x", "x"]}}',
-            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '{"workerServiceability": {'
             '"probeSweepRestartDelayMillis": 0}}',
         )
         for config_json in invalid_configs:
@@ -366,7 +367,7 @@ class KernelApplicationTest(unittest.TestCase):
 
     def test_constructs_enabled_serviceability_process_configs(self) -> None:
         config = KernelApplicationConfig.from_json(
-            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+            '{"workerServiceability":{"taskScanLimit":37}}'
         )
 
         KernelApplication(config)
@@ -374,8 +375,8 @@ class KernelApplicationTest(unittest.TestCase):
         call = self.from_url.call_args
         internal = call.kwargs["config"]
         self.assertEqual(
-            ("group-a",),
-            internal.worker_serviceability_dispatch.dispatch.worker_group_ids,
+            37,
+            internal.worker_serviceability_dispatch.dispatch.task_scan_limit,
         )
         self.assertEqual(
             1_000,

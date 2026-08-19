@@ -70,9 +70,17 @@ or durable claim. Loss leaves the old score eligible for a later scan.
 
 ## Dispatch Pacer
 
-The Dispatch Pacer rotates through configured WorkerGroups, one Group per
-round. HOT and RECOVERY each keep one process-local opaque score cursor per
-Group. For that Group it reads:
+The Dispatch Pacer first reads one bounded page of due
+`RUNNING_VISIBLE` Tasks through the same read-only acquisition surface used by
+Task Dispatch. It re-reads their current score states and allocation
+descriptors, removes Tasks that became paused, terminal, missing, or invalid,
+and deduplicates `workerGroupId` in page order. With no surviving due Task it
+does not read Worker score, Worker resources, or the Probe Runtime.
+
+One round selects one Group from that current Task page. HOT and RECOVERY each
+keep one process-local opaque score cursor for Groups still present in the
+page; hints for disappeared Groups are deleted. For the selected Group it
+reads:
 
 - HOT scores in `[MIN_BASE, hotEligibilityFloor)`;
 - RECOVERY scores in the owner's bounded recent negative window.
@@ -94,7 +102,10 @@ the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
 independently resets that cursor and cools only that range for
 `probeSweepRestartDelayMillis` (default 10 seconds); the one-second Application
 loop keeps running and never sleeps for the cooldown. Cursor and cooldown are
-fairness hints, not Redis checkpoints or in-flight Probe tracking.
+fairness hints, not Redis checkpoints or in-flight Probe tracking. The Task
+score page is never mutated or held by Serviceability. A Group outside the
+bounded due-Task page is intentionally ignored until Task demand exposes it in
+a later round.
 
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former

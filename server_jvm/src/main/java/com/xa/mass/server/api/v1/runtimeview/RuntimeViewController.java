@@ -4,11 +4,14 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveRequest;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
+import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.DeferredResult;
 
 @Validated
 @RestController
@@ -26,9 +30,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class RuntimeViewController {
 
     private final RuntimeViewService runtimeView;
+    private final WorkerNetworkObservationService workerNetwork;
 
-    public RuntimeViewController(RuntimeViewService runtimeView) {
+    public RuntimeViewController(
+            RuntimeViewService runtimeView,
+            WorkerNetworkObservationService workerNetwork
+    ) {
         this.runtimeView = runtimeView;
+        this.workerNetwork = workerNetwork;
     }
 
     @GetMapping("/configured-resources")
@@ -75,6 +84,21 @@ public class RuntimeViewController {
     ) {
         return runtimeView.observeWorkerScheduling(
                 workerGroupId,
+                request.workerIds(),
+                requestId(httpRequest)
+        );
+    }
+
+    @PostMapping(
+            "/endpoint-managers/{endpointManagerId}/workers:network-observe"
+    )
+    public DeferredResult<WorkerNetworkObserveResponse> observeWorkerNetwork(
+            @PathVariable @NotBlank String endpointManagerId,
+            @Valid @RequestBody WorkerNetworkObserveRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return workerNetwork.observe(
+                endpointManagerId,
                 request.workerIds(),
                 requestId(httpRequest)
         );

@@ -85,11 +85,31 @@ body: {"workerIds":["worker-1","worker-2"]}
 ```
 
 The response contains one shared `readAt` plus a complete
-`statesByWorkerId` map in request order. States are `due-hot`, `held-hot`,
+`statesByWorkerId` map in request order. States are `hot-score-overdue`, `held-hot`,
 `paused`, `recovery`, `cold`, or `missing`. They do not expose raw Score and do
 not claim to know the active Python Kernel process's HOT eligibility epoch.
+`hot-score-overdue` means only that a positive HOT Score precedes the current
+100ms slot; it is weaker than the Kernel's floor-aware candidate range.
 Provider failure returns the existing Runtime View unavailable error rather
 than inventing a Worker state.
+
+Runtime View also exposes one Adapter-scoped, bounded Network observation:
+
+```text
+POST /api/v1/runtime-view/endpoint-managers/{endpointManagerId}/
+     workers:network-observe
+body: {"workerIds":["worker-1","worker-2"]}
+```
+
+This use case sends the existing
+`platform.adapter.worker-connections.snapshot` event through the same
+Adapter Direct FIFO, waiter and Result correlation as DIRECT_CALL. It projects
+the Adapter response to `connected`, `disconnected`, or `unknown` and never
+creates a Server copy of Route truth. `readAt` is the Server observation time.
+An Adapter timeout, rejection or malformed payload returns Runtime View
+unavailable; it is not converted into the legitimate Adapter state `unknown`.
+The caller groups Workers by `endpointManagerId`; Server does not join Adapter
+Network with Binding, WorkerGroup, scheduling or execution state.
 
 Worker calls do not require pause or read score. They use
 `WorkerCommandRuntime.offerWorkerCommands`: an empty field in the existing

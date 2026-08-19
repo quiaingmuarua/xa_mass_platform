@@ -7,6 +7,11 @@ from kernel_design.executable_spec import (
     DeliveryEndpoint,
     DeliveryReport,
     ProbeRequestOfferStatus,
+    TaskDescriptor,
+    TaskScoreBand,
+    TaskScoreBandCore,
+    TaskScoreState,
+    TaskType,
     WorkerDescriptor,
     WorkerScorePolarity,
     WorkerScoreState,
@@ -20,6 +25,36 @@ from kernel_design.executable_spec import (
 
 
 _FLOOR = 900_000
+
+
+class FakeTaskScore:
+    def __init__(self) -> None:
+        self.task_ids: tuple[str, ...] = ()
+        self.states: dict[str, TaskScoreState | None] = {}
+        self.acquire_calls: list[int] = []
+        self.state_reads: list[tuple[str, ...]] = []
+
+    def acquire_dispatch_work_tasks(self, *, limit: int) -> tuple[str, ...]:
+        self.acquire_calls.append(limit)
+        return self.task_ids[:limit]
+
+    def get_score_states(
+        self, *, task_ids: tuple[str, ...]
+    ) -> dict[str, TaskScoreState | None]:
+        self.state_reads.append(tuple(task_ids))
+        return {task_id: self.states.get(task_id) for task_id in task_ids}
+
+
+class FakeTaskCatalog:
+    def __init__(self) -> None:
+        self.descriptors: dict[str, TaskDescriptor | None] = {}
+        self.reads: list[tuple[str, ...]] = []
+
+    def load_task_allocation_descriptors(
+        self, *, task_ids: tuple[str, ...]
+    ) -> dict[str, TaskDescriptor | None]:
+        self.reads.append(tuple(task_ids))
+        return {task_id: self.descriptors.get(task_id) for task_id in task_ids}
 
 
 class FakeScore:
@@ -135,10 +170,12 @@ class FakeCatalog:
         self.descriptors_by_group: dict[str, dict[str, WorkerDescriptor | None]] = {}
         self.group_by_worker: dict[str, str | None] = {}
         self.group_reads: list[tuple[str, ...]] = []
+        self.descriptor_reads: list[tuple[str, tuple[str, ...]]] = []
 
     def get_worker_descriptors(
         self, *, worker_group_id: str, worker_ids: tuple[str, ...]
     ) -> dict[str, WorkerDescriptor | None]:
+        self.descriptor_reads.append((worker_group_id, tuple(worker_ids)))
         values = self.descriptors_by_group.get(worker_group_id, {})
         return {worker_id: values.get(worker_id) for worker_id in worker_ids}
 
@@ -196,6 +233,36 @@ def descriptor(worker_id: str, group_id: str, adapter_id: str) -> WorkerDescript
         endpoint_manager_id=adapter_id,
         worker_properties={},
         platform_properties={},
+    )
+
+
+def task_state(
+    task_id: str,
+    *,
+    band: TaskScoreBand = TaskScoreBand.RUNNING_VISIBLE,
+    time_millis: int = 100,
+    suffix: int | None = 0,
+) -> TaskScoreState:
+    return TaskScoreState(
+        task_id=task_id,
+        score=100,
+        band=band,
+        time_millis=time_millis,
+        suffix=suffix,
+    )
+
+
+def task_descriptor(task_id: str, group_id: str) -> TaskDescriptor:
+    return TaskDescriptor(
+        task_id=task_id,
+        worker_group_id=group_id,
+        task_type=TaskType.ITEM_DRIVEN,
+        allocation_rule=None,
+        config={
+            "priority": "80",
+            "maximumCandidateWorkers": "10",
+            "maxRetryTimes": "3",
+        },
     )
 
 
@@ -257,25 +324,117 @@ def expired_report(
 
 class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.task_score = FakeTaskScore()
+        self.task_catalog = FakeTaskCatalog()
         self.score = FakeScore()
         self.catalog = FakeCatalog()
         self.runtime = FakeRuntime()
         self.now_millis = 1_000_000
         self.pacer = WorkerServiceabilityDispatchPacer(
+            self.task_score,
+            self.task_catalog,
             self.score,
             self.catalog,
             self.runtime,
             hot_eligibility_floor_millis=_FLOOR,
             clock_millis=lambda: self.now_millis,
         )
-        self.config = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=("group-a", "group-b"),
-        )
+        self.config = WorkerServiceabilityDispatchConfig()
+        self._active_groups("group-a", "group-b")
 
-    def test_round_rotates_one_explicit_group_and_uses_pre_epoch_range(self) -> None:
+    def _active_groups(self, *worker_group_ids: str) -> None:
+        task_ids = tuple(
+            f"task-{index}"
+            for index in range(len(worker_group_ids))
+        )
+        self.task_score.task_ids = task_ids
+        self.task_score.states = {
+            task_id: task_state(task_id)
+            for task_id in task_ids
+        }
+        self.task_catalog.descriptors = {
+            task_id: task_descriptor(task_id, worker_group_id)
+            for task_id, worker_group_id in zip(task_ids, worker_group_ids)
+        }
+
+    def test_round_rotates_one_due_task_group_and_uses_pre_epoch_range(self) -> None:
         self.pacer.dispatch_probes(config=self.config)
         self.pacer.dispatch_probes(config=self.config)
         self.assertEqual(["group-a", "group-b"], self.score.scanned_groups)
+        self.assertEqual([100, 100], self.task_score.acquire_calls)
+
+    def test_without_due_tasks_does_not_touch_worker_owners(self) -> None:
+        self._active_groups()
+
+        self.assertEqual(0, self.pacer.dispatch_probes(config=self.config))
+
+        self.assertEqual([100], self.task_score.acquire_calls)
+        self.assertEqual([], self.task_score.state_reads)
+        self.assertEqual([], self.task_catalog.reads)
+        self.assertEqual([], self.score.hot_scan_calls)
+        self.assertEqual([], self.score.recovery_scan_calls)
+        self.assertEqual([], self.catalog.descriptor_reads)
+        self.assertEqual([], self.runtime.offers)
+
+    def test_rechecks_due_task_truth_and_deduplicates_groups_in_page_order(
+        self,
+    ) -> None:
+        task_ids = (
+            "task-a-1",
+            "task-a-2",
+            "paused",
+            "future-hold",
+            "terminal",
+            "missing-descriptor",
+            "mismatched-descriptor",
+        )
+        self.task_score.task_ids = task_ids
+        self.task_score.states = {
+            "task-a-1": task_state("task-a-1"),
+            "task-a-2": task_state("task-a-2"),
+            "paused": task_state(
+                "paused",
+                time_millis=TaskScoreBandCore.PAUSE_TIME_MILLIS,
+            ),
+            "future-hold": task_state(
+                "future-hold",
+                time_millis=self.now_millis + 10_000,
+            ),
+            "terminal": task_state(
+                "terminal",
+                band=TaskScoreBand.TERMINAL,
+                time_millis=None,
+                suffix=None,
+            ),
+            "missing-descriptor": task_state("missing-descriptor"),
+            "mismatched-descriptor": task_state("mismatched-descriptor"),
+        }
+        self.task_catalog.descriptors = {
+            "task-a-1": task_descriptor("task-a-1", "group-a"),
+            "task-a-2": task_descriptor("task-a-2", "group-a"),
+            "paused": task_descriptor("paused", "group-b"),
+            "future-hold": task_descriptor("future-hold", "group-future"),
+            "terminal": task_descriptor("terminal", "group-c"),
+            "mismatched-descriptor": task_descriptor("another-task", "group-d"),
+        }
+
+        self.pacer.dispatch_probes(config=self.config)
+
+        self.assertEqual(["group-a"], self.score.scanned_groups)
+        self.assertEqual([task_ids], self.task_score.state_reads)
+        self.assertEqual([task_ids], self.task_catalog.reads)
+
+    def test_disappearing_task_group_releases_its_sweep_hints(self) -> None:
+        self._active_groups("group-a")
+        self.pacer.dispatch_probes(config=self.config)
+        self.assertEqual({"group-a"}, set(self.pacer._hot_sweeps))
+        self.assertEqual({"group-a"}, set(self.pacer._recovery_sweeps))
+
+        self._active_groups("group-b")
+        self.pacer.dispatch_probes(config=self.config)
+
+        self.assertEqual({"group-b"}, set(self.pacer._hot_sweeps))
+        self.assertEqual({"group-b"}, set(self.pacer._recovery_sweeps))
 
     def test_offers_pre_epoch_hot_and_linearly_due_recovery(self) -> None:
         self.score.hot_by_group["group-a"] = [("hot", 1)]
@@ -326,8 +485,8 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.catalog.descriptors_by_group["group-a"] = {
             "eligible": descriptor("eligible", "group-a", "adapter-a")
         }
+        self._active_groups("group-a")
         config = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=("group-a",),
             hot_scan_limit=1,
             recovery_scan_limit=1,
         )
@@ -342,8 +501,8 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.assertEqual([("adapter-a", ("eligible",))], self.runtime.offers)
 
     def test_empty_ranges_restart_after_non_blocking_cooldown(self) -> None:
+        self._active_groups("group-a")
         config = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=("group-a",),
             probe_sweep_restart_delay_millis=10_000,
         )
 
@@ -383,8 +542,8 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
             worker_id: descriptor(worker_id, "group-a", "adapter-a")
             for worker_id in ("first", "second")
         }
+        self._active_groups("group-a")
         config = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=("group-a",),
             hot_scan_limit=1,
             recovery_scan_limit=1,
         )
@@ -442,8 +601,8 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.catalog.descriptors_by_group["group-a"] = {
             "polling": descriptor("polling", "group-a", "system-polling")
         }
+        self._active_groups("group-a")
         config = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=("group-a",),
             probe_excluded_endpoint_manager_ids=(),
         )
 
@@ -585,15 +744,15 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
 
     def test_configs_reject_invalid_bounds_and_exclusions(self) -> None:
         with self.assertRaises(ValueError):
-            WorkerServiceabilityDispatchConfig(worker_group_ids=())
+            WorkerServiceabilityDispatchConfig(task_scan_limit=0)
+        with self.assertRaises(ValueError):
+            WorkerServiceabilityDispatchConfig(task_scan_limit=101)
         with self.assertRaises(ValueError):
             WorkerServiceabilityDispatchConfig(
-                worker_group_ids=("group-a",),
                 probe_excluded_endpoint_manager_ids=("same", "same"),
             )
         with self.assertRaises(ValueError):
             WorkerServiceabilityDispatchConfig(
-                worker_group_ids=("group-a",),
                 probe_sweep_restart_delay_millis=0,
             )
         with self.assertRaises(ValueError):

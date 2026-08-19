@@ -270,6 +270,8 @@ class _RedisKernelProcess:
             self._worker_serviceability_dispatch_application = (
                 WorkerServiceabilityDispatchApplication(
                     WorkerServiceabilityDispatchPacer(
+                        self._task_score,
+                        self._task_resource_catalog,
                         self._worker_score,
                         self._worker_resource_catalog,
                         serviceability_runtime,

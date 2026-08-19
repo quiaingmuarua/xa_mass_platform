@@ -235,7 +235,7 @@ class WorkerSchedulingServiceTest {
         );
         assertThat(observation.statesByWorkerId()).containsExactly(
                 Map.entry("due", WorkerSchedulingService
-                        .SchedulingState.DUE_HOT),
+                        .SchedulingState.HOT_SCORE_OVERDUE),
                 Map.entry("held", WorkerSchedulingService
                         .SchedulingState.HELD_HOT),
                 Map.entry("paused", WorkerSchedulingService

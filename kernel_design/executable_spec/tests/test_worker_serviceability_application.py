@@ -44,9 +44,7 @@ class WorkerServiceabilityApplicationTest(unittest.TestCase):
         dispatch = WorkerServiceabilityDispatchApplication(dispatch_pacer)
         result = WorkerServiceabilityResultApplication(result_pacer)
         dispatch_config = WorkerServiceabilityDispatchApplicationConfig(
-            dispatch=WorkerServiceabilityDispatchConfig(
-                worker_group_ids=("group-a",)
-            ),
+            dispatch=WorkerServiceabilityDispatchConfig(),
             interval_millis=10,
         )
         result_config = WorkerServiceabilityResultApplicationConfig(
@@ -72,9 +70,7 @@ class WorkerServiceabilityApplicationTest(unittest.TestCase):
         pacer = FakeDispatchPacer()
         application = WorkerServiceabilityDispatchApplication(pacer)
         config = WorkerServiceabilityDispatchApplicationConfig(
-            dispatch=WorkerServiceabilityDispatchConfig(
-                worker_group_ids=("group-a",)
-            ),
+            dispatch=WorkerServiceabilityDispatchConfig(),
             interval_millis=10,
         )
         application.start(config=config)
@@ -88,9 +84,7 @@ class WorkerServiceabilityApplicationTest(unittest.TestCase):
     def test_application_configs_reject_non_positive_intervals(self) -> None:
         with self.assertRaises(ValueError):
             WorkerServiceabilityDispatchApplicationConfig(
-                dispatch=WorkerServiceabilityDispatchConfig(
-                    worker_group_ids=("group-a",)
-                ),
+                dispatch=WorkerServiceabilityDispatchConfig(),
                 interval_millis=0,
             )
         with self.assertRaises(ValueError):

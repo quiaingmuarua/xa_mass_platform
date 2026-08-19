@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.context.request.async.DeferredResult;
 
@@ -186,6 +187,60 @@ public final class DirectCallService {
                 registerBatch(timeoutMillis, plans);
         offerWorkerCommands(adapterId, plans);
         return response;
+    }
+
+    /**
+     * Starts one Adapter-targeted Direct Call for another Server use case.
+     * The handle exposes the owner result rather than the public HTTP DTO;
+     * timeout and cancellation must be returned to this owner explicitly.
+     */
+    public AdapterCallHandle beginAdapterCall(
+            String adapterId,
+            String messageType,
+            String opaquePayload,
+            Long requestedWaitTimeoutMillis
+    ) {
+        requireNonBlank(messageType, "messageType");
+        if (opaquePayload == null) {
+            throw invalid("opaquePayload must be present for an Adapter call");
+        }
+        requireDirectAdapter(adapterId);
+        long timeoutMillis = resolveTimeout(requestedWaitTimeoutMillis);
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        TargetPlan plan = commandPlan(
+                adapterId,
+                adapterId,
+                DirectTarget.adapter(adapterId),
+                DeliveryEndpoint.ADAPTER,
+                messageType,
+                opaquePayload,
+                deadline
+        );
+        String directCallId = UUID.randomUUID().toString();
+        DirectCallRegistry.BatchHandle batch = registry.registerBatch(
+                directCallId,
+                List.of(plan)
+        );
+        CompletionStage<AdapterCallOutcome> completion = batch.completion()
+                .thenApply(outcome -> toAdapterCallOutcome(
+                        adapterId,
+                        outcome
+                ));
+        return new AdapterCallHandle(
+                directCallId,
+                timeoutMillis,
+                completion
+        );
+    }
+
+    public void timeout(AdapterCallHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        registry.timeout(handle.directCallId());
+    }
+
+    public void cancel(AdapterCallHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        registry.cancel(handle.directCallId());
     }
 
     public List<DeliveryCommand> consumeAdapterCommands(
@@ -394,6 +449,24 @@ public final class DirectCallService {
         );
     }
 
+    private static AdapterCallOutcome toAdapterCallOutcome(
+            String adapterId,
+            BatchOutcome outcome
+    ) {
+        TargetOutcome target = outcome.results().get(adapterId);
+        if (target == null) {
+            throw new IllegalStateException(
+                    "Adapter Direct Call result is missing"
+            );
+        }
+        return new AdapterCallOutcome(
+                target.status()
+                        == DirectCallRegistry.TargetOutcomeStatus.OBSERVED,
+                target.outcomeCode(),
+                target.payload()
+        );
+    }
+
     private static DirectTargetReason toHttpReason(
             TargetOutcomeReason reason
     ) {
@@ -510,6 +583,29 @@ public final class DirectCallService {
     public record ResultAppendCounts(
             int acceptedCount,
             int rejectedCount
+    ) {
+    }
+
+    public record AdapterCallHandle(
+            String directCallId,
+            long timeoutMillis,
+            CompletionStage<AdapterCallOutcome> completion
+    ) {
+        public AdapterCallHandle {
+            requireNonBlank(directCallId, "directCallId");
+            if (timeoutMillis <= 0) {
+                throw new IllegalArgumentException(
+                        "timeoutMillis must be positive"
+                );
+            }
+            Objects.requireNonNull(completion, "completion");
+        }
+    }
+
+    public record AdapterCallOutcome(
+            boolean observed,
+            String outcomeCode,
+            String opaqueResultPayload
     ) {
     }
 }

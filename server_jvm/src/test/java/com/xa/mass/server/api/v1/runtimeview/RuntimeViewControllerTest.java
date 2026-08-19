@@ -7,10 +7,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
@@ -21,10 +23,13 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
+import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService.SchedulingState;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +40,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+import org.springframework.web.context.request.async.DeferredResult;
 
 class RuntimeViewControllerTest {
 
@@ -44,6 +51,7 @@ class RuntimeViewControllerTest {
     private TaskResourceCatalog taskCatalog;
     private WorkerGroupTaskCatalog configuredTasks;
     private WorkerSchedulingService workerScheduling;
+    private WorkerNetworkObservationService workerNetwork;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -52,6 +60,7 @@ class RuntimeViewControllerTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         configuredTasks = mock(WorkerGroupTaskCatalog.class);
         workerScheduling = mock(WorkerSchedulingService.class);
+        workerNetwork = mock(WorkerNetworkObservationService.class);
         when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of());
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
@@ -63,7 +72,8 @@ class RuntimeViewControllerTest {
                                         taskCatalog,
                                         configuredTasks,
                                         workerScheduling
-                                )
+                                ),
+                                workerNetwork
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -498,7 +508,7 @@ class RuntimeViewControllerTest {
             throws Exception {
         var states = new LinkedHashMap<String, SchedulingState>();
         states.put("worker-2", SchedulingState.RECOVERY);
-        states.put("worker-1", SchedulingState.DUE_HOT);
+        states.put("worker-1", SchedulingState.HOT_SCORE_OVERDUE);
         when(workerScheduling.observe(
                 "group-a",
                 List.of("worker-2", "worker-1")
@@ -531,7 +541,7 @@ class RuntimeViewControllerTest {
                 ).value("recovery"))
                 .andExpect(jsonPath(
                         "$.statesByWorkerId.worker-1"
-                ).value("due-hot"))
+                ).value("hot-score-overdue"))
                 .andExpect(jsonPath("$.score").doesNotExist());
 
         verify(workerScheduling).observe(
@@ -578,6 +588,61 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
                         .value("scheduling-request"));
+    }
+
+    @Test
+    void networkObservationUsesTheAdapterScopedRuntimeProjection()
+            throws Exception {
+        var states = new LinkedHashMap<String, String>();
+        states.put("worker-2", "disconnected");
+        states.put("worker-1", "connected");
+        DeferredResult<WorkerNetworkObserveResponse> deferred =
+                new DeferredResult<>();
+        deferred.setResult(new WorkerNetworkObserveResponse(
+                "adapter-1",
+                Instant.ofEpochMilli(1_234),
+                states
+        ));
+        when(workerNetwork.observe(
+                "adapter-1",
+                List.of("worker-2", "worker-1"),
+                "network-request"
+        )).thenReturn(deferred);
+
+        MvcResult observation = mockMvc.perform(post(
+                                "/api/v1/runtime-view/endpoint-managers/"
+                                        + "adapter-1/workers:network-observe"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "network-request")
+                        .content("""
+                                {"workerIds":["worker-2","worker-1"]}
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(observation))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "X-Request-Id",
+                        "network-request"
+                ))
+                .andExpect(jsonPath("$.endpointManagerId")
+                        .value("adapter-1"))
+                .andExpect(jsonPath("$.readAt")
+                        .value("1970-01-01T00:00:01.234Z"))
+                .andExpect(jsonPath(
+                        "$.statesByWorkerId.worker-2"
+                ).value("disconnected"))
+                .andExpect(jsonPath(
+                        "$.statesByWorkerId.worker-1"
+                ).value("connected"));
+
+        verify(workerNetwork).observe(
+                "adapter-1",
+                List.of("worker-2", "worker-1"),
+                "network-request"
+        );
     }
 
     private static LinkedHashMap<String, WorkerGroupDescriptor> groupLookup(

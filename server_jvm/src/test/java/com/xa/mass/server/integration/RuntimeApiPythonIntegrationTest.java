@@ -361,6 +361,8 @@ class RuntimeApiPythonIntegrationTest {
                 TransportProfile.WEBSOCKET
         );
         RunningWorker reconnected = null;
+        String demandTaskId = "serviceability-demand-" + suffix;
+        boolean demandTaskCreated = false;
         try {
             awaitConnectionState(workerId, "CONNECTED");
             WorkerScoreState connected = awaitWorkerScore(
@@ -399,8 +401,33 @@ class RuntimeApiPythonIntegrationTest {
                     .isEqualTo(disconnected.timeMillis());
             assertThat(restored.laneRank())
                     .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
+
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks",
+                    taskRequest(demandTaskId, workerGroupId, "ITEM_DRIVEN")
+            ).statusCode()).isEqualTo(201);
+            demandTaskCreated = true;
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + demandTaskId + "/approve",
+                    null
+            ).statusCode()).isEqualTo(200);
+            appendItemWithAllocationRule(
+                    demandTaskId,
+                    "serviceability-demand-item-" + suffix,
+                    "{\"workerId\":{\"$eq\":\"missing-worker-"
+                            + suffix + "\"}}"
+            );
             awaitServiceabilitySnapshot(workerGroupId, workerId);
         } finally {
+            if (demandTaskCreated) {
+                send(
+                        "POST",
+                        "/api/v1/tasks/" + demandTaskId + "/close",
+                        null
+                );
+            }
             if (first != null) {
                 first.close();
             }
@@ -467,22 +494,26 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(connectionState(workerId)).isEqualTo(state);
     }
 
-    @SuppressWarnings("unchecked")
     private String connectionState(String workerId) throws Exception {
-        Map<String, Object> payload =
-                Jsons.parseObject(
-                        observedDirectPayload(
-                                adapterDirectCall(
-                                        "platform.adapter.worker-connections.snapshot",
-                                        workerIdsPayload(workerId)
-                                ),
-                                WEBSOCKET_ENDPOINT_MANAGER_ID,
-                                "200"
-                        )
-                );
-        return (String) ((Map<String, Object>) payload.get(
-                "stateByWorkerId"
-        )).get(workerId);
+        HttpResponse<String> response = send(
+                "POST",
+                "/api/v1/runtime-view/endpoint-managers/"
+                        + WEBSOCKET_ENDPOINT_MANAGER_ID
+                        + "/workers:network-observe",
+                JSON.writeValueAsString(Map.of(
+                        "workerIds",
+                        List.of(workerId)
+                ))
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        var payload = JSON.readTree(response.body());
+        assertThat(payload.get("endpointManagerId").asText())
+                .isEqualTo(WEBSOCKET_ENDPOINT_MANAGER_ID);
+        assertThat(payload.get("readAt").asText()).isNotBlank();
+        return payload.get("statesByWorkerId")
+                .get(workerId)
+                .asText()
+                .toUpperCase(java.util.Locale.ROOT);
     }
 
     @SuppressWarnings("unchecked")
@@ -550,10 +581,6 @@ class RuntimeApiPythonIntegrationTest {
             );
             assertThat(recovery.timeMillis()).isEqualTo(before.timeMillis());
 
-            String requestKey = "ws:{" + redisPrefix()
-                    + "}:adapter:" + WEBSOCKET_ENDPOINT_MANAGER_ID
-                    + ":probe-requests";
-            redis.hset(requestKey, workerId, "1");
         } finally {
             client.shutdown();
         }

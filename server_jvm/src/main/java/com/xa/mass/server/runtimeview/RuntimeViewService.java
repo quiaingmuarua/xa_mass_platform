@@ -322,17 +322,17 @@ public final class RuntimeViewService {
         }
     }
 
-    private static ServerException unavailable(
+    static ServerException unavailable(
             String operation,
-            String workerGroupId,
+            String targetId,
             String requestId,
-            RuntimeException cause
+            Throwable cause
     ) {
         LOGGER.log(
                 System.Logger.Level.ERROR,
                 "code=" + ServerErrorCode.RUNTIME_VIEW_UNAVAILABLE.code()
                         + " operation=" + operation
-                        + " workerGroupId=" + safeLogValue(workerGroupId)
+                        + " targetId=" + safeLogValue(targetId)
                         + " requestId=" + safeLogValue(requestId)
         );
         return new ServerException(

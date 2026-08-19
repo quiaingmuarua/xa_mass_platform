@@ -38,10 +38,10 @@ const SCHEDULING_PRESENTATIONS: Record<
   WorkerSchedulingState,
   WorkerStatusPresentation
 > = {
-  "due-hot": {
-    label: "HOT Due",
+  "hot-score-overdue": {
+    label: "HOT Score Overdue",
     tone: "success",
-    description: "HOT Score 已到期；当前Kernel epoch和其他策略仍可能过滤该Worker。"
+    description: "正HOT Score早于当前时间；它不证明当前Kernel会把该Worker纳入候选集。"
   },
   "held-hot": {
     label: "HOT Held",

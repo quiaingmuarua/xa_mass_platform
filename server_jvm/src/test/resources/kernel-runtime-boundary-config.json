@@ -1,8 +1,6 @@
 {
   "workerServiceability": {
-    "workerGroupIds": [
-      "serviceability-runtime-boundary"
-    ],
+    "taskScanLimit": 100,
     "dispatchIntervalMillis": 1000,
     "resultIntervalMillis": 20,
     "recoveryRetryIntervalMillis": 60000,

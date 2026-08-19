@@ -299,6 +299,42 @@ class DirectCallServiceTest {
     }
 
     @Test
+    void ownerAdapterCallExposesOutcomeWithoutTheHttpContract() {
+        DirectCallService.AdapterCallHandle handle =
+                service.beginAdapterCall(
+                        ADAPTER_ID,
+                        "platform.adapter.worker-connections.snapshot",
+                        "{\"workerIds\":[\"worker-1\"]}",
+                        null
+                );
+        DeliveryCommand command = service.consumeAdapterCommands(
+                ADAPTER_ID,
+                100
+        ).getFirst();
+        service.completeReports(
+                ADAPTER_ID,
+                List.of(DeliveryReport.create(
+                        DeliveryEndpoint.ADAPTER,
+                        ADAPTER_ID,
+                        DeliveryEndpoint.SYSTEM,
+                        command.messageType(),
+                        "200",
+                        "{\"stateByWorkerId\":{\"worker-1\":\"CONNECTED\"}}",
+                        command.forward()
+                ))
+        );
+
+        DirectCallService.AdapterCallOutcome outcome = handle.completion()
+                .toCompletableFuture()
+                .join();
+        assertThat(outcome.observed()).isTrue();
+        assertThat(outcome.outcomeCode()).isEqualTo("200");
+        assertThat(outcome.opaqueResultPayload()).contains("CONNECTED");
+        assertThat(handle.timeoutMillis()).isEqualTo(3_000);
+        verifyNoInteractions(catalog, commands, bindings);
+    }
+
+    @Test
     void invalidShapeAndOwnerReadFailureKeepHttpErrorSemantics() {
         assertThatThrownBy(() -> service.call(
                 ADAPTER_ID,

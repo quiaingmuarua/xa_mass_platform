@@ -205,7 +205,7 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void runtimeViewUsesOnlyManifestBoundedResourceCatalogs()
+    void runtimeViewUsesBoundedOwnersWithoutCreatingRuntimeTruth()
             throws IOException {
         String runtimeView = readSources(RUNTIME_VIEW)
                 + readSources(RUNTIME_VIEW_HTTP);
@@ -214,12 +214,20 @@ class ServerArchitectureBoundaryTest {
                 .contains("TaskResourceCatalog")
                 .contains("taskIdsByWorkerGroup")
                 .contains("WorkerSchedulingService")
+                .contains("WorkerNetworkObservationService")
+                .contains("DirectCallService")
+                .contains(
+                        "platform.adapter.worker-connections.snapshot"
+                )
                 .doesNotContain(".worker.redis")
                 .doesNotContain(".task.redis")
                 .doesNotContain("RedisWorkerResourceCatalog")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
                 .doesNotContain("WorkerScoreCore")
+                .doesNotContain("DirectCallRegistry")
+                .doesNotContain("WorkerRouteRegistry")
+                .doesNotContain("NettyWorkerServer")
                 .doesNotContain("TaskScore")
                 .doesNotContain("DeliveryCommand")
                 .doesNotContain("DeliveryReport")
@@ -450,6 +458,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("HttpWorkerResourceCatalog")
                 .doesNotContain("AssembledWorkerResourceCatalog")
                 .doesNotContain("scheduling-observe")
+                .doesNotContain("network-observe")
                 .doesNotContain("KernelWorkerSchedulingReader")
                 .doesNotContain("\"/worker-groups")
                 .doesNotContain("\"/workers");

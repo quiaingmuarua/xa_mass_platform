@@ -10,8 +10,13 @@ from kernel_design.executable_spec import (
     DeliveryEndpoint,
     DeliveryReport,
     ProbeRequestOfferStatus,
+    RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
     RedisWorkerServiceabilityRuntime,
+    TaskDescriptor,
+    TaskScoreBand,
+    TaskScoreState,
+    TaskType,
     WorkerDescriptor,
     WorkerScoreCore,
     WorkerScorePolarity,
@@ -309,7 +314,45 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
             def offer_probe_requests(*, adapter_id, worker_ids):
                 raise AssertionError("excluded endpoint must not receive probes")
 
+        class TaskScore:
+            @staticmethod
+            def acquire_dispatch_work_tasks(*, limit):
+                return ("active-task",)[:limit]
+
+            @staticmethod
+            def get_score_states(*, task_ids):
+                return {
+                    task_id: TaskScoreState(
+                        task_id=task_id,
+                        score=1,
+                        band=TaskScoreBand.RUNNING_VISIBLE,
+                        time_millis=now_millis - 100,
+                        suffix=0,
+                    )
+                    for task_id in task_ids
+                }
+
+        class TaskCatalog:
+            @staticmethod
+            def load_task_allocation_descriptors(*, task_ids):
+                return {
+                    task_id: TaskDescriptor(
+                        task_id=task_id,
+                        worker_group_id=self.group_id,
+                        task_type=TaskType.ITEM_DRIVEN,
+                        allocation_rule=None,
+                        config={
+                            "priority": "80",
+                            "maximumCandidateWorkers": "10",
+                            "maxRetryTimes": "3",
+                        },
+                    )
+                    for task_id in task_ids
+                }
+
         pacer = WorkerServiceabilityDispatchPacer(
+            TaskScore(),
+            TaskCatalog(),
             self.score,
             Catalog(),
             Runtime(),
@@ -319,7 +362,6 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         self.assertEqual(
             0,
             pacer.dispatch_probes(config=WorkerServiceabilityDispatchConfig(
-                worker_group_ids=(self.group_id,),
                 hot_scan_limit=1,
                 recovery_scan_limit=1,
                 max_recovery_attempts=5,
@@ -338,6 +380,110 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(5, state.lane_rank)
         self.assertEqual(1, state.dirty)
+
+    def test_due_task_drives_group_probe_without_mutating_task_score(self) -> None:
+        seconds, microseconds = self.redis.time()
+        now_millis = seconds * 1_000 + microseconds // 1_000
+        floor_millis = (
+            now_millis
+            // WorkerScoreCore.SLOT_MILLIS
+            * WorkerScoreCore.SLOT_MILLIS
+        )
+        task_id = "active-task"
+        task_score = RedisTaskScoreBandCore(
+            self.redis,
+            score_key=f"tr:{self.prefix}:task:score",
+        )
+        due_task_score = task_score._score(
+            task_score.RUNNING_VISIBLE_TAG,
+            floor_millis // task_score.SLOT_MILLIS - 1,
+            0,
+        )
+        self.redis.zadd(task_score.score_key, {task_id: due_task_score})
+
+        worker_id = "worker-a"
+        worker_score = self.score._score(
+            WorkerScorePolarity.HOT_ACQUIRE,
+            floor_millis // WorkerScoreCore.SLOT_MILLIS - 10,
+            0,
+            0,
+        )
+        self.redis.zadd(
+            self.score._score_key(self.group_id),
+            {worker_id: worker_score},
+        )
+
+        class TaskCatalog:
+            @staticmethod
+            def load_task_allocation_descriptors(*, task_ids):
+                return {
+                    current_task_id: TaskDescriptor(
+                        task_id=current_task_id,
+                        worker_group_id=self.group_id,
+                        task_type=TaskType.ITEM_DRIVEN,
+                        allocation_rule=None,
+                        config={
+                            "priority": "80",
+                            "maximumCandidateWorkers": "10",
+                            "maxRetryTimes": "3",
+                        },
+                    )
+                    for current_task_id in task_ids
+                }
+
+        class WorkerCatalog:
+            @staticmethod
+            def get_worker_descriptors(*, worker_group_id, worker_ids):
+                return {
+                    current_worker_id: WorkerDescriptor(
+                        worker_id=current_worker_id,
+                        worker_group_id=worker_group_id,
+                        endpoint_manager_id="adapter-a",
+                        worker_properties={},
+                        platform_properties={},
+                    )
+                    for current_worker_id in worker_ids
+                }
+
+        offered: list[tuple[str, tuple[str, ...]]] = []
+
+        class Runtime:
+            @staticmethod
+            def offer_probe_requests(*, adapter_id, worker_ids):
+                offered.append((adapter_id, tuple(worker_ids)))
+                return {
+                    current_worker_id: ProbeRequestOfferStatus.OFFERED
+                    for current_worker_id in worker_ids
+                }
+
+        pacer = WorkerServiceabilityDispatchPacer(
+            task_score,
+            TaskCatalog(),
+            self.score,
+            WorkerCatalog(),
+            Runtime(),
+            hot_eligibility_floor_millis=floor_millis,
+            clock_millis=lambda: now_millis,
+        )
+        before = self.redis.zscore(task_score.score_key, task_id)
+
+        self.assertEqual(
+            1,
+            pacer.dispatch_probes(
+                config=WorkerServiceabilityDispatchConfig(
+                    task_scan_limit=1,
+                    hot_scan_limit=1,
+                    recovery_scan_limit=1,
+                    probe_excluded_endpoint_manager_ids=(),
+                )
+            ),
+        )
+
+        self.assertEqual([("adapter-a", (worker_id,))], offered)
+        self.assertEqual(
+            before,
+            self.redis.zscore(task_score.score_key, task_id),
+        )
 
     def test_recovery_scan_never_returns_cold_park_coordinate(self) -> None:
         now_slot = self.score._current_time_slot()

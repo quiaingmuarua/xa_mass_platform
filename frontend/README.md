@@ -63,14 +63,20 @@ simulate batch execution and never calls the Task Batch API.
 
 ## Worker status observations
 
-The Worker page presents Adapter Network and Kernel Scheduling as two separate
-observation axes. In API mode, Kernel Scheduling comes from the bounded Runtime
-View scheduling-observation endpoint. Java `WorkerSchedulingService` uses the
-existing batch `WorkerScoreCore.getScoreStates` read and returns only
-`due-hot`, `held-hot`, `paused`, `recovery`, `cold`, or `missing`, so the
-browser never receives or decodes raw Score. Adapter Network remains
-deterministic frontend Mock data and is labelled `MOCK`. In explicit Mock mode,
-both axes remain deterministic Mock data.
+The Worker page presents Adapter Network and Kernel Worker Score as two separate
+observation axes. In API mode, Adapter Network groups the current Worker sample
+by `endpointManagerId` and calls the bounded Adapter-scoped Runtime View
+network-observation endpoint. Server reuses the existing Adapter DIRECT_CALL
+correlation to execute `platform.adapter.worker-connections.snapshot`; the
+browser receives only `connected`, `disconnected`, or `unknown` and never
+parses an opaque Direct Call result. Kernel Worker Score comes from the bounded
+Runtime View scheduling-observation endpoint. Java `WorkerSchedulingService`
+uses the existing batch `WorkerScoreCore.getScoreStates` read and returns only
+`hot-score-overdue`, `held-hot`, `paused`, `recovery`, `cold`, or `missing`, so
+the browser never receives or decodes raw Score. `hot-score-overdue` is only a
+past positive Score projection, not the Kernel's floor-aware candidate range.
+In explicit Mock mode, both axes
+remain deterministic Mock data and are labelled `MOCK`.
 
 Network and Scheduling observations load independently after a Worker sample
 appears. They can be refreshed without resampling Workers, and one failed axis
@@ -82,10 +88,11 @@ connection control:
 connected != bound != schedulable != executing
 ```
 
-`WorkerStatusDataSource` keeps the axes independent. API-mode Scheduling uses
-one request for the current `1..100` Worker sample, preserves request order and
-fails closed on identity or schema drift. A failed Scheduling refresh keeps its
-last successful value only as `Stale`; it never falls back to Mock data.
+`WorkerStatusDataSource` keeps the axes independent. API-mode Network uses one
+parallel request per Adapter represented in the current `1..100` Worker sample;
+API-mode Scheduling uses one request for the whole sample. Both restore request
+order and fail closed on identity or schema drift. A failed refresh keeps its
+last successful value only as `Stale`; neither axis falls back to Mock data.
 
 ## Verification
 

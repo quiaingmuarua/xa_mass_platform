@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 from time import time_ns
 
+from ..kernel.task_runtime import TaskResourceCatalog
+from ..kernel.task_score_band import TaskScoreBand, TaskScoreBandCore
 from ..kernel.worker_delivery import DeliveryEndpoint, DeliveryReport
 from ..kernel.worker_runtime import WorkerResourceCatalog
 from ..kernel.worker_score import (
@@ -37,7 +39,7 @@ def _current_time_millis() -> int:
 
 @dataclass(frozen=True, slots=True)
 class WorkerServiceabilityDispatchConfig:
-    worker_group_ids: tuple[str, ...]
+    task_scan_limit: int = 100
     recovery_retry_interval_millis: int = 60_000
     probe_sweep_restart_delay_millis: int = 10_000
     max_recovery_attempts: int = 5
@@ -48,16 +50,6 @@ class WorkerServiceabilityDispatchConfig:
     )
 
     def __post_init__(self) -> None:
-        if isinstance(self.worker_group_ids, (str, bytes)):
-            raise ValueError("serviceability WorkerGroup ids must be a sequence")
-        groups = tuple(self.worker_group_ids)
-        if (
-            not groups
-            or len(groups) > 100
-            or len(set(groups)) != len(groups)
-            or any(not isinstance(group_id, str) or not group_id for group_id in groups)
-        ):
-            raise ValueError("serviceability WorkerGroup ids must be 1..100 unique ids")
         excluded = tuple(self.probe_excluded_endpoint_manager_ids)
         if (
             isinstance(self.probe_excluded_endpoint_manager_ids, (str, bytes))
@@ -74,6 +66,7 @@ class WorkerServiceabilityDispatchConfig:
         if any(
             isinstance(value, bool) or not isinstance(value, int) or value <= 0
             for value in (
+                self.task_scan_limit,
                 self.recovery_retry_interval_millis,
                 self.probe_sweep_restart_delay_millis,
                 self.max_recovery_attempts,
@@ -82,11 +75,12 @@ class WorkerServiceabilityDispatchConfig:
             )
         ):
             raise ValueError("serviceability durations and limits must be positive")
+        if self.task_scan_limit > 100:
+            raise ValueError("serviceability Task scan limit must be in 1..100")
         if self.hot_scan_limit + self.recovery_scan_limit > 100:
             raise ValueError("serviceability scan limits must total at most 100")
         if self.max_recovery_attempts > WorkerScoreCore.MAX_LANE_RANK:
             raise ValueError("max recovery attempts must be in 1..99")
-        object.__setattr__(self, "worker_group_ids", groups)
         object.__setattr__(
             self,
             "probe_excluded_endpoint_manager_ids",
@@ -131,6 +125,8 @@ class WorkerServiceabilityDispatchPacer:
 
     def __init__(
         self,
+        task_score: TaskScoreBandCore,
+        task_catalog: TaskResourceCatalog,
         worker_score: WorkerScoreCore,
         worker_catalog: WorkerResourceCatalog,
         runtime: WorkerServiceabilityRuntime,
@@ -145,6 +141,8 @@ class WorkerServiceabilityDispatchPacer:
             or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
         ):
             raise ValueError("HOT eligibility floor must be score-slot aligned")
+        self.task_score = task_score
+        self.task_catalog = task_catalog
         self.worker_score = worker_score
         self.worker_catalog = worker_catalog
         self.runtime = runtime
@@ -159,14 +157,24 @@ class WorkerServiceabilityDispatchPacer:
         *,
         config: WorkerServiceabilityDispatchConfig,
     ) -> int:
-        worker_group_id = config.worker_group_ids[
-            self._group_cursor % len(config.worker_group_ids)
-        ]
-        self._group_cursor = (self._group_cursor + 1) % len(
-            config.worker_group_ids
-        )
         now_millis = self._clock_millis()
+        worker_group_ids = self._active_worker_group_ids(
+            task_scan_limit=config.task_scan_limit,
+            current_slot_millis=(
+                now_millis
+                // TaskScoreBandCore.SLOT_MILLIS
+                * TaskScoreBandCore.SLOT_MILLIS
+            ),
+        )
+        self._retain_active_group_sweeps(worker_group_ids)
+        if not worker_group_ids:
+            self._group_cursor = 0
+            return 0
 
+        worker_group_id = worker_group_ids[
+            self._group_cursor % len(worker_group_ids)
+        ]
+        self._group_cursor = (self._group_cursor + 1) % len(worker_group_ids)
         hot = self._hot_page(
             worker_group_id=worker_group_id,
             now_millis=now_millis,
@@ -240,6 +248,47 @@ class WorkerServiceabilityDispatchPacer:
                 for status in statuses.values()
             )
         return offered
+
+    def _active_worker_group_ids(
+        self,
+        *,
+        task_scan_limit: int,
+        current_slot_millis: int,
+    ) -> tuple[str, ...]:
+        task_ids = tuple(
+            self.task_score.acquire_dispatch_work_tasks(limit=task_scan_limit)
+        )
+        if not task_ids:
+            return ()
+
+        states = self.task_score.get_score_states(task_ids=task_ids)
+        descriptors = self.task_catalog.load_task_allocation_descriptors(
+            task_ids=task_ids,
+        )
+        return tuple(
+            dict.fromkeys(
+                descriptor.worker_group_id
+                for task_id in task_ids
+                if (state := states.get(task_id)) is not None
+                and state.band is TaskScoreBand.RUNNING_VISIBLE
+                and state.time_millis is not None
+                and state.time_millis < current_slot_millis
+                and state.time_millis != TaskScoreBandCore.PAUSE_TIME_MILLIS
+                and state.suffix is not None
+                and (descriptor := descriptors.get(task_id)) is not None
+                and descriptor.task_id == task_id
+            )
+        )
+
+    def _retain_active_group_sweeps(
+        self,
+        worker_group_ids: tuple[str, ...],
+    ) -> None:
+        retained = frozenset(worker_group_ids)
+        for sweeps in (self._hot_sweeps, self._recovery_sweeps):
+            for worker_group_id in tuple(sweeps):
+                if worker_group_id not in retained:
+                    del sweeps[worker_group_id]
 
     def _hot_page(
         self,

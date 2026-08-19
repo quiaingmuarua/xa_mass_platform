@@ -441,10 +441,11 @@ the first validation (`0`) precedes retries (`1..N`) in the same slot. Dirty is
 only a stale fence and must not be used as a priority signal.
 
 The optional Worker Serviceability Pacer performs bounded recovery discovery
-for explicitly configured WorkerGroups. It does not globally discover Groups,
-lease candidates, or infer serviceability from the score. It asks the owning
-Adapter for a route snapshot and only the later returned evidence may invoke a
-score transition. When the feature is disabled or evidence is lost,
+only for WorkerGroups derived from the current bounded page of due
+`RUNNING_VISIBLE` Tasks. It does not globally discover Groups, mutate Task
+score, lease candidates, or infer serviceability from the score. It asks the
+owning Adapter for a route snapshot and only the later returned evidence may
+invoke a score transition. When the feature is disabled or evidence is lost,
 RECOVERY_RECHECK has no wall-clock guarantee to move or park exactly when its
 coordinate becomes due.
 

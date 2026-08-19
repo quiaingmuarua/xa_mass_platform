@@ -15,10 +15,7 @@
     "intervalMillis": 20
   },
   "workerServiceability": {
-    "workerGroupIds": [
-      "scenario-phone-number-workers",
-      "scenario-string-utils-workers"
-    ],
+    "taskScanLimit": 100,
     "dispatchIntervalMillis": 1000,
     "resultIntervalMillis": 100,
     "recoveryRetryIntervalMillis": 60000,

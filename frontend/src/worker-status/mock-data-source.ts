@@ -16,8 +16,8 @@ const NETWORK_PATTERN: readonly WorkerNetworkState[] = [
 ];
 
 const SCHEDULING_PATTERN: readonly WorkerSchedulingState[] = [
-  "due-hot",
-  "due-hot",
+  "hot-score-overdue",
+  "hot-score-overdue",
   "held-hot",
   "paused",
   "recovery",

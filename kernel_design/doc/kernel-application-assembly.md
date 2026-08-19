@@ -181,7 +181,7 @@ The optional JSON contract is:
     "intervalMillis": 100
   },
   "workerServiceability": {
-    "workerGroupIds": ["scenario-phone-number-workers"],
+    "taskScanLimit": 100,
     "dispatchIntervalMillis": 1000,
     "resultIntervalMillis": 100,
     "recoveryRetryIntervalMillis": 60000,
@@ -201,8 +201,10 @@ The optional JSON contract is:
 ```
 
 Every top-level field may be omitted. `workerServiceability` is disabled when
-absent; when present it requires `workerGroupIds` with 1..100 unique explicit
-Groups and all other fields use the shown defaults. Its HOT plus RECOVERY scan
+absent; an empty object enables it with defaults. `taskScanLimit` defaults to
+`100` and must be in `1..100`; it bounds the due `RUNNING_VISIBLE` Task page
+from which the Dispatch Pacer derives current WorkerGroups without modifying
+Task score. Its HOT plus RECOVERY scan
 limits may total at most 100. `probeExcludedEndpointManagerIds` accepts zero to
 100 unique non-empty ids; the default excludes `system-polling`. Unknown
 fields, malformed JSON, empty strings,

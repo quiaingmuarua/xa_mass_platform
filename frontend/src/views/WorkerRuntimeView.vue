@@ -38,6 +38,7 @@ import type {
 const store = useRuntimeViewerStore();
 const workerStatus = useWorkerStatusStore();
 const runtimeConfig = useRuntimeViewerConfig();
+const networkIsMock = runtimeConfig.mode === "mock";
 const schedulingIsMock = runtimeConfig.mode === "mock";
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
@@ -75,7 +76,8 @@ const schedulingSummary = computed(() => {
     return axis.observation !== undefined && !axis.stale ? [axis.observation] : [];
   });
   return {
-    dueHot: observations.filter((value) => value.state === "due-hot").length,
+    hotScoreOverdue: observations.filter((value) => value.state === "hot-score-overdue")
+      .length,
     observed: observations.length
   };
 });
@@ -240,7 +242,7 @@ function metricValue(value: number, observed: number): string {
       <div>
         <p class="worker-page__eyebrow">RUNTIME / WORKERS</p>
         <h1>Worker Runtime</h1>
-        <p>Worker 声明样本、Adapter Network 与 Kernel Scheduling 观测</p>
+        <p>Worker 声明样本、Adapter Network 与 Kernel Worker Score 观测</p>
       </div>
       <div class="worker-page__heading-actions">
         <span class="generated-at" data-testid="generated-at">
@@ -279,26 +281,30 @@ function metricValue(value: number, observed: number): string {
       <MetricCard
         label="Network Connected"
         :value="metricValue(networkSummary.connected, networkSummary.observed)"
-        hint="MOCK observed"
+        :hint="networkIsMock ? 'MOCK observed' : 'Adapter observed'"
         :icon="Connection"
         tone="success"
         test-id="metric-network-connected"
       />
       <MetricCard
-        label="Scheduling HOT Due"
-        :value="metricValue(schedulingSummary.dueHot, schedulingSummary.observed)"
+        label="HOT Score Overdue"
+        :value="
+          metricValue(schedulingSummary.hotScoreOverdue, schedulingSummary.observed)
+        "
         :hint="schedulingIsMock ? 'MOCK observed' : 'Kernel observed'"
         :icon="TrendCharts"
         tone="warning"
-        test-id="metric-scheduling-due-hot"
+        test-id="metric-hot-score-overdue"
       />
     </div>
 
     <el-alert class="runtime-semantics" type="info" :closable="false" show-icon>
       <template #title>
         <strong>双轴语义：</strong>
-        Adapter Network 与 Kernel Scheduling 是独立观测，connected ≠ bound ≠ schedulable
-        ≠ executing。Adapter Network 当前仍为 MOCK；Kernel Scheduling
+        Adapter Network 与 Kernel Worker Score 是独立观测，connected ≠ bound ≠
+        schedulable ≠ executing。Adapter Network
+        {{ networkIsMock ? "为显式 MOCK" : "来自 Adapter Route 语义投影" }}；Kernel
+        Scheduling
         {{ schedulingIsMock ? "为显式 MOCK" : "来自 Kernel 语义投影" }}，前端不解析 raw
         Score。
       </template>
@@ -407,7 +413,13 @@ function metricValue(value: number, observed: number): string {
               >
                 刷新状态
               </el-button>
-              <el-tag effect="plain" type="warning" size="small">NETWORK MOCK</el-tag>
+              <el-tag
+                effect="plain"
+                :type="networkIsMock ? 'warning' : 'success'"
+                size="small"
+              >
+                NETWORK {{ networkIsMock ? "MOCK" : "LIVE" }}
+              </el-tag>
               <el-tag
                 v-if="!schedulingIsMock"
                 effect="plain"
@@ -513,7 +525,10 @@ function metricValue(value: number, observed: number): string {
                   label="ENDPOINT MANAGER"
                   min-width="180"
                 />
-                <el-table-column label="ADAPTER NETWORK · MOCK" min-width="185">
+                <el-table-column
+                  :label="networkIsMock ? 'ADAPTER NETWORK · MOCK' : 'ADAPTER NETWORK'"
+                  min-width="185"
+                >
                   <template #default="{ row }">
                     <div class="worker-status-cell">
                       <el-tag
@@ -535,7 +550,9 @@ function metricValue(value: number, observed: number): string {
                 </el-table-column>
                 <el-table-column
                   :label="
-                    schedulingIsMock ? 'KERNEL SCHEDULING · MOCK' : 'KERNEL SCHEDULING'
+                    schedulingIsMock
+                      ? 'KERNEL WORKER SCORE · MOCK'
+                      : 'KERNEL WORKER SCORE'
                   "
                   min-width="195"
                 >
@@ -681,7 +698,13 @@ function metricValue(value: number, observed: number): string {
               <h2>Adapter Network</h2>
               <p>Adapter Route 的独立观测投影</p>
             </div>
-            <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+            <el-tag
+              effect="plain"
+              :type="networkIsMock ? 'warning' : 'success'"
+              size="small"
+            >
+              {{ networkIsMock ? "MOCK" : "LIVE" }}
+            </el-tag>
           </div>
           <div class="worker-status-card">
             <div class="worker-status-card__state">
@@ -736,7 +759,7 @@ function metricValue(value: number, observed: number): string {
         <section class="worker-status-detail">
           <div class="worker-status-detail__heading">
             <div>
-              <h2>Kernel Scheduling</h2>
+              <h2>Kernel Worker Score</h2>
               <p>Worker Score 的语义化投影，不暴露 raw Score</p>
             </div>
             <el-tag
@@ -769,7 +792,7 @@ function metricValue(value: number, observed: number): string {
                 <strong>Scheduling State</strong>
                 <small>{{
                   schedulingPresentation(selectedWorker)?.description ??
-                  "尚无可展示的 Kernel Scheduling 观测。"
+                  "尚无可展示的 Kernel Worker Score 观测。"
                 }}</small>
               </div>
             </div>
@@ -813,7 +836,7 @@ function metricValue(value: number, observed: number): string {
         <el-alert type="info" :closable="false" show-icon>
           <template #title>
             Connected 不证明 Binding、Schedulable 或 Executing；HOT Held 不证明Worker
-            正在执行；HOT Due也不包含当前Kernel epoch或匹配策略结论。
+            正在执行；HOT Score Overdue也不包含当前Kernel epoch或匹配策略结论。
           </template>
         </el-alert>
       </div>

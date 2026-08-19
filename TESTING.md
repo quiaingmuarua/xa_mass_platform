@@ -14,7 +14,7 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Adapter-evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, exact Adapter Route evidence through the Kernel Result Pacer, periodic snapshot compensation, and current score convergence | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, the public Adapter Network Runtime View, exact Adapter Route evidence through the Kernel Result Pacer, periodic snapshot compensation, and current score convergence | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Task Batch | The checked profile batch-runs six WorkerGroup/Event cases through long-lived Tasks, preserves 20 Worker identities, and returns 60 results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
@@ -85,9 +85,9 @@ python -m kernel_design.runtime_server `
 
 The same proof invokes an unpaused real WebSocket Worker through DIRECT_CALL,
 exercises a custom SYSTEM handler and the default probe/properties/events
-handlers, observes and closes its current Adapter Channel, and proves
-transparent reconnect. A dedicated Worker also proves the full current
-Serviceability behavior:
+handlers, observes the current Adapter Channel through the public Runtime View,
+closes it through DIRECT_CALL, and proves transparent reconnect. A dedicated
+Worker also proves the full current Serviceability behavior:
 
 ```text
 physical WebSocket connect
@@ -96,8 +96,9 @@ explicit Worker shutdown
   -> exact DISCONNECTED evidence -> Kernel Result Pacer -> exact RECOVERY toggle
 same Worker identity reconnect
   -> exact CONNECTED evidence -> Kernel Result Pacer -> HOT at/above epoch floor
-periodic request
-  -> Adapter snapshot evidence -> Kernel Result Pacer -> RECOVERY-to-HOT compensation
+due RUNNING_VISIBLE Task demand
+  -> Kernel derives its WorkerGroup -> periodic Adapter snapshot evidence
+  -> Kernel Result Pacer -> RECOVERY-to-HOT compensation
 expired TASK delivery
   -> 23002 Task Result and separate KERNEL evidence use independent Pacers
 ```

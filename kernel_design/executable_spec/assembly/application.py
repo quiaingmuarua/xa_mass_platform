@@ -148,7 +148,7 @@ def _reject_unknown(
 
 @dataclass(frozen=True, slots=True)
 class WorkerServiceabilityConfig:
-    worker_group_ids: tuple[str, ...]
+    task_scan_limit: int = 100
     dispatch_interval_millis: int = _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS
     result_interval_millis: int = _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS
     recovery_retry_interval_millis: int = 60_000
@@ -165,9 +165,8 @@ class WorkerServiceabilityConfig:
     )
 
     def __post_init__(self) -> None:
-        if isinstance(self.worker_group_ids, (str, bytes)):
-            raise ValueError("serviceability WorkerGroup ids must be a sequence")
         for value, name in (
+            (self.task_scan_limit, "serviceability Task scan limit"),
             (self.dispatch_interval_millis, "serviceability dispatch interval"),
             (self.result_interval_millis, "serviceability result interval"),
             (self.recovery_retry_interval_millis, "recovery retry interval"),
@@ -182,9 +181,8 @@ class WorkerServiceabilityConfig:
             (self.evidence_max_age_millis, "Adapter evidence max age"),
         ):
             _positive_integer(value, name=name)
-        groups = tuple(self.worker_group_ids)
         dispatch = WorkerServiceabilityDispatchConfig(
-            worker_group_ids=groups,
+            task_scan_limit=self.task_scan_limit,
             recovery_retry_interval_millis=self.recovery_retry_interval_millis,
             probe_sweep_restart_delay_millis=(
                 self.probe_sweep_restart_delay_millis
@@ -201,7 +199,7 @@ class WorkerServiceabilityConfig:
             result_report_limit=self.result_report_limit,
             evidence_max_age_millis=self.evidence_max_age_millis,
         )
-        object.__setattr__(self, "worker_group_ids", dispatch.worker_group_ids)
+        object.__setattr__(self, "task_scan_limit", dispatch.task_scan_limit)
         object.__setattr__(
             self,
             "probe_excluded_endpoint_manager_ids",
@@ -351,7 +349,7 @@ class KernelApplicationConfig:
                 raw_serviceability,
                 allowed=frozenset(
                     {
-                        "workerGroupIds",
+                        "taskScanLimit",
                         "dispatchIntervalMillis",
                         "resultIntervalMillis",
                         "recoveryRetryIntervalMillis",
@@ -366,13 +364,11 @@ class KernelApplicationConfig:
                 ),
                 name="workerServiceability config",
             )
-            raw_group_ids = raw_serviceability.get("workerGroupIds")
-            if not isinstance(raw_group_ids, list):
-                raise ValueError(
-                    "workerServiceability workerGroupIds must be an array"
-                )
             serviceability_config = WorkerServiceabilityConfig(
-                worker_group_ids=tuple(raw_group_ids),
+                task_scan_limit=_positive_integer(
+                    raw_serviceability.get("taskScanLimit", 100),
+                    name="serviceability Task scan limit",
+                ),
                 dispatch_interval_millis=_positive_integer(
                     raw_serviceability.get(
                         "dispatchIntervalMillis",
@@ -802,8 +798,8 @@ class KernelApplication:
                 if config.worker_serviceability is None
                 else WorkerServiceabilityDispatchApplicationConfig(
                     dispatch=WorkerServiceabilityDispatchConfig(
-                        worker_group_ids=(
-                            config.worker_serviceability.worker_group_ids
+                        task_scan_limit=(
+                            config.worker_serviceability.task_scan_limit
                         ),
                         recovery_retry_interval_millis=(
                             config.worker_serviceability

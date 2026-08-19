@@ -161,7 +161,7 @@ public final class WorkerSchedulingService {
         }
         return state.timeMillis() >= currentSlotMillis
                 ? SchedulingState.HELD_HOT
-                : SchedulingState.DUE_HOT;
+                : SchedulingState.HOT_SCORE_OVERDUE;
     }
 
     private static WorkerScoreTransitionResult requireResult(
@@ -213,7 +213,7 @@ public final class WorkerSchedulingService {
     }
 
     public enum SchedulingState {
-        DUE_HOT("due-hot"),
+        HOT_SCORE_OVERDUE("hot-score-overdue"),
         HELD_HOT("held-hot"),
         PAUSED("paused"),
         RECOVERY("recovery"),

@@ -81,7 +81,9 @@ Long-lived identity reports the Server-issued workerId route. The Adapter emits
 best-effort `ADAPTER -> KERNEL` evidence for exact connected/disconnected Route
 transitions. When the optional Kernel Worker Serviceability policy is enabled,
 its Dispatch Pacer also writes coalesced, Adapter-partitioned probe requests as
-loss and drift compensation. Server constructs bounded `KERNEL -> ADAPTER`
+loss and drift compensation. It derives the WorkerGroups it checks from a
+bounded page of currently due `RUNNING_VISIBLE` Tasks and never modifies Task
+score. Server constructs bounded `KERNEL -> ADAPTER`
 connection-snapshot Commands only after higher-priority delivery sources and
 transparently appends both Report forms to the Kernel evidence handoff. Only
 the Kernel Result Pacer interprets them and asks the Worker score owner to
