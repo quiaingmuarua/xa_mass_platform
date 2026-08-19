@@ -384,7 +384,7 @@ jobs:
             --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json \
             > runtime-kernel.log 2>&1 &
           echo $! > runtime-kernel.pid
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
               >/dev/null 2>&1; then
@@ -410,7 +410,7 @@ jobs:
           if [ -f runtime-kernel.pid ]; then
             pid=$(cat runtime-kernel.pid)
             kill "$pid" 2>/dev/null || true
-            for attempt in $(seq 1 10); do
+            for _ in $(seq 1 10); do
               if ! kill -0 "$pid" 2>/dev/null; then
                 exit 0
               fi
@@ -479,7 +479,7 @@ jobs:
             --config integrations/worker-capability-rpc/kernel-config.json \
             > fleet-kernel.log 2>&1 &
           echo $! > fleet-kernel.pid
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
               >/dev/null 2>&1; then
@@ -503,7 +503,7 @@ jobs:
             --xa.mass.task-batch.root="$task_root" \
             > fleet-server-initial.log 2>&1 &
           echo $! > fleet-server.pid
-          for attempt in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
@@ -529,7 +529,7 @@ jobs:
         run: |
           pid=$(cat fleet-server.pid)
           kill "$pid"
-          for attempt in $(seq 1 15); do
+          for _ in $(seq 1 15); do
             if ! kill -0 "$pid" 2>/dev/null; then
               rm -f fleet-server.pid
               exit 0
@@ -554,7 +554,7 @@ jobs:
             --xa.mass.task-batch.root="$task_root" \
             > fleet-server-restart.log 2>&1 &
           echo $! > fleet-server.pid
-          for attempt in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
@@ -596,7 +596,7 @@ jobs:
             fi
             pid=$(cat "$pid_file")
             kill "$pid" 2>/dev/null || true
-            for attempt in $(seq 1 15); do
+            for _ in $(seq 1 15); do
               if ! kill -0 "$pid" 2>/dev/null; then
                 break
               fi
@@ -660,7 +660,7 @@ jobs:
             --config integrations/worker-capability-rpc/kernel-config.json \
             > scenario-kernel.log 2>&1 &
           echo $! > scenario-kernel.pid
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
               >/dev/null 2>&1; then
@@ -680,7 +680,7 @@ jobs:
             --spring.profiles.active=scenario-workers \
             > scenario-server.log 2>&1 &
           echo $! > scenario-server.pid
-          for attempt in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
@@ -717,7 +717,7 @@ jobs:
             fi
             pid=$(cat "$pid_file")
             kill "$pid" 2>/dev/null || true
-            for attempt in $(seq 1 10); do
+            for _ in $(seq 1 10); do
               if ! kill -0 "$pid" 2>/dev/null; then
                 break
               fi

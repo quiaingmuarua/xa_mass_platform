@@ -557,7 +557,7 @@ class AndroidWorkerAcceptance:
         )
 
         self.device.request_state("STOPPED")
-        stopped = self._await_snapshot("STOPPED", worker_id)
+        stopped = self._await_stopped(worker_id)
         self._await_not_connected(worker_id)
         self.evidence.check("explicitStopState", stopped.state)
         self.evidence.check("explicitStopDisconnected", True)
@@ -572,8 +572,8 @@ class AndroidWorkerAcceptance:
 
     def _terminal(self, baseline_worker_id: str) -> None:
         self._await_health()
-        stopped = self._await_snapshot("STOPPED", baseline_worker_id)
-        self.evidence.worker_id = stopped.worker_id
+        stopped = self._await_stopped(baseline_worker_id)
+        self.evidence.worker_id = baseline_worker_id
         self.evidence.baseline_identity_matched = True
         self.evidence.check("endpointTerminalState", stopped.state)
 
@@ -583,12 +583,16 @@ class AndroidWorkerAcceptance:
         samples = 0
         while self._monotonic() < observation_deadline:
             snapshot = self.device.snapshot()
-            if snapshot.state != "STOPPED" or snapshot.worker_id != baseline_worker_id:
+            if snapshot.state != "STOPPED":
                 raise ProofFailure(
                     "server-restart.no-automatic-start",
                     "Android Worker started automatically after Server restart",
                     inconsistent_ids=(baseline_worker_id,),
                 )
+            self._require_compatible_stopped_identity(
+                snapshot,
+                baseline_worker_id,
+            )
             if self.runtime.network_state(
                 self.options.endpoint_manager_id, baseline_worker_id
             ) == "connected":
@@ -678,6 +682,29 @@ class AndroidWorkerAcceptance:
             "Android Worker did not reach the expected local state",
             inconsistent_ids=inconsistent,
         )
+
+    def _await_stopped(self, expected_worker_id: str) -> WorkerSnapshot:
+        snapshot = self._await_snapshot("STOPPED", None)
+        self._require_compatible_stopped_identity(
+            snapshot,
+            expected_worker_id,
+        )
+        return snapshot
+
+    @staticmethod
+    def _require_compatible_stopped_identity(
+        snapshot: WorkerSnapshot,
+        expected_worker_id: str,
+    ) -> None:
+        if (
+            snapshot.worker_id is not None
+            and snapshot.worker_id != expected_worker_id
+        ):
+            raise ProofFailure(
+                "device.lifecycle.stopped-identity",
+                "Stopped Android Worker exposed a conflicting identity",
+                inconsistent_ids=(snapshot.worker_id,),
+            )
 
     def _await_connected(self, worker_id: str) -> None:
         deadline = self._monotonic() + self._wait_seconds

@@ -41,6 +41,7 @@ class FakeDevice:
         self.health_failure = False
         self.snapshots_before_identity = 0
         self.connect_on_health = False
+        self.expose_identity_when_stopped = False
 
     def health(self) -> None:
         if self.health_failure:
@@ -53,8 +54,13 @@ class FakeDevice:
         return list(self.events_value)
 
     def snapshot(self) -> acceptance.WorkerSnapshot:
-        worker_id = self.worker_id
-        if self.snapshots_before_identity > 0:
+        worker_id = (
+            None
+            if self.state == "STOPPED"
+            and not self.expose_identity_when_stopped
+            else self.worker_id
+        )
+        if self.state != "STOPPED" and self.snapshots_before_identity > 0:
             self.snapshots_before_identity -= 1
             worker_id = None
         return acceptance.WorkerSnapshot(
@@ -244,7 +250,9 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
         ):
             self.runner("initial", device, runtime).run()
 
-    def test_terminal_requires_stopped_baseline_identity(self) -> None:
+    def test_terminal_accepts_stopped_snapshot_without_active_identity(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             baseline = self.baseline(Path(directory))
             device = FakeDevice(state="STOPPED")
@@ -255,11 +263,30 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
 
             runner.run()
 
+            self.assertIsNone(device.snapshot().worker_id)
             self.assertEqual(WORKER_ID, runner.evidence.worker_id)
             self.assertTrue(runner.evidence.baseline_identity_matched)
             self.assertEqual(
                 "STOPPED", runner.evidence.checks["endpointTerminalState"]
             )
+
+    def test_terminal_rejects_conflicting_stopped_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = self.baseline(Path(directory))
+            device = FakeDevice(worker_id=OTHER_WORKER_ID, state="STOPPED")
+            device.expose_identity_when_stopped = True
+            runtime = FakeRuntime(device)
+
+            with self.assertRaisesRegex(
+                acceptance.ProofFailure,
+                "conflicting identity",
+            ):
+                self.runner(
+                    "terminal",
+                    device,
+                    runtime,
+                    baseline_file=baseline,
+                ).run()
 
     def test_server_restart_observes_stopped_before_explicit_start(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
