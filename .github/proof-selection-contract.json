@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "path": "README.md",
+      "lanes": [],
+      "reason": "Documentation is owned by the always-running Docs Contract."
+    },
+    {
+      "path": "TESTING.md",
+      "lanes": [],
+      "reason": "The proof registry is checked without selecting implementation lanes."
+    },
+    {
+      "path": "transport/worker-core/README.md",
+      "lanes": [],
+      "reason": "A module document remains Docs-only even though its directory selects downstream implementation lanes."
+    },
+    {
+      "path": "kernel_design/executable_spec/kernel/worker_runtime.py",
+      "lanes": [
+        "kernel_oracle",
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet"
+      ],
+      "reason": "Kernel mechanism changes require the oracle and every current JVM/runtime parity consumer."
+    },
+    {
+      "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "Worker Core production behavior reaches Java, Android and all long-lived runtime proofs."
+    },
+    {
+      "path": "transport/worker-core/src/test/java/com/xa/mass/worker/runtime/WorkerRunControllerTest.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_host"
+      ],
+      "reason": "Core test changes run deterministic hosts but do not claim an Emulator production change."
+    },
+    {
+      "path": "transport/netty-adapter/src/main/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerRouteRegistry.java",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_emulator"
+      ],
+      "reason": "Adapter Route production changes reach every long-lived Worker implementation."
+    },
+    {
+      "path": "transport/android-worker/src/main/java/com/xa/mass/worker/android/AndroidWorker.java",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "Android production assembly requires deterministic and real-process proofs."
+    },
+    {
+      "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
+      "lanes": [
+        "android_host"
+      ],
+      "reason": "Android-only test changes do not consume the Emulator gate."
+    },
+    {
+      "path": "xa-android/worker-demo/host/android_worker_acceptance.py",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "The real-device acceptance driver is both unit-tested and exercised on the Emulator."
+    },
+    {
+      "path": "xa-android/worker-demo/host/test_android_worker_acceptance.py",
+      "lanes": [
+        "android_host"
+      ],
+      "reason": "Driver-test-only changes stay on the deterministic Host lane."
+    },
+    {
+      "path": "integrations/worker-capability-rpc/src/main/java/com/xa/mass/integration/workercapability/WorkerCapabilityRpcMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "task_batch"
+      ],
+      "reason": "Task Batch acceptance code owns no Fleet identity proof."
+    },
+    {
+      "path": "integrations/worker-fleet-acceptance/src/main/java/com/xa/mass/integration/workerfleet/WorkerFleetAcceptanceMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_fleet"
+      ],
+      "reason": "Fleet acceptance code owns no Task Batch business proof."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet"
+      ],
+      "reason": "The current conservative Server boundary reaches every JVM runtime proof."
+    },
+    {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/workerbinding/WorkerBindingService.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_emulator"
+      ],
+      "reason": "Worker Binding additionally reaches the real Android production route."
+    },
+    {
+      "path": "frontend/src/views/WorkerRuntimeView.vue",
+      "lanes": [
+        "frontend"
+      ],
+      "reason": "Frontend production changes remain isolated from runtime owners."
+    },
+    {
+      "path": ".github/scripts/run_android_emulator_worker.sh",
+      "lanes": [
+        "android_emulator"
+      ],
+      "reason": "Emulator orchestration changes select the Emulator; its job dependency selects Android Host."
+    },
+    {
+      "path": ".github/workflows/proof-ci.yml",
+      "lanes": [
+        "kernel_oracle",
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_host",
+        "android_emulator",
+        "frontend"
+      ],
+      "reason": "Workflow changes re-prove the complete gate."
+    },
+    {
+      "path": ".github/proof-paths.yml",
+      "lanes": [
+        "kernel_oracle",
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_host",
+        "android_emulator",
+        "frontend"
+      ],
+      "reason": "Selection-contract changes re-prove the complete gate."
+    }
+  ]
+}

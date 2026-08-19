@@ -35,6 +35,38 @@ identity sets, counts, Group/Event ownership, correlation, protocol outcomes,
 and restart continuity. This lets compatible payload or Properties evolution
 proceed without weakening the mechanism proof.
 
+## Proof Quality Contract
+
+Compilation, formatting, simple codec examples and local success cases are the
+repository hygiene floor. They remain cheap and useful, but their count does
+not widen a lane's proof claim. A mechanism proof must reject at least one
+locally plausible but systemically invalid implementation:
+
+- architecture proofs reject authority migration, forbidden dependencies,
+  widened public APIs, duplicate state owners and hidden execution resources;
+- concurrency proofs control a named interleaving such as stop during prepare,
+  terminal during command execution, stale callback after replacement, or
+  concurrent Route replacement;
+- owner proofs exercise the canonical state operation and, for Redis atomicity
+  claims, use real Redis rather than a mirrored in-memory implementation;
+- boundary and acceptance proofs relate independently observed identities,
+  routes, commands, results and lifecycle transitions without freezing opaque
+  payloads or repeating a success case as a load claim.
+
+Every new proof must name its invariant, failure model and deliberate
+non-goals. Repeating Probe, Event or Task success does not add evidence unless
+the repetition introduces a distinct owner, process boundary, interleaving or
+capacity invariant.
+
+| Mechanism | Static owner guard | Controlled race/failure proof | Real boundary proof | Not claimed |
+| --- | --- | --- | --- | --- |
+| Worker run and text protocol | Core dependency, API and zero-resource architecture tests | prepare/stop/close, terminal/result, executor rejection and stale-Transport suppression | Runtime Boundary and Android Emulator | reliable Result delivery after endpoint loss |
+| Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
+| Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
+| Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, partial failure and reverse close | Worker Fleet | dynamic scaling or automatic reconcile |
+| Task and Result correlation | Kernel owner/oracle plus Server boundary tests | owner-local retry, finality and correlation cases | Runtime Boundary and Task Batch | throughput, fairness, soak or crash recovery |
+| Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
+
 The separate `Worker Fleet` lane starts the real Scenario Host on an isolated,
 initially absent Lab root. Its initial phase relates the exact configured
 client keys to 20 unique Lab Worker IDs, connected Adapter routes, one probe
@@ -204,6 +236,21 @@ compatibility suites.
 and manual dispatch. Its first job selects proof lanes from changed paths.
 Manual dispatch selects every lane. The final `Proof Gate` succeeds only when
 every selected lane succeeds and every unselected lane is explicitly skipped.
+
+Selection rules live in `.github/proof-paths.yml`, separate from Workflow
+orchestration. Before selecting a lane, CI runs the standard-library
+`check_proof_selection.py` contract. It requires every positive pattern to
+match a repository file and verifies representative owner paths against their
+exact expected lane sets. The selector uses `some-with-excludes`, so the shared
+negative Markdown rule actually overrides matching implementation directories.
+A selection-contract or Workflow change selects every implementation lane.
+
+```powershell
+python -m unittest discover `
+  -s .github/scripts `
+  -p "test_check_proof_selection.py"
+python .github/scripts/check_proof_selection.py
+```
 
 Representative selection rules:
 

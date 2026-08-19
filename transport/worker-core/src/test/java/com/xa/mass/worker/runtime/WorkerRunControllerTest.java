@@ -132,6 +132,34 @@ class WorkerRunControllerTest {
     }
 
     @Test
+    void terminatedTransportCannotStopAnExplicitNewRun()
+            throws Exception {
+        ScriptedPreparation preparation = new ScriptedPreparation(0);
+        RecordingClientCreator networks = new RecordingClientCreator();
+        WorkerRunController controller = controller(
+                preparation,
+                networks
+        );
+
+        controller.start();
+        FakeTextMessageClient first = networks.awaitClient(0);
+        first.terminate();
+        awaitStopped(controller);
+
+        controller.start();
+        FakeTextMessageClient second = networks.awaitClient(1);
+        first.terminate();
+
+        assertEquals(
+                WorkerLifecycle.State.RUNNING,
+                controller.snapshot().state()
+        );
+        assertEquals(WORKER_ID, controller.snapshot().workerId());
+        assertEquals(2, preparation.calls.get());
+        assertEquals(0, second.closeCalls.get());
+    }
+
+    @Test
     void stopDuringPreparationDiscardsItsResultWithoutInterruption()
             throws Exception {
         BlockingPreparation preparation = new BlockingPreparation();
