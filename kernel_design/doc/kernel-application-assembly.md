@@ -184,13 +184,13 @@ The optional JSON contract is:
     "workerGroupIds": ["scenario-phone-number-workers"],
     "dispatchIntervalMillis": 1000,
     "resultIntervalMillis": 100,
-    "staleHotAfterMillis": 300000,
     "recoveryRetryIntervalMillis": 60000,
     "evidenceMaxAgeMillis": 30000,
     "maxRecoveryAttempts": 5,
     "hotScanLimit": 80,
     "recoveryScanLimit": 20,
-    "resultReportLimit": 10
+    "resultReportLimit": 10,
+    "probeExcludedEndpointManagerIds": ["system-polling"]
   },
   "systemPolicy": {
     "runningTaskSoftLimit": 100
@@ -202,7 +202,9 @@ The optional JSON contract is:
 Every top-level field may be omitted. `workerServiceability` is disabled when
 absent; when present it requires `workerGroupIds` with 1..100 unique explicit
 Groups and all other fields use the shown defaults. Its HOT plus RECOVERY scan
-limits may total at most 100. Unknown fields, malformed JSON, empty strings,
+limits may total at most 100. `probeExcludedEndpointManagerIds` accepts zero to
+100 unique non-empty ids; the default excludes `system-polling`. Unknown
+fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
 scan, lease, claim, score, lane, ADMISSION priority-recheck step, maximum
 empty-recheck count, and empty-recheck interval remain internal constants.

@@ -140,6 +140,7 @@ public final class RedisWorkerScoreCore
     @Override
     public Map<String, Long> acquireHotAcquireCandidates(
             String homeBucketId,
+            Long hotEligibilityFloorMillis,
             int limit
     ) {
         throw notImplemented("acquire_hot_acquire_candidates");
@@ -148,9 +149,19 @@ public final class RedisWorkerScoreCore
     @Override
     public Map<String, Long> observeDueHotScores(
             String homeBucketId,
-            List<String> workerIds
+            List<String> workerIds,
+            Long hotEligibilityFloorMillis
     ) {
         throw notImplemented("observe_due_hot_scores");
+    }
+
+    @Override
+    public Map<String, Long> acquirePreEpochHotCandidates(
+            String homeBucketId,
+            long hotEligibilityFloorMillis,
+            int limit
+    ) {
+        throw notImplemented("acquire_pre_epoch_hot_candidates");
     }
 
     @Override
@@ -305,19 +316,10 @@ public final class RedisWorkerScoreCore
     public WorkerScoreTransitionResult exhaustRecoveryRecheck(
             String homeBucketId,
             String workerId,
-            long observedScore
+            long observedScore,
+            int maxRecoveryAttempts
     ) {
         throw notImplemented("exhaust_recovery_recheck");
-    }
-
-    @Override
-    public Map<String, WorkerScoreTransitionResult>
-            applyWorkerServiceabilityChecks(
-                    String homeBucketId,
-                    Map<String, WorkerServiceabilityCheck> checksByWorkerId,
-                    int maxRecoveryAttempts
-            ) {
-        throw notImplemented("apply_worker_serviceability_checks");
     }
 
     @Override

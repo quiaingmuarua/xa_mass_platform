@@ -4,6 +4,7 @@ import json
 from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 from time import time_ns
 
 from ..kernel.worker_delivery import DeliveryEndpoint, DeliveryReport
@@ -11,7 +12,8 @@ from ..kernel.worker_runtime import WorkerResourceCatalog
 from ..kernel.worker_score import (
     WorkerScoreCore,
     WorkerScorePolarity,
-    WorkerServiceabilityCheck,
+    WorkerScoreState,
+    WorkerScoreTransitionStatus,
 )
 from ..kernel.worker_serviceability import (
     ProbeRequestOfferStatus,
@@ -19,10 +21,10 @@ from ..kernel.worker_serviceability import (
 )
 
 
-_SYSTEM_POLLING_ENDPOINT = "system-polling"
 _PROBE_EVENT = "platform.adapter.worker-connections.snapshot"
 _PROBE_FORWARD_PREFIX = "worker-serviceability:v1:"
 _CONNECTION_CHANGED_EVENT = "platform.adapter.worker-connection.changed"
+_DELIVERY_EXPIRED_EVENT = "platform.adapter.worker-delivery.expired"
 _CONNECTION_EVIDENCE_FORWARD = "worker-serviceability-evidence:v1"
 _CONNECTED = "CONNECTED"
 _UNAVAILABLE_STATES = frozenset({"DISCONNECTED", "UNKNOWN"})
@@ -36,10 +38,13 @@ def _current_time_millis() -> int:
 @dataclass(frozen=True, slots=True)
 class WorkerServiceabilityDispatchConfig:
     worker_group_ids: tuple[str, ...]
-    stale_hot_after_millis: int = 300_000
     recovery_retry_interval_millis: int = 60_000
+    max_recovery_attempts: int = 5
     hot_scan_limit: int = 80
     recovery_scan_limit: int = 20
+    probe_excluded_endpoint_manager_ids: tuple[str, ...] = (
+        "system-polling",
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.worker_group_ids, (str, bytes)):
@@ -52,11 +57,24 @@ class WorkerServiceabilityDispatchConfig:
             or any(not isinstance(group_id, str) or not group_id for group_id in groups)
         ):
             raise ValueError("serviceability WorkerGroup ids must be 1..100 unique ids")
+        excluded = tuple(self.probe_excluded_endpoint_manager_ids)
+        if (
+            isinstance(self.probe_excluded_endpoint_manager_ids, (str, bytes))
+            or len(excluded) > 100
+            or len(set(excluded)) != len(excluded)
+            or any(
+                not isinstance(endpoint_id, str) or not endpoint_id
+                for endpoint_id in excluded
+            )
+        ):
+            raise ValueError(
+                "probe excluded Endpoint ids must be 0..100 unique ids"
+            )
         if any(
             isinstance(value, bool) or not isinstance(value, int) or value <= 0
             for value in (
-                self.stale_hot_after_millis,
                 self.recovery_retry_interval_millis,
+                self.max_recovery_attempts,
                 self.hot_scan_limit,
                 self.recovery_scan_limit,
             )
@@ -64,7 +82,14 @@ class WorkerServiceabilityDispatchConfig:
             raise ValueError("serviceability durations and limits must be positive")
         if self.hot_scan_limit + self.recovery_scan_limit > 100:
             raise ValueError("serviceability scan limits must total at most 100")
+        if self.max_recovery_attempts > WorkerScoreCore.MAX_LANE_RANK:
+            raise ValueError("max recovery attempts must be in 1..99")
         object.__setattr__(self, "worker_group_ids", groups)
+        object.__setattr__(
+            self,
+            "probe_excluded_endpoint_manager_ids",
+            excluded,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +119,7 @@ class WorkerServiceabilityResultConfig:
 
 
 class WorkerServiceabilityDispatchPacer:
-    """Offer stale Worker ids to Adapter-scoped probe request sets."""
+    """Offer pre-epoch HOT and due RECOVERY Workers for Adapter probing."""
 
     def __init__(
         self,
@@ -102,11 +127,20 @@ class WorkerServiceabilityDispatchPacer:
         worker_catalog: WorkerResourceCatalog,
         runtime: WorkerServiceabilityRuntime,
         *,
+        hot_eligibility_floor_millis: int,
         clock_millis: Callable[[], int] = _current_time_millis,
     ) -> None:
+        if (
+            isinstance(hot_eligibility_floor_millis, bool)
+            or not isinstance(hot_eligibility_floor_millis, int)
+            or hot_eligibility_floor_millis <= 0
+            or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
+        ):
+            raise ValueError("HOT eligibility floor must be score-slot aligned")
         self.worker_score = worker_score
         self.worker_catalog = worker_catalog
         self.runtime = runtime
+        self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
         self._clock_millis = clock_millis
         self._group_cursor = 0
 
@@ -123,8 +157,11 @@ class WorkerServiceabilityDispatchPacer:
         )
         now_millis = self._clock_millis()
 
-        hot = self.worker_score.acquire_hot_acquire_candidates(
+        hot = self.worker_score.acquire_pre_epoch_hot_candidates(
             home_bucket_id=worker_group_id,
+            hot_eligibility_floor_millis=(
+                self.hot_eligibility_floor_millis
+            ),
             limit=config.hot_scan_limit,
         )
         recovery = self.worker_score.acquire_recovery_recheck_candidates(
@@ -162,8 +199,17 @@ class WorkerServiceabilityDispatchPacer:
                 descriptor is None
                 or descriptor.worker_group_id != worker_group_id
                 or descriptor.worker_id != worker_id
-                or descriptor.endpoint_manager_id == _SYSTEM_POLLING_ENDPOINT
             ):
+                continue
+            if descriptor.endpoint_manager_id in (
+                config.probe_excluded_endpoint_manager_ids
+            ):
+                self._cold_park_excluded(
+                    worker_group_id=worker_group_id,
+                    worker_id=worker_id,
+                    state=states[worker_id],
+                    max_recovery_attempts=config.max_recovery_attempts,
+                )
                 continue
             worker_ids_by_adapter[descriptor.endpoint_manager_id].append(worker_id)
 
@@ -179,8 +225,8 @@ class WorkerServiceabilityDispatchPacer:
             )
         return offered
 
-    @staticmethod
     def _eligible(
+        self,
         state: object,
         *,
         now_millis: int,
@@ -189,17 +235,59 @@ class WorkerServiceabilityDispatchPacer:
         if state is None:
             return False
         if state.polarity is WorkerScorePolarity.HOT_ACQUIRE:
-            return state.time_millis <= now_millis - config.stale_hot_after_millis
+            return state.time_millis < self.hot_eligibility_floor_millis
         if state.polarity is WorkerScorePolarity.RECOVERY_RECHECK:
             return (
                 state.time_millis
-                <= now_millis - config.recovery_retry_interval_millis
+                <= now_millis
+                - (state.lane_rank + 1)
+                * config.recovery_retry_interval_millis
             )
         return False
 
+    def _cold_park_excluded(
+        self,
+        *,
+        worker_group_id: str,
+        worker_id: str,
+        state: WorkerScoreState,
+        max_recovery_attempts: int,
+    ) -> None:
+        if state.time_millis == WorkerScoreCore.PAUSE_TIME_MILLIS:
+            return
+        observed_score = state.score
+        if state.polarity is WorkerScorePolarity.HOT_ACQUIRE:
+            toggled = self.worker_score.toggle_current_polarity(
+                home_bucket_id=worker_group_id,
+                worker_id=worker_id,
+                observed_score=state.score,
+            )
+            if toggled.status is not WorkerScoreTransitionStatus.TRANSITIONED:
+                return
+            assert toggled.score is not None
+            observed_score = toggled.score
+        self.worker_score.exhaust_recovery_recheck(
+            home_bucket_id=worker_group_id,
+            worker_id=worker_id,
+            observed_score=observed_score,
+            max_recovery_attempts=max_recovery_attempts,
+        )
+
+
+class _EvidenceKind(Enum):
+    CONNECTED = "connected"
+    ROUTE_UNAVAILABLE = "route-unavailable"
+    PROBE_UNAVAILABLE = "probe-unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkerEvidence:
+    observed_at_millis: int
+    kind: _EvidenceKind
+
 
 class WorkerServiceabilityResultPacer:
-    """Apply best-effort Adapter route evidence to Worker scores."""
+    """Converge Adapter route evidence through explicit Score primitives."""
 
     def __init__(
         self,
@@ -207,11 +295,20 @@ class WorkerServiceabilityResultPacer:
         worker_catalog: WorkerResourceCatalog,
         worker_score: WorkerScoreCore,
         *,
+        hot_eligibility_floor_millis: int,
         clock_millis: Callable[[], int] = _current_time_millis,
     ) -> None:
+        if (
+            isinstance(hot_eligibility_floor_millis, bool)
+            or not isinstance(hot_eligibility_floor_millis, int)
+            or hot_eligibility_floor_millis <= 0
+            or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
+        ):
+            raise ValueError("HOT eligibility floor must be score-slot aligned")
         self.runtime = runtime
         self.worker_catalog = worker_catalog
         self.worker_score = worker_score
+        self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
         self._clock_millis = clock_millis
 
     def route_adapter_evidence(
@@ -223,7 +320,7 @@ class WorkerServiceabilityResultPacer:
             limit=config.result_report_limit,
         )
         now_millis = self._clock_millis()
-        latest_checks: dict[str, WorkerServiceabilityCheck] = {}
+        latest_evidence: dict[str, _WorkerEvidence] = {}
         for report in reports:
             decoded = self._decode_report(
                 report,
@@ -232,52 +329,148 @@ class WorkerServiceabilityResultPacer:
             )
             if decoded is None:
                 continue
-            check_started_at_millis, serviceable_by_worker_id = decoded
-            for worker_id, serviceable in serviceable_by_worker_id.items():
-                check = WorkerServiceabilityCheck(
-                    check_started_at_millis=check_started_at_millis,
-                    serviceable=serviceable,
-                )
-                previous = latest_checks.get(worker_id)
+            for worker_id, evidence in decoded.items():
+                previous = latest_evidence.get(worker_id)
                 if (
                     previous is None
-                    or check.check_started_at_millis
-                    >= previous.check_started_at_millis
+                    or evidence.observed_at_millis
+                    >= previous.observed_at_millis
                 ):
-                    latest_checks[worker_id] = check
-        if not latest_checks:
+                    latest_evidence[worker_id] = evidence
+        if not latest_evidence:
             return 0
 
         group_ids: dict[str, str | None] = {}
-        worker_ids = tuple(latest_checks)
+        worker_ids = tuple(latest_evidence)
         lookup_limit = WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT
-        for offset in range(
-            0,
-            len(worker_ids),
-            lookup_limit,
-        ):
+        for offset in range(0, len(worker_ids), lookup_limit):
             chunk = worker_ids[offset:offset + lookup_limit]
             group_ids.update(
                 self.worker_catalog.get_worker_group_ids(worker_ids=chunk)
             )
 
-        checks_by_group: dict[
-            str, dict[str, WorkerServiceabilityCheck]
-        ] = defaultdict(dict)
-        for worker_id, check in latest_checks.items():
+        evidence_by_group: dict[str, dict[str, _WorkerEvidence]] = defaultdict(dict)
+        for worker_id, evidence in latest_evidence.items():
             worker_group_id = group_ids.get(worker_id)
             if worker_group_id is not None:
-                checks_by_group[worker_group_id][worker_id] = check
+                evidence_by_group[worker_group_id][worker_id] = evidence
 
         applied = 0
-        for worker_group_id, checks in checks_by_group.items():
-            self.worker_score.apply_worker_serviceability_checks(
+        for worker_group_id, evidence_by_worker_id in evidence_by_group.items():
+            states = self.worker_score.get_score_states(
                 home_bucket_id=worker_group_id,
-                checks_by_worker_id=checks,
-                max_recovery_attempts=config.max_recovery_attempts,
+                worker_ids=tuple(evidence_by_worker_id),
             )
-            applied += len(checks)
+            for worker_id, evidence in evidence_by_worker_id.items():
+                state = states.get(worker_id)
+                if state is None:
+                    continue
+                self._apply_evidence(
+                    worker_group_id=worker_group_id,
+                    worker_id=worker_id,
+                    state=state,
+                    evidence=evidence,
+                    max_recovery_attempts=config.max_recovery_attempts,
+                )
+                applied += 1
         return applied
+
+    def _apply_evidence(
+        self,
+        *,
+        worker_group_id: str,
+        worker_id: str,
+        state: WorkerScoreState,
+        evidence: _WorkerEvidence,
+        max_recovery_attempts: int,
+    ) -> None:
+        if state.time_millis == WorkerScoreCore.PAUSE_TIME_MILLIS:
+            return
+        if evidence.kind is _EvidenceKind.CONNECTED:
+            self._apply_connected(
+                worker_group_id=worker_group_id,
+                worker_id=worker_id,
+                state=state,
+            )
+            return
+        if evidence.kind is _EvidenceKind.ROUTE_UNAVAILABLE:
+            if state.polarity is WorkerScorePolarity.HOT_ACQUIRE:
+                self.worker_score.toggle_current_polarity(
+                    home_bucket_id=worker_group_id,
+                    worker_id=worker_id,
+                    observed_score=state.score,
+                )
+            return
+        self._apply_probe_unavailable(
+            worker_group_id=worker_group_id,
+            worker_id=worker_id,
+            state=state,
+            observed_at_millis=evidence.observed_at_millis,
+            max_recovery_attempts=max_recovery_attempts,
+        )
+
+    def _apply_connected(
+        self,
+        *,
+        worker_group_id: str,
+        worker_id: str,
+        state: WorkerScoreState,
+    ) -> None:
+        if state.polarity is WorkerScorePolarity.RECOVERY_RECHECK:
+            toggled = self.worker_score.toggle_current_polarity(
+                home_bucket_id=worker_group_id,
+                worker_id=worker_id,
+                observed_score=state.score,
+            )
+            if toggled.status is not WorkerScoreTransitionStatus.TRANSITIONED:
+                return
+        self.worker_score.rewrite_current_scores(
+            home_bucket_id=worker_group_id,
+            worker_ids=(worker_id,),
+            target_time_millis=self.hot_eligibility_floor_millis,
+            target_lane_rank=WorkerScoreCore.MIN_LANE_RANK,
+        )
+
+    def _apply_probe_unavailable(
+        self,
+        *,
+        worker_group_id: str,
+        worker_id: str,
+        state: WorkerScoreState,
+        observed_at_millis: int,
+        max_recovery_attempts: int,
+    ) -> None:
+        if state.polarity is WorkerScorePolarity.HOT_ACQUIRE:
+            toggled = self.worker_score.toggle_current_polarity(
+                home_bucket_id=worker_group_id,
+                worker_id=worker_id,
+                observed_score=state.score,
+            )
+            if toggled.status is not WorkerScoreTransitionStatus.TRANSITIONED:
+                return
+            self.worker_score.rewrite_current_scores(
+                home_bucket_id=worker_group_id,
+                worker_ids=(worker_id,),
+                target_time_millis=observed_at_millis,
+                target_lane_rank=WorkerScoreCore.MIN_LANE_RANK,
+            )
+            return
+
+        next_attempt = state.lane_rank + 1
+        if next_attempt >= max_recovery_attempts:
+            self.worker_score.exhaust_recovery_recheck(
+                home_bucket_id=worker_group_id,
+                worker_id=worker_id,
+                observed_score=state.score,
+                max_recovery_attempts=max_recovery_attempts,
+            )
+            return
+        self.worker_score.rewrite_current_scores(
+            home_bucket_id=worker_group_id,
+            worker_ids=(worker_id,),
+            target_time_millis=observed_at_millis,
+            target_lane_rank=next_attempt,
+        )
 
     @staticmethod
     def _decode_report(
@@ -285,7 +478,7 @@ class WorkerServiceabilityResultPacer:
         *,
         now_millis: int,
         evidence_max_age_millis: int,
-    ) -> tuple[int, dict[str, bool]] | None:
+    ) -> dict[str, _WorkerEvidence] | None:
         if (
             report.src is not DeliveryEndpoint.ADAPTER
             or report.dst is not DeliveryEndpoint.KERNEL
@@ -297,6 +490,10 @@ class WorkerServiceabilityResultPacer:
             decoded = WorkerServiceabilityResultPacer._decode_connection_change(
                 report
             )
+        elif report.message_type == _DELIVERY_EXPIRED_EVENT:
+            decoded = WorkerServiceabilityResultPacer._decode_delivery_expired(
+                report
+            )
         elif report.message_type == _PROBE_EVENT:
             decoded = WorkerServiceabilityResultPacer._decode_probe_snapshot(
                 report
@@ -305,19 +502,19 @@ class WorkerServiceabilityResultPacer:
             return None
         if decoded is None:
             return None
-        check_started_at_millis, serviceable_by_worker_id = decoded
-        evidence_age_millis = now_millis - check_started_at_millis
-        if (
-            evidence_age_millis < 0
-            or evidence_age_millis > evidence_max_age_millis
+        if any(
+            now_millis - evidence.observed_at_millis < 0
+            or now_millis - evidence.observed_at_millis
+            > evidence_max_age_millis
+            for evidence in decoded.values()
         ):
             return None
-        return check_started_at_millis, serviceable_by_worker_id
+        return decoded
 
     @staticmethod
     def _decode_connection_change(
         report: DeliveryReport,
-    ) -> tuple[int, dict[str, bool]] | None:
+    ) -> dict[str, _WorkerEvidence] | None:
         if report.forward != _CONNECTION_EVIDENCE_FORWARD:
             return None
         try:
@@ -342,21 +539,55 @@ class WorkerServiceabilityResultPacer:
             or observed_at_millis <= 0
         ):
             return None
-        return observed_at_millis, {worker_id: state == _CONNECTED}
+        kind = (
+            _EvidenceKind.CONNECTED
+            if state == _CONNECTED
+            else _EvidenceKind.ROUTE_UNAVAILABLE
+        )
+        return {worker_id: _WorkerEvidence(observed_at_millis, kind)}
+
+    @staticmethod
+    def _decode_delivery_expired(
+        report: DeliveryReport,
+    ) -> dict[str, _WorkerEvidence] | None:
+        if report.forward != _CONNECTION_EVIDENCE_FORWARD:
+            return None
+        try:
+            payload = json.loads(report.payload)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict) or set(payload) != {
+            "workerId",
+            "observedAtMillis",
+        }:
+            return None
+        worker_id = payload["workerId"]
+        observed_at_millis = payload["observedAtMillis"]
+        if (
+            not isinstance(worker_id, str)
+            or not worker_id
+            or isinstance(observed_at_millis, bool)
+            or not isinstance(observed_at_millis, int)
+            or observed_at_millis <= 0
+        ):
+            return None
+        return {
+            worker_id: _WorkerEvidence(
+                observed_at_millis,
+                _EvidenceKind.ROUTE_UNAVAILABLE,
+            )
+        }
 
     @staticmethod
     def _decode_probe_snapshot(
         report: DeliveryReport,
-    ) -> tuple[int, dict[str, bool]] | None:
+    ) -> dict[str, _WorkerEvidence] | None:
         if not report.forward.startswith(_PROBE_FORWARD_PREFIX):
             return None
         raw_check_started = report.forward[len(_PROBE_FORWARD_PREFIX):]
         if not raw_check_started.isdigit():
             return None
-        try:
-            check_started_at_millis = int(raw_check_started)
-        except ValueError:
-            return None
+        check_started_at_millis = int(raw_check_started)
         if check_started_at_millis <= 0:
             return None
         try:
@@ -369,15 +600,22 @@ class WorkerServiceabilityResultPacer:
         if (
             not isinstance(states, dict)
             or not 1 <= len(states) <= 100
-            or any(not isinstance(worker_id, str) or not worker_id for worker_id in states)
+            or any(
+                not isinstance(worker_id, str) or not worker_id
+                for worker_id in states
+            )
         ):
             return None
-        serviceable_by_worker_id: dict[str, bool] = {}
+        evidence: dict[str, _WorkerEvidence] = {}
         for worker_id, state in states.items():
             if state == _CONNECTED:
-                serviceable_by_worker_id[worker_id] = True
+                kind = _EvidenceKind.CONNECTED
             elif state in _UNAVAILABLE_STATES:
-                serviceable_by_worker_id[worker_id] = False
+                kind = _EvidenceKind.PROBE_UNAVAILABLE
             else:
                 return None
-        return check_started_at_millis, serviceable_by_worker_id
+            evidence[worker_id] = _WorkerEvidence(
+                check_started_at_millis,
+                kind,
+            )
+        return evidence

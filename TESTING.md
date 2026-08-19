@@ -91,13 +91,15 @@ Serviceability behavior:
 
 ```text
 physical WebSocket connect
-  -> exact CONNECTED evidence -> Kernel Result Pacer -> newer HOT score
+  -> exact CONNECTED evidence -> Kernel Result Pacer -> HOT at/above epoch floor
 explicit Worker shutdown
-  -> exact DISCONNECTED evidence -> Kernel Result Pacer -> RECOVERY score
+  -> exact DISCONNECTED evidence -> Kernel Result Pacer -> exact RECOVERY toggle
 same Worker identity reconnect
-  -> exact CONNECTED evidence -> Kernel Result Pacer -> newer HOT score
+  -> exact CONNECTED evidence -> Kernel Result Pacer -> HOT at/above epoch floor
 periodic request
-  -> Adapter snapshot evidence -> Kernel Result Pacer -> newer check time
+  -> Adapter snapshot evidence -> Kernel Result Pacer -> RECOVERY-to-HOT compensation
+expired TASK delivery
+  -> 23002 Task Result and separate KERNEL evidence use independent Pacers
 ```
 
 This is both cross-boundary mechanism proof and behavior proof for the current

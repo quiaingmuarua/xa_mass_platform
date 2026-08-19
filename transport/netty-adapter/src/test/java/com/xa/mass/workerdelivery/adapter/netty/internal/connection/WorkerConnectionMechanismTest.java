@@ -135,8 +135,11 @@ class WorkerConnectionMechanismTest {
 
     @Test
     void evidenceQueuePressureNeverClosesVerifiedWorkerChannel() {
-        Fixture fixture = new Fixture(1);
-        assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+        Fixture fixture = new Fixture(2);
+        assertThat(fixture.reportProcess.ingress(List.of(
+                "occupied-1",
+                "occupied-2"
+        )))
                 .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
         EmbeddedChannel channel = fixture.channel();
         try {
@@ -451,7 +454,7 @@ class WorkerConnectionMechanismTest {
 
     @Test
     void systemResultBackpressureDoesNotCloseTheWorker() {
-        Fixture fixture = new Fixture(1);
+        Fixture fixture = new Fixture(2);
         EmbeddedChannel channel = fixture.channel();
         try {
             channel.writeInbound(fixture.identity("worker-1"));
@@ -465,7 +468,10 @@ class WorkerConnectionMechanismTest {
             assertThat(fixture.systemReports)
                     .containsExactly(fixture.systemResult("worker-1"));
 
-            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+            assertThat(fixture.reportProcess.ingress(List.of(
+                    "occupied-1",
+                    "occupied-2"
+            )))
                     .isEqualTo(
                     DeliveryReportProcess.ReportIngressStatus.ACCEPTED
             );
@@ -480,14 +486,17 @@ class WorkerConnectionMechanismTest {
 
     @Test
     void taskResultStillClosesCurrentChannelWhenTaskLaneIsFull() {
-        Fixture fixture = new Fixture(1);
+        Fixture fixture = new Fixture(2);
         EmbeddedChannel channel = fixture.channel();
         channel.writeInbound(fixture.identity("worker-1"));
         fixture.remoteApi.currentVerification().complete(null);
         awaitBound(fixture, channel);
         fixture.reportProcess.round();
         fixture.systemReports.clear();
-        assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+        assertThat(fixture.reportProcess.ingress(List.of(
+                "occupied-1",
+                "occupied-2"
+        )))
                 .isEqualTo(DeliveryReportProcess.ReportIngressStatus.ACCEPTED);
 
         channel.writeInbound(fixture.taskResult("worker-1"));

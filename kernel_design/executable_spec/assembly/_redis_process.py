@@ -5,6 +5,7 @@ from time import monotonic
 from typing import Any, Mapping
 
 from ..kernel.worker_runtime import MappedWorkerPropertyIndexRuntime
+from ..kernel.worker_score import WorkerScoreCore
 
 from ..scheduling import (
     DueTaskItemAdmissionPolicy,
@@ -56,6 +57,7 @@ class _RedisKernelProcessConfig:
     prefix: str
     running_task_soft_limit: int
     worker_candidate_scan_limit: int
+    hot_eligibility_floor_millis: int | None
     worker_property_indexes: Mapping[str, str]
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
@@ -74,6 +76,14 @@ class _RedisKernelProcessConfig:
             raise ValueError("running Task soft limit must be positive")
         if self.worker_candidate_scan_limit <= 0:
             raise ValueError("Worker candidate scan limit must be positive")
+        if self.hot_eligibility_floor_millis is not None and (
+            isinstance(self.hot_eligibility_floor_millis, bool)
+            or not isinstance(self.hot_eligibility_floor_millis, int)
+            or self.hot_eligibility_floor_millis <= 0
+            or self.hot_eligibility_floor_millis
+            % WorkerScoreCore.SLOT_MILLIS != 0
+        ):
+            raise ValueError("HOT eligibility floor must be score-slot aligned")
         if any(
             implementation != "redis-hash"
             for implementation in self.worker_property_indexes.values()
@@ -86,6 +96,12 @@ class _RedisKernelProcessConfig:
         ):
             raise ValueError(
                 "serviceability dispatch and result must be configured together"
+            )
+        if (self.hot_eligibility_floor_millis is None) != (
+            self.worker_serviceability_dispatch is None
+        ):
+            raise ValueError(
+                "HOT eligibility floor belongs to enabled serviceability"
             )
 
 
@@ -169,6 +185,9 @@ class _RedisKernelProcess:
             self._worker_score,
             worker_candidate_matcher,
             worker_scan_limit=config.worker_candidate_scan_limit,
+            hot_eligibility_floor_millis=(
+                config.hot_eligibility_floor_millis
+            ),
         )
 
         worker_allocation_pacer = TaskWorkerAllocationPacer(
@@ -242,6 +261,9 @@ class _RedisKernelProcess:
                         serviceability_runtime,
                         self._worker_resource_catalog,
                         self._worker_score,
+                        hot_eligibility_floor_millis=(
+                            config.hot_eligibility_floor_millis
+                        ),
                     )
                 )
             )
@@ -251,6 +273,9 @@ class _RedisKernelProcess:
                         self._worker_score,
                         self._worker_resource_catalog,
                         serviceability_runtime,
+                        hot_eligibility_floor_millis=(
+                            config.hot_eligibility_floor_millis
+                        ),
                     )
                 )
             )

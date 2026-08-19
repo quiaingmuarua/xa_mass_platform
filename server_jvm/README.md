@@ -125,9 +125,9 @@ priority and constructs one `KERNEL -> ADAPTER`
 `platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
 Result path routes all `ADAPTER -> KERNEL` Reports into the bounded Kernel
 Serviceability evidence handoff. This includes periodic snapshots and
-Adapter-produced single-Worker Route changes. Server parses neither event nor
-payload semantics, does not resolve WorkerGroup, and never invokes the Worker
-score owner.
+Adapter-produced single-Worker Route changes or TASK delivery-expiry evidence.
+Server parses neither event nor payload semantics, does not resolve
+WorkerGroup, and never invokes the Worker score owner.
 
 Adapter instances may configure `route-cache` and `properties-cache`. The
 defaults retain disconnected verification evidence for `10m` with at most

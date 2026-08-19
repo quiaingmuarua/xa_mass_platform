@@ -297,7 +297,9 @@ while the queue is below its soft capacity
 
 consume one queue snapshot
 for each command exactly once this round
-  -> expired: remove; only expired TASK creates 23002 evidence
+  -> expired TASK: atomically offer the 23002 TASK Report plus one KERNEL
+     worker-delivery.expired Report, then remove
+  -> any other expired Command: remove without synthetic evidence
   -> no active writable Worker Channel: rotate to queue tail
   -> physical Server write started: remove
   -> dst=ADAPTER: ignore the entry key and dispatch through the immutable map
@@ -379,7 +381,9 @@ another complete Map, and advance the one Worker-level `updatedAtMillis`.
 `DeliveryReportProcess` owns one private queue, one pending batch, and the
 single `results:append` path. Qualified Worker TASK/SYSTEM Reports and
 Adapter-produced KERNEL Reports enter through the same concrete `ingress(...)`
-operation. Worker Reports preserve their original encoded JSON.
+operation. Worker Reports preserve their original encoded JSON. Result queue
+capacity is at least two so the one logical expired-TASK pair is accepted or
+dropped together.
 
 ```text
 pending batch exists -> retry it first

@@ -31,9 +31,9 @@ public sealed interface NettyAdapterProcessConfig
 
         public DeliveryReport {
             interval = requirePositive(interval, "interval");
-            if (queueCapacity <= 0) {
+            if (queueCapacity < 2) {
                 throw new IllegalArgumentException(
-                        "queueCapacity must be positive"
+                        "queueCapacity must be at least 2"
                 );
             }
         }

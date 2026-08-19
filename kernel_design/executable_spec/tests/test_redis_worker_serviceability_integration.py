@@ -12,10 +12,12 @@ from kernel_design.executable_spec import (
     ProbeRequestOfferStatus,
     RedisWorkerScoreCore,
     RedisWorkerServiceabilityRuntime,
+    WorkerDescriptor,
     WorkerScoreCore,
     WorkerScorePolarity,
     WorkerScoreTransitionStatus,
-    WorkerServiceabilityCheck,
+    WorkerServiceabilityDispatchConfig,
+    WorkerServiceabilityDispatchPacer,
 )
 
 try:
@@ -110,24 +112,39 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
             self.runtime.consume_adapter_evidence_results(limit=1),
         )
 
-    def test_score_check_is_fenced_by_newer_score_time(self) -> None:
+    def test_score_primitives_preserve_exact_fence_and_dirty(self) -> None:
         now_millis = self.redis.time()[0] * 1_000
-        check_millis = now_millis - 10_000
-        old_slot = (check_millis - 10_000) // WorkerScoreCore.SLOT_MILLIS
+        target_millis = now_millis - 10_000
+        old_slot = (target_millis - 10_000) // WorkerScoreCore.SLOT_MILLIS
         score_key = self.score._score_key(self.group_id)
         old_score = old_slot * WorkerScoreCore.SLOT_FACTOR + 1
         self.redis.zadd(score_key, {"worker-1": old_score})
 
-        transitioned = self.score.apply_worker_serviceability_checks(
+        transitioned = self.score.toggle_current_polarity(
             home_bucket_id=self.group_id,
-            checks_by_worker_id={
-                "worker-1": WorkerServiceabilityCheck(check_millis, False),
-            },
-            max_recovery_attempts=5,
-        )["worker-1"]
+            worker_id="worker-1",
+            observed_score=old_score,
+        )
         self.assertEqual(
             WorkerScoreTransitionStatus.TRANSITIONED,
             transitioned.status,
+        )
+        stale = self.score.toggle_current_polarity(
+            home_bucket_id=self.group_id,
+            worker_id="worker-1",
+            observed_score=old_score,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
+
+        rewritten = self.score.rewrite_current_scores(
+            home_bucket_id=self.group_id,
+            worker_ids=("worker-1",),
+            target_time_millis=target_millis,
+            target_lane_rank=0,
+        )["worker-1"]
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            rewritten.status,
         )
         state = self.score.get_score_states(
             home_bucket_id=self.group_id,
@@ -138,14 +155,127 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
         self.assertEqual(1, state.dirty)
 
-        stale = self.score.apply_worker_serviceability_checks(
+    def test_hot_epoch_partitions_real_redis_candidate_ranges(self) -> None:
+        now_millis = self.redis.time()[0] * 1_000
+        floor_millis = (
+            (now_millis - 10_000)
+            // WorkerScoreCore.SLOT_MILLIS
+            * WorkerScoreCore.SLOT_MILLIS
+        )
+        floor_slot = floor_millis // WorkerScoreCore.SLOT_MILLIS
+        score_key = self.score._score_key(self.group_id)
+        scores = {
+            "below": self.score._score(
+                WorkerScorePolarity.HOT_ACQUIRE,
+                floor_slot - 1,
+                0,
+                0,
+            ),
+            "at-floor": self.score._score(
+                WorkerScorePolarity.HOT_ACQUIRE,
+                floor_slot,
+                0,
+                0,
+            ),
+            "above": self.score._score(
+                WorkerScorePolarity.HOT_ACQUIRE,
+                floor_slot + 1,
+                0,
+                0,
+            ),
+        }
+        self.redis.zadd(score_key, scores)
+
+        self.assertEqual(
+            {"at-floor", "above"},
+            set(self.score.acquire_hot_acquire_candidates(
+                home_bucket_id=self.group_id,
+                hot_eligibility_floor_millis=floor_millis,
+                limit=10,
+            )),
+        )
+        self.assertEqual(
+            {"below"},
+            set(self.score.acquire_pre_epoch_hot_candidates(
+                home_bucket_id=self.group_id,
+                hot_eligibility_floor_millis=floor_millis,
+                limit=10,
+            )),
+        )
+        self.assertEqual(
+            {"at-floor", "above"},
+            set(self.score.observe_due_hot_scores(
+                home_bucket_id=self.group_id,
+                worker_ids=("below", "at-floor", "above"),
+                hot_eligibility_floor_millis=floor_millis,
+            )),
+        )
+
+    def test_excluded_endpoint_is_cold_parked_without_probe_offer(self) -> None:
+        now_millis = self.redis.time()[0] * 1_000
+        floor_millis = (
+            now_millis
+            // WorkerScoreCore.SLOT_MILLIS
+            * WorkerScoreCore.SLOT_MILLIS
+        )
+        old_slot = floor_millis // WorkerScoreCore.SLOT_MILLIS - 10
+        score_key = self.score._score_key(self.group_id)
+        hot_score = self.score._score(
+            WorkerScorePolarity.HOT_ACQUIRE,
+            old_slot,
+            0,
+            1,
+        )
+        self.redis.zadd(score_key, {"polling-worker": hot_score})
+
+        class Catalog:
+            @staticmethod
+            def get_worker_descriptors(*, worker_group_id, worker_ids):
+                return {
+                    worker_id: WorkerDescriptor(
+                        worker_id=worker_id,
+                        worker_group_id=worker_group_id,
+                        endpoint_manager_id="system-polling",
+                        worker_properties={},
+                        platform_properties={},
+                    )
+                    for worker_id in worker_ids
+                }
+
+        class Runtime:
+            @staticmethod
+            def offer_probe_requests(*, adapter_id, worker_ids):
+                raise AssertionError("excluded endpoint must not receive probes")
+
+        pacer = WorkerServiceabilityDispatchPacer(
+            self.score,
+            Catalog(),
+            Runtime(),
+            hot_eligibility_floor_millis=floor_millis,
+            clock_millis=lambda: now_millis,
+        )
+        self.assertEqual(
+            0,
+            pacer.dispatch_probes(config=WorkerServiceabilityDispatchConfig(
+                worker_group_ids=(self.group_id,),
+                hot_scan_limit=1,
+                recovery_scan_limit=1,
+                max_recovery_attempts=5,
+            )),
+        )
+        state = self.score.get_score_states(
             home_bucket_id=self.group_id,
-            checks_by_worker_id={
-                "worker-1": WorkerServiceabilityCheck(check_millis, True),
-            },
-            max_recovery_attempts=5,
-        )["worker-1"]
-        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
+            worker_ids=("polling-worker",),
+        )["polling-worker"]
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
+        self.assertEqual(
+            self.score.COLD_PARK_TIME_SLOT * WorkerScoreCore.SLOT_MILLIS,
+            state.time_millis,
+        )
+        self.assertEqual(5, state.lane_rank)
+        self.assertEqual(1, state.dirty)
 
     def test_recovery_scan_never_returns_cold_park_coordinate(self) -> None:
         now_slot = self.score._current_time_slot()
@@ -171,8 +301,19 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
             },
         )
 
+        exhausted = self.score.exhaust_recovery_recheck(
+            home_bucket_id=self.group_id,
+            worker_id="due",
+            observed_score=due_score,
+            max_recovery_attempts=5,
+        )
         self.assertEqual(
-            [("due", due_score)],
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            exhausted.status,
+        )
+
+        self.assertEqual(
+            [],
             self.score.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.group_id,
                 limit=10,

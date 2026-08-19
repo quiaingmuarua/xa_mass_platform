@@ -143,8 +143,8 @@
     "WorkerScoreCore": [
       "acquire_hot_acquire_candidates",
       "acquire_observed_hot_score_leases",
+      "acquire_pre_epoch_hot_candidates",
       "acquire_recovery_recheck_candidates",
-      "apply_worker_serviceability_checks",
       "exhaust_recovery_recheck",
       "get_score_states",
       "initialize_hot_acquire_score",
@@ -259,10 +259,6 @@
     "WorkerScoreTransitionResult": [
       "status",
       "score"
-    ],
-    "WorkerServiceabilityCheck": [
-      "check_started_at_millis",
-      "serviceable"
     ]
   },
   "enums": {

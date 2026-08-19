@@ -272,7 +272,7 @@ score = -base(timeSlot, laneRank, dirty)
 Typical inputs:
 
 ```text
-newer Adapter Route evidence that the Worker is unavailable
+bounded-age Adapter Route evidence that the Worker is unavailable
 owner-validated evidence that TaskItem serviceability is uncertain
 stale endpoint observation requiring recovery validation
 recoverable dispatch gate block requiring a probe
@@ -342,18 +342,34 @@ polarity move writes HOT_ACQUIRE.
 Hot worker acquisition:
 
 ```text
-acquire_hot_acquire_candidates(homeBucketId, limit)
+acquire_hot_acquire_candidates(
+  homeBucketId,
+  hotEligibilityFloorMillis?,
+  limit
+)
   -> map[workerId, observedScore]
 
-observe_due_hot_scores(homeBucketId, workerIds)
+observe_due_hot_scores(
+  homeBucketId,
+  workerIds,
+  hotEligibilityFloorMillis?
+)
   -> map[dueHotWorkerId, observedScore]
+
+acquire_pre_epoch_hot_candidates(
+  homeBucketId,
+  hotEligibilityFloorMillis,
+  limit
+)
+  -> map[workerId, observedScore]
 ```
 
 Score range:
 
 ```text
 dueTimeSlot = nowTimeSlot - 1
-MIN_BASE <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
+lower = floor is absent ? MIN_BASE : base(floorTimeSlot, 0, 0)
+lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 ```
 
 Only positive due scores are returned and neither query modifies them. The
@@ -361,6 +377,12 @@ point form preserves the bounded caller-supplied Worker universe and is used
 after ITEM_DRIVEN extracts request-local WorkerIds from its allocation rule.
 Assignment-dispatch may pass a Worker into bounded matching only after an exact
 observed-score lease succeeds.
+
+When optional Worker Serviceability is enabled, Assignment supplies its
+process-local HOT eligibility floor to both ordinary reads. The pre-epoch form
+returns only positive scores in `[MIN_BASE, base(floorTimeSlot,0,0))` and belongs
+exclusively to Serviceability discovery. Without Serviceability, ordinary reads
+receive no floor and retain the original `MIN_BASE` range.
 
 Recovery recheck acquisition:
 
@@ -489,11 +511,10 @@ RECOVERY_RECHECK -> HOT_ACQUIRE
   policy validation
 ```
 
-The generic exact `toggle_current_polarity` operation preserves `timeSlot`.
-`apply_worker_serviceability_checks` instead requires the stored time slot to
-be older than the Adapter observation and writes that observation slot. This
-fences newer leases and holds without exposing an opaque score to the Pacer.
-Polarity moves must not inherit laneRank across
+The exact `toggle_current_polarity` operation preserves `timeSlot`. Worker
+Serviceability composes this exact operation with monotonic same-polarity
+rewrites; it does not expose a business-shaped score operation. Polarity moves
+must not inherit laneRank across
 lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have different
 meanings, so every polarity move starts the target lane at `laneRank=0`.
 Polarity move preserves the dirty bit. Dirty score primitives are implemented;
@@ -505,7 +526,8 @@ Raw socket, heartbeat, keepalive, session, latency observation, and
 Upsert initializes only a missing score and preserves every existing score
 exactly while replacing the Worker Properties snapshot. Only normalized
 Adapter Route evidence interpreted by the Kernel Serviceability Result Pacer
-uses the evidence-time transition; Transport never calls the score owner.
+may compose exact toggle and monotonic rewrite; Transport never calls the score
+owner.
 
 ## Interface Rule
 
@@ -591,8 +613,9 @@ future recovery retry -> RECOVERY_RECHECK with later time and retryCount + 1
 ```
 
 This primitive cannot change HOT_ACQUIRE to RECOVERY_RECHECK or
-RECOVERY_RECHECK to HOT_ACQUIRE. No production Recovery Pacer or exact retry
-increment operation exists in this slice.
+RECOVERY_RECHECK to HOT_ACQUIRE. The optional Serviceability Result Pacer uses
+it only after an exact polarity transition or while advancing one observed
+RECOVERY retry; it does not turn rewrite into a cross-polarity operation.
 
 ### Release
 
@@ -690,40 +713,32 @@ operation is stale and must not toggle again. The target preserves timeSlot and
 dirty, resets laneRank to zero, and uses `observedScore` only as the stale
 fence.
 
-### Worker Serviceability Check
+### Worker Serviceability Composition
 
-The serviceability result policy uses one bounded score-owner operation rather
-than decoding observed scores in the Pacer:
-
-```text
-apply_worker_serviceability_checks(
-  homeBucketId,
-  checksByWorkerId = {workerId: (checkStartedAtMillis, serviceable)},
-  maxRecoveryAttempts
-)
-```
-
-Each Worker runs in an independent same-key Redis script. The Score owner floors
-the timestamp to its slot, rejects a future check, and writes only when the
-stored timeSlot is older than the check slot. The dirty bit is preserved.
+Serviceability reads bounded decoded states, then composes the owner primitives
+already described here:
 
 ```text
-serviceable
-  -> HOT_ACQUIRE(check slot, laneRank=0)
+CONNECTED
+  RECOVERY -> exact toggle to HOT
+  HOT      -> retain polarity
+  then monotonic rewrite to the process HOT eligibility floor
 
-unserviceable from HOT_ACQUIRE
-  -> RECOVERY_RECHECK(check slot, retryCount=0)
+DISCONNECTED or Adapter delivery expiry
+  HOT      -> exact toggle to RECOVERY
+  RECOVERY -> no-op
 
-unserviceable from RECOVERY_RECHECK
-  -> RECOVERY_RECHECK(check slot, retryCount+1)
-
-retryCount reaches maxRecoveryAttempts
-  -> RECOVERY_RECHECK(owner-internal cold slot)
+failed periodic snapshot
+  HOT      -> exact toggle, then rewrite at retryCount=0
+  RECOVERY -> monotonic rewrite at retryCount+1
+  exhausted -> exact cold park
 ```
 
-This timestamp fence protects newer Task leases, releases, holds, and checks
-without exposing an opaque score to the Pacer. It is not a connection-state
-timestamp and does not turn Worker score into Transport truth.
+PAUSE is never changed. Exact toggle prevents a score change between the
+Pacer's score read and write; it is not a cross-batch evidence-version fence.
+Monotonic rewrite cannot lower a newer lease or hold. Adapter timestamps are
+evidence age/order inputs, not score versions or caller-owned score
+coordinates.
 
 ### Recovery Exhausted / Cold Park
 
@@ -734,7 +749,8 @@ too-old coordinate, not a far-future hold:
 exhaust_recovery_recheck(
   homeBucketId,
   workerId,
-  observedScore
+  observedScore,
+  maxRecoveryAttempts
 )
 ```
 
@@ -745,7 +761,7 @@ storedScore must equal observedScore
 stored polarity must be RECOVERY_RECHECK
 coldParkTimeSlot is the fixed owner-internal near-zero valid time coordinate
 routine recovery ranges always start above coldParkTimeSlot
-targetLaneRank = stored laneRank
+targetLaneRank = maxRecoveryAttempts
 targetDirty = stored dirty
 write RECOVERY_RECHECK(coldParkTimeSlot, targetLaneRank, targetDirty)
 ```
@@ -805,15 +821,20 @@ mark_current_lease_dirty(homeBucketId, workerId)
   already-dirty scores are no-op
   applies to both due and future scores
 
-acquire_hot_acquire_candidates(homeBucketId, limit)
-  reads positive due HOT_ACQUIRE scores in score order
+acquire_hot_acquire_candidates(homeBucketId, hotEligibilityFloorMillis?, limit)
+  reads positive due HOT_ACQUIRE scores at or above the optional floor
   returns at most limit workerId -> observedScore entries
   does not expose score order as a caller contract
   does not mutate score
 
-observe_due_hot_scores(homeBucketId, workerIds)
+observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
   reads only the supplied bounded Worker ids
-  returns only currently due HOT_ACQUIRE scores
+  returns only currently due HOT_ACQUIRE scores at or above the optional floor
+  does not mutate score
+
+acquire_pre_epoch_hot_candidates(homeBucketId, hotEligibilityFloorMillis, limit)
+  reads positive HOT_ACQUIRE scores strictly below the floor
+  belongs to Serviceability discovery, never ordinary Assignment
   does not mutate score
 
 acquire_observed_hot_score_leases(
@@ -933,7 +954,7 @@ needed.
 | HOT_ACQUIRE | slot contention / cooldown / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
 | HOT_ACQUIRE | Adapter rejection result | exact lease release, polarity preserved | complete observed-score CAS |
-| HOT_ACQUIRE | newer Adapter Route evidence says unavailable | RECOVERY_RECHECK(evidenceTime, 0, dirty) | stored time must be older than evidence time |
+| HOT_ACQUIRE | bounded-age Adapter Route evidence says unavailable, or delivery expires before start | RECOVERY_RECHECK(sameTime, 0, dirty) | exact observed-score CAS; evidence time is not a score fence |
 | RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, 0, dirty) | owner-validated polarity move |
 | RECOVERY_RECHECK | recovery validation fails and retry remains | RECOVERY_RECHECK(nextRecheckTime, retryCount + 1, dirty) | future exact retry operation; not implemented in this slice |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
@@ -994,7 +1015,7 @@ assignment-dispatch worker selection path.
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
-| newer Adapter Route evidence | yes | Serviceability Result Pacer applies HOT/RECOVERY using the evidence-time fence |
+| bounded-age Adapter Route evidence | yes | Serviceability Result Pacer orders within one round, then uses current-score read plus exact CAS; there is no cross-batch evidence fence |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |

@@ -42,10 +42,18 @@ multiple Item claim fences behind one Worker lease, or release the slot early.
 ## HOT-Pool And DIRECT Acquisition Lease
 
 ```text
-acquire_hot_acquire_candidates(workerGroupId, limit)
+acquire_hot_acquire_candidates(
+    workerGroupId,
+    hotEligibilityFloorMillis?,
+    limit
+)
   -> workerId -> opaque observedScore
 
-observe_due_hot_scores(workerGroupId, workerIds)
+observe_due_hot_scores(
+    workerGroupId,
+    workerIds,
+    hotEligibilityFloorMillis?
+)
   -> due HOT workerId -> opaque observedScore
 
 acquire_observed_hot_score_leases(
@@ -59,6 +67,9 @@ acquire_observed_hot_score_leases(
 Only due positive HOT scores may be leased. Successful acquisition preserves
 laneRank, writes a future time coordinate, and clears dirty. Concurrent rounds
 may observe the same Worker, but only one exact observed-score CAS succeeds.
+When Worker Serviceability is enabled, both reads exclude scores below that
+Kernel process's HOT eligibility floor. With no Serviceability configuration,
+the optional floor is absent and the original full positive range remains.
 
 `WorkerCandidateAcquirer` exposes separate source semantics:
 

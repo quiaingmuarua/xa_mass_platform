@@ -553,6 +553,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         worker_lease_score = worker_states["worker-1"].score
         due_worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
             home_bucket_id="image-workers",
+            hot_eligibility_floor_millis=None,
             limit=10,
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)

@@ -6,6 +6,7 @@ import static com.xa.mass.workerdelivery.adapter.netty.internal.network.TextWrit
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.DeliveryReportProcess.ReportIngressStatus.FULL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -126,7 +127,7 @@ class DeliveryCommandProcessTest {
     }
 
     @Test
-    void expiredCommandCreatesBestEffortAdapterResult() {
+    void expiredCommandCreatesTaskResultAndKernelEvidenceTogether() {
         try (Fixture fixture = new Fixture(1, 1, 2)) {
             DeliveryCommand expired = command(1_000, "expired-context");
             fixture.peer.batches.add(Map.of("worker-1", expired));
@@ -134,26 +135,49 @@ class DeliveryCommandProcessTest {
             fixture.process.round();
             fixture.reportProcess.round();
 
-            assertThat(fixture.peer.appendedReports).singleElement()
-                    .satisfies(encoded -> assertThat(
-                            CODEC.decodeDeliveryReport(encoded)
-                    ).isEqualTo(DeliveryReport.fromCommand(
-                            expired,
-                            ADAPTER,
-                            "adapter-1",
-                            Integer.toString(
-                                    WorkerDeliveryAdapterErrorCode
-                                            .COMMAND_EXPIRED.code()
-                            ),
-                            "null"
-                    )));
+            assertThat(fixture.peer.appendedReports.stream()
+                    .map(CODEC::decodeDeliveryReport)
+                    .toList())
+                    .hasSize(2)
+                    .anySatisfy(report -> assertThat(report).isEqualTo(
+                            DeliveryReport.fromCommand(
+                                    expired,
+                                    ADAPTER,
+                                    "adapter-1",
+                                    Integer.toString(
+                                            WorkerDeliveryAdapterErrorCode
+                                                    .COMMAND_EXPIRED.code()
+                                    ),
+                                    "null"
+                            )
+                    ))
+                    .anySatisfy(report -> {
+                        assertThat(report.src()).isEqualTo(ADAPTER);
+                        assertThat(report.sourceId()).isEqualTo("adapter-1");
+                        assertThat(report.dst()).isEqualTo(KERNEL);
+                        assertThat(report.messageType()).isEqualTo(
+                                "platform.adapter.worker-delivery.expired"
+                        );
+                        assertThat(report.outcomeCode()).isEqualTo("200");
+                        assertThat(report.forward()).isEqualTo(
+                                "worker-serviceability-evidence:v1"
+                        );
+                        assertThat(Jsons.parseObject(report.payload()))
+                                .containsExactlyInAnyOrderEntriesOf(Map.of(
+                                        "workerId", "worker-1",
+                                        "observedAtMillis", 1_000L
+                                ));
+                    });
         }
     }
 
     @Test
     void rejectedExpiredResultDoesNotRetainTheCommand() {
-        try (Fixture fixture = new Fixture(1, 1, 1)) {
-            assertThat(fixture.reportProcess.ingress(List.of("occupied")))
+        try (Fixture fixture = new Fixture(1, 1, 2)) {
+            assertThat(fixture.reportProcess.ingress(List.of(
+                    "occupied-1",
+                    "occupied-2"
+            )))
                     .isEqualTo(ACCEPTED);
             assertThat(fixture.reportProcess.ingress(List.of("full")))
                     .isEqualTo(FULL);
@@ -168,7 +192,7 @@ class DeliveryCommandProcessTest {
             fixture.reportProcess.round();
 
             assertThat(fixture.peer.appendedReports)
-                    .containsExactly("occupied");
+                    .containsExactly("occupied-1", "occupied-2");
         }
     }
 

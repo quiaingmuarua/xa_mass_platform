@@ -349,10 +349,8 @@ class RuntimeApiPythonIntegrationTest {
         WorkerScoreState initial = awaitWorkerScore(
                 workerGroupId,
                 workerId,
-                WorkerScorePolarity.HOT_ACQUIRE,
-                Long.MIN_VALUE
+                WorkerScorePolarity.HOT_ACQUIRE
         );
-        awaitNextScoreSlot(initial.timeMillis());
 
         RunningWorker first = startWorker(
                 workerGroupId,
@@ -368,22 +366,21 @@ class RuntimeApiPythonIntegrationTest {
             WorkerScoreState connected = awaitWorkerScore(
                     workerGroupId,
                     workerId,
-                    WorkerScorePolarity.HOT_ACQUIRE,
-                    initial.timeMillis()
+                    WorkerScorePolarity.HOT_ACQUIRE
             );
+            assertThat(connected.timeMillis()).isEqualTo(initial.timeMillis());
 
-            awaitNextScoreSlot(connected.timeMillis());
             first.close();
             first = null;
             awaitConnectionState(workerId, "DISCONNECTED");
             WorkerScoreState disconnected = awaitWorkerScore(
                     workerGroupId,
                     workerId,
-                    WorkerScorePolarity.RECOVERY_RECHECK,
-                    connected.timeMillis()
+                    WorkerScorePolarity.RECOVERY_RECHECK
             );
+            assertThat(disconnected.timeMillis())
+                    .isEqualTo(connected.timeMillis());
 
-            awaitNextScoreSlot(disconnected.timeMillis());
             reconnected = startWorker(
                     workerGroupId,
                     clientWorkerKey,
@@ -396,9 +393,10 @@ class RuntimeApiPythonIntegrationTest {
             WorkerScoreState restored = awaitWorkerScore(
                     workerGroupId,
                     workerId,
-                    WorkerScorePolarity.HOT_ACQUIRE,
-                    disconnected.timeMillis()
+                    WorkerScorePolarity.HOT_ACQUIRE
             );
+            assertThat(restored.timeMillis())
+                    .isEqualTo(disconnected.timeMillis());
             assertThat(restored.laneRank())
                     .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
             awaitServiceabilitySnapshot(workerGroupId, workerId);
@@ -534,13 +532,24 @@ class RuntimeApiPythonIntegrationTest {
         WorkerScoreState before = awaitWorkerScore(
                 workerGroupId,
                 workerId,
-                WorkerScorePolarity.HOT_ACQUIRE,
-                Long.MIN_VALUE
+                WorkerScorePolarity.HOT_ACQUIRE
         );
-        awaitNextScoreSlot(before.timeMillis());
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
+            String scoreKey = "wr:" + redisPrefix()
+                    + ":score:" + workerGroupId;
+            // Fixture-only: leave the Route connected while making the
+            // periodic snapshot, rather than another Route transition, own
+            // the RECOVERY -> HOT proof below.
+            redis.zadd(scoreKey, -before.score(), workerId);
+            WorkerScoreState recovery = awaitWorkerScore(
+                    workerGroupId,
+                    workerId,
+                    WorkerScorePolarity.RECOVERY_RECHECK
+            );
+            assertThat(recovery.timeMillis()).isEqualTo(before.timeMillis());
+
             String requestKey = "ws:{" + redisPrefix()
                     + "}:adapter:" + WEBSOCKET_ENDPOINT_MANAGER_ID
                     + ":probe-requests";
@@ -548,12 +557,12 @@ class RuntimeApiPythonIntegrationTest {
         } finally {
             client.shutdown();
         }
-        awaitWorkerScore(
+        WorkerScoreState after = awaitWorkerScore(
                 workerGroupId,
                 workerId,
-                WorkerScorePolarity.HOT_ACQUIRE,
-                before.timeMillis()
+                WorkerScorePolarity.HOT_ACQUIRE
         );
+        assertThat(after.score()).isEqualTo(before.score());
     }
 
     private void awaitConnectionState(String workerId, String expectedState)
@@ -574,8 +583,7 @@ class RuntimeApiPythonIntegrationTest {
     private WorkerScoreState awaitWorkerScore(
             String workerGroupId,
             String workerId,
-            WorkerScorePolarity expectedPolarity,
-            long afterTimeMillis
+            WorkerScorePolarity expectedPolarity
     ) throws InterruptedException {
         long deadline = System.nanoTime()
                 + Duration.ofSeconds(5).toNanos();
@@ -585,8 +593,7 @@ class RuntimeApiPythonIntegrationTest {
                     List.of(workerId)
             ).get(workerId);
             if (state != null
-                    && state.polarity() == expectedPolarity
-                    && state.timeMillis() > afterTimeMillis) {
+                    && state.polarity() == expectedPolarity) {
                 return state;
             }
             Thread.sleep(20);
@@ -594,21 +601,6 @@ class RuntimeApiPythonIntegrationTest {
         throw new AssertionError(
                 "Worker score did not become " + expectedPolarity
         );
-    }
-
-    private static void awaitNextScoreSlot(long scoreTimeMillis)
-            throws InterruptedException {
-        long scoreSlot = scoreTimeMillis / WorkerScoreCore.SLOT_MILLIS;
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(2).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (System.currentTimeMillis() / WorkerScoreCore.SLOT_MILLIS
-                    > scoreSlot) {
-                return;
-            }
-            Thread.sleep(5);
-        }
-        throw new AssertionError("Wall clock did not advance to next score slot");
     }
 
     private static String redisPrefix() {

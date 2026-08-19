@@ -237,6 +237,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         while time.monotonic() < deadline and "worker-1" not in worker_candidates:
             worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
                 home_bucket_id="phone-tools",
+                hot_eligibility_floor_millis=None,
                 limit=10,
             )
             if "worker-1" not in worker_candidates:

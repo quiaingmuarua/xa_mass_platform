@@ -71,6 +71,9 @@ specification, owner Redis providers and Kernel application assembly.
 - Policy calls conservative owner operations; it does not widen owner APIs.
 - Result Routing owns retry/finality disposition; Transport only carries
   evidence.
+- Task Result Routing may exact-release the correlated Worker lease but must
+  not infer connection polarity. Adapter Route/delivery-expiry evidence is
+  consumed only by the optional Worker Serviceability policy.
 - Python HTTP adapters may expose only operations implemented by the current
   Python command host.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
@@ -206,6 +209,9 @@ Rules:
 - Only valid bound Worker TASK/SYSTEM evidence follows the current destination
   rules; invalid unbound input and TASK result backpressure may close the exact
   connection.
+- Expired TASK delivery atomically offers its 23002 TASK Report and a separate
+  `platform.adapter.worker-delivery.expired` KERNEL Report to the one Report
+  Process; Transport does not interpret either as score policy.
 - Shutdown waits are owner-local and bounded. Do not reset spent deadlines or
   add unbounded waits.
 - Do not add Session, protocol SPI, dynamic Process/lane registry, reflection,

@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism.DeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.KERNEL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.SYSTEM;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
@@ -10,6 +11,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.netty.internal.connection.WorkerConnectionMechanism;
 import com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryCommandRemoteApi;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
@@ -21,6 +23,11 @@ import java.util.function.LongSupplier;
 
 /** Scheduled Command acquisition and delivery process for one Adapter. */
 public final class DeliveryCommandProcess implements AdapterProcess {
+
+    private static final String WORKER_DELIVERY_EXPIRED_EVENT =
+            "platform.adapter.worker-delivery.expired";
+    private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
+            "worker-serviceability-evidence:v1";
 
     private record QueuedCommand(
             String entryKey,
@@ -132,7 +139,7 @@ public final class DeliveryCommandProcess implements AdapterProcess {
             DeliveryCommand command = queued.command();
             if (command.executeBeforeMillis() <= currentTimeMillis) {
                 if (isTaskWorkerCommand(queued)) {
-                    offerExpiredTaskResult(queued);
+                    offerExpiredTaskResult(queued, currentTimeMillis);
                 }
                 continue;
             }
@@ -216,7 +223,10 @@ public final class DeliveryCommandProcess implements AdapterProcess {
         }
     }
 
-    private void offerExpiredTaskResult(QueuedCommand queued) {
+    private void offerExpiredTaskResult(
+            QueuedCommand queued,
+            long observedAtMillis
+    ) {
         DeliveryReport rejection = DeliveryReport.fromCommand(
                 queued.command(),
                 ADAPTER,
@@ -226,15 +236,28 @@ public final class DeliveryCommandProcess implements AdapterProcess {
                 ),
                 "null"
         );
+        DeliveryReport evidence = DeliveryReport.create(
+                ADAPTER,
+                adapterId,
+                KERNEL,
+                WORKER_DELIVERY_EXPIRED_EVENT,
+                "200",
+                Jsons.toJson(Map.of(
+                        "workerId", queued.entryKey(),
+                        "observedAtMillis", observedAtMillis
+                )),
+                WORKER_SERVICEABILITY_EVIDENCE_FORWARD
+        );
         if (reportProcess.ingress(List.of(
-                codec.encodeDeliveryReport(rejection)
+                codec.encodeDeliveryReport(rejection),
+                codec.encodeDeliveryReport(evidence)
         )) != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
                     "adapterId={0} target={1} message={2}",
                     adapterId,
                     queued.entryKey(),
-                    "Adapter rejection result was dropped"
+                    "Adapter rejection and serviceability evidence were dropped"
             );
         }
     }

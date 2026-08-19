@@ -126,6 +126,7 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         assertAdapterFailed("processes[1].type=DELIVERY_COMMAND");
         assertAdapterFailed("processes[1].type=UNKNOWN");
         assertAdapterFailed("processes[1].interval=0ms");
+        assertAdapterFailed("processes[1].queue-capacity=1");
         assertAdapterFailed(
                 "processes[1].retry-on-unavailable=maybe"
         );

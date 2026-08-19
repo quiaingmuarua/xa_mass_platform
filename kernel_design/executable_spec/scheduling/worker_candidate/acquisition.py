@@ -71,13 +71,26 @@ class WorkerCandidateAcquirer:
         worker_matcher: WorkerCandidateMatcher,
         *,
         worker_scan_limit: int,
+        hot_eligibility_floor_millis: int | None = None,
     ) -> None:
         if worker_scan_limit <= 0:
             raise ValueError("worker scan limit must be positive")
+        if hot_eligibility_floor_millis is not None and (
+            isinstance(hot_eligibility_floor_millis, bool)
+            or not isinstance(hot_eligibility_floor_millis, int)
+            or not WorkerScoreCore.MIN_TIME_MILLIS
+            <= hot_eligibility_floor_millis
+            <= WorkerScoreCore.MAX_TIME_MILLIS
+            or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
+        ):
+            raise ValueError(
+                "HOT eligibility floor must be a score-slot-aligned time"
+            )
         self.candidate_cache = candidate_cache
         self.worker_score = worker_score
         self.worker_matcher = worker_matcher
         self.worker_scan_limit = worker_scan_limit
+        self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
 
     def acquire_worker_candidates(
         self,
@@ -122,6 +135,9 @@ class WorkerCandidateAcquirer:
 
         observed_scores = self.worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=worker_group_id,
+            hot_eligibility_floor_millis=(
+                self.hot_eligibility_floor_millis
+            ),
             limit=self.worker_scan_limit,
         )
         if not observed_scores:
@@ -203,6 +219,9 @@ class WorkerCandidateAcquirer:
         broad_scores = (
             self.worker_score.acquire_hot_acquire_candidates(
                 home_bucket_id=worker_group_id,
+                hot_eligibility_floor_millis=(
+                    self.hot_eligibility_floor_millis
+                ),
                 limit=min(
                     self.worker_scan_limit,
                     MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND,
@@ -281,6 +300,9 @@ class WorkerCandidateAcquirer:
             self.worker_score.observe_due_hot_scores(
                 home_bucket_id=worker_group_id,
                 worker_ids=point_worker_ids,
+                hot_eligibility_floor_millis=(
+                    self.hot_eligibility_floor_millis
+                ),
             )
             if point_worker_ids
             else {}

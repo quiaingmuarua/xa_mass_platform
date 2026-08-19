@@ -87,6 +87,11 @@ or Adapter-produced Route evidence
   src=ADAPTER, dst=KERNEL
   messageType=platform.adapter.worker-connection.changed
   forward=worker-serviceability-evidence:v1
+
+or Adapter-produced delivery-expiry evidence
+  src=ADAPTER, dst=KERNEL
+  messageType=platform.adapter.worker-delivery.expired
+  forward=worker-serviceability-evidence:v1
 ```
 
 The optional Kernel Dispatch Pacer writes Adapter-scoped probe request HASH
@@ -95,8 +100,9 @@ response capacity, Adapter executes its existing connection-snapshot Handler,
 and Server appends the `ADAPTER -> KERNEL` Report to the Kernel result handoff.
 The Adapter also emits one-Worker evidence for exact verified Route
 connected/disconnected transitions through the same Result Process and Server
-append boundary. `KERNEL` does not authorize Server or Transport to call a
-score owner.
+append boundary. An expired TASK-to-Worker Command atomically offers its normal
+23002 TASK Report and a separate one-Worker KERNEL evidence Report to that same
+Process. `KERNEL` does not authorize Server or Transport to call a score owner.
 
 Delivery defines no outer message or correlation ID.
 `DeliveryReport.fromCommand()` routes the Report to the Command source and

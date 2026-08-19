@@ -19,7 +19,6 @@ from .worker_score import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
-    WorkerServiceabilityCheck,
 )
 from .worker_runtime import (
     AttributeName,
@@ -111,7 +110,6 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
-    "WorkerServiceabilityCheck",
     "AttributeName",
     "AttributeValue",
     "MappedWorkerPropertyIndexRuntime",

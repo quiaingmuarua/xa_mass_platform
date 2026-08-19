@@ -15,6 +15,7 @@ from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
     RedisTaskRuntime,
     RedisTaskScoreBandCore,
+    WorkerScoreCore,
 )
 
 try:
@@ -109,13 +110,16 @@ class KernelApplicationConfigTest(unittest.TestCase):
                         "workerGroupIds": ["group-a", "group-b"],
                         "dispatchIntervalMillis": 2_000,
                         "resultIntervalMillis": 200,
-                        "staleHotAfterMillis": 600_000,
                         "recoveryRetryIntervalMillis": 120_000,
                         "maxRecoveryAttempts": 4,
                         "hotScanLimit": 70,
                         "recoveryScanLimit": 30,
                         "resultReportLimit": 20,
                         "evidenceMaxAgeMillis": 45_000,
+                        "probeExcludedEndpointManagerIds": [
+                            "system-polling",
+                            "legacy-polling",
+                        ],
                     }
                 }
             )
@@ -129,6 +133,43 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(200, serviceability.result_interval_millis)
         self.assertEqual(4, serviceability.max_recovery_attempts)
         self.assertEqual(45_000, serviceability.evidence_max_age_millis)
+        self.assertEqual(
+            ("system-polling", "legacy-polling"),
+            serviceability.probe_excluded_endpoint_manager_ids,
+        )
+
+        defaults = KernelApplicationConfig.from_json(
+            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+        ).worker_serviceability
+        assert defaults is not None
+        self.assertEqual(
+            ("system-polling",),
+            defaults.probe_excluded_endpoint_manager_ids,
+        )
+        no_exclusions = KernelApplicationConfig.from_json(
+            '{"workerServiceability":{"workerGroupIds":["group-a"],'
+            '"probeExcludedEndpointManagerIds":[]}}'
+        ).worker_serviceability
+        assert no_exclusions is not None
+        self.assertEqual((), no_exclusions.probe_excluded_endpoint_manager_ids)
+
+    def test_serviceability_mints_one_aligned_internal_hot_floor(self) -> None:
+        enabled = KernelApplicationConfig.from_json(
+            '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
+        )
+        internal = KernelApplication._internal_process_config(enabled)
+        self.assertIsNotNone(internal.hot_eligibility_floor_millis)
+        assert internal.hot_eligibility_floor_millis is not None
+        self.assertEqual(
+            0,
+            internal.hot_eligibility_floor_millis
+            % WorkerScoreCore.SLOT_MILLIS,
+        )
+        self.assertIsNone(
+            KernelApplication._internal_process_config(
+                KernelApplicationConfig()
+            ).hot_eligibility_floor_millis
+        )
 
         invalid_configs = (
             '{"workerServiceability": {}}',
@@ -137,6 +178,10 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"workerServiceability": {"workerGroupIds": ["a"], "unknown": 1}}',
             '{"workerServiceability": {"workerGroupIds": ["a"], '
             '"hotScanLimit": 81, "recoveryScanLimit": 20}}',
+            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '"staleHotAfterMillis": 1}}',
+            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '"probeExcludedEndpointManagerIds": ["x", "x"]}}',
         )
         for config_json in invalid_configs:
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):

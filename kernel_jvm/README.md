@@ -67,8 +67,8 @@ WorkerServiceabilityRuntime
 Worker score initialization fixes laneRank at zero. Candidate acquisition,
 observed lease acquisition/renewal, dirty marking, polarity changes, and
 recovery exhaustion remain explicit gaps in the JVM provider.
-The new `applyWorkerServiceabilityChecks` contract is also an explicit JVM
-provider gap because no Java production caller owns the Pacer in this slice.
+The Serviceability-only pre-epoch HOT read is also an explicit JVM provider gap
+because no Java production caller owns that Pacer.
 `rewriteCurrentScores` preserves polarity,
 lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed

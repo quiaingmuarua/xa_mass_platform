@@ -31,6 +31,11 @@ public final class DeliveryReportProcess implements AdapterProcess {
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException("adapterId must be non-blank");
         }
+        if (queueCapacity < 2) {
+            throw new IllegalArgumentException(
+                    "queueCapacity must be at least 2"
+            );
+        }
         this.adapterId = adapterId;
         reportQueue = new FiniteQueue<>(queueCapacity);
     }

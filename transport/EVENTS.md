@@ -67,12 +67,20 @@ platform.adapter.worker-connection.changed
   payload={"workerId":"...","state":"CONNECTED|DISCONNECTED",
            "observedAtMillis":...}
   forward=worker-serviceability-evidence:v1
+
+platform.adapter.worker-delivery.expired
+  ADAPTER -> KERNEL
+  payload={"workerId":"worker-1","observedAtMillis":...}
+  forward=worker-serviceability-evidence:v1
 ```
 
-One Report represents one exact Route availability transition. It carries no
-WorkerGroup, Binding, Properties, generation, or score. Several Reports may be
-submitted together by the existing Result Process. Queue pressure drops this
-best-effort evidence without closing the Worker Channel.
+One connection Report represents one exact Route availability transition. One
+delivery-expired Report accompanies the ordinary 23002 TASK Report when a
+TASK-to-Worker Command misses its Adapter delivery deadline. It does not claim
+that the Channel is disconnected. Both carry no WorkerGroup, Binding,
+Properties, generation, or score. Several Reports may be submitted together by
+the existing Result Process. Queue pressure drops best-effort evidence without
+closing the Worker Channel.
 How Kernel weighs this evidence or maps it to a scheduling coordinate is
 policy, not part of the Transport event contract.
 

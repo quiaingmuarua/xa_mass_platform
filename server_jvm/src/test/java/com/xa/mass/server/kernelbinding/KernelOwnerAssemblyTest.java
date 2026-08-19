@@ -83,7 +83,7 @@ class KernelOwnerAssemblyTest {
                 new RedisWorkerScoreCore(redisClient, "test");
 
         assertThatThrownBy(() ->
-                scoreCore.acquireHotAcquireCandidates("group-1", 1))
+                scoreCore.acquireHotAcquireCandidates("group-1", null, 1))
                 .isInstanceOf(KernelOperationNotImplementedException.class)
                 .satisfies(error -> {
                     var notImplemented =

@@ -141,10 +141,6 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "WorkerScoreTransitionResult",
                     WorkerScoreCore.WorkerScoreTransitionResult.class
-            ),
-            Map.entry(
-                    "WorkerServiceabilityCheck",
-                    WorkerScoreCore.WorkerServiceabilityCheck.class
             )
     );
 

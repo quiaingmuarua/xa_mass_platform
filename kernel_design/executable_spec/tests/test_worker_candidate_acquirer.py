@@ -131,6 +131,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.score.acquire_hot_acquire_candidates.assert_called_once_with(
             home_bucket_id="group-1",
+            hot_eligibility_floor_millis=None,
             limit=25,
         )
         self.score.observe_due_hot_scores.assert_not_called()
@@ -188,6 +189,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.score.observe_due_hot_scores.assert_called_once_with(
             home_bucket_id="group-1",
             worker_ids=("worker-1", "worker-2"),
+            hot_eligibility_floor_millis=None,
         )
         self.score.acquire_observed_hot_score_leases.assert_called_once_with(
             home_bucket_id="group-1",
@@ -243,6 +245,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.score.observe_due_hot_scores.assert_called_once_with(
             home_bucket_id="group-1",
             worker_ids=("worker-2",),
+            hot_eligibility_floor_millis=None,
         )
         self.score.acquire_observed_hot_score_leases.assert_called_once_with(
             home_bucket_id="group-1",
@@ -444,6 +447,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.score.acquire_hot_acquire_candidates.assert_called_once_with(
             home_bucket_id="group-1",
+            hot_eligibility_floor_millis=None,
             limit=25,
         )
         self.cache.consume_candidate_workers.assert_not_called()

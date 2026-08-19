@@ -19,18 +19,28 @@ from kernel_design.executable_spec import (
 )
 
 
+_FLOOR = 900_000
+
+
 class FakeScore:
     def __init__(self) -> None:
         self.hot_by_group: dict[str, dict[str, int]] = {}
         self.recovery_by_group: dict[str, list[tuple[str, int]]] = {}
         self.states_by_group: dict[str, dict[str, WorkerScoreState | None]] = {}
-        self.applied: list[tuple[str, dict[str, object], int]] = []
         self.scanned_groups: list[str] = []
+        self.rewrites: list[tuple[str, tuple[str, ...], int, int | None]] = []
+        self.toggles: list[tuple[str, str, int]] = []
+        self.exhausted: list[tuple[str, str, int, int]] = []
 
-    def acquire_hot_acquire_candidates(
-        self, *, home_bucket_id: str, limit: int
+    def acquire_pre_epoch_hot_candidates(
+        self,
+        *,
+        home_bucket_id: str,
+        hot_eligibility_floor_millis: int,
+        limit: int,
     ) -> dict[str, int]:
         self.scanned_groups.append(home_bucket_id)
+        assert hot_eligibility_floor_millis == _FLOOR
         return dict(tuple(self.hot_by_group.get(home_bucket_id, {}).items())[:limit])
 
     def acquire_recovery_recheck_candidates(
@@ -44,35 +54,70 @@ class FakeScore:
         states = self.states_by_group.get(home_bucket_id, {})
         return {worker_id: states.get(worker_id) for worker_id in worker_ids}
 
-    def apply_worker_serviceability_checks(
+    def rewrite_current_scores(
         self,
         *,
         home_bucket_id: str,
-        checks_by_worker_id: dict[str, object],
-        max_recovery_attempts: int,
+        worker_ids: tuple[str, ...],
+        target_time_millis: int,
+        target_lane_rank: int | None = None,
     ) -> dict[str, WorkerScoreTransitionResult]:
-        self.applied.append(
-            (home_bucket_id, dict(checks_by_worker_id), max_recovery_attempts)
+        self.rewrites.append(
+            (
+                home_bucket_id,
+                tuple(worker_ids),
+                target_time_millis,
+                target_lane_rank,
+            )
         )
         return {
             worker_id: WorkerScoreTransitionResult(
-                WorkerScoreTransitionStatus.TRANSITIONED
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                100 + index,
             )
-            for worker_id in checks_by_worker_id
+            for index, worker_id in enumerate(worker_ids)
         }
+
+    def toggle_current_polarity(
+        self, *, home_bucket_id: str, worker_id: str, observed_score: int
+    ) -> WorkerScoreTransitionResult:
+        self.toggles.append((home_bucket_id, worker_id, observed_score))
+        return WorkerScoreTransitionResult(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            -observed_score,
+        )
+
+    def exhaust_recovery_recheck(
+        self,
+        *,
+        home_bucket_id: str,
+        worker_id: str,
+        observed_score: int,
+        max_recovery_attempts: int,
+    ) -> WorkerScoreTransitionResult:
+        self.exhausted.append(
+            (
+                home_bucket_id,
+                worker_id,
+                observed_score,
+                max_recovery_attempts,
+            )
+        )
+        return WorkerScoreTransitionResult(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            observed_score,
+        )
 
 
 class FakeCatalog:
     def __init__(self) -> None:
         self.descriptors_by_group: dict[str, dict[str, WorkerDescriptor | None]] = {}
         self.group_by_worker: dict[str, str | None] = {}
-        self.descriptor_reads: list[tuple[str, tuple[str, ...]]] = []
         self.group_reads: list[tuple[str, ...]] = []
 
     def get_worker_descriptors(
         self, *, worker_group_id: str, worker_ids: tuple[str, ...]
     ) -> dict[str, WorkerDescriptor | None]:
-        self.descriptor_reads.append((worker_group_id, worker_ids))
         values = self.descriptors_by_group.get(worker_group_id, {})
         return {worker_id: values.get(worker_id) for worker_id in worker_ids}
 
@@ -96,9 +141,7 @@ class FakeRuntime:
         return {worker_id: self.offer_status for worker_id in worker_ids}
 
     def consume_adapter_evidence_results(
-        self,
-        *,
-        limit: int,
+        self, *, limit: int
     ) -> tuple[DeliveryReport, ...]:
         consumed = tuple(self.reports[:limit])
         del self.reports[:limit]
@@ -109,13 +152,18 @@ def score_state(
     worker_id: str,
     polarity: WorkerScorePolarity,
     time_millis: int,
+    *,
+    lane_rank: int = 0,
 ) -> WorkerScoreState:
+    score = 100 + lane_rank
+    if polarity is WorkerScorePolarity.RECOVERY_RECHECK:
+        score = -score
     return WorkerScoreState(
         worker_id=worker_id,
-        score=1 if polarity is WorkerScorePolarity.HOT_ACQUIRE else -1,
+        score=score,
         polarity=polarity,
         time_millis=time_millis,
-        lane_rank=0,
+        lane_rank=lane_rank,
         dirty=0,
     )
 
@@ -130,25 +178,15 @@ def descriptor(worker_id: str, group_id: str, adapter_id: str) -> WorkerDescript
     )
 
 
-def probe_report(
-    states: dict[str, str],
-    *,
-    forward: str = "worker-serviceability:v1:95000",
-    outcome_code: str = "200",
-    payload_override: str | None = None,
-) -> DeliveryReport:
+def probe_report(states: dict[str, str], *, observed_at_millis: int = 95_000) -> DeliveryReport:
     return DeliveryReport.create(
         src=DeliveryEndpoint.ADAPTER,
         source_id="adapter-a",
         dst=DeliveryEndpoint.KERNEL,
         message_type="platform.adapter.worker-connections.snapshot",
-        outcome_code=outcome_code,
-        payload=(
-            payload_override
-            if payload_override is not None
-            else json.dumps({"stateByWorkerId": states})
-        ),
-        forward=forward,
+        outcome_code="200",
+        payload=json.dumps({"stateByWorkerId": states}),
+        forward=f"worker-serviceability:v1:{observed_at_millis}",
     )
 
 
@@ -157,8 +195,6 @@ def connection_report(
     state: str,
     *,
     observed_at_millis: int = 98_000,
-    forward: str = "worker-serviceability-evidence:v1",
-    payload_override: str | None = None,
 ) -> DeliveryReport:
     return DeliveryReport.create(
         src=DeliveryEndpoint.ADAPTER,
@@ -166,18 +202,35 @@ def connection_report(
         dst=DeliveryEndpoint.KERNEL,
         message_type="platform.adapter.worker-connection.changed",
         outcome_code="200",
-        payload=(
-            payload_override
-            if payload_override is not None
-            else json.dumps(
-                {
-                    "workerId": worker_id,
-                    "state": state,
-                    "observedAtMillis": observed_at_millis,
-                }
-            )
+        payload=json.dumps(
+            {
+                "workerId": worker_id,
+                "state": state,
+                "observedAtMillis": observed_at_millis,
+            }
         ),
-        forward=forward,
+        forward="worker-serviceability-evidence:v1",
+    )
+
+
+def expired_report(
+    worker_id: str,
+    *,
+    observed_at_millis: int = 99_000,
+) -> DeliveryReport:
+    return DeliveryReport.create(
+        src=DeliveryEndpoint.ADAPTER,
+        source_id="adapter-a",
+        dst=DeliveryEndpoint.KERNEL,
+        message_type="platform.adapter.worker-delivery.expired",
+        outcome_code="200",
+        payload=json.dumps(
+            {
+                "workerId": worker_id,
+                "observedAtMillis": observed_at_millis,
+            }
+        ),
+        forward="worker-serviceability-evidence:v1",
     )
 
 
@@ -190,74 +243,93 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
             self.score,
             self.catalog,
             self.runtime,
+            hot_eligibility_floor_millis=_FLOOR,
             clock_millis=lambda: 1_000_000,
         )
         self.config = WorkerServiceabilityDispatchConfig(
             worker_group_ids=("group-a", "group-b"),
         )
 
-    def test_round_rotates_one_explicit_group(self) -> None:
+    def test_round_rotates_one_explicit_group_and_uses_pre_epoch_range(self) -> None:
         self.pacer.dispatch_probes(config=self.config)
         self.pacer.dispatch_probes(config=self.config)
-
         self.assertEqual(["group-a", "group-b"], self.score.scanned_groups)
 
-    def test_offers_only_stale_candidates_grouped_by_active_adapter(self) -> None:
-        self.score.hot_by_group["group-a"] = {"hot-old": 1, "hot-new": 2}
-        self.score.recovery_by_group["group-a"] = [("recovery", -1)]
+    def test_offers_pre_epoch_hot_and_linearly_due_recovery(self) -> None:
+        self.score.hot_by_group["group-a"] = {"hot": 1}
+        self.score.recovery_by_group["group-a"] = [
+            ("recovery-due", -1),
+            ("recovery-early", -2),
+        ]
         self.score.states_by_group["group-a"] = {
-            "hot-old": score_state(
-                "hot-old", WorkerScorePolarity.HOT_ACQUIRE, 699_999
+            "hot": score_state("hot", WorkerScorePolarity.HOT_ACQUIRE, 899_900),
+            "recovery-due": score_state(
+                "recovery-due",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                879_999,
+                lane_rank=1,
             ),
-            "hot-new": score_state(
-                "hot-new", WorkerScorePolarity.HOT_ACQUIRE, 700_001
-            ),
-            "recovery": score_state(
-                "recovery", WorkerScorePolarity.RECOVERY_RECHECK, 940_000
+            "recovery-early": score_state(
+                "recovery-early",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                880_001,
+                lane_rank=1,
             ),
         }
         self.catalog.descriptors_by_group["group-a"] = {
-            "hot-old": descriptor("hot-old", "group-a", "adapter-a"),
-            "recovery": descriptor("recovery", "group-a", "adapter-a"),
+            worker_id: descriptor(worker_id, "group-a", "adapter-a")
+            for worker_id in ("hot", "recovery-due", "recovery-early")
         }
 
-        offered = self.pacer.dispatch_probes(config=self.config)
-
-        self.assertEqual(2, offered)
+        self.assertEqual(2, self.pacer.dispatch_probes(config=self.config))
         self.assertEqual(
-            [("adapter-a", ("hot-old", "recovery"))],
+            [("adapter-a", ("hot", "recovery-due"))],
             self.runtime.offers,
         )
 
-    def test_skips_polling_and_missing_descriptors(self) -> None:
-        self.score.hot_by_group["group-a"] = {"polling": 1, "missing": 2}
+    def test_excluded_endpoint_is_exactly_cold_parked(self) -> None:
+        self.score.hot_by_group["group-a"] = {"hot": 1}
+        self.score.recovery_by_group["group-a"] = [("recovery", -1)]
         self.score.states_by_group["group-a"] = {
-            worker_id: score_state(
-                worker_id, WorkerScorePolarity.HOT_ACQUIRE, 1
-            )
-            for worker_id in ("polling", "missing")
+            "hot": score_state("hot", WorkerScorePolarity.HOT_ACQUIRE, 1),
+            "recovery": score_state(
+                "recovery",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                1,
+            ),
         }
         self.catalog.descriptors_by_group["group-a"] = {
-            "polling": descriptor("polling", "group-a", "system-polling"),
-            "missing": None,
+            worker_id: descriptor(worker_id, "group-a", "system-polling")
+            for worker_id in ("hot", "recovery")
         }
 
         self.assertEqual(0, self.pacer.dispatch_probes(config=self.config))
+        self.assertEqual([("group-a", "hot", 100)], self.score.toggles)
+        self.assertEqual(
+            {
+                ("group-a", "hot", -100, 5),
+                ("group-a", "recovery", -100, 5),
+            },
+            set(self.score.exhausted),
+        )
         self.assertEqual([], self.runtime.offers)
 
-    def test_already_requested_is_not_counted_as_new_offer(self) -> None:
-        self.score.hot_by_group["group-a"] = {"worker-1": 1}
+    def test_empty_exclusion_set_allows_polling_endpoint_probe(self) -> None:
+        self.score.hot_by_group["group-a"] = {"polling": 1}
         self.score.states_by_group["group-a"] = {
-            "worker-1": score_state(
-                "worker-1", WorkerScorePolarity.HOT_ACQUIRE, 1
+            "polling": score_state(
+                "polling", WorkerScorePolarity.HOT_ACQUIRE, 1
             )
         }
         self.catalog.descriptors_by_group["group-a"] = {
-            "worker-1": descriptor("worker-1", "group-a", "adapter-a")
+            "polling": descriptor("polling", "group-a", "system-polling")
         }
-        self.runtime.offer_status = ProbeRequestOfferStatus.ALREADY_REQUESTED
+        config = WorkerServiceabilityDispatchConfig(
+            worker_group_ids=("group-a",),
+            probe_excluded_endpoint_manager_ids=(),
+        )
 
-        self.assertEqual(0, self.pacer.dispatch_probes(config=self.config))
+        self.assertEqual(1, self.pacer.dispatch_probes(config=config))
 
 
 class WorkerServiceabilityResultPacerTest(unittest.TestCase):
@@ -269,144 +341,140 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             self.runtime,
             self.catalog,
             self.score,
+            hot_eligibility_floor_millis=_FLOOR,
             clock_millis=lambda: 100_000,
         )
         self.config = WorkerServiceabilityResultConfig()
 
-    def test_routes_one_batch_by_existing_worker_group_owners(self) -> None:
+    def _own(self, worker_ids: tuple[str, ...]) -> None:
+        self.catalog.group_by_worker.update(
+            {worker_id: "group-a" for worker_id in worker_ids}
+        )
+
+    def test_connected_recovery_toggles_then_rewrites_to_hot_floor(self) -> None:
+        self.runtime.reports.append(connection_report("worker", "CONNECTED"))
+        self._own(("worker",))
+        self.score.states_by_group["group-a"] = {
+            "worker": score_state(
+                "worker", WorkerScorePolarity.RECOVERY_RECHECK, 800_000
+            )
+        }
+
+        self.assertEqual(1, self.pacer.route_adapter_evidence(config=self.config))
+        self.assertEqual([("group-a", "worker", -100)], self.score.toggles)
+        self.assertEqual(
+            [("group-a", ("worker",), _FLOOR, 0)],
+            self.score.rewrites,
+        )
+
+    def test_disconnect_and_delivery_expiry_only_toggle_hot_scores(self) -> None:
+        self.runtime.reports.extend(
+            (
+                connection_report("disconnected", "DISCONNECTED"),
+                expired_report("expired"),
+                expired_report("already-recovery"),
+            )
+        )
+        self._own(("disconnected", "expired", "already-recovery"))
+        self.score.states_by_group["group-a"] = {
+            "disconnected": score_state(
+                "disconnected", WorkerScorePolarity.HOT_ACQUIRE, 950_000
+            ),
+            "expired": score_state(
+                "expired", WorkerScorePolarity.HOT_ACQUIRE, 960_000
+            ),
+            "already-recovery": score_state(
+                "already-recovery",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                960_000,
+            ),
+        }
+
+        self.assertEqual(3, self.pacer.route_adapter_evidence(config=self.config))
+        self.assertEqual(
+            {
+                ("group-a", "disconnected", 100),
+                ("group-a", "expired", 100),
+            },
+            set(self.score.toggles),
+        )
+        self.assertEqual([], self.score.rewrites)
+
+    def test_probe_failure_retries_linearly_then_cold_parks(self) -> None:
         self.runtime.reports.append(
             probe_report(
                 {
-                    "worker-a": "CONNECTED",
-                    "worker-b": "DISCONNECTED",
-                    "worker-c": "UNKNOWN",
+                    "hot": "UNKNOWN",
+                    "retry": "DISCONNECTED",
+                    "exhaust": "UNKNOWN",
                 }
             )
         )
-        self.catalog.group_by_worker = {
-            "worker-a": "group-a",
-            "worker-b": "group-a",
-            "worker-c": "group-b",
+        self._own(("hot", "retry", "exhaust"))
+        self.score.states_by_group["group-a"] = {
+            "hot": score_state("hot", WorkerScorePolarity.HOT_ACQUIRE, 1),
+            "retry": score_state(
+                "retry", WorkerScorePolarity.RECOVERY_RECHECK, 1, lane_rank=3
+            ),
+            "exhaust": score_state(
+                "exhaust", WorkerScorePolarity.RECOVERY_RECHECK, 1, lane_rank=4
+            ),
         }
 
-        applied = self.pacer.route_adapter_evidence(config=self.config)
-
-        self.assertEqual(3, applied)
-        by_group = {group: checks for group, checks, _ in self.score.applied}
-        self.assertTrue(by_group["group-a"]["worker-a"].serviceable)
-        self.assertFalse(by_group["group-a"]["worker-b"].serviceable)
-        self.assertFalse(by_group["group-b"]["worker-c"].serviceable)
+        self.assertEqual(3, self.pacer.route_adapter_evidence(config=self.config))
+        self.assertIn(("group-a", "hot", 100), self.score.toggles)
+        self.assertIn(("group-a", ("hot",), 95_000, 0), self.score.rewrites)
+        self.assertIn(("group-a", ("retry",), 95_000, 4), self.score.rewrites)
         self.assertEqual(
-            95_000,
-            by_group["group-a"]["worker-a"].check_started_at_millis,
+            [("group-a", "exhaust", -104, 5)],
+            self.score.exhausted,
         )
 
-    def test_missing_worker_owner_is_skipped(self) -> None:
-        self.runtime.reports.append(probe_report({"missing": "CONNECTED"}))
+    def test_equal_timestamp_uses_later_report(self) -> None:
+        self.runtime.reports.extend(
+            (
+                connection_report(
+                    "worker", "CONNECTED", observed_at_millis=99_000
+                ),
+                expired_report("worker", observed_at_millis=99_000),
+            )
+        )
+        self._own(("worker",))
+        self.score.states_by_group["group-a"] = {
+            "worker": score_state(
+                "worker", WorkerScorePolarity.HOT_ACQUIRE, 1
+            )
+        }
+
+        self.pacer.route_adapter_evidence(config=self.config)
+        self.assertEqual([("group-a", "worker", 100)], self.score.toggles)
+        self.assertEqual([], self.score.rewrites)
+
+    def test_future_expired_and_unknown_worker_are_dropped(self) -> None:
+        self.runtime.reports.extend(
+            (
+                connection_report(
+                    "old", "DISCONNECTED", observed_at_millis=69_999
+                ),
+                expired_report("future", observed_at_millis=100_001),
+                connection_report("missing", "CONNECTED"),
+            )
+        )
+        self.catalog.group_by_worker["missing"] = None
 
         self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
-        self.assertEqual([], self.score.applied)
+        self.assertEqual([], self.score.toggles)
 
-    def test_malformed_or_failed_report_is_dropped_without_score_write(self) -> None:
-        self.runtime.reports.extend(
-            (
-                probe_report({"worker-a": "VERIFYING"}),
-                probe_report({"worker-a": "CONNECTED"}, outcome_code="23004"),
-                probe_report(
-                    {"worker-a": "CONNECTED"},
-                    payload_override='{"stateByWorkerId":{},"extra":1}',
-                ),
-                probe_report(
-                    {"worker-a": "CONNECTED"},
-                    forward="worker-serviceability:v1:not-a-time",
-                ),
-            )
-        )
-        self.catalog.group_by_worker["worker-a"] = "group-a"
-
-        self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
-        self.assertEqual([], self.score.applied)
-
-    def test_connection_changes_apply_both_polarities_without_probe_offer(self) -> None:
-        self.runtime.reports.extend(
-            (
-                connection_report("connected", "CONNECTED", observed_at_millis=98_000),
-                connection_report(
-                    "disconnected",
-                    "DISCONNECTED",
-                    observed_at_millis=99_000,
-                ),
-            )
-        )
-        self.catalog.group_by_worker = {
-            "connected": "group-a",
-            "disconnected": "group-a",
-        }
-
-        self.assertEqual(
-            2,
-            self.pacer.route_adapter_evidence(config=self.config),
-        )
-
-        checks = self.score.applied[0][1]
-        self.assertTrue(checks["connected"].serviceable)
-        self.assertFalse(checks["disconnected"].serviceable)
-        self.assertEqual([], self.runtime.offers)
-
-    def test_connection_evidence_age_and_future_time_are_rejected(self) -> None:
-        self.runtime.reports.extend(
-            (
-                connection_report(
-                    "expired",
-                    "DISCONNECTED",
-                    observed_at_millis=69_999,
-                ),
-                connection_report(
-                    "future",
-                    "CONNECTED",
-                    observed_at_millis=100_001,
-                ),
-            )
-        )
-        self.catalog.group_by_worker = {
-            "expired": "group-a",
-            "future": "group-a",
-        }
-
-        self.assertEqual(
-            0,
-            self.pacer.route_adapter_evidence(config=self.config),
-        )
-        self.assertEqual([], self.catalog.group_reads)
-        self.assertEqual([], self.score.applied)
-
-    def test_worker_group_lookup_is_chunked_at_one_hundred_ids(self) -> None:
-        first = {f"worker-{index}": "CONNECTED" for index in range(100)}
-        second = {"worker-100": "DISCONNECTED"}
-        self.runtime.reports.extend((probe_report(first), probe_report(second)))
-        self.catalog.group_by_worker = {
-            worker_id: "group-a" for worker_id in (*first, *second)
-        }
-
-        self.assertEqual(
-            101,
-            self.pacer.route_adapter_evidence(config=self.config),
-        )
-        self.assertEqual([100, 1], [len(batch) for batch in self.catalog.group_reads])
-
-    def test_configs_reject_unbounded_or_invalid_policy(self) -> None:
+    def test_configs_reject_invalid_bounds_and_exclusions(self) -> None:
         with self.assertRaises(ValueError):
             WorkerServiceabilityDispatchConfig(worker_group_ids=())
         with self.assertRaises(ValueError):
             WorkerServiceabilityDispatchConfig(
                 worker_group_ids=("group-a",),
-                hot_scan_limit=81,
-                recovery_scan_limit=20,
+                probe_excluded_endpoint_manager_ids=("same", "same"),
             )
         with self.assertRaises(ValueError):
             WorkerServiceabilityResultConfig(max_recovery_attempts=0)
-        with self.assertRaises(ValueError):
-            WorkerServiceabilityResultConfig(evidence_max_age_millis=0)
 
 
 if __name__ == "__main__":

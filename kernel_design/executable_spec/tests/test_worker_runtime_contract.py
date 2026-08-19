@@ -79,7 +79,12 @@ class WorkerRuntimeContractTest(unittest.TestCase):
                     WorkerScoreCore.acquire_hot_acquire_candidates
                 ).parameters
             ),
-            {"self", "home_bucket_id", "limit"},
+            {
+                "self",
+                "home_bucket_id",
+                "hot_eligibility_floor_millis",
+                "limit",
+            },
         )
         lease_parameters = {
             "self",
@@ -109,7 +114,25 @@ class WorkerRuntimeContractTest(unittest.TestCase):
                     WorkerScoreCore.observe_due_hot_scores
                 ).parameters
             ),
-            {"self", "home_bucket_id", "worker_ids"},
+            {
+                "self",
+                "home_bucket_id",
+                "worker_ids",
+                "hot_eligibility_floor_millis",
+            },
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerScoreCore.acquire_pre_epoch_hot_candidates
+                ).parameters
+            ),
+            {
+                "self",
+                "home_bucket_id",
+                "hot_eligibility_floor_millis",
+                "limit",
+            },
         )
         self.assertEqual(
             set(

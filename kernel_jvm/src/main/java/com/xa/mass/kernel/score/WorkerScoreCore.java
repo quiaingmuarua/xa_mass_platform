@@ -34,12 +34,20 @@ public interface WorkerScoreCore {
 
     Map<String, Long> acquireHotAcquireCandidates(
             String homeBucketId,
+            @Nullable Long hotEligibilityFloorMillis,
             int limit
     );
 
     Map<String, Long> observeDueHotScores(
             String homeBucketId,
-            List<String> workerIds
+            List<String> workerIds,
+            @Nullable Long hotEligibilityFloorMillis
+    );
+
+    Map<String, Long> acquirePreEpochHotCandidates(
+            String homeBucketId,
+            long hotEligibilityFloorMillis,
+            int limit
     );
 
     List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
@@ -85,12 +93,7 @@ public interface WorkerScoreCore {
     WorkerScoreTransitionResult exhaustRecoveryRecheck(
             String homeBucketId,
             String workerId,
-            long observedScore
-    );
-
-    Map<String, WorkerScoreTransitionResult> applyWorkerServiceabilityChecks(
-            String homeBucketId,
-            Map<String, WorkerServiceabilityCheck> checksByWorkerId,
+            long observedScore,
             int maxRecoveryAttempts
     );
 
@@ -164,9 +167,4 @@ public interface WorkerScoreCore {
         }
     }
 
-    record WorkerServiceabilityCheck(
-            long checkStartedAtMillis,
-            boolean serviceable
-    ) {
-    }
 }

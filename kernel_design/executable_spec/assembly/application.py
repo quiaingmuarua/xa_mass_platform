@@ -28,6 +28,7 @@ from ..kernel import (
     TaskScoreState,
     TaskScoreTransitionStatus,
     TaskType,
+    WorkerScoreCore,
 )
 from ..scheduling import ResultRoutingConfig
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
@@ -82,6 +83,12 @@ def _mapping(value: object, *, name: str) -> Mapping[str, object]:
     if any(not isinstance(key, str) for key in value):
         raise ValueError(f"{name} keys must be strings")
     return value
+
+
+def _array(value: object, *, name: str) -> tuple[object, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{name} must be an array")
+    return tuple(value)
 
 
 def _valid_index_field(value: object) -> bool:
@@ -143,13 +150,15 @@ class WorkerServiceabilityConfig:
     worker_group_ids: tuple[str, ...]
     dispatch_interval_millis: int = _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS
     result_interval_millis: int = _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS
-    stale_hot_after_millis: int = 300_000
     recovery_retry_interval_millis: int = 60_000
     max_recovery_attempts: int = 5
     hot_scan_limit: int = 80
     recovery_scan_limit: int = 20
     result_report_limit: int = 10
     evidence_max_age_millis: int = 30_000
+    probe_excluded_endpoint_manager_ids: tuple[str, ...] = (
+        "system-polling",
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.worker_group_ids, (str, bytes)):
@@ -157,7 +166,6 @@ class WorkerServiceabilityConfig:
         for value, name in (
             (self.dispatch_interval_millis, "serviceability dispatch interval"),
             (self.result_interval_millis, "serviceability result interval"),
-            (self.stale_hot_after_millis, "stale HOT duration"),
             (self.recovery_retry_interval_millis, "recovery retry interval"),
             (self.max_recovery_attempts, "max recovery attempts"),
             (self.hot_scan_limit, "HOT scan limit"),
@@ -169,10 +177,13 @@ class WorkerServiceabilityConfig:
         groups = tuple(self.worker_group_ids)
         dispatch = WorkerServiceabilityDispatchConfig(
             worker_group_ids=groups,
-            stale_hot_after_millis=self.stale_hot_after_millis,
             recovery_retry_interval_millis=self.recovery_retry_interval_millis,
+            max_recovery_attempts=self.max_recovery_attempts,
             hot_scan_limit=self.hot_scan_limit,
             recovery_scan_limit=self.recovery_scan_limit,
+            probe_excluded_endpoint_manager_ids=(
+                self.probe_excluded_endpoint_manager_ids
+            ),
         )
         WorkerServiceabilityResultConfig(
             max_recovery_attempts=self.max_recovery_attempts,
@@ -180,6 +191,11 @@ class WorkerServiceabilityConfig:
             evidence_max_age_millis=self.evidence_max_age_millis,
         )
         object.__setattr__(self, "worker_group_ids", dispatch.worker_group_ids)
+        object.__setattr__(
+            self,
+            "probe_excluded_endpoint_manager_ids",
+            dispatch.probe_excluded_endpoint_manager_ids,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,13 +343,13 @@ class KernelApplicationConfig:
                         "workerGroupIds",
                         "dispatchIntervalMillis",
                         "resultIntervalMillis",
-                        "staleHotAfterMillis",
                         "recoveryRetryIntervalMillis",
                         "maxRecoveryAttempts",
                         "hotScanLimit",
                         "recoveryScanLimit",
                         "resultReportLimit",
                         "evidenceMaxAgeMillis",
+                        "probeExcludedEndpointManagerIds",
                     }
                 ),
                 name="workerServiceability config",
@@ -358,10 +374,6 @@ class KernelApplicationConfig:
                         _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS,
                     ),
                     name="serviceability result interval",
-                ),
-                stale_hot_after_millis=_positive_integer(
-                    raw_serviceability.get("staleHotAfterMillis", 300_000),
-                    name="stale HOT duration",
                 ),
                 recovery_retry_interval_millis=_positive_integer(
                     raw_serviceability.get(
@@ -389,6 +401,13 @@ class KernelApplicationConfig:
                 evidence_max_age_millis=_positive_integer(
                     raw_serviceability.get("evidenceMaxAgeMillis", 30_000),
                     name="Adapter evidence max age",
+                ),
+                probe_excluded_endpoint_manager_ids=_array(
+                    raw_serviceability.get(
+                        "probeExcludedEndpointManagerIds",
+                        ["system-polling"],
+                    ),
+                    name="probeExcludedEndpointManagerIds",
                 ),
             )
 
@@ -598,9 +617,23 @@ class KernelApplication:
         if config is not None and not isinstance(config, KernelApplicationConfig):
             raise TypeError("config must be KernelApplicationConfig or None")
         self._config = config or _DEFAULT_KERNEL_APPLICATION_CONFIG
+        self._hot_eligibility_floor_millis = (
+            None
+            if self._config.worker_serviceability is None
+            else (
+                (time_ns() // 1_000_000)
+                // WorkerScoreCore.SLOT_MILLIS
+                * WorkerScoreCore.SLOT_MILLIS
+            )
+        )
         self._process = _RedisKernelProcess.from_url(
             redis_url=self._config.redis_url,
-            config=self._internal_process_config(self._config),
+            config=self._internal_process_config(
+                self._config,
+                hot_eligibility_floor_millis=(
+                    self._hot_eligibility_floor_millis
+                ),
+            ),
         )
         self._task_lifecycle = _TaskLifecycleManager(
             self._process._task_score,
@@ -687,11 +720,23 @@ class KernelApplication:
     @staticmethod
     def _internal_process_config(
         config: KernelApplicationConfig,
+        *,
+        hot_eligibility_floor_millis: int | None = None,
     ) -> _RedisKernelProcessConfig:
+        if (
+            config.worker_serviceability is not None
+            and hot_eligibility_floor_millis is None
+        ):
+            hot_eligibility_floor_millis = (
+                (time_ns() // 1_000_000)
+                // WorkerScoreCore.SLOT_MILLIS
+                * WorkerScoreCore.SLOT_MILLIS
+            )
         return _RedisKernelProcessConfig(
             prefix=config.redis_prefix,
             running_task_soft_limit=config.running_task_soft_limit,
             worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
+            hot_eligibility_floor_millis=hot_eligibility_floor_millis,
             worker_property_indexes=config.worker_property_indexes,
             assignment_dispatch=AssignmentDispatchApplicationConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
@@ -741,18 +786,22 @@ class KernelApplication:
                         worker_group_ids=(
                             config.worker_serviceability.worker_group_ids
                         ),
-                        stale_hot_after_millis=(
-                            config.worker_serviceability.stale_hot_after_millis
-                        ),
                         recovery_retry_interval_millis=(
                             config.worker_serviceability
                             .recovery_retry_interval_millis
+                        ),
+                        max_recovery_attempts=(
+                            config.worker_serviceability.max_recovery_attempts
                         ),
                         hot_scan_limit=(
                             config.worker_serviceability.hot_scan_limit
                         ),
                         recovery_scan_limit=(
                             config.worker_serviceability.recovery_scan_limit
+                        ),
+                        probe_excluded_endpoint_manager_ids=(
+                            config.worker_serviceability
+                            .probe_excluded_endpoint_manager_ids
                         ),
                     ),
                     interval_millis=(

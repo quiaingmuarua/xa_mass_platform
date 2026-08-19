@@ -51,12 +51,6 @@ class WorkerScoreTransitionResult:
     score: Score | None = None
 
 
-@dataclass(frozen=True)
-class WorkerServiceabilityCheck:
-    check_started_at_millis: TimeMillis
-    serviceable: bool
-
-
 class WorkerScoreCore(ABC):
     """Worker score core interface.
 
@@ -133,6 +127,7 @@ class WorkerScoreCore(ABC):
         self,
         *,
         home_bucket_id: HomeBucketId,
+        hot_eligibility_floor_millis: TimeMillis | None,
         limit: int,
     ) -> Mapping[WorkerId, Score]:
         """Return bounded due HOT_ACQUIRE Workers by id and observed score.
@@ -151,11 +146,27 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         worker_ids: Sequence[WorkerId],
+        hot_eligibility_floor_millis: TimeMillis | None,
     ) -> Mapping[WorkerId, Score]:
         """Return due HOT scores for one bounded, caller-selected Worker batch.
 
         The returned scores are opaque exact-CAS observations. Missing,
         recovery, current-slot, and future-held Workers are omitted.
+        """
+        pass
+
+    @abstractmethod
+    def acquire_pre_epoch_hot_candidates(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        hot_eligibility_floor_millis: TimeMillis,
+        limit: int,
+    ) -> Mapping[WorkerId, Score]:
+        """Return bounded HOT scores older than the active scheduling epoch.
+
+        This read-only range belongs only to Worker Serviceability discovery.
+        Assignment must use `acquire_hot_acquire_candidates` instead.
         """
         pass
 
@@ -286,6 +297,7 @@ class WorkerScoreCore(ABC):
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
         observed_score: Score,
+        max_recovery_attempts: int,
     ) -> WorkerScoreTransitionResult:
         """Move RECOVERY_RECHECK outside the routine recovery window.
 
@@ -294,27 +306,8 @@ class WorkerScoreCore(ABC):
         require storedScore == observed_score and source polarity
         RECOVERY_RECHECK. The implementation owns a fixed near-zero cold
         coordinate and excludes it explicitly from every routine recovery
-        range. Dirty and lane_rank are preserved.
-        """
-        pass
-
-    @abstractmethod
-    def apply_worker_serviceability_checks(
-        self,
-        *,
-        home_bucket_id: HomeBucketId,
-        checks_by_worker_id: Mapping[WorkerId, WorkerServiceabilityCheck],
-        max_recovery_attempts: int,
-    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
-        """Apply bounded Adapter-route serviceability observations.
-
-        Each Worker is an independent atomic score transition. A check may
-        change only a score whose stored time coordinate is older than the
-        check start. Serviceable evidence enters HOT_ACQUIRE at lane_rank=0;
-        unavailable HOT evidence enters RECOVERY_RECHECK at lane_rank=0;
-        unavailable RECOVERY_RECHECK evidence increments its retryCount and
-        eventually moves to the owner-internal cold coordinate. Dirty is
-        preserved throughout. Callers neither observe nor construct scores.
+        range. Dirty is preserved and lane_rank is set to the configured
+        maximum retry count.
         """
         pass
 

@@ -213,6 +213,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
         while time.monotonic() < deadline and not candidates:
             candidates = score.acquire_hot_acquire_candidates(
                 home_bucket_id=group_id,
+                hot_eligibility_floor_millis=None,
                 limit=10,
             )
             if not candidates:

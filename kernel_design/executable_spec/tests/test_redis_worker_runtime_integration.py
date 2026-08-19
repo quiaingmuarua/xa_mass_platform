@@ -376,10 +376,12 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
         candidates = self.score_band.acquire_hot_acquire_candidates(
             home_bucket_id=self.worker_group_id,
+            hot_eligibility_floor_millis=None,
             limit=10,
         )
         repeated_candidates = self.score_band.acquire_hot_acquire_candidates(
             home_bucket_id=self.worker_group_id,
+            hot_eligibility_floor_millis=None,
             limit=10,
         )
         observed_score = candidates[worker.worker_id]
@@ -616,6 +618,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
         observed = self.score_band.acquire_hot_acquire_candidates(
             home_bucket_id=self.worker_group_id,
+            hot_eligibility_floor_millis=None,
             limit=1,
         )[declaration.worker_id]
         lease = self.score_band.acquire_observed_hot_score_leases(
