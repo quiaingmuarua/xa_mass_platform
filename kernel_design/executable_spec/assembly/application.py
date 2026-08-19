@@ -46,6 +46,7 @@ _DEFAULT_PACER_INTERVAL_MILLIS = 100
 _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
 _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS = 1_000
 _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS = 100
+_DEFAULT_SERVICEABILITY_PROBE_SWEEP_RESTART_DELAY_MILLIS = 10_000
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 _DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 _REDIS_HASH_INDEX = "redis-hash"
@@ -151,6 +152,9 @@ class WorkerServiceabilityConfig:
     dispatch_interval_millis: int = _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS
     result_interval_millis: int = _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS
     recovery_retry_interval_millis: int = 60_000
+    probe_sweep_restart_delay_millis: int = (
+        _DEFAULT_SERVICEABILITY_PROBE_SWEEP_RESTART_DELAY_MILLIS
+    )
     max_recovery_attempts: int = 5
     hot_scan_limit: int = 80
     recovery_scan_limit: int = 20
@@ -167,6 +171,10 @@ class WorkerServiceabilityConfig:
             (self.dispatch_interval_millis, "serviceability dispatch interval"),
             (self.result_interval_millis, "serviceability result interval"),
             (self.recovery_retry_interval_millis, "recovery retry interval"),
+            (
+                self.probe_sweep_restart_delay_millis,
+                "probe sweep restart delay",
+            ),
             (self.max_recovery_attempts, "max recovery attempts"),
             (self.hot_scan_limit, "HOT scan limit"),
             (self.recovery_scan_limit, "recovery scan limit"),
@@ -178,6 +186,9 @@ class WorkerServiceabilityConfig:
         dispatch = WorkerServiceabilityDispatchConfig(
             worker_group_ids=groups,
             recovery_retry_interval_millis=self.recovery_retry_interval_millis,
+            probe_sweep_restart_delay_millis=(
+                self.probe_sweep_restart_delay_millis
+            ),
             max_recovery_attempts=self.max_recovery_attempts,
             hot_scan_limit=self.hot_scan_limit,
             recovery_scan_limit=self.recovery_scan_limit,
@@ -344,6 +355,7 @@ class KernelApplicationConfig:
                         "dispatchIntervalMillis",
                         "resultIntervalMillis",
                         "recoveryRetryIntervalMillis",
+                        "probeSweepRestartDelayMillis",
                         "maxRecoveryAttempts",
                         "hotScanLimit",
                         "recoveryScanLimit",
@@ -381,6 +393,13 @@ class KernelApplicationConfig:
                         60_000,
                     ),
                     name="recovery retry interval",
+                ),
+                probe_sweep_restart_delay_millis=_positive_integer(
+                    raw_serviceability.get(
+                        "probeSweepRestartDelayMillis",
+                        _DEFAULT_SERVICEABILITY_PROBE_SWEEP_RESTART_DELAY_MILLIS,
+                    ),
+                    name="probe sweep restart delay",
                 ),
                 max_recovery_attempts=_positive_integer(
                     raw_serviceability.get("maxRecoveryAttempts", 5),
@@ -789,6 +808,10 @@ class KernelApplication:
                         recovery_retry_interval_millis=(
                             config.worker_serviceability
                             .recovery_retry_interval_millis
+                        ),
+                        probe_sweep_restart_delay_millis=(
+                            config.worker_serviceability
+                            .probe_sweep_restart_delay_millis
                         ),
                         max_recovery_attempts=(
                             config.worker_serviceability.max_recovery_attempts

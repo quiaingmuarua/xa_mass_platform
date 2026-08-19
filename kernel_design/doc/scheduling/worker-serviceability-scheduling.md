@@ -71,7 +71,8 @@ or durable claim. Loss leaves the old score eligible for a later scan.
 ## Dispatch Pacer
 
 The Dispatch Pacer rotates through configured WorkerGroups, one Group per
-round. For that Group it reads:
+round. HOT and RECOVERY each keep one process-local opaque score cursor per
+Group. For that Group it reads:
 
 - HOT scores in `[MIN_BASE, hotEligibilityFloor)`;
 - RECOVERY scores in the owner's bounded recent negative window.
@@ -85,6 +86,15 @@ RECOVERY retry `laneRank=n` is due only after:
 The Pacer batch-loads current score states and Worker descriptors, groups
 eligible Workers by `endpointManagerId`, and offers ids to the matching request
 HASH. It does not lease Workers and normally does not write scores.
+
+Each raw owner page is score-descending. Its last score becomes the next
+exclusive upper bound before state filtering or request offer, so a fixed
+ineligible head cannot pin later score coordinates. Equal-score entries beyond
+the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
+independently resets that cursor and cools only that range for
+`probeSweepRestartDelayMillis` (default 10 seconds); the one-second Application
+loop keeps running and never sleeps for the cooldown. Cursor and cooldown are
+fairness hints, not Redis checkpoints or in-flight Probe tracking.
 
 `probeExcludedEndpointManagerIds` is the finite exception. It defaults to
 `["system-polling"]`, accepts zero to 100 unique ids, and replaces the former

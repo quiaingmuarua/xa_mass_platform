@@ -6,6 +6,7 @@
     "dispatchIntervalMillis": 1000,
     "resultIntervalMillis": 20,
     "recoveryRetryIntervalMillis": 60000,
+    "probeSweepRestartDelayMillis": 10000,
     "maxRecoveryAttempts": 5,
     "hotScanLimit": 80,
     "recoveryScanLimit": 20,

@@ -72,7 +72,9 @@ because no Java production caller owns that Pacer.
 `rewriteCurrentScores` preserves polarity,
 lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed
-score as an exact CAS fence. Task creation, TaskItem record reads,
+score as an exact CAS fence. `releaseCompletedHotScoreHolds` is mirrored in the
+public contract but remains an explicit provider gap because only Python Result
+Routing calls it. Task creation, TaskItem record reads,
 success-result writes, DeliveryCommand append, and DeliveryReport consume
 likewise remain Python-owned or unimplemented on this provider surface.
 Implementing these two transitions does not imply that Worker scheduling or

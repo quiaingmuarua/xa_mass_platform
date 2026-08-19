@@ -156,9 +156,10 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public Map<String, Long> acquirePreEpochHotCandidates(
+    public List<WorkerScoreObservation> acquirePreEpochHotCandidates(
             String homeBucketId,
             long hotEligibilityFloorMillis,
+            long maximumScoreExclusive,
             int limit
     ) {
         throw notImplemented("acquire_pre_epoch_hot_candidates");
@@ -167,6 +168,7 @@ public final class RedisWorkerScoreCore
     @Override
     public List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
             String homeBucketId,
+            long maximumScoreExclusive,
             int limit
     ) {
         throw notImplemented("acquire_recovery_recheck_candidates");
@@ -432,6 +434,16 @@ public final class RedisWorkerScoreCore
                         : transitioned.get(workerId)
         ));
         return results;
+    }
+
+    @Override
+    public Map<String, WorkerScoreTransitionResult>
+    releaseCompletedHotScoreHolds(
+            String homeBucketId,
+            Map<String, Long> observedHotScores,
+            long releaseTimeMillis
+    ) {
+        throw notImplemented("release_completed_hot_score_holds");
     }
 
     private static Map<String, WorkerScoreTransitionResult>

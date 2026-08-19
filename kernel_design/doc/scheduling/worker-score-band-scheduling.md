@@ -359,9 +359,10 @@ observe_due_hot_scores(
 acquire_pre_epoch_hot_candidates(
   homeBucketId,
   hotEligibilityFloorMillis,
+  maximumScoreExclusive,
   limit
 )
-  -> map[workerId, observedScore]
+  -> list[(workerId, observedScore)] descending by score
 ```
 
 Score range:
@@ -381,13 +382,19 @@ observed-score lease succeeds.
 When optional Worker Serviceability is enabled, Assignment supplies its
 process-local HOT eligibility floor to both ordinary reads. The pre-epoch form
 returns only positive scores in `[MIN_BASE, base(floorTimeSlot,0,0))` and belongs
-exclusively to Serviceability discovery. Without Serviceability, ordinary reads
+exclusively to Serviceability discovery. `maximumScoreExclusive=0` starts at
+the floor; otherwise the opaque score returned at the end of the previous page
+is the next exclusive upper bound. Without Serviceability, ordinary reads
 receive no floor and retain the original `MIN_BASE` range.
 
 Recovery recheck acquisition:
 
 ```text
-acquire_recovery_recheck_candidates(homeBucketId, limit)
+acquire_recovery_recheck_candidates(
+  homeBucketId,
+  maximumScoreExclusive,
+  limit
+)
   -> list[(workerId, observedScore)]
 ```
 
@@ -411,6 +418,12 @@ ZREVRANGEBYSCORE key
   -base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
   LIMIT 0 limit
 ```
+
+Both Serviceability reads return descending score pages. A zero maximum starts
+a new range sweep; the last returned score becomes the next exclusive maximum.
+If more than one Worker shares a truncated boundary score, the remaining tied
+Workers may be skipped until the next sweep. This is an explicit best-effort
+tradeoff rather than a second `(score, workerId)` cursor.
 
 The reverse scan is intentional. RECOVERY_RECHECK scores are negative; within
 the recovery window, reverse numeric order returns the oldest window coordinate
@@ -496,6 +509,10 @@ Release rule:
 release lowers timeSlot only with exact observedScore match
 release preserves polarity
 release is not a reopen and not a polarity move
+
+completed HOT release accepts only the exact ResultContext HOT lease or its
+exact lane-zero RECOVERY counterpart; it atomically restores only that
+counterpart and then releases
 ```
 
 Polarity move rule:
@@ -623,10 +640,10 @@ Release / enable is the only ordinary operation allowed to lower `timeSlot`.
 It must use exact observed-score protection:
 
 ```text
-release_worker_hold(
+release_score_holds(homeBucketId, observedScores, releaseTimeMillis)
+release_completed_hot_score_holds(
   homeBucketId,
-  workerId,
-  observedScore,
+  observedHotScores,
   releaseTimeMillis
 )
 ```
@@ -662,6 +679,13 @@ Release does not reopen a worker:
 
 If the released score is RECOVERY_RECHECK, the worker still has to pass recovery
 validation before returning to HOT_ACQUIRE acquisition.
+
+The completed-HOT variant is deliberately narrower. Each input is the original
+positive HOT lease from `ResultContext`; one per-Worker Lua operation accepts
+only that exact score or its exact `toggle_current_polarity` RECOVERY
+counterpart. The latter is restored to HOT and released atomically. Other
+RECOVERY coordinates, a newer lease, dirty drift, pause, or a missing score are
+`STALE`. Result Routing never decodes or constructs the counterpart.
 
 If owner evidence says a held worker is owner-reset-required, release also
 requires owner reset authorization. That authorization is not encoded in the
@@ -832,8 +856,11 @@ observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
   returns only currently due HOT_ACQUIRE scores at or above the optional floor
   does not mutate score
 
-acquire_pre_epoch_hot_candidates(homeBucketId, hotEligibilityFloorMillis, limit)
+acquire_pre_epoch_hot_candidates(
+  homeBucketId, hotEligibilityFloorMillis, maximumScoreExclusive, limit
+)
   reads positive HOT_ACQUIRE scores strictly below the floor
+  returns a descending opaque-score page for a scalar best-effort sweep
   belongs to Serviceability discovery, never ordinary Assignment
   does not mutate score
 

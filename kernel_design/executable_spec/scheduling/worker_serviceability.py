@@ -39,6 +39,7 @@ def _current_time_millis() -> int:
 class WorkerServiceabilityDispatchConfig:
     worker_group_ids: tuple[str, ...]
     recovery_retry_interval_millis: int = 60_000
+    probe_sweep_restart_delay_millis: int = 10_000
     max_recovery_attempts: int = 5
     hot_scan_limit: int = 80
     recovery_scan_limit: int = 20
@@ -74,6 +75,7 @@ class WorkerServiceabilityDispatchConfig:
             isinstance(value, bool) or not isinstance(value, int) or value <= 0
             for value in (
                 self.recovery_retry_interval_millis,
+                self.probe_sweep_restart_delay_millis,
                 self.max_recovery_attempts,
                 self.hot_scan_limit,
                 self.recovery_scan_limit,
@@ -118,6 +120,12 @@ class WorkerServiceabilityResultConfig:
             raise ValueError("Adapter evidence max age must be positive")
 
 
+@dataclass(slots=True)
+class _ProbeScoreSweep:
+    current_max_worker_score: int = WorkerScoreCore.ZERO_SCORE
+    resume_at_millis: int = 0
+
+
 class WorkerServiceabilityDispatchPacer:
     """Offer pre-epoch HOT and due RECOVERY Workers for Adapter probing."""
 
@@ -143,6 +151,8 @@ class WorkerServiceabilityDispatchPacer:
         self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
         self._clock_millis = clock_millis
         self._group_cursor = 0
+        self._hot_sweeps: dict[str, _ProbeScoreSweep] = {}
+        self._recovery_sweeps: dict[str, _ProbeScoreSweep] = {}
 
     def dispatch_probes(
         self,
@@ -157,18 +167,24 @@ class WorkerServiceabilityDispatchPacer:
         )
         now_millis = self._clock_millis()
 
-        hot = self.worker_score.acquire_pre_epoch_hot_candidates(
-            home_bucket_id=worker_group_id,
-            hot_eligibility_floor_millis=(
-                self.hot_eligibility_floor_millis
-            ),
-            limit=config.hot_scan_limit,
+        hot = self._hot_page(
+            worker_group_id=worker_group_id,
+            now_millis=now_millis,
+            config=config,
         )
-        recovery = self.worker_score.acquire_recovery_recheck_candidates(
-            home_bucket_id=worker_group_id,
-            limit=config.recovery_scan_limit,
+        recovery = self._recovery_page(
+            worker_group_id=worker_group_id,
+            now_millis=now_millis,
+            config=config,
         )
-        candidate_ids = tuple(dict.fromkeys((*hot, *(row[0] for row in recovery))))
+        candidate_ids = tuple(
+            dict.fromkeys(
+                (
+                    *(row[0] for row in hot),
+                    *(row[0] for row in recovery),
+                )
+            )
+        )
         if not candidate_ids:
             return 0
 
@@ -224,6 +240,78 @@ class WorkerServiceabilityDispatchPacer:
                 for status in statuses.values()
             )
         return offered
+
+    def _hot_page(
+        self,
+        *,
+        worker_group_id: str,
+        now_millis: int,
+        config: WorkerServiceabilityDispatchConfig,
+    ) -> tuple[tuple[str, int], ...]:
+        sweep = self._hot_sweeps.setdefault(
+            worker_group_id,
+            _ProbeScoreSweep(),
+        )
+        if now_millis < sweep.resume_at_millis:
+            return ()
+        page = tuple(
+            self.worker_score.acquire_pre_epoch_hot_candidates(
+                home_bucket_id=worker_group_id,
+                hot_eligibility_floor_millis=self.hot_eligibility_floor_millis,
+                maximum_score_exclusive=sweep.current_max_worker_score,
+                limit=config.hot_scan_limit,
+            )
+        )
+        self._advance_sweep(
+            sweep,
+            page=page,
+            now_millis=now_millis,
+            restart_delay_millis=config.probe_sweep_restart_delay_millis,
+        )
+        return page
+
+    def _recovery_page(
+        self,
+        *,
+        worker_group_id: str,
+        now_millis: int,
+        config: WorkerServiceabilityDispatchConfig,
+    ) -> tuple[tuple[str, int], ...]:
+        sweep = self._recovery_sweeps.setdefault(
+            worker_group_id,
+            _ProbeScoreSweep(),
+        )
+        if now_millis < sweep.resume_at_millis:
+            return ()
+        page = tuple(
+            self.worker_score.acquire_recovery_recheck_candidates(
+                home_bucket_id=worker_group_id,
+                maximum_score_exclusive=sweep.current_max_worker_score,
+                limit=config.recovery_scan_limit,
+            )
+        )
+        self._advance_sweep(
+            sweep,
+            page=page,
+            now_millis=now_millis,
+            restart_delay_millis=config.probe_sweep_restart_delay_millis,
+        )
+        return page
+
+    @staticmethod
+    def _advance_sweep(
+        sweep: _ProbeScoreSweep,
+        *,
+        page: tuple[tuple[str, int], ...],
+        now_millis: int,
+        restart_delay_millis: int,
+    ) -> None:
+        if page:
+            sweep.current_max_worker_score = page[-1][1]
+            sweep.resume_at_millis = 0
+            return
+        sweep.current_max_worker_score = WorkerScoreCore.ZERO_SCORE
+        sweep.resume_at_millis = now_millis + restart_delay_millis
 
     def _eligible(
         self,

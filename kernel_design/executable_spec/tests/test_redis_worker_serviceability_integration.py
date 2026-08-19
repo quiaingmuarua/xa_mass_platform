@@ -155,6 +155,64 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
         self.assertEqual(1, state.dirty)
 
+    def test_completed_task_repairs_exact_serviceability_demotion(self) -> None:
+        redis_time = self.redis.time()
+        now_millis = redis_time[0] * 1_000 + redis_time[1] // 1_000
+        held_slot = (
+            now_millis // WorkerScoreCore.SLOT_MILLIS + 100
+        )
+        held = self.score._score(
+            WorkerScorePolarity.HOT_ACQUIRE,
+            held_slot,
+            7,
+            1,
+        )
+        score_key = self.score._score_key(self.group_id)
+        self.redis.zadd(score_key, {"worker-1": held})
+
+        demoted = self.score.toggle_current_polarity(
+            home_bucket_id=self.group_id,
+            worker_id="worker-1",
+            observed_score=held,
+        )
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            demoted.status,
+        )
+        repaired = self.score.release_completed_hot_score_holds(
+            home_bucket_id=self.group_id,
+            observed_hot_scores={"worker-1": held},
+            release_time_millis=now_millis,
+        )["worker-1"]
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            repaired.status,
+        )
+        state = self.score.get_score_states(
+            home_bucket_id=self.group_id,
+            worker_ids=("worker-1",),
+        )["worker-1"]
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
+        self.assertEqual(0, state.lane_rank)
+        self.assertEqual(1, state.dirty)
+
+        newer = self.score._score(
+            WorkerScorePolarity.HOT_ACQUIRE,
+            held_slot + 1,
+            0,
+            0,
+        )
+        self.redis.zadd(score_key, {"worker-1": newer})
+        stale = self.score.release_completed_hot_score_holds(
+            home_bucket_id=self.group_id,
+            observed_hot_scores={"worker-1": held},
+            release_time_millis=now_millis,
+        )["worker-1"]
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
+        self.assertEqual(newer, int(self.redis.zscore(score_key, "worker-1")))
+
     def test_hot_epoch_partitions_real_redis_candidate_ranges(self) -> None:
         now_millis = self.redis.time()[0] * 1_000
         floor_millis = (
@@ -196,11 +254,15 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(
             {"below"},
-            set(self.score.acquire_pre_epoch_hot_candidates(
-                home_bucket_id=self.group_id,
-                hot_eligibility_floor_millis=floor_millis,
-                limit=10,
-            )),
+            {
+                worker_id
+                for worker_id, _ in self.score.acquire_pre_epoch_hot_candidates(
+                    home_bucket_id=self.group_id,
+                    hot_eligibility_floor_millis=floor_millis,
+                    maximum_score_exclusive=0,
+                    limit=10,
+                )
+            },
         )
         self.assertEqual(
             {"at-floor", "above"},
@@ -316,6 +378,7 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
             [],
             self.score.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.group_id,
+                maximum_score_exclusive=0,
                 limit=10,
             ),
         )

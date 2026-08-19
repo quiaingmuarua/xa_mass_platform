@@ -86,6 +86,48 @@ redis.call("ZADD", key, next_score, worker_id)
 return {"transitioned", next_score}
 """
 
+    _COMPLETED_HOT_RELEASE_SCRIPT: ClassVar[str] = """
+-- worker_score_release_completed_hot_hold
+local key = KEYS[1]
+local worker_id = ARGV[1]
+local observed_hot_score = tonumber(ARGV[2])
+local release_slot_base = tonumber(ARGV[3])
+local slot_factor = tonumber(ARGV[4])
+local dirty_factor = tonumber(ARGV[5])
+
+if not observed_hot_score or observed_hot_score <= 0 then
+  return {"invalid"}
+end
+if release_slot_base >= observed_hot_score then
+  return {"invalid"}
+end
+
+local observed_remainder = observed_hot_score % slot_factor
+local observed_lane_rank = math.floor(observed_remainder / dirty_factor)
+local observed_dirty = observed_remainder % dirty_factor
+local recovery_counterpart = -(
+  observed_hot_score - observed_lane_rank * dirty_factor
+)
+
+local stored = redis.call("ZSCORE", key, worker_id)
+if not stored then
+  return {"stale"}
+end
+local stored_score = tonumber(stored)
+if stored_score ~= observed_hot_score and stored_score ~= recovery_counterpart then
+  return {"stale", stored_score}
+end
+
+local stored_abs_score = math.abs(stored_score)
+if release_slot_base >= stored_abs_score then
+  return {"invalid", stored_score}
+end
+local stored_low_bits = stored_abs_score % slot_factor
+local next_score = release_slot_base + stored_low_bits
+redis.call("ZADD", key, next_score, worker_id)
+return {"transitioned", next_score}
+"""
+
     _MARK_LEASE_DIRTY_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
@@ -268,37 +310,54 @@ return {"transitioned", target_score}
         *,
         home_bucket_id: HomeBucketId,
         hot_eligibility_floor_millis: TimeMillis,
+        maximum_score_exclusive: Score,
         limit: int,
-    ) -> Mapping[WorkerId, Score]:
+    ) -> Sequence[tuple[WorkerId, Score]]:
         if (
             limit <= 0
+            or isinstance(maximum_score_exclusive, bool)
+            or not isinstance(maximum_score_exclusive, int)
+            or maximum_score_exclusive < 0
             or isinstance(hot_eligibility_floor_millis, bool)
             or not isinstance(hot_eligibility_floor_millis, int)
             or not self._valid_time_millis(hot_eligibility_floor_millis)
         ):
-            return {}
+            return []
         floor_score = self._abs_score(
             self._time_slot_from_millis(hot_eligibility_floor_millis),
             self.MIN_LANE_RANK,
             self.MIN_DIRTY,
         )
         if floor_score <= self.MIN_BASE:
-            return {}
-        return dict(self._range_worker_candidates(
+            return []
+        page_maximum_exclusive = (
+            floor_score
+            if maximum_score_exclusive == self.ZERO_SCORE
+            else min(floor_score, maximum_score_exclusive)
+        )
+        if page_maximum_exclusive <= self.MIN_BASE:
+            return []
+        return self._range_worker_candidates(
             self._score_key(home_bucket_id),
             self.MIN_BASE,
-            floor_score - 1,
+            page_maximum_exclusive - 1,
             limit,
-            reverse=False,
-        ))
+            reverse=True,
+        )
 
     def acquire_recovery_recheck_candidates(
         self,
         *,
         home_bucket_id: HomeBucketId,
+        maximum_score_exclusive: Score,
         limit: int,
     ) -> Sequence[tuple[WorkerId, Score]]:
-        if limit <= 0:
+        if (
+            limit <= 0
+            or isinstance(maximum_score_exclusive, bool)
+            or not isinstance(maximum_score_exclusive, int)
+            or maximum_score_exclusive > self.ZERO_SCORE
+        ):
             return []
 
         now_time_slot = self._current_time_slot()
@@ -314,10 +373,17 @@ return {"transitioned", target_score}
             return []
         max_score = -self._abs_score(window_start, self.MIN_LANE_RANK, self.MIN_DIRTY)
         min_score = -self._abs_score(due_time_slot, self.MAX_LANE_RANK, self.MAX_DIRTY)
+        page_max_score = (
+            max_score
+            if maximum_score_exclusive == self.ZERO_SCORE
+            else min(max_score, maximum_score_exclusive - 1)
+        )
+        if page_max_score < min_score:
+            return []
         return self._range_worker_candidates(
             self._score_key(home_bucket_id),
             min_score,
-            max_score,
+            page_max_score,
             limit,
             reverse=True,
         )
@@ -650,6 +716,81 @@ return {"transitioned", target_score}
             observed_scores,
             immediate_results,
             self._pipeline_cas_updates(home_bucket_id, pending_updates),
+        )
+
+    def release_completed_hot_score_holds(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        observed_hot_scores: Mapping[WorkerId, Score],
+        release_time_millis: TimeMillis,
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not observed_hot_scores:
+            return {}
+        if not self._valid_time_millis(release_time_millis):
+            return self._uniform_results(
+                observed_hot_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
+
+        release_time_slot = self._time_slot_from_millis(release_time_millis)
+        current_slot_start_millis = self._time_millis_from_slot(
+            self._current_time_slot()
+        )
+        if release_time_millis < current_slot_start_millis:
+            return self._uniform_results(
+                observed_hot_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
+        release_slot_base = self._abs_score(
+            release_time_slot,
+            self.MIN_LANE_RANK,
+            self.MIN_DIRTY,
+        )
+
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        pending: dict[WorkerId, Score] = {}
+        for worker_id, observed_score in observed_hot_scores.items():
+            decoded = self._decode_score(observed_score)
+            if (
+                decoded is None
+                or decoded[0] is not WorkerScorePolarity.HOT_ACQUIRE
+                or release_slot_base >= observed_score
+            ):
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            pending[worker_id] = observed_score
+
+        transitioned: Mapping[WorkerId, WorkerScoreTransitionResult] = {}
+        if pending:
+            key = self._score_key(home_bucket_id)
+            with self.redis.pipeline(transaction=False) as pipe:
+                for worker_id, observed_score in pending.items():
+                    pipe.eval(
+                        self._COMPLETED_HOT_RELEASE_SCRIPT,
+                        1,
+                        key,
+                        worker_id,
+                        observed_score,
+                        release_slot_base,
+                        self.slot_factor,
+                        self.dirty_factor,
+                    )
+                raw_results = pipe.execute()
+            transitioned = {
+                worker_id: self._script_result(raw_result)
+                for worker_id, raw_result in zip(
+                    pending,
+                    raw_results,
+                    strict=True,
+                )
+            }
+        return self._merge_batch_results(
+            observed_hot_scores,
+            immediate_results,
+            transitioned,
         )
 
     def _pipeline_cas_updates(

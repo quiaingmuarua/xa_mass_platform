@@ -131,9 +131,9 @@ receive one `taskId`, its immutable result tuple, and `resultTimeMillis`.
 Worker handlers receive one `workerGroupId`, its immutable evidence tuple, and
 the same action-neutral `resultTimeMillis`; the time parameter does not imply
 that the replacement policy must release the Worker, and it is not a safe
-Worker release coordinate after arbitrary handler work. The built-in release
-policy reads a fresh clock value immediately before calling
-`release_score_holds`; Task success promotion continues to use the stable
+Worker release coordinate after arbitrary handler work. Each built-in Worker
+release policy reads a fresh clock value immediately before calling its Score
+Owner release operation; Task success promotion continues to use the stable
 round time. `ResultRoutingPacer`
 accepts owner-local outcome-to-handler mappings, copies them during
 construction, and requires Task SUCCESS coverage plus Worker coverage for all
@@ -144,8 +144,8 @@ container for built-in result-routing policies. It owns the default policy
 dependencies and exposes each policy as a named callable method.
 `default_task_result_handlers()` and `default_worker_result_handlers()` only
 compose those methods into the standard mappings: SUCCESS stores/promotes Task
-results, while SUCCESS, WORKER_FAILURE, and ADAPTER_REJECTION all release their
-exact Worker score holds. Assembly chooses
+results and uses completed-HOT release, while WORKER_FAILURE and
+ADAPTER_REJECTION use ordinary exact release. Assembly chooses
 these defaults explicitly; callers may replace a whole mapping or compose a
 custom mapping from individual built-in methods and custom handlers.
 
@@ -158,7 +158,8 @@ consume SUCCESS
 -> collapse duplicate messageId to the last payload in queue order
 -> HSET Task success result HASH
 -> promote the same messageIds to FINAL_SUCCESS
--> exact-release each correlated Worker lease
+-> atomically release each exact HOT lease, repairing only its exact
+   Serviceability-demoted RECOVERY counterpart
 ```
 
 Result storage precedes Item promotion. This guarantees `FINAL_SUCCESS` has a
@@ -166,6 +167,11 @@ stored successful payload. A crash may temporarily leave a result payload while
 the Item is still ACTIVE or FINAL_FAILED; claim expiry and a later success can
 converge it. Late success may overwrite both an earlier payload and
 `FINAL_FAILED`.
+
+The repair is not a generic RECOVERY-to-HOT transition. Score Owner derives the
+only acceptable counterpart from the opaque positive lease and performs restore
+plus release in one per-Worker Lua operation. A newer lease, pause, dirty drift,
+or unrelated RECOVERY coordinate remains `STALE`.
 
 ### Worker Failure
 

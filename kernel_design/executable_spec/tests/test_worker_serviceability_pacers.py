@@ -24,10 +24,12 @@ _FLOOR = 900_000
 
 class FakeScore:
     def __init__(self) -> None:
-        self.hot_by_group: dict[str, dict[str, int]] = {}
+        self.hot_by_group: dict[str, list[tuple[str, int]]] = {}
         self.recovery_by_group: dict[str, list[tuple[str, int]]] = {}
         self.states_by_group: dict[str, dict[str, WorkerScoreState | None]] = {}
         self.scanned_groups: list[str] = []
+        self.hot_scan_calls: list[tuple[str, int]] = []
+        self.recovery_scan_calls: list[tuple[str, int]] = []
         self.rewrites: list[tuple[str, tuple[str, ...], int, int | None]] = []
         self.toggles: list[tuple[str, str, int]] = []
         self.exhausted: list[tuple[str, str, int, int]] = []
@@ -37,16 +39,35 @@ class FakeScore:
         *,
         home_bucket_id: str,
         hot_eligibility_floor_millis: int,
+        maximum_score_exclusive: int,
         limit: int,
-    ) -> dict[str, int]:
+    ) -> list[tuple[str, int]]:
         self.scanned_groups.append(home_bucket_id)
+        self.hot_scan_calls.append((home_bucket_id, maximum_score_exclusive))
         assert hot_eligibility_floor_millis == _FLOOR
-        return dict(tuple(self.hot_by_group.get(home_bucket_id, {}).items())[:limit])
+        rows = self.hot_by_group.get(home_bucket_id, [])
+        return [
+            row
+            for row in rows
+            if maximum_score_exclusive == 0 or row[1] < maximum_score_exclusive
+        ][:limit]
 
     def acquire_recovery_recheck_candidates(
-        self, *, home_bucket_id: str, limit: int
+        self,
+        *,
+        home_bucket_id: str,
+        maximum_score_exclusive: int,
+        limit: int,
     ) -> list[tuple[str, int]]:
-        return self.recovery_by_group.get(home_bucket_id, [])[:limit]
+        self.recovery_scan_calls.append(
+            (home_bucket_id, maximum_score_exclusive)
+        )
+        rows = self.recovery_by_group.get(home_bucket_id, [])
+        return [
+            row
+            for row in rows
+            if maximum_score_exclusive == 0 or row[1] < maximum_score_exclusive
+        ][:limit]
 
     def get_score_states(
         self, *, home_bucket_id: str, worker_ids: tuple[str, ...]
@@ -239,12 +260,13 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.score = FakeScore()
         self.catalog = FakeCatalog()
         self.runtime = FakeRuntime()
+        self.now_millis = 1_000_000
         self.pacer = WorkerServiceabilityDispatchPacer(
             self.score,
             self.catalog,
             self.runtime,
             hot_eligibility_floor_millis=_FLOOR,
-            clock_millis=lambda: 1_000_000,
+            clock_millis=lambda: self.now_millis,
         )
         self.config = WorkerServiceabilityDispatchConfig(
             worker_group_ids=("group-a", "group-b"),
@@ -256,7 +278,7 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.assertEqual(["group-a", "group-b"], self.score.scanned_groups)
 
     def test_offers_pre_epoch_hot_and_linearly_due_recovery(self) -> None:
-        self.score.hot_by_group["group-a"] = {"hot": 1}
+        self.score.hot_by_group["group-a"] = [("hot", 1)]
         self.score.recovery_by_group["group-a"] = [
             ("recovery-due", -1),
             ("recovery-early", -2),
@@ -287,8 +309,104 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
             self.runtime.offers,
         )
 
+    def test_scan_cursor_advances_from_raw_page_before_candidate_filtering(
+        self,
+    ) -> None:
+        self.score.hot_by_group["group-a"] = [
+            ("missing-state", 300),
+            ("eligible", 200),
+        ]
+        self.score.states_by_group["group-a"] = {
+            "eligible": score_state(
+                "eligible",
+                WorkerScorePolarity.HOT_ACQUIRE,
+                1,
+            )
+        }
+        self.catalog.descriptors_by_group["group-a"] = {
+            "eligible": descriptor("eligible", "group-a", "adapter-a")
+        }
+        config = WorkerServiceabilityDispatchConfig(
+            worker_group_ids=("group-a",),
+            hot_scan_limit=1,
+            recovery_scan_limit=1,
+        )
+
+        self.assertEqual(0, self.pacer.dispatch_probes(config=config))
+        self.assertEqual(1, self.pacer.dispatch_probes(config=config))
+
+        self.assertEqual(
+            [("group-a", 0), ("group-a", 300)],
+            self.score.hot_scan_calls,
+        )
+        self.assertEqual([("adapter-a", ("eligible",))], self.runtime.offers)
+
+    def test_empty_ranges_restart_after_non_blocking_cooldown(self) -> None:
+        config = WorkerServiceabilityDispatchConfig(
+            worker_group_ids=("group-a",),
+            probe_sweep_restart_delay_millis=10_000,
+        )
+
+        self.assertEqual(0, self.pacer.dispatch_probes(config=config))
+        self.assertEqual(0, self.pacer.dispatch_probes(config=config))
+        self.now_millis += 9_999
+        self.assertEqual(0, self.pacer.dispatch_probes(config=config))
+
+        self.assertEqual([("group-a", 0)], self.score.hot_scan_calls)
+        self.assertEqual([("group-a", 0)], self.score.recovery_scan_calls)
+
+        self.now_millis += 1
+        self.assertEqual(0, self.pacer.dispatch_probes(config=config))
+        self.assertEqual(
+            [("group-a", 0), ("group-a", 0)],
+            self.score.hot_scan_calls,
+        )
+        self.assertEqual(
+            [("group-a", 0), ("group-a", 0)],
+            self.score.recovery_scan_calls,
+        )
+
+    def test_hot_cooldown_does_not_block_recovery_cursor(self) -> None:
+        self.score.recovery_by_group["group-a"] = [
+            ("first", -100),
+            ("second", -200),
+        ]
+        self.score.states_by_group["group-a"] = {
+            worker_id: score_state(
+                worker_id,
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                1,
+            )
+            for worker_id in ("first", "second")
+        }
+        self.catalog.descriptors_by_group["group-a"] = {
+            worker_id: descriptor(worker_id, "group-a", "adapter-a")
+            for worker_id in ("first", "second")
+        }
+        config = WorkerServiceabilityDispatchConfig(
+            worker_group_ids=("group-a",),
+            hot_scan_limit=1,
+            recovery_scan_limit=1,
+        )
+
+        self.assertEqual(1, self.pacer.dispatch_probes(config=config))
+        self.assertEqual(1, self.pacer.dispatch_probes(config=config))
+
+        self.assertEqual([("group-a", 0)], self.score.hot_scan_calls)
+        self.assertEqual(
+            [("group-a", 0), ("group-a", -100)],
+            self.score.recovery_scan_calls,
+        )
+        self.assertEqual(
+            [
+                ("adapter-a", ("first",)),
+                ("adapter-a", ("second",)),
+            ],
+            self.runtime.offers,
+        )
+
     def test_excluded_endpoint_is_exactly_cold_parked(self) -> None:
-        self.score.hot_by_group["group-a"] = {"hot": 1}
+        self.score.hot_by_group["group-a"] = [("hot", 1)]
         self.score.recovery_by_group["group-a"] = [("recovery", -1)]
         self.score.states_by_group["group-a"] = {
             "hot": score_state("hot", WorkerScorePolarity.HOT_ACQUIRE, 1),
@@ -315,7 +433,7 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.assertEqual([], self.runtime.offers)
 
     def test_empty_exclusion_set_allows_polling_endpoint_probe(self) -> None:
-        self.score.hot_by_group["group-a"] = {"polling": 1}
+        self.score.hot_by_group["group-a"] = [("polling", 1)]
         self.score.states_by_group["group-a"] = {
             "polling": score_state(
                 "polling", WorkerScorePolarity.HOT_ACQUIRE, 1
@@ -472,6 +590,11 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             WorkerServiceabilityDispatchConfig(
                 worker_group_ids=("group-a",),
                 probe_excluded_endpoint_manager_ids=("same", "same"),
+            )
+        with self.assertRaises(ValueError):
+            WorkerServiceabilityDispatchConfig(
+                worker_group_ids=("group-a",),
+                probe_sweep_restart_delay_millis=0,
             )
         with self.assertRaises(ValueError):
             WorkerServiceabilityResultConfig(max_recovery_attempts=0)

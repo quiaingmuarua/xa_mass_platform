@@ -86,7 +86,9 @@ class ResultRoutingBuiltinPolicies:
         self,
     ) -> dict[DeliveryReportOutcomeClass, Callable[..., None]]:
         return {
-            DeliveryReportOutcomeClass.SUCCESS: self.release_worker_score_holds,
+            DeliveryReportOutcomeClass.SUCCESS: (
+                self.release_completed_hot_score_holds
+            ),
             DeliveryReportOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
             DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.release_worker_score_holds,
         }
@@ -122,6 +124,19 @@ class ResultRoutingBuiltinPolicies:
         self.worker_score.release_score_holds(
             home_bucket_id=worker_group_id,
             observed_scores=self._latest_worker_scores(results),
+            release_time_millis=self._current_time_millis(),
+        )
+
+    def release_completed_hot_score_holds(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        results: tuple[WorkerResultEvidence, ...],
+        result_time_millis: TimeMillis,
+    ) -> None:
+        self.worker_score.release_completed_hot_score_holds(
+            home_bucket_id=worker_group_id,
+            observed_hot_scores=self._latest_worker_scores(results),
             release_time_millis=self._current_time_millis(),
         )
 

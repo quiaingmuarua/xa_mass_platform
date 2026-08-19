@@ -64,7 +64,7 @@ Task score acquire
      -> accept Worker point results or Adapter result batches
      -> DeliveryReport queue
   -> Result Routing
-     -> 200: store last-success + FINAL_SUCCESS + Worker exact release
+     -> 200: store last-success + FINAL_SUCCESS + completed-HOT exact release
      -> Worker failure: keep Item claim coordinate + Worker exact release
      -> Adapter rejection: keep Item claim coordinate + Worker exact release
      -> no result: Item claim and Worker lease expire naturally

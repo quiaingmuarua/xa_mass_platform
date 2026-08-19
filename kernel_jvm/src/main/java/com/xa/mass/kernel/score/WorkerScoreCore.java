@@ -44,14 +44,16 @@ public interface WorkerScoreCore {
             @Nullable Long hotEligibilityFloorMillis
     );
 
-    Map<String, Long> acquirePreEpochHotCandidates(
+    List<WorkerScoreObservation> acquirePreEpochHotCandidates(
             String homeBucketId,
             long hotEligibilityFloorMillis,
+            long maximumScoreExclusive,
             int limit
     );
 
     List<WorkerScoreObservation> acquireRecoveryRecheckCandidates(
             String homeBucketId,
+            long maximumScoreExclusive,
             int limit
     );
 
@@ -100,6 +102,12 @@ public interface WorkerScoreCore {
     Map<String, WorkerScoreTransitionResult> releaseScoreHolds(
             String homeBucketId,
             Map<String, Long> observedScores,
+            long releaseTimeMillis
+    );
+
+    Map<String, WorkerScoreTransitionResult> releaseCompletedHotScoreHolds(
+            String homeBucketId,
+            Map<String, Long> observedHotScores,
             long releaseTimeMillis
     );
 

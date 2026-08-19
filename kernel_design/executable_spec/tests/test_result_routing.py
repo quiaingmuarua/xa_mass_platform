@@ -258,6 +258,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_score_holds.assert_not_called()
+        self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
     def test_builtin_policy_mappings_expose_composable_named_methods(self) -> None:
         self.assertEqual(
@@ -268,7 +269,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             {
-                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
+                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.release_completed_hot_score_holds,
                 DeliveryReportOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
                 DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.release_worker_score_holds,
             },
@@ -336,12 +337,13 @@ class ResultRoutingPacerTest(unittest.TestCase):
             [
                 call(
                     home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 202, "worker-2": 203},
+                    observed_hot_scores={"worker-1": 202, "worker-2": 203},
                     release_time_millis=self.NOW_MILLIS,
                 ),
             ],
-            self.worker_score.release_score_holds.call_args_list,
+            self.worker_score.release_completed_hot_score_holds.call_args_list,
         )
+        self.worker_score.release_score_holds.assert_not_called()
 
     def test_worker_failure_only_releases_worker_lease(self) -> None:
         failure = self.result(outcome_code="3500", payload=None)
@@ -357,6 +359,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.item_score.rewrite_observed_item_scores.assert_not_called()
+        self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
     def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
         self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
@@ -379,11 +382,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
             target_band=TaskItemScoreBand.FINAL_SUCCESS,
             target_time_millis=self.NOW_MILLIS,
         )
-        self.worker_score.release_score_holds.assert_called_once_with(
+        self.worker_score.release_completed_hot_score_holds.assert_called_once_with(
             home_bucket_id="image-workers",
-            observed_scores={"worker-1": 201},
+            observed_hot_scores={"worker-1": 201},
             release_time_millis=release_time_millis,
         )
+        self.worker_score.release_score_holds.assert_not_called()
 
     def test_worker_failure_batches_each_worker_group_once(self) -> None:
         self.queues[DeliveryReportOutcomeClass.WORKER_FAILURE] = (
@@ -430,6 +434,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
+        self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
     def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
         self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
@@ -439,7 +444,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
         self.assertEqual(2, self.route())
 
-        self.assertEqual(2, self.worker_score.release_score_holds.call_count)
+        self.worker_score.release_completed_hot_score_holds.assert_called_once()
+        self.worker_score.release_score_holds.assert_called_once()
 
     def test_result_context_supplies_worker_disposition_bucket(self) -> None:
         self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
@@ -450,11 +456,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
         self.task_runtime.store_task_item_success_results.assert_called_once()
         self.item_score.promote_item_outcomes.assert_called_once()
-        self.worker_score.release_score_holds.assert_called_once_with(
+        self.worker_score.release_completed_hot_score_holds.assert_called_once_with(
             home_bucket_id="gpu-workers",
-            observed_scores={"worker-1": 201},
+            observed_hot_scores={"worker-1": 201},
             release_time_millis=self.NOW_MILLIS,
         )
+        self.worker_score.release_score_holds.assert_not_called()
 
     def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
         self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
@@ -475,6 +482,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_score_holds.assert_not_called()
+        self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
     def test_each_lane_uses_its_own_bounded_consume(self) -> None:
         self.assertEqual(0, self.route())

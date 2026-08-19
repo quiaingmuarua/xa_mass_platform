@@ -161,12 +161,16 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         hot_eligibility_floor_millis: TimeMillis,
+        maximum_score_exclusive: Score,
         limit: int,
-    ) -> Mapping[WorkerId, Score]:
-        """Return bounded HOT scores older than the active scheduling epoch.
+    ) -> Sequence[tuple[WorkerId, Score]]:
+        """Return a descending page of HOT scores before the active epoch.
 
         This read-only range belongs only to Worker Serviceability discovery.
-        Assignment must use `acquire_hot_acquire_candidates` instead.
+        Assignment must use `acquire_hot_acquire_candidates` instead. A zero
+        maximum starts a new sweep at the epoch boundary; a returned opaque
+        score may be passed back as the next exclusive maximum. Workers tied
+        at a truncated page boundary may be skipped until the next sweep.
         """
         pass
 
@@ -175,12 +179,15 @@ class WorkerScoreCore(ABC):
         self,
         *,
         home_bucket_id: HomeBucketId,
+        maximum_score_exclusive: Score,
         limit: int,
     ) -> Sequence[tuple[WorkerId, Score]]:
-        """Acquire due RECOVERY_RECHECK candidates for recovery validation.
+        """Return a descending page of due RECOVERY_RECHECK candidates.
 
         This is not a worker selection lane. It must not return a selected
-        worker handle to assignment-dispatch.
+        worker handle to assignment-dispatch. A zero maximum starts a new
+        sweep; otherwise the opaque score is the exclusive upper bound for the
+        next page. Equal-score truncation is intentionally best effort.
         """
         pass
 
@@ -328,5 +335,24 @@ class WorkerScoreCore(ABC):
         If an observed score is negative, the worker remains in
         RECOVERY_RECHECK and still requires recovery validation before hot
         score acquire.
+        """
+        pass
+
+    @abstractmethod
+    def release_completed_hot_score_holds(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        observed_hot_scores: Mapping[WorkerId, Score],
+        release_time_millis: TimeMillis,
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Release exact completed HOT leases and repair their exact demotion.
+
+        Each input is the positive HOT lease recorded in ResultContext. The
+        stored score must still be that exact lease or the exact
+        RECOVERY_RECHECK counterpart produced from it by
+        `toggle_current_polarity`. Implementations atomically restore HOT when
+        required and release to the requested time coordinate. Any other
+        stored score is stale. Callers never derive or decode the counterpart.
         """
         pass

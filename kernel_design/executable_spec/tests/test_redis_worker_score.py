@@ -88,6 +88,8 @@ class FakeRedis:
             return self._eval_current_rewrite(key, argv)
         if "local stored_dirty" in script:
             return self._eval_mark_lease_dirty(key, argv)
+        if "worker_score_release_completed_hot_hold" in script:
+            return self._eval_completed_hot_release(key, argv)
         if "local observed_score" in script:
             return self._eval_cas_update(key, argv)
         raise ValueError("unsupported fake redis script")
@@ -194,6 +196,38 @@ class FakeRedis:
             return ["noop", stored]
 
         next_score = sign * (abs_score + 1)
+        self.zadd(key, {worker_id: next_score})
+        return ["transitioned", next_score]
+
+    def _eval_completed_hot_release(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        worker_id = str(argv[0])
+        observed_hot_score = int(argv[1])
+        release_slot_base = int(argv[2])
+        slot_factor = int(argv[3])
+        dirty_factor = int(argv[4])
+
+        if observed_hot_score <= 0 or release_slot_base >= observed_hot_score:
+            return ["invalid"]
+        observed_remainder = observed_hot_score % slot_factor
+        observed_lane_rank = observed_remainder // dirty_factor
+        recovery_counterpart = -(
+            observed_hot_score - observed_lane_rank * dirty_factor
+        )
+
+        stored = self.zscore(key, worker_id)
+        if stored is None:
+            return ["stale"]
+        if stored not in (observed_hot_score, recovery_counterpart):
+            return ["stale", stored]
+        stored_abs_score = abs(stored)
+        if release_slot_base >= stored_abs_score:
+            return ["invalid", stored]
+
+        next_score = release_slot_base + stored_abs_score % slot_factor
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 
@@ -363,10 +397,11 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            {"below": below},
+            [("below", below)],
             self.kernel.acquire_pre_epoch_hot_candidates(
                 home_bucket_id=self.home_bucket_id,
                 hot_eligibility_floor_millis=floor_millis,
+                maximum_score_exclusive=0,
                 limit=10,
             ),
         )
@@ -398,6 +433,55 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual({"due": due}, observed)
         self.assertEqual(1, self.redis.pipeline_execute_count)
 
+    def test_pre_epoch_hot_scan_pages_by_descending_exclusive_score(self) -> None:
+        newest = self.score(WorkerScorePolarity.HOT_ACQUIRE, 994, 2)
+        middle = self.score(WorkerScorePolarity.HOT_ACQUIRE, 993, 1)
+        oldest = self.score(WorkerScorePolarity.HOT_ACQUIRE, 992, 0)
+        self.store_score("newest", newest)
+        self.store_score("middle", middle)
+        self.store_score("oldest", oldest)
+        floor_millis = self.millis(995)
+
+        first = self.kernel.acquire_pre_epoch_hot_candidates(
+            home_bucket_id=self.home_bucket_id,
+            hot_eligibility_floor_millis=floor_millis,
+            maximum_score_exclusive=0,
+            limit=2,
+        )
+        second = self.kernel.acquire_pre_epoch_hot_candidates(
+            home_bucket_id=self.home_bucket_id,
+            hot_eligibility_floor_millis=floor_millis,
+            maximum_score_exclusive=first[-1][1],
+            limit=2,
+        )
+
+        self.assertEqual([("newest", newest), ("middle", middle)], first)
+        self.assertEqual([("oldest", oldest)], second)
+
+    def test_pre_epoch_hot_scan_accepts_equal_score_boundary_skip(self) -> None:
+        tied = self.score(WorkerScorePolarity.HOT_ACQUIRE, 994, 0)
+        older = self.score(WorkerScorePolarity.HOT_ACQUIRE, 993, 0)
+        self.store_score("tied-a", tied)
+        self.store_score("tied-b", tied)
+        self.store_score("older", older)
+        floor_millis = self.millis(995)
+
+        first = self.kernel.acquire_pre_epoch_hot_candidates(
+            home_bucket_id=self.home_bucket_id,
+            hot_eligibility_floor_millis=floor_millis,
+            maximum_score_exclusive=0,
+            limit=1,
+        )
+        second = self.kernel.acquire_pre_epoch_hot_candidates(
+            home_bucket_id=self.home_bucket_id,
+            hot_eligibility_floor_millis=floor_millis,
+            maximum_score_exclusive=first[-1][1],
+            limit=10,
+        )
+
+        self.assertEqual(tied, first[0][1])
+        self.assertEqual([("older", older)], second)
+
     def test_acquire_recovery_recheck_candidates_uses_recent_window(self) -> None:
         too_old = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 899, 1)
         window_start = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 900, 2)
@@ -417,9 +501,23 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             [("window-start", window_start), ("middle", middle)],
             self.kernel.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.home_bucket_id,
+                maximum_score_exclusive=0,
                 limit=10,
             ),
         )
+
+        first = self.kernel.acquire_recovery_recheck_candidates(
+            home_bucket_id=self.home_bucket_id,
+            maximum_score_exclusive=0,
+            limit=1,
+        )
+        second = self.kernel.acquire_recovery_recheck_candidates(
+            home_bucket_id=self.home_bucket_id,
+            maximum_score_exclusive=first[-1][1],
+            limit=10,
+        )
+        self.assertEqual([("window-start", window_start)], first)
+        self.assertEqual([("middle", middle)], second)
 
     def test_recovery_scan_explicitly_excludes_cold_park_coordinate(self) -> None:
         self.redis.now_millis = self.millis(self.kernel.COLD_PARK_TIME_SLOT + 2)
@@ -440,6 +538,7 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             [("due", due)],
             self.kernel.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.home_bucket_id,
+                maximum_score_exclusive=0,
                 limit=10,
             ),
         )
@@ -904,6 +1003,7 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
             [],
             self.kernel.acquire_recovery_recheck_candidates(
                 home_bucket_id=self.home_bucket_id,
+                maximum_score_exclusive=0,
                 limit=10,
             ),
         )
@@ -994,6 +1094,119 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         )
         self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-2"].status)
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, results["invalid"].status)
+
+    def test_release_completed_hot_score_holds_releases_exact_positive_lease(
+        self,
+    ) -> None:
+        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 4, 1)
+        self.store_score("worker", held)
+
+        result = self.kernel.release_completed_hot_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_hot_scores={"worker": held},
+            release_time_millis=self.millis(self.redis.now_slot),
+        )["worker"]
+        state = self.kernel.get_score_states(
+            home_bucket_id=self.home_bucket_id,
+            worker_ids=["worker"],
+        )["worker"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
+        self.assertEqual(self.millis(self.redis.now_slot), state.time_millis)
+        self.assertEqual(4, state.lane_rank)
+        self.assertEqual(1, state.dirty)
+
+    def test_release_completed_hot_score_holds_repairs_exact_recovery_counterpart(
+        self,
+    ) -> None:
+        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 7, 1)
+        counterpart = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            1_050,
+            0,
+            1,
+        )
+        self.store_score("worker", counterpart)
+
+        result = self.kernel.release_completed_hot_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_hot_scores={"worker": held},
+            release_time_millis=self.millis(self.redis.now_slot),
+        )["worker"]
+        state = self.kernel.get_score_states(
+            home_bucket_id=self.home_bucket_id,
+            worker_ids=["worker"],
+        )["worker"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
+        self.assertEqual(self.millis(self.redis.now_slot), state.time_millis)
+        self.assertEqual(0, state.lane_rank)
+        self.assertEqual(1, state.dirty)
+
+    def test_release_completed_hot_score_holds_rejects_other_recovery_state(
+        self,
+    ) -> None:
+        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 7)
+        unrelated = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            1_050,
+            1,
+        )
+        self.store_score("worker", unrelated)
+
+        result = self.kernel.release_completed_hot_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_hot_scores={"worker": held},
+            release_time_millis=self.millis(self.redis.now_slot),
+        )["worker"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(unrelated, self.redis.zscore(self.score_key, "worker"))
+
+    def test_release_completed_hot_score_holds_is_independent_per_worker(
+        self,
+    ) -> None:
+        positive = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 2)
+        observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_060, 3, 1)
+        counterpart = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            1_060,
+            0,
+            1,
+        )
+        newer = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_070, 0)
+        self.store_score("positive", positive)
+        self.store_score("counterpart", counterpart)
+        self.store_score("stale", newer)
+
+        results = self.kernel.release_completed_hot_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_hot_scores={
+                "positive": positive,
+                "counterpart": observed,
+                "stale": observed,
+                "invalid": counterpart,
+            },
+            release_time_millis=self.millis(self.redis.now_slot),
+        )
+
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["positive"].status,
+        )
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["counterpart"].status,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["stale"].status)
+        self.assertEqual(
+            WorkerScoreTransitionStatus.INVALID,
+            results["invalid"].status,
+        )
 
 
 if __name__ == "__main__":

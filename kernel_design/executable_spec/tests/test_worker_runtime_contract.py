@@ -86,6 +86,19 @@ class WorkerRuntimeContractTest(unittest.TestCase):
                 "limit",
             },
         )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerScoreCore.acquire_recovery_recheck_candidates
+                ).parameters
+            ),
+            {
+                "self",
+                "home_bucket_id",
+                "maximum_score_exclusive",
+                "limit",
+            },
+        )
         lease_parameters = {
             "self",
             "home_bucket_id",
@@ -131,6 +144,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
                 "self",
                 "home_bucket_id",
                 "hot_eligibility_floor_millis",
+                "maximum_score_exclusive",
                 "limit",
             },
         )

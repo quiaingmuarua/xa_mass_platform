@@ -111,6 +111,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                         "dispatchIntervalMillis": 2_000,
                         "resultIntervalMillis": 200,
                         "recoveryRetryIntervalMillis": 120_000,
+                        "probeSweepRestartDelayMillis": 20_000,
                         "maxRecoveryAttempts": 4,
                         "hotScanLimit": 70,
                         "recoveryScanLimit": 30,
@@ -131,6 +132,10 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(("group-a", "group-b"), serviceability.worker_group_ids)
         self.assertEqual(2_000, serviceability.dispatch_interval_millis)
         self.assertEqual(200, serviceability.result_interval_millis)
+        self.assertEqual(
+            20_000,
+            serviceability.probe_sweep_restart_delay_millis,
+        )
         self.assertEqual(4, serviceability.max_recovery_attempts)
         self.assertEqual(45_000, serviceability.evidence_max_age_millis)
         self.assertEqual(
@@ -142,6 +147,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"workerServiceability":{"workerGroupIds":["group-a"]}}'
         ).worker_serviceability
         assert defaults is not None
+        self.assertEqual(10_000, defaults.probe_sweep_restart_delay_millis)
         self.assertEqual(
             ("system-polling",),
             defaults.probe_excluded_endpoint_manager_ids,
@@ -182,6 +188,8 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '"staleHotAfterMillis": 1}}',
             '{"workerServiceability": {"workerGroupIds": ["a"], '
             '"probeExcludedEndpointManagerIds": ["x", "x"]}}',
+            '{"workerServiceability": {"workerGroupIds": ["a"], '
+            '"probeSweepRestartDelayMillis": 0}}',
         )
         for config_json in invalid_configs:
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):
@@ -372,6 +380,11 @@ class KernelApplicationTest(unittest.TestCase):
         self.assertEqual(
             1_000,
             internal.worker_serviceability_dispatch.interval_millis,
+        )
+        self.assertEqual(
+            10_000,
+            internal.worker_serviceability_dispatch.dispatch
+            .probe_sweep_restart_delay_millis,
         )
         self.assertEqual(
             5,
