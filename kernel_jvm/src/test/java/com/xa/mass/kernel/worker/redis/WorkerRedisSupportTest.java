@@ -3,31 +3,31 @@ package com.xa.mass.kernel.worker.redis;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class WorkerRedisSupportTest {
 
     @Test
-    void locksExplicitIndexRedisAbi() {
+    void locksCanonicalWorkerPropertiesEnvelope() {
+        var envelope = new WorkerRedisSupport.WorkerPropertiesEnvelope(
+                123L,
+                Map.of("region", "cn-east")
+        );
+        String encoded = WorkerRedisSupport.encodeWorkerProperties(envelope);
+
         assertEquals(
-                "wr:test:property-index:image-workers:"
-                        + "index.worker.region:values",
-                WorkerRedisSupport.propertyValuesKey(
-                        "test",
-                        "image-workers",
-                        "index.worker.region"
-                )
+                "{\"properties\":{\"region\":\"cn-east\"},"
+                        + "\"updatedAtMillis\":123}",
+                encoded
         );
         assertEquals(
-                "{\"value\":\"cn-east\"}",
-                WorkerRedisSupport.encodeIndexedPropertyValue("cn-east")
+                envelope,
+                WorkerRedisSupport.decodeWorkerProperties(encoded)
         );
-        assertEquals(
-                "cn-east",
-                WorkerRedisSupport.decodeIndexedPropertyValue(
-                        "{\"value\":\"cn-east\"}"
-                )
-        );
+        assertNull(WorkerRedisSupport.decodeWorkerProperties(
+                "{\"region\":\"legacy\"}"
+        ));
     }
 
     @Test

@@ -118,6 +118,30 @@ public final class WorkerRunController implements WorkerLifecycle {
         }
     }
 
+    /**
+     * Best-effort request to publish the current complete Worker properties.
+     *
+     * @return {@code true} only when the request entered the existing control
+     * executor for the current active Transport
+     */
+    public boolean publishPropertiesChanged() {
+        TextMessageWorkerTransport transport;
+        synchronized (lock) {
+            if (phase != Phase.ACTIVE || activeTransport == null) {
+                return false;
+            }
+            transport = activeTransport;
+        }
+        try {
+            controlExecutor.execute(() ->
+                    publishPropertiesChanged(transport)
+            );
+            return true;
+        } catch (RuntimeException | Error failure) {
+            return false;
+        }
+    }
+
     @Override
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
@@ -304,6 +328,18 @@ public final class WorkerRunController implements WorkerLifecycle {
             closeQuietly(transport);
             publish();
         }
+    }
+
+    private void publishPropertiesChanged(
+            TextMessageWorkerTransport expectedTransport
+    ) {
+        synchronized (lock) {
+            if (phase != Phase.ACTIVE
+                    || activeTransport != expectedTransport) {
+                return;
+            }
+        }
+        expectedTransport.publishPropertiesChanged();
     }
 
     private void transitionStoppedLocked(String message) {

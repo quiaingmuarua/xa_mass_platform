@@ -6,6 +6,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerMetadata;
+import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerPropertiesEnvelope;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -359,7 +360,7 @@ public final class RedisWorkerResourceCatalog
                         metadataRow.getValue()
                 )
                 : null;
-        Map<String, Object> workerProperties = propertyRow.hasValue()
+        WorkerPropertiesEnvelope workerProperties = propertyRow.hasValue()
                 ? WorkerRedisSupport.decodeWorkerProperties(
                         propertyRow.getValue()
                 )
@@ -374,7 +375,7 @@ public final class RedisWorkerResourceCatalog
                 metadata.workerId(),
                 metadata.workerGroupId(),
                 metadata.endpointManagerId(),
-                workerProperties,
+                workerProperties.properties(),
                 metadata.platformProperties()
         );
     }

@@ -6,6 +6,7 @@ import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,12 +26,6 @@ final class WorkerRedisSupport {
             """;
 
     private WorkerRedisSupport() {
-    }
-
-    static boolean validIndexField(String field) {
-        return field != null
-                && field.startsWith("index.")
-                && field.length() > "index.".length();
     }
 
     static String groupsKey(String prefix) {
@@ -67,35 +62,6 @@ final class WorkerRedisSupport {
         return result != null && result.longValue() == 1;
     }
 
-    static String propertyValuesKey(
-            String prefix,
-            String workerGroupId,
-            String propertyField
-    ) {
-        return "wr:" + prefix + ":property-index:"
-                + workerGroupId + ":" + propertyField + ":values";
-    }
-
-    static String encodeIndexedPropertyValue(Object value) {
-        if (value == null) {
-            throw new IllegalArgumentException(
-                    "indexed property value must be present"
-            );
-        }
-        return encodeCanonical(Map.of("value", value));
-    }
-
-    static Object decodeIndexedPropertyValue(String raw) {
-        Map<String, Object> payload = Jsons.parseObject(raw);
-        requireExactFields(payload, Set.of("value"));
-        Object value = payload.get("value");
-        if (value == null) {
-            throw new IllegalArgumentException(
-                    "indexed property value must be present"
-            );
-        }
-        return value;
-    }
 
     static String encodeWorkerGroup(WorkerGroupDescriptor descriptor) {
         try {
@@ -128,9 +94,16 @@ final class WorkerRedisSupport {
         }
     }
 
-    static String encodeWorkerProperties(Map<String, Object> properties) {
+    static String encodeWorkerProperties(
+            WorkerPropertiesEnvelope envelope
+    ) {
         try {
-            return encodeCanonical(properties);
+            return encodeCanonical(Map.of(
+                    "updatedAtMillis",
+                    envelope.updatedAtMillis(),
+                    "properties",
+                    envelope.properties()
+            ));
         } catch (IllegalArgumentException error) {
             return null;
         }
@@ -186,14 +159,51 @@ final class WorkerRedisSupport {
         }
     }
 
-    static Map<String, Object> decodeWorkerProperties(String raw) {
+    static WorkerPropertiesEnvelope decodeWorkerProperties(String raw) {
         if (raw == null) {
             return null;
         }
         try {
-            return objectMap(Jsons.parseObject(raw));
+            Map<String, Object> payload = Jsons.parseObject(raw);
+            requireExactFields(
+                    payload,
+                    Set.of("updatedAtMillis", "properties")
+            );
+            Object rawUpdatedAtMillis = payload.get("updatedAtMillis");
+            if (!(rawUpdatedAtMillis instanceof Number number)) {
+                throw new IllegalArgumentException(
+                        "updatedAtMillis must be a number"
+                );
+            }
+            long updatedAtMillis = number.longValue();
+            if (updatedAtMillis <= 0
+                    || number.doubleValue() != (double) updatedAtMillis) {
+                throw new IllegalArgumentException(
+                        "updatedAtMillis must be a positive integer"
+                );
+            }
+            return new WorkerPropertiesEnvelope(
+                    updatedAtMillis,
+                    objectMap(payload.get("properties"))
+            );
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
+        }
+    }
+
+    record WorkerPropertiesEnvelope(
+            long updatedAtMillis,
+            Map<String, Object> properties
+    ) {
+        WorkerPropertiesEnvelope {
+            if (updatedAtMillis <= 0) {
+                throw new IllegalArgumentException(
+                        "updatedAtMillis must be positive"
+                );
+            }
+            properties = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(properties)
+            );
         }
     }
 

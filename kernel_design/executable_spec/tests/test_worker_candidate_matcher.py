@@ -8,8 +8,6 @@ import kernel_design.executable_spec as executable_spec
 import kernel_design.executable_spec.kernel as kernel
 
 from kernel_design.executable_spec import (
-    MappedWorkerPropertyIndexRuntime,
-    RedisHashWorkerPropertyIndexProvider,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
@@ -31,7 +29,7 @@ class WorkerCandidateMatcherContractTest(unittest.TestCase):
         )
         self.assertEqual(
             set(inspect.signature(WorkerCandidateMatcher.__init__).parameters),
-            {"self", "catalog", "property_index"},
+            {"self", "catalog"},
         )
         self.assertEqual(
             set(
@@ -61,22 +59,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             attributes={"kind": "image"},
             event_codes=frozenset({"resize"}),
         )
-        self.index_provider = RedisHashWorkerPropertyIndexProvider(
-            self.redis,
-            prefix="test",
-        )
-        self.index = MappedWorkerPropertyIndexRuntime(
-            self.catalog,
-            {
-                "index.worker.region": self.index_provider.create(
-                    "index.worker.region"
-                ),
-                "index.platform.pool": self.index_provider.create(
-                    "index.platform.pool"
-                ),
-            },
-        )
-        self.matcher = WorkerCandidateMatcher(self.catalog, self.index)
+        self.matcher = WorkerCandidateMatcher(self.catalog)
         self.upsert_group()
 
     def add_worker(
@@ -85,7 +68,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         *,
         worker_properties: dict[str, object],
         platform_properties: dict[str, object] | None = None,
-        indexed_properties: dict[str, object] | None = None,
     ) -> None:
         self.upsert_worker(
             self.worker_declaration(
@@ -100,12 +82,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                 properties=platform_properties,
             )
             self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        if indexed_properties:
-            self.index.update_indexed_properties(
-                worker_group_id="image-workers",
-                worker_id=worker_id,
-                updates=indexed_properties,
-            )
 
     def match(self, rules: dict[str, object], worker_ids: list[str]) -> list[str]:
         rows = self.matcher.match_worker_candidates(
@@ -124,51 +100,48 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         )
         return [entry.worker_id for entry in rows["candidate"]]
 
-    def test_precomputed_rematch_combines_snapshots_and_explicit_indexes(self) -> None:
+    def test_precomputed_rematch_uses_canonical_worker_and_platform_properties(self) -> None:
         self.add_worker(
             "worker-1",
-            worker_properties={"arch": "arm64", "region": "stale"},
-            platform_properties={"poolView": "batch"},
-            indexed_properties={
-                "index.worker.region": "cn-east",
-                "index.platform.pool": "batch",
-            },
+            worker_properties={"arch": "arm64", "region": "cn-east"},
+            platform_properties={"pool": "batch"},
         )
         self.add_worker(
             "worker-2",
             worker_properties={"arch": "x86_64"},
-            indexed_properties={
-                "index.worker.region": "cn-east",
-                "index.platform.pool": "batch",
-            },
+            platform_properties={"pool": "batch"},
         )
 
         self.assertEqual(
             self.match(
                 {
                     "worker.arch": {"$eq": "arm64"},
-                    "worker.region": {"$eq": "stale"},
-                    "index.worker.region": {"$eq": "cn-east"},
-                    "index.platform.pool": {"$eq": "batch"},
+                    "worker.region": {"$eq": "cn-east"},
+                    "platform.pool": {"$eq": "batch"},
                 },
                 ["worker-1", "worker-2"],
             ),
             ["worker-1"],
         )
 
-    def test_explicit_index_missing_never_falls_back_to_snapshot(self) -> None:
+    def test_removed_index_namespace_is_rejected(self) -> None:
         self.add_worker(
             "worker-1",
             worker_properties={"region": "cn-east"},
         )
 
-        self.assertEqual(
-            self.match(
-                {"index.worker.region": {"$eq": "cn-east"}},
-                ["worker-1"],
-            ),
-            [],
-        )
+        with self.assertLogs(
+            "kernel_design.executable_spec.scheduling.worker_candidate.matching",
+            level="WARNING",
+        ) as logs:
+            self.assertEqual(
+                self.match(
+                    {"index.worker.region": {"$eq": "cn-east"}},
+                    ["worker-1"],
+                ),
+                [],
+            )
+        self.assertIn("INVALID_RULE", logs.output[0])
 
     def test_nonindexed_property_reads_worker_and_platform_snapshots(self) -> None:
         self.add_worker(
@@ -186,94 +159,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                 ["worker-1"],
             ),
             ["worker-1"],
-        )
-
-    def test_projection_read_failure_fails_closed(self) -> None:
-        self.add_worker(
-            "worker-1",
-            worker_properties={},
-            indexed_properties={"index.worker.region": "cn-east"},
-        )
-
-        class FailingIndex:
-            def load_indexed_property_values(self, **_: object) -> object:
-                raise RuntimeError("index unavailable")
-
-        matcher = WorkerCandidateMatcher(self.catalog, FailingIndex())
-        with self.assertLogs(
-            "kernel_design.executable_spec.scheduling.worker_candidate.matching",
-            level="WARNING",
-        ) as logs:
-            rows = matcher.match_worker_candidates(
-                worker_group_id="image-workers",
-                worker_lease_scores={"worker-1": 1000},
-                candidate_constraints={
-                    "candidate": WorkerCandidateConstraint(
-                        priority=0,
-                        limit=1,
-                        allocation_rule={
-                            "index.worker.region": {"$eq": "cn-east"}
-                        },
-                    )
-                },
-            )
-        self.assertEqual(rows["candidate"], ())
-        self.assertEqual(1, len(logs.output))
-        self.assertIn("PROVIDER_FAILURE", logs.output[0])
-
-    def test_each_index_reads_only_workers_from_referencing_candidates(self) -> None:
-        self.add_worker(
-            "worker-1",
-            worker_properties={},
-            indexed_properties={"index.worker.region": "cn-east"},
-        )
-        self.add_worker(
-            "worker-2",
-            worker_properties={},
-            indexed_properties={"index.worker.region": "cn-east"},
-        )
-        self.add_worker(
-            "worker-3",
-            worker_properties={},
-            indexed_properties={"index.platform.pool": "batch"},
-        )
-        self.redis.hmget_calls.clear()
-
-        self.matcher.filter_candidate_worker_ids(
-            worker_group_id="image-workers",
-            candidate_worker_ids={
-                "region": ("worker-1", "worker-2"),
-                "pool": ("worker-3",),
-            },
-            candidate_constraints={
-                "region": WorkerCandidateConstraint(
-                    0,
-                    2,
-                    {"index.worker.region": {"$eq": "cn-east"}},
-                ),
-                "pool": WorkerCandidateConstraint(
-                    1,
-                    1,
-                    {"index.platform.pool": {"$eq": "batch"}},
-                ),
-            },
-        )
-
-        self.assertIn(
-            (
-                "wr:test:property-index:image-workers:"
-                "index.worker.region:values",
-                ("worker-1", "worker-2"),
-            ),
-            self.redis.hmget_calls,
-        )
-        self.assertIn(
-            (
-                "wr:test:property-index:image-workers:"
-                "index.platform.pool:values",
-                ("worker-3",),
-            ),
-            self.redis.hmget_calls,
         )
 
     def test_worker_id_remains_a_builtin_match_coordinate(self) -> None:

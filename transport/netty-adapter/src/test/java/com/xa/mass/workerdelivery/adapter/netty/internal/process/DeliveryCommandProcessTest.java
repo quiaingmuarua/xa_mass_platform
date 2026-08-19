@@ -423,6 +423,7 @@ class DeliveryCommandProcessTest {
                 if (connectionMechanism.connectionStates(
                         List.of(workerId)
                 ).get(workerId) == WorkerConnectionState.CONNECTED) {
+                    network.writtenWorkerIds.clear();
                     return;
                 }
                 try {

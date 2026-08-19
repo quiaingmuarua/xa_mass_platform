@@ -123,28 +123,6 @@ class KernelOwnerAssemblyTest {
         org.mockito.Mockito.verifyNoInteractions(redisClient);
     }
 
-    @Test
-    void workerPropertyIndexConfigurationIsExplicitAndStrict() {
-        assertThat(new WorkerPropertyIndexProperties(null).registry())
-                .isEmpty();
-        WorkerPropertyIndexProperties configured =
-                new WorkerPropertyIndexProperties(
-                        "{\"index.worker.region\":\"redis-hash\","
-                                + "\"index.platform.pool\":"
-                                + "\"redis-hash\"}"
-                );
-        assertThat(configured.registry()).containsOnlyKeys(
-                "index.worker.region",
-                "index.platform.pool"
-        );
-        assertThatThrownBy(() -> new WorkerPropertyIndexProperties(
-                "{\"region\":\"redis-hash\"}"
-        )).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new WorkerPropertyIndexProperties(
-                "{\"index.worker.region\":\"unknown\"}"
-        )).isInstanceOf(IllegalArgumentException.class);
-    }
-
     private static TaskDescriptor descriptor() {
         return new TaskDescriptor(
                 "task-1",

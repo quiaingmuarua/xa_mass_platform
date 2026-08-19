@@ -90,6 +90,24 @@ final class WorkerPropertiesCache {
         );
     }
 
+    WorkerPropertiesObservation committedObservation(
+            ObservationWrite write
+    ) {
+        ObservationWrite requiredWrite = Objects.requireNonNull(
+                write,
+                "write"
+        );
+        CachedProperties current = propertiesByWorkerId.policy()
+                .getIfPresentQuietly(requiredWrite.workerId());
+        if (current != requiredWrite.written()) {
+            return null;
+        }
+        return new WorkerPropertiesObservation(
+                current.updatedAtMillis(),
+                Jsons.parseObject(current.encodedProperties())
+        );
+    }
+
     WorkerPropertiesObservation observation(String workerId) {
         CachedProperties cached = propertiesByWorkerId.policy()
                 .getIfPresentQuietly(requireWorkerId(workerId));

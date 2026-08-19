@@ -135,12 +135,12 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void explicitWorkerSchedulingUsesWorkerIdThenMatchesPropertyProjections()
+    void explicitWorkerSchedulingUsesCanonicalWorkerAndPlatformProperties()
             throws Exception {
         String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "indexed-tools-" + suffix;
-        String clientWorkerKey = "indexed-worker-" + suffix;
-        String taskId = "indexed-task-" + suffix;
+        String workerGroupId = "property-tools-" + suffix;
+        String clientWorkerKey = "property-worker-" + suffix;
+        String taskId = "property-task-" + suffix;
 
         assertThat(send(
                 "PUT",
@@ -155,7 +155,7 @@ class RuntimeApiPythonIntegrationTest {
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
-                Map.of("region", "snapshot-only")
+                Map.of("region", "cn-east")
         );
         String workerId = boundWorker.workerId();
 
@@ -164,18 +164,18 @@ class RuntimeApiPythonIntegrationTest {
                 clientWorkerKey,
                 workerId,
                 boundWorker.endpointUri(),
-                Map.of("region", "snapshot-only"),
+                Map.of("region", "cn-east"),
                 TransportProfile.WEBSOCKET
         );
         try {
             awaitWorkerRegistered(workerGroupId, workerId);
-            awaitIndexedPropertiesUpdate(
-                    workerGroupId,
-                    workerId,
-                    "{\"updates\":{"
-                            + "\"index.worker.region\":\"cn-east\","
-                            + "\"index.platform.pool\":\"batch\"}}"
-            );
+            assertThat(send(
+                    "PATCH",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/workers/" + workerId
+                            + "/platform-properties",
+                    "{\"properties\":{\"pool\":\"batch\"}}"
+            ).statusCode()).isEqualTo(200);
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
@@ -187,23 +187,23 @@ class RuntimeApiPythonIntegrationTest {
                     null
             ).statusCode()).isEqualTo(200);
 
-            String indexedRule = "{"
+            String propertyRule = "{"
                     + "\"workerId\":{\"$eq\":\"" + workerId + "\"},"
-                    + "\"index.worker.region\":{\"$eq\":\"cn-east\"},"
-                    + "\"index.platform.pool\":{\"$in\":[\"batch\"]}"
+                    + "\"worker.region\":{\"$eq\":\"cn-east\"},"
+                    + "\"platform.pool\":{\"$in\":[\"batch\"]}"
                     + "}";
             appendItemWithAllocationRule(
                     taskId,
-                    "indexed-message-1-" + suffix,
-                    indexedRule
+                    "property-message-1-" + suffix,
+                    propertyRule
             );
-            awaitStoredResult(taskId, "indexed-message-1-" + suffix);
+            awaitStoredResult(taskId, "property-message-1-" + suffix);
             appendItemWithAllocationRule(
                     taskId,
-                    "indexed-message-2-" + suffix,
-                    indexedRule
+                    "property-message-2-" + suffix,
+                    propertyRule
             );
-            awaitStoredResult(taskId, "indexed-message-2-" + suffix);
+            awaitStoredResult(taskId, "property-message-2-" + suffix);
 
             assertThat(send(
                     "POST",
@@ -988,47 +988,6 @@ class RuntimeApiPythonIntegrationTest {
             Thread.sleep(20);
         }
         throw new AssertionError("Worker Bind was not applied to Kernel");
-    }
-
-    private void awaitIndexedPropertiesUpdate(
-            String workerGroupId,
-            String workerId,
-            String body
-    ) throws Exception {
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(3).toNanos();
-        while (System.nanoTime() < deadline) {
-            HttpResponse<String> response = send(
-                    "PATCH",
-                    "/api/v1/worker-groups/" + workerGroupId
-                            + "/workers/" + workerId
-                            + "/indexed-properties",
-                    body
-            );
-            if (response.statusCode() == 200
-                    && allIndexUpdatesAccepted(response.body())) {
-                return;
-            }
-            Thread.sleep(20);
-        }
-        throw new AssertionError("Worker indexes were not updated");
-    }
-
-    private static boolean allIndexUpdatesAccepted(String responseBody)
-            throws Exception {
-        var results = JSON.readTree(responseBody).get("results");
-        if (results == null || !results.isObject() || results.isEmpty()) {
-            return false;
-        }
-        for (var result : results) {
-            var status = result.get("status");
-            if (status == null
-                    || !(status.stringValue().equals("ok")
-                    || status.stringValue().equals("noop"))) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void awaitStoredResult(

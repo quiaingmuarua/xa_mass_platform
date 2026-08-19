@@ -43,6 +43,13 @@ final class TextMessageWorkerTransport
     private static final Logger LOGGER = Logger.getLogger(
             TextMessageWorkerTransport.class.getName()
     );
+    private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
+            "platform.worker.properties.snapshot";
+    private static final String WORKER_PROPERTIES_CHANGED_EVENT =
+            "platform.worker.properties.changed";
+    private static final String WORKER_PROPERTIES_CHANGED_FORWARD =
+            "worker-properties-changed:v1";
+    private static final long LOCAL_MANAGEMENT_DEADLINE_MILLIS = 10_000L;
 
     private final TextMessageClient client;
     private final String workerId;
@@ -178,6 +185,57 @@ final class TextMessageWorkerTransport
 
     void requestStop() {
         requestTermination(null, true);
+    }
+
+    void publishPropertiesChanged() {
+        synchronized (this) {
+            if (state != State.RUNNING) {
+                return;
+            }
+        }
+        try {
+            DeliveryCommand snapshot = DeliveryCommand.create(
+                    ADAPTER,
+                    WORKER,
+                    WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                    Math.addExact(
+                            System.currentTimeMillis(),
+                            LOCAL_MANAGEMENT_DEADLINE_MILLIS
+                    ),
+                    "null",
+                    WORKER_PROPERTIES_CHANGED_FORWARD
+            );
+            Optional<WorkerCommandOutcome> resolved = Objects.requireNonNull(
+                    commandDispatcher.execute(snapshot),
+                    "commandDispatcher returned null"
+            );
+            if (resolved.isEmpty()) {
+                return;
+            }
+            WorkerCommandOutcome outcome = resolved.get();
+            DeliveryReport report = DeliveryReport.create(
+                    WORKER,
+                    workerId,
+                    ADAPTER,
+                    WORKER_PROPERTIES_CHANGED_EVENT,
+                    outcome.outcomeCode(),
+                    outcome.payload(),
+                    WORKER_PROPERTIES_CHANGED_FORWARD
+            );
+            if (!client.send(codec.encodeDeliveryReport(report))) {
+                log(
+                        WorkerErrorCode.RESULT_SUBMIT_FAILED,
+                        "properties.publish",
+                        null
+                );
+            }
+        } catch (RuntimeException unexpected) {
+            log(
+                    WorkerErrorCode.EVENT_EXECUTION_FAILED,
+                    "properties.publish",
+                    unexpected
+            );
+        }
     }
 
     @Override

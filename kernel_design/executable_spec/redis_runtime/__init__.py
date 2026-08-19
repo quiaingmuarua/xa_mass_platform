@@ -9,8 +9,6 @@ from .worker_score import RedisWorkerScoreCore
 from .worker_result import RedisWorkerResultRuntime
 from .worker_serviceability import RedisWorkerServiceabilityRuntime
 from .worker_runtime import (
-    RedisHashWorkerPropertyIndex,
-    RedisHashWorkerPropertyIndexProvider,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
 )
@@ -25,8 +23,6 @@ __all__ = [
     "RedisWorkerScoreCore",
     "RedisWorkerResultRuntime",
     "RedisWorkerServiceabilityRuntime",
-    "RedisHashWorkerPropertyIndex",
-    "RedisHashWorkerPropertyIndexProvider",
     "RedisWorkerResourceCatalog",
     "RedisWorkerRuntime",
 ]

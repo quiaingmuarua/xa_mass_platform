@@ -15,7 +15,6 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    MappedWorkerPropertyIndexRuntime,
     TaskType,
     DeliveryCommand,
     WorkerCommandAppendStatus,
@@ -131,16 +130,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.worker_score,
             prefix=self.prefix,
         )
-        property_index = MappedWorkerPropertyIndexRuntime(
-            self.worker_catalog,
-            {},
-        )
         candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
             self.worker_score,
             WorkerCandidateMatcher(
                 self.worker_catalog,
-                property_index,
             ),
             worker_scan_limit=10,
         )

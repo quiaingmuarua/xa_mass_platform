@@ -7,7 +7,6 @@ from typing import Mapping, Sequence
 from ...constraint_dsl import (
     ConstraintEvaluator,
     ConstraintMap,
-    UNRESOLVED_VALUE,
 )
 from ...kernel.assignment_dispatch_runtime import (
     CandidateId,
@@ -16,7 +15,6 @@ from ...kernel.assignment_dispatch_runtime import (
 from ...kernel.worker_runtime import (
     WorkerDescriptor,
     WorkerGroupId,
-    WorkerPropertyIndexRuntime,
     WorkerResourceCatalog,
 )
 from ...kernel.worker_score import Score, WorkerId
@@ -41,15 +39,13 @@ WorkerCandidateAcquisition = Mapping[
 
 
 class WorkerCandidateMatcher:
-    """Match bounded Worker ids through snapshots and explicit index reads."""
+    """Match bounded Worker ids through canonical property snapshots."""
 
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
-        property_index: WorkerPropertyIndexRuntime,
     ) -> None:
         self.catalog = catalog
-        self.property_index = property_index
 
     def match_worker_candidates(
         self,
@@ -182,54 +178,8 @@ class WorkerCandidateMatcher:
             if descriptor is not None
             and descriptor.worker_group_id == worker_group_id
         }
-        worker_ids_by_index_field: dict[str, list[WorkerId]] = {}
-        for candidate_id, _, compiled_rule in candidates:
-            for field_name in compiled_rule:
-                if not _is_index_field(field_name):
-                    continue
-                worker_ids_by_index_field.setdefault(field_name, []).extend(
-                    candidate_worker_ids.get(candidate_id, ())
-                )
-        indexed_values: dict[str, Mapping[WorkerId, object]] = {}
-        failed_index_fields: set[str] = set()
-        index_failures: list[tuple[str, str]] = []
-        for index_field in sorted(worker_ids_by_index_field):
-            referenced_worker_ids = tuple(dict.fromkeys(
-                worker_ids_by_index_field[index_field]
-            ))
-            if not referenced_worker_ids:
-                indexed_values[index_field] = {}
-                continue
-            try:
-                indexed_values[index_field] = self._load_indexed_property_values(
-                    worker_group_id=worker_group_id,
-                    index_field=index_field,
-                    worker_ids=referenced_worker_ids,
-                )
-            except Exception as error:
-                failed_index_fields.add(index_field)
-                index_failures.append(
-                    (index_field, _index_error_type(error))
-                )
-        if index_failures:
-            _LOGGER.warning(
-                "Worker index read failed workerGroupId=%s indexField=%s "
-                "errorType=%s count=%d",
-                worker_group_id,
-                ",".join(field for field, _ in index_failures),
-                ",".join(sorted({kind for _, kind in index_failures})),
-                len(index_failures),
-            )
-
         used_worker_ids: set[WorkerId] = set()
         for candidate_id, constraints, compiled_rule in candidates:
-            candidate_index_fields = frozenset(
-                field_name
-                for field_name in compiled_rule
-                if _is_index_field(field_name)
-            )
-            if candidate_index_fields.intersection(failed_index_fields):
-                continue
             for worker_id in dict.fromkeys(
                 candidate_worker_ids.get(candidate_id, ())
             ):
@@ -242,8 +192,6 @@ class WorkerCandidateMatcher:
                     self._match_context(
                         worker_id,
                         descriptor,
-                        candidate_index_fields,
-                        indexed_values,
                     ),
                     compiled_rule,
                 ):
@@ -257,25 +205,6 @@ class WorkerCandidateMatcher:
                 ):
                     break
         return mutable_matches, descriptors
-
-    def _load_indexed_property_values(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        index_field: str,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, object]:
-        loaded: dict[WorkerId, object] = {}
-        read_limit = WorkerPropertyIndexRuntime.MAX_INDEXED_PROPERTY_READ_LIMIT
-        for offset in range(0, len(worker_ids), read_limit):
-            loaded.update(
-                self.property_index.load_indexed_property_values(
-                    worker_group_id=worker_group_id,
-                    index_field=index_field,
-                    worker_ids=worker_ids[offset : offset + read_limit],
-                )
-            )
-        return loaded
 
     def _prepare_candidates(
         self,
@@ -307,6 +236,11 @@ class WorkerCandidateMatcher:
                 compiled_rule = ConstraintEvaluator.compile_match_rules(
                     constraints.allocation_rule
                 )
+                if any(
+                    not _valid_allocation_field(field_name)
+                    for field_name in compiled_rule
+                ):
+                    raise ValueError("unsupported Worker allocation field")
             except ValueError:
                 invalid_count += 1
                 continue
@@ -324,23 +258,12 @@ class WorkerCandidateMatcher:
     def _match_context(
         worker_id: WorkerId,
         descriptor: WorkerDescriptor,
-        indexed_fields: frozenset[str],
-        indexed_values: Mapping[str, Mapping[WorkerId, object]],
     ) -> dict[str, object]:
-        index_context: dict[str, object] = {}
-        context: dict[str, object] = {
+        return {
             "workerId": worker_id,
             "worker": dict(descriptor.worker_properties),
             "platform": dict(descriptor.platform_properties),
-            "index": index_context,
         }
-        for index_field in indexed_fields:
-            index_name = index_field.removeprefix("index.")
-            index_context[index_name] = indexed_values[index_field].get(
-                worker_id,
-                UNRESOLVED_VALUE,
-            )
-        return context
 
     @staticmethod
     def _freeze_acquisitions(
@@ -361,17 +284,14 @@ class WorkerCandidateMatcher:
         }
 
 
-def _is_index_field(field_name: object) -> bool:
+def _valid_allocation_field(field_name: object) -> bool:
     return (
-        isinstance(field_name, str)
-        and field_name.startswith("index.")
-        and len(field_name) > 6
+        field_name == "workerId"
+        or isinstance(field_name, str)
+        and (
+            field_name.startswith("worker.")
+            and len(field_name) > len("worker.")
+            or field_name.startswith("platform.")
+            and len(field_name) > len("platform.")
+        )
     )
-
-
-def _index_error_type(error: Exception) -> str:
-    if isinstance(error, LookupError):
-        return "INDEX_NOT_CONFIGURED"
-    if isinstance(error, (TypeError, ValueError)):
-        return "PROJECTION_INVALID"
-    return "PROVIDER_FAILURE"

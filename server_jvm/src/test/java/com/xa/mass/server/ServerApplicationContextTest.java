@@ -22,14 +22,11 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.MappedWorkerPropertyIndexRuntime;
-import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
-import com.xa.mass.server.kernelbinding.WorkerPropertyIndexProperties;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
@@ -134,12 +131,6 @@ class ServerApplicationContextTest {
         )).isEmpty();
         assertThat(applicationContext.getBean(WorkerScoreCore.class))
                 .isInstanceOf(RedisWorkerScoreCore.class);
-        assertThat(applicationContext.getBean(
-                WorkerPropertyIndexRuntime.class
-        )).isInstanceOf(MappedWorkerPropertyIndexRuntime.class);
-        assertThat(applicationContext.getBean(
-                WorkerPropertyIndexProperties.class
-        ).registry()).isEmpty();
         assertThat(applicationContext.getBeansOfType(
                 CandidateWorkerCache.class
         )).isEmpty();

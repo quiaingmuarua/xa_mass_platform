@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 from pathlib import Path
 from threading import Event
 
@@ -30,13 +29,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     config_json = args.config.read_text(encoding="utf-8") if args.config else None
-    config = KernelApplicationConfig.from_json(
-        config_json,
-        worker_property_index_registry_json=os.environ.get(
-            "XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON",
-            "{}",
-        ),
-    )
+    config = KernelApplicationConfig.from_json(config_json)
     application = KernelApplication(config)
     application.start()
     logging.getLogger(__name__).info("kernel application started")

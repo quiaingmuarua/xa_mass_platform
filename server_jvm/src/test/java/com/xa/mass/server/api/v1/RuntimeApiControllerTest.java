@@ -27,7 +27,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
@@ -70,7 +69,6 @@ class RuntimeApiControllerTest {
     private WorkerIdentityService workerIdentity;
     private WorkerBindingService workerBinding;
     private WorkerResourceCatalog workerCatalog;
-    private WorkerPropertyIndexRuntime propertyIndex;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
@@ -82,7 +80,6 @@ class RuntimeApiControllerTest {
         workerIdentity = mock(WorkerIdentityService.class);
         workerBinding = mock(WorkerBindingService.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
-        propertyIndex = mock(WorkerPropertyIndexRuntime.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
@@ -103,17 +100,6 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
-        when(propertyIndex.updateIndexedProperties(
-                any(),
-                any(),
-                any()
-        )).thenReturn(Map.of(
-                "index.worker.region",
-                new WorkerRuntimeResult(WorkerRuntimeStatus.OK),
-                "index.platform.pool",
-                new WorkerRuntimeResult(WorkerRuntimeStatus.NOT_FOUND,
-                        "property index is not configured")
-        ));
         when(taskRuntime.createTask(any(), eq(0)))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -188,10 +174,7 @@ class RuntimeApiControllerTest {
                 "scenario-rpc-phone-tools"
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceCommandController(
-                                workerCatalog,
-                                propertyIndex
-                        ),
+                        new ResourceCommandController(workerCatalog),
                         new WorkerIdentityController(workerIdentity),
                         new WorkerBindingController(workerBinding),
                         new TaskControlController(
@@ -315,49 +298,6 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
 
-        mockMvc.perform(patch(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "worker-1/worker-indexed-properties"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"updates\":{"
-                                + "\"index.worker.region\":\"cn-east\"}}"))
-                .andExpect(status().isNotFound());
-
-        mockMvc.perform(patch(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "worker-1/platform-indexed-properties"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"updates\":{"
-                                + "\"index.platform.pool\":\"batch\"}}"))
-                .andExpect(status().isNotFound());
-
-        mockMvc.perform(patch(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "worker-1/indexed-properties"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"updates\":{"
-                                + "\"index.worker.region\":\"cn-east\","
-                                + "\"index.platform.pool\":\"batch\"}}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath(
-                        "$.results['index.worker.region'].status"
-                ).value("ok"))
-                .andExpect(jsonPath(
-                        "$.results['index.platform.pool'].status"
-                ).value("not_found"));
-
-        verify(propertyIndex).updateIndexedProperties(
-                "phone-tools",
-                "worker-1",
-                Map.of(
-                        "index.worker.region", "cn-east",
-                        "index.platform.pool", "batch"
-                )
-        );
-
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
                                         + "workers:register"
@@ -477,8 +417,7 @@ class RuntimeApiControllerTest {
                                   "allocationRule":{
                                     "workerId":{"$eq":"worker-1"},
                                     "worker.region":{"$eq":"cn-east"},
-                                    "platform.pool":{"$eq":"batch"},
-                                    "index.worker.region":{"$eq":"projected"}
+                                    "platform.pool":{"$eq":"batch"}
                                   }
                                 }]}
                                 """))

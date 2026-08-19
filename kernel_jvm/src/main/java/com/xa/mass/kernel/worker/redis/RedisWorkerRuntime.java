@@ -6,7 +6,9 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerMetadata;
+import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerPropertiesEnvelope;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
@@ -14,6 +16,26 @@ import java.util.Map;
 
 public final class RedisWorkerRuntime
         implements WorkerRuntime, AutoCloseable {
+
+    private static final int MAX_PROPERTIES_CAS_ATTEMPTS = 8;
+    private static final String REPLACE_WORKER_PROPERTIES_SCRIPT = """
+            local current = redis.call('HGET', KEYS[1], ARGV[1])
+            if not current then
+                return 0
+            end
+            local decoded_ok, decoded = pcall(cjson.decode, current)
+            if not decoded_ok
+                    or type(decoded) ~= 'table'
+                    or type(decoded.updatedAtMillis) ~= 'number'
+                    or type(decoded.properties) ~= 'table' then
+                return -2
+            end
+            if decoded.updatedAtMillis >= tonumber(ARGV[2]) then
+                return -1
+            end
+            redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+            return 1
+            """;
 
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
@@ -49,10 +71,13 @@ public final class RedisWorkerRuntime
                     "invalid worker declaration"
             );
         }
-        String encodedProperties = WorkerRedisSupport.encodeWorkerProperties(
-                declaration.workerProperties()
+        String validatedProperties = WorkerRedisSupport.encodeWorkerProperties(
+                new WorkerPropertiesEnvelope(
+                        1L,
+                        declaration.workerProperties()
+                )
         );
-        if (encodedProperties == null) {
+        if (validatedProperties == null) {
             return result(
                     WorkerRuntimeStatus.INVALID,
                     "invalid workerProperties json"
@@ -132,18 +157,15 @@ public final class RedisWorkerRuntime
                 prefix,
                 declaration.workerGroupId()
         );
-        String currentProperties = commands().hget(
+        Boolean propertiesChanged = upsertProperties(
                 propertiesKey,
-                declaration.workerId()
+                declaration.workerId(),
+                declaration.workerProperties()
         );
-        boolean propertiesChanged = !encodedProperties.equals(
-                currentProperties
-        );
-        if (propertiesChanged) {
-            commands().hset(
-                    propertiesKey,
-                    declaration.workerId(),
-                    encodedProperties
+        if (propertiesChanged == null) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker properties are invalid"
             );
         }
 
@@ -195,6 +217,157 @@ public final class RedisWorkerRuntime
             return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
         }
         return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
+    }
+
+    @Override
+    public WorkerRuntimeResult replaceWorkerProperties(
+            String workerGroupId,
+            String workerId,
+            long updatedAtMillis,
+            Map<String, Object> properties
+    ) {
+        if (workerGroupId == null || workerGroupId.isBlank()) {
+            return result(WorkerRuntimeStatus.INVALID, "invalid workerGroupId");
+        }
+        if (workerId == null || workerId.isBlank()) {
+            return result(WorkerRuntimeStatus.INVALID, "invalid workerId");
+        }
+        if (updatedAtMillis <= 0) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "updatedAtMillis must be positive"
+            );
+        }
+        if (properties == null) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid workerProperties"
+            );
+        }
+        String encoded;
+        try {
+            encoded = WorkerRedisSupport.encodeWorkerProperties(
+                    new WorkerPropertiesEnvelope(
+                            updatedAtMillis,
+                            properties
+                    )
+            );
+        } catch (IllegalArgumentException error) {
+            encoded = null;
+        }
+        if (encoded == null) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid workerProperties json"
+            );
+        }
+        WorkerMetadata metadata = WorkerRedisSupport.decodeWorkerMetadata(
+                commands().hget(
+                        WorkerRedisSupport.workerMetadataKey(
+                                prefix,
+                                workerGroupId
+                        ),
+                        workerId
+                )
+        );
+        if (metadata == null) {
+            return result(WorkerRuntimeStatus.NOT_FOUND, "worker not found");
+        }
+        if (!workerId.equals(metadata.workerId())
+                || !workerGroupId.equals(metadata.workerGroupId())) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker identity does not match"
+            );
+        }
+        Number outcome = commands().eval(
+                REPLACE_WORKER_PROPERTIES_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{WorkerRedisSupport.workerPropertiesKey(
+                        prefix,
+                        workerGroupId
+                )},
+                workerId,
+                Long.toString(updatedAtMillis),
+                encoded
+        );
+        long code = outcome == null ? -2L : outcome.longValue();
+        if (code == 1L) {
+            return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
+        }
+        if (code == -1L) {
+            return result(
+                    WorkerRuntimeStatus.STALE,
+                    "worker properties observation is not newer"
+            );
+        }
+        if (code == 0L) {
+            return result(
+                    WorkerRuntimeStatus.NOT_FOUND,
+                    "worker properties not found"
+            );
+        }
+        return result(
+                WorkerRuntimeStatus.INVALID,
+                "stored worker properties are invalid"
+        );
+    }
+
+    private Boolean upsertProperties(
+            String propertiesKey,
+            String workerId,
+            Map<String, Object> properties
+    ) {
+        for (int attempt = 0;
+                attempt < MAX_PROPERTIES_CAS_ATTEMPTS;
+                attempt++) {
+            String observed = commands().hget(propertiesKey, workerId);
+            if (observed == null) {
+                String encoded = WorkerRedisSupport.encodeWorkerProperties(
+                        new WorkerPropertiesEnvelope(
+                                Math.max(1L, System.currentTimeMillis()),
+                                properties
+                        )
+                );
+                if (encoded == null) {
+                    return null;
+                }
+                if (commands().hsetnx(propertiesKey, workerId, encoded)) {
+                    return true;
+                }
+                continue;
+            }
+            WorkerPropertiesEnvelope current =
+                    WorkerRedisSupport.decodeWorkerProperties(observed);
+            if (current == null) {
+                return null;
+            }
+            if (current.properties().equals(properties)) {
+                return false;
+            }
+            String encoded = WorkerRedisSupport.encodeWorkerProperties(
+                    new WorkerPropertiesEnvelope(
+                            Math.max(
+                                    System.currentTimeMillis(),
+                                    current.updatedAtMillis() + 1L
+                            ),
+                            properties
+                    )
+            );
+            if (encoded == null) {
+                return null;
+            }
+            if (WorkerRedisSupport.compareAndSetHashField(
+                    commands(),
+                    propertiesKey,
+                    workerId,
+                    observed,
+                    encoded
+            )) {
+                return true;
+            }
+        }
+        return null;
     }
 
     private static boolean sameIdentity(

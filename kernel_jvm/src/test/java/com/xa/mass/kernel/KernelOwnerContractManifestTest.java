@@ -12,8 +12,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.WorkerPropertyIndex;
-import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
@@ -38,14 +36,6 @@ class KernelOwnerContractManifestTest {
             Map.entry("TaskRuntime", TaskRuntime.class),
             Map.entry("TaskResourceCatalog", TaskResourceCatalog.class),
             Map.entry("WorkerRuntime", WorkerRuntime.class),
-            Map.entry(
-                    "WorkerPropertyIndex",
-                    WorkerPropertyIndex.class
-            ),
-            Map.entry(
-                    "WorkerPropertyIndexRuntime",
-                    WorkerPropertyIndexRuntime.class
-            ),
             Map.entry(
                     "WorkerResourceCatalog",
                     WorkerResourceCatalog.class

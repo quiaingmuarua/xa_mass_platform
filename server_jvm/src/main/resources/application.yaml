@@ -19,8 +19,6 @@ xa:
     kernel-redis:
       redis-url: redis://localhost:6379/15
       redis-prefix: default
-    worker-property-index:
-      registry-json: '${XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON:{}}'
     worker-binding:
       endpoints:
         system-polling:

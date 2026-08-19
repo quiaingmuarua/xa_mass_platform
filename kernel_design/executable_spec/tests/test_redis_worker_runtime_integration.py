@@ -12,11 +12,9 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    MappedWorkerPropertyIndexRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
-    RedisHashWorkerPropertyIndexProvider,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
@@ -60,30 +58,13 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
-        self.property_index_provider = (
-            RedisHashWorkerPropertyIndexProvider(
-                self.redis,
-                prefix=self.prefix,
-            )
-        )
-        self.property_index = MappedWorkerPropertyIndexRuntime(
-            self.catalog,
-            {
-                "index.worker.region": self.property_index_provider.create(
-                    "index.worker.region"
-                ),
-                "index.platform.pool": self.property_index_provider.create(
-                    "index.platform.pool"
-                ),
-            },
-        )
 
     def tearDown(self) -> None:
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
 
-    def test_property_indexes_replace_load_and_isolate_groups(self) -> None:
+    def test_canonical_properties_replace_is_newer_only_and_score_neutral(self) -> None:
         for worker_group_id in (self.worker_group_id, "other-workers"):
             self.catalog.upsert_worker_group(
                 descriptor=WorkerGroupDescriptor(
@@ -97,78 +78,59 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                     worker_id=f"{worker_group_id}-worker",
                     worker_group_id=worker_group_id,
                     endpoint_manager_id="endpoint-manager-1",
-                    worker_properties={},
+                    worker_properties={"region": "initial"},
                 )
             )
 
         worker_id = f"{self.worker_group_id}-worker"
-        self.property_index.update_indexed_properties(
+        observed_score = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        updated_at_millis = time.time_ns() // 1_000_000 + 1_000
+        replaced = self.runtime.replace_worker_properties(
             worker_group_id=self.worker_group_id,
             worker_id=worker_id,
-            updates={
-                "index.worker.region": "cn-east",
-                "index.platform.pool": "batch",
-            },
+            updated_at_millis=updated_at_millis,
+            properties={"region": "cn-east", "battery": 87},
         )
-        other_worker_id = "other-workers-worker"
-        self.property_index.update_indexed_properties(
-            worker_group_id="other-workers",
-            worker_id=other_worker_id,
-            updates={"index.worker.region": "cn-east"},
-        )
-
-        worker_values = self.property_index.load_indexed_property_values(
-            worker_group_id=self.worker_group_id,
-            index_field="index.worker.region",
-            worker_ids=[worker_id, other_worker_id],
-        )
-        self.assertEqual(worker_values, {worker_id: "cn-east"})
-        self.assertEqual(
-            self.property_index.load_indexed_property_values(
-                worker_group_id=self.worker_group_id,
-                index_field="index.platform.pool",
-                worker_ids=[worker_id, other_worker_id],
-            ),
-            {worker_id: "batch"},
-        )
-
-        self.property_index.update_indexed_properties(
+        stale = self.runtime.replace_worker_properties(
             worker_group_id=self.worker_group_id,
             worker_id=worker_id,
-            updates={"index.worker.region": "cn-west"},
+            updated_at_millis=updated_at_millis,
+            properties={"region": "stale"},
         )
-        self.assertEqual(
-            self.property_index.load_indexed_property_values(
-                worker_group_id=self.worker_group_id,
-                index_field="index.worker.region",
-                worker_ids=[worker_id],
-            ),
-            {worker_id: "cn-west"},
+        same_newer = self.runtime.replace_worker_properties(
+            worker_group_id=self.worker_group_id,
+            worker_id=worker_id,
+            updated_at_millis=updated_at_millis + 1,
+            properties={"region": "cn-east", "battery": 87},
         )
+        missing = self.runtime.replace_worker_properties(
+            worker_group_id=self.worker_group_id,
+            worker_id="missing",
+            updated_at_millis=updated_at_millis + 2,
+            properties={},
+        )
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
+        score_after = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[worker_id],
+        )[worker_id]
 
-        disabled = MappedWorkerPropertyIndexRuntime(self.catalog, {})
-        with self.assertRaises(LookupError):
-            disabled.load_indexed_property_values(
-                worker_group_id=self.worker_group_id,
-                index_field="index.worker.region",
-                worker_ids=[worker_id],
-            )
-        reenabled = MappedWorkerPropertyIndexRuntime(
-            self.catalog,
-            {
-                "index.worker.region": self.property_index_provider.create(
-                    "index.worker.region"
-                )
-            },
-        )
+        self.assertEqual(WorkerRuntimeStatus.OK, replaced.status)
+        self.assertEqual(WorkerRuntimeStatus.STALE, stale.status)
+        self.assertEqual(WorkerRuntimeStatus.OK, same_newer.status)
+        self.assertEqual(WorkerRuntimeStatus.NOT_FOUND, missing.status)
+        assert descriptor is not None
         self.assertEqual(
-            reenabled.load_indexed_property_values(
-                worker_group_id=self.worker_group_id,
-                index_field="index.worker.region",
-                worker_ids=[worker_id],
-            ),
-            {worker_id: "cn-west"},
+            {"region": "cn-east", "battery": 87},
+            descriptor.worker_properties,
         )
+        self.assertEqual(observed_score, score_after)
 
     def test_worker_id_is_globally_unique_across_groups(self) -> None:
         for worker_group_id in (self.worker_group_id, "audio-workers"):
@@ -238,7 +200,10 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         }
         property_rows = {
             f"worker-{index:03d}": json.dumps(
-                {"index": index},
+                {
+                    "updatedAtMillis": index + 1,
+                    "properties": {"index": index},
+                },
                 separators=(",", ":"),
             )
             for index in range(120)

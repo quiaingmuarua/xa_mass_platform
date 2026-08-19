@@ -121,14 +121,6 @@
       "consume_worker_commands",
       "offer_worker_commands"
     ],
-    "WorkerPropertyIndex": [
-      "load",
-      "update"
-    ],
-    "WorkerPropertyIndexRuntime": [
-      "load_indexed_property_values",
-      "update_indexed_properties"
-    ],
     "WorkerResourceCatalog": [
         "get_worker_descriptors",
         "get_worker_group_descriptors",
@@ -138,6 +130,7 @@
         "upsert_worker_group"
     ],
     "WorkerRuntime": [
+      "replace_worker_properties",
       "upsert_worker"
     ],
     "WorkerScoreCore": [

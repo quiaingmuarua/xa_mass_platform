@@ -4,8 +4,6 @@ import json
 import unittest
 
 from kernel_design.executable_spec import (
-    MappedWorkerPropertyIndexRuntime,
-    RedisHashWorkerPropertyIndexProvider,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
@@ -16,24 +14,6 @@ from kernel_design.executable_spec.tests.redis_worker_runtime_test_support impor
 
 
 class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
-    def setUp(self) -> None:
-        super().setUp()
-        self.index_provider = RedisHashWorkerPropertyIndexProvider(
-            self.redis,
-            prefix="test",
-        )
-        self.index = MappedWorkerPropertyIndexRuntime(
-            self.catalog,
-            {
-                "index.worker.region": self.index_provider.create(
-                    "index.worker.region"
-                ),
-                "index.platform.pool": self.index_provider.create(
-                    "index.platform.pool"
-                ),
-            },
-        )
-
     def test_worker_group_replaces_attributes(self) -> None:
         self.upsert_group()
         changed = WorkerGroupDescriptor(
@@ -385,7 +365,66 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 "workerId": "worker-1",
             },
         )
-        self.assertEqual(json.loads(raw_properties), {"arch": "arm64"})
+        self.assertEqual(
+            json.loads(raw_properties),
+            {
+                "updatedAtMillis": 100_000,
+                "properties": {"arch": "arm64"},
+            },
+        )
+
+    def test_replace_worker_properties_is_newer_only_and_score_neutral(self) -> None:
+        self.upsert_group()
+        self.upsert_worker(self.worker_declaration(
+            "worker-1",
+            worker_properties={"region": "cn-east"},
+        ))
+        score_key = "wr:test:score:image-workers"
+        score_before = self.redis.zscore(score_key, "worker-1")
+
+        replaced = self.runtime.replace_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            updated_at_millis=100_001,
+            properties={"region": "cn-west", "battery": 87},
+        )
+        stale = self.runtime.replace_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            updated_at_millis=100_001,
+            properties={"region": "stale"},
+        )
+        missing = self.runtime.replace_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="missing",
+            updated_at_millis=100_002,
+            properties={"region": "missing"},
+        )
+
+        self.assertEqual(replaced.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(stale.status, WorkerRuntimeStatus.STALE)
+        self.assertEqual(missing.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(
+            self.catalog.get_worker_descriptors(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1"],
+            )["worker-1"].worker_properties,
+            {"region": "cn-west", "battery": 87},
+        )
+        self.assertEqual(
+            json.loads(self.redis.hget(
+                "wr:test:worker-properties:image-workers",
+                "worker-1",
+            )),
+            {
+                "updatedAtMillis": 100_001,
+                "properties": {"battery": 87, "region": "cn-west"},
+            },
+        )
+        self.assertEqual(
+            self.redis.zscore(score_key, "worker-1"),
+            score_before,
+        )
 
     def test_legacy_worker_resource_shapes_are_not_read(self) -> None:
         self.redis.hset(
@@ -426,7 +465,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             )["worker-1"]
         )
 
-    def test_descriptor_field_identity_mismatch_is_not_mutated_or_indexed(self) -> None:
+    def test_descriptor_field_identity_mismatch_is_not_mutated(self) -> None:
         self.upsert_group()
         self.redis.hset(
             "wr:test:worker-metadata:image-workers",
@@ -443,7 +482,10 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.redis.hset(
             "wr:test:worker-properties:image-workers",
             "worker-1",
-            "{}",
+            json.dumps({
+                "updatedAtMillis": 100_000,
+                "properties": {},
+            }),
         )
 
         patch_result = self.catalog.patch_worker_platform_properties(
@@ -451,209 +493,13 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             worker_id="worker-1",
             properties={"pool": "batch"},
         )
-        index_result = self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": "cn-east"},
-        )
-
         self.assertEqual(patch_result.status, WorkerRuntimeStatus.CONFLICT)
-        self.assertEqual(
-            index_result["index.worker.region"].status,
-            WorkerRuntimeStatus.NOT_FOUND,
-        )
         self.assertIsNone(
             self.catalog.get_worker_descriptors(
                 worker_group_id="image-workers",
                 worker_ids=["worker-1"],
             )["worker-1"]
         )
-
-    def test_index_updates_are_independent_from_properties(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                worker_properties={"region": "snapshot-region"},
-            )
-        )
-        result = self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={
-                "index.worker.region": "cn-east",
-                "index.platform.pool": "batch",
-            },
-        )
-
-        self.assertEqual(
-            result["index.worker.region"].status,
-            WorkerRuntimeStatus.OK,
-        )
-        self.assertEqual(
-            result["index.platform.pool"].status,
-            WorkerRuntimeStatus.OK,
-        )
-        descriptor = self.catalog.get_worker_descriptors(
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-        )["worker-1"]
-        self.assertEqual(
-            descriptor.worker_properties,
-            {"region": "snapshot-region"},
-        )
-        self.assertEqual(descriptor.platform_properties, {})
-        worker_values = self.index.load_indexed_property_values(
-            worker_group_id="image-workers",
-            index_field="index.worker.region",
-            worker_ids=["worker-1"],
-        )
-        platform_values = self.index.load_indexed_property_values(
-            worker_group_id="image-workers",
-            index_field="index.platform.pool",
-            worker_ids=["worker-1"],
-        )
-        self.assertEqual(worker_values, {"worker-1": "cn-east"})
-        self.assertEqual(platform_values, {"worker-1": "batch"})
-        self.assertEqual(
-            self.redis.hashes[
-                "wr:test:property-index:image-workers:"
-                "index.worker.region:values"
-            ]["worker-1"],
-            '{"value":"cn-east"}',
-        )
-
-    def test_index_replacement_and_delete_remove_old_membership(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": "cn-east"},
-        )
-        self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": "cn-west"},
-        )
-
-        self.assertEqual(
-            self.index.load_indexed_property_values(
-                worker_group_id="image-workers",
-                index_field="index.worker.region",
-                worker_ids=["worker-1"],
-            ),
-            {"worker-1": "cn-west"},
-        )
-        self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": None},
-        )
-        self.assertEqual(
-            self.index.load_indexed_property_values(
-                worker_group_id="image-workers",
-                index_field="index.worker.region",
-                worker_ids=["worker-1"],
-            ),
-            {},
-        )
-
-    def test_index_returns_field_local_rejections(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        results = self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={
-                "index.worker.region": "cn-east",
-                "index.unknown": "x",
-                "worker.invalid": "batch",
-            },
-        )
-        invalid = self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": object()},
-        )
-        missing = self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="missing",
-            updates={"index.platform.pool": "batch"},
-        )
-
-        self.assertEqual(
-            results["index.worker.region"].status,
-            WorkerRuntimeStatus.OK,
-        )
-        self.assertEqual(
-            results["index.unknown"].status,
-            WorkerRuntimeStatus.NOT_FOUND,
-        )
-        self.assertEqual(
-            invalid["index.worker.region"].status,
-            WorkerRuntimeStatus.INVALID,
-        )
-        self.assertEqual(
-            results["worker.invalid"].status,
-            WorkerRuntimeStatus.INVALID,
-        )
-        self.assertEqual(
-            missing["index.platform.pool"].status,
-            WorkerRuntimeStatus.NOT_FOUND,
-        )
-
-    def test_indexes_load_only_requested_workers_across_multiple_fields(self) -> None:
-        self.upsert_group()
-        for worker_id, region, pool in (
-            ("worker-1", "cn-east", "batch"),
-            ("worker-2", "cn-east", "interactive"),
-            ("worker-3", "cn-west", "batch"),
-        ):
-            self.upsert_worker(self.worker_declaration(worker_id))
-            self.index.update_indexed_properties(
-                worker_group_id="image-workers",
-                worker_id=worker_id,
-                updates={
-                    "index.worker.region": region,
-                    "index.platform.pool": pool,
-                },
-            )
-
-        self.assertEqual(
-            self.index.load_indexed_property_values(
-                worker_group_id="image-workers",
-                index_field="index.worker.region",
-                worker_ids=["worker-1", "worker-3"],
-            ),
-            {"worker-1": "cn-east", "worker-3": "cn-west"},
-        )
-        self.assertEqual(
-            self.index.load_indexed_property_values(
-                worker_group_id="image-workers",
-                index_field="index.platform.pool",
-                worker_ids=["worker-2", "missing"],
-            ),
-            {"worker-2": "interactive"},
-        )
-
-    def test_index_load_never_returns_outside_requested_workers(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.index.update_indexed_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updates={"index.worker.region": "cn-east"},
-        )
-        self.assertEqual(
-            self.index.load_indexed_property_values(
-                worker_group_id="image-workers",
-                index_field="index.worker.region",
-                worker_ids=["missing"],
-            ),
-            {},
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

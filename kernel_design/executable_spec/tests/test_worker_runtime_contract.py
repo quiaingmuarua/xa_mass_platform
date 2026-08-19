@@ -9,8 +9,6 @@ from kernel_design.executable_spec import (
     WorkerDeclaration,
     WorkerDescriptor,
     WorkerGroupDescriptor,
-    WorkerPropertyIndex,
-    WorkerPropertyIndexRuntime,
     WorkerResourceCatalog,
     WorkerRuntime,
     WorkerRuntimeStatus,
@@ -51,7 +49,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
     def test_owner_surfaces_keep_properties_and_index_independent(self) -> None:
         self.assertEqual(
             WorkerRuntime.__abstractmethods__,
-            {"upsert_worker"},
+            {"replace_worker_properties", "upsert_worker"},
         )
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
@@ -71,6 +69,20 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             {"self", "declaration"},
         )
         self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker"))
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerRuntime.replace_worker_properties
+                ).parameters
+            ),
+            {
+                "self",
+                "worker_group_id",
+                "worker_id",
+                "updated_at_millis",
+                "properties",
+            },
+        )
 
     def test_worker_score_observation_and_transition_contract_is_bounded(self) -> None:
         self.assertEqual(
@@ -205,67 +217,10 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT,
             100,
         )
-        self.assertEqual(
-            WorkerPropertyIndex.__abstractmethods__,
-            {"load", "update"},
-        )
-        self.assertEqual(
-            WorkerPropertyIndexRuntime.__abstractmethods__,
-            {
-                "load_indexed_property_values",
-                "update_indexed_properties",
-            },
-        )
-
-    def test_property_index_operations_are_bounded_and_field_routed(self) -> None:
-        self.assertEqual(
-            set(
-                inspect.signature(
-                    WorkerPropertyIndex.load
-                ).parameters
-            ),
-            {
-                "self",
-                "worker_group_id",
-                "worker_ids",
-            },
-        )
-        self.assertEqual(
-            set(
-                inspect.signature(
-                    WorkerPropertyIndexRuntime.load_indexed_property_values
-                ).parameters
-            ),
-            {
-                "self",
-                "worker_group_id",
-                "index_field",
-                "worker_ids",
-            },
-        )
-        self.assertEqual(
-            WorkerPropertyIndexRuntime.MAX_INDEXED_PROPERTY_READ_LIMIT,
-            100,
-        )
-        expected_update = {"self", "worker_group_id", "worker_id", "updates"}
-        self.assertEqual(
-            set(
-                inspect.signature(
-                    WorkerPropertyIndexRuntime.update_indexed_properties
-                ).parameters
-            ),
-            expected_update,
-        )
-
-    def test_property_index_contracts_are_reexported(self) -> None:
-        self.assertIn(
-            "WorkerPropertyIndex",
-            executable_spec.__all__,
-        )
-        self.assertIn(
-            "WorkerPropertyIndexRuntime",
-            executable_spec.__all__,
-        )
+    def test_removed_property_index_contracts_are_not_reexported(self) -> None:
+        self.assertNotIn("WorkerPropertyIndex", executable_spec.__all__)
+        self.assertNotIn("WorkerPropertyIndexRuntime", executable_spec.__all__)
+        self.assertNotIn("MappedWorkerPropertyIndexRuntime", executable_spec.__all__)
         self.assertNotIn(
             "WorkerPropertySnapshotRuntime",
             executable_spec.__all__,

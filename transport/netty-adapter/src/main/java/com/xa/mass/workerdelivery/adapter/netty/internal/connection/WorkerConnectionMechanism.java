@@ -48,6 +48,16 @@ public final class WorkerConnectionMechanism {
     );
     private static final String WORKER_PROPERTIES_SNAPSHOT_EVENT =
             "platform.worker.properties.snapshot";
+    private static final String WORKER_PROPERTIES_CHANGED_EVENT =
+            "platform.worker.properties.changed";
+    private static final String ADAPTER_PROPERTIES_CHANGED_EVENT =
+            "platform.adapter.worker-properties.changed";
+    private static final String ADAPTER_PROPERTIES_SNAPSHOT_FORWARD =
+            "adapter-properties-snapshot:v1";
+    private static final String WORKER_PROPERTIES_CHANGED_FORWARD =
+            "worker-properties-changed:v1";
+    private static final String WORKER_PROPERTIES_EVIDENCE_FORWARD =
+            "worker-properties-evidence:v1";
     private static final String WORKER_CONNECTION_CHANGED_EVENT =
             "platform.adapter.worker-connection.changed";
     private static final String WORKER_SERVICEABILITY_EVIDENCE_FORWARD =
@@ -285,6 +295,7 @@ public final class WorkerConnectionMechanism {
                 if (admission.becameAvailable()) {
                     reportConnectionChanged(workerId, "CONNECTED");
                 }
+                requestPropertiesSnapshot(workerId, channel);
                 closeReplaced(admission.replacedChannel());
             }
             case VERIFICATION_CLAIMED -> {
@@ -349,6 +360,7 @@ public final class WorkerConnectionMechanism {
             return;
         }
         reportConnectionChanged(workerId, "CONNECTED");
+        requestPropertiesSnapshot(workerId, channel);
     }
 
     private void receiveBoundReport(
@@ -366,13 +378,27 @@ public final class WorkerConnectionMechanism {
             logDrop("dropWorkerSourceMismatch", report);
             return;
         }
+        var outcome = classifyDeliveryReportOutcomeCode(report.outcomeCode());
+        if (outcome != SUCCESS && outcome != WORKER_FAILURE) {
+            logDrop("dropWorkerOutcome", report);
+            return;
+        }
+
         if (report.dst() == ADAPTER) {
             if (WORKER_CONNECTION_IDENTIFY_EVENT_CODE.equals(
                     report.messageType()
             )) {
                 logDrop("dropRepeatedIdentity", report);
-            } else {
+                return;
+            }
+            String evidence = observePropertiesResult(
+                    context.channel(),
+                    report
+            );
+            if (evidence == null) {
                 logDrop("dropUnknownWorkerEvent", report);
+            } else {
+                ingressPropertiesEvidence(workerId, evidence);
             }
             return;
         }
@@ -381,14 +407,15 @@ public final class WorkerConnectionMechanism {
             return;
         }
 
-        var outcome = classifyDeliveryReportOutcomeCode(report.outcomeCode());
-        if (outcome != SUCCESS && outcome != WORKER_FAILURE) {
-            logDrop("dropWorkerOutcome", report);
-            return;
-        }
-        observePropertiesResult(context.channel(), report);
+        String evidence = observePropertiesResult(
+                context.channel(),
+                report
+        );
+        List<String> encodedReports = evidence == null
+                ? List.of(encodedReport)
+                : List.of(encodedReport, evidence);
         boolean taskReport = report.dst() == TASK;
-        switch (reportProcess.ingress(List.of(encodedReport))) {
+        switch (reportProcess.ingress(encodedReports)) {
             case ACCEPTED -> {
             }
             case FULL -> {
@@ -416,31 +443,30 @@ public final class WorkerConnectionMechanism {
         }
     }
 
-    void observePropertiesResult(
+    String observePropertiesResult(
             Channel currentChannel,
             DeliveryReport report
     ) {
         Objects.requireNonNull(currentChannel, "currentChannel");
         Objects.requireNonNull(report, "report");
-        if (!WORKER_PROPERTIES_SNAPSHOT_EVENT.equals(report.messageType())
-                || !"200".equals(report.outcomeCode())) {
-            return;
+        if (!isPropertiesObservation(report)) {
+            return null;
         }
         String workerId = report.sourceId();
         if (!routes.isCurrentConnected(workerId, currentChannel)) {
-            return;
+            return null;
         }
         try {
             Map<String, Object> payload = Jsons.parseObject(report.payload());
             Object rawProperties = payload.get("properties");
             if (!payload.keySet().equals(PROPERTIES_PAYLOAD_FIELDS)
                     || !(rawProperties instanceof Map<?, ?> values)) {
-                return;
+                return null;
             }
             Map<String, Object> properties = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : values.entrySet()) {
                 if (!(entry.getKey() instanceof String key)) {
-                    return;
+                    return null;
                 }
                 properties.put(key, entry.getValue());
             }
@@ -448,10 +474,127 @@ public final class WorkerConnectionMechanism {
                     propertiesCache.observe(workerId, properties);
             if (!routes.isCurrentConnected(workerId, currentChannel)) {
                 propertiesCache.rollback(write);
+                return null;
             }
+            WorkerPropertiesObservation observation =
+                    propertiesCache.committedObservation(write);
+            return observation == null
+                    ? null
+                    : encodePropertiesEvidence(workerId, observation);
         } catch (RuntimeException ignored) {
             // The original valid DeliveryReport still follows Result ingress.
+            return null;
         }
+    }
+
+    private boolean isPropertiesObservation(DeliveryReport report) {
+        if (!"200".equals(report.outcomeCode())) {
+            return false;
+        }
+        if (WORKER_PROPERTIES_CHANGED_EVENT.equals(report.messageType())) {
+            return report.dst() == ADAPTER
+                    && WORKER_PROPERTIES_CHANGED_FORWARD.equals(
+                    report.forward()
+            );
+        }
+        if (!WORKER_PROPERTIES_SNAPSHOT_EVENT.equals(report.messageType())) {
+            return false;
+        }
+        return report.dst() == SYSTEM
+                || (report.dst() == ADAPTER
+                && ADAPTER_PROPERTIES_SNAPSHOT_FORWARD.equals(
+                report.forward()
+        ));
+    }
+
+    private String encodePropertiesEvidence(
+            String workerId,
+            WorkerPropertiesObservation observation
+    ) {
+        DeliveryReport evidence = DeliveryReport.create(
+                ADAPTER,
+                adapterId,
+                KERNEL,
+                ADAPTER_PROPERTIES_CHANGED_EVENT,
+                "200",
+                Jsons.toJson(Map.of(
+                        "workerId", workerId,
+                        "updatedAtMillis", observation.updatedAtMillis(),
+                        "properties", observation.properties()
+                )),
+                WORKER_PROPERTIES_EVIDENCE_FORWARD
+        );
+        return codec.encodeDeliveryReport(evidence);
+    }
+
+    private void ingressPropertiesEvidence(
+            String workerId,
+            String encodedEvidence
+    ) {
+        DeliveryReportProcess.ReportIngressStatus status =
+                reportProcess.ingress(List.of(encodedEvidence));
+        if (status != DeliveryReportProcess.ReportIngressStatus.ACCEPTED) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "errorCode={0} operation={1} adapterId={2} "
+                            + "workerId={3} queueStatus={4}",
+                    WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED.code(),
+                    "workerConnection.reportPropertiesEvidence",
+                    adapterId,
+                    workerId,
+                    status
+            );
+        }
+    }
+
+    private void requestPropertiesSnapshot(
+            String workerId,
+            Channel channel
+    ) {
+        if (!routes.isCurrentConnected(workerId, channel)) {
+            return;
+        }
+        try {
+            DeliveryCommand command = DeliveryCommand.create(
+                    ADAPTER,
+                    WORKER,
+                    WORKER_PROPERTIES_SNAPSHOT_EVENT,
+                    Math.addExact(
+                            System.currentTimeMillis(),
+                            sendTimeLimit.toMillis()
+                    ),
+                    "null",
+                    ADAPTER_PROPERTIES_SNAPSHOT_FORWARD
+            );
+            TextWriteAttempt attempt = networkServer.writeText(
+                    channel,
+                    codec.encodeDeliveryCommand(command)
+            );
+            if (attempt != TextWriteAttempt.STARTED) {
+                logPropertiesSnapshotFailure(workerId, attempt.name());
+            }
+        } catch (RuntimeException error) {
+            logPropertiesSnapshotFailure(
+                    workerId,
+                    error.getClass().getSimpleName()
+            );
+        }
+    }
+
+    private void logPropertiesSnapshotFailure(
+            String workerId,
+            String failure
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode={0} operation={1} adapterId={2} "
+                        + "workerId={3} failure={4}",
+                WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED.code(),
+                "workerConnection.requestPropertiesSnapshot",
+                adapterId,
+                workerId,
+                failure
+        );
     }
 
     private DeliveryReport decode(String encodedReport) {

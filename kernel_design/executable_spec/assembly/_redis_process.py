@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic
-from typing import Any, Mapping
+from typing import Any
 
-from ..kernel.worker_runtime import MappedWorkerPropertyIndexRuntime
 from ..kernel.worker_score import WorkerScoreCore
 
 from ..scheduling import (
@@ -19,7 +18,7 @@ from ..scheduling import (
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
     WorkerServiceabilityDispatchPacer,
-    WorkerServiceabilityResultPacer,
+    AdapterEvidenceResultPacer,
 )
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
@@ -29,8 +28,8 @@ from ..redis_runtime import (
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskScoreBandCore,
-    RedisHashWorkerPropertyIndexProvider,
     RedisWorkerResourceCatalog,
+    RedisWorkerRuntime,
     RedisWorkerScoreCore,
     RedisWorkerResultRuntime,
     RedisWorkerServiceabilityRuntime,
@@ -47,8 +46,8 @@ from .result_routing_application import (
 from .worker_serviceability_application import (
     WorkerServiceabilityDispatchApplication,
     WorkerServiceabilityDispatchApplicationConfig,
-    WorkerServiceabilityResultApplication,
-    WorkerServiceabilityResultApplicationConfig,
+    AdapterEvidenceResultApplication,
+    AdapterEvidenceResultApplicationConfig,
 )
 
 
@@ -58,14 +57,13 @@ class _RedisKernelProcessConfig:
     running_task_soft_limit: int
     worker_candidate_scan_limit: int
     hot_eligibility_floor_millis: int | None
-    worker_property_indexes: Mapping[str, str]
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
     worker_serviceability_dispatch: (
         WorkerServiceabilityDispatchApplicationConfig | None
     )
     worker_serviceability_result: (
-        WorkerServiceabilityResultApplicationConfig | None
+        AdapterEvidenceResultApplicationConfig | None
     )
     stop_timeout_millis: int
 
@@ -84,11 +82,6 @@ class _RedisKernelProcessConfig:
             % WorkerScoreCore.SLOT_MILLIS != 0
         ):
             raise ValueError("HOT eligibility floor must be score-slot aligned")
-        if any(
-            implementation != "redis-hash"
-            for implementation in self.worker_property_indexes.values()
-        ):
-            raise ValueError("unsupported Worker property index implementation")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
         if (self.worker_serviceability_dispatch is None) != (
@@ -144,26 +137,6 @@ class _RedisKernelProcess:
             redis_client,
             prefix=config.prefix,
         )
-        self._worker_property_index_provider = (
-            RedisHashWorkerPropertyIndexProvider(
-                redis_client,
-                prefix=config.prefix,
-            )
-        )
-        self._worker_property_index_runtime = (
-            MappedWorkerPropertyIndexRuntime(
-                self._worker_resource_catalog,
-                {
-                    property_field: self._worker_property_index_provider.create(
-                        property_field
-                    )
-                    for property_field, implementation
-                    in config.worker_property_indexes.items()
-                    if implementation == "redis-hash"
-                },
-            )
-        )
-
         candidate_cache = RedisCandidateWorkerCache(
             redis_client,
             prefix=config.prefix,
@@ -178,7 +151,6 @@ class _RedisKernelProcess:
         )
         worker_candidate_matcher = WorkerCandidateMatcher(
             self._worker_resource_catalog,
-            self._worker_property_index_runtime,
         )
         candidate_acquirer = WorkerCandidateAcquirer(
             candidate_cache,
@@ -248,19 +220,25 @@ class _RedisKernelProcess:
             WorkerServiceabilityDispatchApplication | None
         ) = None
         self._worker_serviceability_result_application: (
-            WorkerServiceabilityResultApplication | None
+            AdapterEvidenceResultApplication | None
         ) = None
         if config.worker_serviceability_dispatch is not None:
             serviceability_runtime = RedisWorkerServiceabilityRuntime(
                 redis_client,
                 prefix=config.prefix,
             )
+            self._worker_runtime = RedisWorkerRuntime(
+                redis_client,
+                self._worker_score,
+                prefix=config.prefix,
+            )
             self._worker_serviceability_result_application = (
-                WorkerServiceabilityResultApplication(
-                    WorkerServiceabilityResultPacer(
+                AdapterEvidenceResultApplication(
+                    AdapterEvidenceResultPacer(
                         serviceability_runtime,
                         self._worker_resource_catalog,
                         self._worker_score,
+                        self._worker_runtime,
                         hot_eligibility_floor_millis=(
                             config.hot_eligibility_floor_millis
                         ),

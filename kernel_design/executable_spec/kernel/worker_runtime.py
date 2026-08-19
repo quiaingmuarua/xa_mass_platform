@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from .worker_score import WorkerId
@@ -12,9 +11,7 @@ from .worker_score import WorkerId
 WorkerGroupId = str
 EndpointManagerId = str
 EventCode = str
-AttributeName = str
 AttributeValue = object
-IndexedPropertyPayload = object
 
 
 class WorkerRuntimeStatus(Enum):
@@ -96,65 +93,16 @@ class WorkerRuntime(ABC):
         """Upsert immutable identity and replace worker-owned properties."""
         pass
 
-
-class WorkerPropertyIndex(ABC):
-    """One configured property index implementation.
-
-    The immutable assembly map owns the qualified index-field identity. Storage
-    and value encoding stay behind this interface.
-    """
-
     @abstractmethod
-    def update(
+    def replace_worker_properties(
         self,
         *,
         worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
-        value: IndexedPropertyPayload | None,
+        updated_at_millis: int,
+        properties: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        pass
-
-    @abstractmethod
-    def load(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, IndexedPropertyPayload]:
-        """Load the current sparse projection for bounded Worker ids."""
-        pass
-
-
-class WorkerPropertyIndexRuntime(ABC):
-    """Worker-runtime indexed-property owner route.
-
-    Indexed properties are explicit last-applied scheduling projections. They
-    are independent from descriptor property snapshots and do not expose
-    Worker lifecycle, candidate discovery, or score mutation authority.
-    """
-
-    MAX_INDEXED_PROPERTY_READ_LIMIT = 100
-
-    @abstractmethod
-    def update_indexed_properties(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        updates: Mapping[AttributeName, IndexedPropertyPayload | None],
-    ) -> Mapping[AttributeName, WorkerRuntimeResult]:
-        """Update qualified ``index.*`` projections independently by field."""
-        pass
-
-    @abstractmethod
-    def load_indexed_property_values(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        index_field: str,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, IndexedPropertyPayload]:
-        """Route one bounded point read to its configured projection."""
+        """Replace one existing Worker's complete canonical property snapshot."""
         pass
 
 
@@ -164,7 +112,7 @@ class WorkerResourceCatalog(ABC):
     It owns worker-group declarations, bounded descriptor reads, and
     low-frequency platform property patches. Worker upsert belongs to
     WorkerRuntime because first appearance must also establish the worker score.
-    This catalog does not expose indexed property values or score mutation.
+    This catalog does not expose score mutation.
     """
 
     MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100
@@ -233,155 +181,3 @@ class WorkerResourceCatalog(ABC):
         """Patch platform-owned properties inside an explicit worker group."""
         pass
 
-
-class MappedWorkerPropertyIndexRuntime(WorkerPropertyIndexRuntime):
-    """Route property-index owner calls to immutable per-field implementations."""
-
-    def __init__(
-        self,
-        catalog: WorkerResourceCatalog,
-        indexes: Mapping[str, WorkerPropertyIndex],
-    ) -> None:
-        if not isinstance(catalog, WorkerResourceCatalog):
-            raise TypeError("catalog must be WorkerResourceCatalog")
-        indexes_by_field: dict[str, WorkerPropertyIndex] = {}
-        if not isinstance(indexes, Mapping):
-            raise TypeError("indexes must be a mapping")
-        for index_field, index in indexes.items():
-            if not _valid_index_field(index_field):
-                raise ValueError("property index fields must use index.*")
-            if not isinstance(index, WorkerPropertyIndex):
-                raise TypeError("indexes must contain WorkerPropertyIndex values")
-            indexes_by_field[index_field] = index
-        self.catalog = catalog
-        self._indexes_by_field = MappingProxyType(indexes_by_field)
-
-    def update_indexed_properties(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        updates: Mapping[AttributeName, IndexedPropertyPayload | None],
-    ) -> Mapping[AttributeName, WorkerRuntimeResult]:
-        if not isinstance(updates, Mapping):
-            raise TypeError("updates must be a mapping")
-        if not updates:
-            return {}
-        if not _valid_id(worker_group_id):
-            return _uniform_results(
-                updates,
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerGroupId",
-            )
-        if not _valid_id(worker_id):
-            return _uniform_results(
-                updates,
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerId",
-            )
-        descriptor = self.catalog.get_worker_descriptors(
-            worker_group_id=worker_group_id,
-            worker_ids=[worker_id],
-        ).get(worker_id)
-        if descriptor is None:
-            return _uniform_results(
-                updates,
-                WorkerRuntimeStatus.NOT_FOUND,
-                "worker not found",
-            )
-
-        results: dict[AttributeName, WorkerRuntimeResult] = {}
-        for index_field, value in updates.items():
-            if not _valid_index_field(index_field):
-                results[index_field] = WorkerRuntimeResult(
-                    WorkerRuntimeStatus.INVALID,
-                    "property index fields must use index.*",
-                )
-                continue
-            index = self._indexes_by_field.get(index_field)
-            if index is None:
-                results[index_field] = WorkerRuntimeResult(
-                    WorkerRuntimeStatus.NOT_FOUND,
-                    "property index is not configured",
-                )
-                continue
-            try:
-                result = index.update(
-                    worker_group_id=worker_group_id,
-                    worker_id=worker_id,
-                    value=value,
-                )
-            except Exception:
-                result = WorkerRuntimeResult(
-                    WorkerRuntimeStatus.STALE,
-                    "property index provider failed",
-                )
-            if not isinstance(result, WorkerRuntimeResult):
-                result = WorkerRuntimeResult(
-                    WorkerRuntimeStatus.STALE,
-                    "property index provider returned an invalid result",
-                )
-            results[index_field] = result
-        return results
-
-    def load_indexed_property_values(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        index_field: str,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, IndexedPropertyPayload]:
-        if not _valid_id(worker_group_id):
-            raise ValueError("workerGroupId must be non-empty")
-        if not _valid_index_field(index_field):
-            raise ValueError("invalid indexed property field")
-        if isinstance(worker_ids, (str, bytes)) or not isinstance(
-            worker_ids,
-            Sequence,
-        ):
-            raise TypeError("workerIds must be a sequence")
-        bounded_worker_ids = tuple(dict.fromkeys(worker_ids))
-        if not bounded_worker_ids or len(bounded_worker_ids) > (
-            self.MAX_INDEXED_PROPERTY_READ_LIMIT
-        ):
-            raise ValueError("indexed property read must contain 1..100 Workers")
-        if any(not _valid_id(worker_id) for worker_id in bounded_worker_ids):
-            raise ValueError("Worker ids must be non-empty")
-
-        index = self._indexes_by_field.get(index_field)
-        if index is None:
-            raise LookupError("property index is not configured")
-
-        loaded = index.load(
-            worker_group_id=worker_group_id,
-            worker_ids=bounded_worker_ids,
-        )
-        if not isinstance(loaded, Mapping):
-            raise RuntimeError("property index returned an invalid projection")
-        values = dict(loaded)
-        if any(
-            not _valid_id(worker_id)
-            or worker_id not in bounded_worker_ids
-            or value is None
-            for worker_id, value in values.items()
-        ):
-            raise RuntimeError("property index returned an invalid projection")
-        return MappingProxyType(values)
-
-def _valid_id(value: object) -> bool:
-    return isinstance(value, str) and bool(value)
-
-
-def _valid_index_field(value: object) -> bool:
-    return isinstance(value, str) and value.startswith("index.") and len(value) > 6
-
-
-def _uniform_results(
-    updates: Mapping[AttributeName, object],
-    status: WorkerRuntimeStatus,
-    reason: str,
-) -> dict[AttributeName, WorkerRuntimeResult]:
-    return {
-        property_name: WorkerRuntimeResult(status, reason)
-        for property_name in updates
-    }

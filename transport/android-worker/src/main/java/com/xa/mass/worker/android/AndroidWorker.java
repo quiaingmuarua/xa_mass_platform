@@ -244,6 +244,10 @@ public final class AndroidWorker implements WorkerLifecycle {
         return worker.snapshot();
     }
 
+    public boolean publishPropertiesChanged() {
+        return worker.publishPropertiesChanged();
+    }
+
     @Override
     public void addListener(Listener listener) {
         worker.addListener(listener);

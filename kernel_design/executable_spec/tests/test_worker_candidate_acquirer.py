@@ -152,7 +152,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
     def test_direct_uses_worker_id_candidates_then_full_match(self) -> None:
         rule = {
             "workerId": {"$in": ["worker-1", "worker-2", "worker-1"]},
-            "index.worker.region": {"$eq": "cn-east"},
+            "worker.region": {"$eq": "cn-east"},
             "platform.pool": {"$in": ["batch", "burst"]},
         }
         request = WorkerCandidateRequest(0, 1, rule)
@@ -235,7 +235,7 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
                     1,
                     {
                         "workerId": {"$in": ["worker-1", "worker-2"]},
-                        "index.worker.region": {"$eq": "cn-east"},
+                        "worker.region": {"$eq": "cn-east"},
                     },
                 )
             },

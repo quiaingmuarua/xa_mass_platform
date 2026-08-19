@@ -185,6 +185,31 @@ class FakeRedis:
         if numkeys != 1:
             raise ValueError("unsupported fake redis script")
         key = str(args[0])
+        if "decoded.updatedAtMillis >= tonumber(ARGV[2])" in script:
+            import json
+
+            field = str(args[1])
+            updated_at_millis = int(args[2])
+            replacement = self._stringify(args[3])
+            current = self.hget(key, field)
+            if current is None:
+                return 0
+            try:
+                decoded = json.loads(current)
+            except (TypeError, ValueError):
+                return -2
+            if (
+                not isinstance(decoded, dict)
+                or set(decoded) != {"updatedAtMillis", "properties"}
+                or isinstance(decoded.get("updatedAtMillis"), bool)
+                or not isinstance(decoded.get("updatedAtMillis"), int)
+                or not isinstance(decoded.get("properties"), dict)
+            ):
+                return -2
+            if decoded["updatedAtMillis"] >= updated_at_millis:
+                return -1
+            self.hset(key, field, replacement)
+            return 1
         if "current ~= ARGV[2]" in script:
             field = str(args[1])
             observed = self._stringify(args[2])
