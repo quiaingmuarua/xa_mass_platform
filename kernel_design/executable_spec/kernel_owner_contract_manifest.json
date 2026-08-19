@@ -130,7 +130,6 @@
         "upsert_worker_group"
     ],
     "WorkerRuntime": [
-      "replace_worker_properties",
       "upsert_worker"
     ],
     "WorkerScoreCore": [

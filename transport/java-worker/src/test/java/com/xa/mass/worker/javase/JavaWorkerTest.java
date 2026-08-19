@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
@@ -101,6 +102,54 @@ class JavaWorkerTest {
                 "/workers/" + WORKER_ID + ":bind"
         ));
         assertEquals(WORKER_ID, worker.snapshot().workerId());
+    }
+
+    @Test
+    void changedPropertiesAreLoadedByTheNextExplicitStart()
+            throws Exception {
+        MemoryIdentityStore identity = new MemoryIdentityStore();
+        AtomicReference<Map<String, Object>> properties =
+                new AtomicReference<>(Map.of(
+                        "runtime", "java",
+                        "region", "initial"
+                ));
+        enqueueSession(true);
+        worker = JavaWorker.create(
+                URI.create(server.url("/").toString()),
+                "group-1",
+                "fixed-installation",
+                identity,
+                WorkerTransportType.WEBSOCKET,
+                properties::get,
+                definitions(),
+                WorkerConnectionOptions.of(
+                        Duration.ofSeconds(2),
+                        reconnectPolicy()
+                )
+        );
+
+        worker.start();
+        takeRequest();
+        RecordedRequest firstBind = takeRequest();
+        takeRequest();
+        assertEquals("initial", properties(firstBind).get("region"));
+
+        properties.set(Map.of(
+                "runtime", "java",
+                "region", "updated"
+        ));
+        worker.stop();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        enqueueSession(false);
+        worker.start();
+        RecordedRequest secondBind = takeRequest();
+        takeRequest();
+
+        assertTrue(secondBind.getTarget().endsWith(
+                "/workers/" + WORKER_ID + ":bind"
+        ));
+        assertEquals("updated", properties(secondBind).get("region"));
     }
 
     @Test

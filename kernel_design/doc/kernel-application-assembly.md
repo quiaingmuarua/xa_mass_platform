@@ -78,7 +78,6 @@ The JVM incremental assembly is explicit per operation:
 WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
 Worker upsert                     -> Java Redis WorkerRuntime provider
 Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
-Explicit index update/load      -> Java Redis WorkerPropertyIndexRuntime provider
 Worker upsert score operations      -> Java Redis WorkerScoreCore provider
 Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
@@ -143,13 +142,11 @@ The assembly does not accept acquisition strategy, cache participation, or
 rule-owner configuration. Scheduling derives those decisions from the two
 fixed Task types through the internal task scheduling profile resolver.
 
-The Server exposes one explicit indexed-property update command.
-Properties and index projections are independent and no assembly operation
-automatically writes both. Each configured field owns one property-index
-instance. The Redis HASH implementation stores JSON-compatible point values.
-DIRECT obtains candidates from either an empty rule's bounded Group score
-query or an explicit `workerId` condition; Property indexes never discover
-candidates.
+Candidate matching reads canonical Worker and Platform Properties only after a
+bounded candidate source has supplied Worker IDs. DIRECT obtains candidates
+from either an empty rule's bounded Group score query or an explicit
+`workerId` condition; it never scans Worker descriptors. The removed `index.*`
+requirement namespace fails closed.
 
 ## Zero Configuration
 
@@ -214,22 +211,6 @@ empty-recheck count, and empty-recheck interval remain internal constants.
 `systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
 slice; it defaults to `100` and must be a positive integer. It is a soft
 admission bound, not an atomic permit or hard capacity promise.
-
-Property Index registration is not part of Kernel application JSON. Python and
-Java read the same process environment value:
-
-```text
-XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON=
-  {"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}
-```
-
-The missing value defaults to `{}`. The value must be a JSON object whose keys
-are explicit `index.*` projection identities; the current implementation value
-is `redis-hash`. Malformed JSON, invalid fields, and unknown implementations
-fail process startup. Both processes canonicalize the map, log its field count
-and SHA-256 fingerprint, and do not publish a registry through Redis.
-WorkerGroup declarations do not create or migrate indexes; an unconfigured
-field remains an explicit update/read failure.
 
 ## Lifecycle
 
@@ -423,6 +404,9 @@ platform-issued Worker UUID in a Server-owned namespace; other Properties do
 not enter that coordinate and Register does not call a Kernel owner. Bind
 receives the same complete snapshot, verifies its client key, persists an
 Endpoint Manager, and invokes Kernel Worker upsert with that snapshot.
+This Bind is the canonical Worker Properties refresh point. Transparent Client
+reconnect sends only connection identity, while Adapter properties snapshots
+remain process-local observation and never invoke a Kernel write owner.
 Pure polling Workers bind to the fixed logical `system-polling` endpoint
 manager and cannot scan the mailbox. Point calls and Adapter connections verify
 the persisted route; this is routing consistency, not authentication.
@@ -482,8 +466,8 @@ API compatibility remain out of scope.
 - Do not re-export the private Redis composition root.
 - Do not expose owner runtime instances as application properties.
 - Do not add scheduler lifecycle methods to `ResourcesCommandClient`.
-- Do not make Properties and indexed-property updates an implicit dual write.
-- Do not expose index provider storage or operator selection through assembly.
+- Do not add an `index.*` projection owner or matching fallback through
+  assembly.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
 - Do not restore Python TaskItem append or result-query HTTP routes.

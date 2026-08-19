@@ -96,6 +96,7 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertFalse(source.contains("UUID.fromString("));
         assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("isConnected("));
+        assertFalse(assembly.contains("publishPropertiesChanged"));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
         assertTrue(assembly.contains(

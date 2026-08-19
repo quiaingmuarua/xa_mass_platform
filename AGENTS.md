@@ -191,6 +191,9 @@ Rules:
   Adapter snapshots do not add WorkerGroup state to the route owner.
 - Adapter-local Worker property observation is a separate projection cache;
   it must not be folded into RouteEntry or copied into Server/Kernel truth.
+- Only an explicit successful Worker properties snapshot Result from the exact
+  current Channel may refresh that projection; connection activation does not
+  request a snapshot and cache refresh never emits a Kernel Report.
 - Connection snapshots read Route truth; properties snapshots pass through the
   Route evidence gate and then read the properties cache. They have no atomic
   join or shared version.
@@ -230,6 +233,9 @@ the `WorkerDeliveryAdapter` contract.
 - Transport owns identity/Command/Result protocol and synchronous event
   execution.
 - `WorkerRunController` owns only the `RUNNING/STOPPED` run lifecycle.
+- Each explicit `start()` preparation loads the complete Worker Properties and
+  refreshes canonical truth through Register/Bind. Transparent Client reconnect
+  sends only connection identity; there is no runtime Properties-change event.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - One Client callback lane serializes Commands. Do not add Command queues,

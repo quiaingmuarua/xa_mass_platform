@@ -20,7 +20,7 @@ from kernel_design.executable_spec import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    AdapterEvidenceResultPacer,
+    WorkerServiceabilityResultPacer,
 )
 
 
@@ -206,28 +206,6 @@ class FakeRuntime:
         return consumed
 
 
-class FakeWorkerRuntime:
-    def __init__(self) -> None:
-        self.replacements: list[
-            tuple[str, str, int, dict[str, object]]
-        ] = []
-
-    def replace_worker_properties(
-        self,
-        *,
-        worker_group_id: str,
-        worker_id: str,
-        updated_at_millis: int,
-        properties: dict[str, object],
-    ) -> None:
-        self.replacements.append((
-            worker_group_id,
-            worker_id,
-            updated_at_millis,
-            dict(properties),
-        ))
-
-
 def score_state(
     worker_id: str,
     polarity: WorkerScorePolarity,
@@ -341,27 +319,6 @@ def expired_report(
             }
         ),
         forward="worker-serviceability-evidence:v1",
-    )
-
-
-def properties_report(
-    worker_id: str,
-    properties: dict[str, object],
-    *,
-    updated_at_millis: int = 99_000,
-) -> DeliveryReport:
-    return DeliveryReport.create(
-        src=DeliveryEndpoint.ADAPTER,
-        source_id="adapter-a",
-        dst=DeliveryEndpoint.KERNEL,
-        message_type="platform.adapter.worker-properties.changed",
-        outcome_code="200",
-        payload=json.dumps({
-            "workerId": worker_id,
-            "updatedAtMillis": updated_at_millis,
-            "properties": properties,
-        }),
-        forward="worker-properties-evidence:v1",
     )
 
 
@@ -652,17 +609,15 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.assertEqual(1, self.pacer.dispatch_probes(config=config))
 
 
-class AdapterEvidenceResultPacerTest(unittest.TestCase):
+class WorkerServiceabilityResultPacerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime = FakeRuntime()
         self.catalog = FakeCatalog()
         self.score = FakeScore()
-        self.worker_runtime = FakeWorkerRuntime()
-        self.pacer = AdapterEvidenceResultPacer(
+        self.pacer = WorkerServiceabilityResultPacer(
             self.runtime,
             self.catalog,
             self.score,
-            self.worker_runtime,
             hot_eligibility_floor_millis=_FLOOR,
             clock_millis=lambda: 100_000,
         )
@@ -786,49 +741,6 @@ class AdapterEvidenceResultPacerTest(unittest.TestCase):
 
         self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
         self.assertEqual([], self.score.toggles)
-
-    def test_properties_use_latest_timestamp_without_score_mutation(self) -> None:
-        self.runtime.reports.extend((
-            properties_report(
-                "worker",
-                {"region": "old"},
-                updated_at_millis=98_000,
-            ),
-            connection_report("worker", "CONNECTED"),
-            properties_report(
-                "worker",
-                {"region": "new"},
-                updated_at_millis=99_000,
-            ),
-        ))
-        self._own(("worker",))
-        self.score.states_by_group["group-a"] = {
-            "worker": score_state(
-                "worker", WorkerScorePolarity.HOT_ACQUIRE, 950_000
-            )
-        }
-
-        self.assertEqual(2, self.pacer.route_adapter_evidence(config=self.config))
-        self.assertEqual(
-            [("group-a", "worker", 99_000, {"region": "new"})],
-            self.worker_runtime.replacements,
-        )
-        self.assertEqual(
-            [("group-a", ("worker",), _FLOOR, 0)],
-            self.score.rewrites,
-        )
-
-    def test_invalid_or_unknown_properties_evidence_is_dropped(self) -> None:
-        self.runtime.reports.extend((
-            properties_report(
-                "future", {}, updated_at_millis=100_001
-            ),
-            properties_report("missing", {"battery": 1}),
-        ))
-        self.catalog.group_by_worker["missing"] = None
-
-        self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
-        self.assertEqual([], self.worker_runtime.replacements)
 
     def test_configs_reject_invalid_bounds_and_exclusions(self) -> None:
         with self.assertRaises(ValueError):

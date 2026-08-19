@@ -72,8 +72,6 @@ class NettyAdapterContractTest {
 
         try (WorkerPeer worker = connect(protocol, port)) {
             worker.send(identity());
-            awaitVerified(remoteApi);
-            assertPropertiesSnapshot(worker.receive());
             DeliveryCommand command = taskCommand("round-trip");
             remoteApi.commandBatches.add(Map.of(WORKER_ID, command));
 
@@ -118,8 +116,6 @@ class NettyAdapterContractTest {
         try {
             try (WorkerPeer first = connect(protocol, port)) {
                 first.send(identity());
-                awaitVerified(remoteApi);
-                assertPropertiesSnapshot(first.receive());
                 DeliveryCommand barrier = taskCommand("first-route");
                 remoteApi.commandBatches.add(Map.of(WORKER_ID, barrier));
                 assertThat(codec.decodeDeliveryCommand(first.receive()))
@@ -128,7 +124,6 @@ class NettyAdapterContractTest {
 
             try (WorkerPeer reconnect = connect(protocol, port)) {
                 reconnect.send(identity());
-                assertPropertiesSnapshot(reconnect.receive());
                 DeliveryCommand command = taskCommand("reconnect-route");
                 remoteApi.commandBatches.add(Map.of(WORKER_ID, command));
                 assertThat(codec.decodeDeliveryCommand(reconnect.receive()))
@@ -178,20 +173,6 @@ class NettyAdapterContractTest {
         try {
             try (WorkerPeer first = connect(protocol, port)) {
                 first.send(identity());
-                awaitVerified(remoteApi);
-                DeliveryCommand propertiesRequest = codec.decodeDeliveryCommand(
-                        first.receive()
-                );
-                assertPropertiesSnapshot(propertiesRequest);
-                first.send(codec.encodeDeliveryReport(
-                        DeliveryReport.fromCommand(
-                                propertiesRequest,
-                                WORKER,
-                                WORKER_ID,
-                                "200",
-                                "{\"properties\":{\"battery\":87}}"
-                        )
-                ));
                 DeliveryCommand firstBarrier = taskCommand("first-barrier");
                 remoteApi.commandBatches.add(Map.of(
                         WORKER_ID,
@@ -214,7 +195,6 @@ class NettyAdapterContractTest {
 
             try (WorkerPeer reconnect = connect(protocol, port)) {
                 reconnect.send(identity());
-                assertPropertiesSnapshot(reconnect.receive());
                 DeliveryCommand routeBarrier = taskCommand("reconnect-barrier");
                 remoteApi.commandBatches.add(Map.of(
                         WORKER_ID,
@@ -425,22 +405,6 @@ class NettyAdapterContractTest {
             Thread.onSpinWait();
         }
         throw new AssertionError("Expected Worker route verification");
-    }
-
-    private void assertPropertiesSnapshot(String encodedCommand) {
-        assertPropertiesSnapshot(codec.decodeDeliveryCommand(encodedCommand));
-    }
-
-    private static void assertPropertiesSnapshot(DeliveryCommand command) {
-        assertThat(command.src()).isEqualTo(ADAPTER);
-        assertThat(command.dst()).isEqualTo(WORKER);
-        assertThat(command.messageType()).isEqualTo(
-                "platform.worker.properties.snapshot"
-        );
-        assertThat(command.payload()).isEqualTo("null");
-        assertThat(command.forward()).isEqualTo(
-                "adapter-properties-snapshot:v1"
-        );
     }
 
     private static DeliveryCommand taskCommand(String marker) {

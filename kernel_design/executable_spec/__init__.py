@@ -93,7 +93,7 @@ from .scheduling import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    AdapterEvidenceResultPacer,
+    WorkerServiceabilityResultPacer,
 )
 from .redis_runtime import (
     RedisCandidateWorkerCache,
@@ -211,6 +211,6 @@ __all__ = [
     "WorkerServiceabilityDispatchConfig",
     "WorkerServiceabilityDispatchPacer",
     "WorkerServiceabilityResultConfig",
-    "AdapterEvidenceResultPacer",
+    "WorkerServiceabilityResultPacer",
     "classify_delivery_report_outcome_code",
 ]

@@ -94,49 +94,6 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void explicitPropertiesPublishUsesSnapshotDefinitionAndAdapterReport() {
-        FakeTextMessageClient client = new FakeTextMessageClient();
-        AtomicReference<DeliveryCommand> executed = new AtomicReference<>();
-        TextMessageWorkerTransport transport = transport(
-                client,
-                command -> {
-                    executed.set(command);
-                    return Optional.of(WorkerCommandOutcome.of(
-                            "200",
-                            "{\"properties\":{\"battery\":87}}"
-                    ));
-                },
-                new RecordingListener()
-        );
-        transport.start();
-        client.open();
-
-        transport.publishPropertiesChanged();
-
-        DeliveryCommand snapshot = executed.get();
-        assertEquals(DeliveryEndpoint.ADAPTER, snapshot.src());
-        assertEquals(DeliveryEndpoint.WORKER, snapshot.dst());
-        assertEquals(
-                "platform.worker.properties.snapshot",
-                snapshot.messageType()
-        );
-        assertEquals("null", snapshot.payload());
-        DeliveryReport changed = CODEC.decodeDeliveryReport(client.sent.get(1));
-        assertEquals(DeliveryEndpoint.WORKER, changed.src());
-        assertEquals(DeliveryEndpoint.ADAPTER, changed.dst());
-        assertEquals(
-                "platform.worker.properties.changed",
-                changed.messageType()
-        );
-        assertEquals("200", changed.outcomeCode());
-        assertEquals(
-                "{\"properties\":{\"battery\":87}}",
-                changed.payload()
-        );
-        assertEquals("worker-properties-changed:v1", changed.forward());
-    }
-
-    @Test
     void rejectsBlankWorkerIdentity() {
         assertThrows(
                 IllegalArgumentException.class,

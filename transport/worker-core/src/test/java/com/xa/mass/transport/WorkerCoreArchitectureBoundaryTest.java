@@ -54,6 +54,8 @@ class WorkerCoreArchitectureBoundaryTest {
         assertFalse(source.contains("Executors.new"));
         assertFalse(source.contains(".shutdown("));
         assertFalse(source.contains("shutdownNow("));
+        assertFalse(source.contains("publishPropertiesChanged"));
+        assertFalse(source.contains("platform.worker.properties.changed"));
 
         for (String forbidden : new String[]{
                 "okhttp3",
@@ -223,6 +225,10 @@ class WorkerCoreArchitectureBoundaryTest {
             assertFalse(signature.contains("DeliveryReport"), signature);
         }
         assertFalse(hasMethod(WorkerLifecycle.class, "refreshProperties"));
+        assertFalse(hasMethod(
+                WorkerRunController.class,
+                "publishPropertiesChanged"
+        ));
         assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
         assertFalse(hasMethod(WorkerLifecycle.class, "isConnected"));
         assertFalse(hasMethod(

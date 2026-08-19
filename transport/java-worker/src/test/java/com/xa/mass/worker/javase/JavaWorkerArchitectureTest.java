@@ -69,6 +69,7 @@ class JavaWorkerArchitectureTest {
         assertFalse(assembly.contains("hostResources"));
         assertFalse(assembly.contains("controlExecutor"));
         assertFalse(assembly.contains("isConnected("));
+        assertFalse(assembly.contains("publishPropertiesChanged"));
         assertFalse(assembly.contains("Executors.new"));
         assertFalse(assembly.contains("shutdownNow("));
         assertTrue(source.contains(

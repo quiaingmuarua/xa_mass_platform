@@ -48,6 +48,17 @@ FORBIDDEN_CURRENT_TERMS = {
     "workerCommandsByWorkerId",
     "TASK_COMMAND",
     "TASK_REPORT",
+    "WorkerPropertyIndex",
+    "XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON",
+    "property-index",
+    "indexed-properties",
+    "indexedPropertyFields",
+    "indexedPropertyUpdates",
+    "publishPropertiesChanged",
+    "replaceWorkerProperties",
+    "replace_worker_properties",
+    "platform.worker.properties.changed",
+    "platform.adapter.worker-properties.changed",
 }
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
@@ -191,7 +202,10 @@ def main() -> int:
     validate_markdown_links(markdown_files, errors)
     validate_root_entrypoints(errors)
     validate_overview(errors)
-    validate_stale_terms(markdown_files, errors)
+    validate_stale_terms(
+        [*markdown_files, "frontend/public/overview.htm"],
+        errors,
+    )
     validate_generated_overview(errors)
 
     if errors:

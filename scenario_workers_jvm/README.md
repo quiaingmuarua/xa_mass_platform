@@ -52,8 +52,8 @@ individual Workers:
 
 `reconnectPolicy` is optional as a whole and otherwise strict: all three fields
 are required and unknown fields are rejected. The omitted request timeout uses
-10 seconds. The old inline `workers`, `sandboxDirectory`, index-update,
-retry-policy, and Adapter URI fields are rejected.
+10 seconds. The old inline `workers`, `sandboxDirectory`, retry-policy, and
+Adapter URI fields are rejected.
 
 ## Persistent Worker Lab
 
@@ -135,7 +135,9 @@ one JavaWorkerManager for each non-empty configured WorkerGroup
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
 Worker until an explicit later Host start; Scenario does not expose Manager
-reconciliation. Scenario Workers do not configure or update Property Indexes.
+reconciliation. The Bind in that explicit start is the only canonical
+Properties refresh; file edits and live Provider changes otherwise wait for the
+next process start.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
 unchanged. Persistent Worker means stable identity, Properties, and replica

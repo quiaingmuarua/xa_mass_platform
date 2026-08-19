@@ -165,7 +165,7 @@ bounded Worker matcher. Example:
 ```
 
 The descriptor stores the rule snapshot. It does not store compiled matcher
-state, current property-index values, candidate Workers, or a policy handler object.
+state, current Worker properties, candidate Workers, or a policy handler object.
 Constraint compilation/validation belongs to `constraint_dsl`; Worker field
 resolution belongs to Worker runtime/matcher.
 

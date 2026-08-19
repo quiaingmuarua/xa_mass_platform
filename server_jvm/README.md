@@ -145,6 +145,11 @@ Provider selection stays in Server assembly. The shared `kernelredis` package
 owns connection and health only; Redis key operations live in owner-local
 provider packages.
 
+Worker Register establishes Server-owned identity. Every explicit Worker Bind
+validates that identity, persists its Endpoint route, and upserts the complete
+Worker Properties Map through the Kernel owner. Bind is the sole canonical
+Properties refresh; a transparent Client reconnect performs neither operation.
+
 ### Worker Delivery
 
 Server owns the Worker Delivery HTTP and owner-provider composition. It
@@ -181,7 +186,8 @@ event name, opaque input and result payload transparently: it owns neither cache
 contents nor update time, route gate, TTL or eviction interpretation. Live
 connection state remains a separate
 `platform.adapter.worker-connections.snapshot` call; Server does not join the
-two projections.
+two projections. The Adapter does not automatically request Worker properties
+or turn its cache into a KERNEL Report.
 
 ### Worker And Scenario Assembly
 
@@ -230,10 +236,6 @@ Adapter request consume and Adapter-evidence append needed by its HTTP bridge.
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a
 matching Endpoint Binding entry.
-
-Property-index providers are opt-in through
-`XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON`. The default registry is empty;
-unknown implementations or malformed declarations fail startup.
 
 ## Run
 

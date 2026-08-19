@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections import defaultdict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -11,7 +10,7 @@ from time import time_ns
 from ..kernel.task_runtime import TaskResourceCatalog
 from ..kernel.task_score_band import TaskScoreBand, TaskScoreBandCore
 from ..kernel.worker_delivery import DeliveryEndpoint, DeliveryReport
-from ..kernel.worker_runtime import WorkerResourceCatalog, WorkerRuntime
+from ..kernel.worker_runtime import WorkerResourceCatalog
 from ..kernel.worker_score import (
     WorkerScoreCore,
     WorkerScorePolarity,
@@ -28,13 +27,10 @@ _PROBE_EVENT = "platform.adapter.worker-connections.snapshot"
 _PROBE_FORWARD_PREFIX = "worker-serviceability:v1:"
 _CONNECTION_CHANGED_EVENT = "platform.adapter.worker-connection.changed"
 _DELIVERY_EXPIRED_EVENT = "platform.adapter.worker-delivery.expired"
-_PROPERTIES_CHANGED_EVENT = "platform.adapter.worker-properties.changed"
 _CONNECTION_EVIDENCE_FORWARD = "worker-serviceability-evidence:v1"
-_PROPERTIES_EVIDENCE_FORWARD = "worker-properties-evidence:v1"
 _CONNECTED = "CONNECTED"
 _UNAVAILABLE_STATES = frozenset({"DISCONNECTED", "UNKNOWN"})
 _CONNECTION_STATES = frozenset({_CONNECTED, "DISCONNECTED"})
-_LOGGER = logging.getLogger(__name__)
 
 
 def _current_time_millis() -> int:
@@ -427,21 +423,14 @@ class _WorkerEvidence:
     kind: _EvidenceKind
 
 
-@dataclass(frozen=True, slots=True)
-class _WorkerPropertiesEvidence:
-    updated_at_millis: int
-    properties: Mapping[str, object]
-
-
-class AdapterEvidenceResultPacer:
-    """Converge the finite Adapter evidence set into its owning runtimes."""
+class WorkerServiceabilityResultPacer:
+    """Converge Adapter route evidence through explicit Score primitives."""
 
     def __init__(
         self,
         runtime: WorkerServiceabilityRuntime,
         worker_catalog: WorkerResourceCatalog,
         worker_score: WorkerScoreCore,
-        worker_runtime: WorkerRuntime,
         *,
         hot_eligibility_floor_millis: int,
         clock_millis: Callable[[], int] = _current_time_millis,
@@ -456,7 +445,6 @@ class AdapterEvidenceResultPacer:
         self.runtime = runtime
         self.worker_catalog = worker_catalog
         self.worker_score = worker_score
-        self.worker_runtime = worker_runtime
         self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
         self._clock_millis = clock_millis
 
@@ -470,23 +458,7 @@ class AdapterEvidenceResultPacer:
         )
         now_millis = self._clock_millis()
         latest_evidence: dict[str, _WorkerEvidence] = {}
-        latest_properties: dict[str, _WorkerPropertiesEvidence] = {}
         for report in reports:
-            properties_evidence = self._decode_properties_report(
-                report,
-                now_millis=now_millis,
-                evidence_max_age_millis=config.evidence_max_age_millis,
-            )
-            if properties_evidence is not None:
-                worker_id, evidence = properties_evidence
-                previous = latest_properties.get(worker_id)
-                if (
-                    previous is None
-                    or evidence.updated_at_millis
-                    >= previous.updated_at_millis
-                ):
-                    latest_properties[worker_id] = evidence
-                continue
             decoded = self._decode_report(
                 report,
                 now_millis=now_millis,
@@ -502,14 +474,11 @@ class AdapterEvidenceResultPacer:
                     >= previous.observed_at_millis
                 ):
                     latest_evidence[worker_id] = evidence
-        if not latest_evidence and not latest_properties:
+        if not latest_evidence:
             return 0
 
         group_ids: dict[str, str | None] = {}
-        worker_ids = tuple(dict.fromkeys((
-            *latest_evidence,
-            *latest_properties,
-        )))
+        worker_ids = tuple(latest_evidence)
         lookup_limit = WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT
         for offset in range(0, len(worker_ids), lookup_limit):
             chunk = worker_ids[offset:offset + lookup_limit]
@@ -522,15 +491,6 @@ class AdapterEvidenceResultPacer:
             worker_group_id = group_ids.get(worker_id)
             if worker_group_id is not None:
                 evidence_by_group[worker_group_id][worker_id] = evidence
-
-        properties_by_group: dict[
-            str,
-            dict[str, _WorkerPropertiesEvidence],
-        ] = defaultdict(dict)
-        for worker_id, evidence in latest_properties.items():
-            worker_group_id = group_ids.get(worker_id)
-            if worker_group_id is not None:
-                properties_by_group[worker_group_id][worker_id] = evidence
 
         applied = 0
         for worker_group_id, evidence_by_worker_id in evidence_by_group.items():
@@ -550,23 +510,6 @@ class AdapterEvidenceResultPacer:
                     max_recovery_attempts=config.max_recovery_attempts,
                 )
                 applied += 1
-        for worker_group_id, evidence_by_worker_id in properties_by_group.items():
-            for worker_id, evidence in evidence_by_worker_id.items():
-                try:
-                    self.worker_runtime.replace_worker_properties(
-                        worker_group_id=worker_group_id,
-                        worker_id=worker_id,
-                        updated_at_millis=evidence.updated_at_millis,
-                        properties=evidence.properties,
-                    )
-                    applied += 1
-                except Exception:
-                    _LOGGER.exception(
-                        "adapter properties evidence apply failed "
-                        "workerGroupId=%s workerId=%s",
-                        worker_group_id,
-                        worker_id,
-                    )
         return applied
 
     def _apply_evidence(
@@ -681,15 +624,15 @@ class AdapterEvidenceResultPacer:
         ):
             return None
         if report.message_type == _CONNECTION_CHANGED_EVENT:
-            decoded = AdapterEvidenceResultPacer._decode_connection_change(
+            decoded = WorkerServiceabilityResultPacer._decode_connection_change(
                 report
             )
         elif report.message_type == _DELIVERY_EXPIRED_EVENT:
-            decoded = AdapterEvidenceResultPacer._decode_delivery_expired(
+            decoded = WorkerServiceabilityResultPacer._decode_delivery_expired(
                 report
             )
         elif report.message_type == _PROBE_EVENT:
-            decoded = AdapterEvidenceResultPacer._decode_probe_snapshot(
+            decoded = WorkerServiceabilityResultPacer._decode_probe_snapshot(
                 report
             )
         else:
@@ -704,51 +647,6 @@ class AdapterEvidenceResultPacer:
         ):
             return None
         return decoded
-
-    @staticmethod
-    def _decode_properties_report(
-        report: DeliveryReport,
-        *,
-        now_millis: int,
-        evidence_max_age_millis: int,
-    ) -> tuple[str, _WorkerPropertiesEvidence] | None:
-        if (
-            report.src is not DeliveryEndpoint.ADAPTER
-            or report.dst is not DeliveryEndpoint.KERNEL
-            or report.message_type != _PROPERTIES_CHANGED_EVENT
-            or report.forward != _PROPERTIES_EVIDENCE_FORWARD
-            or report.outcome_code != "200"
-            or not report.source_id
-        ):
-            return None
-        try:
-            payload = json.loads(report.payload)
-        except (TypeError, json.JSONDecodeError):
-            return None
-        if not isinstance(payload, dict) or set(payload) != {
-            "workerId",
-            "updatedAtMillis",
-            "properties",
-        }:
-            return None
-        worker_id = payload["workerId"]
-        updated_at_millis = payload["updatedAtMillis"]
-        properties = payload["properties"]
-        if (
-            not isinstance(worker_id, str)
-            or not worker_id
-            or isinstance(updated_at_millis, bool)
-            or not isinstance(updated_at_millis, int)
-            or updated_at_millis <= 0
-            or not isinstance(properties, dict)
-            or now_millis - updated_at_millis < 0
-            or now_millis - updated_at_millis > evidence_max_age_millis
-        ):
-            return None
-        return worker_id, _WorkerPropertiesEvidence(
-            updated_at_millis=updated_at_millis,
-            properties=properties,
-        )
 
     @staticmethod
     def _decode_connection_change(

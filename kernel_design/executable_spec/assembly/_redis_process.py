@@ -18,7 +18,7 @@ from ..scheduling import (
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
     WorkerServiceabilityDispatchPacer,
-    AdapterEvidenceResultPacer,
+    WorkerServiceabilityResultPacer,
 )
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
@@ -29,7 +29,6 @@ from ..redis_runtime import (
     RedisTaskRuntime,
     RedisTaskScoreBandCore,
     RedisWorkerResourceCatalog,
-    RedisWorkerRuntime,
     RedisWorkerScoreCore,
     RedisWorkerResultRuntime,
     RedisWorkerServiceabilityRuntime,
@@ -46,8 +45,8 @@ from .result_routing_application import (
 from .worker_serviceability_application import (
     WorkerServiceabilityDispatchApplication,
     WorkerServiceabilityDispatchApplicationConfig,
-    AdapterEvidenceResultApplication,
-    AdapterEvidenceResultApplicationConfig,
+    WorkerServiceabilityResultApplication,
+    WorkerServiceabilityResultApplicationConfig,
 )
 
 
@@ -63,7 +62,7 @@ class _RedisKernelProcessConfig:
         WorkerServiceabilityDispatchApplicationConfig | None
     )
     worker_serviceability_result: (
-        AdapterEvidenceResultApplicationConfig | None
+        WorkerServiceabilityResultApplicationConfig | None
     )
     stop_timeout_millis: int
 
@@ -220,25 +219,19 @@ class _RedisKernelProcess:
             WorkerServiceabilityDispatchApplication | None
         ) = None
         self._worker_serviceability_result_application: (
-            AdapterEvidenceResultApplication | None
+            WorkerServiceabilityResultApplication | None
         ) = None
         if config.worker_serviceability_dispatch is not None:
             serviceability_runtime = RedisWorkerServiceabilityRuntime(
                 redis_client,
                 prefix=config.prefix,
             )
-            self._worker_runtime = RedisWorkerRuntime(
-                redis_client,
-                self._worker_score,
-                prefix=config.prefix,
-            )
             self._worker_serviceability_result_application = (
-                AdapterEvidenceResultApplication(
-                    AdapterEvidenceResultPacer(
+                WorkerServiceabilityResultApplication(
+                    WorkerServiceabilityResultPacer(
                         serviceability_runtime,
                         self._worker_resource_catalog,
                         self._worker_score,
-                        self._worker_runtime,
                         hot_eligibility_floor_millis=(
                             config.hot_eligibility_floor_millis
                         ),

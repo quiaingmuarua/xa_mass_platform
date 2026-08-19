@@ -106,6 +106,11 @@ endpoint retry exhausted
   -> wait for an explicit Host start
 ```
 
+The preparation Bind is the only canonical Properties refresh. A running
+provider change can be read through an explicit Worker snapshot Command, but
+it is not published and reaches Kernel resource truth only after the next
+explicit stop/start.
+
 Register or Bind failure ends that single start attempt. `start()` and
 `stop()` return after submitting their request, so Android hosts do not need a
 lifecycle Executor wrapper. `close()` is synchronous and may wait for the

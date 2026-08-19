@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,6 +25,11 @@ class ScenarioWorkerLabTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    @BeforeEach
+    void resolveTemporaryDirectory() throws IOException {
+        temporaryDirectory = temporaryDirectory.toRealPath();
+    }
 
     @Test
     void missingConfiguredGroupDirectoriesInitializeTwentyDefaults()

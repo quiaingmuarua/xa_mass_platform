@@ -46,10 +46,12 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             ],
         )
 
-    def test_owner_surfaces_keep_properties_and_index_independent(self) -> None:
+    def test_owner_surfaces_keep_worker_and_platform_properties_independent(
+        self,
+    ) -> None:
         self.assertEqual(
             WorkerRuntime.__abstractmethods__,
-            {"replace_worker_properties", "upsert_worker"},
+            {"upsert_worker"},
         )
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
@@ -68,21 +70,8 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             set(inspect.signature(WorkerRuntime.upsert_worker).parameters),
             {"self", "declaration"},
         )
+        self.assertFalse(hasattr(WorkerRuntime, "replace_worker_properties"))
         self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker"))
-        self.assertEqual(
-            set(
-                inspect.signature(
-                    WorkerRuntime.replace_worker_properties
-                ).parameters
-            ),
-            {
-                "self",
-                "worker_group_id",
-                "worker_id",
-                "updated_at_millis",
-                "properties",
-            },
-        )
 
     def test_worker_score_observation_and_transition_contract_is_bounded(self) -> None:
         self.assertEqual(
@@ -176,6 +165,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             ),
             {"self", "home_bucket_id", "worker_id", "observed_score"},
         )
+
     def test_worker_catalog_reads_remain_group_local_and_bounded(self) -> None:
         self.assertEqual(
             set(
@@ -217,6 +207,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT,
             100,
         )
+
     def test_removed_property_index_contracts_are_not_reexported(self) -> None:
         self.assertNotIn("WorkerPropertyIndex", executable_spec.__all__)
         self.assertNotIn("WorkerPropertyIndexRuntime", executable_spec.__all__)

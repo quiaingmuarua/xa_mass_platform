@@ -31,24 +31,6 @@ end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
 return 1
 """
-_REPLACE_WORKER_PROPERTIES_SCRIPT = """
-local current = redis.call('HGET', KEYS[1], ARGV[1])
-if not current then
-    return 0
-end
-local decoded_ok, decoded = pcall(cjson.decode, current)
-if not decoded_ok
-        or type(decoded) ~= 'table'
-        or type(decoded.updatedAtMillis) ~= 'number'
-        or type(decoded.properties) ~= 'table' then
-    return -2
-end
-if decoded.updatedAtMillis >= tonumber(ARGV[2]) then
-    return -1
-end
-redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
-return 1
-"""
 _MAX_DESCRIPTOR_CAS_ATTEMPTS = 8
 
 
@@ -96,21 +78,12 @@ def _encode_worker_metadata(metadata: _WorkerMetadata) -> str | None:
         return None
 
 
-@dataclass(frozen=True)
-class _WorkerPropertiesEnvelope:
-    updated_at_millis: int
-    properties: Mapping[str, AttributeValue]
-
-
 def _encode_worker_properties(
-    envelope: _WorkerPropertiesEnvelope,
+    worker_properties: Mapping[str, AttributeValue],
 ) -> str | None:
     try:
         return json.dumps(
-            {
-                "updatedAtMillis": envelope.updated_at_millis,
-                "properties": dict(envelope.properties),
-            },
+            dict(worker_properties),
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -498,23 +471,9 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
     def _decode_worker_properties(
         cls,
         raw: Any,
-    ) -> _WorkerPropertiesEnvelope | None:
+    ) -> Mapping[str, AttributeValue] | None:
         payload = cls._decode_json_object(raw)
-        if payload is None or set(payload) != {"updatedAtMillis", "properties"}:
-            return None
-        updated_at_millis = payload["updatedAtMillis"]
-        properties = payload["properties"]
-        if (
-            isinstance(updated_at_millis, bool)
-            or not isinstance(updated_at_millis, int)
-            or updated_at_millis <= 0
-            or not isinstance(properties, MappingABC)
-        ):
-            return None
-        return _WorkerPropertiesEnvelope(
-            updated_at_millis=updated_at_millis,
-            properties=dict(properties),
-        )
+        return dict(payload) if payload is not None else None
 
     @classmethod
     def _compose_worker_descriptor(
@@ -525,10 +484,10 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         raw_properties: Any,
     ) -> WorkerDescriptor | None:
         metadata = cls._decode_worker_metadata(raw_metadata)
-        properties_envelope = cls._decode_worker_properties(raw_properties)
+        worker_properties = cls._decode_worker_properties(raw_properties)
         if (
             metadata is None
-            or properties_envelope is None
+            or worker_properties is None
             or metadata.worker_id != worker_id
             or metadata.worker_group_id != worker_group_id
         ):
@@ -537,7 +496,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             worker_id=metadata.worker_id,
             worker_group_id=metadata.worker_group_id,
             endpoint_manager_id=metadata.endpoint_manager_id,
-            worker_properties=properties_envelope.properties,
+            worker_properties=worker_properties,
             platform_properties=metadata.platform_properties,
         )
 
@@ -622,10 +581,10 @@ class RedisWorkerRuntime(WorkerRuntime):
                 WorkerRuntimeStatus.INVALID,
                 "invalid workerProperties",
             )
-        if _encode_worker_properties(_WorkerPropertiesEnvelope(
-            updated_at_millis=1,
-            properties=declaration.worker_properties,
-        )) is None:
+        encoded_properties = _encode_worker_properties(
+            declaration.worker_properties
+        )
+        if encoded_properties is None:
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
                 "invalid workerProperties json",
@@ -707,15 +666,15 @@ class RedisWorkerRuntime(WorkerRuntime):
             self.prefix,
             declaration.worker_group_id,
         )
-        properties_changed = self._upsert_properties(
-            properties_key=properties_key,
-            worker_id=declaration.worker_id,
-            properties=declaration.worker_properties,
+        observed_properties = RedisWorkerResourceCatalog._decode_optional_text(
+            self.redis.hget(properties_key, declaration.worker_id)
         )
-        if properties_changed is None:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "stored worker properties are invalid",
+        properties_changed = observed_properties != encoded_properties
+        if properties_changed:
+            self.redis.hset(
+                properties_key,
+                declaration.worker_id,
+                encoded_properties,
             )
 
         score_state = self.score_band.get_score_states(
@@ -759,141 +718,3 @@ class RedisWorkerRuntime(WorkerRuntime):
         ):
             return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
-
-    def replace_worker_properties(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        updated_at_millis: int,
-        properties: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        if not _valid_id(worker_group_id):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerGroupId",
-            )
-        if not _valid_id(worker_id):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerId",
-            )
-        if (
-            isinstance(updated_at_millis, bool)
-            or not isinstance(updated_at_millis, int)
-            or updated_at_millis <= 0
-        ):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "updatedAtMillis must be positive",
-            )
-        if not isinstance(properties, MappingABC):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerProperties",
-            )
-        encoded = _encode_worker_properties(_WorkerPropertiesEnvelope(
-            updated_at_millis=updated_at_millis,
-            properties=properties,
-        ))
-        if encoded is None:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerProperties json",
-            )
-        metadata = RedisWorkerResourceCatalog._decode_worker_metadata(
-            self.redis.hget(
-                _worker_metadata_key(self.prefix, worker_group_id),
-                worker_id,
-            )
-        )
-        if metadata is None:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.NOT_FOUND,
-                "worker not found",
-            )
-        if (
-            metadata.worker_id != worker_id
-            or metadata.worker_group_id != worker_group_id
-        ):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "stored worker identity does not match",
-            )
-        outcome = int(self.redis.eval(
-            _REPLACE_WORKER_PROPERTIES_SCRIPT,
-            1,
-            _worker_properties_key(self.prefix, worker_group_id),
-            worker_id,
-            updated_at_millis,
-            encoded,
-        ))
-        if outcome == 1:
-            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-        if outcome == -1:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.STALE,
-                "worker properties observation is not newer",
-            )
-        if outcome == 0:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.NOT_FOUND,
-                "worker properties not found",
-            )
-        return WorkerRuntimeResult(
-            WorkerRuntimeStatus.INVALID,
-            "stored worker properties are invalid",
-        )
-
-    def _upsert_properties(
-        self,
-        *,
-        properties_key: str,
-        worker_id: WorkerId,
-        properties: Mapping[str, AttributeValue],
-    ) -> bool | None:
-        for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
-            observed = RedisWorkerResourceCatalog._decode_optional_text(
-                self.redis.hget(properties_key, worker_id)
-            )
-            if observed is None:
-                encoded = _encode_worker_properties(_WorkerPropertiesEnvelope(
-                    updated_at_millis=self._current_time_millis(),
-                    properties=properties,
-                ))
-                if encoded is None:
-                    return None
-                if self.redis.hsetnx(properties_key, worker_id, encoded):
-                    return True
-                continue
-            current = RedisWorkerResourceCatalog._decode_worker_properties(
-                observed
-            )
-            if current is None:
-                return None
-            if dict(current.properties) == dict(properties):
-                return False
-            encoded = _encode_worker_properties(_WorkerPropertiesEnvelope(
-                updated_at_millis=max(
-                    self._current_time_millis(),
-                    current.updated_at_millis + 1,
-                ),
-                properties=properties,
-            ))
-            if encoded is None:
-                return None
-            if self.redis.eval(
-                _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
-                1,
-                properties_key,
-                worker_id,
-                observed,
-                encoded,
-            ) == 1:
-                return True
-        return None
-
-    def _current_time_millis(self) -> int:
-        seconds, microseconds = self.redis.time()
-        return int(seconds) * 1_000 + int(microseconds) // 1_000
-

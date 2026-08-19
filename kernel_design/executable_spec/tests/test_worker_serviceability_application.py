@@ -10,8 +10,8 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.assembly.worker_serviceability_application import (
     WorkerServiceabilityDispatchApplication,
     WorkerServiceabilityDispatchApplicationConfig,
-    AdapterEvidenceResultApplication,
-    AdapterEvidenceResultApplicationConfig,
+    WorkerServiceabilityResultApplication,
+    WorkerServiceabilityResultApplicationConfig,
 )
 
 
@@ -42,12 +42,12 @@ class WorkerServiceabilityApplicationTest(unittest.TestCase):
         dispatch_pacer = FakeDispatchPacer()
         result_pacer = FakeResultPacer()
         dispatch = WorkerServiceabilityDispatchApplication(dispatch_pacer)
-        result = AdapterEvidenceResultApplication(result_pacer)
+        result = WorkerServiceabilityResultApplication(result_pacer)
         dispatch_config = WorkerServiceabilityDispatchApplicationConfig(
             dispatch=WorkerServiceabilityDispatchConfig(),
             interval_millis=10,
         )
-        result_config = AdapterEvidenceResultApplicationConfig(
+        result_config = WorkerServiceabilityResultApplicationConfig(
             result=WorkerServiceabilityResultConfig(),
             interval_millis=10,
         )
@@ -88,7 +88,7 @@ class WorkerServiceabilityApplicationTest(unittest.TestCase):
                 interval_millis=0,
             )
         with self.assertRaises(ValueError):
-            AdapterEvidenceResultApplicationConfig(
+            WorkerServiceabilityResultApplicationConfig(
                 result=WorkerServiceabilityResultConfig(),
                 interval_millis=0,
             )

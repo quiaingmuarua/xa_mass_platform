@@ -34,7 +34,8 @@ Definitions. Their mechanism contract is owned by
 | `platform.worker.events.snapshot` | `null` | `{"eventNames":[...]}` in lexical order | Observe the immutable Event Names loaded by this Worker process |
 
 `probe` is not schedulability, idleness, Binding, or connectivity truth.
-`properties.snapshot` does not update Worker resource or property-index truth.
+`properties.snapshot` is explicit observation only; it does not update
+canonical Worker resource or scheduling truth.
 `events.snapshot` includes itself and all Host extensions, but does not replace
 WorkerGroup `eventCodes` or authorization.
 

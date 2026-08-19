@@ -42,10 +42,6 @@ WorkerResourceCatalog
 WorkerRuntime
   upsertWorker
 
-WorkerPropertyIndexRuntime
-  updateIndexedProperties
-  loadIndexedPropertyValues
-
 WorkerScoreCore
   getScoreStates
   initializeHotAcquireScore

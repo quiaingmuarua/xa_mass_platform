@@ -113,7 +113,7 @@ a replacement Channel without another Server read. There is no ACK.
 Polling sends no identity Report; Server verifies its persisted
 `system-polling` route on each point request.
 Identity reporting does not create or update Endpoint Binding and is not
-authentication, heartbeat, property-index update, or endpoint migration.
+authentication, heartbeat, Worker resource mutation, or endpoint migration.
 
 The optional Kernel Worker Serviceability policy queries current Adapter route
 state through the same DTOs:

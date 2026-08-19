@@ -169,6 +169,12 @@ Worker ID, persists a newly issued ID, and performs Endpoint Bind. It does not
 start networking or execute Commands. Core requires `workerId` to be non-blank
 but does not parse its Server-owned format.
 
+That preparation Bind is the only canonical Worker Properties refresh. A live
+provider change may be returned by an explicit
+`platform.worker.properties.snapshot` Command for observation, but it is not
+published as a lifecycle event and does not write Kernel truth. The next
+explicit stop/start loads and binds a new complete snapshot.
+
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may
 explicitly call `start()` again. Temporary disconnects remain inside the

@@ -10,7 +10,7 @@ from ..scheduling import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    AdapterEvidenceResultPacer,
+    WorkerServiceabilityResultPacer,
 )
 
 
@@ -44,7 +44,7 @@ class WorkerServiceabilityDispatchApplicationConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class AdapterEvidenceResultApplicationConfig:
+class WorkerServiceabilityResultApplicationConfig:
     result: WorkerServiceabilityResultConfig
     interval_millis: int
 
@@ -106,10 +106,10 @@ class WorkerServiceabilityDispatchApplication:
                 self._thread = None
                 self._stop_event = None
 
-class AdapterEvidenceResultApplication:
-    """Lifecycle for the single Adapter evidence result loop."""
+class WorkerServiceabilityResultApplication:
+    """Lifecycle for the single serviceability result loop."""
 
-    def __init__(self, pacer: AdapterEvidenceResultPacer) -> None:
+    def __init__(self, pacer: WorkerServiceabilityResultPacer) -> None:
         self.pacer = pacer
         self._lifecycle_lock = Lock()
         self._stop_event: Event | None = None
@@ -118,14 +118,14 @@ class AdapterEvidenceResultApplication:
     def start(
         self,
         *,
-        config: AdapterEvidenceResultApplicationConfig,
+        config: WorkerServiceabilityResultApplicationConfig,
     ) -> None:
         with self._lifecycle_lock:
             if self._thread is not None:
                 raise RuntimeError("serviceability result is already started")
             stop_event = Event()
             thread = Thread(
-                name="adapter-evidence-result",
+                name="worker-serviceability-result",
                 target=_run_loop,
                 kwargs={
                     "stop_event": stop_event,

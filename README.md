@@ -94,6 +94,9 @@ recovery limits are current Kernel policy, not cross-module contracts.
 The Adapter may also retain the latest explicitly observed Worker properties
 as a process-local timestamped projection. It is queried through an Adapter
 DIRECT_CALL and is deliberately not copied into Server or Kernel truth.
+Canonical Worker Properties are refreshed only when an explicit Worker start
+performs Register/Bind preparation; transparent Client reconnect sends only
+connection identity.
 
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a
 scheduling coordinate rather than a resource lock, separate assignment and

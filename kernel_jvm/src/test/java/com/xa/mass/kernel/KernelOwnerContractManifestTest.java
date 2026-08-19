@@ -1,6 +1,8 @@
 package com.xa.mass.kernel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
@@ -217,6 +219,20 @@ class KernelOwnerContractManifestTest {
         assertEquals(
                 normalizeNumbers(manifest.get("constants")),
                 constants()
+        );
+    }
+
+    @Test
+    void removedWorkerPropertyMutationContractsRemainAbsent() {
+        assertFalse(Arrays.stream(WorkerRuntime.class.getDeclaredMethods())
+                .anyMatch(method -> method.getName().equals(
+                        "replaceWorkerProperties"
+                )));
+        assertThrows(
+                ClassNotFoundException.class,
+                () -> Class.forName(
+                        "com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime"
+                )
         );
     }
 

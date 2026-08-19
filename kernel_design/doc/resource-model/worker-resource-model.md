@@ -43,10 +43,10 @@ An explicit WorkerGroup upsert atomically replaces both `attributes` and
 does not move Workers, change scores, or assert that running Worker definitions
 already match it.
 
-WorkerGroup does not declare indexes, index providers, or supported
-operators. Property indexes are process-level scheduling projections and can
-be added or removed from startup configuration without changing the package
-identity.
+WorkerGroup does not declare matching indexes, providers, or supported
+operators. Candidate sources remain separate scheduling mechanisms; matching
+only reads canonical properties for the bounded Worker IDs already supplied by
+one of those sources.
 
 ## Two Property Sources
 
@@ -78,6 +78,12 @@ initializes a missing score. A compatible repeated Bind replaces the complete
 Worker-owned snapshot. Upsert is a resource refresh operation, not durable
 connectivity or activation evidence. The Platform cannot patch the
 Worker-owned snapshot.
+
+Bind is the only external refresh path for canonical Worker Properties. A
+running Worker may answer an explicit properties snapshot Command for
+observation, but Adapter-local observation does not write this owner. Changes
+in the Host provider reach canonical Properties only on a later explicit
+Worker start and Bind.
 
 The external Worker identity registry is not part of this Kernel contract. It
 extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to
@@ -133,62 +139,6 @@ Properties are intended for bounded views, diagnostics, and low-frequency
 matching facts. They are not transport reachability, score, lease, assignment,
 or execution truth.
 
-## Property Index
-
-The property index is independent from both snapshots:
-
-```text
-Properties       = current owner snapshots for bounded reads and views
-Property Index   = last projection accepted by Kernel for scheduling lookup
-```
-
-An indexed value may also appear in a snapshot, but no operation writes both
-automatically. Callers explicitly choose whether to update a snapshot, an
-index, or both. An index-only Platform calculation therefore need not pollute
-`platformProperties`.
-
-Each configured field has one `WorkerPropertyIndex` implementation:
-
-```python
-update(workerGroupId, workerId, value)
-load(workerGroupId, boundedWorkerIds) -> workerId/value map
-```
-
-`WorkerPropertyIndexRuntime` is only the Kernel owner Router:
-
-```python
-update_indexed_properties(workerGroupId, workerId, updates)
-load_indexed_property_values(
-    workerGroupId,
-    indexField,
-    boundedWorkerIds,
-)
-```
-
-Startup composition supplies one immutable map such as:
-
-```text
-index.worker.region -> Redis HASH point projection
-index.platform.pool -> Redis HASH point projection
-```
-
-The key is the complete index identity. Its suffix is opaque: the
-`index.worker.region` projection is not authorized by, copied from, or kept in
-sync with `worker.region`. Update requests use these qualified keys directly;
-`null` removes one projection. The Router validates Worker ownership, then
-routes each field independently. Reads accept only an explicit bounded
-Worker-id set and return a sparse value map. They do not discover candidates
-or interpret allocation operators. Missing implementations and provider
-failures remain distinguishable from a missing value.
-
-The current Redis HASH provider supports JSON-compatible point values. It is a
-projection store, not a candidate query engine.
-
-Index values have last-applied semantics. They do not carry a revision,
-observation timestamp, or claim of physical real-time truth. If a future use
-case requires execution-time certainty, the Worker may recheck it; scheduling
-does not do that in this slice.
-
 ## Rule Matching
 
 Matcher context is fixed:
@@ -197,29 +147,27 @@ Matcher context is fixed:
 {
   "workerId": "worker-1",
   "worker": {"arch": "arm64", "region": "cn-east"},
-  "platform": {"pool": "batch", "load": "42"},
-  "index": {"worker.region": "cn-east"}
+  "platform": {"pool": "batch", "load": "42"}
 }
 ```
 
-Only the first dot separates domain from property name. An indexed field named
-`index.worker.location.region` addresses index key `worker.location.region`.
-`worker.region` and `index.worker.region` are independent conditions and never
-fall back to one another.
+Only the first dot separates domain from property name. Supported coordinates
+are `workerId`, `worker.*`, and `platform.*`. The removed `index.*` namespace
+is rejected as an invalid allocation rule and never falls back to a same-named
+canonical property.
 
 ### DIRECT
 
 For an empty rule, DIRECT uses one bounded due-HOT score query in the explicit
 WorkerGroup. For a non-empty rule, `workerId $eq/$equal/$in` produces the
 bounded request-local Worker-id set; without it, the rule fails closed. Other
-`worker.*` and `platform.*` conditions do not generate candidates through
-indexes. Explicit-ID rules are evaluated before score observation and every
-leased result is fully rematched.
+`worker.*` and `platform.*` conditions filter only that bounded set and do not
+generate candidates. Explicit-ID rules are evaluated before score observation
+and every leased result is fully rematched.
 
-DIRECT does not use `CandidateWorkerCache`, scan Worker descriptors, compose
-multiple indexes, or fall back to PRECOMPUTED acquisition. A future low-cost
-candidate source is a separate mechanism addition, not an expansion of the
-Property Index contract.
+DIRECT does not use `CandidateWorkerCache`, scan Worker descriptors, or fall
+back to PRECOMPUTED acquisition. A future low-cost candidate source is a
+separate mechanism addition, not an expansion of canonical property reads.
 
 One DIRECT acquisition round admits at most 100 unique WorkerIds across all
 Item candidates in `(priority, candidateId)` order. A WorkerId already admitted
@@ -235,21 +183,17 @@ the exact score fences, and rematches the complete Task rule.
 For each rule field:
 
 ```text
-index.*      -> point-load through Property Index.load
 worker.*     -> read workerProperties
 platform.*   -> read platformProperties
 workerId     -> built-in identity
 ```
 
 The matcher builds one context for each existing candidate and evaluates the
-complete rule in memory. If an explicit index field has no current value, it
-never falls back to a same-named snapshot value. A missing implementation or
-provider failure makes that bounded matching round fail closed. Invalid stored
-rules and index read failures produce one safe aggregate diagnostic per matcher
-call; the log does not contain rule or property values.
+complete rule in memory. Invalid stored rules produce one safe aggregate
+diagnostic per matcher call; the log does not contain rule or property values.
 
 Rules currently contain only required conditions. Priority or preference
-terms are a future rule-model change and must not be simulated by unindexed
+terms are a future rule-model change and must not be simulated by unsupported
 DIRECT predicates.
 
 ## Lifecycle Boundaries
@@ -269,23 +213,20 @@ Execution       TaskItem claim and Worker result evidence
 
 Worker upsert initializes a missing HOT score, including retry recovery after a
 partial first Bind. If a score already exists, upsert preserves its polarity,
-coordinate, dirty bit, and lease exactly. Property and index updates do not
-read or mutate score or release a lease. Attribute changes do not revoke an
+coordinate, dirty bit, and lease exactly. Property writes do not read or mutate
+score or release a lease. Attribute changes do not revoke an
 already claimed Item or a command already delivered to a Worker.
 
-Physical Worker removal, disable/drain, index residue cleanup, ordered update
-versions, numeric/range providers, and preference ranking remain separate
-milestones.
+Physical Worker removal, disable/drain, ordered update versions, new bounded
+candidate sources, numeric/range matching, and preference ranking remain
+separate milestones.
 
 ## Owner Guardrails
 
 - Do not let Platform writes modify `workerProperties`.
-- Do not auto-project Properties into indexes.
-- Do not expose index-only values through Runtime View.
-- Do not use Properties or indexes as connectivity evidence.
-- Do not make index update failure roll back Worker upsert, Dispatch, or
-  ResultRouting.
+- Do not accept `index.*` as a matching coordinate.
+- Do not use Properties as connectivity evidence.
 - Do not scan descriptors to satisfy DIRECT rules.
-- Do not infer physical truth from the latest accepted scheduling projection.
+- Do not infer physical truth from the latest canonical Properties snapshot.
 - Do not put score, lease, connection, or Task assignment state in a Worker
   descriptor.

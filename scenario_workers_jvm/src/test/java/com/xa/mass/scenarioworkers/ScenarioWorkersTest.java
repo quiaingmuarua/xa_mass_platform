@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.workerdelivery.json.Jsons;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InOrder;
@@ -36,6 +38,11 @@ class ScenarioWorkersTest {
 
     @TempDir
     Path temporaryDirectory;
+
+    @BeforeEach
+    void resolveTemporaryDirectory() throws IOException {
+        temporaryDirectory = temporaryDirectory.toRealPath();
+    }
 
     @Test
     void publicAssemblyIsInertAndRejectsUnknownLocalEvent() {

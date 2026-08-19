@@ -34,7 +34,7 @@ from .worker_serviceability import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    AdapterEvidenceResultPacer,
+    WorkerServiceabilityResultPacer,
 )
 from ..kernel.assignment_dispatch_runtime import CandidateId
 
@@ -65,5 +65,5 @@ __all__ = [
     "WorkerServiceabilityDispatchConfig",
     "WorkerServiceabilityDispatchPacer",
     "WorkerServiceabilityResultConfig",
-    "AdapterEvidenceResultPacer",
+    "WorkerServiceabilityResultPacer",
 ]

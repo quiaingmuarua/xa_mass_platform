@@ -34,7 +34,7 @@ from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
 from .result_routing_application import ResultRoutingApplicationConfig
 from .worker_serviceability_application import (
     WorkerServiceabilityDispatchApplicationConfig,
-    AdapterEvidenceResultApplicationConfig,
+    WorkerServiceabilityResultApplicationConfig,
 )
 
 
@@ -745,7 +745,7 @@ class KernelApplication:
             worker_serviceability_result=(
                 None
                 if config.worker_serviceability is None
-                else AdapterEvidenceResultApplicationConfig(
+                else WorkerServiceabilityResultApplicationConfig(
                     result=WorkerServiceabilityResultConfig(
                         max_recovery_attempts=(
                             config.worker_serviceability.max_recovery_attempts

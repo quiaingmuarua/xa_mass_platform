@@ -12,13 +12,6 @@ public interface WorkerRuntime {
 
     WorkerRuntimeResult upsertWorker(WorkerDeclaration declaration);
 
-    WorkerRuntimeResult replaceWorkerProperties(
-            String workerGroupId,
-            String workerId,
-            long updatedAtMillis,
-            Map<String, Object> properties
-    );
-
     enum WorkerRuntimeStatus {
         OK("ok"),
         NOOP("noop"),

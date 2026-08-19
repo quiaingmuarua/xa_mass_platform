@@ -93,18 +93,6 @@ class WorkerRuntime(ABC):
         """Upsert immutable identity and replace worker-owned properties."""
         pass
 
-    @abstractmethod
-    def replace_worker_properties(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        updated_at_millis: int,
-        properties: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        """Replace one existing Worker's complete canonical property snapshot."""
-        pass
-
 
 class WorkerResourceCatalog(ABC):
     """Worker-runtime resource declaration surface.
@@ -180,4 +168,3 @@ class WorkerResourceCatalog(ABC):
     ) -> WorkerRuntimeResult:
         """Patch platform-owned properties inside an explicit worker group."""
         pass
-

@@ -17,6 +17,7 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
@@ -136,7 +137,9 @@ class NettyWorkerServerTest {
                 port,
                 DEFAULT_TIMEOUT
         );
-        try (ServerSocket blocker = new ServerSocket(port)) {
+        try (ServerSocket blocker = new ServerSocket()) {
+            blocker.setReuseAddress(false);
+            blocker.bind(new InetSocketAddress("127.0.0.1", port));
             assertThatThrownBy(() -> failed.start(
                     new NoopStringHandler()
             ))

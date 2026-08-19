@@ -111,8 +111,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                         "{}"
                 ));
         assertThat(redis.hget(propertiesKey("group-1"), "worker-1"))
-                .contains("\"properties\":{\"runtime\":\"first\"}")
-                .contains("\"updatedAtMillis\":");
+                .isEqualTo("{\"runtime\":\"first\"}");
 
         var initialScore = scoreCore.getScoreStates(
                 "group-1",
@@ -144,8 +143,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                         "{\"tier\":\"premium\"}"
                 ));
         assertThat(redis.hget(propertiesKey("group-1"), "worker-1"))
-                .contains("\"properties\":{\"runtime\":\"second\"}")
-                .contains("\"updatedAtMillis\":");
+                .isEqualTo("{\"runtime\":\"second\"}");
         assertThat(scoreCore.getScoreStates(
                 "group-1",
                 List.of("worker-1")
@@ -197,8 +195,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(runtime.upsertWorker(declaration).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(propertiesKey("group-1"), "worker-1"))
-                .contains("\"properties\":{\"runtime\":\"java\"}")
-                .contains("\"updatedAtMillis\":");
+                .isEqualTo("{\"runtime\":\"java\"}");
 
         redis.hdel(metadataKey("group-1"), "worker-1");
         assertThat(runtime.upsertWorker(declaration).status())
@@ -270,11 +267,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                             "{}"
                     )
             );
-            properties.put(
-                    workerId,
-                    "{\"properties\":{\"index\":" + index
-                            + "},\"updatedAtMillis\":" + (index + 1) + "}"
-            );
+            properties.put(workerId, "{\"index\":" + index + "}");
         }
         redis.hset(metadataKey("group-1"), metadata);
         redis.hset(propertiesKey("group-1"), properties);
@@ -583,7 +576,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void canonicalPropertiesReplaceIsNewerOnlyAndScoreNeutral() {
+    void workerAndPlatformPropertiesRemainIndependentAndScoreNeutral() {
         catalog.upsertWorkerGroup(group("group-1", Map.of(), Set.of("event")));
         runtime.upsertWorker(worker(
                 "worker-1",
@@ -600,27 +593,20 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "group-1",
                 List.of("worker-1")
         ).get("worker-1");
-        long updatedAtMillis = System.currentTimeMillis() + 10_000L;
-        assertThat(runtime.replaceWorkerProperties(
-                "group-1",
+        assertThat(runtime.upsertWorker(worker(
                 "worker-1",
-                updatedAtMillis,
+                "group-1",
+                "endpoint-1",
                 Map.of("region", "cn-east", "battery", 87)
-        ).status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(runtime.replaceWorkerProperties(
-                "group-1",
-                "worker-1",
-                updatedAtMillis,
-                Map.of("region", "stale")
-        ).status()).isEqualTo(WorkerRuntimeStatus.STALE);
+        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
         WorkerDescriptor descriptor = catalog.getWorkerDescriptors(
                 "group-1",
                 List.of("worker-1")
         ).get("worker-1");
         assertThat(descriptor.workerProperties())
-                .containsExactlyEntriesOf(Map.of(
+                .containsExactlyInAnyOrderEntriesOf(Map.of(
                         "region", "cn-east",
-                        "battery", 87
+                        "battery", 87L
                 ));
         assertThat(descriptor.platformProperties())
                 .containsExactlyEntriesOf(Map.of("viewOnly", "shown"));

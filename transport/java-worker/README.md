@@ -85,7 +85,10 @@ load Properties
 
 Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns
 the Worker to `STOPPED`; only an explicit later `start()` performs another
-Bind. The Worker caches no Endpoint URI, Command, or Result.
+Bind. That Bind carries the only canonical Properties refresh; a running
+provider change is observable through an explicit Worker snapshot Command but
+waits for the next stop/start before it reaches Kernel resource truth. The
+Worker caches no Endpoint URI, Command, or Result.
 
 ## Platform Resources
 

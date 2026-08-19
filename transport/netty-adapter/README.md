@@ -372,9 +372,8 @@ repeat the caller-owned WorkerGroup. Both caches use caller-thread maintenance
 only: no loader, refresh, listener, scheduler or cleanup thread is installed.
 
 The current Worker event supplies a complete properties snapshot. There is no
-partial-update or per-property timestamp contract. A future patch event must
-start from a complete baseline, define deletion tombstones, atomically merge to
-another complete Map, and advance the one Worker-level `updatedAtMillis`.
+partial-update, change-notification, or per-property timestamp contract. This
+Adapter observation is never a Kernel write path.
 
 ### Result ingress round
 

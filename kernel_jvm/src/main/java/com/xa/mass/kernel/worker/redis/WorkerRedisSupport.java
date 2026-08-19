@@ -6,7 +6,6 @@ import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,7 +61,6 @@ final class WorkerRedisSupport {
         return result != null && result.longValue() == 1;
     }
 
-
     static String encodeWorkerGroup(WorkerGroupDescriptor descriptor) {
         try {
             Map<String, Object> payload = new TreeMap<>();
@@ -94,16 +92,9 @@ final class WorkerRedisSupport {
         }
     }
 
-    static String encodeWorkerProperties(
-            WorkerPropertiesEnvelope envelope
-    ) {
+    static String encodeWorkerProperties(Map<String, Object> properties) {
         try {
-            return encodeCanonical(Map.of(
-                    "updatedAtMillis",
-                    envelope.updatedAtMillis(),
-                    "properties",
-                    envelope.properties()
-            ));
+            return encodeCanonical(properties);
         } catch (IllegalArgumentException error) {
             return null;
         }
@@ -159,51 +150,14 @@ final class WorkerRedisSupport {
         }
     }
 
-    static WorkerPropertiesEnvelope decodeWorkerProperties(String raw) {
+    static Map<String, Object> decodeWorkerProperties(String raw) {
         if (raw == null) {
             return null;
         }
         try {
-            Map<String, Object> payload = Jsons.parseObject(raw);
-            requireExactFields(
-                    payload,
-                    Set.of("updatedAtMillis", "properties")
-            );
-            Object rawUpdatedAtMillis = payload.get("updatedAtMillis");
-            if (!(rawUpdatedAtMillis instanceof Number number)) {
-                throw new IllegalArgumentException(
-                        "updatedAtMillis must be a number"
-                );
-            }
-            long updatedAtMillis = number.longValue();
-            if (updatedAtMillis <= 0
-                    || number.doubleValue() != (double) updatedAtMillis) {
-                throw new IllegalArgumentException(
-                        "updatedAtMillis must be a positive integer"
-                );
-            }
-            return new WorkerPropertiesEnvelope(
-                    updatedAtMillis,
-                    objectMap(payload.get("properties"))
-            );
+            return objectMap(Jsons.parseObject(raw));
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
-        }
-    }
-
-    record WorkerPropertiesEnvelope(
-            long updatedAtMillis,
-            Map<String, Object> properties
-    ) {
-        WorkerPropertiesEnvelope {
-            if (updatedAtMillis <= 0) {
-                throw new IllegalArgumentException(
-                        "updatedAtMillis must be positive"
-                );
-            }
-            properties = Collections.unmodifiableMap(
-                    new LinkedHashMap<>(properties)
-            );
         }
     }
 

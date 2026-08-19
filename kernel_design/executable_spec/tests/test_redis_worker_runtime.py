@@ -365,66 +365,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 "workerId": "worker-1",
             },
         )
-        self.assertEqual(
-            json.loads(raw_properties),
-            {
-                "updatedAtMillis": 100_000,
-                "properties": {"arch": "arm64"},
-            },
-        )
-
-    def test_replace_worker_properties_is_newer_only_and_score_neutral(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration(
-            "worker-1",
-            worker_properties={"region": "cn-east"},
-        ))
-        score_key = "wr:test:score:image-workers"
-        score_before = self.redis.zscore(score_key, "worker-1")
-
-        replaced = self.runtime.replace_worker_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updated_at_millis=100_001,
-            properties={"region": "cn-west", "battery": 87},
-        )
-        stale = self.runtime.replace_worker_properties(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            updated_at_millis=100_001,
-            properties={"region": "stale"},
-        )
-        missing = self.runtime.replace_worker_properties(
-            worker_group_id="image-workers",
-            worker_id="missing",
-            updated_at_millis=100_002,
-            properties={"region": "missing"},
-        )
-
-        self.assertEqual(replaced.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(stale.status, WorkerRuntimeStatus.STALE)
-        self.assertEqual(missing.status, WorkerRuntimeStatus.NOT_FOUND)
-        self.assertEqual(
-            self.catalog.get_worker_descriptors(
-                worker_group_id="image-workers",
-                worker_ids=["worker-1"],
-            )["worker-1"].worker_properties,
-            {"region": "cn-west", "battery": 87},
-        )
-        self.assertEqual(
-            json.loads(self.redis.hget(
-                "wr:test:worker-properties:image-workers",
-                "worker-1",
-            )),
-            {
-                "updatedAtMillis": 100_001,
-                "properties": {"battery": 87, "region": "cn-west"},
-            },
-        )
-        self.assertEqual(
-            self.redis.zscore(score_key, "worker-1"),
-            score_before,
-        )
+        self.assertEqual(json.loads(raw_properties), {"arch": "arm64"})
 
     def test_legacy_worker_resource_shapes_are_not_read(self) -> None:
         self.redis.hset(
@@ -482,10 +423,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.redis.hset(
             "wr:test:worker-properties:image-workers",
             "worker-1",
-            json.dumps({
-                "updatedAtMillis": 100_000,
-                "properties": {},
-            }),
+            "{}",
         )
 
         patch_result = self.catalog.patch_worker_platform_properties(

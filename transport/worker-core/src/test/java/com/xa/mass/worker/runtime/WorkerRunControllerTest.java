@@ -110,25 +110,6 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void propertiesPublishIsAcceptedOnlyForTheCurrentActiveRun()
-            throws Exception {
-        RecordingClientCreator networks = new RecordingClientCreator();
-        WorkerRunController controller = controller(
-                new ScriptedPreparation(0),
-                networks
-        );
-        assertFalse(controller.publishPropertiesChanged());
-
-        controller.start();
-        FakeTextMessageClient client = networks.awaitClient(0);
-        assertTrue(controller.publishPropertiesChanged());
-
-        client.terminate();
-        awaitStopped(controller);
-        assertFalse(controller.publishPropertiesChanged());
-    }
-
-    @Test
     void endpointTerminationStopsWithoutStartingAnotherRun()
             throws Exception {
         ScriptedPreparation preparation = new ScriptedPreparation(0);

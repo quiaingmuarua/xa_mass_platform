@@ -73,9 +73,6 @@ process with the checked proof configuration so the Serviceability Result
 Pacer is active:
 
 ```powershell
-$env:XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON = `
-  '{"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}'
-
 python -m kernel_design.runtime_server `
   --host 127.0.0.1 --port 18080 `
   --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json
@@ -88,6 +85,10 @@ exercises a custom SYSTEM handler and the default probe/properties/events
 handlers, observes the current Adapter Channel through the public Runtime View,
 closes it through DIRECT_CALL, and proves transparent reconnect. A dedicated
 Worker also proves the full current Serviceability behavior:
+
+The checked Runtime Boundary config uses a deliberately short recovery retry
+interval so periodic compensation remains a bounded test; it is not a
+production policy default.
 
 ```text
 physical WebSocket connect

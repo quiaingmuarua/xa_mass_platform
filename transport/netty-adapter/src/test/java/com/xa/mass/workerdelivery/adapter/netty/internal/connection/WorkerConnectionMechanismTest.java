@@ -302,7 +302,6 @@ class WorkerConnectionMechanismTest {
             channel.writeInbound(fixture.identity("worker-1"));
             fixture.remoteApi.currentVerification().complete(null);
             awaitBound(fixture, channel);
-            fixture.network.writtenMessages.clear();
 
             DeliveryCommand command = DeliveryCommand.create(
                     TASK,
@@ -463,7 +462,6 @@ class WorkerConnectionMechanismTest {
             awaitBound(fixture, channel);
             fixture.reportProcess.round();
             fixture.systemReports.clear();
-            fixture.evidenceReports.clear();
 
             channel.writeInbound(fixture.systemResult("worker-1"));
             fixture.reportProcess.round();
@@ -539,59 +537,6 @@ class WorkerConnectionMechanismTest {
 
             fixture.reportProcess.round();
             assertThat(fixture.systemReports).containsExactly(encoded);
-            assertThat(fixture.evidenceReports)
-                    .filteredOn(encodedEvidence ->
-                            fixture.codec.decodeDeliveryReport(encodedEvidence)
-                                    .messageType().equals(
-                                            "platform.adapter."
-                                                    + "worker-properties.changed"
-                                    )
-                    )
-                    .singleElement().satisfies(
-                    evidence -> fixture.assertPropertiesEvidence(
-                            evidence,
-                            "worker-1",
-                            snapshot
-                    )
-            );
-        } finally {
-            channel.finishAndReleaseAll();
-        }
-    }
-
-    @Test
-    void proactivePropertiesChangeUpdatesCacheAndEmitsOnlyKernelEvidence() {
-        Fixture fixture = new Fixture();
-        EmbeddedChannel channel = fixture.channel();
-        try {
-            channel.writeInbound(fixture.identity("worker-1"));
-            fixture.remoteApi.currentVerification().complete(null);
-            awaitBound(fixture, channel);
-            fixture.reportProcess.round();
-            fixture.systemReports.clear();
-            fixture.evidenceReports.clear();
-
-            channel.writeInbound(fixture.changedPropertiesReport(
-                    "worker-1",
-                    "{\"properties\":{\"region\":\"cn-west\"}}"
-            ));
-            WorkerPropertiesObservation snapshot =
-                    fixture.mechanism.workerProperties(
-                            List.of("worker-1")
-                    ).get("worker-1");
-            fixture.reportProcess.round();
-
-            assertThat(fixture.systemReports).isEmpty();
-            assertThat(snapshot.properties())
-                    .containsEntry("region", "cn-west");
-            assertThat(fixture.evidenceReports).singleElement().satisfies(
-                    evidence -> fixture.assertPropertiesEvidence(
-                            evidence,
-                            "worker-1",
-                            snapshot
-                    )
-            );
-            assertThat(channel.isActive()).isTrue();
         } finally {
             channel.finishAndReleaseAll();
         }
@@ -925,32 +870,6 @@ class WorkerConnectionMechanismTest {
                     .isInstanceOf(Number.class);
         }
 
-        private void assertPropertiesEvidence(
-                String encodedReport,
-                String workerId,
-                WorkerPropertiesObservation observation
-        ) {
-            DeliveryReport report = codec.decodeDeliveryReport(encodedReport);
-            assertThat(report.src()).isEqualTo(ADAPTER);
-            assertThat(report.sourceId()).isEqualTo("adapter-1");
-            assertThat(report.dst()).isEqualTo(KERNEL);
-            assertThat(report.messageType()).isEqualTo(
-                    "platform.adapter.worker-properties.changed"
-            );
-            assertThat(report.outcomeCode()).isEqualTo("200");
-            assertThat(report.forward()).isEqualTo(
-                    "worker-properties-evidence:v1"
-            );
-            assertThat(Jsons.parseObject(report.payload())).containsOnly(
-                    Map.entry("workerId", workerId),
-                    Map.entry(
-                            "updatedAtMillis",
-                            observation.updatedAtMillis()
-                    ),
-                    Map.entry("properties", observation.properties())
-            );
-        }
-
         private String taskResult(String workerId) {
             return codec.encodeDeliveryReport(DeliveryReport.create(
                     WORKER,
@@ -988,21 +907,6 @@ class WorkerConnectionMechanismTest {
                     outcomeCode,
                     payload,
                     "direct-call:v1:properties"
-            ));
-        }
-
-        private String changedPropertiesReport(
-                String workerId,
-                String payload
-        ) {
-            return codec.encodeDeliveryReport(DeliveryReport.create(
-                    WORKER,
-                    workerId,
-                    ADAPTER,
-                    "platform.worker.properties.changed",
-                    "200",
-                    payload,
-                    "worker-properties-changed:v1"
             ));
         }
 
