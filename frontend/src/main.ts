@@ -18,13 +18,16 @@ import { router } from "./router";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
-  taskBatchStoreKey
+  taskBatchStoreKey,
+  workerStatusStoreKey
 } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
 import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
 import { HttpTaskBatchClient } from "./task-batch/http-client";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
 import { createTaskBatchStore } from "./stores/task-batch";
+import { createWorkerStatusStore } from "./stores/worker-status";
+import { createWorkerStatusDataSource } from "./worker-status/data-source";
 import "element-plus/es/components/alert/style/css";
 import "element-plus/es/components/breadcrumb/style/css";
 import "element-plus/es/components/breadcrumb-item/style/css";
@@ -34,7 +37,6 @@ import "element-plus/es/components/drawer/style/css";
 import "element-plus/es/components/icon/style/css";
 import "element-plus/es/components/input/style/css";
 import "element-plus/es/components/message/style/css";
-import "element-plus/es/components/message-box/style/css";
 import "element-plus/es/components/table/style/css";
 import "element-plus/es/components/table-column/style/css";
 import "element-plus/es/components/tag/style/css";
@@ -69,9 +71,11 @@ if (configResult.ok) {
     new HttpTaskBatchClient(configResult.value.apiBaseUrl),
     runtimeViewerStore
   );
+  const workerStatusStore = createWorkerStatusStore(createWorkerStatusDataSource());
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
   app.provide(taskBatchStoreKey, taskBatchStore);
+  app.provide(workerStatusStoreKey, workerStatusStore);
 }
 
 app.mount("#app");

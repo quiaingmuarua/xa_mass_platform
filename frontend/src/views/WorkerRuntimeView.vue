@@ -1,31 +1,38 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  CircleCheck,
   Collection,
   Connection,
   DataAnalysis,
   InfoFilled,
   RefreshRight,
   Search,
-  SwitchButton,
   Tickets,
+  TrendCharts,
   Warning
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
-import { useRuntimeViewerStore } from "@/runtime-context";
+import { useRuntimeViewerStore, useWorkerStatusStore } from "@/runtime-context";
 import { filterCurrentSample } from "@/runtime-viewer/filter";
 import type { JsonValue, WorkerView } from "@/runtime-viewer/types";
 import {
-  useWorkerNetworkMockStore,
-  type WorkerNetworkMockObservation
-} from "@/stores/worker-network-mock";
+  presentNetworkState,
+  presentSchedulingState,
+  presentStatusAxis,
+  type WorkerStatusPresentation,
+  type WorkerStatusTagTone
+} from "@/worker-status/presentation";
+import type {
+  WorkerNetworkObservation,
+  WorkerSchedulingObservation,
+  WorkerStatusAxis,
+  WorkerStatusEntry
+} from "@/worker-status/types";
 
 const store = useRuntimeViewerStore();
-const network = useWorkerNetworkMockStore();
+const workerStatus = useWorkerStatusStore();
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
@@ -45,6 +52,27 @@ const canRefresh = computed(
     store.activeSampleState?.status !== "loading" &&
     store.activeSampleState?.status !== "refreshing"
 );
+const isStatusRefreshing = computed(() => workerStatus.isLoading(activeWorkers.value));
+const networkSummary = computed(() => {
+  const observations = activeWorkers.value.flatMap((worker) => {
+    const axis = statusEntry(worker).network;
+    return axis.observation !== undefined && !axis.stale ? [axis.observation] : [];
+  });
+  return {
+    connected: observations.filter((value) => value.state === "connected").length,
+    observed: observations.length
+  };
+});
+const schedulingSummary = computed(() => {
+  const observations = activeWorkers.value.flatMap((worker) => {
+    const axis = statusEntry(worker).scheduling;
+    return axis.observation !== undefined && !axis.stale ? [axis.observation] : [];
+  });
+  return {
+    eligible: observations.filter((value) => value.state === "eligible").length,
+    observed: observations.length
+  };
+});
 
 watch(
   () => store.activeWorkerGroupId,
@@ -55,12 +83,22 @@ watch(
 );
 
 onMounted(() => {
-  void store.initializeWorkerView();
+  void initializePage();
 });
+
+onBeforeUnmount(() => {
+  workerStatus.dispose();
+});
+
+async function initializePage(): Promise<void> {
+  await store.initializeWorkerView();
+  observeCurrentSampleIfPresent();
+}
 
 async function selectGroup(workerGroupId: string): Promise<void> {
   closeDetails();
   await store.selectGroup(workerGroupId);
+  observeCurrentSampleIfPresent();
 }
 
 async function refreshSample(): Promise<void> {
@@ -73,46 +111,28 @@ async function refreshSample(): Promise<void> {
     store.activeSampleState?.status === "ready" &&
     !store.activeSampleState.stale
   ) {
-    network.clearGroup(workerGroupId);
+    void workerStatus.replaceSample(workerGroupId, activeWorkers.value);
   }
 }
 
-async function observeCurrentSample(): Promise<void> {
-  await network.observeWorkers(activeWorkers.value);
-  ElMessage.success(`已生成 ${activeWorkers.value.length} 条 Mock 连接观测`);
+async function refreshCurrentStatus(): Promise<void> {
+  const workerGroupId = store.activeWorkerGroupId;
+  if (workerGroupId !== undefined) {
+    await workerStatus.refreshWorkers(workerGroupId, activeWorkers.value);
+  }
 }
 
-async function observeSelectedWorker(): Promise<void> {
-  if (selectedWorker.value === undefined) {
-    return;
+async function refreshSelectedWorkerStatus(): Promise<void> {
+  if (selectedWorker.value !== undefined) {
+    await workerStatus.refreshWorker(selectedWorker.value);
   }
-  await network.observeWorker(selectedWorker.value);
 }
 
-async function closeSelectedWorkerConnection(): Promise<void> {
-  const worker = selectedWorker.value;
-  if (worker === undefined) {
-    return;
+function observeCurrentSampleIfPresent(): void {
+  const workerGroupId = store.activeWorkerGroupId;
+  if (workerGroupId !== undefined && store.activeSample !== undefined) {
+    void workerStatus.ensureSample(workerGroupId, activeWorkers.value);
   }
-  try {
-    await ElMessageBox.confirm(
-      "只关闭 Adapter 当前持有的连接；Worker 可能立即自动重连。这不会修改 Binding 或调度状态。",
-      "关闭当前连接（Mock）",
-      {
-        confirmButtonText: "关闭当前连接",
-        cancelButtonText: "取消",
-        type: "warning"
-      }
-    );
-  } catch {
-    return;
-  }
-  const outcome = await network.closeCurrent(worker);
-  ElMessage.info(
-    outcome === "close-started"
-      ? "Mock outcome: close-started；旧观测已标记为陈旧"
-      : "Mock outcome: not-connected"
-  );
 }
 
 function openDetails(worker: WorkerView): void {
@@ -152,9 +172,9 @@ function compactJson(value: Record<string, JsonValue>): string {
   return Object.keys(value).length === 0 ? "—" : JSON.stringify(value);
 }
 
-function formattedTime(value?: string): string {
+function formattedTime(value?: string, emptyValue = "尚未采样"): string {
   if (value === undefined) {
-    return "尚未采样";
+    return emptyValue;
   }
   return new Intl.DateTimeFormat("zh-CN", {
     hour: "2-digit",
@@ -164,30 +184,47 @@ function formattedTime(value?: string): string {
   }).format(new Date(value));
 }
 
-function networkObservation(worker: WorkerView): WorkerNetworkMockObservation {
-  return network.observation(worker);
+function statusEntry(worker: WorkerView): WorkerStatusEntry {
+  return workerStatus.status(worker);
 }
 
-function networkLabel(worker: WorkerView): string {
-  const value = networkObservation(worker);
-  if (value.status === "connected") {
-    return "Connected";
-  }
-  if (value.status === "disconnected") {
-    return "Disconnected";
-  }
-  return "Not observed";
+function networkPresentation(worker: WorkerView): WorkerStatusPresentation | undefined {
+  const observation = statusEntry(worker).network.observation;
+  return observation === undefined ? undefined : presentNetworkState(observation.state);
 }
 
-function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
-  const value = networkObservation(worker);
-  if (value.stale) {
-    return "warning";
-  }
-  if (value.status === "connected") {
-    return "success";
-  }
-  return "info";
+function schedulingPresentation(
+  worker: WorkerView
+): WorkerStatusPresentation | undefined {
+  const observation = statusEntry(worker).scheduling.observation;
+  return observation === undefined
+    ? undefined
+    : presentSchedulingState(observation.state);
+}
+
+type StatusAxis =
+  | WorkerStatusAxis<WorkerNetworkObservation>
+  | WorkerStatusAxis<WorkerSchedulingObservation>;
+
+function axisLabel(axis: StatusAxis, presentation?: WorkerStatusPresentation): string {
+  return presentStatusAxis(axis, presentation).label;
+}
+
+function axisTone(
+  axis: StatusAxis,
+  presentation?: WorkerStatusPresentation
+): WorkerStatusTagTone {
+  return presentStatusAxis(axis, presentation).tone;
+}
+
+function axisAuxiliary(axis: StatusAxis): string | undefined {
+  return presentStatusAxis(axis).auxiliary;
+}
+
+function metricValue(value: number, observed: number): string {
+  return observed === 0 && activeWorkers.value.length > 0
+    ? "—"
+    : `${value} / ${observed}`;
 }
 </script>
 
@@ -197,7 +234,7 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
       <div>
         <p class="worker-page__eyebrow">RUNTIME / WORKERS</p>
         <h1>Worker Runtime</h1>
-        <p>Worker 声明预览与 Adapter 网络连接观测</p>
+        <p>Worker 声明样本、Adapter Network 与 Kernel Scheduling 观测</p>
       </div>
       <div class="worker-page__heading-actions">
         <span class="generated-at" data-testid="generated-at">
@@ -216,11 +253,11 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
       </div>
     </header>
 
-    <div class="metric-grid" aria-label="Worker 样本指标">
+    <div class="metric-grid" aria-label="Worker 样本与状态指标">
       <MetricCard
         label="已配置 Group"
         :value="store.configuredWorkerGroupIds.length"
-        hint="environment IDs"
+        hint="Profile directory"
         :icon="Collection"
         tone="primary"
         test-id="metric-configured-groups"
@@ -234,30 +271,29 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
         test-id="metric-current-sample"
       />
       <MetricCard
-        label="有效描述符"
-        :value="store.activeSample?.returnedCount ?? '—'"
-        hint="decoded rows"
-        :icon="CircleCheck"
+        label="Network Connected"
+        :value="metricValue(networkSummary.connected, networkSummary.observed)"
+        hint="MOCK observed"
+        :icon="Connection"
         tone="success"
-        test-id="metric-returned"
+        test-id="metric-network-connected"
       />
       <MetricCard
-        label="不可读描述符"
-        :value="store.activeSample?.unreadableCount ?? '—'"
-        hint="not refilled"
-        :icon="Warning"
+        label="Scheduling Eligible"
+        :value="metricValue(schedulingSummary.eligible, schedulingSummary.observed)"
+        hint="MOCK observed"
+        :icon="TrendCharts"
         tone="warning"
-        test-id="metric-unreadable"
+        test-id="metric-scheduling-eligible"
       />
     </div>
 
     <el-alert class="runtime-semantics" type="info" :closable="false" show-icon>
       <template #title>
-        <strong>样本语义：</strong>
-        每次只对当前 WorkerGroup
-        执行一次随机采样；结果不承诺顺序、稳定性、完整性或总量。 网络连接是独立的
-        Adapter 观测：connected ≠ bound ≠ schedulable ≠ executing。本版连接交互为前端
-        Mock，不调用后端。
+        <strong>双轴语义：</strong>
+        Adapter Network 与 Kernel Scheduling 是独立观测，connected ≠ bound ≠ schedulable
+        ≠ executing。Descriptor 可以来自真实 API，但本页新增的两条状态轴均为
+        MOCK，不调用后端，也不解析 raw Score。
       </template>
     </el-alert>
 
@@ -284,7 +320,7 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
             Request ID: {{ store.resourceLoadError.requestId }}
           </small>
         </div>
-        <el-button @click="store.initializeWorkerView">重新读取目录</el-button>
+        <el-button @click="initializePage">重新读取目录</el-button>
       </div>
 
       <template v-else>
@@ -336,7 +372,7 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
             <strong>WorkerGroup 未找到</strong>
             <p>
               配置中的 {{ store.activeWorkerGroupId }} 当前没有 Owner 描述符。这不表示
-              Group 或 Worker 离线。
+              Group 或 Worker 的网络或调度状态。
             </p>
           </div>
         </div>
@@ -352,21 +388,19 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
             />
             <div class="worker-toolbar__actions">
               <span>
-                当前筛选
-                <strong>{{ filteredWorkers.length }}</strong>
-                /
+                当前筛选 <strong>{{ filteredWorkers.length }}</strong> /
                 {{ store.activeSample?.returnedCount ?? 0 }}
               </span>
               <el-button
                 :icon="Connection"
-                :loading="network.batchLoading"
+                :loading="isStatusRefreshing"
                 :disabled="activeWorkers.length === 0"
-                data-testid="observe-network-button"
-                @click="observeCurrentSample"
+                data-testid="refresh-status-button"
+                @click="refreshCurrentStatus"
               >
-                观测当前样本连接
+                刷新状态
               </el-button>
-              <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+              <el-tag effect="plain" type="warning" size="small">STATUS MOCK</el-tag>
             </div>
           </div>
 
@@ -396,8 +430,7 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
             <template #title>
               刷新失败，仍显示上一次内存样本；该样本已标记为陈旧。
               <span v-if="store.activeSampleState.error?.requestId">
-                Request ID:
-                {{ store.activeSampleState.error.requestId }}
+                Request ID: {{ store.activeSampleState.error.requestId }}
               </span>
             </template>
           </el-alert>
@@ -412,8 +445,7 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
               <strong>{{ store.activeSampleState.error?.title }}</strong>
               <p>{{ store.activeSampleState.error?.message }}</p>
               <small v-if="store.activeSampleState.error?.requestId">
-                Request ID:
-                {{ store.activeSampleState.error.requestId }}
+                Request ID: {{ store.activeSampleState.error.requestId }}
               </small>
             </div>
           </div>
@@ -457,57 +489,66 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
                 data-testid="worker-table"
               >
                 <el-table-column prop="workerId" label="WORKER ID" min-width="238">
-                  <template #default="{ row }">
-                    <code>{{ row.workerId }}</code>
-                  </template>
-                </el-table-column>
-                <el-table-column label="WORKER GROUP" min-width="220">
-                  <template #default="{ row }">
-                    <div class="group-cell">
-                      <span>
-                        {{
-                          groupDisplayName(row.workerGroupId)
-                            .split(" ")
-                            .map((value) => value[0])
-                            .join("")
-                        }}
-                      </span>
-                      <div>
-                        <strong>{{ row.workerGroupId }}</strong>
-                        <small>
-                          {{ groupDisplayName(row.workerGroupId) }}
-                        </small>
-                      </div>
-                    </div>
-                  </template>
+                  <template #default="{ row }"
+                    ><code>{{ row.workerId }}</code></template
+                  >
                 </el-table-column>
                 <el-table-column
                   prop="endpointManagerId"
                   label="ENDPOINT MANAGER"
-                  min-width="170"
+                  min-width="180"
                 />
-                <el-table-column label="NETWORK CONNECTION" min-width="170">
+                <el-table-column label="ADAPTER NETWORK · MOCK" min-width="185">
                   <template #default="{ row }">
-                    <div class="network-state-cell">
-                      <el-tag :type="networkTagType(row)" effect="light" size="small">
-                        {{ networkLabel(row) }}
+                    <div class="worker-status-cell">
+                      <el-tag
+                        :type="
+                          axisTone(statusEntry(row).network, networkPresentation(row))
+                        "
+                        effect="light"
+                        size="small"
+                      >
+                        {{
+                          axisLabel(statusEntry(row).network, networkPresentation(row))
+                        }}
                       </el-tag>
-                      <small v-if="networkObservation(row).stale">Stale</small>
+                      <small v-if="axisAuxiliary(statusEntry(row).network)">
+                        {{ axisAuxiliary(statusEntry(row).network) }}
+                      </small>
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="WORKER PROPERTIES" min-width="210">
+                <el-table-column label="KERNEL SCHEDULING · MOCK" min-width="195">
                   <template #default="{ row }">
-                    <span class="attribute-preview">
-                      {{ compactJson(row.workerProperties) }}
-                    </span>
+                    <div class="worker-status-cell">
+                      <el-tag
+                        :type="
+                          axisTone(
+                            statusEntry(row).scheduling,
+                            schedulingPresentation(row)
+                          )
+                        "
+                        effect="light"
+                        size="small"
+                      >
+                        {{
+                          axisLabel(
+                            statusEntry(row).scheduling,
+                            schedulingPresentation(row)
+                          )
+                        }}
+                      </el-tag>
+                      <small v-if="axisAuxiliary(statusEntry(row).scheduling)">
+                        {{ axisAuxiliary(statusEntry(row).scheduling) }}
+                      </small>
+                    </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="PLATFORM PROPERTIES" min-width="210">
+                <el-table-column label="WORKER PROPERTIES" min-width="220">
                   <template #default="{ row }">
-                    <span class="attribute-preview">
-                      {{ compactJson(row.platformProperties) }}
-                    </span>
+                    <span class="attribute-preview">{{
+                      compactJson(row.workerProperties)
+                    }}</span>
                   </template>
                 </el-table-column>
                 <el-table-column width="96" align="right">
@@ -533,14 +574,9 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
               >
                 <div class="worker-mobile-card__heading">
                   <code>{{ worker.workerId }}</code>
-                  <el-button
-                    link
-                    type="primary"
-                    :aria-label="`查看 ${worker.workerId} 详情`"
-                    @click="openDetails(worker)"
+                  <el-button link type="primary" @click="openDetails(worker)"
+                    >详情</el-button
                   >
-                    详情
-                  </el-button>
                 </div>
                 <dl>
                   <div>
@@ -549,23 +585,38 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
                   </div>
                   <div>
                     <dt>Network</dt>
-                    <dd>{{ networkLabel(worker) }}</dd>
+                    <dd>
+                      {{
+                        axisLabel(
+                          statusEntry(worker).network,
+                          networkPresentation(worker)
+                        )
+                      }}
+                    </dd>
                   </div>
                   <div>
-                    <dt>Worker properties</dt>
+                    <dt>Scheduling</dt>
+                    <dd>
+                      {{
+                        axisLabel(
+                          statusEntry(worker).scheduling,
+                          schedulingPresentation(worker)
+                        )
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Properties</dt>
                     <dd>{{ compactJson(worker.workerProperties) }}</dd>
-                  </div>
-                  <div>
-                    <dt>Platform properties</dt>
-                    <dd>{{ compactJson(worker.platformProperties) }}</dd>
                   </div>
                 </dl>
               </article>
             </div>
 
             <footer class="sample-footnote">
-              当前显示 {{ filteredWorkers.length }} 个有效描述符；本页没有
-              cursor、总数或下一页。
+              当前筛选 {{ filteredWorkers.length }} / 有效描述符
+              {{ store.activeSample.returnedCount }}；不可读描述符
+              {{ store.activeSample.unreadableCount }}。本页没有 cursor、总数或下一页。
             </footer>
           </template>
         </template>
@@ -575,13 +626,13 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
     <el-drawer
       v-model="detailsOpen"
       class="worker-detail-drawer"
-      size="min(520px, 100%)"
+      size="min(560px, 100%)"
       destroy-on-close
       @closed="selectedWorker = undefined"
     >
       <template #header>
         <div v-if="selectedWorker" class="worker-drawer-heading">
-          <span>WORKER DESCRIPTOR</span>
+          <span>WORKER OBSERVATION</span>
           <strong>{{ selectedWorker.workerId }}</strong>
         </div>
       </template>
@@ -603,30 +654,39 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
             </div>
           </dl>
         </section>
-        <section class="worker-network-detail">
-          <div class="worker-network-detail__heading">
+
+        <section class="worker-status-detail">
+          <div class="worker-status-detail__heading">
             <div>
               <h2>Adapter Network</h2>
-              <p>当前 Endpoint Manager 中已验证且活动的 Channel</p>
+              <p>Adapter Route 的独立观测投影</p>
             </div>
             <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
           </div>
-          <div class="worker-network-card">
-            <div class="worker-network-card__status">
-              <span
-                class="network-status-dot"
-                :class="`network-status-dot--${
-                  networkObservation(selectedWorker).status
-                }`"
-              />
+          <div class="worker-status-card">
+            <div class="worker-status-card__state">
+              <el-tag
+                :type="
+                  axisTone(
+                    statusEntry(selectedWorker).network,
+                    networkPresentation(selectedWorker)
+                  )
+                "
+                effect="light"
+              >
+                {{
+                  axisLabel(
+                    statusEntry(selectedWorker).network,
+                    networkPresentation(selectedWorker)
+                  )
+                }}
+              </el-tag>
               <div>
-                <strong>{{ networkLabel(selectedWorker) }}</strong>
-                <small v-if="networkObservation(selectedWorker).stale">
-                  旧观测已陈旧，请手工重新观测
-                </small>
-                <small v-else>
-                  {{ formattedTime(networkObservation(selectedWorker).observedAt) }}
-                </small>
+                <strong>Network State</strong>
+                <small>{{
+                  networkPresentation(selectedWorker)?.description ??
+                  "尚无可展示的 Adapter Network 观测。"
+                }}</small>
               </div>
             </div>
             <dl>
@@ -635,32 +695,87 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
                 <dd>{{ selectedWorker.endpointManagerId }}</dd>
               </div>
               <div>
-                <dt>Last close outcome</dt>
+                <dt>Read At</dt>
                 <dd>
-                  {{ networkObservation(selectedWorker).lastCloseOutcome ?? "—" }}
+                  {{
+                    formattedTime(
+                      statusEntry(selectedWorker).network.observation?.readAt,
+                      "尚未观测"
+                    )
+                  }}
                 </dd>
               </div>
+              <div v-if="axisAuxiliary(statusEntry(selectedWorker).network)">
+                <dt>Observation</dt>
+                <dd>{{ axisAuxiliary(statusEntry(selectedWorker).network) }}</dd>
+              </div>
             </dl>
-            <div class="worker-network-card__actions">
-              <el-button
-                :icon="RefreshRight"
-                :loading="networkObservation(selectedWorker).loading"
-                @click="observeSelectedWorker"
-              >
-                重新观测
-              </el-button>
-              <el-button
-                type="danger"
-                plain
-                :icon="SwitchButton"
-                :loading="networkObservation(selectedWorker).loading"
-                @click="closeSelectedWorkerConnection"
-              >
-                Close Current Connection
-              </el-button>
-            </div>
           </div>
         </section>
+
+        <section class="worker-status-detail">
+          <div class="worker-status-detail__heading">
+            <div>
+              <h2>Kernel Scheduling</h2>
+              <p>Worker Score 的语义化投影，不暴露 raw Score</p>
+            </div>
+            <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+          </div>
+          <div class="worker-status-card">
+            <div class="worker-status-card__state">
+              <el-tag
+                :type="
+                  axisTone(
+                    statusEntry(selectedWorker).scheduling,
+                    schedulingPresentation(selectedWorker)
+                  )
+                "
+                effect="light"
+              >
+                {{
+                  axisLabel(
+                    statusEntry(selectedWorker).scheduling,
+                    schedulingPresentation(selectedWorker)
+                  )
+                }}
+              </el-tag>
+              <div>
+                <strong>Scheduling State</strong>
+                <small>{{
+                  schedulingPresentation(selectedWorker)?.description ??
+                  "尚无可展示的 Kernel Scheduling 观测。"
+                }}</small>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Read At</dt>
+                <dd>
+                  {{
+                    formattedTime(
+                      statusEntry(selectedWorker).scheduling.observation?.readAt,
+                      "尚未观测"
+                    )
+                  }}
+                </dd>
+              </div>
+              <div v-if="axisAuxiliary(statusEntry(selectedWorker).scheduling)">
+                <dt>Observation</dt>
+                <dd>{{ axisAuxiliary(statusEntry(selectedWorker).scheduling) }}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+
+        <el-button
+          class="worker-status-refresh"
+          :icon="RefreshRight"
+          :loading="workerStatus.isLoading([selectedWorker])"
+          @click="refreshSelectedWorkerStatus"
+        >
+          刷新该 Worker 状态
+        </el-button>
+
         <section>
           <h2>Worker properties</h2>
           <JsonBlock :value="selectedWorker.workerProperties" />
@@ -671,8 +786,8 @@ function networkTagType(worker: WorkerView): "success" | "info" | "warning" {
         </section>
         <el-alert type="info" :closable="false" show-icon>
           <template #title>
-            连接观测只属于 Adapter 网络事实，不证明 Binding、可调度性、 lease
-            或执行状态。
+            Connected 不证明 Binding、Schedulable 或 Executing；Leased 不证明 Worker
+            正在执行；Awaiting Probe 表示启动前遗留 HOT 暂不进入普通 Candidate。
           </template>
         </el-alert>
       </div>

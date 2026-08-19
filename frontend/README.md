@@ -61,6 +61,28 @@ pnpm dev:mock
 Mock mode never activates as a fallback after a real API failure. It does not
 simulate batch execution and never calls the Task Batch API.
 
+## Worker status mock
+
+The Worker page presents Adapter Network and Kernel Scheduling as two separate
+observation axes. Both axes are currently deterministic frontend Mock data,
+even when Worker descriptors come from the real Runtime View API. The page
+marks every status surface with `MOCK` and never derives either axis from a
+Worker descriptor.
+
+Network and Scheduling observations load independently after a Worker sample
+appears. They can be refreshed without resampling Workers, and one failed axis
+does not turn into a state on the other axis. A failed refresh keeps the last
+successful value only as `Stale`. There is no combined online state and no
+connection control:
+
+```text
+connected != bound != schedulable != executing
+```
+
+Future backend integration should add an HTTP implementation of
+`WorkerStatusDataSource`; the Store and page consume only semantic states and
+must never parse raw Worker Score values.
+
 ## Verification
 
 ```text
@@ -70,9 +92,10 @@ pnpm test
 pnpm build
 ```
 
-The Worker page remains an unstable, incomplete sample. The Task page shows
-only Profile-configured descriptors. Neither page exposes or infers Worker
-totals, online state, Task approval/running state, score, lease, transport
-sessions, history, or complete matching results. The Task Batch page mutates
-only through the public Lab API: it does not create or expose Tasks, Worker
-identity, or scheduling state.
+The Worker page remains an unstable, incomplete sample. Its Mock Scheduling
+axis may label a semantic lease projection, but it does not expose raw Score or
+prove execution. The Task page shows only Profile-configured descriptors.
+Neither page infers Worker totals, a combined online state, Task
+approval/running state, transport sessions, history, or complete matching
+results. The Task Batch page mutates only through the public Lab API: it does
+not create or expose Tasks, Worker identity, or scheduling truth.
