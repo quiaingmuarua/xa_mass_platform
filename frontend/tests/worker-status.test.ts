@@ -1,7 +1,10 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AxiosInstance } from "axios";
 
 import { createWorkerStatusStore } from "@/stores/worker-status";
+import { ApiWorkerStatusDataSource } from "@/worker-status/api-data-source";
+import { createWorkerStatusDataSource } from "@/worker-status/data-source";
 import {
   MockWorkerStatusDataSource,
   networkState,
@@ -48,15 +51,7 @@ describe("Mock Worker status data source", () => {
       new Set(["connected", "disconnected", "unknown"])
     );
     expect(new Set(scheduling.map((value) => value.state))).toEqual(
-      new Set([
-        "eligible",
-        "pre-epoch-hot",
-        "leased",
-        "paused",
-        "recovery",
-        "cold",
-        "missing"
-      ])
+      new Set(["due-hot", "held-hot", "paused", "recovery", "cold", "missing"])
     );
     expect((await source.observeNetwork([workers[0]!]))[0]?.state).toBe(
       networkState(workers[0]!.workerId)
@@ -80,12 +75,82 @@ describe("Mock Worker status data source", () => {
   });
 });
 
+describe("Worker status data source selection", () => {
+  it("uses the Kernel scheduling API only in API mode", () => {
+    expect(
+      createWorkerStatusDataSource({ mode: "api", apiBaseUrl: "/api" })
+    ).toBeInstanceOf(ApiWorkerStatusDataSource);
+    expect(
+      createWorkerStatusDataSource({ mode: "mock", apiBaseUrl: "/api" })
+    ).toBeInstanceOf(MockWorkerStatusDataSource);
+  });
+
+  it("maps one bounded semantic scheduling response in request order", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: {
+        workerGroupId: "group/a",
+        readAt: "2026-08-19T12:00:00Z",
+        statesByWorkerId: {
+          "worker-2": "recovery",
+          "worker-1": "due-hot"
+        }
+      }
+    });
+    const source = new ApiWorkerStatusDataSource(
+      "/api",
+      { post } as unknown as AxiosInstance,
+      new MockWorkerStatusDataSource({ networkLatencyMillis: 0 })
+    );
+
+    await expect(
+      source.observeScheduling("group/a", ["worker-2", "worker-1"])
+    ).resolves.toEqual([
+      {
+        workerId: "worker-2",
+        workerGroupId: "group/a",
+        state: "recovery",
+        readAt: "2026-08-19T12:00:00Z"
+      },
+      {
+        workerId: "worker-1",
+        workerGroupId: "group/a",
+        state: "due-hot",
+        readAt: "2026-08-19T12:00:00Z"
+      }
+    ]);
+    expect(post.mock.calls[0]?.[0]).toBe(
+      "/v1/runtime-view/worker-groups/group%2Fa/workers:scheduling-observe"
+    );
+    expect(post.mock.calls[0]?.[1]).toEqual({
+      workerIds: ["worker-2", "worker-1"]
+    });
+    expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
+  });
+
+  it("rejects identity drift instead of inventing a scheduling state", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: {
+        workerGroupId: "group-a",
+        readAt: "2026-08-19T12:00:00Z",
+        statesByWorkerId: { "another-worker": "due-hot" }
+      }
+    });
+    const source = new ApiWorkerStatusDataSource("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await expect(source.observeScheduling("group-a", ["worker-1"])).rejects.toThrow(
+      "identities do not match"
+    );
+  });
+});
+
 describe("Worker status presentation", () => {
   it("keeps owner states distinct from unavailable observation lifecycle", () => {
     expect(presentNetworkState("connected").label).toBe("Connected");
     expect(presentNetworkState("connected").description).not.toMatch(/online/i);
-    expect(presentSchedulingState("pre-epoch-hot").label).toBe("Awaiting Probe");
-    expect(presentSchedulingState("leased").description).toContain("不是");
+    expect(presentSchedulingState("due-hot").description).toContain("epoch");
+    expect(presentSchedulingState("held-hot").description).toContain("不证明");
     expect(presentSchedulingState("missing").label).toBe("Score Missing");
     expect(presentStatusAxis({ status: "error", stale: false }).label).toBe(
       "Unavailable"
@@ -182,7 +247,7 @@ describe("Worker status store", () => {
           workerIds.map((workerId) => ({
             workerId,
             workerGroupId,
-            state: "eligible",
+            state: "due-hot",
             readAt: "scheduling"
           }))
       )
@@ -231,7 +296,7 @@ class ControllableStatusDataSource implements WorkerStatusDataSource {
       return workerIds.map((workerId) => ({
         workerId,
         workerGroupId,
-        state: "eligible",
+        state: "due-hot",
         readAt: `scheduling-${this.sequence}`
       }));
     }

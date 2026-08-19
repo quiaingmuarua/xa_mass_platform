@@ -16,10 +16,9 @@ const NETWORK_PATTERN: readonly WorkerNetworkState[] = [
 ];
 
 const SCHEDULING_PATTERN: readonly WorkerSchedulingState[] = [
-  "eligible",
-  "eligible",
-  "pre-epoch-hot",
-  "leased",
+  "due-hot",
+  "due-hot",
+  "held-hot",
   "paused",
   "recovery",
   "cold",

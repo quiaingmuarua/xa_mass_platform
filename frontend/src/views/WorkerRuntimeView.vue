@@ -14,7 +14,11 @@ import {
 
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
-import { useRuntimeViewerStore, useWorkerStatusStore } from "@/runtime-context";
+import {
+  useRuntimeViewerConfig,
+  useRuntimeViewerStore,
+  useWorkerStatusStore
+} from "@/runtime-context";
 import { filterCurrentSample } from "@/runtime-viewer/filter";
 import type { JsonValue, WorkerView } from "@/runtime-viewer/types";
 import {
@@ -33,6 +37,8 @@ import type {
 
 const store = useRuntimeViewerStore();
 const workerStatus = useWorkerStatusStore();
+const runtimeConfig = useRuntimeViewerConfig();
+const schedulingIsMock = runtimeConfig.mode === "mock";
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
@@ -69,7 +75,7 @@ const schedulingSummary = computed(() => {
     return axis.observation !== undefined && !axis.stale ? [axis.observation] : [];
   });
   return {
-    eligible: observations.filter((value) => value.state === "eligible").length,
+    dueHot: observations.filter((value) => value.state === "due-hot").length,
     observed: observations.length
   };
 });
@@ -279,12 +285,12 @@ function metricValue(value: number, observed: number): string {
         test-id="metric-network-connected"
       />
       <MetricCard
-        label="Scheduling Eligible"
-        :value="metricValue(schedulingSummary.eligible, schedulingSummary.observed)"
-        hint="MOCK observed"
+        label="Scheduling HOT Due"
+        :value="metricValue(schedulingSummary.dueHot, schedulingSummary.observed)"
+        :hint="schedulingIsMock ? 'MOCK observed' : 'Kernel observed'"
         :icon="TrendCharts"
         tone="warning"
-        test-id="metric-scheduling-eligible"
+        test-id="metric-scheduling-due-hot"
       />
     </div>
 
@@ -292,8 +298,9 @@ function metricValue(value: number, observed: number): string {
       <template #title>
         <strong>双轴语义：</strong>
         Adapter Network 与 Kernel Scheduling 是独立观测，connected ≠ bound ≠ schedulable
-        ≠ executing。Descriptor 可以来自真实 API，但本页新增的两条状态轴均为
-        MOCK，不调用后端，也不解析 raw Score。
+        ≠ executing。Adapter Network 当前仍为 MOCK；Kernel Scheduling
+        {{ schedulingIsMock ? "为显式 MOCK" : "来自 Kernel 语义投影" }}，前端不解析 raw
+        Score。
       </template>
     </el-alert>
 
@@ -400,7 +407,15 @@ function metricValue(value: number, observed: number): string {
               >
                 刷新状态
               </el-button>
-              <el-tag effect="plain" type="warning" size="small">STATUS MOCK</el-tag>
+              <el-tag effect="plain" type="warning" size="small">NETWORK MOCK</el-tag>
+              <el-tag
+                v-if="!schedulingIsMock"
+                effect="plain"
+                type="success"
+                size="small"
+              >
+                SCHEDULING LIVE
+              </el-tag>
             </div>
           </div>
 
@@ -518,7 +533,12 @@ function metricValue(value: number, observed: number): string {
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="KERNEL SCHEDULING · MOCK" min-width="195">
+                <el-table-column
+                  :label="
+                    schedulingIsMock ? 'KERNEL SCHEDULING · MOCK' : 'KERNEL SCHEDULING'
+                  "
+                  min-width="195"
+                >
                   <template #default="{ row }">
                     <div class="worker-status-cell">
                       <el-tag
@@ -719,7 +739,13 @@ function metricValue(value: number, observed: number): string {
               <h2>Kernel Scheduling</h2>
               <p>Worker Score 的语义化投影，不暴露 raw Score</p>
             </div>
-            <el-tag effect="plain" type="warning" size="small">MOCK</el-tag>
+            <el-tag
+              effect="plain"
+              :type="schedulingIsMock ? 'warning' : 'success'"
+              size="small"
+            >
+              {{ schedulingIsMock ? "MOCK" : "LIVE" }}
+            </el-tag>
           </div>
           <div class="worker-status-card">
             <div class="worker-status-card__state">
@@ -786,8 +812,8 @@ function metricValue(value: number, observed: number): string {
         </section>
         <el-alert type="info" :closable="false" show-icon>
           <template #title>
-            Connected 不证明 Binding、Schedulable 或 Executing；Leased 不证明 Worker
-            正在执行；Awaiting Probe 表示启动前遗留 HOT 暂不进入普通 Candidate。
+            Connected 不证明 Binding、Schedulable 或 Executing；HOT Held 不证明Worker
+            正在执行；HOT Due也不包含当前Kernel epoch或匹配策略结论。
           </template>
         </el-alert>
       </div>

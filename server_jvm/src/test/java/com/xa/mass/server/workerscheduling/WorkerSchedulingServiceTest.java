@@ -187,6 +187,84 @@ class WorkerSchedulingServiceTest {
     }
 
     @Test
+    void observeProjectsOneBoundedBatchWithoutExposingScores() {
+        long nowMillis = System.currentTimeMillis();
+        List<String> workerIds = List.of(
+                "due",
+                "held",
+                "paused",
+                "recovery",
+                "cold",
+                "missing"
+        );
+        Map<String, WorkerScoreState> states = new LinkedHashMap<>();
+        states.put("due", state(
+                "due",
+                WorkerScorePolarity.HOT_ACQUIRE,
+                WorkerScoreCore.SLOT_MILLIS
+        ));
+        states.put("held", state(
+                "held",
+                WorkerScorePolarity.HOT_ACQUIRE,
+                nowMillis + 60_000L
+        ));
+        states.put("paused", state(
+                "paused",
+                WorkerScorePolarity.HOT_ACQUIRE,
+                WorkerScoreCore.PAUSE_TIME_MILLIS
+        ));
+        states.put("recovery", state(
+                "recovery",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                3_000L
+        ));
+        states.put("cold", state(
+                "cold",
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                WorkerScoreCore.SLOT_MILLIS
+        ));
+        states.put("missing", null);
+        when(workerScores.getScoreStates(GROUP_ID, workerIds))
+                .thenReturn(states);
+
+        WorkerSchedulingService.WorkerSchedulingObservation observation =
+                service.observe(GROUP_ID, workerIds);
+
+        assertThat(observation.readAtMillis()).isGreaterThanOrEqualTo(
+                nowMillis
+        );
+        assertThat(observation.statesByWorkerId()).containsExactly(
+                Map.entry("due", WorkerSchedulingService
+                        .SchedulingState.DUE_HOT),
+                Map.entry("held", WorkerSchedulingService
+                        .SchedulingState.HELD_HOT),
+                Map.entry("paused", WorkerSchedulingService
+                        .SchedulingState.PAUSED),
+                Map.entry("recovery", WorkerSchedulingService
+                        .SchedulingState.RECOVERY),
+                Map.entry("cold", WorkerSchedulingService
+                        .SchedulingState.COLD),
+                Map.entry("missing", WorkerSchedulingService
+                        .SchedulingState.MISSING)
+        );
+        verify(workerScores).getScoreStates(GROUP_ID, workerIds);
+    }
+
+    @Test
+    void observeRejectsInvalidIdentityBatchesBeforeReadingScores() {
+        assertThatThrownBy(() -> service.observe(GROUP_ID, List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.observe(
+                GROUP_ID,
+                List.of(WORKER_ID, WORKER_ID)
+        )).isInstanceOf(IllegalArgumentException.class);
+        verify(workerScores, never()).getScoreStates(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyList()
+        );
+    }
+
+    @Test
     void providerFailureUsesTheWorkerSchedulingErrorOwner() {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
@@ -210,5 +288,20 @@ class WorkerSchedulingServiceTest {
             Long score
     ) {
         return new WorkerScoreTransitionResult(status, score);
+    }
+
+    private static WorkerScoreState state(
+            String workerId,
+            WorkerScorePolarity polarity,
+            long timeMillis
+    ) {
+        return new WorkerScoreState(
+                workerId,
+                polarity.value() * timeMillis * WorkerScoreCore.TIME_SCALE,
+                polarity,
+                timeMillis,
+                WorkerScoreCore.MIN_LANE_RANK,
+                WorkerScoreCore.MIN_DIRTY
+        );
     }
 }

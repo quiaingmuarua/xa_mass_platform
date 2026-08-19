@@ -6,6 +6,8 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveRequest;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -59,6 +61,21 @@ public class RuntimeViewController {
                 workerGroupId,
                 request.sampleLimit(),
                 request.filter(),
+                requestId(httpRequest)
+        );
+    }
+
+    @PostMapping(
+            "/worker-groups/{workerGroupId}/workers:scheduling-observe"
+    )
+    public WorkerSchedulingObserveResponse observeWorkerScheduling(
+            @PathVariable @NotBlank String workerGroupId,
+            @Valid @RequestBody WorkerSchedulingObserveRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return runtimeView.observeWorkerScheduling(
+                workerGroupId,
+                request.workerIds(),
                 requestId(httpRequest)
         );
     }

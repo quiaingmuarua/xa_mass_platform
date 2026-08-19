@@ -23,6 +23,8 @@ import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
+import com.xa.mass.server.workerscheduling.WorkerSchedulingService.SchedulingState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,7 @@ class RuntimeViewControllerTest {
     private WorkerResourceCatalog workerCatalog;
     private TaskResourceCatalog taskCatalog;
     private WorkerGroupTaskCatalog configuredTasks;
+    private WorkerSchedulingService workerScheduling;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -48,6 +51,7 @@ class RuntimeViewControllerTest {
         workerCatalog = mock(WorkerResourceCatalog.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         configuredTasks = mock(WorkerGroupTaskCatalog.class);
+        workerScheduling = mock(WorkerSchedulingService.class);
         when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of());
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
@@ -57,7 +61,8 @@ class RuntimeViewControllerTest {
                                 new RuntimeViewService(
                                         workerCatalog,
                                         taskCatalog,
-                                        configuredTasks
+                                        configuredTasks,
+                                        workerScheduling
                                 )
                         )
                 )
@@ -486,6 +491,93 @@ class RuntimeViewControllerTest {
                     .andExpect(jsonPath("$.code").value(19001));
         }
         verifyNoInteractions(workerCatalog);
+    }
+
+    @Test
+    void schedulingObservationPreservesRequestedOrderAndHidesScore()
+            throws Exception {
+        var states = new LinkedHashMap<String, SchedulingState>();
+        states.put("worker-2", SchedulingState.RECOVERY);
+        states.put("worker-1", SchedulingState.DUE_HOT);
+        when(workerScheduling.observe(
+                "group-a",
+                List.of("worker-2", "worker-1")
+        )).thenReturn(new WorkerSchedulingService
+                .WorkerSchedulingObservation(
+                1_234L,
+                states
+        ));
+
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/worker-groups/"
+                                        + "group-a/workers:scheduling-observe"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "scheduling-request")
+                        .content("""
+                                {"workerIds":["worker-2","worker-1"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "X-Request-Id",
+                        "scheduling-request"
+                ))
+                .andExpect(jsonPath("$.workerGroupId")
+                        .value("group-a"))
+                .andExpect(jsonPath("$.readAt")
+                        .value("1970-01-01T00:00:01.234Z"))
+                .andExpect(jsonPath(
+                        "$.statesByWorkerId.worker-2"
+                ).value("recovery"))
+                .andExpect(jsonPath(
+                        "$.statesByWorkerId.worker-1"
+                ).value("due-hot"))
+                .andExpect(jsonPath("$.score").doesNotExist());
+
+        verify(workerScheduling).observe(
+                "group-a",
+                List.of("worker-2", "worker-1")
+        );
+    }
+
+    @Test
+    void schedulingObservationRejectsDuplicateWorkersBeforeKernelCall()
+            throws Exception {
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/worker-groups/"
+                                        + "group-a/workers:scheduling-observe"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"workerIds":["worker-1","worker-1"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        verifyNoInteractions(workerScheduling);
+    }
+
+    @Test
+    void schedulingObservationMapsKernelFailureToRuntimeViewUnavailable()
+            throws Exception {
+        when(workerScheduling.observe(
+                "group-a",
+                List.of("worker-1")
+        )).thenThrow(new IllegalStateException("kernel unavailable"));
+
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/worker-groups/"
+                                        + "group-a/workers:scheduling-observe"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "scheduling-request")
+                        .content("""
+                                {"workerIds":["worker-1"]}
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(15002))
+                .andExpect(jsonPath("$.requestId")
+                        .value("scheduling-request"));
     }
 
     private static LinkedHashMap<String, WorkerGroupDescriptor> groupLookup(

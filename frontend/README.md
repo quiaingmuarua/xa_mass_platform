@@ -61,13 +61,16 @@ pnpm dev:mock
 Mock mode never activates as a fallback after a real API failure. It does not
 simulate batch execution and never calls the Task Batch API.
 
-## Worker status mock
+## Worker status observations
 
 The Worker page presents Adapter Network and Kernel Scheduling as two separate
-observation axes. Both axes are currently deterministic frontend Mock data,
-even when Worker descriptors come from the real Runtime View API. The page
-marks every status surface with `MOCK` and never derives either axis from a
-Worker descriptor.
+observation axes. In API mode, Kernel Scheduling comes from the bounded Runtime
+View scheduling-observation endpoint. Java `WorkerSchedulingService` uses the
+existing batch `WorkerScoreCore.getScoreStates` read and returns only
+`due-hot`, `held-hot`, `paused`, `recovery`, `cold`, or `missing`, so the
+browser never receives or decodes raw Score. Adapter Network remains
+deterministic frontend Mock data and is labelled `MOCK`. In explicit Mock mode,
+both axes remain deterministic Mock data.
 
 Network and Scheduling observations load independently after a Worker sample
 appears. They can be refreshed without resampling Workers, and one failed axis
@@ -79,9 +82,10 @@ connection control:
 connected != bound != schedulable != executing
 ```
 
-Future backend integration should add an HTTP implementation of
-`WorkerStatusDataSource`; the Store and page consume only semantic states and
-must never parse raw Worker Score values.
+`WorkerStatusDataSource` keeps the axes independent. API-mode Scheduling uses
+one request for the current `1..100` Worker sample, preserves request order and
+fails closed on identity or schema drift. A failed Scheduling refresh keeps its
+last successful value only as `Stale`; it never falls back to Mock data.
 
 ## Verification
 

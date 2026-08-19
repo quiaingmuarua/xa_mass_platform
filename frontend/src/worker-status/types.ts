@@ -3,9 +3,8 @@ import type { WorkerView } from "@/runtime-viewer/types";
 export type WorkerNetworkState = "connected" | "disconnected" | "unknown";
 
 export type WorkerSchedulingState =
-  | "eligible"
-  | "pre-epoch-hot"
-  | "leased"
+  | "due-hot"
+  | "held-hot"
   | "paused"
   | "recovery"
   | "cold"

@@ -38,20 +38,15 @@ const SCHEDULING_PRESENTATIONS: Record<
   WorkerSchedulingState,
   WorkerStatusPresentation
 > = {
-  eligible: {
-    label: "Eligible",
+  "due-hot": {
+    label: "HOT Due",
     tone: "success",
-    description: "Score 位于当前 Kernel epoch 的普通可调度 HOT 区间。"
+    description: "HOT Score 已到期；当前Kernel epoch和其他策略仍可能过滤该Worker。"
   },
-  "pre-epoch-hot": {
-    label: "Awaiting Probe",
-    tone: "warning",
-    description: "启动前遗留 HOT，暂不进入普通 Candidate，等待 Serviceability 验证。"
-  },
-  leased: {
-    label: "Leased",
+  "held-hot": {
+    label: "HOT Held",
     tone: "primary",
-    description: "Score 位于 Lease 区间；这不是 Worker 正在执行的证明。"
+    description: "HOT Score 位于当前或未来时间槽；这不证明Worker正在执行。"
   },
   paused: {
     label: "Paused",

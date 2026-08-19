@@ -11,10 +11,12 @@ import com.xa.mass.server.api.v1.runtimeview.model.TaskView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,19 +38,24 @@ public final class RuntimeViewService {
             "runtimeView.configuredResources";
     private static final String PREVIEW_OPERATION =
             "runtimeView.previewWorkers";
+    private static final String SCHEDULING_OBSERVE_OPERATION =
+            "runtimeView.observeWorkerScheduling";
 
     private final WorkerResourceCatalog workerCatalog;
     private final TaskResourceCatalog taskCatalog;
     private final WorkerGroupTaskCatalog configuredTasks;
+    private final WorkerSchedulingService workerScheduling;
 
     public RuntimeViewService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
-            WorkerGroupTaskCatalog configuredTasks
+            WorkerGroupTaskCatalog configuredTasks,
+            WorkerSchedulingService workerScheduling
     ) {
         this.workerCatalog = workerCatalog;
         this.taskCatalog = taskCatalog;
         this.configuredTasks = configuredTasks;
+        this.workerScheduling = workerScheduling;
     }
 
     public ConfiguredRuntimeResourcesResponse configuredResources(
@@ -202,6 +209,44 @@ public final class RuntimeViewService {
         } catch (RuntimeException error) {
             throw unavailable(
                     PREVIEW_OPERATION,
+                    workerGroupId,
+                    requestId,
+                    error
+            );
+        }
+    }
+
+    public WorkerSchedulingObserveResponse observeWorkerScheduling(
+            String workerGroupId,
+            List<String> workerIds,
+            String requestId
+    ) {
+        if (new LinkedHashSet<>(workerIds).size() != workerIds.size()) {
+            throw new ServerException(
+                    ServerErrorCode.MALFORMED_REQUEST,
+                    SCHEDULING_OBSERVE_OPERATION,
+                    null,
+                    null
+            );
+        }
+        try {
+            WorkerSchedulingService.WorkerSchedulingObservation observation =
+                    workerScheduling.observe(workerGroupId, workerIds);
+            var states = new LinkedHashMap<String, String>();
+            workerIds.forEach(workerId -> states.put(
+                    workerId,
+                    observation.statesByWorkerId()
+                            .get(workerId)
+                            .wireValue()
+            ));
+            return new WorkerSchedulingObserveResponse(
+                    workerGroupId,
+                    Instant.ofEpochMilli(observation.readAtMillis()),
+                    states
+            );
+        } catch (RuntimeException error) {
+            throw unavailable(
+                    SCHEDULING_OBSERVE_OPERATION,
                     workerGroupId,
                     requestId,
                     error

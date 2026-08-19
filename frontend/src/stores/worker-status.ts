@@ -15,7 +15,7 @@ interface StatusOperation {
   controller: AbortController;
 }
 
-const STATUS_UNAVAILABLE = "Mock Worker 状态观测暂时不可用。";
+const STATUS_UNAVAILABLE = "Worker 状态观测暂时不可用。";
 
 export function createWorkerStatusStore(dataSource: WorkerStatusDataSource) {
   return defineStore("workerStatus", () => {

@@ -213,12 +213,13 @@ class ServerArchitectureBoundaryTest {
                 .contains("WorkerResourceCatalog")
                 .contains("TaskResourceCatalog")
                 .contains("taskIdsByWorkerGroup")
+                .contains("WorkerSchedulingService")
                 .doesNotContain(".worker.redis")
                 .doesNotContain(".task.redis")
                 .doesNotContain("RedisWorkerResourceCatalog")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
-                .doesNotContain("WorkerScore")
+                .doesNotContain("WorkerScoreCore")
                 .doesNotContain("TaskScore")
                 .doesNotContain("DeliveryCommand")
                 .doesNotContain("DeliveryReport")
@@ -448,6 +449,8 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("HttpWorkerRuntime")
                 .doesNotContain("HttpWorkerResourceCatalog")
                 .doesNotContain("AssembledWorkerResourceCatalog")
+                .doesNotContain("scheduling-observe")
+                .doesNotContain("KernelWorkerSchedulingReader")
                 .doesNotContain("\"/worker-groups")
                 .doesNotContain("\"/workers");
     }

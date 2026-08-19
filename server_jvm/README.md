@@ -72,6 +72,25 @@ error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a DIRECT_CALL event whitelist.
 
+Runtime View may request one bounded `1..100` Worker scheduling observation.
+The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
+batch read; `WorkerSchedulingService` projects only facts derivable from that
+Score snapshot. No new Python Kernel HTTP route is involved. This projection is
+independent of Adapter connection, Binding and Task execution evidence.
+
+```text
+POST /api/v1/runtime-view/worker-groups/{workerGroupId}/
+     workers:scheduling-observe
+body: {"workerIds":["worker-1","worker-2"]}
+```
+
+The response contains one shared `readAt` plus a complete
+`statesByWorkerId` map in request order. States are `due-hot`, `held-hot`,
+`paused`, `recovery`, `cold`, or `missing`. They do not expose raw Score and do
+not claim to know the active Python Kernel process's HOT eligibility epoch.
+Provider failure returns the existing Runtime View unavailable error rather
+than inventing a Worker state.
+
 Worker calls do not require pause or read score. They use
 `WorkerCommandRuntime.offerWorkerCommands`: an empty field in the existing
 Adapter-partitioned Worker Command Hash is filled, while an occupied field is

@@ -71,7 +71,9 @@ if (configResult.ok) {
     new HttpTaskBatchClient(configResult.value.apiBaseUrl),
     runtimeViewerStore
   );
-  const workerStatusStore = createWorkerStatusStore(createWorkerStatusDataSource());
+  const workerStatusStore = createWorkerStatusStore(
+    createWorkerStatusDataSource(configResult.value)
+  );
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
   app.provide(taskBatchStoreKey, taskBatchStore);
