@@ -193,9 +193,7 @@ class _RedisKernelProcess:
         )
         self._task_call_item_submission = TaskCallItemSubmission(
             self._task_score,
-            self._task_item_score,
             self._task_runtime,
-            self._task_resource_catalog,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

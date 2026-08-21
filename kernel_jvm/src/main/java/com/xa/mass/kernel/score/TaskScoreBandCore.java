@@ -71,11 +71,7 @@ public interface TaskScoreBandCore {
             long observedScore
     );
 
-    TaskScoreTransitionResult releaseObservedIdleTask(
-            String taskId,
-            long observedParkScore,
-            long releaseTimeMillis
-    );
+    TaskScoreTransitionResult tryReleaseIdlePark(String taskId);
 
     TaskScoreTransitionResult closeScore(
             String taskId,

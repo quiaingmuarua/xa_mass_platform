@@ -71,6 +71,8 @@ class FakeRedis:
         key = str(args[0])
         argv = args[1:]
 
+        if "local idle_park_score" in script:
+            return self._eval_try_release_idle_park(key, argv)
         if "local terminal_score" in script:
             return self._eval_close_positive(key, argv)
         if "local observed_score" in script:
@@ -92,6 +94,32 @@ class FakeRedis:
 
         self.zadd(key, {task_id: next_score})
         return ["transitioned", next_score]
+
+    def _eval_try_release_idle_park(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        task_id = str(argv[0])
+        idle_park_score = int(argv[1])
+        running_pause_max_score = int(argv[2])
+        slot_millis = int(argv[3])
+        suffix_factor = int(argv[4])
+        running_min = int(argv[5])
+
+        stored = self.zscore(key, task_id)
+        if stored is None:
+            return ["stale"]
+        if stored == idle_park_score:
+            now_time_slot = self.now_millis // slot_millis
+            next_score = running_min + now_time_slot * suffix_factor
+            if not running_min < next_score < idle_park_score:
+                return ["invalid", stored]
+            self.zadd(key, {task_id: next_score})
+            return ["transitioned", next_score]
+        if (0 < stored < idle_park_score) or stored > running_pause_max_score:
+            return ["noop", stored]
+        return ["invalid", stored]
 
     def _eval_close_positive(self, key: str, argv: tuple[object, ...]) -> list[object]:
         task_id = str(argv[0])
@@ -193,7 +221,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         idle_park = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
             self.kernel.MAX_TIME_SLOT - 1,
-            0,
+            self.kernel.MAX_SUFFIX,
         )
 
         self.store_score("running", running)
@@ -547,7 +575,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
             self.millis(self.kernel.MAX_TIME_SLOT - 1),
             state.time_millis,
         )
-        self.assertEqual(0, state.suffix)
+        self.assertEqual(self.kernel.MAX_SUFFIX, state.suffix)
 
     def test_park_observed_idle_task_requires_suffix_zero(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
@@ -575,25 +603,71 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(self.millis(1_500), state.time_millis)
 
-    def test_release_observed_idle_task_requires_exact_park(self) -> None:
+    def test_try_release_idle_park_releases_exact_private_coordinate(self) -> None:
         park = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
             self.kernel.MAX_TIME_SLOT - 1,
-            0,
+            self.kernel.MAX_SUFFIX,
         )
         self.store_score("task", park)
 
-        result = self.kernel.release_observed_idle_task(
-            task_id="task",
-            observed_park_score=park,
-            release_time_millis=self.millis(1_002),
-        )
+        result = self.kernel.try_release_idle_park(task_id="task")
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_002), state.time_millis)
+        self.assertEqual(self.redis.now_millis, state.time_millis)
         self.assertEqual(0, state.suffix)
+
+    def test_try_release_idle_park_accepts_scores_outside_running_pause(self) -> None:
+        cases = (
+            (self.kernel.RUNNING_VISIBLE_TAG, 7),
+            (self.kernel.ADMISSION_VISIBLE_TAG, self.kernel.MAX_SUFFIX),
+            (self.kernel.PRE_REVIEW_TAG, self.kernel.MAX_SUFFIX),
+        )
+        for tag, suffix in cases:
+            with self.subTest(tag=tag):
+                time_slot = (
+                    1_000
+                    if tag == self.kernel.RUNNING_VISIBLE_TAG
+                    else self.kernel.PAUSE_TIME_SLOT
+                )
+                original = self.score(tag, time_slot, suffix)
+                self.store_score("task", original)
+
+                result = self.kernel.try_release_idle_park(task_id="task")
+
+                self.assertEqual(TaskScoreTransitionStatus.NOOP, result.status)
+                self.assertEqual(original, self.redis.zscore("task:score", "task"))
+
+    def test_try_release_idle_park_rejects_terminal_and_running_pause(self) -> None:
+        protected_scores = (
+            self.score(
+                self.kernel.RUNNING_VISIBLE_TAG,
+                self.kernel.PAUSE_TIME_SLOT,
+                0,
+            ),
+            self.score(
+                self.kernel.RUNNING_VISIBLE_TAG,
+                self.kernel.PAUSE_TIME_SLOT,
+                self.kernel.MAX_SUFFIX,
+            ),
+            0,
+            -1,
+        )
+        for protected in protected_scores:
+            with self.subTest(score=protected):
+                self.store_score("task", protected)
+
+                result = self.kernel.try_release_idle_park(task_id="task")
+
+                self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+                self.assertEqual(protected, self.redis.zscore("task:score", "task"))
+
+    def test_try_release_idle_park_returns_stale_for_missing_score(self) -> None:
+        result = self.kernel.try_release_idle_park(task_id="missing")
+
+        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
     def test_rewrite_same_band_time_millis_rejects_future_hold(self) -> None:
         paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)

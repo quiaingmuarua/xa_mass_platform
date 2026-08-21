@@ -393,20 +393,19 @@ class TaskDispatchPacer:
             has_active_items = self.item_score.has_active_items(
                 task_ids=tuple(activity_recheck_tasks),
             )
-            parked_scores: dict[TaskId, Score] = {}
+            parked_task_ids: list[TaskId] = []
             for task_id, (descriptor, state) in activity_recheck_tasks.items():
-                parked_score = self._apply_activity_recheck(
+                parked = self._apply_activity_recheck(
                     task_id=task_id,
                     descriptor=descriptor,
                     state=state,
                     has_active_items=has_active_items.get(task_id, False),
                     dispatch_time_millis=dispatch_time_millis,
                 )
-                if parked_score is not None:
-                    parked_scores[task_id] = parked_score
+                if parked:
+                    parked_task_ids.append(task_id)
             self._release_parks_with_concurrent_items(
-                parked_scores,
-                release_time_millis=dispatch_time_millis,
+                tuple(parked_task_ids),
             )
         return published_command_count
 
@@ -440,14 +439,14 @@ class TaskDispatchPacer:
         state: TaskScoreState,
         has_active_items: bool,
         dispatch_time_millis: TimeMillis,
-    ) -> Score | None:
+    ) -> bool:
         if has_active_items:
             self.task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
                 expected_band=TaskScoreBand.RUNNING_VISIBLE,
                 target_time_millis=dispatch_time_millis,
             )
-            return None
+            return False
 
         if descriptor.idle_disposition is TaskIdleDisposition.CLOSE_WHEN_IDLE:
             self.task_score.close_observed_score(
@@ -455,33 +454,27 @@ class TaskDispatchPacer:
                 observed_score=state.score,
                 terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
             )
-            return None
+            return False
 
         parked = self.task_score.park_observed_idle_task(
             task_id=task_id,
             observed_score=state.score,
         )
-        if parked.status is TaskScoreTransitionStatus.TRANSITIONED:
-            return parked.score
-        return None
+        return parked.status is TaskScoreTransitionStatus.TRANSITIONED
 
     def _release_parks_with_concurrent_items(
         self,
-        parked_scores: Mapping[TaskId, Score],
-        *,
-        release_time_millis: TimeMillis,
+        parked_task_ids: tuple[TaskId, ...],
     ) -> None:
-        if not parked_scores:
+        if not parked_task_ids:
             return
         has_active_items = self.item_score.has_active_items(
-            task_ids=tuple(parked_scores),
+            task_ids=parked_task_ids,
         )
-        for task_id, parked_score in parked_scores.items():
+        for task_id in parked_task_ids:
             if has_active_items.get(task_id, False):
-                self.task_score.release_observed_idle_task(
+                self.task_score.try_release_idle_park(
                     task_id=task_id,
-                    observed_park_score=parked_score,
-                    release_time_millis=release_time_millis,
                 )
 
     def _publish_worker_commands(

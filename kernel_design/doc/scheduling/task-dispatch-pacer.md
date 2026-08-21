@@ -120,19 +120,28 @@ no ACTIVE and PARK_WHEN_IDLE
 pause, explicit close, submission activation, or a newer scheduling round has
 changed the observed score. The post-park ACTIVE recheck repairs the common
 park/append interleaving without creating a cross-owner transaction. The park
-coordinate is `MAX_TIME_SLOT - 1`, suffix zero; only the score owner can mint
-or release it. Explicit close remains available for either disposition.
+coordinate is `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`; only the score owner can mint
+or release it. The recheck calls `try_release_idle_park`; it does not retain or
+pass the private park coordinate. Explicit close remains available for either
+disposition.
 
 Ordinary `TaskRuntime.append_items` is a pure data write and does not release a
 private Task park. Reusable RPC and Task Batch callers use
-`TaskCallItemSubmission`, which checks the complete ACTIVE band, exact-releases
-the recognized idle park when necessary, appends at most 100 Items, and performs
-one bounded post-append activation repair. Released Tasks re-enter the ordinary
-due scan; there is no urgent set or second Task selection path.
-An empty Task that is not already at the exact private park is not treated as a
-special first call: submission fails before writing Items. Finite initial Items
-must therefore be appended while the Task is still pre-RUNNING, before
-approval can expose it to immediate idle close.
+`TaskCallItemSubmission`, whose fixed composition is:
+
+```text
+try_release_idle_park
+-> append at most 100 Items
+-> try_release_idle_park
+```
+
+The first call gates append and releases an existing park. The second repairs a
+park installed between the first call and append. Submission does not read the
+Task descriptor, Task score state, or ACTIVE band. PRE_REVIEW, ADMISSION, and
+ordinary nearer positive scores are accepted as score no-ops; terminal,
+missing, and RUNNING pause coordinates fail before append. Released
+Tasks re-enter the ordinary due scan; there is no urgent set or second Task
+selection path.
 
 ## Ordinary Dispatch
 
@@ -194,7 +203,8 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 
 ## Guardrails
 
-- Keep every RUNNING Task at suffix zero.
+- Keep ordinary RUNNING scheduling at suffix zero. The private idle park uses
+  `MAX_SUFFIX` only as its raw range boundary.
 - Do not classify future ACTIVE Items as idle.
 - Do not make ordinary Item append a hidden scheduling command.
 - Do not add a wake inbox, urgent set, priority queue, or second Task scan.

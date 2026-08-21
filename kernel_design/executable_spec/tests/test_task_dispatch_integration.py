@@ -177,9 +177,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         self.task_call_submission = TaskCallItemSubmission(
             self.task_score,
-            self.item_score,
             self.task_runtime,
-            self.task_catalog,
         )
 
     def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
@@ -1097,7 +1095,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
-        self.assertEqual(0, held.suffix)
+        self.assertEqual(TaskScoreBandCore.MAX_SUFFIX, held.suffix)
         self.assertEqual(
             (TaskScoreBandCore.MAX_TIME_SLOT - 1)
             * TaskScoreBandCore.SLOT_MILLIS,
@@ -1115,6 +1113,58 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             "message-2",
             json.loads(command.forward)["messageId"],
         )
+
+    def test_empty_admission_task_accepts_first_call_and_activates(self) -> None:
+        descriptor = TaskDescriptor(
+            task_id=self.task_id,
+            worker_group_id="image-workers",
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
+            allocation_rule=None,
+            config={
+                "priority": "80",
+                "maximumCandidateWorkers": "1",
+                "maxRetryTimes": "3",
+            },
+        )
+        created = self.task_runtime.create_task(descriptor=descriptor, suffix=5)
+        approved = self.task_lifecycle.approve_task(task_id=self.task_id)
+        admission = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+        submitted = self.task_call_submission.submit(
+            task_id=self.task_id,
+            items=(
+                TaskItem(
+                    message_id=self.message_id,
+                    event_code="image.resize",
+                    created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+                    payload={},
+                    allocation_rule={},
+                ),
+            ),
+        )
+
+        time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
+        activated = self.activation_pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(task_batch_limit=10)
+        )
+        running = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+
+        self.assertEqual(TaskCreationStatus.CREATED, created.status)
+        self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
+        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, admission.band)
+        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, submitted.status)
+        self.assertEqual(
+            TaskItemAppendStatus.APPENDED,
+            submitted.item_results[self.message_id].status,
+        )
+        self.assertEqual(1, activated)
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, running.band)
 
     def test_direct_allocation_can_close_immediately_when_idle(self) -> None:
         item = TaskItem(

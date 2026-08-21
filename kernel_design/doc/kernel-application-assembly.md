@@ -141,10 +141,13 @@ JSON-compatible rule as opaque scheduling input. The
 Python matcher owns the evolving rule DSL, including candidate derivation,
 operators, and fail-closed behavior. Item rules cannot change WorkerGroup.
 Ordinary append does not alter Task score. Reusable RPC and Task Batch flows use
-the bounded Kernel `TaskCallItemSubmission`: it accepts only suffix-zero
-RUNNING `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Tasks, exact-releases the private
-idle park when needed, appends at most 100 Items, and performs one bounded
-post-append activation repair. It does not create an urgent scheduling lane.
+the bounded Kernel `TaskCallItemSubmission`. It calls
+`try_release_idle_park`, appends at most 100 Items, then calls the same
+idempotent operation again. A recognized private park becomes a due RUNNING
+score; any valid nearer positive coordinate is a no-op. The command does not
+load Task metadata, inspect ACTIVE Items, interpret a Server profile, or create
+an urgent scheduling lane. The second call repairs a park installed by Task
+Dispatch during the append window.
 
 The Kernel descriptor stores allocation mechanism and idle disposition as
 orthogonal facts. The finite public Server `TaskProfile` maps to the two

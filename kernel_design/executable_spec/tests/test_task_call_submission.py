@@ -1,239 +1,208 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call
 
 from kernel_design.executable_spec import (
     TaskCallItemSubmission,
     TaskCallSubmissionStatus,
-    TaskDescriptor,
-    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
-    TaskItemScoreBandCore,
-    TaskResourceCatalog,
     TaskRuntime,
-    TaskScoreBand,
     TaskScoreBandCore,
-    TaskScoreState,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
-    WorkerAllocationMechanism,
 )
 
 
 class TaskCallItemSubmissionTest(unittest.TestCase):
-    NOW = 10_000
-    PARK_TIME = 20_000
-
     def setUp(self) -> None:
         self.task_score = Mock(spec=TaskScoreBandCore)
-        self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
-        self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.submission = TaskCallItemSubmission(
             self.task_score,
-            self.item_score,
             self.task_runtime,
-            self.task_catalog,
         )
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self._descriptor()
-        }
+        self.task_score.try_release_idle_park.return_value = self._transition(
+            TaskScoreTransitionStatus.NOOP,
+            100,
+        )
         self.task_runtime.append_items.return_value = {
             "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         }
 
-    def test_active_queue_appends_and_keeps_due_task(self) -> None:
-        self.task_score.get_score_states.return_value = {
-            "task-1": self._state(score=100, time_millis=9_000)
-        }
-        self.item_score.has_active_items.return_value = {"task-1": True}
-
+    def test_normal_score_uses_noop_append_noop(self) -> None:
         result = self._submit()
 
         self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
-        self.task_score.release_observed_idle_task.assert_not_called()
-        self.task_score.close_observed_score.assert_not_called()
-
-    def test_empty_idle_park_is_released_before_append(self) -> None:
-        self.task_score.get_score_states.side_effect = (
-            {"task-1": self._state(score=200, time_millis=self.PARK_TIME)},
-            {"task-1": self._state(score=100, time_millis=self.NOW)},
+        self.assertEqual(
+            [call(task_id="task-1"), call(task_id="task-1")],
+            self.task_score.try_release_idle_park.call_args_list,
         )
-        self.item_score.has_active_items.side_effect = (
-            {"task-1": False},
-            {"task-1": True},
-        )
-        self.task_score.release_observed_idle_task.return_value = (
-            TaskScoreTransitionResult(
-                TaskScoreTransitionStatus.TRANSITIONED,
-                100,
-            )
-        )
-
-        result = self._submit()
-
-        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
-        self.task_score.release_observed_idle_task.assert_called_once_with(
+        self.task_runtime.append_items.assert_called_once_with(
             task_id="task-1",
-            observed_park_score=200,
-            release_time_millis=self.NOW,
+            items=(self._item(),),
         )
+
+    def test_existing_idle_park_is_released_before_append(self) -> None:
+        self.task_score.try_release_idle_park.side_effect = (
+            self._transition(TaskScoreTransitionStatus.TRANSITIONED, 100),
+            self._transition(TaskScoreTransitionStatus.NOOP, 100),
+        )
+
+        result = self._submit()
+
+        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
+        self.assertEqual(2, self.task_score.try_release_idle_park.call_count)
         self.task_runtime.append_items.assert_called_once()
 
-    def test_empty_task_must_be_in_exact_idle_park(self) -> None:
-        self.task_score.get_score_states.return_value = {
-            "task-1": self._state(score=100, time_millis=9_000)
-        }
-        self.item_score.has_active_items.return_value = {"task-1": False}
-        self.task_score.release_observed_idle_task.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        )
-
-        result = self._submit()
-
-        self.assertEqual(TaskCallSubmissionStatus.INVALID, result.status)
-        self.task_runtime.append_items.assert_not_called()
-
-    def test_stale_idle_park_release_does_not_append(self) -> None:
-        self.task_score.get_score_states.return_value = {
-            "task-1": self._state(score=200, time_millis=self.PARK_TIME)
-        }
-        self.item_score.has_active_items.return_value = {"task-1": False}
-        self.task_score.release_observed_idle_task.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
-        )
-
-        result = self._submit()
-
-        self.assertEqual(TaskCallSubmissionStatus.STALE, result.status)
-        self.task_runtime.append_items.assert_not_called()
-
-    def test_post_append_repair_releases_concurrent_idle_park(self) -> None:
-        self.task_score.get_score_states.side_effect = (
-            {"task-1": self._state(score=100, time_millis=9_000)},
-            {"task-1": self._state(score=200, time_millis=self.PARK_TIME)},
-        )
-        self.item_score.has_active_items.return_value = {"task-1": True}
-        self.task_score.release_observed_idle_task.return_value = (
-            TaskScoreTransitionResult(
-                TaskScoreTransitionStatus.TRANSITIONED,
-                100,
-            )
+    def test_second_release_repairs_park_created_during_append(self) -> None:
+        self.task_score.try_release_idle_park.side_effect = (
+            self._transition(TaskScoreTransitionStatus.NOOP, 100),
+            self._transition(TaskScoreTransitionStatus.TRANSITIONED, 101),
         )
 
         result = self._submit()
 
         self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
-        self.task_score.release_observed_idle_task.assert_called_once_with(
-            task_id="task-1",
-            observed_park_score=200,
-            release_time_millis=self.NOW,
-        )
+        self.assertEqual(2, self.task_score.try_release_idle_park.call_count)
 
-    def test_failed_post_append_repair_reports_retryable_with_item_results(
-        self,
-    ) -> None:
-        self.task_score.get_score_states.side_effect = (
-            {"task-1": self._state(score=100, time_millis=9_000)},
-            {"task-1": self._state(score=200, time_millis=self.PARK_TIME)},
-        )
-        self.item_score.has_active_items.return_value = {"task-1": True}
-        self.task_score.release_observed_idle_task.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
-        )
+    def test_first_release_failure_does_not_append(self) -> None:
+        expected = {
+            TaskScoreTransitionStatus.STALE: TaskCallSubmissionStatus.STALE,
+            TaskScoreTransitionStatus.INVALID: TaskCallSubmissionStatus.INVALID,
+        }
+        for transition_status, submission_status in expected.items():
+            with self.subTest(status=transition_status):
+                self.task_score.reset_mock()
+                self.task_runtime.reset_mock()
+                self.task_score.try_release_idle_park.return_value = (
+                    self._transition(transition_status)
+                )
+
+                result = self._submit()
+
+                self.assertEqual(submission_status, result.status)
+                self.task_runtime.append_items.assert_not_called()
+
+    def test_first_release_provider_failure_is_retryable_without_append(self) -> None:
+        self.task_score.try_release_idle_park.side_effect = RuntimeError("down")
 
         result = self._submit()
 
         self.assertEqual(TaskCallSubmissionStatus.RETRYABLE, result.status)
+        self.assertEqual({}, result.item_results)
+        self.task_runtime.append_items.assert_not_called()
+
+    def test_second_release_failure_preserves_item_results(self) -> None:
+        for failure in (
+            self._transition(TaskScoreTransitionStatus.STALE),
+            self._transition(TaskScoreTransitionStatus.INVALID),
+            RuntimeError("down"),
+        ):
+            with self.subTest(failure=failure):
+                self.task_score.reset_mock()
+                self.task_runtime.reset_mock()
+                self.task_runtime.append_items.return_value = {
+                    "message-1": TaskItemAppendResult(
+                        TaskItemAppendStatus.APPENDED
+                    )
+                }
+                self.task_score.try_release_idle_park.side_effect = (
+                    self._transition(TaskScoreTransitionStatus.NOOP, 100),
+                    failure,
+                )
+
+                result = self._submit()
+
+                self.assertEqual(TaskCallSubmissionStatus.RETRYABLE, result.status)
+                self.assertEqual(
+                    TaskItemAppendStatus.APPENDED,
+                    result.item_results["message-1"].status,
+                )
+
+    def test_append_provider_failure_is_retryable(self) -> None:
+        self.task_runtime.append_items.side_effect = RuntimeError("down")
+
+        result = self._submit()
+
+        self.assertEqual(TaskCallSubmissionStatus.RETRYABLE, result.status)
+        self.assertEqual({}, result.item_results)
+        self.assertEqual(1, self.task_score.try_release_idle_park.call_count)
+
+    def test_omitted_item_result_is_preserved_as_retryable_item_result(self) -> None:
+        self.task_runtime.append_items.return_value = {}
+
+        result = self._submit()
+
+        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
         self.assertEqual(
-            TaskItemAppendStatus.APPENDED,
+            TaskItemAppendStatus.RETRYABLE,
             result.item_results["message-1"].status,
         )
 
-    def test_non_item_driven_task_and_duplicate_message_ids_are_invalid(
-        self,
-    ) -> None:
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self._descriptor(
-                allocation_mechanism=(
-                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                ),
-                idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
-            )
-        }
-
-        task_type_result = self._submit()
-        duplicate_result = self.submission.submit(
+    def test_submission_does_not_interpret_item_allocation_mechanism(self) -> None:
+        result = self.submission.submit(
             task_id="task-1",
-            items=(self._item(), self._item()),
+            items=(self._item(allocation_rule=None),),
         )
 
-        self.assertEqual(TaskCallSubmissionStatus.INVALID, task_type_result.status)
-        self.assertEqual(TaskCallSubmissionStatus.INVALID, duplicate_result.status)
+        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, result.status)
+        self.task_runtime.append_items.assert_called_once()
+
+    def test_invalid_input_does_not_touch_score_or_runtime(self) -> None:
+        invalid_results = (
+            self.submission.submit(task_id="", items=(self._item(),)),
+            self.submission.submit(task_id="task-1", items=()),
+            self.submission.submit(
+                task_id="task-1",
+                items=(self._item(), self._item()),
+            ),
+            self.submission.submit(
+                task_id="task-1",
+                items=tuple(
+                    self._item(message_id=f"message-{index}")
+                    for index in range(101)
+                ),
+            ),
+        )
+
+        self.assertTrue(
+            all(
+                result.status is TaskCallSubmissionStatus.INVALID
+                for result in invalid_results
+            )
+        )
+        self.task_score.try_release_idle_park.assert_not_called()
         self.task_runtime.append_items.assert_not_called()
 
     def _submit(self):
-        with patch.object(
-            self.submission,
-            "_current_time_millis",
-            return_value=self.NOW,
-        ):
-            return self.submission.submit(
-                task_id="task-1",
-                items=(self._item(),),
-            )
+        return self.submission.submit(
+            task_id="task-1",
+            items=(self._item(),),
+        )
 
     @staticmethod
-    def _item() -> TaskItem:
+    def _item(
+        *,
+        message_id: str = "message-1",
+        allocation_rule: dict[str, object] | None = None,
+    ) -> TaskItem:
         return TaskItem(
-            message_id="message-1",
+            message_id=message_id,
             event_code="image.resize",
             created_at_millis=1,
             payload={},
-            allocation_rule={},
-        )
-
-    @classmethod
-    def _descriptor(
-        cls,
-        *,
-        allocation_mechanism: WorkerAllocationMechanism = (
-            WorkerAllocationMechanism.DIRECT_ITEM_RULE
-        ),
-        idle_disposition: TaskIdleDisposition = (
-            TaskIdleDisposition.PARK_WHEN_IDLE
-        ),
-    ) -> TaskDescriptor:
-        return TaskDescriptor(
-            task_id="task-1",
-            worker_group_id="group-1",
-            worker_allocation_mechanism=allocation_mechanism,
-            idle_disposition=idle_disposition,
-            allocation_rule=(
-                {}
-                if allocation_mechanism
-                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                else None
-            ),
-            config={
-                "priority": "0",
-                "maximumCandidateWorkers": "1",
-                "maxRetryTimes": "3",
-            },
+            allocation_rule=allocation_rule,
         )
 
     @staticmethod
-    def _state(*, score: int, time_millis: int) -> TaskScoreState:
-        return TaskScoreState(
-            task_id="task-1",
-            score=score,
-            band=TaskScoreBand.RUNNING_VISIBLE,
-            time_millis=time_millis,
-            suffix=0,
-        )
+    def _transition(
+        status: TaskScoreTransitionStatus,
+        score: int | None = None,
+    ) -> TaskScoreTransitionResult:
+        return TaskScoreTransitionResult(status, score)
 
 
 if __name__ == "__main__":

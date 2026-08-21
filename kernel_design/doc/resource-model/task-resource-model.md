@@ -116,15 +116,18 @@ PARK_WHEN_IDLE
                     Kernel-private idle-park coordinate
 ```
 
-The idle park is `RUNNING_VISIBLE` at `MAX_TIME_SLOT - 1`, suffix `0`. It is
+The idle park is `RUNNING_VISIBLE` at `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`.
+The low-order value makes the private coordinate the upper raw-score boundary
+of that reserved slot; it carries no scheduling policy meaning. It is
 outside due scans and excluded from the RUNNING admission soft-limit count.
 It is distinct from the public pause coordinate at `MAX_TIME_SLOT`; callers
 cannot mint, select or release the park through a generic time rewrite.
 
 Ordinary Item append remains a pure Task data write and never wakes a parked
-Task. The bounded `TaskCallItemSubmission` command accepts only the
-`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` profile, exact-releases a recognized park,
-appends Items and performs one bounded post-append repair. Explicit Task close
+Task. The bounded `TaskCallItemSubmission` command deliberately does not read
+this descriptor or interpret either mechanism. It invokes the score owner's
+idempotent idle-park release before and after bounded Item append. Server RPC
+and Task Batch assembly decide when to use that command; explicit Task close
 can terminate either idle disposition at any time.
 
 Server exposes only two finite assembly profiles:
@@ -337,10 +340,11 @@ disposition immediately. Any ACTIVE Item prevents close or park, and a
 post-park check can exact-release a park installed concurrently with Task Call
 append. Item execution retry remains TaskItem-score truth. A server may still
 close the Task explicitly at any time.
-Initial finite Items are appended before approval; after a finite Task reaches
-RUNNING with an empty ACTIVE band it may close immediately. Task Call does not
-invent a first-call exception for an empty reusable Task that has not yet been
-parked.
+Initial finite Items may be appended before approval; after a finite Task
+reaches RUNNING with an empty ACTIVE band it may close immediately. Task Call
+submission treats valid PRE_REVIEW and ADMISSION scores as score no-ops, so a
+new due ACTIVE Item can still enter the ordinary activation path. The private
+park is needed only for a later idle-to-active cycle.
 
 Existing candidate cache and Worker lease evidence is not actively deleted
 when a Task becomes idle; it expires naturally. `PRECOMPUTED_TASK_RULE` replenishment

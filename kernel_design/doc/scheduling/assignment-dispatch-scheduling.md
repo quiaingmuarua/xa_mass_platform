@@ -274,10 +274,10 @@ the dispatch round does not infer type or strategy from Item contents.
   deferred policies. Point Property Indexes do not discover or intersect
   candidate sets.
 - Ordinary TaskItem append does not alter Task scheduling. Reusable RPC and
-  Task Batch flows call the bounded Kernel `TaskCallItemSubmission`, which may
-  exact-release only the recognized private idle park before append and
-  performs one bounded post-append repair. Released Tasks use the ordinary due
-  scan; there is no urgent selection path.
+  Task Batch flows call the bounded Kernel `TaskCallItemSubmission`, which
+  invokes the idempotent score-owner idle-park release before and after bounded
+  append. It does not interpret allocation or idle-disposition policy.
+  Released Tasks use the ordinary due scan; there is no urgent selection path.
 - Idle disposition is independent of Worker allocation. External owners may
   still close either profile explicitly.
 - One WorkerId remains one scheduler-visible execution slot. Business batch

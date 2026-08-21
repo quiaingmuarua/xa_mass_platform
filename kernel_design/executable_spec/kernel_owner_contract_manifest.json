@@ -112,10 +112,10 @@
       "get_score_states",
       "initialize_score",
       "park_observed_idle_task",
-      "release_observed_idle_task",
       "release_observed_score_hold",
       "rewrite_same_band_time_millis",
-      "rewrite_score"
+      "rewrite_score",
+      "try_release_idle_park"
     ],
     "WorkerCommandRuntime": [
       "append_worker_commands",

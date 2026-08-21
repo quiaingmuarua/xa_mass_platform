@@ -681,7 +681,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             task_id="task-1",
             observed_score=100,
         )
-        self.task_score.release_observed_idle_task.assert_not_called()
+        self.task_score.try_release_idle_park.assert_not_called()
 
     def test_hold_post_check_releases_when_item_appears_concurrently(self) -> None:
         self._prepare_task(
@@ -707,10 +707,8 @@ class TaskDispatchPacerTest(unittest.TestCase):
         ):
             self.pacer.dispatch_tasks(config=self.config)
 
-        self.task_score.release_observed_idle_task.assert_called_once_with(
+        self.task_score.try_release_idle_park.assert_called_once_with(
             task_id="task-1",
-            observed_park_score=200,
-            release_time_millis=self.NOW_MILLIS,
         )
 
     def test_active_retry_item_keeps_task_in_normal_running_pacing(self) -> None:

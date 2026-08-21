@@ -214,14 +214,19 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def release_observed_idle_task(
+    def try_release_idle_park(
         self,
         *,
         task_id: TaskId,
-        observed_park_score: Score,
-        release_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
-        """Release only the exact private idle park to a due RUNNING score."""
+        """Release the private idle park or accept an unprotected positive score.
+
+        The implementation reads and classifies the current score atomically.
+        The exact private RUNNING park is released to the current due slot;
+        a positive score below the park or above the RUNNING band is a NOOP.
+        Missing, terminal, and RUNNING pause coordinates are rejected without
+        exposing the private score to callers.
+        """
         pass
 
     @abstractmethod

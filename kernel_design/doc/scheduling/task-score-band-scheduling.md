@@ -77,10 +77,12 @@ ADMISSION_VISIBLE
   Task priority in 0..99; lower values run first inside one bounded due window
 
 RUNNING_VISIBLE
-  fixed at 0
+  ordinary scheduling uses 0; the private idle-park boundary uses MAX_SUFFIX
 ```
 
-RUNNING suffix has no retry, idle, capacity, fairness, or pause meaning.
+RUNNING suffix has no retry, capacity, fairness, or pause meaning. The private
+idle park uses the maximum theoretical suffix only so its raw score is the
+upper boundary of the reserved time slot; Lua does not interpret that suffix.
 TaskItem retry truth belongs to TaskItem score.
 
 ## Core Surface
@@ -102,8 +104,7 @@ rewrite_score(task_id, expected_band, target_time_millis,
               target_band=None, target_suffix=None)
 rewrite_same_band_time_millis(task_id, expected_band, target_time_millis)
 park_observed_idle_task(task_id, observed_score)
-release_observed_idle_task(task_id, observed_park_score,
-                           release_time_millis)
+try_release_idle_park(task_id)
 close_score(task_id, terminal_score)
 close_observed_score(task_id, observed_score, terminal_score)
 release_observed_score_hold(task_id, observed_hold_score)
@@ -198,7 +199,7 @@ no ACTIVE and PARK_WHEN_IDLE
   -> exact observed-score move to the private idle park
 ```
 
-The idle park is RUNNING at `MAX_TIME_SLOT - 1`, suffix `0`. It is excluded
+The idle park is RUNNING at `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`. It is excluded
 from due scans and from `count_running_capacity_tasks()`, but remains distinct
 from the public pause coordinate at `MAX_TIME_SLOT`. A successful park receives
 one bounded post-check; if a concurrent Task Call append created an ACTIVE
@@ -221,11 +222,16 @@ same-band score should win by monotonic time.
 
 ### Private Idle Park
 
-`park_observed_idle_task` requires the complete observed RUNNING suffix-zero
-score and derives the private park coordinate internally.
-`release_observed_idle_task` accepts only that exact park score and derives a
-due RUNNING score from an owner-approved release time. Generic rewrites and
-generic hold release cannot mint or release the private park.
+`park_observed_idle_task` requires the complete observed ordinary RUNNING
+suffix-zero score and derives the private park coordinate internally.
+`try_release_idle_park` atomically reads the current score. It releases the
+exact private park to a due RUNNING suffix-zero score using Redis time, returns
+`NOOP` for a positive score below the park or above the RUNNING band, returns
+`STALE` for a missing score, and returns `INVALID` for a terminal or RUNNING
+pause score. The owner precomputes the idle-park and RUNNING-band maximum raw
+boundaries with `MAX_SUFFIX`; Lua only compares those complete scores and does
+not decode tags, time slots, or suffixes. Generic rewrites and generic hold
+release cannot mint or release the private park.
 
 ### Terminal Close
 
@@ -293,7 +299,7 @@ is read or written by Task score Lua.
 | Task approval | PRE_REVIEW -> ADMISSION_VISIBLE, suffix = Task priority |
 | Running activation | ADMISSION_VISIBLE -> RUNNING_VISIBLE, suffix 0; reason-independent same-band recheck for every observed non-transitioned Task |
 | Task dispatch | RUNNING same-band pacing, exact idle park or exact idle close |
-| Task Call submission | exact release of the recognized idle park around bounded Item append |
+| Task Call submission | idempotent private-park release before and after bounded Item append; other valid nearer positive coordinates are no-ops |
 | Explicit lifecycle command | close any positive band; exact hold release when authorized |
 | Candidate warmer | none |
 | Worker/runtime/transport/result routing | none |
@@ -301,7 +307,8 @@ is read or written by Task score Lua.
 ## Failure And Concurrency
 
 - Range rewrites lose when band/time no longer matches.
-- Observed park, release and close lose when the full score fence changed.
+- Observed park and close lose when the full score fence changed. Idle release
+  classifies and updates one current Task score atomically.
 - Terminal close is irreversible and takes precedence over later scheduling
   rounds.
 - A Task discovered before pause/close may finish its already-bounded Item and
@@ -316,7 +323,8 @@ is read or written by Task score Lua.
 - Do not use Task score for Item retry, Worker lease, candidate cache, or
   result truth.
 - Do not make candidate warming a Task score writer.
-- Keep RUNNING suffix fixed at zero.
+- Keep ordinary RUNNING scheduling suffix fixed at zero. The private idle-park
+  boundary alone uses `MAX_SUFFIX` as a range sentinel.
 - Do not classify only-due absence as Task emptiness; query the full ACTIVE Item
   band.
 - Do not reopen terminal Tasks after append or late result evidence.

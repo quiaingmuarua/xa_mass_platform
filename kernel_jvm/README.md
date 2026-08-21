@@ -83,7 +83,10 @@ There are no default-method fallbacks.
 `TaskCallItemSubmission` mirrors the bounded Python Kernel application command
 used by reusable RPC and Task Batch flows. Its Server implementation is an HTTP
 adapter to the Python command host; `kernel_jvm` does not implement Task score
-activation, idle lifecycle, or a second scheduler.
+activation, idle lifecycle, or a second scheduler. `TaskScoreBandCore` mirrors
+the narrow `tryReleaseIdlePark` contract, while the JVM provider remains an
+explicit implementation gap because the Python command host is its only
+production caller.
 
 `RedisWorkerServiceabilityRuntime` implements only the two operations required
 by the Java Server bridge: destructive Adapter request consume and bounded

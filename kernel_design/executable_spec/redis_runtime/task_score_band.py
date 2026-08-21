@@ -91,6 +91,42 @@ redis.call("ZADD", key, next_score, task_id)
 return {"transitioned", tonumber(next_score)}
 """
 
+    _TRY_RELEASE_IDLE_PARK_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local task_id = ARGV[1]
+local idle_park_score = tonumber(ARGV[2])
+local running_pause_max_score = tonumber(ARGV[3])
+local slot_millis = tonumber(ARGV[4])
+local suffix_factor = tonumber(ARGV[5])
+local running_min = tonumber(ARGV[6])
+
+local stored = redis.call("ZSCORE", key, task_id)
+if not stored then
+  return {"stale"}
+end
+
+local stored_score = tonumber(stored)
+if stored_score == idle_park_score then
+  local redis_time = redis.call("TIME")
+  local now_millis = tonumber(redis_time[1]) * 1000
+      + math.floor(tonumber(redis_time[2]) / 1000)
+  local now_time_slot = math.floor(now_millis / slot_millis)
+  local next_score = running_min + now_time_slot * suffix_factor
+  if next_score <= running_min or next_score >= idle_park_score then
+    return {"invalid", stored_score}
+  end
+
+  redis.call("ZADD", key, next_score, task_id)
+  return {"transitioned", next_score}
+end
+
+if (stored_score > 0 and stored_score < idle_park_score)
+    or stored_score > running_pause_max_score then
+  return {"noop", stored_score}
+end
+return {"invalid", stored_score}
+"""
+
     _IDLE_PARK_TIME_SLOT: ClassVar[int] = TaskScoreBandCore.MAX_TIME_SLOT - 1
 
     def __init__(
@@ -321,29 +357,31 @@ return {"transitioned", tonumber(next_score)}
             self._idle_park_score(),
         )
 
-    def release_observed_idle_task(
+    def try_release_idle_park(
         self,
         *,
         task_id: TaskId,
-        observed_park_score: Score,
-        release_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
-        if observed_park_score != self._idle_park_score():
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self._valid_public_target_time_millis(release_time_millis):
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        release_time_slot = self._time_slot_from_millis(release_time_millis)
-        if release_time_slot >= self._IDLE_PARK_TIME_SLOT:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-
-        return self._cas_update(
-            task_id,
-            observed_park_score,
-            self._score(
-                self.RUNNING_VISIBLE_TAG,
-                release_time_slot,
-                self.MIN_SUFFIX,
-            ),
+        return self._script_result(
+            self.redis.eval(
+                self._TRY_RELEASE_IDLE_PARK_SCRIPT,
+                1,
+                self.score_key,
+                task_id,
+                self._idle_park_score(),
+                self._score(
+                    self.RUNNING_VISIBLE_TAG,
+                    self.PAUSE_TIME_SLOT,
+                    self.MAX_SUFFIX,
+                ),
+                self.SLOT_MILLIS,
+                self.suffix_factor,
+                self._score(
+                    self.RUNNING_VISIBLE_TAG,
+                    self.MIN_TIME_SLOT,
+                    self.MIN_SUFFIX,
+                ),
+            )
         )
 
     def close_score(
@@ -633,7 +671,7 @@ return {"transitioned", tonumber(next_score)}
         return self._score(
             self.RUNNING_VISIBLE_TAG,
             self._IDLE_PARK_TIME_SLOT,
-            self.MIN_SUFFIX,
+            self.MAX_SUFFIX,
         )
 
     def _score_to_int(self, raw_score: Any) -> Score:
