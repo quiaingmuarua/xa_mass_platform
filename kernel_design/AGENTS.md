@@ -119,8 +119,10 @@ record merely to make a mechanical signature look smaller.
   obligation is explicitly approved.
 - The assembly CLI is the only temporary production Pacer entry and exposes no
   network surface. Java Server may supervise its process lifecycle but must not
-  interpret Pacer configuration or policy. Task commands remain directly
-  testable through the executable application and are not Python HTTP routes.
+  interpret Pacer policy. In managed mode Java owns and injects the Redis URL
+  and prefix; the Pacer JSON contains policy only. Task commands remain
+  directly testable through the executable application and are not Python HTTP
+  routes.
 
 ## JVM Parity
 

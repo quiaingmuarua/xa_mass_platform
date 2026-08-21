@@ -3,12 +3,13 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,27 +21,31 @@ class PythonKernelPacerProcessTest {
     private Path temporaryDirectory;
 
     @Test
-    void historicalProcessIsKilledOnlyWhenArgumentsAreObservable()
+    void liveHistoricalProcessBlocksStartupWithoutBeingKilled()
             throws Exception {
-        String token = "owned-instance";
-        Process historical = startHistoricalChild(token);
+        Process historical = startHistoricalChild();
         try {
-            writeOwner(historical, token, token);
+            writeOwner(
+                    historical.pid(),
+                    historical.info().startInstant().orElseThrow(),
+                    historical.info().command().orElseThrow()
+            );
             PythonKernelPacerProcess owner = owner();
 
-            if (historical.info().arguments().isPresent()) {
-                owner.stopVerifiedHistoricalProcess();
+            assertThatThrownBy(owner::prepareHistoricalState)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining(
+                            "existing managed process is still running"
+                    );
+            assertThat(historical.isAlive()).isTrue();
+            assertThat(temporaryDirectory.resolve("state/owner.json"))
+                    .exists();
 
-                assertThat(historical.waitFor(2, TimeUnit.SECONDS)).isTrue();
-                assertThat(historical.isAlive()).isFalse();
-                assertThat(temporaryDirectory.resolve("state/owner.json"))
-                        .doesNotExist();
-            } else {
-                assertThatThrownBy(owner::stopVerifiedHistoricalProcess)
-                        .isInstanceOf(IllegalStateException.class)
-                        .hasMessageContaining("cannot be verified");
-                assertThat(historical.isAlive()).isTrue();
-            }
+            owner.stop();
+
+            assertThat(historical.isAlive()).isTrue();
+            assertThat(temporaryDirectory.resolve("state/owner.json"))
+                    .exists();
         } finally {
             historical.destroyForcibly();
             historical.waitFor(2, TimeUnit.SECONDS);
@@ -48,17 +53,21 @@ class PythonKernelPacerProcessTest {
     }
 
     @Test
-    void mismatchedTokenNeverKillsTheLiveProcess() throws Exception {
-        String actualToken = "actual-instance";
-        Process historical = startHistoricalChild(actualToken);
+    void reusedPidStateIsCleanedWithoutTouchingTheLiveProcess()
+            throws Exception {
+        Process historical = startHistoricalChild();
         try {
-            writeOwner(historical, "different-instance", actualToken);
+            writeOwner(
+                    historical.pid(),
+                    Instant.EPOCH,
+                    historical.info().command().orElseThrow()
+            );
             PythonKernelPacerProcess owner = owner();
 
-            assertThatThrownBy(owner::stopVerifiedHistoricalProcess)
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("cannot be verified");
+            owner.prepareHistoricalState();
+
             assertThat(historical.isAlive()).isTrue();
+            assertStateFilesAbsent();
         } finally {
             historical.destroyForcibly();
             historical.waitFor(2, TimeUnit.SECONDS);
@@ -66,27 +75,12 @@ class PythonKernelPacerProcessTest {
     }
 
     @Test
-    void missingFixedModuleArgumentsNeverKillsTheLiveProcess()
-            throws Exception {
-        String token = "owned-instance";
-        Process historical = new ProcessBuilder(
-                javaExecutable().toString(),
-                "-cp",
-                System.getProperty("java.class.path"),
-                KernelPacerHistoricalChild.class.getName()
-        ).start();
-        try {
-            writeOwner(historical, token, token);
-            PythonKernelPacerProcess owner = owner();
+    void deadHistoricalStateIsCleaned() throws Exception {
+        writeOwner(Long.MAX_VALUE, Instant.EPOCH, "python");
 
-            assertThatThrownBy(owner::stopVerifiedHistoricalProcess)
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("cannot be verified");
-            assertThat(historical.isAlive()).isTrue();
-        } finally {
-            historical.destroyForcibly();
-            historical.waitFor(2, TimeUnit.SECONDS);
-        }
+        owner().prepareHistoricalState();
+
+        assertStateFilesAbsent();
     }
 
     @Test
@@ -101,6 +95,7 @@ class PythonKernelPacerProcessTest {
                         Duration.ofSeconds(2),
                         Duration.ofSeconds(1)
                 ),
+                redisProperties(),
                 JsonMapper.builder().build()
         );
 
@@ -125,44 +120,39 @@ class PythonKernelPacerProcessTest {
                         Duration.ofSeconds(2),
                         Duration.ofSeconds(1)
                 ),
+                redisProperties(),
                 JsonMapper.builder().build()
         );
     }
 
-    private Process startHistoricalChild(String token) throws Exception {
-        List<String> command = List.of(
+    private Process startHistoricalChild() throws Exception {
+        Process process = new ProcessBuilder(
                 javaExecutable().toString(),
                 "-cp",
                 System.getProperty("java.class.path"),
-                KernelPacerHistoricalChild.class.getName(),
-                "-m",
-                PythonKernelPacerProcess.MODULE,
-                "--instance-token",
-                token
-        );
-        Process process = new ProcessBuilder(command).start();
+                KernelPacerHistoricalChild.class.getName()
+        ).start();
         assertThat(process.isAlive()).isTrue();
         return process;
     }
 
     private void writeOwner(
-            Process historical,
-            String ownerToken,
-            String readyToken
+            long pid,
+            Instant processStart,
+            String executableCommand
     )
             throws Exception {
-        Instant start = historical.info().startInstant().orElseThrow();
         Path state = temporaryDirectory.resolve("state");
         Files.createDirectories(state);
         String json = "{"
-                + "\"pid\":" + historical.pid() + ","
-                + "\"processStartInstant\":\"" + start + "\","
-                + "\"instanceToken\":\"" + ownerToken + "\","
+                + "\"pid\":" + pid + ","
+                + "\"processStartInstant\":\"" + processStart + "\","
+                + "\"instanceToken\":\"owned-instance\","
                 + "\"configPath\":\"kernel.json\","
                 + "\"module\":\""
                 + PythonKernelPacerProcess.MODULE + "\","
                 + "\"executableCommand\":\""
-                + escapedJson(historical.info().command().orElseThrow())
+                + escapedJson(executableCommand)
                 + "\""
                 + "}";
         Files.writeString(
@@ -172,9 +162,15 @@ class PythonKernelPacerProcessTest {
         );
         Files.writeString(
                 state.resolve("ready"),
-                readyToken,
+                "owned-instance",
                 StandardCharsets.UTF_8
         );
+    }
+
+    private void assertStateFilesAbsent() {
+        assertThat(temporaryDirectory.resolve("state/ready")).doesNotExist();
+        assertThat(temporaryDirectory.resolve("state/owner.json"))
+                .doesNotExist();
     }
 
     private static Path javaExecutable() {
@@ -191,5 +187,12 @@ class PythonKernelPacerProcessTest {
 
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+
+    private static KernelRedisProperties redisProperties() {
+        return new KernelRedisProperties(
+                URI.create("redis://example:6380/3"),
+                "managed-prefix"
+        );
     }
 }

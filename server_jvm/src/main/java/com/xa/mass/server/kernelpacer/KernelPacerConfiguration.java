@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
@@ -13,9 +14,14 @@ public class KernelPacerConfiguration {
     @Bean
     PythonKernelPacerProcess pythonKernelPacerProcess(
             KernelPacerProperties properties,
+            KernelRedisProperties redisProperties,
             JsonMapper json
     ) {
-        return new PythonKernelPacerProcess(properties, json);
+        return new PythonKernelPacerProcess(
+                properties,
+                redisProperties,
+                json
+        );
     }
 
     @Bean

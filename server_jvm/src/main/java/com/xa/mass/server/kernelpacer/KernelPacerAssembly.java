@@ -97,7 +97,7 @@ public final class KernelPacerAssembly
     public void destroy() {
         // DefaultLifecycleProcessor may skip stop() after an unexpected child
         // exit because isRunning() is then false. Bean destruction remains an
-        // unconditional cleanup boundary for owner and ready files.
+        // unconditional cleanup boundary for the current child's state files.
         stop();
     }
 

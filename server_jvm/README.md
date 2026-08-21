@@ -309,19 +309,33 @@ The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
 fixed by the assembly and cannot be configured as a shell command. Normal JVM
 tests use the `test` profile with this lifecycle disabled.
 
+`xa.mass.kernel-redis` is the single production source for the Redis URL and
+prefix. Java installs those exact values into the fixed child environment;
+managed Pacer policy JSON must not contain a `redis` object. This keeps Java
+commands and Python Pacers in one Redis universe without making Server parse
+Pacer policy. The Runtime Boundary profile deliberately uses the non-default
+`runtime-boundary-proof` prefix so this handoff is exercised rather than hidden
+by matching defaults.
+
+Exactly one Server instance per Redis prefix may have the Pacer lifecycle
+enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`.
+There is no distributed leader election in this temporary host. Sharing a
+state directory is not a substitute: when its owner record still identifies a
+live process with the same start instant, the second Server fails startup and
+leaves that process untouched.
+
 The Pacer child reaches `RUNNING` only after its exact instance token appears
 in the ready file. Worker/Adapter assembly starts after that transition and is
 closed before the Pacer child. Closing Java first closes child stdin; a child
 that does not stop within the bounded timeout is forcibly terminated. Child
 stdout and stderr inherit the Java process streams.
 
-Historical recovery is deliberately fail-closed. Java force-stops a live PID
-only when start time, executable, fixed module, instance token, and ready token
-all match the owner record. Platforms that cannot expose process arguments are
-not treated as a match. If startup reports that a live historical process
-cannot be verified, identify and stop that exact process operationally before
-removing its state directory; never delete the owner file merely to bypass the
-check.
+Historical-state handling is deliberately non-destructive. A missing/dead PID
+or PID-reuse mismatch removes stale owner and ready files. A matching live PID
+causes startup to fail; Java never kills a process recovered only from disk
+state. If the operating system cannot expose its start identity, startup also
+fails for explicit operator recovery. Forced termination is reserved for the
+exact child `Process` started and retained by the current Java lifecycle.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a

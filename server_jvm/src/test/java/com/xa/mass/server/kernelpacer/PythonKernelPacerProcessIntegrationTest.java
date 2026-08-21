@@ -3,6 +3,8 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +35,10 @@ class PythonKernelPacerProcessIntegrationTest {
 
             config = json.loads(args.config.read_text(encoding="utf-8"))
             Path(config["pidFile"]).write_text(str(os.getpid()), encoding="utf-8")
+            Path(config["environmentFile"]).write_text(json.dumps({
+                "redisUrl": os.environ["XA_MASS_KERNEL_PACER_REDIS_URL"],
+                "redisPrefix": os.environ["XA_MASS_KERNEL_PACER_REDIS_PREFIX"],
+            }), encoding="utf-8")
             mode = config["mode"]
             if mode == "exit":
                 sys.exit(7)
@@ -53,6 +59,7 @@ class PythonKernelPacerProcessIntegrationTest {
 
     private Path configPath;
     private Path pidFile;
+    private Path environmentFile;
 
     @BeforeEach
     void createControlledPythonModule() throws Exception {
@@ -84,6 +91,7 @@ class PythonKernelPacerProcessIntegrationTest {
         );
         configPath = temporaryDirectory.resolve("pacer.json");
         pidFile = temporaryDirectory.resolve("child.pid");
+        environmentFile = temporaryDirectory.resolve("child-environment.json");
     }
 
     @Test
@@ -98,6 +106,9 @@ class PythonKernelPacerProcessIntegrationTest {
         long pid = readPid();
         assertThat(owner.isAlive()).isTrue();
         assertThat(owner.pid()).isEqualTo(pid);
+        assertThat(Files.readString(environmentFile, StandardCharsets.UTF_8))
+                .contains("\"redisUrl\": \"redis://example:6380/3\"")
+                .contains("\"redisPrefix\": \"managed-prefix\"");
 
         owner.stop();
         owner.stop();
@@ -173,6 +184,10 @@ class PythonKernelPacerProcessIntegrationTest {
                         startupTimeout,
                         shutdownTimeout
                 ),
+                new KernelRedisProperties(
+                        URI.create("redis://example:6380/3"),
+                        "managed-prefix"
+                ),
                 JsonMapper.builder().build()
         );
     }
@@ -181,7 +196,9 @@ class PythonKernelPacerProcessIntegrationTest {
         Files.writeString(
                 configPath,
                 "{\"mode\":\"" + mode + "\",\"pidFile\":\""
-                        + escapedJson(pidFile.toString()) + "\"}",
+                        + escapedJson(pidFile.toString())
+                        + "\",\"environmentFile\":\""
+                        + escapedJson(environmentFile.toString()) + "\"}",
                 StandardCharsets.UTF_8
         );
     }

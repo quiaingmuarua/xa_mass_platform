@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import BinaryIO
 
@@ -12,6 +14,8 @@ from .application import KernelApplication, KernelApplicationConfig
 
 
 _LOGGER = logging.getLogger(__name__)
+_MANAGED_REDIS_URL_ENV = "XA_MASS_KERNEL_PACER_REDIS_URL"
+_MANAGED_REDIS_PREFIX_ENV = "XA_MASS_KERNEL_PACER_REDIS_PREFIX"
 
 
 def _write_ready_file(path: Path, instance_token: str) -> None:
@@ -35,6 +39,8 @@ def _run_application(
     instance_token: str | None,
     ready_file: Path | None,
     input_stream: BinaryIO,
+    managed_redis_url: str | None = None,
+    managed_redis_prefix: str | None = None,
     application_factory: Callable[[KernelApplicationConfig], KernelApplication] = (
         KernelApplication
     ),
@@ -45,14 +51,40 @@ def _run_application(
         )
     if instance_token is not None and not instance_token:
         raise ValueError("instance_token must be non-empty")
+    managed = instance_token is not None
+    has_managed_redis = (
+        managed_redis_url is not None or managed_redis_prefix is not None
+    )
+    if managed != has_managed_redis:
+        raise ValueError(
+            "managed Redis coordinates must accompany the parent protocol"
+        )
+    if has_managed_redis and (
+        not managed_redis_url or not managed_redis_prefix
+    ):
+        raise ValueError(
+            "managed Redis URL and prefix must both be non-empty"
+        )
 
     config_json = (
         config_path.read_text(encoding="utf-8")
         if config_path is not None
         else None
     )
+    config = KernelApplicationConfig.from_json(config_json)
+    if managed:
+        raw_config = json.loads(config_json or "{}")
+        if "redis" in raw_config:
+            raise ValueError(
+                "managed Pacer config must not declare Redis coordinates"
+            )
+        config = replace(
+            config,
+            redis_url=managed_redis_url,
+            redis_prefix=managed_redis_prefix,
+        )
     application = application_factory(
-        KernelApplicationConfig.from_json(config_json)
+        config
     )
     started = False
     try:
@@ -110,6 +142,16 @@ def main() -> None:
         instance_token=args.instance_token,
         ready_file=args.ready_file,
         input_stream=sys.stdin.buffer,
+        managed_redis_url=(
+            os.environ.get(_MANAGED_REDIS_URL_ENV)
+            if args.instance_token is not None
+            else None
+        ),
+        managed_redis_prefix=(
+            os.environ.get(_MANAGED_REDIS_PREFIX_ENV)
+            if args.instance_token is not None
+            else None
+        ),
     )
 
 

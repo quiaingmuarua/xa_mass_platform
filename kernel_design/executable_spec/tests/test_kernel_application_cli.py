@@ -55,6 +55,8 @@ class KernelApplicationCliTest(unittest.TestCase):
                 instance_token=token,
                 ready_file=ready,
                 input_stream=_ReadyObservingInput(ready, token),
+                managed_redis_url="redis://example:6380/3",
+                managed_redis_prefix="managed-prefix",
                 application_factory=lambda _config: application,
             )
 
@@ -73,6 +75,8 @@ class KernelApplicationCliTest(unittest.TestCase):
                     instance_token="instance-2",
                     ready_file=ready,
                     input_stream=io.BytesIO(),
+                    managed_redis_url="redis://example:6380/3",
+                    managed_redis_prefix="managed-prefix",
                     application_factory=lambda _config: application,
                 )
             self.assertFalse(ready.exists())
@@ -96,6 +100,76 @@ class KernelApplicationCliTest(unittest.TestCase):
                 config_path=None,
                 instance_token="instance-3",
                 ready_file=None,
+                input_stream=io.BytesIO(),
+            )
+
+    def test_managed_run_uses_parent_redis_coordinates(self) -> None:
+        application = Mock(spec=KernelApplication)
+        observed_configs = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "kernel.json"
+            ready = root / "ready"
+            config.write_text(
+                '{"resultRouting":{"intervalMillis":17}}',
+                encoding="utf-8",
+            )
+
+            _run_application(
+                config_path=config,
+                instance_token="instance-4",
+                ready_file=ready,
+                input_stream=io.BytesIO(),
+                managed_redis_url="redis://example:6380/3",
+                managed_redis_prefix="managed-prefix",
+                application_factory=lambda parsed: (
+                    observed_configs.append(parsed) or application
+                ),
+            )
+
+        self.assertEqual(1, len(observed_configs))
+        self.assertEqual(
+            "redis://example:6380/3",
+            observed_configs[0].redis_url,
+        )
+        self.assertEqual("managed-prefix", observed_configs[0].redis_prefix)
+        self.assertEqual(17, observed_configs[0].result_routing_interval_millis)
+
+    def test_managed_run_rejects_redis_in_policy_config(self) -> None:
+        application = Mock(spec=KernelApplication)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "kernel.json"
+            config.write_text(
+                '{"redis":{"url":"redis://other:6379/1"}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "must not declare Redis coordinates",
+            ):
+                _run_application(
+                    config_path=config,
+                    instance_token="instance-5",
+                    ready_file=root / "ready",
+                    input_stream=io.BytesIO(),
+                    managed_redis_url="redis://example:6380/3",
+                    managed_redis_prefix="managed-prefix",
+                    application_factory=lambda _config: application,
+                )
+
+        application.start.assert_not_called()
+
+    def test_managed_run_requires_parent_redis_coordinates(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "must accompany the parent protocol",
+        ):
+            _run_application(
+                config_path=None,
+                instance_token="instance-6",
+                ready_file=Path("ready"),
                 input_stream=io.BytesIO(),
             )
 

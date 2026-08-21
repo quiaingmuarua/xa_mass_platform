@@ -2,6 +2,8 @@ package com.xa.mass.server.kernelpacer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,6 +16,13 @@ class KernelPacerPropertiesTest {
                     .withBean(
                             JsonMapper.class,
                             () -> JsonMapper.builder().build()
+                    )
+                    .withBean(
+                            KernelRedisProperties.class,
+                            () -> new KernelRedisProperties(
+                                    URI.create("redis://example:6380/3"),
+                                    "managed-prefix"
+                            )
                     )
                     .withPropertyValues(
                             "xa.mass.kernel-pacer.enabled=false",

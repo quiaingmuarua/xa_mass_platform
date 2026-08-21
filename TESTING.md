@@ -97,17 +97,20 @@ Redis           redis://127.0.0.1:6379/15
 The test starts one Java Spring context. Its `KernelPacerAssembly` starts the
 checked Python CLI with the Runtime Boundary Pacer configuration and waits for
 the exact readiness token. Redis remains an external dependency; failure to
-start the child or connect to Redis fails the proof. Before Context refresh,
+start the child or connect to Redis fails the proof. The Java profile uses the
+non-default `runtime-boundary-proof` prefix and injects it into the child, so
+the cross-process proof cannot pass merely because both sides independently
+default to `default`. Before Context refresh,
 Runtime Boundary clears its dedicated Redis DB 15 so old Task pages cannot
 alter the Pacer sweep proven by the current run.
 
 The same lane also runs a controlled no-network Python child to prove exact
 ready-token startup, exit-before-ready, readiness timeout, stdin-EOF shutdown,
 forced shutdown, idempotent cleanup, and removal of owner/ready files. Unit
-proofs keep historical-process recovery fail-closed when command arguments,
-the fixed module, or the instance token cannot be verified. The Worker/Adapter
-assembly has an explicit higher lifecycle phase, so it starts after the child
-and closes before it.
+proofs keep disk-state recovery non-destructive: dead or PID-reused owner state
+is cleaned, while a matching live process blocks startup and remains untouched.
+The Worker/Adapter assembly has an explicit higher lifecycle phase, so it
+starts after the child and closes before it.
 
 The Python Kernel Oracle is a separate proof owner and still uses its explicit
 Redis test switch:

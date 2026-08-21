@@ -15,6 +15,8 @@ Java-supervised Python Pacer CLI
   -> KernelApplication
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
+  -> Redis URL and prefix injected by the Java parent
+  -> policy JSON cannot declare Redis coordinates in managed mode
   -> exact ready-file token after all Pacers start
   -> stdin EOF stops the application
 
@@ -81,6 +83,13 @@ The public ordinary Task data HTTP operations are orchestrated by Java
 the same owner contract. Create, lifecycle and the bounded Task Call
 composition now execute in Java against the same owner keys; there is no
 Python Task HTTP fallback.
+
+Direct executable-spec use may still construct `KernelApplicationConfig` with
+Redis coordinates. Managed production mode is narrower: Java's
+`xa.mass.kernel-redis` configuration is authoritative and is copied into the
+fixed child environment. A managed Pacer config containing a `redis` object is
+rejected before startup. This is infrastructure address handoff, not Server
+interpretation of scheduling policy.
 
 The JVM incremental assembly is explicit per operation:
 
@@ -395,14 +404,14 @@ python -u -m kernel_design.executable_spec.assembly \
 The CLI constructs one `KernelApplication`, writes the exact token only after
 all Pacers start, and then blocks on stdin. EOF or interruption stops the
 application and removes its owned ready file. Java owns startup timeout,
-bounded shutdown, historical child identity checks, readiness, and final
-forced termination. It does not parse the Pacer JSON or call score policy.
-Worker/Adapter assembly starts only after the child is ready and closes before
-the child. Historical termination is fail-closed: Java requires the recorded
-PID/start time/executable, fixed module argument, instance-token argument, and
-ready token all to match. If the operating system cannot expose arguments, the
-live process is left untouched and Server startup fails for explicit operator
-recovery.
+bounded shutdown, non-destructive historical-state checks, readiness, and final
+termination of the exact child it started. It does not parse the Pacer JSON or
+call score policy. Worker/Adapter assembly starts only after the child is ready
+and closes before the child. A dead or PID-reused historical owner record is
+cleaned. A record matching a live PID and start instant blocks startup; Java
+never kills a process recovered only from disk state. If the operating system
+cannot expose the start instant, the live process is left untouched and Server
+startup fails for explicit operator recovery.
 
 The Java Runtime API Server exposes Worker resources, Task data, and Worker
 Delivery at port `18082`:
@@ -501,7 +510,9 @@ API compatibility remain out of scope.
 - Do not add scheduler lifecycle methods to `ResourcesCommandClient`.
 - Do not add an `index.*` projection owner or matching fallback through
   assembly.
-- Do not add a second environment-variable or CLI configuration path.
+- Do not add a second operator-facing environment-variable or CLI
+  configuration path. The fixed parent-to-child Redis environment is internal
+  lifecycle handoff and must never compete with a policy value.
 - Do not let HTTP handlers perform score reads or transitions.
 - Do not restore any Python production HTTP host or Task business route.
 - Do not let Java process supervision interpret Pacer JSON, score, candidate,

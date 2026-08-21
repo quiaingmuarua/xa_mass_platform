@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -10,7 +11,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -21,6 +21,10 @@ final class PythonKernelPacerProcess {
 
     static final String MODULE =
             "kernel_design.executable_spec.assembly";
+    static final String REDIS_URL_ENV =
+            "XA_MASS_KERNEL_PACER_REDIS_URL";
+    static final String REDIS_PREFIX_ENV =
+            "XA_MASS_KERNEL_PACER_REDIS_PREFIX";
     private static final String OWNER_FILE_NAME = "owner.json";
     private static final String READY_FILE_NAME = "ready";
     private static final long READY_POLL_MILLIS = 25;
@@ -29,6 +33,7 @@ final class PythonKernelPacerProcess {
     );
 
     private final KernelPacerProperties properties;
+    private final KernelRedisProperties redisProperties;
     private final JsonMapper json;
     private final Path workingDirectory;
     private final Path configPath;
@@ -41,9 +46,14 @@ final class PythonKernelPacerProcess {
 
     PythonKernelPacerProcess(
             KernelPacerProperties properties,
+            KernelRedisProperties redisProperties,
             JsonMapper json
     ) {
         this.properties = Objects.requireNonNull(properties, "properties");
+        this.redisProperties = Objects.requireNonNull(
+                redisProperties,
+                "redisProperties"
+        );
         this.json = Objects.requireNonNull(json, "json");
         this.workingDirectory = Path.of(properties.workingDirectory())
                 .toAbsolutePath()
@@ -63,7 +73,7 @@ final class PythonKernelPacerProcess {
         validateFiles();
         try {
             Files.createDirectories(stateDirectory);
-            stopVerifiedHistoricalProcess();
+            prepareHistoricalState();
             Files.deleteIfExists(readyFile);
         } catch (IOException error) {
             throw failure("prepare", error);
@@ -88,17 +98,18 @@ final class PythonKernelPacerProcess {
 
     synchronized void stop() {
         Process owned = process;
+        if (owned == null) {
+            return;
+        }
         String token = instanceToken;
-        if (owned != null) {
-            closeInput(owned);
-            if (!awaitExit(owned, properties.shutdownTimeout())) {
-                owned.destroyForcibly();
-                if (!awaitExit(owned, Duration.ofSeconds(1))
-                        && owned.isAlive()) {
-                    throw new IllegalStateException(
-                            "operation=kernelPacer.stop child did not exit"
-                    );
-                }
+        closeInput(owned);
+        if (!awaitExit(owned, properties.shutdownTimeout())) {
+            owned.destroyForcibly();
+            if (!awaitExit(owned, Duration.ofSeconds(1))
+                    && owned.isAlive()) {
+                throw new IllegalStateException(
+                        "operation=kernelPacer.stop child did not exit"
+                );
             }
         }
         process = null;
@@ -127,11 +138,19 @@ final class PythonKernelPacerProcess {
         command.add(token);
         command.add("--ready-file");
         command.add(readyFile.toString());
-        return new ProcessBuilder(command)
+        ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
                 .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                .redirectError(ProcessBuilder.Redirect.INHERIT)
-                .start();
+                .redirectError(ProcessBuilder.Redirect.INHERIT);
+        builder.environment().put(
+                REDIS_URL_ENV,
+                redisProperties.redisUrl().toString()
+        );
+        builder.environment().put(
+                REDIS_PREFIX_ENV,
+                redisProperties.redisPrefix()
+        );
+        return builder.start();
     }
 
     private void awaitReady(Process started, String token) {
@@ -171,7 +190,7 @@ final class PythonKernelPacerProcess {
         }
     }
 
-    void stopVerifiedHistoricalProcess() throws IOException {
+    void prepareHistoricalState() throws IOException {
         if (!Files.exists(ownerFile)) {
             return;
         }
@@ -186,62 +205,30 @@ final class PythonKernelPacerProcess {
         }
         ProcessHandle handle = ProcessHandle.of(owner.pid()).orElse(null);
         if (handle == null || !handle.isAlive()) {
-            Files.deleteIfExists(ownerFile);
-            Files.deleteIfExists(readyFile);
+            clearHistoricalState();
             return;
-        }
-        if (!matchesOwner(handle, owner)) {
-            throw new IllegalStateException(
-                    "operation=kernelPacer.recoverOwner live process identity"
-                            + " cannot be verified"
-            );
-        }
-        handle.destroyForcibly();
-        try {
-            handle.onExit()
-                    .get(
-                            properties.startupTimeout().toMillis(),
-                            TimeUnit.MILLISECONDS
-                    );
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw failure("recoverOwner", error);
-        } catch (Exception error) {
-            throw failure("recoverOwner", error);
-        }
-        Files.deleteIfExists(ownerFile);
-        Files.deleteIfExists(readyFile);
-    }
-
-    private boolean matchesOwner(ProcessHandle handle, OwnerRecord owner) {
-        ProcessHandle.Info info = handle.info();
-        Instant actualStart = info.startInstant().orElse(null);
-        String[] arguments = info.arguments().orElse(null);
-        String actualCommand = info.command().orElse(null);
-        if (actualStart == null || actualCommand == null) {
-            return false;
         }
         Instant recordedStart;
         try {
             recordedStart = Instant.parse(owner.processStartInstant());
         } catch (RuntimeException error) {
-            return false;
+            throw failure("recoverOwner", error);
         }
-        if (!actualStart.equals(recordedStart)
-                || !MODULE.equals(owner.module())
-                || !sameExecutable(actualCommand, owner.executableCommand())
-                || !readyTokenEquals(owner.instanceToken())) {
-            return false;
+        Instant actualStart = handle.info().startInstant().orElse(null);
+        if (actualStart == null) {
+            throw new IllegalStateException(
+                    "operation=kernelPacer.recoverOwner live process identity"
+                            + " cannot be verified"
+            );
         }
-        // A live process is destructive state.  If the platform cannot expose
-        // its arguments, the fixed module and instance token cannot be proven,
-        // so recovery must fail closed instead of trusting the owner file.
-        if (arguments == null) {
-            return false;
+        if (!actualStart.equals(recordedStart)) {
+            clearHistoricalState();
+            return;
         }
-        List<String> values = Arrays.asList(arguments);
-        return containsPair(values, "-m", MODULE)
-                && containsPair(values, "--instance-token", owner.instanceToken());
+        throw new IllegalStateException(
+                "operation=kernelPacer.recoverOwner existing managed process"
+                        + " is still running"
+        );
     }
 
     private void writeOwner(Process started, String token) throws IOException {
@@ -261,24 +248,9 @@ final class PythonKernelPacerProcess {
         writeAtomically(ownerFile, json.writeValueAsString(owner));
     }
 
-    private static boolean containsPair(
-            List<String> values,
-            String key,
-            String expectedValue
-    ) {
-        for (int index = 0; index + 1 < values.size(); index++) {
-            if (key.equals(values.get(index))
-                    && expectedValue.equals(values.get(index + 1))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean sameExecutable(String left, String right) {
-        return Path.of(left).toAbsolutePath().normalize().equals(
-                Path.of(right).toAbsolutePath().normalize()
-        );
+    private void clearHistoricalState() throws IOException {
+        Files.deleteIfExists(ownerFile);
+        Files.deleteIfExists(readyFile);
     }
 
     private static void writeAtomically(Path target, String content)
