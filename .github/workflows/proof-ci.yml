@@ -80,9 +80,9 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+          cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+        run: python -m pip install -r kernel_design/requirements.txt
       - name: Run executable specification
         run: >-
           python -m unittest discover
@@ -225,27 +225,10 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+          cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
-      - name: Start Python Kernel Pacer Host
-        run: |
-          python -m kernel_design.runtime_server \
-            --host 127.0.0.1 --port 18080 \
-            --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json \
-            > runtime-kernel.log 2>&1 &
-          echo $! > runtime-kernel.pid
-          for _ in $(seq 1 30); do
-            if python -c \
-              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
-              >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat runtime-kernel.log
-          exit 1
-      - name: Verify Java and Python Runtime boundary
+        run: python -m pip install -r kernel_design/requirements.txt
+      - name: Verify Java-owned Runtime boundary
         run: >-
           ./gradlew --no-daemon
           :server_jvm:runtimeBoundaryIntegrationTest
@@ -255,27 +238,12 @@ jobs:
           python .github/scripts/summarize_junit.py
           --label "Runtime Boundary"
           "server_jvm/build/test-results/runtimeBoundaryIntegrationTest/TEST-*.xml"
-      - name: Stop Runtime Kernel
-        if: always()
-        run: |
-          if [ -f runtime-kernel.pid ]; then
-            pid=$(cat runtime-kernel.pid)
-            kill "$pid" 2>/dev/null || true
-            for _ in $(seq 1 10); do
-              if ! kill -0 "$pid" 2>/dev/null; then
-                exit 0
-              fi
-              sleep 1
-            done
-            kill -9 "$pid" 2>/dev/null || true
-          fi
       - name: Upload Runtime failure evidence
         if: failure()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: runtime-boundary-${{ github.run_attempt }}
           path: |
-            runtime-kernel.log
             server_jvm/build/test-results/runtimeBoundaryIntegrationTest/**
             server_jvm/build/reports/tests/runtimeBoundaryIntegrationTest/**
             build/reports/problems/**
@@ -311,9 +279,9 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+          cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+        run: python -m pip install -r kernel_design/requirements.txt
       - name: Build Worker Fleet acceptance artifacts
         run: >-
           ./gradlew --no-daemon
@@ -324,32 +292,19 @@ jobs:
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           mkdir -p "$proof_root/data" "$proof_root/evidence"
           test ! -e "$proof_root/data/scenario-workers"
-      - name: Start Scenario Kernel
-        run: |
-          python -m kernel_design.runtime_server \
-            --config integrations/worker-capability-rpc/kernel-config.json \
-            > fleet-kernel.log 2>&1 &
-          echo $! > fleet-kernel.pid
-          for _ in $(seq 1 60); do
-            if python -c \
-              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
-              >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat fleet-kernel.log
-          exit 1
       - name: Start initial Scenario Worker Host
         run: |
           server_jar=$(find server_jvm/build/libs \
             -name 'xa-mass-server-jvm-*.jar' \
             ! -name '*-plain.jar' -print -quit)
           test -n "$server_jar"
+          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
           task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
+            --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
             --xa.mass.worker-assembly.sandbox-root="$lab_root" \
             --xa.mass.task-batch.root="$task_root" \
             > fleet-server-initial.log 2>&1 &
@@ -358,6 +313,8 @@ jobs:
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
+              cp "$proof_root/kernel-pacer/owner.json" \
+                "$proof_root/initial-pacer-owner.json"
               exit 0
             fi
             sleep 1
@@ -378,18 +335,35 @@ jobs:
           --request-timeout-millis=120000"
       - name: Stop initial Host gracefully
         run: |
+          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
+          child_pid=$(python -c \
+            "import json; print(json.load(open('$proof_root/kernel-pacer/owner.json'))['pid'])")
           pid=$(cat fleet-server.pid)
           kill "$pid"
+          stopped=false
           for _ in $(seq 1 15); do
             if ! kill -0 "$pid" 2>/dev/null; then
-              rm -f fleet-server.pid
+              stopped=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$stopped" != true ]; then
+            kill -9 "$pid" 2>/dev/null || true
+            rm -f fleet-server.pid
+            echo "Scenario Worker Host did not stop within 15 seconds"
+            exit 1
+          fi
+          rm -f fleet-server.pid
+          for _ in $(seq 1 15); do
+            if ! kill -0 "$child_pid" 2>/dev/null; then
+              test ! -e "$proof_root/kernel-pacer/owner.json"
+              test ! -e "$proof_root/kernel-pacer/ready"
               exit 0
             fi
             sleep 1
           done
-          kill -9 "$pid" 2>/dev/null || true
-          rm -f fleet-server.pid
-          echo "Scenario Worker Host did not stop within 15 seconds"
+          echo "Supervised Pacer child survived Java Server shutdown"
           exit 1
       - name: Restart the same Scenario Worker Host
         run: |
@@ -397,10 +371,13 @@ jobs:
             -name 'xa-mass-server-jvm-*.jar' \
             ! -name '*-plain.jar' -print -quit)
           test -n "$server_jar"
+          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
           task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
+            --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
             --xa.mass.worker-assembly.sandbox-root="$lab_root" \
             --xa.mass.task-batch.root="$task_root" \
             > fleet-server-restart.log 2>&1 &
@@ -409,6 +386,20 @@ jobs:
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
+              python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"]) / "build/worker-fleet-proof"
+          before = json.loads((root / "initial-pacer-owner.json").read_text())
+          after = json.loads((root / "kernel-pacer/owner.json").read_text())
+          if before["instanceToken"] == after["instanceToken"]:
+              raise SystemExit("Pacer instance token did not change after restart")
+          if before["pid"] == after["pid"]:
+              raise SystemExit("Pacer child PID did not change after restart")
+          (root / "initial-pacer-owner.json").unlink()
+          PY
               exit 0
             fi
             sleep 1
@@ -441,7 +432,7 @@ jobs:
       - name: Stop Worker Fleet processes
         if: always()
         run: |
-          for pid_file in fleet-server.pid fleet-kernel.pid; do
+          for pid_file in fleet-server.pid; do
             if [ ! -f "$pid_file" ]; then
               continue
             fi
@@ -462,7 +453,6 @@ jobs:
           name: worker-fleet-${{ github.run_attempt }}
           path: |
             build/worker-fleet-proof/evidence/*.json
-            fleet-kernel.log
             fleet-server-initial.log
             fleet-server-restart.log
           if-no-files-found: ignore
@@ -497,30 +487,14 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+          cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+        run: python -m pip install -r kernel_design/requirements.txt
       - name: Build Task Batch acceptance artifacts
         run: >-
           ./gradlew --no-daemon
           :server_jvm:bootJar
           :integrations:worker-capability-rpc:classes
-      - name: Start Scenario Kernel
-        run: |
-          python -m kernel_design.runtime_server \
-            --config integrations/worker-capability-rpc/kernel-config.json \
-            > scenario-kernel.log 2>&1 &
-          echo $! > scenario-kernel.pid
-          for _ in $(seq 1 60); do
-            if python -c \
-              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" \
-              >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat scenario-kernel.log
-          exit 1
       - name: Start Server and Scenario Workers
         run: |
           SERVER_JAR=$(find server_jvm/build/libs \
@@ -529,6 +503,7 @@ jobs:
           test -n "$SERVER_JAR"
           java -jar "$SERVER_JAR" \
             --spring.profiles.active=scenario-workers \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
             > scenario-server.log 2>&1 &
           echo $! > scenario-server.pid
           for _ in $(seq 1 90); do
@@ -562,7 +537,7 @@ jobs:
       - name: Stop Scenario processes
         if: always()
         run: |
-          for pid_file in scenario-server.pid scenario-kernel.pid; do
+          for pid_file in scenario-server.pid; do
             if [ ! -f "$pid_file" ]; then
               continue
             fi
@@ -582,7 +557,6 @@ jobs:
         with:
           name: task-batch-${{ github.run_attempt }}
           path: |
-            scenario-kernel.log
             scenario-server.log
             integrations/worker-capability-rpc/ci-results/**
           if-no-files-found: ignore
@@ -698,9 +672,9 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/runtime_server/requirements.txt
+          cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+        run: python -m pip install -r kernel_design/requirements.txt
       - name: Download Android Worker Demo APK
         uses: actions/download-artifact@v8.0.0
         with:
@@ -742,7 +716,6 @@ jobs:
           name: android-emulator-worker-${{ github.run_attempt }}
           path: |
             build/android-emulator-proof/evidence/*.json
-            build/android-emulator-proof/logs/kernel.log
             build/android-emulator-proof/logs/server-*.log
             build/android-emulator-proof/logs/android-filtered.log
           if-no-files-found: ignore

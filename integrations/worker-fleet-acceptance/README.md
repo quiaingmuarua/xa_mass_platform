@@ -41,8 +41,9 @@ timestamps. Failure attempts to write partial evidence before exiting nonzero.
 
 ## Run
 
-Start Redis, the Python Kernel, and Server with the `scenario-workers` profile.
-Use a Scenario Lab root ending in `data/scenario-workers`, then run:
+Start Redis and one Java Server with the `scenario-workers` profile. Server
+supervises the configured Python Pacer CLI child. Use a Scenario Lab root
+ending in `data/scenario-workers`, then run:
 
 ```powershell
 .\gradlew.bat :integrations:worker-fleet-acceptance:runFleetAcceptance `
@@ -53,8 +54,9 @@ Use a Scenario Lab root ending in `data/scenario-workers`, then run:
   --evidence-file=C:\proof\initial.json"
 ```
 
-After stopping and restarting the same Server process while retaining Redis,
-Kernel, and Lab state:
+After stopping and restarting the same Server process while retaining Redis and
+Lab state, the old Pacer child must be gone and the new Server creates a fresh
+child before becoming ready:
 
 ```powershell
 .\gradlew.bat :integrations:worker-fleet-acceptance:runFleetAcceptance `

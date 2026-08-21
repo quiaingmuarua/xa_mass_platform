@@ -11,16 +11,18 @@ Direct Python SDK / executable-spec support
   -> ResourcesCommandClient
      -> WorkerGroup upsert and Worker upsert
 
-CLI / Python Pacer host
+Java-supervised Python Pacer CLI
   -> KernelApplication
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
-  -> FastAPI exposes GET /health only
+  -> exact ready-file token after all Pacers start
+  -> stdin EOF stops the application
 
 Java Runtime API Server
   -> controllers/services depend on Kernel owner contracts
   -> assembly binds Task control, Task data, Worker resource, and delivery
      operations to Java Redis providers
+  -> owns Python child lifecycle and Kernel readiness
 ```
 
 External callers see commands, not runtime objects. Inside the Java process,
@@ -69,8 +71,8 @@ submit(taskId, items)
 assembly.
 `ResourcesCommandClient` and the two Worker Delivery clients remain stable
 Python executable-spec and test-support surfaces; they are not mounted as
-Python HTTP routes. The Python Pacer host mounts only `GET /health`. The Java
-Server Worker Delivery application
+Python HTTP routes. Python has no production network host. The Java Server
+Worker Delivery application
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and the Task-scoped
 `load_task_item_success_results` likewise remain the Python mechanism oracle.
@@ -350,9 +352,10 @@ Java Task control API -> Java Redis Task owners
 ```
 
 The proof starts Worker resource and Task commands at the Java API. Both write
-through Java Redis owner providers. The separate Python process runs Pacers
-against the same Redis state and exposes only health. The proof then uses the
-Java Server's Worker Delivery owner providers.
+through Java Redis owner providers. The same Java Server supervises the Python
+CLI child that runs Pacers against the shared Redis state, and its readiness
+reflects that child's lifecycle. The proof then uses the Java Server's Worker
+Delivery owner providers.
 `PRECOMPUTED_TASK_RULE` polling
 calls the point HTTP API directly. `DIRECT_ITEM_RULE` uses configured WebSocket
 or Socket Adapter instances, each of which still calls the same batch HTTP
@@ -370,23 +373,36 @@ Separate Redis proofs cover TaskData Item-score initialization,
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` exact park/unpark followed by dispatch, and
 explicit public close remaining terminal.
 
-## External Hosts
+## Production Host
 
-The built-in CLI starts the application with defaults or one JSON file:
+The built-in CLI remains directly usable for executable-spec work:
 
 ```text
 python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The Python Pacer host constructs one `KernelApplication` from the resolved
-configuration. Lifespan starts and stops only that application; HTTP exposes
-only `GET /health`:
+Production does not invoke a Python HTTP host. Java Server starts the same fixed
+module with a config path, instance token, and ready-file path:
 
 ```text
-python -m kernel_design.runtime_server
-python -m kernel_design.runtime_server --config kernel.json
+python -u -m kernel_design.executable_spec.assembly \
+  --config kernel.json \
+  --instance-token <java-generated-uuid> \
+  --ready-file <java-owned-state-directory>/ready
 ```
+
+The CLI constructs one `KernelApplication`, writes the exact token only after
+all Pacers start, and then blocks on stdin. EOF or interruption stops the
+application and removes its owned ready file. Java owns startup timeout,
+bounded shutdown, historical child identity checks, readiness, and final
+forced termination. It does not parse the Pacer JSON or call score policy.
+Worker/Adapter assembly starts only after the child is ready and closes before
+the child. Historical termination is fail-closed: Java requires the recorded
+PID/start time/executable, fixed module argument, instance-token argument, and
+ready token all to match. If the operating system cannot expose arguments, the
+live process is left untouched and Server startup fails for explicit operator
+recovery.
 
 The Java Runtime API Server exposes Worker resources, Task data, and Worker
 Delivery at port `18082`:
@@ -468,9 +484,11 @@ Result API into a Server-owned bounded inbox, where Server separately validates
 the Adapter source and current Binding. Kernel has no
 contract, provider, consumer or score policy for that evidence in this slice.
 
-The Python process remains the scheduling Pacer host and mechanism oracle.
-Java owns the external Task commands, Worker resource ingress, TaskData, and
-Worker Delivery operations, without becoming a second scheduler. The Java
+Python remains the scheduling mechanism oracle and the temporary Pacer
+implementation, while Java Server is the only production process entry and
+supervises that fixed CLI child. Java owns the external Task commands, Worker
+resource ingress, TaskData, and Worker Delivery operations, without becoming a
+second scheduler. The Java
 Worker is the only external Worker demonstration mainline. Authentication,
 same-endpoint Adapter HA,
 Task query/list, failure-result projection, reliable pending/ack delivery, and
@@ -485,7 +503,9 @@ API compatibility remain out of scope.
   assembly.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
-- Do not restore Python Task business HTTP routes.
+- Do not restore any Python production HTTP host or Task business route.
+- Do not let Java process supervision interpret Pacer JSON, score, candidate,
+  dispatch, retry, recovery, or result policy.
 - Do not expose Worker Delivery methods on `KernelApplication`.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.

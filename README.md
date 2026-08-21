@@ -112,9 +112,10 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   Redis providers, including the caller-driven Task commands used by Server.
   It does not implement Kernel scheduling or application lifecycle.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
-  provider assembly. Task business HTTP terminates here; Python is only the
-  Pacer host. Server also owns Worker Identity, Endpoint Binding, bounded use
-  cases, and configured Adapter/Scenario startup.
+  provider assembly. Task business HTTP terminates here. Server also owns the
+  lifecycle of the temporary Python Pacer CLI child, Worker Identity, Endpoint
+  Binding, bounded use cases, and configured Adapter/Scenario startup. Python
+  exposes no production HTTP surface.
 - [`transport/`](transport/) contains the Java 11 delivery contract, Worker
   Core, Netty Adapter, Java Worker and Android Worker implementations.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) owns the finite JVM Scenario

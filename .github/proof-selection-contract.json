@@ -120,6 +120,18 @@
       "reason": "The current conservative Server boundary reaches every JVM runtime proof."
     },
     {
+      "path": "server_jvm/src/main/java/com/xa/mass/server/kernelpacer/KernelPacerAssembly.java",
+      "lanes": [
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "android_emulator"
+      ],
+      "reason": "The supervised Pacer lifecycle reaches every Java-hosted runtime proof, including the Android production route."
+    },
+    {
       "path": "server_jvm/src/main/java/com/xa/mass/server/workerbinding/WorkerBindingService.java",
       "lanes": [
         "jvm_contracts",
@@ -144,6 +156,17 @@
         "android_emulator"
       ],
       "reason": "Emulator orchestration changes select the Emulator; its job dependency selects Android Host."
+    },
+    {
+      "path": "run_scenario_workers.py",
+      "lanes": [
+        "jvm_contracts",
+        "runtime_boundary",
+        "task_batch",
+        "worker_fleet",
+        "frontend"
+      ],
+      "reason": "The local composition driver builds the Frontend and launches the Java-hosted Scenario runtime used by deterministic and acceptance proofs."
     },
     {
       "path": ".github/workflows/proof-ci.yml",

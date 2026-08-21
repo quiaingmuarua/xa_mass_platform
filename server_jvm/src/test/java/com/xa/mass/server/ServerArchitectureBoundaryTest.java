@@ -22,6 +22,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_BINDING = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelbinding"
     );
+    private static final Path KERNEL_PACER = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/kernelpacer"
+    );
     private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/"
                     + "WorkerDeliveryOwnerAssemblyConfiguration.java"
@@ -456,15 +459,16 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void taskControlUsesLocalKernelOwnersAndPythonIsHealthOnly()
+    void taskControlUsesLocalKernelOwnersAndPacerHostOwnsOnlyLifecycle()
             throws IOException {
         assertThat(readSources(KERNEL_BINDING))
                 .contains("RedisTaskScoreBandCore")
                 .contains("RedisTaskRuntime")
                 .contains("DefaultTaskLifecycleCommands")
                 .contains("DefaultTaskCallItemSubmission")
-                .contains("PythonKernelHealthClient")
-                .contains("\"/health\"")
+                .doesNotContain("RestClient")
+                .doesNotContain("java.net.http")
+                .doesNotContain("\"/health\"")
                 .doesNotContain(".post()")
                 .doesNotContain("HttpTaskRuntime")
                 .doesNotContain("HttpTaskLifecycleCommands")
@@ -479,6 +483,16 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("KernelWorkerSchedulingReader")
                 .doesNotContain("\"/worker-groups")
                 .doesNotContain("\"/workers");
+
+        assertThat(readSources(KERNEL_PACER))
+                .contains("ProcessBuilder")
+                .contains("SmartLifecycle")
+                .contains("kernel_design.executable_spec.assembly")
+                .doesNotContain("ScoreCore")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("WorkerRuntime")
+                .doesNotContain("RedisClient")
+                .doesNotContain("RestClient");
     }
 
     private static String readSources(Path root) throws IOException {

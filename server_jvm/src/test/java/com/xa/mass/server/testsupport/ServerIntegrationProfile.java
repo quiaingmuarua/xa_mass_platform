@@ -10,9 +10,6 @@ public final class ServerIntegrationProfile {
             "/application-integration-test.properties";
     private static final Properties PROPERTIES = load();
 
-    public static final String KERNEL_BASE_URL = value(
-            "xa.mass.kernel.base-url"
-    );
     public static final String REDIS_URL = value(
             "xa.mass.kernel-redis.redis-url"
     );

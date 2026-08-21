@@ -7,7 +7,8 @@ opt-in Scenario host.
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
-- process health and public OpenAPI/Scalar surfaces;
+- process health, the fixed Python Pacer CLI child lifecycle, and public
+  OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as Task Batch, WorkerGroup RPC and
   DIRECT_CALL correlation;
@@ -25,9 +26,10 @@ Public API
   -> kernel_jvm owner contract
   -> owner-local Java Redis provider
 
-Python Pacer host
-  -> GET /health only
-  -> assignment, result-routing and serviceability Pacers
+KernelPacerAssembly
+  -> fixed Python assembly CLI child
+  -> exact ready token and bounded stdin-driven shutdown
+  -> assignment, result-routing and serviceability Pacers remain Python policy
 
 Worker Identity / Binding
   -> Server-owned Redis boundary
@@ -43,9 +45,10 @@ Configured deployment
 ```
 
 Task control, Task data, Worker resources, selected Worker scheduling and
-delivery operations use Java Redis providers. Python still owns Kernel
-application/Pacer lifecycle and exposes only health. Missing JVM operations
-fail explicitly; there is no HTTP fallback or Server scheduler.
+delivery operations use Java Redis providers. Java owns the temporary Python
+child's process lifecycle and reports its health; Python still implements the
+Pacer policy and exposes no HTTP surface. Missing JVM operations fail
+explicitly; there is no HTTP fallback or Server scheduler.
 
 Provider ownership is deliberately mixed but explicit:
 
@@ -228,9 +231,10 @@ Default coordinates:
 
 ```text
 Java Runtime API Server        http://127.0.0.1:18082
-Python Kernel Pacer health     http://127.0.0.1:18080/health
 Kernel Redis                   redis://localhost:6379/15
 Redis prefix                   default
+Pacer CLI config               kernel_design/config/pacer-default.json
+Pacer lifecycle state          data/kernel-pacer
 Adapter instances              none
 WorkerGroup RPC wait           30s default / 60s maximum
 DIRECT_CALL wait               3s default / 10s maximum
@@ -252,15 +256,11 @@ matching Endpoint Binding entry.
 
 ## Run
 
-Start the Python Kernel Pacer host:
+Start the Java Runtime API from the repository root. It validates and starts
+the configured Python Pacer CLI child before later lifecycle components:
 
 ```text
-python -m kernel_design.runtime_server
-```
-
-Then start the Java Runtime API:
-
-```text
+python -m pip install -r kernel_design/requirements.txt
 ./gradlew :server_jvm:bootRun
 ```
 
@@ -283,8 +283,9 @@ GET /actuator/health/readiness
 ```
 
 Liveness covers the JVM process. Readiness requires both the configured Python
-Pacer health endpoint and Kernel Redis connection. Task business APIs do not
-call the Python process.
+Pacer child to be alive and Kernel Redis to be reachable. The `kernel` health
+contributor exposes only mode, lifecycle state and safe PID. Task business APIs
+do not call the Python process.
 
 ## Verification
 
@@ -297,9 +298,30 @@ call the Python process.
 ```
 
 The two integration tasks use the checked `integration-test` profile with
-Redis at `redis://127.0.0.1:6379/15` and the Python Pacer host at
-`http://127.0.0.1:18080`. The profile supplies addresses only; the external
-services must already be running and connection failures fail the proof.
+Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary starts one Java Spring
+context, which supervises the Python CLI using the checked Pacer config. Redis,
+Python and the `redis` package must be available; no second host is started by
+the test operator.
+
+The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
+`python-executable`, `working-directory`, `config-path`, `state-directory`,
+`startup-timeout`, and `shutdown-timeout`. The Python module and arguments are
+fixed by the assembly and cannot be configured as a shell command. Normal JVM
+tests use the `test` profile with this lifecycle disabled.
+
+The Pacer child reaches `RUNNING` only after its exact instance token appears
+in the ready file. Worker/Adapter assembly starts after that transition and is
+closed before the Pacer child. Closing Java first closes child stdin; a child
+that does not stop within the bounded timeout is forcibly terminated. Child
+stdout and stderr inherit the Java process streams.
+
+Historical recovery is deliberately fail-closed. Java force-stops a live PID
+only when start time, executable, fixed module, instance token, and ready token
+all match the owner record. Platforms that cannot expose process arguments are
+not treated as a match. If startup reports that a live historical process
+cannot be verified, identify and stop that exact process operationally before
+removing its state directory; never delete the owner file merely to bypass the
+check.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a

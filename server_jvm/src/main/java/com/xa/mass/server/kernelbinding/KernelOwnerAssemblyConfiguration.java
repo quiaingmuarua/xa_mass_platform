@@ -15,36 +15,11 @@ import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import io.lettuce.core.RedisClient;
-import java.net.http.HttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
 
 @Configuration(proxyBeanMethods = false)
 public class KernelOwnerAssemblyConfiguration {
-
-    @Bean
-    RestClient pythonKernelRestClient(PythonKernelProperties properties) {
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(properties.connectTimeout())
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-        JdkClientHttpRequestFactory requestFactory =
-                new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(properties.readTimeout());
-        return RestClient.builder()
-                .baseUrl(properties.baseUrl())
-                .requestFactory(requestFactory)
-                .build();
-    }
-
-    @Bean
-    PythonKernelHealthClient pythonKernelHealthClient(
-            RestClient pythonKernelRestClient
-    ) {
-        return new PythonKernelHealthClient(pythonKernelRestClient);
-    }
 
     @Bean(destroyMethod = "close")
     RedisTaskScoreBandCore redisTaskScoreBandCore(

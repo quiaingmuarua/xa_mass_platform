@@ -20,7 +20,6 @@ log_root="$proof_root/logs"
 lab_root="$proof_root/data/scenario-workers"
 task_root="$proof_root/data/rpc-task"
 server_pid=
-kernel_pid=
 process_restart_pid=
 
 if ! [[ $maximum_wait_millis =~ ^(0|[1-9][0-9]*)$ ]] \
@@ -73,7 +72,6 @@ cleanup() {
     stop_process "$process_restart_pid" 1
     collect_android_log
     stop_process "$server_pid" 15
-    stop_process "$kernel_pid" 5
     adb forward --remove tcp:18084 >/dev/null 2>&1
     adb reverse --remove tcp:18082 >/dev/null 2>&1
     adb reverse --remove tcp:18083 >/dev/null 2>&1
@@ -93,17 +91,6 @@ wait_for_url() {
     return 1
 }
 
-start_kernel() {
-    PYTHONUNBUFFERED=1 python -m kernel_design.runtime_server \
-        --config "$kernel_config" \
-        > "$log_root/kernel.log" 2>&1 &
-    kernel_pid=$!
-    if ! wait_for_url http://127.0.0.1:18080/health 60; then
-        cat "$log_root/kernel.log"
-        return 1
-    fi
-}
-
 start_server() {
     local phase=$1
     local server_jar
@@ -113,6 +100,9 @@ start_server() {
     test -n "$server_jar"
     java -jar "$server_jar" \
         --spring.profiles.active=scenario-workers \
+        --xa.mass.kernel-pacer.working-directory="$workspace" \
+        --xa.mass.kernel-pacer.config-path="$kernel_config" \
+        --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
         --xa.mass.worker-assembly.sandbox-root="$lab_root" \
         --xa.mass.task-batch.root="$task_root" \
         > "$log_root/server-$phase.log" 2>&1 &
@@ -169,7 +159,6 @@ start_application() {
     adb shell am start -W -n "$activity_component" >/dev/null
 }
 
-start_kernel
 start_server initial
 
 adb install -r "$apk" >/dev/null

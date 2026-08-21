@@ -18,9 +18,6 @@ import org.springframework.test.context.DynamicPropertySource;
 @ActiveProfiles("test")
 @SpringBootTest(
         properties = {
-                "xa.mass.kernel.base-url=http://127.0.0.1:1",
-                "xa.mass.kernel.connect-timeout=10ms",
-                "xa.mass.kernel.read-timeout=10ms",
                 "xa.mass.worker-delivery.adapter.http-client"
                         + ".base-url=http://127.0.0.1:1",
                 "xa.mass.worker-delivery.adapter.http-client"

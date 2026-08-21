@@ -117,8 +117,10 @@ record merely to make a mechanical signature look smaller.
 - Keep storage implementation details out of public contracts.
 - Do not preserve superseded names with aliases unless an external compatibility
   obligation is explicitly approved.
-- `runtime_server` is a health-only Pacer host. Task commands remain directly
-  testable through the executable application but are not Python HTTP routes.
+- The assembly CLI is the only temporary production Pacer entry and exposes no
+  network surface. Java Server may supervise its process lifecycle but must not
+  interpret Pacer configuration or policy. Task commands remain directly
+  testable through the executable application and are not Python HTTP routes.
 
 ## JVM Parity
 

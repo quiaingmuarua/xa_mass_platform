@@ -82,9 +82,6 @@ class WorkerDeliveryHttpCompositionTest {
             assertThat(context).doesNotHaveBean(
                     TaskLifecycleCommands.class
             );
-            assertThat(context).doesNotHaveBean(
-                    "pythonKernelHttpTransport"
-            );
         });
     }
 

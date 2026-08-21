@@ -111,19 +111,13 @@ adb forward --remove tcp:18084
 
 ## Real device run
 
-Redis must be available at `redis://localhost:6379/15`. Start the Python
-Kernel Task API:
-
-```powershell
-python -m kernel_design.runtime_server `
-  --config xa-android/worker-demo/kernel-config.json
-```
-
-Start the shared Lab profile:
+Redis must be available at `redis://localhost:6379/15`. Start the shared Lab
+profile; Java Server supervises the Python Pacer CLI with the Android proof
+configuration:
 
 ```powershell
 .\gradlew.bat :server_jvm:bootRun `
-  --args="--spring.profiles.active=scenario-workers"
+  --args="--spring.profiles.active=scenario-workers --xa.mass.kernel-pacer.config-path=xa-android/worker-demo/kernel-config.json"
 ```
 
 The profile initializes the advisory `android-demo-workers` catalog and the

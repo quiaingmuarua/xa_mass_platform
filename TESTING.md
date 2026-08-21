@@ -14,11 +14,11 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | Java Task commands, the Python Pacer host, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7 and Python Pacer host | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python Kernel, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Task Batch | The checked profile uses bounded Java Task Call submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python Pacer host, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while Java Task commands, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Task Batch | The checked profile uses bounded Java Task Call submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
-| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python Kernel, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
+| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
@@ -90,13 +90,24 @@ device Properties, opaque Results, or business Payloads.
 Server integration proofs use the checked `integration-test` profile:
 
 ```text
-Python Pacer health  http://127.0.0.1:18080/health
-Redis                redis://127.0.0.1:6379/15
+Java readiness  http://127.0.0.1:<test-port>/actuator/health/readiness
+Redis           redis://127.0.0.1:6379/15
 ```
 
-The profile configures addresses but does not start either dependency. Strict
-proof tasks fail with the underlying connection error when a dependency is not
-running.
+The test starts one Java Spring context. Its `KernelPacerAssembly` starts the
+checked Python CLI with the Runtime Boundary Pacer configuration and waits for
+the exact readiness token. Redis remains an external dependency; failure to
+start the child or connect to Redis fails the proof. Before Context refresh,
+Runtime Boundary clears its dedicated Redis DB 15 so old Task pages cannot
+alter the Pacer sweep proven by the current run.
+
+The same lane also runs a controlled no-network Python child to prove exact
+ready-token startup, exit-before-ready, readiness timeout, stdin-EOF shutdown,
+forced shutdown, idempotent cleanup, and removal of owner/ready files. Unit
+proofs keep historical-process recovery fail-closed when command arguments,
+the fixed module, or the instance token cannot be verified. The Worker/Adapter
+assembly has an explicit higher lifecycle phase, so it starts after the child
+and closes before it.
 
 The Python Kernel Oracle is a separate proof owner and still uses its explicit
 Redis test switch:
@@ -128,15 +139,11 @@ Redis Owner:
 .\gradlew.bat :server_jvm:redisOwnerIntegrationTest
 ```
 
-Runtime Boundary requires a healthy Python Pacer host at `18080`. Start that
-process with the checked proof configuration so assignment, Result Routing and
-Serviceability Pacers are active. Task business calls remain Java-to-Redis:
+Runtime Boundary starts only the Java test context. Its configured child runs
+assignment, Result Routing and Serviceability Pacers; Task business calls
+remain Java-to-Redis:
 
 ```powershell
-python -m kernel_design.runtime_server `
-  --host 127.0.0.1 --port 18080 `
-  --config server_jvm/src/test/resources/kernel-runtime-boundary-config.json
-
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
 

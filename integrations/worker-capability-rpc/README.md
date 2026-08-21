@@ -26,8 +26,8 @@ Fleet acceptance respectively.
 
 ## Run
 
-Start Redis, the Python Kernel, and Server with the `scenario-workers` Profile,
-then run:
+Start Redis and one Java Server with the `scenario-workers` Profile. Server
+supervises the configured Python Pacer CLI child. Then run:
 
 ```powershell
 .\gradlew.bat :integrations:worker-capability-rpc:runRpcScenario

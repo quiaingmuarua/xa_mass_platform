@@ -1,6 +1,5 @@
 package com.xa.mass.server.integration;
 
-import static com.xa.mass.server.testsupport.ServerIntegrationProfile.KERNEL_BASE_URL;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_PREFIX;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,6 +13,7 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
+import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
@@ -41,15 +41,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles({"test", "integration-test"})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@ContextConfiguration(
+        initializers = RuntimeBoundaryIntegrationTest
+                .DedicatedRedisInitializer.class
+)
 @Tag("runtime-boundary")
-class RuntimeApiPythonIntegrationTest {
+class RuntimeBoundaryIntegrationTest {
 
     private static final int SERVER_PORT = availablePort();
     private static final int[] ACTIVE_ADAPTER_PORTS =
@@ -71,11 +78,28 @@ class RuntimeApiPythonIntegrationTest {
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
+    public static final class DedicatedRedisInitializer implements
+            ApplicationContextInitializer<ConfigurableApplicationContext> {
+
+        @Override
+        public void initialize(ConfigurableApplicationContext context) {
+            RedisClient client = RedisClient.create(REDIS_URL);
+            try (var connection = client.connect(StringCodec.UTF8)) {
+                connection.sync().flushdb();
+            } finally {
+                client.shutdown();
+            }
+        }
+    }
+
     @LocalServerPort
     private int port;
 
     @Autowired
     private WorkerScoreCore workerScores;
+
+    @Autowired
+    private KernelPacerAssembly kernelPacerAssembly;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
@@ -641,32 +665,16 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void pythonPacerHostExposesOnlyHealth() throws Exception {
-        assertThat(sendKernel(
+    void javaServerOwnsPacerLifecycleAndReadiness() throws Exception {
+        assertThat(kernelPacerAssembly.snapshot().enabled()).isTrue();
+        assertThat(kernelPacerAssembly.isRunning()).isTrue();
+        HttpResponse<String> readiness = send(
                 "GET",
-                "/health",
-                "{}"
-        ).statusCode()).isEqualTo(200);
-        assertThat(sendKernel(
-                "POST",
-                "/tasks",
-                "{}"
-        ).statusCode()).isEqualTo(404);
-        assertThat(sendKernel(
-                "POST",
-                "/tasks/missing/approve",
-                "{}"
-        ).statusCode()).isEqualTo(404);
-        assertThat(sendKernel(
-                "PUT",
-                "/worker-groups/missing",
-                "{\"eventCodes\":[]}"
-        ).statusCode()).isEqualTo(404);
-        assertThat(sendKernel(
-                "PUT",
-                "/worker-groups/missing/workers/worker-1",
-                "{\"endpointManagerId\":\"system-polling\"}"
-        ).statusCode()).isEqualTo(404);
+                "/actuator/health/readiness",
+                null
+        );
+        assertThat(readiness.statusCode()).isEqualTo(200);
+        assertThat(readiness.body()).contains("\"status\":\"UP\"");
     }
 
     private void runWorkerDeliveryClosure(
@@ -1081,33 +1089,6 @@ class RuntimeApiPythonIntegrationTest {
                 .build()
                 .send(
                         request.build(),
-                        HttpResponse.BodyHandlers.ofString(
-                                StandardCharsets.UTF_8
-                        )
-                );
-    }
-
-    private static HttpResponse<String> sendKernel(
-            String method,
-            String path,
-            String body
-    ) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(KERNEL_BASE_URL + path))
-                .header("Content-Type", "application/json")
-                .method(
-                        method,
-                        HttpRequest.BodyPublishers.ofString(
-                                body,
-                                StandardCharsets.UTF_8
-                        )
-                )
-                .build();
-        return HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .build()
-                .send(
-                        request,
                         HttpResponse.BodyHandlers.ofString(
                                 StandardCharsets.UTF_8
                         )

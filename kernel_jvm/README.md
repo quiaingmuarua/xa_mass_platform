@@ -117,7 +117,8 @@ not an external protocol.
 
 The external Runtime API belongs to [`server_jvm/`](../server_jvm/). Its
 controllers and services depend on these owner contracts. Task business
-commands use the Java Redis owners directly; Python remains the Pacer host and
+commands use the Java Redis owners directly. Java Server hosts the fixed
+temporary Python Pacer child; Python remains the Pacer implementation and
 mechanism oracle, with no Task HTTP fallback. Provider selection never appears
 in HTTP controllers or business services.
 

@@ -28,6 +28,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
+import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
@@ -53,12 +54,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 @ActiveProfiles("test")
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "xa.mass.kernel.base-url=http://127.0.0.1:1",
-                "xa.mass.kernel.connect-timeout=10ms",
-                "xa.mass.kernel.read-timeout=10ms"
-        }
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 class ServerApplicationContextTest {
 
@@ -69,7 +65,7 @@ class ServerApplicationContextTest {
     private int port;
 
     @Test
-    void assemblesTheRuntimeApiWithoutStartingThePythonKernel() throws Exception {
+    void assemblesTheRuntimeApiWithoutStartingThePacerChild() throws Exception {
         assertThat(applicationContext.getBean(TaskRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskResourceCatalog.class))
@@ -88,6 +84,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class
         )).isNotNull();
+        assertThat(applicationContext.getBean(KernelPacerAssembly.class)
+                .snapshot().enabled()).isFalse();
         assertThat(applicationContext.getBean(
                 WorkerDeliveryOwnerAssemblyConfiguration.class
         )).isNotNull();

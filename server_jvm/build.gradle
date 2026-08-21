@@ -45,6 +45,10 @@ tasks.named('test') {
 
 tasks.named('bootRun') {
     systemProperty(
+            'xa.mass.kernel-pacer.working-directory',
+            rootProject.projectDir.absolutePath
+    )
+    systemProperty(
             'xa.mass.worker-assembly.sandbox-root',
             rootProject.file('data/scenario-workers').absolutePath
     )
@@ -98,6 +102,6 @@ registerStrictIntegrationTest(
 
 registerStrictIntegrationTest(
         'runtimeBoundaryIntegrationTest',
-        'Runs the Java Server boundary against Redis and the Python Kernel.',
+        'Runs the Java-owned Runtime boundary with Redis and supervised Pacers.',
         'runtime-boundary'
 )

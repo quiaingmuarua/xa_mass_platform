@@ -4,12 +4,11 @@ import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import java.util.Objects;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.beans.factory.DisposableBean;
+import org.springframework.boot.web.server.context.WebServerApplicationContext;
+import org.springframework.context.SmartLifecycle;
 
 public final class ServerWorkerAssemblyLifecycleHost
-        implements ApplicationRunner, DisposableBean {
+        implements SmartLifecycle {
 
     private final ServerWorkerGroupInitializer groupInitializer;
     private final ServerWorkerTaskInitializer taskInitializer;
@@ -43,10 +42,6 @@ public final class ServerWorkerAssemblyLifecycleHost
     }
 
     @Override
-    public void run(ApplicationArguments arguments) {
-        start();
-    }
-
     public synchronized void start() {
         if (closed) {
             throw new IllegalStateException(
@@ -78,11 +73,12 @@ public final class ServerWorkerAssemblyLifecycleHost
     }
 
     @Override
-    public synchronized void destroy() {
+    public synchronized void stop() {
         if (closed) {
             return;
         }
         closed = true;
+        started = false;
         RuntimeException failure = null;
         try {
             scenarioWorkers.close();
@@ -101,6 +97,24 @@ public final class ServerWorkerAssemblyLifecycleHost
         if (failure != null) {
             throw failure;
         }
+    }
+
+    @Override
+    public synchronized boolean isRunning() {
+        return started && !closed;
+    }
+
+    @Override
+    public boolean isAutoStartup() {
+        return true;
+    }
+
+    @Override
+    public int getPhase() {
+        // Start only after the web server has completed its lifecycle phase.
+        // Stop before graceful HTTP shutdown; lower-phase infrastructure is
+        // then released by its own lifecycle owner.
+        return WebServerApplicationContext.GRACEFUL_SHUTDOWN_PHASE + 1;
     }
 
     private static void closeAndSuppress(

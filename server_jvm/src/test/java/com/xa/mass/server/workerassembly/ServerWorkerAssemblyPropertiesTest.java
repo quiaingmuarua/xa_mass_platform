@@ -22,6 +22,7 @@ import org.springframework.boot.test.context
         .ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner
         .ApplicationContextRunner;
+import org.springframework.context.LifecycleProcessor;
 
 class ServerWorkerAssemblyPropertiesTest {
 
@@ -30,6 +31,11 @@ class ServerWorkerAssemblyPropertiesTest {
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class,
                             ServerWorkerAssemblyConfiguration.class
+                    )
+                    .withBean(
+                            "lifecycleProcessor",
+                            LifecycleProcessor.class,
+                            () -> mock(LifecycleProcessor.class)
                     )
                     .withBean(
                             WorkerResourceCatalog.class,

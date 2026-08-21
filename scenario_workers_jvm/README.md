@@ -155,8 +155,9 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 ./gradlew :scenario_workers_jvm:test
 ```
 
-Repository-level acceptance starts Redis, Python Kernel, Server, Adapter, and
-these Lab Workers through two independent clients:
+Repository-level acceptance starts Redis and one Java Server. Server supervises
+the temporary Python Pacer CLI and assembles the Adapter plus these Lab Workers;
+two independent clients then prove the boundary:
 
 - [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
   the exact two-by-ten replica topology, stable Lab identity mapping, Adapter

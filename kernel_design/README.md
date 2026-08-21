@@ -36,7 +36,7 @@ The executable specification currently proves:
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
 - optional Adapter-route Worker serviceability discovery and score convergence;
-- Kernel application assembly and the health-only Python Pacer host boundary.
+- Kernel application assembly and its supervised, no-network Python CLI entry.
 
 The authoritative implementation-status table lives in
 [Kernel Core Scheduling](doc/scheduling/README.md). This README deliberately
@@ -172,12 +172,15 @@ unless an owner contract explicitly says so.
 
 ## Runtime And JVM Boundaries
 
-- `runtime_server/` starts the Python Kernel Pacers and exposes only
-  `GET /health`; Task business HTTP belongs to Java Server.
+- `python -m kernel_design.executable_spec.assembly` is the temporary
+  production Pacer implementation. Java Server starts it with an exact
+  readiness token and owns its process lifecycle; Python exposes no HTTP API.
 - `kernel_jvm/` mirrors public contracts and selected Redis providers; it has no
   scheduling, Pacer or Kernel application lifecycle.
-- `server_jvm/` composes current providers and may orchestrate use cases through
-  owner contracts. It must not implement missing Kernel behavior locally.
+- `server_jvm/` composes current providers, supervises that fixed CLI child,
+  and may orchestrate use cases through owner contracts. Process supervision
+  must not become scheduling policy or a local implementation of missing
+  Kernel behavior.
 - Transport modules receive already-targeted delivery evidence and do not read
   score or scheduling policy.
 

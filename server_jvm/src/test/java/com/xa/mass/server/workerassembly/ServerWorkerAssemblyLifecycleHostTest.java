@@ -1,5 +1,6 @@
 package com.xa.mass.server.workerassembly;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -13,6 +14,7 @@ import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.boot.web.server.context.WebServerApplicationContext;
 
 class ServerWorkerAssemblyLifecycleHostTest {
 
@@ -41,8 +43,8 @@ class ServerWorkerAssemblyLifecycleHostTest {
 
         host.start();
         host.start();
-        host.destroy();
-        host.destroy();
+        host.stop();
+        host.stop();
 
         InOrder order = inOrder(
                 groupInitializer,
@@ -60,6 +62,10 @@ class ServerWorkerAssemblyLifecycleHostTest {
         verify(scenarioWorkers, times(1)).start();
         verify(groupInitializer, times(1)).initialize();
         verify(taskInitializer, times(1)).initialize();
+        assertThat(host.isRunning()).isFalse();
+        assertThat(host.getPhase()).isEqualTo(
+                WebServerApplicationContext.GRACEFUL_SHUTDOWN_PHASE + 1
+        );
     }
 
     @Test

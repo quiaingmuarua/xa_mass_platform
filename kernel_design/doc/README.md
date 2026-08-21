@@ -19,7 +19,7 @@ The document families are grouped by design concern:
 
 - [Kernel Application Assembly](kernel-application-assembly.md): zero-config
   scheduling application and resource-command boundaries, private Redis
-  composition, and CLI/FastAPI hosts.
+  composition, and the Java-supervised Python CLI boundary.
 - [Scheduling](scheduling/README.md): score axes, the cross-pacer Worker
   HOT_ACQUIRE lease protocol, assignment-dispatch pacers, outbound handoff, and
   result routing.
