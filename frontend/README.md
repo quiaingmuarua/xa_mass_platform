@@ -1,7 +1,8 @@
 # XA Mass Runtime Viewer
 
 Vue 3 frontend for the read-only Worker and configured Task Runtime views plus
-the Task Batch Lab. It is derived from Pure Admin Thin 6.2.0 but deliberately
+the Task Batch Lab and a browser-session finite Task interaction Mock. It is
+derived from Pure Admin Thin 6.2.0 but deliberately
 contains no login, token, dynamic-permission, fake-user, or example-business
 path.
 
@@ -51,6 +52,13 @@ EventCode, accepts one Payload key and `.txt` file, uploads it, runs the batch,
 and offers the published JSONL as a manual download. The table is
 browser-session memory only. Server input and output files remain under the
 Lab directory after a page refresh.
+
+The default tab at `/runtime/tasks` is an explicitly labelled finite Task Mock.
+It models `PRECOMPUTED_TASK_RULE`, `CLOSE_WHEN_IDLE`, local TXT Seed review,
+explicit approval, Admission/Dispatch visibility, idle close, and Mock JSONL
+download entirely in browser memory. It sends no Task lifecycle or result HTTP
+requests and disappears on page refresh. The adjacent `Configured Tasks`
+tab remains the read-only directory of Profile-provided long-lived Tasks.
 
 Use the fixed Mock data only when explicitly requested:
 
@@ -105,8 +113,9 @@ pnpm build
 
 The Worker page remains an unstable, incomplete sample. Its Mock Scheduling
 axis may label a semantic lease projection, but it does not expose raw Score or
-prove execution. The Task page shows only Profile-configured descriptors.
-Neither page infers Worker totals, a combined online state, Task
-approval/running state, transport sessions, history, or complete matching
+prove execution. The Task page keeps real Profile descriptors read-only and
+separates them from the finite Task interaction Mock; Mock `Dispatch Visible`
+is not an execution claim. Neither Runtime page infers Worker totals, a
+combined online state, transport sessions, history, or complete matching
 results. The Task Batch page mutates only through the public Lab API: it does
 not create or expose Tasks, Worker identity, or scheduling truth.

@@ -87,8 +87,8 @@ onBeforeUnmount(() => store.dispose());
           Runtime + Lab
         </span>
         <p>
-          Runtime pages are read-only. Task Batch Lab uploads input, appends Items and
-          keeps generated output files.
+          Runtime truth remains read-only. Finite Tasks are browser-session Mock; Task
+          Batch Lab uploads input, appends Items and keeps generated output files.
         </p>
       </div>
     </aside>

@@ -19,6 +19,7 @@ import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
   taskBatchStoreKey,
+  taskManagementStoreKey,
   workerStatusStoreKey
 } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
@@ -26,6 +27,7 @@ import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
 import { HttpTaskBatchClient } from "./task-batch/http-client";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
 import { createTaskBatchStore } from "./stores/task-batch";
+import { createTaskManagementStore } from "./stores/task-management";
 import { createWorkerStatusStore } from "./stores/worker-status";
 import { createWorkerStatusDataSource } from "./worker-status/data-source";
 import "element-plus/es/components/alert/style/css";
@@ -71,12 +73,14 @@ if (configResult.ok) {
     new HttpTaskBatchClient(configResult.value.apiBaseUrl),
     runtimeViewerStore
   );
+  const taskManagementStore = createTaskManagementStore(runtimeViewerStore);
   const workerStatusStore = createWorkerStatusStore(
     createWorkerStatusDataSource(configResult.value)
   );
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
   app.provide(taskBatchStoreKey, taskBatchStore);
+  app.provide(taskManagementStoreKey, taskManagementStore);
   app.provide(workerStatusStoreKey, workerStatusStore);
 }
 
