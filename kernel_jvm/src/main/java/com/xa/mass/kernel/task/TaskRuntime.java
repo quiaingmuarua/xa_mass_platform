@@ -17,7 +17,7 @@ public interface TaskRuntime {
             "maxRetryTimes"
     );
 
-    TaskCreationResult createTask(TaskDescriptor descriptor, int suffix);
+    TaskCreationResult createTask(TaskDescriptor descriptor);
 
     Map<String, TaskItemAppendResult> appendItems(
             String taskId,

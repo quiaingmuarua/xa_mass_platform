@@ -7,15 +7,15 @@ import org.springframework.stereotype.Component;
 @Component("kernel")
 final class PythonKernelHealthIndicator implements HealthIndicator {
 
-    private final PythonKernelHttpTransport transport;
+    private final PythonKernelHealthClient client;
 
-    PythonKernelHealthIndicator(PythonKernelHttpTransport transport) {
-        this.transport = transport;
+    PythonKernelHealthIndicator(PythonKernelHealthClient client) {
+        this.client = client;
     }
 
     @Override
     public Health health() {
-        return transport.isHealthy()
+        return client.isHealthy()
                 ? Health.up().build()
                 : Health.down().build();
     }

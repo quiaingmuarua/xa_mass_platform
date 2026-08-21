@@ -13,10 +13,10 @@ boundary named below.
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; the Serviceability bridge also proves destructive Adapter request consume and bounded Adapter-evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | Python Kernel, Java Server, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, the public Adapter Network Runtime View, exact Adapter Route evidence through the Kernel Result Pacer, periodic snapshot compensation, and current score convergence | Redis 7 and Python Kernel | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
+| Runtime Boundary | Java Task commands, the Python Pacer host, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7 and Python Pacer host | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python Kernel, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Task Batch | The checked profile uses bounded scheduling-aware Task Call submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python Kernel, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Task Batch | The checked profile uses bounded Java Task Call submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python Pacer host, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python Kernel, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
@@ -90,8 +90,8 @@ device Properties, opaque Results, or business Payloads.
 Server integration proofs use the checked `integration-test` profile:
 
 ```text
-Python Kernel  http://127.0.0.1:18080
-Redis          redis://127.0.0.1:6379/15
+Python Pacer health  http://127.0.0.1:18080/health
+Redis                redis://127.0.0.1:6379/15
 ```
 
 The profile configures addresses but does not start either dependency. Strict
@@ -128,9 +128,9 @@ Redis Owner:
 .\gradlew.bat :server_jvm:redisOwnerIntegrationTest
 ```
 
-Runtime Boundary requires a healthy Python Kernel at `18080`. Start that
-process with the checked proof configuration so the Serviceability Result
-Pacer is active:
+Runtime Boundary requires a healthy Python Pacer host at `18080`. Start that
+process with the checked proof configuration so assignment, Result Routing and
+Serviceability Pacers are active. Task business calls remain Java-to-Redis:
 
 ```powershell
 python -m kernel_design.runtime_server `

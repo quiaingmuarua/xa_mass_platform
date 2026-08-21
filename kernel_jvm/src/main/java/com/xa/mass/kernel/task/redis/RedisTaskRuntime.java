@@ -1,9 +1,13 @@
 package com.xa.mass.kernel.task.redis;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
@@ -11,6 +15,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
@@ -31,16 +36,39 @@ import tools.jackson.databind.json.JsonMapper;
 
 public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
+    private static final int INITIAL_PRE_REVIEW_SUFFIX = 1;
+    private static final long DEFAULT_CREATION_LEASE_MILLIS = 3_000;
     private static final long DEFAULT_ITEM_TTL_MILLIS =
             365L * 24 * 60 * 60 * 1_000;
     private static final int ITEM_PRIORITY_STEP_MILLIS = 100;
+    private static final String CREATE_DESCRIPTOR_SCRIPT = """
+            local key = KEYS[1]
+            if redis.call("EXISTS", key) == 1 then
+              return 0
+            end
+            redis.call(
+              "HSET",
+              key,
+              "workerGroupId", ARGV[1],
+              "workerAllocationMechanism", ARGV[2],
+              "idleDisposition", ARGV[3],
+              "allocationRuleJson", ARGV[4],
+              "configJson", ARGV[5]
+            )
+            return 1
+            """;
 
     private final RedisClient redisClient;
+    private final TaskScoreBandCore scoreBand;
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final String prefix;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    public RedisTaskRuntime(RedisClient redisClient, String prefix) {
+    public RedisTaskRuntime(
+            RedisClient redisClient,
+            TaskScoreBandCore scoreBand,
+            String prefix
+    ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
         }
@@ -48,15 +76,201 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             throw new IllegalArgumentException("prefix must be non-blank");
         }
         this.redisClient = redisClient;
+        this.scoreBand = java.util.Objects.requireNonNull(
+                scoreBand,
+                "scoreBand"
+        );
         this.prefix = prefix;
     }
 
     @Override
-    public TaskCreationResult createTask(
-            TaskDescriptor descriptor,
-            int suffix
+    public TaskCreationResult createTask(TaskDescriptor descriptor) {
+        if (descriptor == null) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "descriptor must be present"
+            );
+        }
+        Map<String, String> fields;
+        try {
+            fields = descriptorFields(descriptor);
+        } catch (IllegalArgumentException | JacksonException error) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "descriptor allocation rule is invalid or not JSON "
+                            + "serializable"
+            );
+        }
+
+        try {
+            TaskCreationResult started = startOrCompleteCreation(
+                    descriptor.taskId()
+            );
+            if (started != null) {
+                return started;
+            }
+
+            var initialization = scoreBand.initializeScore(
+                    descriptor.taskId(),
+                    INITIAL_PRE_REVIEW_SUFFIX,
+                    DEFAULT_CREATION_LEASE_MILLIS
+            );
+            if (initialization.status()
+                    != TaskScoreTransitionStatus.TRANSITIONED
+                    || initialization.score() == null) {
+                return initializationFailure(
+                        descriptor.taskId(),
+                        fields,
+                        initialization.status()
+                );
+            }
+            long observedLease = initialization.score();
+
+            boolean descriptorCreated;
+            try {
+                descriptorCreated = writeDescriptorIfAbsent(
+                        descriptor.taskId(),
+                        fields
+                );
+            } catch (RuntimeException error) {
+                releaseBestEffort(descriptor.taskId(), observedLease);
+                return creation(
+                        TaskCreationStatus.RETRYABLE,
+                        "Task descriptor could not be stored"
+                );
+            }
+            if (!descriptorCreated) {
+                releaseBestEffort(descriptor.taskId(), observedLease);
+                return creation(
+                        TaskCreationStatus.CONFLICT,
+                        "task descriptor already exists"
+                );
+            }
+
+            var release = scoreBand.releaseObservedScoreHold(
+                    descriptor.taskId(),
+                    observedLease
+            );
+            return release.status()
+                    == TaskScoreTransitionStatus.TRANSITIONED
+                    ? creation(TaskCreationStatus.CREATED, null)
+                    : creation(
+                            TaskCreationStatus.RETRYABLE,
+                            "task descriptor was written but score release "
+                                    + "was not accepted"
+                    );
+        } catch (RuntimeException error) {
+            return creation(
+                    TaskCreationStatus.RETRYABLE,
+                    "Task creation owner is unavailable"
+            );
+        }
+    }
+
+    private TaskCreationResult startOrCompleteCreation(String taskId) {
+        if (commands().exists(taskDescriptorKey(taskId)) > 0) {
+            return creation(
+                    TaskCreationStatus.CONFLICT,
+                    "task descriptor already exists"
+            );
+        }
+        return null;
+    }
+
+    private TaskCreationResult initializationFailure(
+            String taskId,
+            Map<String, String> fields,
+            TaskScoreTransitionStatus status
     ) {
-        throw notImplemented("create_task");
+        if (status == TaskScoreTransitionStatus.NOOP) {
+            var state = scoreBand.getScoreStates(List.of(taskId)).get(taskId);
+            if (state != null
+                    && state.band() == TaskScoreBand.PRE_REVIEW
+                    && commands().exists(taskDescriptorKey(taskId)) == 0
+                    && writeDescriptorIfAbsent(taskId, fields)) {
+                return creation(TaskCreationStatus.CREATED, null);
+            }
+            return creation(
+                    TaskCreationStatus.CONFLICT,
+                    "task score is already initialized outside an "
+                            + "incomplete creation"
+            );
+        }
+        if (status == TaskScoreTransitionStatus.INVALID) {
+            return creation(
+                    TaskCreationStatus.INVALID,
+                    "task score initialization was rejected"
+            );
+        }
+        return creation(
+                TaskCreationStatus.RETRYABLE,
+                "task score initialization could not be confirmed"
+        );
+    }
+
+    private Map<String, String> descriptorFields(
+            TaskDescriptor descriptor
+    ) throws JacksonException {
+        if (descriptor.allocationRule() != null) {
+            TaskConstraintRuleValidator.validate(
+                    descriptor.allocationRule()
+            );
+            rejectNonFiniteNumbers(descriptor.allocationRule());
+        }
+        rejectNonFiniteNumbers(descriptor.config());
+        String allocationRuleJson = descriptor.allocationRule() == null
+                ? "null"
+                : mapper.writeValueAsString(normalizeJsonValue(
+                        descriptor.allocationRule()
+                ));
+        String configJson = mapper.writeValueAsString(
+                new TreeMap<>(descriptor.config())
+        );
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("workerGroupId", descriptor.workerGroupId());
+        fields.put(
+                "workerAllocationMechanism",
+                descriptor.workerAllocationMechanism().name()
+        );
+        fields.put(
+                "idleDisposition",
+                descriptor.idleDisposition().name()
+        );
+        fields.put("allocationRuleJson", allocationRuleJson);
+        fields.put("configJson", configJson);
+        return fields;
+    }
+
+    private boolean writeDescriptorIfAbsent(
+            String taskId,
+            Map<String, String> fields
+    ) {
+        Long result = commands().eval(
+                CREATE_DESCRIPTOR_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{taskDescriptorKey(taskId)},
+                fields.get("workerGroupId"),
+                fields.get("workerAllocationMechanism"),
+                fields.get("idleDisposition"),
+                fields.get("allocationRuleJson"),
+                fields.get("configJson")
+        );
+        return result != null && result == 1L;
+    }
+
+    private void releaseBestEffort(String taskId, long observedLease) {
+        try {
+            scoreBand.releaseObservedScoreHold(taskId, observedLease);
+        } catch (RuntimeException ignored) {
+            // The short initialization lease remains the recovery boundary.
+        }
+    }
+
+    private static TaskCreationResult creation(
+            TaskCreationStatus status,
+            String reason
+    ) {
+        return new TaskCreationResult(status, reason);
     }
 
     @Override

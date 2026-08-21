@@ -17,9 +17,9 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +35,7 @@ class ServerWorkerTaskInitializerTest {
         TaskLifecycleCommands lifecycle = mock(TaskLifecycleCommands.class);
         when(catalog.loadTaskAllocationDescriptors(any()))
                 .thenReturn(new LinkedHashMap<>());
-        when(runtime.createTask(any(), eq(0))).thenReturn(
+        when(runtime.createTask(any())).thenReturn(
                 new TaskCreationResult(TaskCreationStatus.CREATED)
         );
         when(lifecycle.approveTask(any())).thenReturn(
@@ -60,7 +60,7 @@ class ServerWorkerTaskInitializerTest {
         );
         ArgumentCaptor<TaskDescriptor> descriptors =
                 ArgumentCaptor.forClass(TaskDescriptor.class);
-        verify(runtime, times(2)).createTask(descriptors.capture(), eq(0));
+        verify(runtime, times(2)).createTask(descriptors.capture());
         assertThat(descriptors.getAllValues())
                 .allSatisfy(descriptor -> {
                     assertThat(descriptor.workerAllocationMechanism())
@@ -106,7 +106,7 @@ class ServerWorkerTaskInitializerTest {
 
         initializer(manifest, catalog, runtime, lifecycle).initialize();
 
-        verify(runtime, never()).createTask(any(), eq(0));
+        verify(runtime, never()).createTask(any());
         verify(lifecycle).approveTask(existing.taskId());
     }
 
@@ -143,7 +143,7 @@ class ServerWorkerTaskInitializerTest {
                 .hasMessageContaining("phone-group")
                 .hasMessageContaining("conflicts");
 
-        verify(runtime, never()).createTask(any(), eq(0));
+        verify(runtime, never()).createTask(any());
         verify(lifecycle, never()).approveTask(any());
     }
 

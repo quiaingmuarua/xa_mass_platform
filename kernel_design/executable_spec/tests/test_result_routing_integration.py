@@ -11,16 +11,6 @@ try:
 except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
-try:
-    from fastapi.testclient import TestClient
-
-    from kernel_design.runtime_server import (
-        create_app as create_runtime_app,
-    )
-except (ImportError, RuntimeError):  # pragma: no cover - missing HTTP dependencies
-    TestClient = None  # type: ignore[assignment,misc]
-    create_runtime_app = None  # type: ignore[assignment]
-
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
     RedisTaskRuntime,
@@ -37,6 +27,9 @@ from kernel_design.executable_spec.assembly import (
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
+    TaskApprovalStatus,
+    TaskCreationStatus,
+    TaskDescriptor,
     WorkerResultCommandClient,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -60,10 +53,7 @@ _FIXED_WORKER_RESULT = {
 
 
 @unittest.skipUnless(
-    redis_module is not None
-    and _REDIS_URL
-    and TestClient is not None
-    and create_runtime_app is not None,
+    redis_module is not None and _REDIS_URL,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
 class ResultRoutingIntegrationTest(unittest.TestCase):
@@ -90,14 +80,8 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.application = KernelApplication(self.config)
         self.command_consumer = WorkerCommandConsumerClient(self.config)
         self.result_commands = WorkerResultCommandClient(self.config)
-        assert create_runtime_app is not None
-        self.runtime_server_context = TestClient(
-            create_runtime_app(
-                application=self.application,
-            )
-        )
-        self.runtime_server = self.runtime_server_context.__enter__()
-        self.runtime_server_open = True
+        self.application.start()
+        self.application_open = True
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
             prefix=self.prefix,
@@ -117,7 +101,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        self._close_runtime_server()
+        self._close_application()
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
@@ -163,14 +147,13 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 worker_properties={"runtime": "python"},
             )
         )
-        creation_response = self.runtime_server.post(
-            "/tasks",
-            json=self._task_request(
+        creation_result = self.application.create_task(
+            descriptor=self._task_descriptor(
                 allocation_mechanism,
                 worker_group_id="phone-tools",
             ),
         )
-        approval_response = self.runtime_server.post("/tasks/task-1/approve")
+        approval_result = self.application.approve_task(task_id="task-1")
         append_result = self.task_runtime.append_items(
             task_id="task-1",
             items=(
@@ -191,8 +174,8 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
 
         self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
         self.assertEqual(WorkerRuntimeStatus.OK, worker_result.status)
-        self.assertEqual(201, creation_response.status_code)
-        self.assertEqual(200, approval_response.status_code)
+        self.assertIs(TaskCreationStatus.CREATED, creation_result.status)
+        self.assertIs(TaskApprovalStatus.APPROVED, approval_result.status)
         self.assertEqual(
             TaskItemAppendStatus.APPENDED,
             append_result["message-1"].status,
@@ -238,7 +221,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             self.redis.exists(f"rr:{self.prefix}:worker-results"),
         )
 
-        self._close_runtime_server()
+        self._close_application()
         worker_candidates = {}
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline and "worker-1" not in worker_candidates:
@@ -270,13 +253,14 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.resources.upsert_worker(
             declaration=worker_declaration,
         )
-        self.runtime_server.post(
-            "/tasks",
-            json=self._task_request(
+        creation_result = self.application.create_task(
+            descriptor=self._task_descriptor(
                 WorkerAllocationMechanism.DIRECT_ITEM_RULE
             ),
         )
-        self.runtime_server.post("/tasks/task-1/approve")
+        approval_result = self.application.approve_task(task_id="task-1")
+        self.assertIs(TaskCreationStatus.CREATED, creation_result.status)
+        self.assertIs(TaskApprovalStatus.APPROVED, approval_result.status)
         append_result = self.task_runtime.append_items(
             task_id="task-1",
             items=(
@@ -400,39 +384,39 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.assertEqual(1, accepted)
         return True
 
-    def _close_runtime_server(self) -> None:
-        if self.runtime_server_open:
-            self.runtime_server_context.__exit__(None, None, None)
-            self.runtime_server_open = False
+    def _close_application(self) -> None:
+        if self.application_open:
+            self.application.stop()
+            self.application_open = False
 
     @staticmethod
-    def _task_request(
+    def _task_descriptor(
         allocation_mechanism: WorkerAllocationMechanism,
         *,
         worker_group_id: str = "image-workers",
-    ) -> dict[str, object]:
-        return {
-            "taskId": "task-1",
-            "workerGroupId": worker_group_id,
-            "workerAllocationMechanism": allocation_mechanism.value,
-            "idleDisposition": (
-                TaskIdleDisposition.CLOSE_WHEN_IDLE.value
+    ) -> TaskDescriptor:
+        return TaskDescriptor(
+            task_id="task-1",
+            worker_group_id=worker_group_id,
+            worker_allocation_mechanism=allocation_mechanism,
+            idle_disposition=(
+                TaskIdleDisposition.CLOSE_WHEN_IDLE
                 if allocation_mechanism
                 is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                else TaskIdleDisposition.PARK_WHEN_IDLE.value
+                else TaskIdleDisposition.PARK_WHEN_IDLE
             ),
-            "allocationRule": (
+            allocation_rule=(
                 {"worker.runtime": {"$eq": "python"}}
                 if allocation_mechanism
                 is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 else None
             ),
-            "config": {
+            config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
                 "maxRetryTimes": "3",
             },
-        }
+        )
 
 
 if __name__ == "__main__":

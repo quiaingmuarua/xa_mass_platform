@@ -3,6 +3,11 @@ package com.xa.mass.server.kernelbinding;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.DefaultTaskCallItemSubmission;
+import com.xa.mass.kernel.task.DefaultTaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
@@ -13,7 +18,6 @@ import io.lettuce.core.RedisClient;
 import java.net.http.HttpClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -36,39 +40,33 @@ public class KernelOwnerAssemblyConfiguration {
     }
 
     @Bean
-    PythonKernelHttpTransport pythonKernelHttpTransport(
+    PythonKernelHealthClient pythonKernelHealthClient(
             RestClient pythonKernelRestClient
     ) {
-        return new PythonKernelHttpTransport(pythonKernelRestClient);
-    }
-
-    @Bean
-    HttpTaskRuntime httpTaskRuntime(
-            PythonKernelHttpTransport transport
-    ) {
-        return new HttpTaskRuntime(transport);
+        return new PythonKernelHealthClient(pythonKernelRestClient);
     }
 
     @Bean(destroyMethod = "close")
-    RedisTaskRuntime redisTaskRuntime(
+    RedisTaskScoreBandCore redisTaskScoreBandCore(
             RedisClient redisClient,
             KernelRedisProperties properties
     ) {
-        return new RedisTaskRuntime(
+        return new RedisTaskScoreBandCore(
                 redisClient,
                 properties.redisPrefix()
         );
     }
 
-    @Bean
-    @Primary
-    TaskRuntime taskRuntime(
-            HttpTaskRuntime httpTaskRuntime,
-            RedisTaskRuntime redisTaskRuntime
+    @Bean(destroyMethod = "close")
+    RedisTaskRuntime redisTaskRuntime(
+            RedisClient redisClient,
+            TaskScoreBandCore taskScore,
+            KernelRedisProperties properties
     ) {
-        return new AssembledTaskRuntime(
-                httpTaskRuntime,
-                redisTaskRuntime
+        return new RedisTaskRuntime(
+                redisClient,
+                taskScore,
+                properties.redisPrefix()
         );
     }
 
@@ -120,16 +118,18 @@ public class KernelOwnerAssemblyConfiguration {
 
     @Bean
     TaskLifecycleCommands taskLifecycleCommands(
-            PythonKernelHttpTransport transport
+            TaskScoreBandCore taskScore,
+            TaskResourceCatalog taskCatalog
     ) {
-        return new HttpTaskLifecycleCommands(transport);
+        return new DefaultTaskLifecycleCommands(taskScore, taskCatalog);
     }
 
     @Bean
     TaskCallItemSubmission taskCallItemSubmission(
-            PythonKernelHttpTransport transport
+            TaskScoreBandCore taskScore,
+            TaskRuntime taskRuntime
     ) {
-        return new HttpTaskCallItemSubmission(transport);
+        return new DefaultTaskCallItemSubmission(taskScore, taskRuntime);
     }
 
 }

@@ -50,32 +50,8 @@ class ApiExceptionHandlerTest {
     private static Stream<Arguments> statusMappings() {
         return Stream.of(
                 Arguments.of(
-                        ServerErrorCode.KERNEL_UNAVAILABLE,
-                        HttpStatus.SERVICE_UNAVAILABLE
-                ),
-                Arguments.of(
-                        ServerErrorCode.KERNEL_TIMEOUT,
-                        HttpStatus.GATEWAY_TIMEOUT
-                ),
-                Arguments.of(
-                        ServerErrorCode.INVALID_KERNEL_RESPONSE,
-                        HttpStatus.BAD_GATEWAY
-                ),
-                Arguments.of(
-                        ServerErrorCode.KERNEL_REJECTED_NOT_FOUND,
-                        HttpStatus.NOT_FOUND
-                ),
-                Arguments.of(
                         ServerErrorCode.KERNEL_REJECTED_CONFLICT,
                         HttpStatus.CONFLICT
-                ),
-                Arguments.of(
-                        ServerErrorCode.KERNEL_REJECTED_INVALID,
-                        HttpStatus.UNPROCESSABLE_ENTITY
-                ),
-                Arguments.of(
-                        ServerErrorCode.KERNEL_REJECTED_RETRYABLE,
-                        HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
                         ServerErrorCode.INVALID_TASK_DATA_REQUEST,

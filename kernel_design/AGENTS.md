@@ -117,8 +117,8 @@ record merely to make a mechanical signature look smaller.
 - Keep storage implementation details out of public contracts.
 - Do not preserve superseded names with aliases unless an external compatibility
   obligation is explicitly approved.
-- Python HTTP request models belong to `runtime_server`; they adapt but do not
-  widen Kernel owner operations.
+- `runtime_server` is a health-only Pacer host. Task commands remain directly
+  testable through the executable application but are not Python HTTP routes.
 
 ## JVM Parity
 

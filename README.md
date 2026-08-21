@@ -109,11 +109,12 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`kernel_design/`](kernel_design/) is the Python executable mechanism oracle,
   current Kernel documentation and Redis proof surface.
 - [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
-  Redis providers. It does not implement Kernel scheduling or application
-  lifecycle.
+  Redis providers, including the caller-driven Task commands used by Server.
+  It does not implement Kernel scheduling or application lifecycle.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
-  provider assembly. It also owns Worker Identity, Endpoint Binding, bounded
-  use cases, and configured Adapter/Scenario startup.
+  provider assembly. Task business HTTP terminates here; Python is only the
+  Pacer host. Server also owns Worker Identity, Endpoint Binding, bounded use
+  cases, and configured Adapter/Scenario startup.
 - [`transport/`](transport/) contains the Java 11 delivery contract, Worker
   Core, Netty Adapter, Java Worker and Android Worker implementations.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) owns the finite JVM Scenario

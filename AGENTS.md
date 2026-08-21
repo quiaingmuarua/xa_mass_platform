@@ -74,8 +74,8 @@ specification, owner Redis providers and Kernel application assembly.
 - Task Result Routing may exact-release the correlated Worker lease but must
   not infer connection polarity. Adapter Route/delivery-expiry evidence is
   consumed only by the optional Worker Serviceability policy.
-- Python HTTP adapters may expose only operations implemented by the current
-  Python command host.
+- The Python runtime HTTP host exposes health only. Do not restore Task
+  business routes or add a Server fallback through that process.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 
 Read [kernel_design/AGENTS.md](kernel_design/AGENTS.md) before changing this

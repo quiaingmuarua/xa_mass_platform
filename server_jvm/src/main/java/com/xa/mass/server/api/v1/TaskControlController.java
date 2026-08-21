@@ -6,13 +6,13 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseResult;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
 import com.xa.mass.server.api.v1.model.TaskProfile;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
@@ -44,17 +44,24 @@ public class TaskControlController {
     public ResponseEntity<CommandResultResponse> createTask(
             @Valid @RequestBody TaskCreateRequest request
     ) {
-        TaskCreationResult result = taskRuntime.createTask(
-                new TaskDescriptor(
-                        request.taskId(),
-                        request.workerGroupId(),
-                        allocationMechanism(request.profile()),
-                        idleDisposition(request.profile()),
-                        request.allocationRule(),
-                        request.config()
-                ),
-                0
-        );
+        TaskDescriptor descriptor;
+        try {
+            descriptor = new TaskDescriptor(
+                    request.taskId(),
+                    request.workerGroupId(),
+                    allocationMechanism(request.profile()),
+                    idleDisposition(request.profile()),
+                    request.allocationRule(),
+                    request.config()
+            );
+        } catch (IllegalArgumentException error) {
+            return response(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    RuntimeCommandStatus.INVALID.wireValue(),
+                    error.getMessage()
+            );
+        }
+        TaskCreationResult result = taskRuntime.createTask(descriptor);
         HttpStatus status = switch (result.status()) {
             case CREATED -> HttpStatus.CREATED;
             case CONFLICT -> HttpStatus.CONFLICT;

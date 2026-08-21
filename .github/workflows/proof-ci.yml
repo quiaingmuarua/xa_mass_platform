@@ -228,7 +228,7 @@ jobs:
           cache-dependency-path: kernel_design/runtime_server/requirements.txt
       - name: Install Python dependencies
         run: python -m pip install -r kernel_design/runtime_server/requirements.txt
-      - name: Start Python Kernel Runtime Server
+      - name: Start Python Kernel Pacer Host
         run: |
           python -m kernel_design.runtime_server \
             --host 127.0.0.1 --port 18080 \

@@ -459,8 +459,9 @@ Redis implementations:
 - [`redis_runtime/task_score_band.py`](../../executable_spec/redis_runtime/task_score_band.py)
 - [`redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py)
 - [`kernel_jvm/task/redis`](../../../kernel_jvm/src/main/java/com/xa/mass/kernel/task/redis)
-  implements the current public JVM `TaskRuntime` Item append and last-success
-  read operations against the same Redis shape.
+  implements create, Item append and last-success read operations against the
+  same Redis shape. Java create fixes the owner-internal initial PRE_REVIEW
+  suffix to `1`; no caller supplies score structure.
 
 ## Explicit Non-Owners
 

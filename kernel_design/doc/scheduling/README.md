@@ -203,8 +203,8 @@ the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
 lease release. Java controllers use the same Kernel owner contracts as the
-Python executable spec; Server assembly
-chooses Python HTTP or Java Redis providers per operation.
+Python executable spec. Task business commands use Java Redis providers;
+Python continues to own the Pacers and exposes no Task HTTP fallback.
 Additional Redis proofs cover immediate idle close, private idle park followed
 by scheduling-aware Task Call submission, RUNNING capacity exclusion, and an
 external explicit close request.

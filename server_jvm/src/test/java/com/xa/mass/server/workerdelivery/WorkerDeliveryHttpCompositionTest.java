@@ -12,7 +12,7 @@ import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
 import com.xa.mass.server.workerbinding.WorkerBindingService;

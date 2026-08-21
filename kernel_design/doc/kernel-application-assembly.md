@@ -11,17 +11,16 @@ Direct Python SDK / executable-spec support
   -> ResourcesCommandClient
      -> WorkerGroup upsert and Worker upsert
 
-CLI / task-only FastAPI
+CLI / Python Pacer host
   -> KernelApplication
-     -> Task lifecycle commands
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
+  -> FastAPI exposes GET /health only
 
 Java Runtime API Server
   -> controllers/services depend on Kernel owner contracts
-  -> assembly binds Task control operations to Python HTTP providers
-  -> assembly binds Worker resource, Task data, and delivery operations to
-     Java Redis providers
+  -> assembly binds Task control, Task data, Worker resource, and delivery
+     operations to Java Redis providers
 ```
 
 External callers see commands, not runtime objects. Inside the Java process,
@@ -29,9 +28,9 @@ controllers and services depend on owner contracts rather than route-shaped
 clients or Redis implementations. Callers cannot obtain Task/Worker score
 cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
 Only `KernelApplication` starts background scheduling. Java's direct Redis
-providers implement WorkerGroup upsert, Worker upsert,
-Task Item append/result read, and Worker Delivery consume/result-ingress
-operations. Java Worker upsert uses only score get/initialize.
+providers implement caller-driven Task commands, Worker resource changes,
+Task Item append/result read, and Worker Delivery bridge operations. Java does
+not implement Pacers or their candidate/dispatch Score operations.
 
 ## Application And Executable-Spec Commands
 
@@ -56,22 +55,30 @@ WorkerResultCommandClient
 append_worker_results(DeliveryReport...)
 
 JVM TaskRuntime provider
+createTask(descriptor)
 appendItems(taskId, items)
 loadTaskItemSuccessResults(taskId, messageIds)
+
+JVM Task lifecycle / Call commands
+approveTask(taskId)
+closeTask(taskId)
+submit(taskId, items)
 ```
 
-`KernelApplication` backs the task-only Python command host.
+`KernelApplication` remains the Python executable command surface and Pacer
+assembly.
 `ResourcesCommandClient` and the two Worker Delivery clients remain stable
 Python executable-spec and test-support surfaces; they are not mounted as
-Python HTTP routes. The Java Server Worker Delivery application
+Python HTTP routes. The Python Pacer host mounts only `GET /health`. The Java
+Server Worker Delivery application
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and the Task-scoped
 `load_task_item_success_results` likewise remain the Python mechanism oracle.
 The public ordinary Task data HTTP operations are orchestrated by Java
 `TaskDataService` and delegated to the Java `RedisTaskRuntime` provider through
-the same owner contract. Python exposes only the internal bounded
-`/tasks/{taskId}:submit-call-items` combination command; it exposes no public
-TaskItem data or result-query route.
+the same owner contract. Create, lifecycle and the bounded Task Call
+composition now execute in Java against the same owner keys; there is no
+Python Task HTTP fallback.
 
 The JVM incremental assembly is explicit per operation:
 
@@ -80,11 +87,11 @@ WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
 Worker upsert                     -> Java Redis WorkerRuntime provider
 Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
 Worker upsert score operations      -> Java Redis WorkerScoreCore provider
-Task create                     -> Python HTTP TaskRuntime provider
-Task approve / close            -> Python HTTP application commands
+Task create                     -> Java Redis TaskRuntime provider
+Task approve / close            -> Java Task commands + Redis Score provider
 Task / WorkerGroup reads        -> Java Redis catalog providers
 ordinary TaskItem append / result load -> Java Redis TaskRuntime provider
-Task Call Item submission       -> Python HTTP application command
+Task Call Item submission       -> Java bounded command over Java owners
 DeliveryCommand offer / consume   -> Java Redis WorkerCommandRuntime provider
 DeliveryReport append               -> Java Redis WorkerResultRuntime provider
 other score/candidate/scheduling -> no Server provider
@@ -330,8 +337,8 @@ the current external process boundaries:
 
 ```text
 Java Worker resource API -> Java Redis owner providers
-Java Task control API -> Python KernelApplication
-  -> ordinary Java TaskData append, or bounded Python Task Call submission
+Java Task control API -> Java Redis Task owners
+  -> ordinary Java TaskData append, or bounded Java Task Call submission
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
   -> Java polling Worker or Netty WebSocket/Socket Adapter instance + Worker
@@ -342,10 +349,10 @@ Java Task control API -> Python KernelApplication
   -> Java single-Item last-success result probe / result query
 ```
 
-The proof starts Worker resource and Task-control commands at the Java API.
-Worker declarations go directly to the Java Redis providers; only Task control
-crosses the Python Kernel Task Control API. It then appends TaskItems through
-Java TaskData and uses the Java Server's Worker Delivery owner providers.
+The proof starts Worker resource and Task commands at the Java API. Both write
+through Java Redis owner providers. The separate Python process runs Pacers
+against the same Redis state and exposes only health. The proof then uses the
+Java Server's Worker Delivery owner providers.
 `PRECOMPUTED_TASK_RULE` polling
 calls the point HTTP API directly. `DIRECT_ITEM_RULE` uses configured WebSocket
 or Socket Adapter instances, each of which still calls the same batch HTTP
@@ -372,8 +379,9 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The Python Kernel Task Control API constructs one `KernelApplication` from the
-resolved configuration. Lifespan starts and stops only that application:
+The Python Pacer host constructs one `KernelApplication` from the resolved
+configuration. Lifespan starts and stops only that application; HTTP exposes
+only `GET /health`:
 
 ```text
 python -m kernel_design.runtime_server
@@ -460,9 +468,9 @@ Result API into a Server-owned bounded inbox, where Server separately validates
 the Adapter source and current Binding. Kernel has no
 contract, provider, consumer or score policy for that evidence in this slice.
 
-The Python Runtime Server remains the Task scheduling command host and
-mechanism oracle. Java Worker resource ingress, TaskData, and Worker Delivery
-own their current external HTTP operations, not a second scheduler. The Java
+The Python process remains the scheduling Pacer host and mechanism oracle.
+Java owns the external Task commands, Worker resource ingress, TaskData, and
+Worker Delivery operations, without becoming a second scheduler. The Java
 Worker is the only external Worker demonstration mainline. Authentication,
 same-endpoint Adapter HA,
 Task query/list, failure-result projection, reliable pending/ack delivery, and
@@ -477,7 +485,7 @@ API compatibility remain out of scope.
   assembly.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
-- Do not restore Python TaskItem append or result-query HTTP routes.
+- Do not restore Python Task business HTTP routes.
 - Do not expose Worker Delivery methods on `KernelApplication`.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.

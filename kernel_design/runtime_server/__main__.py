@@ -11,7 +11,7 @@ from .app import create_app
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Start the Python Kernel Task Control API."
+        description="Start the Python Kernel Pacer host."
     )
     parser.add_argument("--config", type=Path, help="optional kernel JSON config")
     parser.add_argument("--host", default="127.0.0.1")
@@ -32,7 +32,7 @@ def main() -> None:
         import uvicorn
     except ImportError as error:
         raise RuntimeError(
-            "uvicorn is required for the Python Kernel Task Control API"
+            "uvicorn is required for the Python Kernel Pacer host"
         ) from error
     uvicorn.run(
         create_app(config=config),

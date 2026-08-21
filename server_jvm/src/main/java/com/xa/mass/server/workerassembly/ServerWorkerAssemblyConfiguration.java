@@ -4,7 +4,7 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.springframework.boot.context.properties

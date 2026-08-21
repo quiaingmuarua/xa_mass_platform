@@ -49,9 +49,7 @@ public final class ApiExceptionHandler {
 
     private static HttpStatus statusFor(ServerErrorCode errorCode) {
         return switch (errorCode) {
-            case KERNEL_UNAVAILABLE,
-                    KERNEL_REJECTED_RETRYABLE,
-                    TASK_DATA_UNAVAILABLE,
+            case TASK_DATA_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
                     WORKER_IDENTITY_UNAVAILABLE,
                     WORKER_BINDING_UNAVAILABLE,
@@ -61,13 +59,10 @@ public final class ApiExceptionHandler {
                     TASK_BATCH_UNAVAILABLE,
                     DIRECT_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
-            case KERNEL_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
             case TASK_RPC_CAPACITY_EXCEEDED,
                     DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case INVALID_KERNEL_RESPONSE -> HttpStatus.BAD_GATEWAY;
-            case KERNEL_REJECTED_NOT_FOUND,
-                    TASK_NOT_FOUND,
+            case TASK_NOT_FOUND,
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
@@ -77,8 +72,7 @@ public final class ApiExceptionHandler {
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
                     TASK_BATCH_CONFLICT -> HttpStatus.CONFLICT;
-            case KERNEL_REJECTED_INVALID,
-                    RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
+            case RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
                     HttpStatus.UNPROCESSABLE_ENTITY;
             case INVALID_TASK_DATA_REQUEST,
                     INVALID_WORKER_DELIVERY_REQUEST,

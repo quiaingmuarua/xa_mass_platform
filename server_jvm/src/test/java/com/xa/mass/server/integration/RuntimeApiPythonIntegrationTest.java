@@ -641,11 +641,21 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void pythonCommandApiExposesOnlyTaskCommands() throws Exception {
+    void pythonPacerHostExposesOnlyHealth() throws Exception {
+        assertThat(sendKernel(
+                "GET",
+                "/health",
+                "{}"
+        ).statusCode()).isEqualTo(200);
         assertThat(sendKernel(
                 "POST",
-                "/tasks/missing/items",
-                "{\"items\":[]}"
+                "/tasks",
+                "{}"
+        ).statusCode()).isEqualTo(404);
+        assertThat(sendKernel(
+                "POST",
+                "/tasks/missing/approve",
+                "{}"
         ).statusCode()).isEqualTo(404);
         assertThat(sendKernel(
                 "PUT",

@@ -1,6 +1,7 @@
-package com.xa.mass.server.kernelbinding;
+package com.xa.mass.kernel.task;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 public interface TaskLifecycleCommands {
 
@@ -25,15 +26,6 @@ public interface TaskLifecycleCommands {
         public String wireValue() {
             return wireValue;
         }
-
-        static TaskApprovalStatus fromWireValue(String value) {
-            for (TaskApprovalStatus status : values()) {
-                if (status.wireValue.equals(value)) {
-                    return status;
-                }
-            }
-            throw new IllegalArgumentException("unknown approval status");
-        }
     }
 
     enum TaskCloseStatus {
@@ -52,29 +44,31 @@ public interface TaskLifecycleCommands {
         public String wireValue() {
             return wireValue;
         }
-
-        static TaskCloseStatus fromWireValue(String value) {
-            for (TaskCloseStatus status : values()) {
-                if (status.wireValue.equals(value)) {
-                    return status;
-                }
-            }
-            throw new IllegalArgumentException("unknown close status");
-        }
     }
 
     record TaskApprovalResult(
             TaskApprovalStatus status,
-            String reason
+            @Nullable String reason
     ) {
         public TaskApprovalResult {
             Objects.requireNonNull(status, "status");
         }
+
+        public TaskApprovalResult(TaskApprovalStatus status) {
+            this(status, null);
+        }
     }
 
-    record TaskCloseResult(TaskCloseStatus status, String reason) {
+    record TaskCloseResult(
+            TaskCloseStatus status,
+            @Nullable String reason
+    ) {
         public TaskCloseResult {
             Objects.requireNonNull(status, "status");
+        }
+
+        public TaskCloseResult(TaskCloseStatus status) {
+            this(status, null);
         }
     }
 }

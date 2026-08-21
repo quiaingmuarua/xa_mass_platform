@@ -1,4 +1,4 @@
-"""Executable-spec Python Kernel Task Control API."""
+"""Python Kernel Pacer process health host."""
 
 from .app import create_app
 

@@ -35,13 +35,11 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.error.ServerErrorCode;
-import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
-import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseStatus;
+import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseResult;
+import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseStatus;
 import com.xa.mass.server.taskdata.TaskDataService;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
@@ -101,7 +99,7 @@ class RuntimeApiControllerTest {
                 any(),
                 any()
         )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
-        when(taskRuntime.createTask(any(), eq(0)))
+        when(taskRuntime.createTask(any()))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
                 ));
@@ -390,6 +388,48 @@ class RuntimeApiControllerTest {
     }
 
     @Test
+    void taskCreateSemanticErrorsReturnInvalidWithoutCallingOwner()
+            throws Exception {
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": "task-invalid-profile",
+                                  "workerGroupId": "phone-tools",
+                                  "profile": "REUSABLE_DIRECT",
+                                  "allocationRule": {},
+                                  "config": {
+                                    "priority": "0",
+                                    "maximumCandidateWorkers": "1",
+                                    "maxRetryTimes": "3"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value("invalid"));
+
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "taskId": "task-invalid-config",
+                                  "workerGroupId": "phone-tools",
+                                  "profile": "FINITE_PRECOMPUTED",
+                                  "allocationRule": {},
+                                  "config": {
+                                    "priority": "not-decimal",
+                                    "maximumCandidateWorkers": "1",
+                                    "maxRetryTimes": "3"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value("invalid"));
+
+        verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+    }
+
+    @Test
     void directAllocationAppendPassesOpaqueRulesToTheKernelMatcher()
             throws Exception {
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("item-task")))
@@ -664,22 +704,21 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void kernelTransportFailureUsesThePublicErrorContract() throws Exception {
-        when(taskLifecycle.approveTask("task-1")).thenThrow(
-                new ServerException(
-                        ServerErrorCode.KERNEL_UNAVAILABLE,
-                        "kernelBinding.exchange",
-                        null,
-                        new IllegalStateException("offline")
+    void lifecycleRetryableResultUsesTheTaskCommandContract()
+            throws Exception {
+        when(taskLifecycle.approveTask("task-1")).thenReturn(
+                new TaskApprovalResult(
+                        TaskApprovalStatus.RETRYABLE,
+                        "Task lifecycle owner is unavailable"
                 )
         );
 
         mockMvc.perform(post("/api/v1/tasks/task-1/approve")
                         .header("X-Request-Id", "unavailable-request"))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value(11001))
-                .andExpect(jsonPath("$.requestId")
-                        .value("unavailable-request"));
+                .andExpect(jsonPath("$.status").value("retryable"))
+                .andExpect(jsonPath("$.reason")
+                        .value("Task lifecycle owner is unavailable"));
     }
 
     private static TaskDescriptor descriptor(String taskId) {

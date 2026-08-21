@@ -17,6 +17,7 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
@@ -123,9 +124,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 DirectCallService.class
         )).isNotNull();
-        assertThat(applicationContext.getBeansOfType(
-                TaskScoreBandCore.class
-        )).isEmpty();
+        assertThat(applicationContext.getBean(TaskScoreBandCore.class))
+                .isInstanceOf(RedisTaskScoreBandCore.class);
         assertThat(applicationContext.getBeansOfType(
                 TaskItemScoreBandCore.class
         )).isEmpty();

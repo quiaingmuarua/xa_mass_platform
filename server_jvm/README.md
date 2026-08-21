@@ -23,7 +23,11 @@ execution. See the root [architecture entrypoint](../README.md).
 Public API
   -> Controller and Server use-case service
   -> kernel_jvm owner contract
-  -> selected Python HTTP or Java Redis provider
+  -> owner-local Java Redis provider
+
+Python Pacer host
+  -> GET /health only
+  -> assignment, result-routing and serviceability Pacers
 
 Worker Identity / Binding
   -> Server-owned Redis boundary
@@ -38,16 +42,16 @@ Configured deployment
   -> start ScenarioWorkers aggregate
 ```
 
-Task control and Kernel application lifecycle still use the Python Runtime
-Server. Selected resource, Task data, Worker scheduling and delivery owners use
-Java Redis providers. Missing JVM operations fail explicitly; there is no
-Server fallback scheduler.
+Task control, Task data, Worker resources, selected Worker scheduling and
+delivery operations use Java Redis providers. Python still owns Kernel
+application/Pacer lifecycle and exposes only health. Missing JVM operations
+fail explicitly; there is no HTTP fallback or Server scheduler.
 
 Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and Task Call Item submission | Python Kernel HTTP |
+| Task create, approve, close and Task Call Item submission | JVM owner contracts with Java Redis Task providers |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus transparent Java Redis Adapter-evidence append |
@@ -224,7 +228,7 @@ Default coordinates:
 
 ```text
 Java Runtime API Server        http://127.0.0.1:18082
-Python Kernel Runtime Server   http://127.0.0.1:18080
+Python Kernel Pacer health     http://127.0.0.1:18080/health
 Kernel Redis                   redis://localhost:6379/15
 Redis prefix                   default
 Adapter instances              none
@@ -248,7 +252,7 @@ matching Endpoint Binding entry.
 
 ## Run
 
-Start the Python Kernel Runtime Server:
+Start the Python Kernel Pacer host:
 
 ```text
 python -m kernel_design.runtime_server
@@ -279,7 +283,8 @@ GET /actuator/health/readiness
 ```
 
 Liveness covers the JVM process. Readiness requires both the configured Python
-Kernel control API and Kernel Redis connection.
+Pacer health endpoint and Kernel Redis connection. Task business APIs do not
+call the Python process.
 
 ## Verification
 
@@ -292,7 +297,7 @@ Kernel control API and Kernel Redis connection.
 ```
 
 The two integration tasks use the checked `integration-test` profile with
-Redis at `redis://127.0.0.1:6379/15` and the Python Kernel at
+Redis at `redis://127.0.0.1:6379/15` and the Python Pacer host at
 `http://127.0.0.1:18080`. The profile supplies addresses only; the external
 services must already be running and connection failures fail the proof.
 

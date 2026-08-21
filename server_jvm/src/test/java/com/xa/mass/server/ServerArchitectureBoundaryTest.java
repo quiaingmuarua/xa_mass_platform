@@ -35,8 +35,11 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_CATALOG_REDIS = WORKER_REDIS.resolve(
             "RedisWorkerResourceCatalog.java"
     );
+    private static final Path TASK_SCORE_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/score/redis/RedisTaskScoreBandCore.java"
+    );
     private static final Path WORKER_SCORE_REDIS = KERNEL_SOURCE.resolve(
-            "com/xa/mass/kernel/score/redis"
+            "com/xa/mass/kernel/score/redis/RedisWorkerScoreCore.java"
     );
     private static final Path DELIVERY_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/delivery/redis"
@@ -178,6 +181,11 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSources(WORKER_SCORE_REDIS))
                 .contains("\"wr:")
                 .doesNotContain("\"tr:")
+                .doesNotContain("\"wd:")
+                .doesNotContain("\"rr:");
+        assertThat(readSources(TASK_SCORE_REDIS))
+                .contains("\"tr:")
+                .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:");
 
@@ -448,12 +456,21 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void pythonKernelBindingContainsOnlyTaskControlAdapters()
+    void taskControlUsesLocalKernelOwnersAndPythonIsHealthOnly()
             throws IOException {
         assertThat(readSources(KERNEL_BINDING))
-                .contains("HttpTaskRuntime")
-                .contains("HttpTaskLifecycleCommands")
-                .contains("HttpTaskCallItemSubmission")
+                .contains("RedisTaskScoreBandCore")
+                .contains("RedisTaskRuntime")
+                .contains("DefaultTaskLifecycleCommands")
+                .contains("DefaultTaskCallItemSubmission")
+                .contains("PythonKernelHealthClient")
+                .contains("\"/health\"")
+                .doesNotContain(".post()")
+                .doesNotContain("HttpTaskRuntime")
+                .doesNotContain("HttpTaskLifecycleCommands")
+                .doesNotContain("HttpTaskCallItemSubmission")
+                .doesNotContain("AssembledTaskRuntime")
+                .doesNotContain("KernelHttpResultDecoder")
                 .doesNotContain("HttpWorkerRuntime")
                 .doesNotContain("HttpWorkerResourceCatalog")
                 .doesNotContain("AssembledWorkerResourceCatalog")

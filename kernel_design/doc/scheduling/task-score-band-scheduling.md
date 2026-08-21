@@ -291,6 +291,12 @@ range membership mint
 No Task descriptor, Item payload, Worker state, candidate cache, or result key
 is read or written by Task score Lua.
 
+The Java Redis provider implements only the six caller-driven operations used
+by Task create, approve, close and Call submission: state read, initialize,
+generic rewrite, positive close, exact hold release and private idle-park
+release. Pacer-only candidate, pacing, observed park and observed close
+operations remain explicit JVM gaps; Python remains their production owner.
+
 ## Writer Matrix
 
 | Owner | Allowed Task score write |

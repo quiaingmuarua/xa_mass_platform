@@ -14,7 +14,7 @@ Package responsibilities:
 
 | Package | Intended responsibility |
 | --- | --- |
-| `task` | `TaskRuntime`, `TaskResourceCatalog`, and bounded Task Call submission contracts |
+| `task` | `TaskRuntime`, catalog, lifecycle and bounded Task Call command contracts |
 | `worker` | Worker runtime, catalog, and dynamic-attribute contracts |
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
@@ -26,11 +26,27 @@ The current implemented provider subset is:
 
 ```text
 TaskRuntime
+  createTask
   appendItems
   loadTaskItemSuccessResults
 
 TaskResourceCatalog
   loadTaskAllocationDescriptors
+
+TaskScoreBandCore
+  getScoreStates
+  initializeScore
+  rewriteScore
+  closeScore
+  tryReleaseIdlePark
+  releaseObservedScoreHold
+
+TaskLifecycleCommands
+  approveTask
+  closeTask
+
+TaskCallItemSubmission
+  submit
 
 WorkerResourceCatalog
   upsertWorkerGroup
@@ -70,7 +86,7 @@ lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed
 score as an exact CAS fence. `releaseCompletedHotScoreHolds` is mirrored in the
 public contract but remains an explicit provider gap because only Python Result
-Routing calls it. Task creation, TaskItem record reads,
+Routing calls it. TaskItem record reads,
 success-result writes, DeliveryCommand append, and DeliveryReport consume
 likewise remain Python-owned or unimplemented on this provider surface.
 Implementing these two transitions does not imply that Worker scheduling or
@@ -80,13 +96,12 @@ Every other translated operation is explicit and throws
 `KernelOperationNotImplementedException` when invoked by a partial provider.
 There are no default-method fallbacks.
 
-`TaskCallItemSubmission` mirrors the bounded Python Kernel application command
-used by reusable RPC and Task Batch flows. Its Server implementation is an HTTP
-adapter to the Python command host; `kernel_jvm` does not implement Task score
-activation, idle lifecycle, or a second scheduler. `TaskScoreBandCore` mirrors
-the narrow `tryReleaseIdlePark` contract, while the JVM provider remains an
-explicit implementation gap because the Python command host is its only
-production caller.
+`RedisTaskScoreBandCore` implements only the six operations required by Java
+Task create, lifecycle and Call submission. Candidate acquisition, dispatch
+pacing, observed idle park/close and other Pacer operations fail explicitly.
+`DefaultTaskCallItemSubmission` performs the bounded
+`tryReleaseIdlePark -> appendItems -> tryReleaseIdlePark` composition without
+inspecting Task policy or implementing scheduling.
 
 `RedisWorkerServiceabilityRuntime` implements only the two operations required
 by the Java Server bridge: destructive Adapter request consume and bounded
@@ -101,14 +116,14 @@ reflection checks the normalized Java side. It does not generate source and is
 not an external protocol.
 
 The external Runtime API belongs to [`server_jvm/`](../server_jvm/). Its
-controllers and services depend on these owner contracts. Server assembly
-chooses a Python HTTP provider, Java Redis provider, or explicit unimplemented
-provider per operation. Provider selection never appears in HTTP controllers
-or business services.
+controllers and services depend on these owner contracts. Task business
+commands use the Java Redis owners directly; Python remains the Pacer host and
+mechanism oracle, with no Task HTTP fallback. Provider selection never appears
+in HTTP controllers or business services.
 
-There is no TaskData runtime, combined WorkerDelivery runtime, Pacer,
-scheduling policy, or Kernel application lifecycle in this module. Those
-boundaries must be migrated through separate parity slices.
+There is no combined WorkerDelivery runtime, Pacer, scheduling policy, or
+Kernel application lifecycle in this module. Those boundaries must be
+migrated through separate parity slices.
 
 `kernel_jvm` targets JDK 21 and is not an Android module. A future
 Android-compatible Worker SDK belongs in a separate Gradle module with its own
