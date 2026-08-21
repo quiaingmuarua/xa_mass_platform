@@ -133,7 +133,7 @@ android_emulator:
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/directcall/**'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskItemRequest.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskRpcCall*.java'
-  - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskType.java'
+  - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/TaskProfile.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/WorkerBinding*.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/model/WorkerIdentity*.java'
   - 'server_jvm/src/main/java/com/xa/mass/server/api/v1/runtimeview/**'

@@ -5,12 +5,12 @@ import unittest
 from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
-    TaskType,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
     SystemAdmissionPolicy,
     TaskAdmissionPolicy,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItemScoreBandCore,
     TaskResourceCatalog,
     TaskRunningActivationConfig,
@@ -20,6 +20,7 @@ from kernel_design.executable_spec import (
     TaskScoreState,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
+    WorkerAllocationMechanism,
 )
 from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
@@ -66,7 +67,7 @@ class TaskRunningAdmissionPolicyTest(unittest.TestCase):
 
     def test_system_policy_applies_soft_limit_to_score_order(self) -> None:
         task_score = Mock(spec=TaskScoreBandCore)
-        task_score.count_running_visible_tasks.return_value = 98
+        task_score.count_running_capacity_tasks.return_value = 98
         policy = RunningSoftLimitSystemAdmissionPolicy(
             task_score,
             running_task_soft_limit=100,
@@ -86,7 +87,7 @@ class TaskRunningAdmissionPolicyTest(unittest.TestCase):
 
     def test_system_policy_returns_empty_when_soft_limit_is_full(self) -> None:
         task_score = Mock(spec=TaskScoreBandCore)
-        task_score.count_running_visible_tasks.return_value = 100
+        task_score.count_running_capacity_tasks.return_value = 100
         policy = RunningSoftLimitSystemAdmissionPolicy(
             task_score,
             running_task_soft_limit=100,
@@ -105,7 +106,10 @@ class TaskRunningAdmissionPolicyTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="workers",
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={},
             config={
                 "priority": str(priority),
@@ -370,11 +374,14 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
                         priority_recheck_step_millis=value,
                     )
 
-    def test_item_driven_activation_does_not_schedule_candidate_warmup(self) -> None:
+    def test_direct_allocation_activation_does_not_schedule_candidate_warmup(self) -> None:
         descriptor = TaskDescriptor(
             task_id="item-task",
             worker_group_id="workers",
-            task_type=TaskType.ITEM_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
             allocation_rule=None,
             config={
                 "priority": "80",

@@ -5,7 +5,8 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
@@ -15,7 +16,6 @@ import java.util.Objects;
 
 final class ServerWorkerTaskInitializer {
 
-    static final long EMPTY_CLOSE_AT_MILLIS = 9_999_999_999_900L;
     private static final Map<String, String> TASK_CONFIG = Map.of(
             "priority", "0",
             "maximumCandidateWorkers", "1",
@@ -102,10 +102,10 @@ final class ServerWorkerTaskInitializer {
         return new TaskDescriptor(
                 taskId,
                 workerGroupId,
-                TaskType.ITEM_DRIVEN,
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
-                TASK_CONFIG,
-                EMPTY_CLOSE_AT_MILLIS
+                TASK_CONFIG
         );
     }
 

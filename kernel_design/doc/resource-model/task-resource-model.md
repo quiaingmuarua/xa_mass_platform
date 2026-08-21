@@ -9,22 +9,22 @@ Task resource metadata explains stable allocation intent. It does not own Task
 lifecycle, TaskItem scheduling, Worker lease, candidate handoff, result
 classification, or query projection truth.
 
-The first cut has one descriptor:
+The descriptor persists two orthogonal mechanism choices:
 
 ```text
 TaskDescriptor
   taskId
   workerGroupId
-  taskType
+  workerAllocationMechanism
+  idleDisposition
   allocationRule | null
   config
-  emptyCloseAtMillis
 ```
 
 `taskId` is globally unique in the kernel design. One Task chooses exactly one
-WorkerGroup for allocation. `taskType` selects one stable scheduling behavior
-bundle. It is immutable Task metadata, not a per-dispatch inference or a set
-of caller-selected policy flags.
+WorkerGroup for allocation. Allocation explains where the Worker rule lives;
+idle disposition explains what happens after the ACTIVE Item band becomes
+empty. Neither value is Task priority or a scheduling-mode state machine.
 
 ## Descriptor Contract
 
@@ -33,30 +33,18 @@ of caller-selected policy flags.
 class TaskDescriptor:
     task_id: str
     worker_group_id: str
-    task_type: TaskType
+    worker_allocation_mechanism: WorkerAllocationMechanism
+    idle_disposition: TaskIdleDisposition
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
-    empty_close_at_millis: TimeMillis | None = None
 ```
-
-`emptyCloseAtMillis` is a shared empty-close threshold, not a TaskType flag or
-hard Task deadline. External create commands may omit it. `KernelApplication`
-materializes the omitted value before TaskRuntime persistence:
-
-```text
-TASK_DRIVEN -> 0
-ITEM_DRIVEN -> creationTimeMillis + 3 days
-```
-
-An explicit non-negative absolute millisecond value overrides either default.
-The persisted descriptor always contains a resolved value.
 
 The config keys are exactly:
 
 | Key | Meaning | Validation |
 | --- | --- | --- |
 | `priority` | Task scheduling priority used by RUNNING admission and Worker contention | decimal text in `0..99`; `0` highest |
-| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `ITEM_DRIVEN` in this slice |
+| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `DIRECT_ITEM_RULE` in this slice |
 | `maxRetryTimes` | TaskItem retry budget source used when initializing Item scores | decimal text in `0..98` |
 
 All values are strings in the first cut. Supporting two representations for
@@ -71,88 +59,83 @@ must not be a second admission-priority or allocation-priority field.
 consumer. The Task resource model deliberately contains no minimum matching
 Worker requirement: ADMISSION policy must not reserve or count Workers.
 
-## Task Type And Allocation Rule
+## Worker Allocation
 
-The public contract supports exactly two Task types:
+The Kernel contract supports exactly two Worker-allocation mechanisms:
 
-| Task type | Rule owner | Worker acquisition | Candidate cache |
+| Mechanism | Rule owner | Worker acquisition | Candidate cache |
 | --- | --- | --- | --- |
-| `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled |
-| `ITEM_DRIVEN` | TaskItem | `DIRECT` | forbidden |
+| `PRECOMPUTED_TASK_RULE` | Task | `PRECOMPUTED` | enabled |
+| `DIRECT_ITEM_RULE` | TaskItem | `DIRECT` | forbidden |
 
-This table is the canonical external TaskType contract. The rule-shape
-constraints are:
+The rule-shape constraints are:
 
 ```text
-TASK_DRIVEN
+PRECOMPUTED_TASK_RULE
   TaskDescriptor.allocationRule is a Map; an empty object means no constraint
   TaskItems must not carry allocationRule
 
-ITEM_DRIVEN
+DIRECT_ITEM_RULE
   TaskDescriptor.allocationRule is null
   every appended TaskItem carries an allocationRule object
   an empty object means no Worker restriction within the Task WorkerGroup
 ```
 
-Callers do not choose rule owner, cache participation, warmer participation, or
-acquisition strategy independently. Scheduling derives only those
-Worker-acquisition fields in `ResolvedTaskSchedulingProfile` from `TaskType`.
-Empty close is a shared Task lifecycle policy and is not part of that profile.
-The two rule forms cannot be mixed inside one Task. Append validates only this
-rule-owner location contract. Scheduling still compiles and evaluates the
-opaque rule through the current Python matcher.
-
-Both types use periodic RUNNING scans, Task dispatch, shared empty recheck, and
-the explicit close command. The current Server may emit one bounded,
-taskId-coalesced, droppable Task Dispatch wake hint after accepted append.
-This only accelerates an existing future empty-recheck hold. A separate hard
-deadline scanner remains deferred.
-
-### TaskType Scenario Gate
-
-`TaskType` names one workload scenario that the kernel supports vertically. It
-is not a convenient label for a caller-selected combination of rule owner,
-cache, acquisition, trigger, or termination policies.
-
-The current scenarios are:
+The mechanism derives rule owner, acquisition strategy, warmer participation
+and candidate-cache participation as one coherent allocation contract:
 
 ```text
-TASK_DRIVEN
+PRECOMPUTED_TASK_RULE
   every Item inherits one complete Task-level Worker rule
   candidate computation is reusable across Items and dispatch rounds
   precomputation and cache amortize repeated Worker-selection cost
 
-ITEM_DRIVEN
+DIRECT_ITEM_RULE
   every Item owns its complete Worker rule; an empty object is unrestricted
   Item rules may all be equal or may differ
   Worker selection is paid only when that Item is actually dispatched
 ```
 
-The hard distinction is rule ownership and candidate reuse, not traffic shape.
-Either type may serve RPC-style or batch-oriented callers, and either may see
-dense or sparse Item arrival. A `TASK_DRIVEN` Task may carry different payload
-parameters while all Items reuse one Worker rule. An `ITEM_DRIVEN` Task remains
-Item-driven even when every Item happens to carry the same rule, because the
-Item is still the rule owner and the kernel does not maintain Task-level
-candidate evidence.
-
-TaskType establishes no relative scheduling priority. It also does not imply a
+The distinction is rule ownership and candidate reuse, not traffic shape.
+WorkerAllocationMechanism establishes no relative scheduling priority and does not imply a
 latency class, synchronous versus asynchronous execution, Worker exclusivity,
 or permission to preempt another Task's Worker lease. Task priority and
 candidate-request priority remain explicit scheduling inputs and are evaluated
-without deriving an ordering from `TASK_DRIVEN` or `ITEM_DRIVEN`.
+without deriving an ordering from `PRECOMPUTED_TASK_RULE` or `DIRECT_ITEM_RULE`.
 
-A future TaskType is admitted only when a named workload cannot be represented
-by either scenario without changing a scheduling invariant. The proposal must
-identify the differing rule owner, Worker acquisition, cache authority, or
-another acquisition invariant, and provide a vertical create-to-result/close
-executable proof. A different close threshold, limit, cadence, priority,
-fairness rule, retry interval, or other tuning value stays inside the existing
-type's System Policy.
+## Idle Disposition
 
-Tests do not enumerate arbitrary policy combinations. They prove the two
-supported TaskType paths end to end and test score, lease, CAS, and owner
-primitives independently at their legal boundaries.
+`TaskIdleDisposition` is independent of Worker allocation:
+
+```text
+CLOSE_WHEN_IDLE
+  no ACTIVE Item -> exact-close the observed RUNNING score
+
+PARK_WHEN_IDLE
+  no ACTIVE Item -> exact-move the observed RUNNING score to the
+                    Kernel-private idle-park coordinate
+```
+
+The idle park is `RUNNING_VISIBLE` at `MAX_TIME_SLOT - 1`, suffix `0`. It is
+outside due scans and excluded from the RUNNING admission soft-limit count.
+It is distinct from the public pause coordinate at `MAX_TIME_SLOT`; callers
+cannot mint, select or release the park through a generic time rewrite.
+
+Ordinary Item append remains a pure Task data write and never wakes a parked
+Task. The bounded `TaskCallItemSubmission` command accepts only the
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` profile, exact-releases a recognized park,
+appends Items and performs one bounded post-append repair. Explicit Task close
+can terminate either idle disposition at any time.
+
+Server exposes only two finite assembly profiles:
+
+| Server profile | Worker allocation | Idle disposition |
+| --- | --- | --- |
+| `FINITE_PRECOMPUTED` | `PRECOMPUTED_TASK_RULE` | `CLOSE_WHEN_IDLE` |
+| `REUSABLE_DIRECT` | `DIRECT_ITEM_RULE` | `PARK_WHEN_IDLE` |
+
+Those names are Server API assembly choices; they are not additional Kernel
+enums or score states.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -169,7 +152,7 @@ state, current Worker properties, candidate Workers, or a policy handler object.
 Constraint compilation/validation belongs to `constraint_dsl`; Worker field
 resolution belongs to Worker runtime/matcher.
 
-For one `TASK_DRIVEN` precomputation batch, the Pacer derives:
+For one `PRECOMPUTED_TASK_RULE` precomputation batch, the Pacer derives:
 
 ```text
 WorkerCandidateConstraint
@@ -277,7 +260,7 @@ TaskRuntime rejects an already-expired append, while Task dispatch final-fails
 an Item that expires after append before acquiring a Worker. Existing claimed
 attempts remain governed by their claim lease.
 
-For `ITEM_DRIVEN`, every TaskItem carries the complete Worker allocation rule
+For `DIRECT_ITEM_RULE`, every TaskItem carries the complete Worker allocation rule
 for that Item. The rule is not a delta and does not merge with a Task rule,
 because no Task rule exists. It does not change `workerGroupId`, which always
 comes from `TaskDescriptor`.
@@ -294,7 +277,7 @@ would be a separate gang-reservation mechanism with a bundle identity,
 multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
-The public Java TaskData ingress treats an `ITEM_DRIVEN` allocation rule as an
+The public Java TaskData ingress treats an `DIRECT_ITEM_RULE` allocation rule as an
 opaque JSON-compatible map. It does not compile operators. `{}` uses one
 bounded due-HOT Worker Score query within the Task's WorkerGroup; exact score
 CAS chooses at most the requested count. A non-empty rule currently derives
@@ -341,37 +324,34 @@ CandidateWarmupSchedule.acquire_candidate_warmups(now, limit)
   -> TaskScoreBandCore.get_score_states(taskIds)
   -> retain current RUNNING/non-hard-paused Tasks with suffix 0
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
-  -> retain taskType=TASK_DRIVEN
+  -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
   -> bounded HOT-pool lease/match
   -> append candidate evidence
 ```
 
-Every admitted Task enters `RUNNING_VISIBLE` with suffix `0`. In that band the
-suffix is the consecutive confirmed-empty recheck count: zero selects ordinary
-TaskItem dispatch, while a positive value selects low-frequency ACTIVE Item
-existence recheck. It is not `maxRetryTimes`; Item execution retry remains
-TaskItem-score truth.
+Every admitted Task enters `RUNNING_VISIBLE` with suffix `0`. When the complete
+ACTIVE Item band is empty, Task Dispatch applies the descriptor's idle
+disposition immediately. Any ACTIVE Item prevents close or park, and a
+post-park check can exact-release a park installed concurrently with Task Call
+append. Item execution retry remains TaskItem-score truth. A server may still
+close the Task explicitly at any time.
+Initial finite Items are appended before approval; after a finite Task reaches
+RUNNING with an empty ACTIVE band it may close immediately. Task Call does not
+invent a first-call exception for an empty reusable Task that has not yet been
+parked.
 
-Both Task types use the same empty-close rule. At the maximum consecutive-empty
-count, Task dispatch closes the Task only when `now >= emptyCloseAtMillis`.
-Before that threshold it retains the maximum suffix and continues bounded
-low-frequency checks. Any ACTIVE Item prevents close and resets a positive
-suffix to zero. A server may still submit stronger deadline or business
-evidence through `KernelApplication.close_task` at any time.
-
-While suffix is positive, candidate warming must not acquire or renew Worker
-leases. Existing cache and lease evidence is not actively deleted; it expires
-naturally. A successful positive-to-zero reset emits a best-effort warmup hint
-only for `TASK_DRIVEN`.
+Existing candidate cache and Worker lease evidence is not actively deleted
+when a Task becomes idle; it expires naturally. `PRECOMPUTED_TASK_RULE` replenishment
+continues through its existing dispatch and incomplete-warmup hints.
 
 Task dispatch:
 
 ```text
 due record-backed Items
-  -> TASK_DRIVEN: PRECOMPUTED request using Task rule
-  -> ITEM_DRIVEN: messageId-local DIRECT requests
+  -> PRECOMPUTED_TASK_RULE: PRECOMPUTED request using Task rule
+  -> DIRECT_ITEM_RULE: messageId-local DIRECT requests
   -> exact claim only after CandidateId-correlated acquisition results
 ```
 
@@ -386,16 +366,16 @@ Descriptor construction and Redis decode enforce one schema:
 ```text
 taskId non-empty
 workerGroupId non-empty
-taskType is TASK_DRIVEN or ITEM_DRIVEN
-TASK_DRIVEN requires a mapping allocationRule; an empty map means no constraint
-ITEM_DRIVEN requires null Task allocationRule
+workerAllocationMechanism is PRECOMPUTED_TASK_RULE or DIRECT_ITEM_RULE
+idleDisposition is CLOSE_WHEN_IDLE or PARK_WHEN_IDLE
+PRECOMPUTED_TASK_RULE requires a mapping allocationRule; an empty map means no constraint
+DIRECT_ITEM_RULE requires null Task allocationRule
 config is exactly map<string, string> with the three declared keys
 priority is decimal 0..99; lower values have higher priority
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
-emptyCloseAtMillis is a resolved non-negative absolute millisecond value
-TASK_DRIVEN forbids TaskItem allocationRule
-ITEM_DRIVEN requires a valid TaskItem allocationRule object; `{}` is unrestricted
+PRECOMPUTED_TASK_RULE forbids TaskItem allocationRule
+DIRECT_ITEM_RULE requires a valid TaskItem allocationRule object; `{}` is unrestricted
 ```
 
 WorkerGroup existence is a cross-owner command/admission check. The Task
@@ -409,16 +389,17 @@ One Task descriptor is one Redis HASH:
 tc:{prefix}:task:{taskId}
 
 workerGroupId       -> plain string
-taskType           -> `TASK_DRIVEN` or `ITEM_DRIVEN`
+workerAllocationMechanism -> `PRECOMPUTED_TASK_RULE` or `DIRECT_ITEM_RULE`
+idleDisposition    -> `CLOSE_WHEN_IDLE` or `PARK_WHEN_IDLE`
 allocationRuleJson  -> JSON object or `null`
 configJson          -> JSON object
-emptyCloseAtMillis  -> non-negative decimal absolute milliseconds
 ```
 
 Example:
 
 ```json
-taskType = "TASK_DRIVEN"
+workerAllocationMechanism = "PRECOMPUTED_TASK_RULE"
+idleDisposition = "CLOSE_WHEN_IDLE"
 
 allocationRuleJson = {
   "worker.region": {"$eq": "cn-east"},
@@ -430,8 +411,6 @@ configJson = {
   "maximumCandidateWorkers": "20",
   "maxRetryTimes": "3"
 }
-
-emptyCloseAtMillis = "0"
 ```
 
 `taskId` is derived from the key and not duplicated as a HASH field.
@@ -468,7 +447,7 @@ Contracts:
 - [`kernel/task_runtime.py`](../../executable_spec/kernel/task_runtime.py)
 - [`kernel/task_score_band.py`](../../executable_spec/kernel/task_score_band.py)
 - [`kernel/task_item_score_band.py`](../../executable_spec/kernel/task_item_score_band.py)
-- [`scheduling/task_scheduling_profile.py`](../../executable_spec/scheduling/task_scheduling_profile.py)
+- [`scheduling/task_call_submission.py`](../../executable_spec/scheduling/task_call_submission.py)
 
 Redis implementations:
 

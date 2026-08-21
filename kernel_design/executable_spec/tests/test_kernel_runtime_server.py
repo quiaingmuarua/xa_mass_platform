@@ -6,15 +6,20 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from kernel_design.executable_spec.assembly import (
-    TaskType,
     KernelApplication,
     KernelApplicationConfig,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCallSubmissionResult,
+    TaskCallSubmissionStatus,
     TaskCloseResult,
     TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
+    TaskItemAppendResult,
+    TaskItemAppendStatus,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
 )
 
 try:
@@ -64,7 +69,16 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.application.close_task.return_value = TaskCloseResult(
             TaskCloseStatus.CLOSED
         )
-        self.application.wake_task_dispatch.return_value = 2
+        self.application.submit_task_call_items.return_value = (
+            TaskCallSubmissionResult(
+                TaskCallSubmissionStatus.SUBMITTED,
+                {
+                    "message-1": TaskItemAppendResult(
+                        TaskItemAppendStatus.APPENDED
+                    )
+                },
+            )
+        )
         self.client_context = TestClient(
             create_app(application=self.application)
         )
@@ -89,8 +103,8 @@ class KernelRuntimeServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "taskType": "ITEM_DRIVEN",
-                "emptyCloseAtMillis": 1234,
+                "workerAllocationMechanism": "DIRECT_ITEM_RULE",
+                "idleDisposition": "PARK_WHEN_IDLE",
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
@@ -100,9 +114,21 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         approval_response = self.client.post("/tasks/task-1/approve")
         close_response = self.client.post("/tasks/task-1/close")
-        wake_response = self.client.post(
-            "/tasks:dispatch-wake",
-            json={"taskIds": ["task-1", "task-1", "task-2"]},
+        submission_response = self.client.post(
+            "/tasks/task-1:submit-call-items",
+            json={
+                "items": [
+                    {
+                        "messageId": "message-1",
+                        "eventCode": "image.resize",
+                        "createdAtMillis": 1,
+                        "payload": {"source": "input"},
+                        "allocationRule": {
+                            "workerId": {"$eq": "worker-1"}
+                        },
+                    }
+                ]
+            },
         )
         removed_append_response = self.client.post(
             "/tasks/task-1/items",
@@ -123,10 +149,15 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(201, task_response.status_code)
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(200, close_response.status_code)
-        self.assertEqual(200, wake_response.status_code)
+        self.assertEqual(200, submission_response.status_code)
         self.assertEqual(
-            {"status": "accepted", "acceptedTaskCount": 2},
-            wake_response.json(),
+            {
+                "status": "submitted",
+                "itemResults": {
+                    "message-1": {"status": "appended"}
+                },
+            },
+            submission_response.json(),
         )
         self.assertEqual({"status": "closed"}, close_response.json())
         self.assertEqual(404, removed_append_response.status_code)
@@ -136,14 +167,17 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         task_descriptor = self.application.create_task.call_args.kwargs["descriptor"]
         self.assertIs(
-            TaskType.ITEM_DRIVEN,
-            task_descriptor.task_type,
+            WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+            task_descriptor.worker_allocation_mechanism,
+        )
+        self.assertIs(
+            TaskIdleDisposition.PARK_WHEN_IDLE,
+            task_descriptor.idle_disposition,
         )
         self.assertIsNone(task_descriptor.allocation_rule)
-        self.assertEqual(1234, task_descriptor.empty_close_at_millis)
-        self.application.wake_task_dispatch.assert_called_once_with(
-            task_ids=("task-1", "task-2"),
-        )
+        submitted = self.application.submit_task_call_items.call_args.kwargs
+        self.assertEqual("task-1", submitted["task_id"])
+        self.assertEqual("message-1", submitted["items"][0].message_id)
         self.assertFalse(hasattr(self.application, "consume_worker_commands"))
         self.assertEqual(
             404,
@@ -162,11 +196,12 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
 
-    def test_task_rejects_invalid_empty_close_threshold(self) -> None:
+    def test_task_rejects_missing_or_unknown_resolved_mechanisms(self) -> None:
         base_request = {
             "taskId": "task-1",
             "workerGroupId": "image-workers",
-            "taskType": "TASK_DRIVEN",
+            "workerAllocationMechanism": "PRECOMPUTED_TASK_RULE",
+            "idleDisposition": "CLOSE_WHEN_IDLE",
             "allocationRule": {},
             "config": {
                 "priority": "80",
@@ -175,12 +210,15 @@ class KernelRuntimeServerTest(unittest.TestCase):
             },
         }
 
-        for value in (-1, True, "1000"):
-            with self.subTest(value=value):
-                response = self.client.post(
-                    "/tasks",
-                    json={**base_request, "emptyCloseAtMillis": value},
-                )
+        invalid_requests = (
+            {key: value for key, value in base_request.items()
+             if key != "idleDisposition"},
+            {**base_request, "workerAllocationMechanism": "UNKNOWN"},
+            {**base_request, "idleDisposition": "CLOSE_LATER"},
+        )
+        for request in invalid_requests:
+            with self.subTest(request=request):
+                response = self.client.post("/tasks", json=request)
                 self.assertEqual(422, response.status_code)
 
         self.application.create_task.assert_not_called()
@@ -226,7 +264,8 @@ class KernelRuntimeServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "taskType": "TASK_DRIVEN",
+                "workerAllocationMechanism": "PRECOMPUTED_TASK_RULE",
+                "idleDisposition": "CLOSE_WHEN_IDLE",
                 "allocationRule": {},
                 "config": {},
             },
@@ -236,7 +275,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertIn("task config", response.json()["detail"])
         self.application.create_task.assert_not_called()
 
-    def test_old_task_scope_contract_is_rejected(self) -> None:
+    def test_deprecated_scope_and_invalid_mechanism_are_rejected(self) -> None:
         old_field_response = self.client.post(
             "/tasks",
             json={
@@ -256,7 +295,8 @@ class KernelRuntimeServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "taskType": "TASK",
+                "workerAllocationMechanism": "TASK",
+                "idleDisposition": "CLOSE_WHEN_IDLE",
                 "allocationRule": {},
                 "config": {
                     "priority": "80",

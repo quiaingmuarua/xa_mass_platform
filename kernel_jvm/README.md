@@ -14,7 +14,7 @@ Package responsibilities:
 
 | Package | Intended responsibility |
 | --- | --- |
-| `task` | `TaskRuntime` and `TaskResourceCatalog` contracts |
+| `task` | `TaskRuntime`, `TaskResourceCatalog`, and bounded Task Call submission contracts |
 | `worker` | Worker runtime, catalog, and dynamic-attribute contracts |
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
@@ -79,6 +79,11 @@ the complete owner has migrated.
 Every other translated operation is explicit and throws
 `KernelOperationNotImplementedException` when invoked by a partial provider.
 There are no default-method fallbacks.
+
+`TaskCallItemSubmission` mirrors the bounded Python Kernel application command
+used by reusable RPC and Task Batch flows. Its Server implementation is an HTTP
+adapter to the Python command host; `kernel_jvm` does not implement Task score
+activation, idle lifecycle, or a second scheduler.
 
 `RedisWorkerServiceabilityRuntime` implements only the two operations required
 by the Java Server bridge: destructive Adapter request consume and bounded

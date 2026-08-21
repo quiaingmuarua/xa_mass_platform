@@ -14,7 +14,7 @@ due candidate-warmup TaskId
   -> batch-read current Task score state
   -> retain RUNNING_VISIBLE, non-hard-paused Tasks with suffix 0
   -> load Task allocation descriptor
-  -> retain taskType=TASK_DRIVEN
+  -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> measure CandidateId cache count
   -> acquire the deficit from the HOT pool
   -> append expiring candidate evidence
@@ -25,10 +25,10 @@ It uses Task score only as a bounded read-only eligibility truth. It does not
 acquire, lease, rotate, or rewrite Task score, process ADMISSION Tasks,
 decide Task activation, or serve Item-directed DIRECT requests.
 
-Warmup participation is not a priority class. `TASK_DRIVEN` enables reusable
+Warmup participation is not a priority class. `PRECOMPUTED_TASK_RULE` enables reusable
 Task-level candidate computation; it does not make the Task more or less urgent
-than an `ITEM_DRIVEN` Task. The Pacer uses explicit Task/candidate priority and
-must not infer Worker contention or preemption rights from TaskType.
+than an `DIRECT_ITEM_RULE` Task. The Pacer uses explicit Task/candidate priority and
+must not infer Worker contention or preemption rights from WorkerAllocationMechanism.
 
 ## Warmup Schedule
 
@@ -54,14 +54,13 @@ new hint when evidence must be replenished.
 
 Hints are produced by:
 
-- a successful `TASK_DRIVEN` transition into `RUNNING_VISIBLE`;
-- a successful `TASK_DRIVEN` empty-recheck reset from positive suffix to zero;
-- a `TASK_DRIVEN` dispatch round after it consumes or misses PRECOMPUTED
+- a successful `PRECOMPUTED_TASK_RULE` transition into `RUNNING_VISIBLE`;
+- a `PRECOMPUTED_TASK_RULE` dispatch round after it consumes or misses PRECOMPUTED
   candidates;
 - an incomplete warmer round, which requeues the Task for the next configured
   warmer cadence.
 
-`ITEM_DRIVEN` never enters this schedule.
+`DIRECT_ITEM_RULE` never enters this schedule.
 
 ## Dependencies
 
@@ -88,7 +87,8 @@ publication remains Pacer-owned.
 
 ## Request Construction
 
-For each descriptor-backed `taskType=TASK_DRIVEN` hint:
+For each descriptor-backed
+`workerAllocationMechanism=PRECOMPUTED_TASK_RULE` hint:
 
 ```text
 candidateId = taskId
@@ -101,11 +101,11 @@ WorkerCandidateRequest
   allocationRule = descriptor.allocationRule
 ```
 
-Tasks with no descriptor, the wrong TaskType, or no deficit do not produce a
-request. A positive RUNNING suffix also discards the consumed hint before any
-descriptor, cache, or Worker access: empty-recheck Tasks must not create new
-Worker leases. Requests are grouped by `descriptor.workerGroupId`; one
-acquisition call never crosses Worker score queues.
+Tasks with no descriptor, the wrong WorkerAllocationMechanism, a nonzero RUNNING suffix, or no
+deficit do not produce a request. RUNNING suffix is fixed at zero in the current
+mechanism; the validation rejects incompatible residue before Worker access.
+Requests are grouped by `descriptor.workerGroupId`; one acquisition call never
+crosses Worker score queues.
 
 ## Publication And Retry
 
@@ -125,8 +125,8 @@ there is no second retry-delay configuration.
 
 Every exact-leased Worker is consumed scheduling evidence. Unmatched Workers
 and append failures are not released; lease expiry restores HOT visibility.
-Existing cache entries and leases are not actively deleted when a Task enters
-the empty lane; they expire naturally.
+Existing cache entries and leases are not actively deleted when a Task is held
+when its configured idle disposition is applied; they expire naturally.
 
 ## Configuration
 
@@ -151,7 +151,7 @@ WorkerCandidateAcquirer construction.
 - Keep HOT scan/lease/match inside `acquire_hot_pool_candidates`.
 - Do not let CandidateWorkerCache own limits, rules, matching, or Worker truth.
 - Do not warm or cache Item allocation rules.
-- Do not reinterpret `TaskType` as independently configurable cache or
+- Do not reinterpret `WorkerAllocationMechanism` as independently configurable cache or
   acquisition flags.
 - Do not release unmatched or failed-publication Worker leases.
 - Do not change Task band or suffix.

@@ -27,10 +27,13 @@ public final class HttpTaskRuntime implements TaskRuntime {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("taskId", descriptor.taskId());
         body.put("workerGroupId", descriptor.workerGroupId());
-        body.put("taskType", descriptor.taskType().name());
+        body.put(
+                "workerAllocationMechanism",
+                descriptor.workerAllocationMechanism().name()
+        );
+        body.put("idleDisposition", descriptor.idleDisposition().name());
         body.put("allocationRule", descriptor.allocationRule());
         body.put("config", descriptor.config());
-        body.put("emptyCloseAtMillis", descriptor.emptyCloseAtMillis());
         Map<String, Object> response = transport.postBody("/tasks", body);
         TaskCreationStatus status = KernelHttpResultDecoder.status(
                 response,

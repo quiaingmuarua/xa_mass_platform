@@ -8,10 +8,11 @@ from kernel_design.executable_spec import (
     DeliveryReport,
     ProbeRequestOfferStatus,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreState,
-    TaskType,
+    WorkerAllocationMechanism,
     WorkerDescriptor,
     WorkerScorePolarity,
     WorkerScoreState,
@@ -256,7 +257,10 @@ def task_descriptor(task_id: str, group_id: str) -> TaskDescriptor:
     return TaskDescriptor(
         task_id=task_id,
         worker_group_id=group_id,
-        task_type=TaskType.ITEM_DRIVEN,
+        worker_allocation_mechanism=(
+            WorkerAllocationMechanism.DIRECT_ITEM_RULE
+        ),
+        idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
         allocation_rule=None,
         config={
             "priority": "80",

@@ -6,7 +6,7 @@ import os
 import time
 import unittest
 import uuid
-from dataclasses import fields, replace
+from dataclasses import fields
 from unittest.mock import Mock, patch
 
 import kernel_design.executable_spec as executable_spec_package
@@ -24,23 +24,26 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec.assembly import (
-    TaskType,
     WorkerCommandConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCallSubmissionResult,
+    TaskCallSubmissionStatus,
     TaskCloseResult,
     TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendStatus,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     DeliveryEndpoint,
+    WorkerAllocationMechanism,
     WorkerRuntimeStatus,
 )
 from kernel_design.executable_spec.assembly._redis_process import _RedisKernelProcess
@@ -260,9 +263,9 @@ class KernelApplicationTest(unittest.TestCase):
                 "approve_task",
                 "close_task",
                 "create_task",
+                "submit_task_call_items",
                 "start",
                 "stop",
-                "wake_task_dispatch",
             },
             public_methods,
         )
@@ -296,12 +299,9 @@ class KernelApplicationTest(unittest.TestCase):
             internal.assignment_dispatch.worker_allocation.worker_lease_duration_millis,
         )
         self.assertEqual(
-            5,
-            internal.assignment_dispatch.task_dispatch.max_empty_recheck_times,
-        )
-        self.assertEqual(
-            1_000,
-            internal.assignment_dispatch.task_dispatch.empty_recheck_interval_millis,
+            5_000,
+            internal.assignment_dispatch.task_dispatch
+            .item_claim_lease_duration_millis,
         )
         self.assertEqual(
             1_000,
@@ -350,18 +350,31 @@ class KernelApplicationTest(unittest.TestCase):
             internal.worker_serviceability_result.interval_millis,
         )
 
-    def test_dispatch_wake_is_a_bounded_application_hint(self) -> None:
-        self.process._task_dispatch_wake_inbox.offer.return_value = 2
+    def test_task_call_submission_is_a_bounded_application_command(self) -> None:
+        expected = TaskCallSubmissionResult(
+            TaskCallSubmissionStatus.SUBMITTED,
+            {},
+        )
+        self.process._task_call_item_submission.submit.return_value = expected
         self.application.start()
+        item = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=1,
+            payload={},
+            allocation_rule={},
+        )
 
-        self.assertEqual(
-            2,
-            self.application.wake_task_dispatch(
-                task_ids=("task-1", "task-2"),
+        self.assertIs(
+            expected,
+            self.application.submit_task_call_items(
+                task_id="task-1",
+                items=(item,),
             ),
         )
-        self.process._task_dispatch_wake_inbox.offer.assert_called_once_with(
-            task_ids=("task-1", "task-2"),
+        self.process._task_call_item_submission.submit.assert_called_once_with(
+            task_id="task-1",
+            items=(item,),
         )
 
     def test_commands_require_successful_start_and_lifecycle_is_strict(self) -> None:
@@ -404,48 +417,6 @@ class KernelApplicationTest(unittest.TestCase):
 
         self.assertIs(creation_result, self.application.create_task(descriptor=task))
 
-        self.process._task_runtime.create_task.assert_called_once_with(
-            descriptor=replace(task, empty_close_at_millis=0),
-            suffix=1,
-        )
-
-    def test_create_task_resolves_item_driven_empty_close_once(self) -> None:
-        task = self._task_descriptor(
-            task_id="item-task",
-            task_type=TaskType.ITEM_DRIVEN,
-        )
-        self.process._task_runtime.create_task.return_value = TaskCreationResult(
-            TaskCreationStatus.CREATED
-        )
-        self.application.start()
-
-        with patch(
-            "kernel_design.executable_spec.assembly.application.time_ns",
-            return_value=10_000_000_000,
-        ):
-            self.application.create_task(descriptor=task)
-
-        persisted = self.process._task_runtime.create_task.call_args.kwargs[
-            "descriptor"
-        ]
-        self.assertEqual(
-            10_000 + 3 * 24 * 60 * 60 * 1_000,
-            persisted.empty_close_at_millis,
-        )
-
-    def test_create_task_preserves_explicit_empty_close(self) -> None:
-        task = replace(self._task_descriptor(), empty_close_at_millis=42_000)
-        self.process._task_runtime.create_task.return_value = TaskCreationResult(
-            TaskCreationStatus.CREATED
-        )
-        self.application.start()
-
-        with patch(
-            "kernel_design.executable_spec.assembly.application.time_ns"
-        ) as current_time:
-            self.application.create_task(descriptor=task)
-
-        current_time.assert_not_called()
         self.process._task_runtime.create_task.assert_called_once_with(
             descriptor=task,
             suffix=1,
@@ -648,15 +619,22 @@ class KernelApplicationTest(unittest.TestCase):
     @staticmethod
     def _task_descriptor(
         task_id: str = "task-1",
-        task_type: TaskType = TaskType.TASK_DRIVEN,
+        allocation_mechanism: WorkerAllocationMechanism = (
+            WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        ),
+        idle_disposition: TaskIdleDisposition = (
+            TaskIdleDisposition.CLOSE_WHEN_IDLE
+        ),
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="image-workers",
-            task_type=task_type,
+            worker_allocation_mechanism=allocation_mechanism,
+            idle_disposition=idle_disposition,
             allocation_rule=(
                 {"worker.runtime": {"$eq": "python"}}
-                if task_type is TaskType.TASK_DRIVEN
+                if allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 else None
             ),
             config={
@@ -672,7 +650,7 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_score = Mock(spec=TaskScoreBandCore)
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
-        process._task_dispatch_wake_inbox = Mock()
+        process._task_call_item_submission = Mock()
         process._worker_resource_catalog = Mock()
         return process
 

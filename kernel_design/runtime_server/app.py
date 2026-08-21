@@ -8,39 +8,57 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from kernel_design.executable_spec.assembly import (
-    TaskType,
     KernelApplication,
     KernelApplicationConfig,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCallSubmissionResult,
+    TaskCallSubmissionStatus,
     TaskCloseResult,
     TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskItem,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
 )
 
 
 class TaskRequest(BaseModel):
     task_id: str = Field(alias="taskId")
     worker_group_id: str = Field(alias="workerGroupId")
-    task_type: TaskType = Field(alias="taskType")
+    worker_allocation_mechanism: WorkerAllocationMechanism = Field(
+        alias="workerAllocationMechanism"
+    )
+    idle_disposition: TaskIdleDisposition = Field(alias="idleDisposition")
     allocation_rule: dict[str, Any] | None = Field(
         default=None,
         alias="allocationRule",
     )
     config: dict[str, str]
-    empty_close_at_millis: int | None = Field(
+
+
+class TaskCallItemRequest(BaseModel):
+    message_id: str = Field(alias="messageId")
+    event_code: str = Field(alias="eventCode")
+    created_at_millis: int = Field(alias="createdAtMillis", ge=0, strict=True)
+    payload: dict[str, Any]
+    priority: int = Field(default=5, ge=0, le=10, strict=True)
+    expire_at_millis: int | None = Field(
         default=None,
-        alias="emptyCloseAtMillis",
+        alias="expireAtMillis",
         ge=0,
         strict=True,
     )
+    allocation_rule: dict[str, Any] | None = Field(
+        default=None,
+        alias="allocationRule",
+    )
 
 
-class TaskDispatchWakeRequest(BaseModel):
-    task_ids: list[str] = Field(
-        alias="taskIds",
+class TaskCallItemsSubmissionRequest(BaseModel):
+    items: list[TaskCallItemRequest] = Field(
         min_length=1,
         max_length=100,
     )
@@ -86,6 +104,32 @@ def _close_response(result: TaskCloseResult) -> JSONResponse:
     return JSONResponse(_result_payload(result), status_code=status_code)
 
 
+def _task_call_submission_response(
+    result: TaskCallSubmissionResult,
+) -> JSONResponse:
+    payload = _result_payload(result)
+    payload["itemResults"] = {
+        message_id: {
+            "status": item_result.status.value,
+            **(
+                {}
+                if item_result.reason is None
+                else {"reason": item_result.reason}
+            ),
+        }
+        for message_id, item_result in result.item_results.items()
+    }
+    status_code = {
+        TaskCallSubmissionStatus.SUBMITTED: 200,
+        TaskCallSubmissionStatus.NOT_FOUND: 404,
+        TaskCallSubmissionStatus.CLOSED: 409,
+        TaskCallSubmissionStatus.STALE: 409,
+        TaskCallSubmissionStatus.INVALID: 422,
+        TaskCallSubmissionStatus.RETRYABLE: 503,
+    }[result.status]
+    return JSONResponse(payload, status_code=status_code)
+
+
 def create_app(
     *,
     config: KernelApplicationConfig | None = None,
@@ -129,10 +173,12 @@ def create_app(
                 descriptor=TaskDescriptor(
                     task_id=request.task_id,
                     worker_group_id=request.worker_group_id,
-                    task_type=request.task_type,
+                    worker_allocation_mechanism=(
+                        request.worker_allocation_mechanism
+                    ),
+                    idle_disposition=request.idle_disposition,
                     allocation_rule=request.allocation_rule,
                     config=request.config,
-                    empty_close_at_millis=request.empty_close_at_millis,
                 )
             )
         )
@@ -145,11 +191,27 @@ def create_app(
     def close_task(task_id: str) -> JSONResponse:
         return _close_response(kernel_application.close_task(task_id=task_id))
 
-    @app.post("/tasks:dispatch-wake")
-    def wake_task_dispatch(request: TaskDispatchWakeRequest) -> dict[str, Any]:
-        accepted = kernel_application.wake_task_dispatch(
-            task_ids=tuple(dict.fromkeys(request.task_ids)),
+    @app.post("/tasks/{task_id}:submit-call-items")
+    def submit_task_call_items(
+        task_id: str,
+        request: TaskCallItemsSubmissionRequest,
+    ) -> JSONResponse:
+        return _task_call_submission_response(
+            kernel_application.submit_task_call_items(
+                task_id=task_id,
+                items=tuple(
+                    TaskItem(
+                        message_id=item.message_id,
+                        event_code=item.event_code,
+                        created_at_millis=item.created_at_millis,
+                        payload=item.payload,
+                        priority=item.priority,
+                        expire_at_millis=item.expire_at_millis,
+                        allocation_rule=item.allocation_rule,
+                    )
+                    for item in request.items
+                ),
+            )
         )
-        return {"status": "accepted", "acceptedTaskCount": accepted}
 
     return app

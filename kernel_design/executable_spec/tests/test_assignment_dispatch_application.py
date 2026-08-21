@@ -161,8 +161,6 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
                 task_batch_limit=10,
                 per_task_dispatch_limit=20,
                 item_claim_lease_duration_millis=5_000,
-                max_empty_recheck_times=5,
-                empty_recheck_interval_millis=1_000,
             ),
             worker_allocation_interval_millis=intervals[0],
             running_activation_interval_millis=intervals[1],

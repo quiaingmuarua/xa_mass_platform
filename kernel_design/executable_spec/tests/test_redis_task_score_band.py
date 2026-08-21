@@ -181,7 +181,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def store_score(self, task_id: str, score: int) -> None:
         self.redis.zadd(self.kernel.score_key, {task_id: score})
 
-    def test_running_count_includes_due_current_and_future_running_scores(self) -> None:
+    def test_running_capacity_count_excludes_only_private_idle_park(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
         running_current_second = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 1)
         admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5)
@@ -190,13 +190,19 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
             self.kernel.PAUSE_TIME_SLOT,
             5,
         )
+        idle_park = self.score(
+            self.kernel.RUNNING_VISIBLE_TAG,
+            self.kernel.MAX_TIME_SLOT - 1,
+            0,
+        )
 
         self.store_score("running", running)
         self.store_score("running-current-second", running_current_second)
         self.store_score("admission-visible", admission_visible)
         self.store_score("paused", paused)
+        self.store_score("idle-park", idle_park)
 
-        self.assertEqual(3, self.kernel.count_running_visible_tasks())
+        self.assertEqual(3, self.kernel.count_running_capacity_tasks())
         self.assertEqual(
             ["running"],
             self.kernel.acquire_dispatch_work_tasks(limit=10),
@@ -525,126 +531,69 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(7, state.suffix)
 
-    def test_rewrite_observed_same_band_suffix_applies_suffix_delta(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
+    def test_park_observed_idle_task_uses_private_coordinate(self) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_observed_same_band_suffix(
+        result = self.kernel.park_observed_idle_task(
             task_id="task",
             observed_score=running,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_002), state.time_millis)
-        self.assertEqual(6, state.suffix)
+        self.assertEqual(
+            self.millis(self.kernel.MAX_TIME_SLOT - 1),
+            state.time_millis,
+        )
+        self.assertEqual(0, state.suffix)
 
-    def test_rewrite_observed_same_band_suffix_rejects_zero_delta(self) -> None:
+    def test_park_observed_idle_task_requires_suffix_zero(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_observed_same_band_suffix(
+        result = self.kernel.park_observed_idle_task(
             task_id="task",
             observed_score=running,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=0,
-        )
-        state = self.kernel.get_score_states(task_ids=["task"])["task"]
-
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_000), state.time_millis)
-        self.assertEqual(7, state.suffix)
-
-    def test_rewrite_observed_same_band_suffix_applies_positive_delta(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.store_score("task", running)
-
-        result = self.kernel.rewrite_observed_same_band_suffix(
-            task_id="task",
-            observed_score=running,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=1,
-        )
-        state = self.kernel.get_score_states(task_ids=["task"])["task"]
-
-        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_002), state.time_millis)
-        self.assertEqual(8, state.suffix)
-
-    def test_rewrite_observed_same_band_suffix_rejects_suffix_delta_overflow(
-        self,
-    ) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 99)
-        self.store_score("task", running)
-
-        result = self.kernel.rewrite_observed_same_band_suffix(
-            task_id="task",
-            observed_score=running,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=1,
         )
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
 
-    def test_rewrite_observed_same_band_suffix_rejects_stale_observed_score(
-        self,
-    ) -> None:
-        observed = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 5)
-        newer = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_500, 9)
-        self.store_score("task", observed)
+    def test_park_observed_idle_task_rejects_stale_observed_score(self) -> None:
+        observed = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
+        newer = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_500, 0)
         self.store_score("task", newer)
 
-        result = self.kernel.rewrite_observed_same_band_suffix(
+        result = self.kernel.park_observed_idle_task(
             task_id="task",
             observed_score=observed,
-            target_time_millis=self.millis(2_000),
-            suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(self.millis(1_500), state.time_millis)
-        self.assertEqual(9, state.suffix)
 
-    def test_rewrite_observed_same_band_suffix_rejects_suffix_delta_underflow(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
-        self.store_score("task", running)
+    def test_release_observed_idle_task_requires_exact_park(self) -> None:
+        park = self.score(
+            self.kernel.RUNNING_VISIBLE_TAG,
+            self.kernel.MAX_TIME_SLOT - 1,
+            0,
+        )
+        self.store_score("task", park)
 
-        result = self.kernel.rewrite_observed_same_band_suffix(
+        result = self.kernel.release_observed_idle_task(
             task_id="task",
-            observed_score=running,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=-1,
+            observed_park_score=park,
+            release_time_millis=self.millis(1_002),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_000), state.time_millis)
+        self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(0, state.suffix)
-
-    def test_rewrite_observed_same_band_suffix_rejects_pre_review_score(self) -> None:
-        pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 3)
-        self.store_score("task", pre_review)
-
-        result = self.kernel.rewrite_observed_same_band_suffix(
-            task_id="task",
-            observed_score=pre_review,
-            target_time_millis=self.millis(1_002),
-            suffix_delta=-1,
-        )
-        state = self.kernel.get_score_states(task_ids=["task"])["task"]
-
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_000), state.time_millis)
-        self.assertEqual(3, state.suffix)
 
     def test_rewrite_same_band_time_millis_rejects_future_hold(self) -> None:
         paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)
@@ -710,6 +659,40 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(TaskScoreBand.TERMINAL, state.band)
         self.assertEqual(terminal, state.score)
+
+    def test_close_observed_score_closes_exact_positive_score(self) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
+        terminal = -1_001_00
+        self.store_score("task", running)
+
+        result = self.kernel.close_observed_score(
+            task_id="task",
+            observed_score=running,
+            terminal_score=terminal,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertEqual(
+            terminal,
+            self.kernel.get_score_states(task_ids=["task"])["task"].score,
+        )
+
+    def test_close_observed_score_rejects_stale_positive_score(self) -> None:
+        observed = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
+        newer = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_001, 0)
+        self.store_score("task", newer)
+
+        result = self.kernel.close_observed_score(
+            task_id="task",
+            observed_score=observed,
+            terminal_score=-1,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(
+            newer,
+            self.kernel.get_score_states(task_ids=["task"])["task"].score,
+        )
 
     def test_close_score_noops_when_already_terminal(self) -> None:
         terminal = -1_001_00

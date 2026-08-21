@@ -8,11 +8,12 @@ from kernel_design.executable_spec import (
     CandidateWorkerCache,
     CandidateWorkerEntry,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreState,
-    TaskType,
+    WorkerAllocationMechanism,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
 )
@@ -169,7 +170,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             ],
         )
 
-    def test_missing_and_item_driven_hints_are_discarded(self) -> None:
+    def test_missing_and_direct_allocation_hints_are_discarded(self) -> None:
         self.warmup_schedule.consume_due_candidate_warmups.return_value = (
             "missing",
             "item-task",
@@ -179,7 +180,9 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             "item-task": self._descriptor(
                 "item-task",
                 maximum_candidates=1,
-                task_type=TaskType.ITEM_DRIVEN,
+                allocation_mechanism=(
+                    WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                ),
             ),
         }
 
@@ -286,15 +289,19 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         *,
         maximum_candidates: int,
         worker_group_id: str = "group-1",
-        task_type: TaskType = TaskType.TASK_DRIVEN,
+        allocation_mechanism: WorkerAllocationMechanism = (
+            WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        ),
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            task_type=task_type,
+            worker_allocation_mechanism=allocation_mechanism,
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule=(
                 {"worker.runtime": {"$eq": "python"}}
-                if task_type is TaskType.TASK_DRIVEN
+                if allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 else None
             ),
             config={
@@ -302,7 +309,6 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
                 "maximumCandidateWorkers": str(maximum_candidates),
                 "maxRetryTimes": "3",
             },
-            empty_close_at_millis=0,
         )
 
     @staticmethod

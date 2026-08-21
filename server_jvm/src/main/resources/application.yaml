@@ -31,8 +31,6 @@ xa:
       initial-probe-interval-millis: 50
       normal-probe-interval-millis: 100
       long-probe-interval-millis: 250
-      wake-buffer-capacity: 10000
-      wake-batch-limit: 100
     direct-call:
       default-wait-timeout-millis: 3000
       max-wait-timeout-millis: 10000

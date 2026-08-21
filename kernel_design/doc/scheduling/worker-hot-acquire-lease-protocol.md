@@ -132,8 +132,8 @@ The returned fence, unchanged or renewed, is written into
 
 PRECOMPUTED miss or rejected evidence never falls back to DIRECT acquisition.
 `TaskItemDispatcher` never calls Worker score directly. It chooses one path
-from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or DIRECT
-for Item-owned rules. Neither the Dispatcher nor PRECOMPUTED acquisition
+from `TaskDescriptor.workerAllocationMechanism`: PRECOMPUTED for Task-owned
+rules or DIRECT for Item-owned rules. Neither the Dispatcher nor PRECOMPUTED acquisition
 decodes scores, clears dirty, or releases rejected candidates.
 
 ## Dirty Fence
@@ -238,7 +238,7 @@ cross-owner transaction.
 | WorkerCandidateAcquirer DIRECT | bounded Group score source for `{}` or request-local WorkerId source for explicit rules, point pre-match, exact lease and post-lease rematch | no descriptor scan, index discovery, cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable TaskType, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
+| TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable WorkerAllocationMechanism, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |

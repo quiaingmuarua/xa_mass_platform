@@ -15,7 +15,6 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    TaskType,
     DeliveryCommand,
     WorkerCommandAppendStatus,
     WorkerCommandOfferStatus,
@@ -34,18 +33,22 @@ from kernel_design.executable_spec import (
     TaskCreationStatus,
     TaskCreationResult,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
     TaskDispatchConfig,
     TaskDispatchPacer,
-    TaskDispatchWakeInbox,
+    TaskCallItemSubmission,
+    TaskCallSubmissionStatus,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     TaskItemScoreBand,
     TaskScoreBand,
+    TaskScoreBandCore,
+    WorkerAllocationMechanism,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -165,15 +168,18 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             candidate_acquirer,
             self.warmup_schedule,
         )
-        self.wake_inbox = TaskDispatchWakeInbox()
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.worker_command_runtime,
             self.item_score,
-            self.warmup_schedule,
             task_item_dispatcher,
-            self.wake_inbox,
+        )
+        self.task_call_submission = TaskCallItemSubmission(
+            self.task_score,
+            self.item_score,
+            self.task_runtime,
+            self.task_catalog,
         )
 
     def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
@@ -439,18 +445,20 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         return created, approved, appended, activated
 
-    def test_task_driven_vertical_redis_proof_uses_precomputed_cache(self) -> None:
+    def test_precomputed_allocation_redis_proof_uses_candidate_cache(self) -> None:
         descriptor = TaskDescriptor(
             task_id=self.task_id,
             worker_group_id="image-workers",
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={"worker.runtime": {"$eq": "python"}},
             config={
                 "priority": "0",
                 "maximumCandidateWorkers": "1",
                 "maxRetryTimes": "3",
             },
-            empty_close_at_millis=0,
         )
         item = TaskItem(
             message_id=self.message_id,
@@ -519,8 +527,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
-                max_empty_recheck_times=5,
-                empty_recheck_interval_millis=1_000,
             )
         )
         task_state_before_warmup = self.task_score.get_score_states(
@@ -558,8 +564,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
-                max_empty_recheck_times=5,
-                empty_recheck_interval_millis=1_000,
             )
         )
         candidate_count = self.candidate_cache.candidate_worker_counts(
@@ -656,14 +660,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             return TaskDescriptor(
                 task_id=task_id,
                 worker_group_id="image-workers",
-                task_type=TaskType.TASK_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 allocation_rule={},
                 config={
                     "priority": "0",
                     "maximumCandidateWorkers": "1",
                     "maxRetryTimes": "3",
                 },
-                empty_close_at_millis=0,
             )
 
         try:
@@ -735,7 +741,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 )
             )
 
-    def test_item_driven_vertical_redis_proof_uses_complete_item_rules(self) -> None:
+    def test_direct_allocation_redis_proof_uses_complete_item_rules(self) -> None:
         group_result = self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
@@ -771,14 +777,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 descriptor=TaskDescriptor(
                     task_id=self.task_id,
                     worker_group_id="image-workers",
-                    task_type=TaskType.ITEM_DRIVEN,
+                    worker_allocation_mechanism=(
+                        WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                    ),
+                    idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
                     allocation_rule=None,
                     config={
                         "priority": "80",
                         "maximumCandidateWorkers": "10",
                         "maxRetryTimes": "3",
                     },
-                    empty_close_at_millis=9_999_999_999_999,
                 ),
                 items=items,
             )
@@ -808,8 +816,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
-                max_empty_recheck_times=5,
-                empty_recheck_interval_millis=1_000,
             )
         )
 
@@ -869,14 +875,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         descriptor = TaskDescriptor(
             task_id=self.task_id,
             worker_group_id="image-workers",
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={},
             config={
                 "priority": "0",
                 "maximumCandidateWorkers": "1",
                 "maxRetryTimes": "3",
             },
-            empty_close_at_millis=0,
         )
         item = TaskItem(
             message_id=self.message_id,
@@ -903,8 +911,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                     task_batch_limit=10,
                     per_task_dispatch_limit=10,
                     item_claim_lease_duration_millis=5_000,
-                    max_empty_recheck_times=5,
-                    empty_recheck_interval_millis=1_000,
                 )
             )
 
@@ -932,7 +938,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             ),
         )
 
-    def test_task_driven_empty_rechecks_close_and_release_running_slot(self) -> None:
+    def test_close_when_idle_task_closes_immediately(self) -> None:
         self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
@@ -958,14 +964,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
-                task_type=TaskType.TASK_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 allocation_rule={},
                 config={
                     "priority": "80",
                     "maximumCandidateWorkers": "1",
                     "maxRetryTimes": "3",
                 },
-                empty_close_at_millis=0,
             ),
             items=(item,),
         )
@@ -979,19 +987,14 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
-            max_empty_recheck_times=2,
-            empty_recheck_interval_millis=100,
         )
 
         time.sleep(0.12)
-        self.pacer.dispatch_tasks(config=config)
-        first = self.task_score.get_score_states(task_ids=(self.task_id,))[
-            self.task_id
-        ]
         worker_before_warmup = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=("worker-1",),
         )["worker-1"]
+        self.pacer.dispatch_tasks(config=config)
         warmed = self.allocation_pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
@@ -1002,18 +1005,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             home_bucket_id="image-workers",
             worker_ids=("worker-1",),
         )["worker-1"]
-        time.sleep(0.22)
-        self.pacer.dispatch_tasks(config=config)
-        second = self.task_score.get_score_states(task_ids=(self.task_id,))[
-            self.task_id
-        ]
-        time.sleep(0.32)
-        self.pacer.dispatch_tasks(config=config)
         closed = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
         ]
 
-        self.assertEqual(1, first.suffix)
         self.assertEqual(0, warmed)
         self.assertEqual(worker_before_warmup, worker_after_warmup)
         self.assertEqual(
@@ -1022,11 +1017,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 candidate_ids=(self.task_id,),
             ),
         )
-        self.assertEqual(2, second.suffix)
         self.assertEqual(TaskScoreBand.TERMINAL, closed.band)
-        self.assertEqual(0, self.task_score.count_running_visible_tasks())
+        self.assertEqual(0, self.task_score.count_running_capacity_tasks())
 
-    def test_item_driven_empty_rechecks_resume_after_new_item(self) -> None:
+    def test_park_when_idle_task_resumes_through_call_submission(self) -> None:
         self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
@@ -1053,14 +1047,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
-                task_type=TaskType.ITEM_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
                 allocation_rule=None,
                 config={
                     "priority": "80",
                     "maximumCandidateWorkers": "1",
                     "maxRetryTimes": "3",
                 },
-                empty_close_at_millis=9_999_999_999_999,
             ),
             items=(original,),
         )
@@ -1074,15 +1070,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
-            max_empty_recheck_times=2,
-            empty_recheck_interval_millis=100,
         )
 
         time.sleep(0.12)
-        self.pacer.dispatch_tasks(config=config)
-        time.sleep(0.22)
-        self.pacer.dispatch_tasks(config=config)
-        time.sleep(0.32)
         self.pacer.dispatch_tasks(config=config)
         held = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
@@ -1095,14 +1085,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             payload={"resume": True},
             allocation_rule={"workerId": {"$eq": "worker-1"}},
         )
-        self.task_runtime.append_items(task_id=self.task_id, items=(resumed_item,))
-        self.wake_inbox.offer(task_ids=(self.task_id,))
-        release_round = self.pacer.dispatch_tasks(config=config)
-        time.sleep(0.12)
-        reset_round = self.pacer.dispatch_tasks(config=config)
-        reset = self.task_score.get_score_states(task_ids=(self.task_id,))[
-            self.task_id
-        ]
+        submitted = self.task_call_submission.submit(
+            task_id=self.task_id,
+            items=(resumed_item,),
+        )
         time.sleep(0.12)
         dispatched = self.pacer.dispatch_tasks(config=config)
         command = self.worker_command_runtime.consume_worker_command(
@@ -1111,10 +1097,17 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
-        self.assertEqual(2, held.suffix)
-        self.assertEqual(0, release_round)
-        self.assertEqual(0, reset_round)
-        self.assertEqual(0, reset.suffix)
+        self.assertEqual(0, held.suffix)
+        self.assertEqual(
+            (TaskScoreBandCore.MAX_TIME_SLOT - 1)
+            * TaskScoreBandCore.SLOT_MILLIS,
+            held.time_millis,
+        )
+        self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, submitted.status)
+        self.assertEqual(
+            TaskItemAppendStatus.APPENDED,
+            submitted.item_results["message-2"].status,
+        )
         self.assertEqual(1, dispatched)
         self.assertIsNotNone(command)
         assert command is not None
@@ -1123,7 +1116,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             json.loads(command.forward)["messageId"],
         )
 
-    def test_item_driven_empty_rechecks_close_after_explicit_threshold(self) -> None:
+    def test_direct_allocation_can_close_immediately_when_idle(self) -> None:
         item = TaskItem(
             message_id=self.message_id,
             event_code="image.resize",
@@ -1135,14 +1128,16 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
-                task_type=TaskType.ITEM_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 allocation_rule=None,
                 config={
                     "priority": "80",
                     "maximumCandidateWorkers": "1",
                     "maxRetryTimes": "3",
                 },
-                empty_close_at_millis=0,
             ),
             items=(item,),
         )
@@ -1156,13 +1151,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
-            max_empty_recheck_times=2,
-            empty_recheck_interval_millis=100,
         )
 
-        for wait_seconds in (0.12, 0.22, 0.32):
-            time.sleep(wait_seconds)
-            self.pacer.dispatch_tasks(config=config)
+        time.sleep(0.12)
+        self.pacer.dispatch_tasks(config=config)
 
         closed = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id

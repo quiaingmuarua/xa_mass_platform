@@ -113,23 +113,23 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void taskDrivenClosesThroughTheJavaPollingWorker()
+    void finitePrecomputedClosesThroughTheJavaPollingWorker()
             throws Exception {
         runWorkerDeliveryClosure(
-                "TASK_DRIVEN",
+                "FINITE_PRECOMPUTED",
                 TransportProfile.POLLING
         );
     }
 
     @Test
-    void itemDrivenClosesThroughWebSocketAndSocketAdapters()
+    void reusableDirectClosesThroughWebSocketAndSocketAdapters()
             throws Exception {
         runWorkerDeliveryClosure(
-                "ITEM_DRIVEN",
+                "REUSABLE_DIRECT",
                 TransportProfile.WEBSOCKET
         );
         runWorkerDeliveryClosure(
-                "ITEM_DRIVEN",
+                "REUSABLE_DIRECT",
                 TransportProfile.SOCKET
         );
     }
@@ -179,14 +179,10 @@ class RuntimeApiPythonIntegrationTest {
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, "ITEM_DRIVEN")
+                    taskRequest(taskId, workerGroupId, "REUSABLE_DIRECT")
             ).statusCode()).isEqualTo(201);
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks/" + taskId + "/approve",
-                    null
-            ).statusCode()).isEqualTo(200);
-
+            String firstMessageId = "property-message-1-" + suffix;
+            String secondMessageId = "property-message-2-" + suffix;
             String propertyRule = "{"
                     + "\"workerId\":{\"$eq\":\"" + workerId + "\"},"
                     + "\"worker.region\":{\"$eq\":\"cn-east\"},"
@@ -194,16 +190,22 @@ class RuntimeApiPythonIntegrationTest {
                     + "}";
             appendItemWithAllocationRule(
                     taskId,
-                    "property-message-1-" + suffix,
+                    firstMessageId,
                     propertyRule
             );
-            awaitStoredResult(taskId, "property-message-1-" + suffix);
             appendItemWithAllocationRule(
                     taskId,
-                    "property-message-2-" + suffix,
+                    secondMessageId,
                     propertyRule
             );
-            awaitStoredResult(taskId, "property-message-2-" + suffix);
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/approve",
+                    null
+            ).statusCode()).isEqualTo(200);
+
+            awaitStoredResult(taskId, firstMessageId);
+            awaitStoredResult(taskId, secondMessageId);
 
             assertThat(send(
                     "POST",
@@ -405,7 +407,11 @@ class RuntimeApiPythonIntegrationTest {
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
-                    taskRequest(demandTaskId, workerGroupId, "ITEM_DRIVEN")
+                    taskRequest(
+                            demandTaskId,
+                            workerGroupId,
+                            "REUSABLE_DIRECT"
+                    )
             ).statusCode()).isEqualTo(201);
             demandTaskCreated = true;
             assertThat(send(
@@ -654,7 +660,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private void runWorkerDeliveryClosure(
-            String taskType,
+            String taskProfile,
             TransportProfile transportProfile
     ) throws Exception {
         String suffix = UUID.randomUUID().toString();
@@ -695,28 +701,27 @@ class RuntimeApiPythonIntegrationTest {
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, taskType)
+                    taskRequest(taskId, workerGroupId, taskProfile)
             ).statusCode()).isEqualTo(201);
+            appendItem(
+                    taskId,
+                    firstMessageId,
+                    workerId,
+                    "REUSABLE_DIRECT".equals(taskProfile)
+            );
+            appendItem(
+                    taskId,
+                    secondMessageId,
+                    workerId,
+                    "REUSABLE_DIRECT".equals(taskProfile)
+            );
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/approve",
                     null
             ).statusCode()).isEqualTo(200);
 
-            appendItem(
-                    taskId,
-                    firstMessageId,
-                    workerId,
-                    "ITEM_DRIVEN".equals(taskType)
-            );
             awaitStoredResult(taskId, firstMessageId);
-
-            appendItem(
-                    taskId,
-                    secondMessageId,
-                    workerId,
-                    "ITEM_DRIVEN".equals(taskType)
-            );
             awaitStoredResult(taskId, secondMessageId);
 
             assertThat(send(
@@ -790,9 +795,9 @@ class RuntimeApiPythonIntegrationTest {
             String taskId,
             String messageId,
             String workerId,
-            boolean itemDriven
+            boolean directAllocation
     ) throws Exception {
-        String allocationRule = itemDriven
+        String allocationRule = directAllocation
                 ? ",\"allocationRule\":{\"workerId\":{\"$eq\":\""
                 + workerId + "\"}}"
                 : "";
@@ -1019,30 +1024,28 @@ class RuntimeApiPythonIntegrationTest {
     private String taskRequest(
             String taskId,
             String workerGroupId,
-            String taskType
+            String taskProfile
     ) {
-        String allocationRule = "TASK_DRIVEN".equals(taskType)
+        String allocationRule = "FINITE_PRECOMPUTED".equals(taskProfile)
                 ? "\"allocationRule\":{},"
                 : "";
         return """
                 {
                   "taskId": "%s",
                   "workerGroupId": "%s",
-                  "taskType": "%s",
+                  "profile": "%s",
                   %s
                   "config": {
                     "priority": "0",
                     "maximumCandidateWorkers": "1",
                     "maxRetryTimes": "3"
-                  },
-                  "emptyCloseAtMillis": %d
+                  }
                 }
                 """.formatted(
                 taskId,
                 workerGroupId,
-                taskType,
-                allocationRule,
-                System.currentTimeMillis() + 60_000
+                taskProfile,
+                allocationRule
         );
     }
 

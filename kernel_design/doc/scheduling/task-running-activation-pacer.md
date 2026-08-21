@@ -66,13 +66,14 @@ not directly move Task score; a later activation round observes it.
 ```text
 availableSlots = max(
   0,
-  runningTaskSoftLimit - countRunningVisibleTasks,
+  runningTaskSoftLimit - countRunningCapacityTasks,
 )
 ```
 
-`count_running_visible_tasks()` counts the complete `RUNNING_VISIBLE` band,
-including future hold/pause coordinates. Existing RUNNING Tasks are not
-demoted when the observed count exceeds the soft limit.
+`count_running_capacity_tasks()` counts `RUNNING_VISIBLE` members except the
+exact Kernel-private idle park. Public pause and other future holds remain
+counted. Existing RUNNING Tasks are not demoted when the observed count exceeds
+the soft limit.
 
 The score owner first selects a bounded due observation window in ascending
 `timeSlot` order. It then orders only those observed members by:
@@ -174,7 +175,7 @@ Task state
 ```
 
 Future quota, tenant, environment, or resource-estimate decisions may replace
-or compose the System policy only for a named supported TaskType scenario.
+or compose the System policy only for a named supported workload.
 Task-specific business start conditions follow the same rule. This is not an
 open policy-combination surface: every added decision needs a concrete caller,
 evidence, cutpoint, and vertical scenario proof. It must remain bounded over

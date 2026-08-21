@@ -6,7 +6,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
@@ -28,16 +28,13 @@ public final class TaskDataService {
 
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
-    private final TaskDispatchWakeSink dispatchWake;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
-            TaskResourceCatalog taskCatalog,
-            TaskDispatchWakeSink dispatchWake
+            TaskResourceCatalog taskCatalog
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
-        this.dispatchWake = dispatchWake;
     }
 
     public TaskItemsAppendResponse appendTaskItems(
@@ -101,19 +98,7 @@ public final class TaskDataService {
             if (!validItems.isEmpty()) {
                 results.putAll(taskRuntime.appendItems(taskId, validItems));
             }
-            Map<String, TaskItemAppendResult> ordered =
-                    orderedResults(latest.keySet(), results);
-            if (ordered.values().stream().anyMatch(
-                    result -> result.status()
-                            == TaskItemAppendStatus.APPENDED
-            )) {
-                try {
-                    dispatchWake.offer(taskId);
-                } catch (RuntimeException ignored) {
-                    // A wake hint is never part of append acceptance.
-                }
-            }
-            return ordered;
+            return orderedResults(latest.keySet(), results);
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
@@ -167,17 +152,18 @@ public final class TaskDataService {
             TaskDescriptor descriptor,
             Map<String, Object> rule
     ) {
-        if (descriptor.taskType() == TaskType.TASK_DRIVEN) {
+        if (descriptor.workerAllocationMechanism()
+                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
             if (rule != null) {
                 throw new IllegalArgumentException(
-                        "TASK_DRIVEN forbids TaskItem allocationRule"
+                        "PRECOMPUTED_TASK_RULE forbids TaskItem allocationRule"
                 );
             }
             return;
         }
         if (rule == null) {
             throw new IllegalArgumentException(
-                    "ITEM_DRIVEN requires a TaskItem allocationRule"
+                    "DIRECT_ITEM_RULE requires a TaskItem allocationRule"
             );
         }
     }

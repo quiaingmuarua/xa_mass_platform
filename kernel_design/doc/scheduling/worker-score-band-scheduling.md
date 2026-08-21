@@ -375,7 +375,7 @@ lower <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form preserves the bounded caller-supplied Worker universe and is used
-after ITEM_DRIVEN extracts request-local WorkerIds from its allocation rule.
+after DIRECT_ITEM_RULE extracts request-local WorkerIds from its allocation rule.
 Assignment-dispatch may pass a Worker into bounded matching only after an exact
 observed-score lease succeeds.
 
@@ -998,13 +998,13 @@ Worker score-band participates in assignment-dispatch like this:
 
 ```text
 task score acquires due task candidate
-assignment-dispatch builds WorkerCandidateRequests from the TaskType-owned rule location
+assignment-dispatch builds WorkerCandidateRequests from the WorkerAllocationMechanism-owned rule location
 cache warming scans HOT; DIRECT uses one bounded Group HOT query for `{}` or
 point-observes rule-supplied Worker ids
 candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
 allocation pacer may publish Task-rule results into CandidateWorkerCache
 PRECOMPUTED acquisition exact-validates/renews and rematches Task rules
-Task dispatch resolves the TaskType acquisition path
+Task dispatch resolves the WorkerAllocationMechanism acquisition path
 and keeps CandidateId-to-Item bindings
 TaskRuntime loads the selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score

@@ -78,27 +78,28 @@ Auxiliary Server direct path
   -> no Task, TaskItem, lease, or Result Routing truth
 ```
 
-The public TaskType split is fixed:
+The public WorkerAllocationMechanism split is fixed:
 
 ```text
-TASK_DRIVEN = Task rule + PRECOMPUTED Worker acquisition + candidate cache
-ITEM_DRIVEN = TaskItem rule + DIRECT Worker acquisition + no candidate cache
+PRECOMPUTED_TASK_RULE = Task rule + PRECOMPUTED Worker acquisition + candidate cache
+DIRECT_ITEM_RULE = TaskItem rule + DIRECT Worker acquisition + no candidate cache
 ```
 
-Both TaskTypes use the same persisted empty-close threshold and bounded empty
-recheck policy; TaskType selects Worker acquisition, not lifecycle finality.
-TaskType also establishes no ordering between Tasks: priority, latency target,
+`TaskIdleDisposition` independently selects immediate `CLOSE_WHEN_IDLE` or the
+Kernel-private `PARK_WHEN_IDLE` coordinate. WorkerAllocationMechanism establishes
+no ordering between Tasks: priority, latency target,
 RPC versus batch shape, arrival density, and Worker contention policy are
 orthogonal scheduling inputs or workload properties.
 
 This is a summary of the canonical
-[Task Type And Allocation Rule](../resource-model/task-resource-model.md#task-type-and-allocation-rule)
-contract. These dimensions are not independently selectable policies.
+[Task Resource Model](../resource-model/task-resource-model.md) contract.
+Server exposes only the finite `FINITE_PRECOMPUTED` and `REUSABLE_DIRECT`
+profiles; it does not expose an arbitrary mechanism matrix.
 
-TaskType is the supported scenario boundary. Policy follows that scenario; it
-does not define a public Cartesian product of cache, acquisition, trigger,
-termination, fairness, or retry modes. Scheduling tests therefore prove the
-`TASK_DRIVEN` and `ITEM_DRIVEN` vertical paths plus owner-local primitives,
+WorkerAllocationMechanism is the allocation boundary. It does not define a
+public Cartesian product of cache, acquisition, trigger, fairness, or retry
+modes. Scheduling tests therefore prove the
+`PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` vertical paths plus owner-local primitives,
 instead of manufacturing unsupported policy combinations.
 
 The score axes and bounded runtime handoffs provide liveness. Events may provide
@@ -132,7 +133,7 @@ CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
 CandidateWarmupSchedule
-  owns disposable TASK_DRIVEN cache-replenishment hints only; it is not Task
+  owns disposable PRECOMPUTED_TASK_RULE cache-replenishment hints only; it is not Task
   score, assignment, or liveness truth
 
 TaskItemDispatcher
@@ -189,25 +190,24 @@ Worker Delivery Dispatch
 | Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
-| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliveryCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; PRECOMPUTED_TASK_RULE has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
+| Task dispatch | Implemented with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, immediate idle close or private idle park, and DeliveryCommand append; both allocation mechanisms have deterministic Redis proof and DIRECT_ITEM_RULE proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
-Both TaskTypes also have cross-process Redis E2E proof from Java control and
+Both WorkerAllocationMechanisms also have cross-process Redis E2E proof from Java control and
 Task data APIs through Python scheduling and the Java Server Worker Delivery
-API. `TASK_DRIVEN` uses Worker Core's polling transport;
-`ITEM_DRIVEN` uses independent Netty WebSocket/Socket Adapter endpoints and
+API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transport;
+`DIRECT_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
 the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
 lease release. Java controllers use the same Kernel owner contracts as the
 Python executable spec; Server assembly
 chooses Python HTTP or Java Redis providers per operation.
-Additional Redis proofs cover
-TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck
-followed by append, shared explicit threshold close, and an external explicit
-close request. A separate hard-deadline scanner remains deferred.
+Additional Redis proofs cover immediate idle close, private idle park followed
+by scheduling-aware Task Call submission, RUNNING capacity exclusion, and an
+external explicit close request.
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second

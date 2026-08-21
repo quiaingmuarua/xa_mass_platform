@@ -22,27 +22,26 @@ Assignment-dispatch keeps three independently paced mechanisms:
 | --- | --- | --- |
 | RUNNING activation | Which ADMISSION Tasks pass Task and System admission policy? | `ADMISSION_VISIBLE -> RUNNING_VISIBLE` transition |
 | Worker allocation | Which stable RUNNING Task rules should have candidates prefetched? | Expiring CandidateWorker cache evidence |
-| Task dispatch | Does a RUNNING Task dispatch Items or advance empty recheck? | Claimed Items, `DeliveryCommand` values, or Task empty-count transition |
+| Task dispatch | Does a RUNNING Task dispatch Items, idle-park, or close? | Claimed Items, `DeliveryCommand` values, or exact Task score transition |
 
 The mechanisms have different cadence, cost, and policy inputs. They do not
 share a transaction, lock, or assignment lifecycle object. Candidate warming
 uses a disposable owner-local hint schedule; it does not reuse Task score as a
 second Pacer cursor.
 
-## Task Type Profiles
+## Worker Allocation Mechanisms
 
-The caller selects one `TaskType`. The authoritative rule owner, Worker
+The caller selects one `WorkerAllocationMechanism`. The authoritative rule owner, Worker
 acquisition, and candidate-cache matrix is defined by the
-[Task Resource Model](../resource-model/task-resource-model.md#task-type-and-allocation-rule).
+[Task Resource Model](../resource-model/task-resource-model.md#worker-allocation).
 
 `ResolvedTaskSchedulingProfile` is a non-persisted derivation of the
-Worker-acquisition contract. Empty close is shared lifecycle policy derived
-from `emptyCloseAtMillis`, not from the profile or TaskType. The profile is not
-an external policy registry, and callers cannot independently select cache,
-warmer, rule-owner, or acquisition flags.
+Worker-acquisition contract. Idle disposition is the separate persisted
+`TaskIdleDisposition`; it does not alter rule owner, cache, warmer or
+acquisition strategy.
 
-The profile does not assign priority. `TASK_DRIVEN` is not above or below
-`ITEM_DRIVEN`, and neither type implies RPC, batch, latency, or preemption
+The profile does not assign priority. `PRECOMPUTED_TASK_RULE` is not above or below
+`DIRECT_ITEM_RULE`, and neither type implies RPC, batch, latency, or preemption
 semantics. Ordering comes only from explicit Task or candidate-request priority
 handled by the corresponding scheduling policy.
 
@@ -182,7 +181,7 @@ does not own rules, limits, Worker validity, lifecycle truth, or fallback.
 DIRECT Item results never enter this cache.
 
 `CandidateWarmupSchedule` is a separate derived ZSET of `taskId -> dueMillis`.
-It is only a cache-replenishment hint. A successful TASK_DRIVEN activation and
+It is only a cache-replenishment hint. A successful PRECOMPUTED_TASK_RULE activation and
 subsequent PRECOMPUTED cache consumption can recreate it; therefore it is not a
 Task state, assignment record, or durable liveness truth.
 
@@ -193,7 +192,7 @@ Allocation cache warming:
 ```text
 due CandidateWarmupSchedule TaskIds
   -> batch-read Task score and retain RUNNING/non-hard-paused suffix-zero Tasks
-  -> load descriptors and retain taskType=TASK_DRIVEN
+  -> load descriptors and retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> requestedCount = maximumCandidateWorkers - cachedCount
   -> acquire_hot_pool_candidates
   -> exact lease and match HOT Workers
@@ -204,11 +203,11 @@ due CandidateWarmupSchedule TaskIds
 Task dispatch:
 
 ```text
-dispatch-visible RUNNING Tasks
-  -> suffix 0: observe due Item scores and load existing records
+dispatch-visible RUNNING suffix-zero Tasks
+  -> observe due Item scores and load existing records
   -> TaskItemDispatcher
-     -> TASK_DRIVEN: one TaskId PRECOMPUTED request
-     -> ITEM_DRIVEN: one messageId DIRECT request per Item
+     -> PRECOMPUTED_TASK_RULE: one TaskId PRECOMPUTED request
+     -> DIRECT_ITEM_RULE: one messageId DIRECT request per Item
      -> preserve CandidateId-to-messageId binding
      -> exact claim only Worker-backed Items
      -> encode one DeliveryCommand in each DeliveryCommand
@@ -216,13 +215,13 @@ dispatch-visible RUNNING Tasks
   -> append each group to its Adapter-partitioned sparse mailbox
   -> same-band reschedule while preserving suffix 0
 
-empty-recheck RUNNING Tasks
-  -> suffix > 0, or suffix 0 with no dispatchable Item
+no claimable Item
   -> query the complete ACTIVE Item band
-  -> ACTIVE exists: exact reset suffix to 0; TASK_DRIVEN emits warmup hint
-  -> no ACTIVE: increment empty count and apply linear delay
-  -> at max: close only when emptyCloseAtMillis is due
-             otherwise remain low-frequency RUNNING
+  -> ACTIVE exists: ordinary same-band pacing
+  -> no ACTIVE and CLOSE_WHEN_IDLE: exact terminal close
+  -> no ACTIVE and PARK_WHEN_IDLE: exact private idle park
+  -> after a successful park, recheck ACTIVE once and exact-release the park
+     if an append raced with it
 ```
 
 Assignment Dispatch ends at Adapter mailbox publication. `APPENDED` and
@@ -234,7 +233,7 @@ checks, exact result fences, and natural expiry preserve owner truth. Mailbox
 consume, execute-before recheck, protocol forwarding, Worker invocation, and
 DeliveryReport append belong to Worker Delivery Dispatch.
 
-`taskType` is fixed by the Task. The two rule locations cannot be mixed, and
+`workerAllocationMechanism` is fixed by the Task. The two rule locations cannot be mixed, and
 the dispatch round does not infer type or strategy from Item contents.
 `workerGroupId` always comes from `TaskDescriptor`.
 
@@ -246,10 +245,9 @@ the dispatch round does not infer type or strategy from Item contents.
   RUNNING/non-hard-pause validation; it never uses it as a cursor or mutates it.
 - Candidate acquisition owns Worker observation, exact lease, and rematch; it
   does not own cache publication.
-- `TaskDispatchPacer` owns bounded RUNNING discovery, suffix lane routing,
-  mailbox publication, routine same-band rescheduling, and exact empty-count
-  changes.
-- `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
+- `TaskDispatchPacer` owns bounded RUNNING discovery, mailbox publication,
+  routine same-band rescheduling, and exact idle close or private park/unpark.
+- `TaskItemDispatcher` owns one RUNNING Task's Item observation, candidate
   acquisition, exact Item claim, and DeliveryCommand construction. It has no
   Task score or mailbox-publication authority.
 - Neither `TaskDispatchPacer` nor `TaskItemDispatcher` accesses
@@ -275,15 +273,13 @@ the dispatch round does not infer type or strategy from Item contents.
   preference ranking, stronger cardinality planning, quotas, and fairness are
   deferred policies. Point Property Indexes do not discover or intersect
   candidate sets.
-- TaskItem append may submit a bounded, process-local, taskId-coalesced wake
-  hint. Task Dispatch consumes hints before its ordinary RUNNING scan and may
-  exact-release only a future RUNNING empty-recheck hold whose suffix is
-  positive. READY, terminal, suffix-zero, already-due, and stale evidence are
-  no-ops. Queue overflow, HTTP failure, process restart, and a dropped hint are
-  allowed; periodic RUNNING scans remain the correctness and liveness path.
-- Both TaskTypes share the persisted empty-close threshold and System Policy
-  recheck count/cadence. A separate hard-deadline scanner remains deferred;
-  external owners may still submit stronger close evidence explicitly.
+- Ordinary TaskItem append does not alter Task scheduling. Reusable RPC and
+  Task Batch flows call the bounded Kernel `TaskCallItemSubmission`, which may
+  exact-release only the recognized private idle park before append and
+  performs one bounded post-append repair. Released Tasks use the ordinary due
+  scan; there is no urgent selection path.
+- Idle disposition is independent of Worker allocation. External owners may
+  still close either profile explicitly.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 
@@ -294,7 +290,7 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not add PRECOMPUTED-miss DIRECT fallback.
 - Do not expose acquisition strategy, cache flags, or rule owner as independent
   Task configuration.
-- Do not add a TaskType for a parameter variation or an imagined policy
+- Do not add a WorkerAllocationMechanism for a parameter variation or an imagined policy
   combination; require a named workload and vertical executable proof.
 - Do not merge Task and Item allocation rules implicitly.
 - Do not add a cross-CandidateId requested count or cross-WorkerGroup call.

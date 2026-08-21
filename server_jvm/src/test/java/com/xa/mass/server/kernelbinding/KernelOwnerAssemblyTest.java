@@ -11,7 +11,8 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
@@ -127,14 +128,14 @@ class KernelOwnerAssemblyTest {
         return new TaskDescriptor(
                 "task-1",
                 "group-1",
-                TaskType.TASK_DRIVEN,
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of(),
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ),
-                0L
+                )
         );
     }
 }

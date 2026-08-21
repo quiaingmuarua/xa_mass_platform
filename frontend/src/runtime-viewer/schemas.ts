@@ -31,7 +31,8 @@ const taskViewSchema = z
   .object({
     taskId: z.string().min(1),
     workerGroupId: z.string().min(1),
-    taskType: z.enum(["TASK_DRIVEN", "ITEM_DRIVEN"]),
+    workerAllocationMechanism: z.enum(["PRECOMPUTED_TASK_RULE", "DIRECT_ITEM_RULE"]),
+    idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
     allocationRule: attributesSchema.nullable(),
     config: z
       .object({
@@ -39,8 +40,7 @@ const taskViewSchema = z
         maximumCandidateWorkers: z.string().regex(/^\d+$/),
         maxRetryTimes: z.string().regex(/^\d+$/)
       })
-      .strict(),
-    emptyCloseAtMillis: z.number().int().nonnegative().nullable()
+      .strict()
   })
   .strict();
 

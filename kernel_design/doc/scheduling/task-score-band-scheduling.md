@@ -53,7 +53,7 @@ ADMISSION_VISIBLE
   approved and eligible for Task/System admission policy
 
 RUNNING_VISIBLE
-  admitted to periodic dispatch and empty recheck
+  admitted to periodic dispatch, explicitly paused, or privately idle-parked
 
 TERMINAL
   permanently closed
@@ -77,13 +77,11 @@ ADMISSION_VISIBLE
   Task priority in 0..99; lower values run first inside one bounded due window
 
 RUNNING_VISIBLE
-  consecutive confirmed-empty recheck count
-  0 means ordinary TaskItem dispatch lane
-  1..99 means empty recheck lane
+  fixed at 0
 ```
 
-RUNNING suffix is not TaskItem retry budget. TaskItem retry truth belongs to
-TaskItem score. It is also not Worker capacity, fairness, or pause state.
+RUNNING suffix has no retry, idle, capacity, fairness, or pause meaning.
+TaskItem retry truth belongs to TaskItem score.
 
 ## Core Surface
 
@@ -91,7 +89,7 @@ Read operations:
 
 ```python
 get_score_states(task_ids)
-count_running_visible_tasks()
+count_running_capacity_tasks()
 acquire_band_task_candidates(band, before_time_millis, limit)
 acquire_dispatch_work_tasks(limit)
 ```
@@ -103,9 +101,11 @@ initialize_score(task_id, suffix, lease_duration_millis)
 rewrite_score(task_id, expected_band, target_time_millis,
               target_band=None, target_suffix=None)
 rewrite_same_band_time_millis(task_id, expected_band, target_time_millis)
-rewrite_observed_same_band_suffix(task_id, observed_score,
-                                  target_time_millis, suffix_delta)
+park_observed_idle_task(task_id, observed_score)
+release_observed_idle_task(task_id, observed_park_score,
+                           release_time_millis)
 close_score(task_id, terminal_score)
+close_observed_score(task_id, observed_score, terminal_score)
 release_observed_score_hold(task_id, observed_hold_score)
 ```
 
@@ -182,40 +182,28 @@ nextTime = roundNow + oneSlot + priorityBucket * 1000ms
 This reason-independent rotation prevents rejected due heads from permanently
 hiding later Tasks without lowering priority or promising global fairness.
 
-## Running Dispatch And Empty Recheck
+## Running Dispatch And Idle Disposition
 
-`TaskDispatchPacer` acquires due RUNNING Tasks and decodes the suffix:
-
-```text
-suffix = 0
-  -> ordinary Item observation, Worker acquisition, Item claim, DeliveryCommand
-
-suffix > 0
-  -> no Worker acquisition or Item claim
-  -> complete ACTIVE-band existence query
-```
-
-Any ACTIVE Item resets a positive suffix to zero using exact observed-score
-CAS. Confirmed emptiness increments suffix and applies linear delay:
+`TaskDispatchPacer` acquires due RUNNING suffix-zero Tasks and observes due
+Items. When no claimable Item remains, it queries the complete ACTIVE Item band:
 
 ```text
-nextSuffix = currentSuffix + 1
-nextTime = now + nextSuffix * emptyRecheckInterval
+ACTIVE exists
+  -> ordinary same-band pacing, suffix remains 0
+
+no ACTIVE and CLOSE_WHEN_IDLE
+  -> exact observed-score terminal close
+
+no ACTIVE and PARK_WHEN_IDLE
+  -> exact observed-score move to the private idle park
 ```
 
-At the configured maximum:
-
-```text
-now >= emptyCloseAtMillis -> terminal close
-now < emptyCloseAtMillis  -> remain RUNNING and continue bounded checks
-```
-
-This close rule is shared by both TaskTypes. The threshold is consulted only
-after complete ACTIVE-band emptiness and the maximum count are established; it
-is not a hard deadline.
-
-Ordinary suffix-zero dispatch pacing uses same-band absolute-time rewrite and
-preserves suffix zero.
+The idle park is RUNNING at `MAX_TIME_SLOT - 1`, suffix `0`. It is excluded
+from due scans and from `count_running_capacity_tasks()`, but remains distinct
+from the public pause coordinate at `MAX_TIME_SLOT`. A successful park receives
+one bounded post-check; if a concurrent Task Call append created an ACTIVE
+Item, the exact park is released. Neither path creates a cross-owner
+transaction.
 
 ## Transition Rules
 
@@ -231,20 +219,13 @@ preserves suffix unless the owner supplies a target suffix.
 It preserves stored suffix. It is appropriate for routine pacing where a newer
 same-band score should win by monotonic time.
 
-### Observed Suffix Rewrite
+### Private Idle Park
 
-`rewrite_observed_same_band_suffix` requires:
-
-```text
-storedScore == observedScore
-suffixDelta != 0
-targetTimeSlot > observedTimeSlot
-0 <= observedSuffix + suffixDelta <= 99
-```
-
-Positive delta records another empty observation. Negative delta resets a
-count when ACTIVE Item evidence appears. Exact CAS prevents stale rounds from
-overwriting pause, close, or newer recheck evidence.
+`park_observed_idle_task` requires the complete observed RUNNING suffix-zero
+score and derives the private park coordinate internally.
+`release_observed_idle_task` accepts only that exact park score and derives a
+due RUNNING score from an owner-approved release time. Generic rewrites and
+generic hold release cannot mint or release the private park.
 
 ### Terminal Close
 
@@ -252,7 +233,12 @@ overwriting pause, close, or newer recheck evidence.
 terminal score is an idempotent no-op. The public `KernelApplication.close_task`
 chooses the terminal score internally and returns only `TaskCloseResult`.
 
-Explicit close applies to both Task types and every positive band. It does not
+`close_observed_score` additionally requires complete observed-score equality.
+Task Dispatch uses this narrower operation when idle evidence belongs
+to one bounded round; manual close continues to use `close_score`.
+
+Explicit close applies to both Worker allocation mechanisms and every positive
+band. It does not
 roll back Items, claims, DeliveryCommands, or late results. Those facts cannot
 reopen Task score.
 
@@ -306,7 +292,8 @@ is read or written by Task score Lua.
 | Task creation | initialize PRE_REVIEW and exact release of creation hold |
 | Task approval | PRE_REVIEW -> ADMISSION_VISIBLE, suffix = Task priority |
 | Running activation | ADMISSION_VISIBLE -> RUNNING_VISIBLE, suffix 0; reason-independent same-band recheck for every observed non-transitioned Task |
-| Task dispatch | RUNNING same-band pacing, exact empty-count increment/reset, shared threshold-based empty close |
+| Task dispatch | RUNNING same-band pacing, exact idle park or exact idle close |
+| Task Call submission | exact release of the recognized idle park around bounded Item append |
 | Explicit lifecycle command | close any positive band; exact hold release when authorized |
 | Candidate warmer | none |
 | Worker/runtime/transport/result routing | none |
@@ -314,14 +301,14 @@ is read or written by Task score Lua.
 ## Failure And Concurrency
 
 - Range rewrites lose when band/time no longer matches.
-- Observed suffix rewrites lose when the full score fence changed.
+- Observed park, release and close lose when the full score fence changed.
 - Terminal close is irreversible and takes precedence over later scheduling
   rounds.
 - A Task discovered before pause/close may finish its already-bounded Item and
   DeliveryCommand work; the later score rewrite cannot reopen terminal state.
-- Before `emptyCloseAtMillis`, an empty Task remains RUNNING and continues to
-  consume the current soft-limit count. External close evidence may terminate
-  either TaskType earlier.
+- A parked Task remains RUNNING but stays outside the due dispatch range and
+  does not consume RUNNING admission soft-limit capacity. Explicit close may
+  still terminate it.
 
 ## Guardrails
 
@@ -329,7 +316,7 @@ is read or written by Task score Lua.
 - Do not use Task score for Item retry, Worker lease, candidate cache, or
   result truth.
 - Do not make candidate warming a Task score writer.
-- Do not decrement RUNNING suffix as a remaining budget.
+- Keep RUNNING suffix fixed at zero.
 - Do not classify only-due absence as Task emptiness; query the full ACTIVE Item
   band.
 - Do not reopen terminal Tasks after append or late result evidence.

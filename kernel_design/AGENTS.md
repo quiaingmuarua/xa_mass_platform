@@ -99,8 +99,13 @@ record merely to make a mechanical signature look smaller.
   new truth owners.
 - Task admission limits and fairness are best-effort policy unless a stronger
   invariant is explicitly approved.
-- `TASK_DRIVEN` and `ITEM_DRIVEN` are acquisition profiles. Do not introduce
-  orthogonal combinations without a real production scenario and proof.
+- `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` are Worker allocation
+  mechanisms. `CLOSE_WHEN_IDLE` and `PARK_WHEN_IDLE` are independent idle
+  dispositions. The public Server may expose only finite, proved combinations;
+  do not turn the Kernel descriptor into an API profile enum.
+- Idle park is a private RUNNING score coordinate. Ordinary Item append never
+  wakes it; only the bounded direct-item Task Call submission may exact-unpark
+  it before append and perform one post-append repair.
 - Task close remains a policy over owner truth; do not add strong cross-owner
   consistency solely to eliminate bounded recheck.
 

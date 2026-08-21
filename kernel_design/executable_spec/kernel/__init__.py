@@ -34,7 +34,6 @@ from .worker_runtime import (
     WorkerRuntimeStatus,
 )
 from .task_runtime import (
-    TaskType,
     ItemPriority,
     MessageId,
     TaskCreationResult,
@@ -45,6 +44,8 @@ from .task_runtime import (
     TaskItemAppendStatus,
     TaskResourceCatalog,
     TaskRuntime,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
 )
 from .task_item_score_band import (
     RemainingBudget,
@@ -118,7 +119,8 @@ __all__ = [
     "WorkerRuntimeStatus",
     "TaskCreationResult",
     "TaskCreationStatus",
-    "TaskType",
+    "TaskIdleDisposition",
+    "WorkerAllocationMechanism",
     "TaskDescriptor",
     "ItemPriority",
     "MessageId",

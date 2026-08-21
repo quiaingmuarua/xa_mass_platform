@@ -2,6 +2,7 @@ package com.xa.mass.server.kernelbinding;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
@@ -125,10 +126,10 @@ public class KernelOwnerAssemblyConfiguration {
     }
 
     @Bean
-    TaskDispatchWakeCommands taskDispatchWakeCommands(
+    TaskCallItemSubmission taskCallItemSubmission(
             PythonKernelHttpTransport transport
     ) {
-        return new HttpTaskDispatchWakeCommands(transport);
+        return new HttpTaskCallItemSubmission(transport);
     }
 
 }

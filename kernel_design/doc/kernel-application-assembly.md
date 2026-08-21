@@ -44,7 +44,7 @@ KernelApplication
 create_task
 approve_task
 close_task
-wake_task_dispatch(taskIds)
+submit_task_call_items(taskId, items)
 
 WorkerCommandConsumerClient
 consume_worker_command(endpointManagerId, workerId)
@@ -67,10 +67,11 @@ Python HTTP routes. The Java Server Worker Delivery application
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and the Task-scoped
 `load_task_item_success_results` likewise remain the Python mechanism oracle.
-The public Task data HTTP operations are
-orchestrated by Java `TaskDataService` and delegated to the Java
-`RedisTaskRuntime` provider through the same owner contract; Python exposes no
-TaskItem append or result-query route.
+The public ordinary Task data HTTP operations are orchestrated by Java
+`TaskDataService` and delegated to the Java `RedisTaskRuntime` provider through
+the same owner contract. Python exposes only the internal bounded
+`/tasks/{taskId}:submit-call-items` combination command; it exposes no public
+TaskItem data or result-query route.
 
 The JVM incremental assembly is explicit per operation:
 
@@ -82,8 +83,8 @@ Worker upsert score operations      -> Java Redis WorkerScoreCore provider
 Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
-TaskItem append / result load   -> Java Redis TaskRuntime provider
-Task Dispatch wake hint         -> Python HTTP application command
+ordinary TaskItem append / result load -> Java Redis TaskRuntime provider
+Task Call Item submission       -> Python HTTP application command
 DeliveryCommand offer / consume   -> Java Redis WorkerCommandRuntime provider
 DeliveryReport append               -> Java Redis WorkerResultRuntime provider
 other score/candidate/scheduling -> no Server provider
@@ -124,23 +125,31 @@ and current score band, then requests `PRE_REVIEW -> ADMISSION_VISIBLE`, using
 the Task priority as the admission suffix and the approval time as the new lane
 coordinate. It
 returns `TaskApprovalResult` without exposing score evidence.
-`close_task` is the common explicit termination command for both Task types and
+`close_task` is the common explicit termination command for both allocation
+mechanisms and
 all positive bands. It returns `TaskCloseResult`, chooses terminal score
 internally, is idempotent after terminal, and does not retract existing Item,
 DeliveryCommand, or result evidence.
-The caller owns the close decision and its business evidence. For
-`ITEM_DRIVEN`, a server or other control-plane owner may call this command from
-deadline or completion evidence; `KernelApplication` does not infer completion
-from an empty Item set.
-Java TaskData append enforces only the stable TaskType location contract:
-`TASK_DRIVEN` forbids Item rules and `ITEM_DRIVEN` requires a non-empty Item
-rule. It preserves that JSON-compatible rule as opaque scheduling input. The
+The caller owns an explicit close decision and its business evidence. Task
+Dispatch independently applies the persisted `TaskIdleDisposition` only after
+proving that the complete ACTIVE Item band is empty: it either exact-closes the
+Task or exact-parks it at the Kernel-private idle coordinate.
+Java ordinary TaskData append enforces only the stable allocation-rule location
+contract: `PRECOMPUTED_TASK_RULE` forbids Item rules and
+`DIRECT_ITEM_RULE` requires a non-empty Item rule. It preserves that
+JSON-compatible rule as opaque scheduling input. The
 Python matcher owns the evolving rule DSL, including candidate derivation,
 operators, and fail-closed behavior. Item rules cannot change WorkerGroup.
+Ordinary append does not alter Task score. Reusable RPC and Task Batch flows use
+the bounded Kernel `TaskCallItemSubmission`: it accepts only suffix-zero
+RUNNING `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Tasks, exact-releases the private
+idle park when needed, appends at most 100 Items, and performs one bounded
+post-append activation repair. It does not create an urgent scheduling lane.
 
-The assembly does not accept acquisition strategy, cache participation, or
-rule-owner configuration. Scheduling derives those decisions from the two
-fixed Task types through the internal task scheduling profile resolver.
+The Kernel descriptor stores allocation mechanism and idle disposition as
+orthogonal facts. The finite public Server `TaskProfile` maps to the two
+currently supported combinations; the Kernel does not own that API profile or
+an internal profile resolver.
 
 Candidate matching reads canonical Worker and Platform Properties only after a
 bounded candidate source has supplied Worker IDs. DIRECT obtains candidates
@@ -206,8 +215,8 @@ limits may total at most 100. `probeExcludedEndpointManagerIds` accepts zero to
 100 unique non-empty ids; the default excludes `system-polling`. Unknown
 fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
-scan, lease, claim, score, lane, ADMISSION priority-recheck step, maximum
-empty-recheck count, and empty-recheck interval remain internal constants.
+scan, lease, claim, score, lane, and ADMISSION priority-recheck step remain
+internal constants.
 `systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
 slice; it defaults to `100` and must be a positive integer. It is a soft
 admission bound, not an atomic permit or hard capacity promise.
@@ -263,7 +272,7 @@ WorkerServiceabilityResultApplication
   -> Adapter route-snapshot Result loop
 
 WorkerServiceabilityDispatchApplication
-  -> configured-Group stale-score discovery loop
+  -> due-Task-derived Group stale-score discovery loop
 ```
 
 The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
@@ -280,14 +289,12 @@ queues. An ADMISSION Task with a due Item may enter RUNNING before any Worker
 is registered. Worker allocation starts only after that transition.
 
 The composition root also installs one Redis-backed
-`CandidateWarmupSchedule`. TASK_DRIVEN activation and PRECOMPUTED dispatch emit
+`CandidateWarmupSchedule`. PRECOMPUTED_TASK_RULE activation and PRECOMPUTED dispatch emit
 derived warmup hints; the worker-allocation loop consumes those hints and never
 uses Task score as its own cursor or writer. It only batch-validates current
 RUNNING/non-hard-pause suffix-zero state. Task dispatch owns RUNNING same-band
-pacing, exact empty-count increment/reset, and shared threshold-based empty
-close. `KernelApplication.create_task` resolves omitted `emptyCloseAtMillis` to
-zero for TASK_DRIVEN or creation time plus three days for ITEM_DRIVEN before
-calling TaskRuntime.
+pacing, exact private idle park/unpark, and exact idle close. Task creation does
+not accept or synthesize an idle timestamp.
 
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one
@@ -309,21 +316,19 @@ claim a blocked round stopped. A timeout is reported rather than hidden.
 
 The application lifecycle owns timers and process coordination only. It does
 not construct policy inside a pacer, combine rounds into one sequential loop,
-own score or runtime truth, or consume DeliveryCommand mailboxes. Its bounded
-Task Dispatch wake inbox is optional acceleration: it coalesces taskIds and
-may ask Task Dispatch to exact-release an existing future empty-recheck hold.
-It does not make append acceptance or scheduling liveness depend on an event.
+own score or runtime truth, or consume DeliveryCommand mailboxes. Task Call
+submission is a synchronous bounded application command, not a background
+process, inbox, or second Task selector.
 
 ## Process-Boundary E2E Proof
 
-Cross-process integration proves both `TASK_DRIVEN` and `ITEM_DRIVEN` through
+Cross-process integration proves both `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` through
 the current external process boundaries:
 
 ```text
 Java Worker resource API -> Java Redis owner providers
 Java Task control API -> Python KernelApplication
-  -> Java TaskData append
-  -> optional HTTP Task Dispatch wake hint
+  -> ordinary Java TaskData append, or bounded Python Task Call submission
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
   -> Java polling Worker or Netty WebSocket/Socket Adapter instance + Worker
@@ -338,8 +343,8 @@ The proof starts Worker resource and Task-control commands at the Java API.
 Worker declarations go directly to the Java Redis providers; only Task control
 crosses the Python Kernel Task Control API. It then appends TaskItems through
 Java TaskData and uses the Java Server's Worker Delivery owner providers.
-`TASK_DRIVEN` polling
-calls the point HTTP API directly. `ITEM_DRIVEN` uses configured WebSocket
+`PRECOMPUTED_TASK_RULE` polling
+calls the point HTTP API directly. `DIRECT_ITEM_RULE` uses configured WebSocket
 or Socket Adapter instances, each of which still calls the same batch HTTP
 contract through loopback. The WorkerGroup Point RPC path holds one
 asynchronous HTTP waiter while a shared Java virtual thread probes one
@@ -350,11 +355,10 @@ remaining message IDs together on each polling round. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
 for resource declaration: score read and missing-score initialization.
-Separate Redis proofs cover TaskData Item-score
-initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
-release, ITEM_DRIVEN future-threshold empty recheck followed by append and
-dispatch, shared explicit threshold close, and public close remaining
-terminal.
+Separate Redis proofs cover TaskData Item-score initialization,
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` releasing RUNNING soft-limit capacity,
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` exact park/unpark followed by dispatch, and
+explicit public close remaining terminal.
 
 ## External Hosts
 

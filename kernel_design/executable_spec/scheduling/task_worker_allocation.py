@@ -13,6 +13,7 @@ from ..kernel.assignment_dispatch_runtime import (
 from ..kernel.task_runtime import (
     TaskDescriptor,
     TaskResourceCatalog,
+    WorkerAllocationMechanism,
 )
 from ..kernel.task_score_band import (
     TaskId,
@@ -26,7 +27,6 @@ from .worker_candidate import (
     WorkerCandidateAcquisition,
     WorkerCandidateRequest,
 )
-from .task_scheduling_profile import resolve_task_scheduling_profile
 
 
 @dataclass(frozen=True)
@@ -98,9 +98,8 @@ class TaskWorkerAllocationPacer:
             for task_id in task_ids
             if (
                 (descriptor := task_descriptors.get(task_id)) is not None
-                and resolve_task_scheduling_profile(
-                    descriptor.task_type
-                ).candidate_precomputation_enabled
+                and descriptor.worker_allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
             )
         )
         candidate_worker_counts = (

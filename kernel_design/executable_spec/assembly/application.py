@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from threading import Lock
 from time import time_ns
 from typing import Any
 
 from ..scheduling import (
+    TaskCallSubmissionResult,
     TaskDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
@@ -20,12 +21,12 @@ from ..kernel import (
     TaskCreationResult,
     TaskDescriptor,
     TaskId,
+    TaskItem,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreState,
     TaskScoreTransitionStatus,
-    TaskType,
     WorkerScoreCore,
 )
 from ..scheduling import ResultRoutingConfig
@@ -55,10 +56,7 @@ _WORKER_SCAN_LIMIT = 100
 _WORKER_LEASE_DURATION_MILLIS = 5_000
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
-_MAX_EMPTY_RECHECK_TIMES = 5
-_EMPTY_RECHECK_INTERVAL_MILLIS = 1_000
 _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS = 1_000
-_ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS = 3 * 24 * 60 * 60 * 1_000
 _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
 _LOGGER = logging.getLogger(__name__)
 
@@ -611,17 +609,6 @@ class KernelApplication:
         descriptor: TaskDescriptor,
     ) -> TaskCreationResult:
         self._require_started()
-        if descriptor.empty_close_at_millis is None:
-            creation_time_millis = time_ns() // 1_000_000
-            descriptor = replace(
-                descriptor,
-                empty_close_at_millis=(
-                    0
-                    if descriptor.task_type is TaskType.TASK_DRIVEN
-                    else creation_time_millis
-                    + _ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS
-                ),
-            )
         return self._process._task_runtime.create_task(
             descriptor=descriptor,
             suffix=_INITIAL_PRE_REVIEW_SUFFIX,
@@ -635,11 +622,16 @@ class KernelApplication:
         self._require_started()
         return self._task_lifecycle.close_task(task_id=task_id)
 
-    def wake_task_dispatch(self, *, task_ids: tuple[TaskId, ...]) -> int:
-        """Offer droppable Task Dispatch acceleration hints."""
+    def submit_task_call_items(
+        self,
+        *,
+        task_id: TaskId,
+        items: tuple[TaskItem, ...],
+    ) -> TaskCallSubmissionResult:
         self._require_started()
-        return self._process._task_dispatch_wake_inbox.offer(
-            task_ids=task_ids,
+        return self._process._task_call_item_submission.submit(
+            task_id=task_id,
+            items=items,
         )
 
     def _require_started(self) -> None:
@@ -683,10 +675,6 @@ class KernelApplication:
                     per_task_dispatch_limit=_PER_TASK_DISPATCH_LIMIT,
                     item_claim_lease_duration_millis=(
                         _ITEM_CLAIM_LEASE_DURATION_MILLIS
-                    ),
-                    max_empty_recheck_times=_MAX_EMPTY_RECHECK_TIMES,
-                    empty_recheck_interval_millis=(
-                        _EMPTY_RECHECK_INTERVAL_MILLIS
                     ),
                 ),
                 worker_allocation_interval_millis=(

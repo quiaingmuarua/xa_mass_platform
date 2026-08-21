@@ -13,19 +13,12 @@ public record TaskRpcProperties(
         @Min(1) int maxWaiters,
         @Min(1) long initialProbeIntervalMillis,
         @Min(1) long normalProbeIntervalMillis,
-        @Min(1) long longProbeIntervalMillis,
-        @Min(1) int wakeBufferCapacity,
-        @Min(1) int wakeBatchLimit
+        @Min(1) long longProbeIntervalMillis
 ) {
     public TaskRpcProperties {
         if (defaultWaitTimeoutMillis > maxWaitTimeoutMillis) {
             throw new IllegalArgumentException(
                     "default wait timeout must not exceed maximum"
-            );
-        }
-        if (wakeBatchLimit > 100) {
-            throw new IllegalArgumentException(
-                    "wake batch limit must not exceed 100"
             );
         }
     }

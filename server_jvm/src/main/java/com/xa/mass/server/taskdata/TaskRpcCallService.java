@@ -1,6 +1,9 @@
 package com.xa.mass.server.taskdata;
 
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
@@ -15,19 +18,19 @@ import org.springframework.web.context.request.async.DeferredResult;
 @Service
 public final class TaskRpcCallService {
 
-    private final TaskDataService taskData;
+    private final TaskCallItemSubmission taskCallSubmission;
     private final TaskRuntime taskRuntime;
     private final TaskRpcWaitRegistry registry;
     private final long defaultWaitTimeoutMillis;
     private final long maxWaitTimeoutMillis;
 
     public TaskRpcCallService(
-            TaskDataService taskData,
+            TaskCallItemSubmission taskCallSubmission,
             TaskRuntime taskRuntime,
             TaskRpcWaitRegistry registry,
             TaskRpcProperties properties
     ) {
-        this.taskData = taskData;
+        this.taskCallSubmission = taskCallSubmission;
         this.taskRuntime = taskRuntime;
         this.registry = registry;
         this.defaultWaitTimeoutMillis =
@@ -41,11 +44,11 @@ public final class TaskRpcCallService {
     ) {
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         String messageId = request.item().messageId();
-        TaskItemAppendResult appended = taskData.appendTaskItem(
+        TaskCallSubmissionResult submission = taskCallSubmission.submit(
                 taskId,
-                request.item()
+                List.of(toTaskItem(request.item()))
         );
-        requireAcceptedAppend(appended);
+        requireAcceptedSubmission(submission, messageId);
 
         String existingResult = loadImmediateResult(taskId, messageId);
         DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
@@ -95,9 +98,62 @@ public final class TaskRpcCallService {
         }
     }
 
-    private static void requireAcceptedAppend(
-            TaskItemAppendResult appended
+    private static TaskItem toTaskItem(
+            com.xa.mass.server.api.v1.model.TaskItemRequest item
     ) {
+        return new TaskItem(
+                item.messageId(),
+                item.eventCode(),
+                item.createdAtMillis(),
+                item.payload(),
+                item.priority(),
+                item.expireAtMillis(),
+                item.allocationRule()
+        );
+    }
+
+    private static void requireAcceptedSubmission(
+            TaskCallSubmissionResult submission,
+            String messageId
+    ) {
+        switch (submission.status()) {
+            case SUBMITTED -> {
+                // Item-level result remains the canonical append outcome.
+            }
+            case NOT_FOUND -> throw new ServerException(
+                    ServerErrorCode.TASK_NOT_FOUND,
+                    "taskRpc.submitItem",
+                    submission.reason(),
+                    null
+            );
+            case CLOSED, STALE -> throw new ServerException(
+                    ServerErrorCode.KERNEL_REJECTED_CONFLICT,
+                    "taskRpc.submitItem",
+                    submission.reason(),
+                    null
+            );
+            case INVALID -> throw new ServerException(
+                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    "taskRpc.submitItem",
+                    submission.reason(),
+                    null
+            );
+            case RETRYABLE -> throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.submitItem",
+                    submission.reason(),
+                    null
+            );
+        }
+        TaskItemAppendResult appended = submission.itemResults().get(messageId);
+        if (appended == null) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.submitItem",
+                    "Kernel omitted the TaskItem submission result",
+                    null
+            );
+        }
         switch (appended.status()) {
             case APPENDED -> {
                 return;

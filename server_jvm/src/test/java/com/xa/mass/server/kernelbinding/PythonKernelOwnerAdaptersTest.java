@@ -10,7 +10,10 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.Map;
@@ -48,14 +51,14 @@ class PythonKernelOwnerAdaptersTest {
                 new TaskDescriptor(
                         "task-1",
                         "phone-tools",
-                        TaskType.TASK_DRIVEN,
+                        WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                        TaskIdleDisposition.CLOSE_WHEN_IDLE,
                         Map.of(),
                         Map.of(
                                 "priority", "0",
                                 "maximumCandidateWorkers", "1",
                                 "maxRetryTimes", "3"
-                        ),
-                        0L
+                        )
                 ),
                 0
         );
@@ -92,25 +95,45 @@ class PythonKernelOwnerAdaptersTest {
     }
 
     @Test
-    void dispatchWakeIsABoundedBestEffortControlCommand() {
+    void taskCallSubmissionUsesTheBoundedKernelApplicationCommand() {
         server.expect(requestTo(
-                        "http://kernel.test/tasks:dispatch-wake"
+                        "http://kernel.test/tasks/task-1:submit-call-items"
                 ))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().json("""
-                        {"taskIds":["task-1","task-2"]}
+                        {"items":[{
+                          "messageId":"message-1",
+                          "eventCode":"image.resize",
+                          "createdAtMillis":1,
+                          "payload":{},
+                          "priority":5,
+                          "expireAtMillis":null,
+                          "allocationRule":{}
+                        }]}
                         """))
                 .andRespond(withSuccess(
-                        "{\"status\":\"accepted\","
-                                + "\"acceptedTaskCount\":2}",
+                        "{\"status\":\"submitted\","
+                                + "\"itemResults\":{\"message-1\":{"
+                                + "\"status\":\"appended\"}}}",
                         MediaType.APPLICATION_JSON
                 ));
 
-        new HttpTaskDispatchWakeCommands(transport)
-                .wakeTaskDispatch(java.util.List.of(
-                        "task-1",
-                        "task-2"
-                ));
+        var result = new HttpTaskCallItemSubmission(transport).submit(
+                "task-1",
+                java.util.List.of(new TaskItem(
+                        "message-1",
+                        "image.resize",
+                        1,
+                        Map.of(),
+                        5,
+                        null,
+                        Map.of()
+                ))
+        );
+
+        assertThat(result.status()).isEqualTo(
+                TaskCallSubmissionStatus.SUBMITTED
+        );
         server.verify();
     }
 

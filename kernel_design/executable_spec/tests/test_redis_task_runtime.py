@@ -7,19 +7,20 @@ from unittest.mock import patch
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
-    TaskType,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendStatus,
     TaskItemScoreBand,
     TaskScoreBand,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
+    WorkerAllocationMechanism,
 )
 
 
@@ -186,18 +187,24 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         task_id: str,
         *,
         worker_group_id: str = "image-workers",
-        task_type: TaskType = TaskType.TASK_DRIVEN,
+        allocation_mechanism: WorkerAllocationMechanism = (
+            WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        ),
+        idle_disposition: TaskIdleDisposition = (
+            TaskIdleDisposition.CLOSE_WHEN_IDLE
+        ),
         allocation_rule: dict[str, object] | None = None,
-        empty_close_at_millis: int = 0,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            task_type=task_type,
+            worker_allocation_mechanism=allocation_mechanism,
+            idle_disposition=idle_disposition,
             allocation_rule=(
                 {"worker.battery": {"$gte": 20}}
                 if allocation_rule is None
-                and task_type is TaskType.TASK_DRIVEN
+                and allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 else allocation_rule
             ),
             config={
@@ -205,7 +212,6 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                 "maximumCandidateWorkers": "20",
                 "maxRetryTimes": "3",
             },
-            empty_close_at_millis=empty_close_at_millis,
         )
 
     def test_create_task_commits_descriptor_under_score_lease(self) -> None:
@@ -221,35 +227,18 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(TaskScoreBand.PRE_REVIEW, state.band)
         self.assertEqual(self.SUFFIX, state.suffix)
         self.assertEqual(self.redis.now_millis, state.time_millis)
+        fields = self.redis.hashes["tc:test:task:task-1"]
         self.assertEqual(
-            "0",
-            self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"],
+            "PRECOMPUTED_TASK_RULE",
+            fields["workerAllocationMechanism"],
         )
+        self.assertEqual("CLOSE_WHEN_IDLE", fields["idleDisposition"])
 
-    def test_create_rejects_unresolved_empty_close_before_score_write(self) -> None:
-        descriptor = TaskDescriptor(
-            task_id="task-1",
-            worker_group_id="image-workers",
-            task_type=TaskType.TASK_DRIVEN,
-            allocation_rule={},
-            config={
-                "priority": "80",
-                "maximumCandidateWorkers": "20",
-                "maxRetryTimes": "3",
-            },
-        )
-
-        result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
-
-        self.assertEqual(TaskCreationStatus.INVALID, result.status)
-        self.assertIsNone(self.redis.zscore(self.score_band.score_key, "task-1"))
-        self.assertNotIn("tc:test:task:task-1", self.redis.hashes)
-
-    def test_item_driven_descriptor_round_trips_null_task_rule(self) -> None:
+    def test_direct_descriptor_round_trips_null_task_rule(self) -> None:
         descriptor = self.descriptor(
             "task-1",
-            task_type=TaskType.ITEM_DRIVEN,
-            empty_close_at_millis=1234,
+            allocation_mechanism=WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+            idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
         )
 
         result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
@@ -264,14 +253,14 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             self.redis.hashes["tc:test:task:task-1"]["allocationRuleJson"],
         )
         self.assertEqual(
-            "1234",
-            self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"],
+            "PARK_WHEN_IDLE",
+            self.redis.hashes["tc:test:task:task-1"]["idleDisposition"],
         )
 
-    def test_descriptor_without_empty_close_field_is_not_decoded(self) -> None:
+    def test_descriptor_without_idle_disposition_is_not_decoded(self) -> None:
         descriptor = self.descriptor("task-1")
         self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
-        del self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"]
+        del self.redis.hashes["tc:test:task:task-1"]["idleDisposition"]
 
         loaded = self.catalog.load_task_allocation_descriptors(
             task_ids=("task-1",),
@@ -318,7 +307,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_orphan_descriptor_conflicts_without_creating_score(self) -> None:
         orphan = {
             "workerGroupId": "orphan-workers",
-            "taskType": "TASK_DRIVEN",
+            "unknownField": "legacy",
             "allocationRuleJson": "{}",
             "configJson": "{}",
         }
@@ -448,10 +437,12 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "tc:test:task:task-1",
             mapping={
                 "workerGroupId": descriptor.worker_group_id,
-                "taskType": descriptor.task_type.value,
+                "workerAllocationMechanism": (
+                    descriptor.worker_allocation_mechanism.value
+                ),
+                "idleDisposition": descriptor.idle_disposition.value,
                 "allocationRuleJson": json.dumps(dict(descriptor.allocation_rule)),
                 "configJson": json.dumps(dict(descriptor.config)),
-                "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
             },
         )
         replacement_score = self.score_band._score(

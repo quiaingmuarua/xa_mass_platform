@@ -5,19 +5,24 @@ implemented; policy coverage partial.
 
 ## Purpose
 
-`TaskDispatchPacer` owns one bounded round over due `RUNNING_VISIBLE` Tasks. It
-has two lanes selected only by the current Task score suffix:
+`TaskDispatchPacer` owns one bounded round over due `RUNNING_VISIBLE` Tasks.
+Every RUNNING Task uses suffix `0`; Task score no longer encodes an idle
+recheck lane.
 
 ```text
-suffix = 0
-  -> ordinary TaskItem dispatch
+Task has ACTIVE Item
+  -> ordinary dispatch pacing
 
-suffix > 0
-  -> ACTIVE Item existence recheck
+Task has no ACTIVE Item and CLOSE_WHEN_IDLE
+  -> exact terminal close
+
+Task has no ACTIVE Item and PARK_WHEN_IDLE
+  -> exact private idle park
 ```
 
-The suffix is the consecutive empty recheck count. It is not Item retry budget,
-Worker capacity, fairness, or a remaining countdown.
+The private park removes an idle reusable Task from periodic dispatch scans and
+from RUNNING capacity count. It is not a retry counter, queue state, pause, or
+hard lock against concurrent Item submission.
 
 ## Contract
 
@@ -26,37 +31,30 @@ TaskDispatchConfig(
     task_batch_limit,
     per_task_dispatch_limit,
     item_claim_lease_duration_millis,
-    max_empty_recheck_times,
-    empty_recheck_interval_millis,
 )
 ```
-
-`max_empty_recheck_times` is in `1..99`. Both empty-recheck settings are
-assembly-installed System Policy constants; they are not Task metadata or
-public JSON fields.
 
 Dependencies:
 
 ```text
 TaskDispatchPacer
-  TaskScoreBandCore       RUNNING discovery, suffix CAS, pacing, and close
+  TaskScoreBandCore       RUNNING discovery, pacing, exact park/close/release
   TaskResourceCatalog     bounded Task allocation descriptors
-  TaskItemScoreBandCore   ACTIVE existence query for empty recheck
-  CandidateWarmupSchedule TASK_DRIVEN reset hints
-  TaskItemDispatcher      one suffix-zero Task's Item dispatch
+  TaskItemScoreBandCore   due Item observation and complete ACTIVE existence
+  TaskItemDispatcher      one Task's bounded Item dispatch
   WorkerCommandRuntime    round-level Adapter mailbox publication
 
 TaskItemDispatcher
   TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
   TaskRuntime             canonical Item records
   WorkerCandidateAcquirer PRECOMPUTED or DIRECT Worker acquisition
-  CandidateWarmupSchedule TASK_DRIVEN replenishment hints
+  CandidateWarmupSchedule PRECOMPUTED_TASK_RULE replenishment hints
   delivery item encoder   opaque Worker command payload
 ```
 
 `TaskItemDispatcher` has no background lifecycle and does not scan Tasks,
-rewrite Task score, publish mailboxes, or perform empty recheck. The Pacer does
-not read CandidateWorker cache or Worker score directly. Those details remain
+rewrite Task score, publish mailboxes, or decide idle lifecycle. The Pacer does
+not read CandidateWorker cache or Worker score directly; those details remain
 behind `WorkerCandidateAcquirer`.
 
 ## Round Flow
@@ -64,31 +62,28 @@ behind `WorkerCandidateAcquirer`.
 One round computes its dispatch time and Item claim deadline once:
 
 1. Acquire a bounded due `RUNNING_VISIBLE` Task batch.
-2. Batch-load current score states and Task descriptors.
-3. For `suffix > 0`, skip Worker acquisition and Item claim and add the Task to
-   the activity-check batch.
-4. For `suffix = 0`, ask `TaskItemDispatcher` to observe record-backed due
-   ACTIVE Items.
-5. Promote observed zero-budget Items and Items whose persisted
+2. Batch-load current Task score states and Task descriptors, retaining only
+   exact RUNNING suffix-zero observations.
+3. Ask `TaskItemDispatcher` to observe record-backed due ACTIVE Items.
+4. Promote observed zero-budget Items and Items whose persisted
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
-6. If no dispatchable Item remains, add the Task to the activity-check batch.
-7. Otherwise `TaskItemDispatcher` acquires Workers, exact-claims only
-   Worker-backed Items, constructs one DeliveryCommand per assignment, and
-   groups commands by the CandidateWorker route snapshot.
-8. The Pacer merges all returned groups and publishes once per endpoint manager
-   sparse mailbox while preserving suffix zero and advancing ordinary dispatch
-   time.
-   `APPENDED` and `REPLACED` both count as publication. `REPLACED` means the
-   caller's lease-backed Seed replaced an existing mailbox field; it does not
-   prove that the replaced field came from an older lease.
-9. Call `has_active_items` once for the activity-check batch and apply the
-   recheck transition rules below.
+5. If claimable Items remain, acquire Workers, exact-claim only Worker-backed
+   Items, construct DeliveryCommands, and group them by the CandidateWorker
+   route snapshot.
+6. Preserve suffix zero and advance ordinary dispatch time for Tasks that ran
+   the dispatch path.
+7. For Tasks with no claimable Item, call `has_active_items` once over the
+   complete ACTIVE band and apply the idle transition below.
+8. Publish the round's sparse Worker Command maps once per endpoint manager.
+9. For every Task successfully idle-parked, perform one bounded
+   second ACTIVE-existence read. If a concurrent append created an ACTIVE Item,
+   exact-release that observed park.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item
 claim. Item claim precedes command identity generation and mailbox publication.
 Expiry classification therefore cannot acquire a Worker, consume retry budget,
-or emit a Worker command.
-An already-claimed attempt is not revoked when its Item later expires.
+or emit a Worker command. An already-claimed attempt is not revoked when its
+Item later expires.
 
 ## ACTIVE Item Truth
 
@@ -102,59 +97,53 @@ FINAL Item                  -> false
 missing Item score          -> false
 ```
 
-This query does not load Item payload. Therefore a Task is empty only when no
-ACTIVE score exists, not merely when no Item is currently due.
+The query does not load Item payload. A Task is idle only when no ACTIVE score
+exists, not merely when no Item is currently due or claimable.
 
-## Empty Recheck Transitions
+## Idle Transitions
 
-All suffix changes use `rewrite_observed_same_band_suffix` with the exact score
-observed for this round. The target time must advance.
+The Pacer uses the complete Task score observed for the current round:
 
 ```text
-ACTIVE exists, suffix = 0
-  -> keep suffix 0
+ACTIVE exists
+  -> keep RUNNING suffix 0
   -> ordinary same-band time pacing
 
-ACTIVE exists, suffix > 0
-  -> suffixDelta = -currentSuffix
-  -> reset suffix to 0
-  -> do not dispatch in the reset round
-  -> if TASK_DRIVEN reset transitions, emit a best-effort warmup hint
+no ACTIVE and CLOSE_WHEN_IDLE
+  -> exact terminal close
 
-no ACTIVE, suffix = 0
-  -> suffix = 1
-  -> nextTime = now + 1 * interval
-
-no ACTIVE, 0 < suffix < max
-  -> suffix = suffix + 1
-  -> nextTime = now + suffix * interval
-
-no ACTIVE, suffix = max
-  -> now >= emptyCloseAtMillis: close Task to TERMINAL
-  -> otherwise remain RUNNING at max suffix
-  -> nextTime = min(emptyCloseAtMillis, now + max * interval)
+no ACTIVE and PARK_WHEN_IDLE
+  -> exact move to the Kernel-private RUNNING idle park
 ```
 
-The delay is linear. Periodic scanning is the correctness fallback; a future
-append hint may accelerate recheck but is not required for liveness.
+`park_observed_idle_task` and `close_observed_score` lose if
+pause, explicit close, submission activation, or a newer scheduling round has
+changed the observed score. The post-park ACTIVE recheck repairs the common
+park/append interleaving without creating a cross-owner transaction. The park
+coordinate is `MAX_TIME_SLOT - 1`, suffix zero; only the score owner can mint
+or release it. Explicit close remains available for either disposition.
 
-`emptyCloseAtMillis` is a shared empty-close threshold, not a hard deadline.
-Task dispatch consults it only after the complete ACTIVE band is empty and the
-maximum consecutive-empty count has been reached. `TASK_DRIVEN` defaults to
-zero; `ITEM_DRIVEN` defaults to Task creation time plus three days. Either type
-may override the threshold, and an external owner may submit stronger business
-evidence through the explicit close command at any time.
+Ordinary `TaskRuntime.append_items` is a pure data write and does not release a
+private Task park. Reusable RPC and Task Batch callers use
+`TaskCallItemSubmission`, which checks the complete ACTIVE band, exact-releases
+the recognized idle park when necessary, appends at most 100 Items, and performs
+one bounded post-append activation repair. Released Tasks re-enter the ordinary
+due scan; there is no urgent set or second Task selection path.
+An empty Task that is not already at the exact private park is not treated as a
+special first call: submission fails before writing Items. Finite initial Items
+must therefore be appended while the Task is still pre-RUNNING, before
+approval can expose it to immediate idle close.
 
 ## Ordinary Dispatch
 
-The immutable Task type selects the internal Worker path:
+The immutable Worker allocation mechanism selects the internal Worker path:
 
 ```text
-TASK_DRIVEN
+PRECOMPUTED_TASK_RULE
   -> one TaskId-correlated PRECOMPUTED request
   -> Task allocationRule
 
-ITEM_DRIVEN
+DIRECT_ITEM_RULE
   -> one messageId-correlated DIRECT request per Item
   -> TaskItem allocationRule
 ```
@@ -186,32 +175,32 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 ## Failure And Concurrency
 
 - Missing Task, descriptor, Item, Worker, or claim success is a bounded no-op.
-- A stale suffix CAS cannot overwrite pause, close, or a newer recheck.
+- A stale park/release or close CAS cannot overwrite pause, explicit close, or a newer
+  Task score.
 - A pause or close after discovery does not retract evidence already published
   by the bounded round.
 - Unused or failed Worker leases expire naturally; this Pacer does not release
   or demote them.
-- The round sends one `workerId -> DeliveryCommand` Map per endpoint
-  manager to `WorkerCommandRuntime`. One WorkerId may appear only once in the
-  entire round.
-  `APPENDED` and `REPLACED` count as publication. Replacement is a best-effort
-  last mailbox write, not an attempt-order fence; stale delivery remains
-  bounded by `executeBeforeMillis` and score-owner fences.
+- One WorkerId may appear only once in the entire round. `APPENDED` and
+  `REPLACED` both count as publication; replacement remains best-effort mailbox
+  behavior bounded by command deadline and score-owner fences.
 - Cross-Adapter mailbox writes are not atomic. A runtime failure does not roll
   back Adapter buckets whose append already completed.
-- Explicit terminal close has precedence. Existing Items, claims, seeds, or
-  late results are not rolled back and cannot reopen Task score.
+- Task Call submission and idle lifecycle span independent Task, Task score,
+  and TaskItem owners. Exact fences plus pre/post checks narrow races; they do
+  not create a cross-key transaction.
+- Explicit terminal close has precedence. Existing Items, claims, commands, or
+  late results cannot reopen Task score.
 
 ## Guardrails
 
-- Do not interpret suffix as remaining budget.
-- Do not dispatch `suffix > 0` Tasks in the same round that resets suffix.
-- Do not classify future ACTIVE Items as empty.
-- Do not acquire Workers during the empty-recheck lane.
-- Do not interpret TaskType as an empty-close policy.
+- Keep every RUNNING Task at suffix zero.
+- Do not classify future ACTIVE Items as idle.
+- Do not make ordinary Item append a hidden scheduling command.
+- Do not add a wake inbox, urgent set, priority queue, or second Task scan.
+- Do not infer idle disposition from Worker allocation mechanism.
 - Do not access CandidateWorker cache or Worker score directly.
 - Do not add PRECOMPUTED-miss DIRECT fallback.
-- Do not expose the max empty count or recheck interval through TaskDescriptor.
 - Do not call Worker Delivery Dispatch or Result Routing directly.
 - Group only by the endpointManagerId snapshot in `CandidateWorkerEntry`; do
   not read live Adapter, connection, or session state.

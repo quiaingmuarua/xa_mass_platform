@@ -54,7 +54,8 @@ class JavaWorkerArchitectureTest {
                 "kernel_jvm",
                 "springframework",
                 "io.lettuce",
-                "TaskType"
+                "TaskProfile",
+                "WorkerAllocationMechanism"
         }) {
             assertFalse(source.contains(forbidden), forbidden);
         }

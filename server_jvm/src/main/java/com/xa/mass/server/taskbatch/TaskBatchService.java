@@ -1,10 +1,8 @@
 package com.xa.mass.server.taskbatch;
 
-import com.xa.mass.server.api.v1.model.CommandResultResponse;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
-import com.xa.mass.server.api.v1.model.TaskItemRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchInputUploadResponse;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunRequest;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunResponse;
@@ -29,6 +27,7 @@ public final class TaskBatchService {
 
     private final TaskBatchFileStore files;
     private final TaskDataService taskData;
+    private final TaskCallItemSubmission taskCallSubmission;
     private final WorkerGroupTaskCatalog taskCatalog;
     private final TaskBatchProperties properties;
     private final Clock clock;
@@ -37,12 +36,14 @@ public final class TaskBatchService {
     TaskBatchService(
             TaskBatchFileStore files,
             TaskDataService taskData,
+            TaskCallItemSubmission taskCallSubmission,
             WorkerGroupTaskCatalog taskCatalog,
             TaskBatchProperties properties,
             Clock clock
     ) {
         this.files = files;
         this.taskData = taskData;
+        this.taskCallSubmission = taskCallSubmission;
         this.taskCatalog = taskCatalog;
         this.properties = properties;
         this.clock = clock;
@@ -189,8 +190,8 @@ public final class TaskBatchService {
             List<Seed> seeds
     ) {
         long createdAtMillis = clock.millis();
-        List<TaskItemRequest> items = seeds.stream()
-                .map(seed -> new TaskItemRequest(
+        List<TaskItem> items = seeds.stream()
+                .map(seed -> new TaskItem(
                         seed.messageId(),
                         eventCode,
                         createdAtMillis,
@@ -200,17 +201,65 @@ public final class TaskBatchService {
                         Map.of()
                 ))
                 .toList();
-        TaskItemsAppendResponse appended = taskData.appendTaskItems(
-                taskId,
-                new TaskItemsAppendRequest(items)
-        );
-        for (Seed seed : seeds) {
-            CommandResultResponse result = appended.results().get(seed.messageId());
-            if (result == null || result.status() != RuntimeCommandStatus.APPENDED) {
-                throw unavailable(new IllegalStateException(
-                        "Task Batch append was not accepted"
-                ));
+        for (int start = 0; start < items.size(); start += TaskCallItemSubmission.MAX_ITEMS) {
+            int end = Math.min(
+                    items.size(),
+                    start + TaskCallItemSubmission.MAX_ITEMS
+            );
+            TaskCallSubmissionResult submitted = taskCallSubmission.submit(
+                    taskId,
+                    items.subList(start, end)
+            );
+            requireSubmitted(submitted, items.subList(start, end));
+        }
+    }
+
+    private static void requireSubmitted(
+            TaskCallSubmissionResult submission,
+            List<TaskItem> items
+    ) {
+        switch (submission.status()) {
+            case SUBMITTED -> {
+                for (TaskItem item : items) {
+                    var result = submission.itemResults().get(item.messageId());
+                    if (result == null) {
+                        throw unavailable(new IllegalStateException(
+                                "Kernel omitted a Task Batch Item result"
+                        ));
+                    }
+                    switch (result.status()) {
+                        case APPENDED -> {
+                            // Continue validating this bounded chunk.
+                        }
+                        case NOT_FOUND -> throw batchError(
+                                ServerErrorCode.TASK_BATCH_RESOURCE_NOT_FOUND,
+                                result.reason()
+                        );
+                        case INVALID -> throw batchError(
+                                ServerErrorCode.TASK_BATCH_INVALID_REQUEST,
+                                result.reason()
+                        );
+                        case RETRYABLE -> throw unavailable(
+                                new IllegalStateException(result.reason())
+                        );
+                    }
+                }
             }
+            case NOT_FOUND -> throw batchError(
+                    ServerErrorCode.TASK_BATCH_RESOURCE_NOT_FOUND,
+                    submission.reason()
+            );
+            case CLOSED, STALE -> throw batchError(
+                    ServerErrorCode.TASK_BATCH_CONFLICT,
+                    submission.reason()
+            );
+            case INVALID -> throw batchError(
+                    ServerErrorCode.TASK_BATCH_INVALID_REQUEST,
+                    submission.reason()
+            );
+            case RETRYABLE -> throw unavailable(
+                    new IllegalStateException(submission.reason())
+            );
         }
     }
 
@@ -386,6 +435,18 @@ public final class TaskBatchService {
                 RUN_OPERATION,
                 null,
                 cause
+        );
+    }
+
+    private static ServerException batchError(
+            ServerErrorCode errorCode,
+            String message
+    ) {
+        return new ServerException(
+                errorCode,
+                RUN_OPERATION,
+                message,
+                null
         );
     }
 

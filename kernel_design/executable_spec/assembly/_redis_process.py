@@ -11,8 +11,8 @@ from ..scheduling import (
     RunningSoftLimitSystemAdmissionPolicy,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
+    TaskCallItemSubmission,
     TaskDispatchPacer,
-    TaskDispatchWakeInbox,
     TaskItemDispatcher,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
@@ -113,14 +113,14 @@ class _RedisKernelProcess:
             redis_client,
             score_key=f"tr:{config.prefix}:task:score",
         )
-        task_item_score = RedisTaskItemScoreBandCore(
+        self._task_item_score = RedisTaskItemScoreBandCore(
             redis_client,
             prefix=config.prefix,
         )
         self._task_runtime = RedisTaskRuntime(
             redis_client,
             self._task_score,
-            task_item_score,
+            self._task_item_score,
             prefix=config.prefix,
         )
         self._task_resource_catalog = RedisTaskResourceCatalog(
@@ -171,7 +171,7 @@ class _RedisKernelProcess:
         running_activation_pacer = TaskRunningActivationPacer(
             self._task_score,
             self._task_resource_catalog,
-            DueTaskItemAdmissionPolicy(task_item_score),
+            DueTaskItemAdmissionPolicy(self._task_item_score),
             RunningSoftLimitSystemAdmissionPolicy(
                 self._task_score,
                 running_task_soft_limit=config.running_task_soft_limit,
@@ -179,20 +179,23 @@ class _RedisKernelProcess:
             candidate_warmup_schedule,
         )
         task_item_dispatcher = TaskItemDispatcher(
-            task_item_score,
+            self._task_item_score,
             self._task_runtime,
             candidate_acquirer,
             candidate_warmup_schedule,
         )
-        self._task_dispatch_wake_inbox = TaskDispatchWakeInbox()
         task_dispatch_pacer = TaskDispatchPacer(
             self._task_score,
             self._task_resource_catalog,
             self._worker_command_runtime,
-            task_item_score,
-            candidate_warmup_schedule,
+            self._task_item_score,
             task_item_dispatcher,
-            self._task_dispatch_wake_inbox,
+        )
+        self._task_call_item_submission = TaskCallItemSubmission(
+            self._task_score,
+            self._task_item_score,
+            self._task_runtime,
+            self._task_resource_catalog,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,
@@ -205,7 +208,7 @@ class _RedisKernelProcess:
         )
         result_routing_policies = ResultRoutingBuiltinPolicies(
             task_runtime=self._task_runtime,
-            item_score=task_item_score,
+            item_score=self._task_item_score,
             worker_score=self._worker_score,
         )
         self._result_routing_application = ResultRoutingApplication(

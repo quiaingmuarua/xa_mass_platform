@@ -1,8 +1,9 @@
 package com.xa.mass.kernel.task.redis;
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -69,10 +70,16 @@ public final class RedisTaskResourceCatalog
                     fields,
                     "workerGroupId"
             );
-            TaskType taskType = TaskType.valueOf(required(
+            WorkerAllocationMechanism allocationMechanism =
+                    WorkerAllocationMechanism.valueOf(required(
                     fields,
-                    "taskType"
+                    "workerAllocationMechanism"
             ));
+            TaskIdleDisposition idleDisposition =
+                    TaskIdleDisposition.valueOf(required(
+                            fields,
+                            "idleDisposition"
+                    ));
             JsonNode allocationNode = mapper.readTree(required(
                     fields,
                     "allocationRuleJson"
@@ -89,17 +96,13 @@ public final class RedisTaskResourceCatalog
                     new TypeReference<>() {
                     }
             );
-            long emptyCloseAtMillis = Long.parseLong(required(
-                    fields,
-                    "emptyCloseAtMillis"
-            ));
             return new TaskDescriptor(
                     taskId,
                     workerGroupId,
-                    taskType,
+                    allocationMechanism,
+                    idleDisposition,
                     allocationRule,
-                    config,
-                    emptyCloseAtMillis
+                    config
             );
         } catch (JacksonException | IllegalArgumentException error) {
             throw new IllegalStateException(

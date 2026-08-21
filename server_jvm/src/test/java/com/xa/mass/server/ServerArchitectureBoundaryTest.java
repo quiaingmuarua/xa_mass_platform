@@ -251,25 +251,25 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void taskBatchUsesOnlyTheProfileTaskAndTaskDataBoundary()
+    void taskBatchUsesProfileTaskCallSubmissionAndResultReadBoundary()
             throws IOException {
         String taskBatch = readSources(TASK_BATCH)
                 + readSources(TASK_BATCH_HTTP);
         assertThat(taskBatch)
                 .contains("TaskDataService")
+                .contains("TaskCallItemSubmission")
                 .contains("WorkerGroupTaskCatalog")
-                .contains("appendTaskItems")
                 .contains("loadTaskItemSuccessResults")
+                .doesNotContain("appendTaskItems")
                 .doesNotContain("/api/v1/worker-groups/")
                 .doesNotContain("TaskRpcCallService")
                 .doesNotContain("TaskRpcWaitRegistry")
-                .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskLifecycleCommands")
                 .doesNotContain("TaskResourceCatalog")
                 .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
-                .doesNotContain("com.xa.mass.kernel")
+                .doesNotContain("com.xa.mass.kernel.score")
                 .doesNotContain("com.xa.mass.transport")
                 .doesNotContain("ScenarioWorkers");
     }
@@ -453,7 +453,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSources(KERNEL_BINDING))
                 .contains("HttpTaskRuntime")
                 .contains("HttpTaskLifecycleCommands")
-                .contains("HttpTaskDispatchWakeCommands")
+                .contains("HttpTaskCallItemSubmission")
                 .doesNotContain("HttpWorkerRuntime")
                 .doesNotContain("HttpWorkerResourceCatalog")
                 .doesNotContain("AssembledWorkerResourceCatalog")

@@ -30,7 +30,6 @@ from kernel_design.executable_spec import (
     WorkerScorePolarity,
 )
 from kernel_design.executable_spec.assembly import (
-    TaskType,
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     DeliveryEndpoint,
     DeliveryReport,
@@ -44,6 +43,8 @@ from kernel_design.executable_spec.assembly import (
     WorkerRuntimeStatus,
     TaskItemAppendStatus,
     TaskItem,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
 )
 
 
@@ -121,15 +122,17 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_task_driven_process_e2e_reaches_success_and_releases_worker(
+    def test_precomputed_allocation_e2e_reaches_success_and_releases_worker(
         self,
     ) -> None:
-        self._run_success_e2e(TaskType.TASK_DRIVEN)
+        self._run_success_e2e(
+            WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        )
 
-    def test_item_driven_process_e2e_reaches_success_without_candidate_cache(
+    def test_direct_allocation_e2e_reaches_success_without_candidate_cache(
         self,
     ) -> None:
-        self._run_success_e2e(TaskType.ITEM_DRIVEN)
+        self._run_success_e2e(WorkerAllocationMechanism.DIRECT_ITEM_RULE)
         self.assertEqual(
             0,
             self.redis.exists(
@@ -141,7 +144,10 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             self.redis.exists(f"ad:{self.prefix}:candidate-warmups"),
         )
 
-    def _run_success_e2e(self, task_type: TaskType) -> None:
+    def _run_success_e2e(
+        self,
+        allocation_mechanism: WorkerAllocationMechanism,
+    ) -> None:
         group_result = self.resources.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="phone-tools",
@@ -160,7 +166,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         creation_response = self.runtime_server.post(
             "/tasks",
             json=self._task_request(
-                task_type,
+                allocation_mechanism,
                 worker_group_id="phone-tools",
             ),
         )
@@ -175,7 +181,8 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     payload={"phoneNumber": "+14155552671"},
                     allocation_rule=(
                         {"workerId": {"$eq": "worker-1"}}
-                        if task_type is TaskType.ITEM_DRIVEN
+                        if allocation_mechanism
+                        is WorkerAllocationMechanism.DIRECT_ITEM_RULE
                         else None
                     ),
                 ),
@@ -265,7 +272,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.runtime_server.post(
             "/tasks",
-            json=self._task_request(TaskType.ITEM_DRIVEN),
+            json=self._task_request(
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+            ),
         )
         self.runtime_server.post("/tasks/task-1/approve")
         append_result = self.task_runtime.append_items(
@@ -398,17 +407,24 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
 
     @staticmethod
     def _task_request(
-        task_type: TaskType,
+        allocation_mechanism: WorkerAllocationMechanism,
         *,
         worker_group_id: str = "image-workers",
     ) -> dict[str, object]:
         return {
             "taskId": "task-1",
             "workerGroupId": worker_group_id,
-            "taskType": task_type.value,
+            "workerAllocationMechanism": allocation_mechanism.value,
+            "idleDisposition": (
+                TaskIdleDisposition.CLOSE_WHEN_IDLE.value
+                if allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                else TaskIdleDisposition.PARK_WHEN_IDLE.value
+            ),
             "allocationRule": (
                 {"worker.runtime": {"$eq": "python"}}
-                if task_type is TaskType.TASK_DRIVEN
+                if allocation_mechanism
+                is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 else None
             ),
             "config": {

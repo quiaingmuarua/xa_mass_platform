@@ -31,7 +31,7 @@ The executable specification currently proves:
 - Task, Worker and TaskItem owner contracts and independent score axes;
 - Task and TaskItem record persistence with owner-local Redis shapes;
 - WorkerGroup and Worker resource truth plus bounded property reads;
-- `TASK_DRIVEN` and `ITEM_DRIVEN` Worker-acquisition profiles;
+- `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` Worker-acquisition profiles;
 - Task admission, candidate warmup, Task dispatch and Result Routing;
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
@@ -69,15 +69,14 @@ their mechanism requires them.
 
 ### Events Accelerate; Owner Scans Preserve Liveness
 
-Append wake, delivery evidence and other events may reduce latency. Correctness
-must still converge when a best-effort hint is lost, duplicated or reordered.
-Background owner scans, exact rechecks and bounded recovery remain the liveness
-path.
+Delivery evidence and other events may reduce latency. Correctness must still
+converge when a best-effort hint is lost, duplicated or reordered. Background
+owner scans, exact rechecks and bounded recovery remain the liveness path.
 
 ### Task Types Select Acquisition Profiles
 
-- `TASK_DRIVEN` uses reusable Task-level Worker candidate computation.
-- `ITEM_DRIVEN` binds Worker choice to the individual TaskItem and does not
+- `PRECOMPUTED_TASK_RULE` uses reusable Task-level Worker candidate computation.
+- `DIRECT_ITEM_RULE` binds Worker choice to the individual TaskItem and does not
   require a warm candidate cache.
 
 Both types use the same TaskItem identity, dispatch evidence, result routing
@@ -92,7 +91,7 @@ are fenced through the owner score and delivery correlation contracts.
 ### Policy Is Not Kernel Truth
 
 Kernel exposes conservative owner operations. Admission limits, fairness,
-empty-close thresholds, candidate policy and retry classification are policies
+idle-disposition application, candidate policy and retry classification are policies
 that call those operations. Policy richness does not justify broad cross-key or
 cross-owner Kernel APIs.
 
@@ -100,7 +99,7 @@ cross-owner Kernel APIs.
 
 ```text
 Task admission
-  -> optional TASK_DRIVEN candidate warmup
+  -> optional PRECOMPUTED_TASK_RULE candidate warmup
   -> Task dispatch acquisition
   -> Worker validation and lease
   -> exact TaskItem claim
@@ -113,7 +112,8 @@ Task admission
 
 The scheduling planes are intentionally separate:
 
-- Task score owns Task visibility, dispatch cadence and bounded empty recheck.
+- Task score owns Task visibility, dispatch cadence, exact idle close and the
+  Kernel-private idle park/unpark coordinate.
 - Worker score owns scheduling eligibility and dispatch leases.
 - TaskItem score owns due work, claim budget, retry and final promotion.
 - Assignment Dispatch orchestrates bounded owner reads and transitions.

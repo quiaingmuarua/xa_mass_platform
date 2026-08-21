@@ -6,14 +6,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.server.api.v1.model.CommandResultResponse;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -31,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
@@ -44,10 +48,7 @@ class TaskBatchServiceTest {
     void mapsRawLinesAppendsOnceAndKeepsBusinessInvalidResults()
             throws Exception {
         TaskDataService taskData = mock(TaskDataService.class);
-        when(taskData.appendTaskItems(eq("internal-task"), any()))
-                .thenAnswer(invocation -> appended(
-                        invocation.getArgument(1)
-                ));
+        TaskCallItemSubmission submission = submission();
         when(taskData.loadTaskItemSuccessResults(
                 eq("internal-task"),
                 any()
@@ -63,7 +64,7 @@ class TaskBatchServiceTest {
             }
             return new TaskItemResultsLoadResponse(results);
         });
-        TaskBatchService service = service(taskData, Map.of(
+        TaskBatchService service = service(taskData, submission, Map.of(
                 "string-group", "internal-task"
         ));
         service.upload(
@@ -90,17 +91,18 @@ class TaskBatchServiceTest {
                 "task-batch-1786680000123.jsonl"
         );
 
-        ArgumentCaptor<TaskItemsAppendRequest> appended =
-                ArgumentCaptor.forClass(TaskItemsAppendRequest.class);
-        verify(taskData).appendTaskItems(eq("internal-task"), appended.capture());
-        assertThat(appended.getValue().items()).hasSize(3);
-        assertThat(appended.getValue().items().get(0).payload())
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItem>> submittedItems =
+                ArgumentCaptor.forClass(List.class);
+        verify(submission).submit(eq("internal-task"), submittedItems.capture());
+        assertThat(submittedItems.getValue()).hasSize(3);
+        assertThat(submittedItems.getValue().get(0).payload())
                 .containsEntry("payload.value", " hello ");
-        assertThat(appended.getValue().items().get(1).payload())
+        assertThat(submittedItems.getValue().get(1).payload())
                 .containsEntry("payload.value", "");
-        assertThat(appended.getValue().items().get(2).payload())
+        assertThat(submittedItems.getValue().get(2).payload())
                 .containsEntry("payload.value", "ignored-tail-newline");
-        assertThat(appended.getValue().items())
+        assertThat(submittedItems.getValue())
                 .allSatisfy(item -> {
                     assertThat(item.eventCode()).isEqualTo("custom.event");
                     assertThat(item.priority()).isEqualTo(5);
@@ -119,7 +121,8 @@ class TaskBatchServiceTest {
     void emptyInputPublishesWithoutTaskDataAndMissingGroupIsNotFound()
             throws Exception {
         TaskDataService taskData = mock(TaskDataService.class);
-        TaskBatchService service = service(taskData, Map.of(
+        TaskCallItemSubmission submission = submission();
+        TaskBatchService service = service(taskData, submission, Map.of(
                 "string-group", "internal-task"
         ));
         service.upload("empty.txt", new byte[0]);
@@ -135,7 +138,7 @@ class TaskBatchServiceTest {
         assertThat(response.status()).isEqualTo("succeeded");
         assertThat(response.inputCount()).isZero();
         assertThat(service.download(response.outputFile())).isEmpty();
-        verify(taskData, never()).appendTaskItems(any(), any());
+        verify(submission, never()).submit(any(), any());
         verify(taskData, never()).loadTaskItemSuccessResults(any(), any());
 
         assertThatThrownBy(() -> service.run(new TaskBatchRunRequest(
@@ -152,10 +155,9 @@ class TaskBatchServiceTest {
     }
 
     @Test
-    void thousandLinesStillUseOneBatchAppend() throws Exception {
+    void thousandLinesUseTenBoundedKernelSubmissions() throws Exception {
         TaskDataService taskData = mock(TaskDataService.class);
-        when(taskData.appendTaskItems(eq("internal-task"), any()))
-                .thenAnswer(invocation -> appended(invocation.getArgument(1)));
+        TaskCallItemSubmission submission = submission();
         when(taskData.loadTaskItemSuccessResults(eq("internal-task"), any()))
                 .thenAnswer(invocation -> {
                     List<String> messageIds = invocation.getArgument(1);
@@ -166,7 +168,7 @@ class TaskBatchServiceTest {
                     ));
                     return new TaskItemResultsLoadResponse(results);
                 });
-        TaskBatchService service = service(taskData, Map.of(
+        TaskBatchService service = service(taskData, submission, Map.of(
                 "string-group", "internal-task"
         ));
         StringBuilder content = new StringBuilder();
@@ -189,18 +191,64 @@ class TaskBatchServiceTest {
                 1000L
         ));
 
-        ArgumentCaptor<TaskItemsAppendRequest> appended =
-                ArgumentCaptor.forClass(TaskItemsAppendRequest.class);
-        verify(taskData).appendTaskItems(eq("internal-task"), appended.capture());
-        assertThat(appended.getValue().items()).hasSize(1000);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItem>> chunks =
+                ArgumentCaptor.forClass(List.class);
+        verify(submission, times(10)).submit(eq("internal-task"), chunks.capture());
+        assertThat(chunks.getAllValues())
+                .hasSize(10)
+                .allSatisfy(chunk -> assertThat(chunk).hasSize(100));
         assertThat(response.resultCount()).isEqualTo(1000);
+    }
+
+    @Test
+    void laterChunkFailureKeepsEarlierSubmissionNonTransactional()
+            throws Exception {
+        TaskDataService taskData = mock(TaskDataService.class);
+        TaskCallItemSubmission submission =
+                mock(TaskCallItemSubmission.class);
+        AtomicInteger calls = new AtomicInteger();
+        when(submission.submit(eq("internal-task"), any()))
+                .thenAnswer(invocation -> {
+                    List<TaskItem> items = invocation.getArgument(1);
+                    if (calls.getAndIncrement() == 0) {
+                        return submitted(items);
+                    }
+                    return new TaskCallSubmissionResult(
+                            TaskCallSubmissionStatus.CLOSED,
+                            Map.of(),
+                            "Task is already closed"
+                    );
+                });
+        TaskBatchService service = service(taskData, submission, Map.of(
+                "string-group", "internal-task"
+        ));
+        String content = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(index -> "line-" + index)
+                .collect(java.util.stream.Collectors.joining("\n"));
+        service.upload(
+                "chunk-failure.txt",
+                content.getBytes(StandardCharsets.UTF_8)
+        );
+
+        assertThatThrownBy(() -> service.run(new TaskBatchRunRequest(
+                "string-group",
+                "extension.worker.string.md5",
+                "value",
+                "chunk-failure.txt",
+                1_000L
+        ))).isInstanceOfSatisfying(ServerException.class, error ->
+                assertThat(error.errorCode()).isEqualTo(
+                        ServerErrorCode.TASK_BATCH_CONFLICT
+                )
+        );
+        verify(submission, times(2)).submit(eq("internal-task"), any());
+        verify(taskData, never()).loadTaskItemSuccessResults(any(), any());
     }
 
     @Test
     void malformedResultFailsWithoutPublishingOutput() throws Exception {
         TaskDataService taskData = mock(TaskDataService.class);
-        when(taskData.appendTaskItems(eq("internal-task"), any()))
-                .thenAnswer(invocation -> appended(invocation.getArgument(1)));
         when(taskData.loadTaskItemSuccessResults(eq("internal-task"), any()))
                 .thenAnswer(invocation -> {
                     List<String> messageIds = invocation.getArgument(1);
@@ -242,8 +290,6 @@ class TaskBatchServiceTest {
         CountDownLatch entered = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
         TaskDataService taskData = mock(TaskDataService.class);
-        when(taskData.appendTaskItems(eq("internal-task"), any()))
-                .thenAnswer(invocation -> appended(invocation.getArgument(1)));
         when(taskData.loadTaskItemSuccessResults(eq("internal-task"), any()))
                 .thenAnswer(invocation -> {
                     entered.countDown();
@@ -284,6 +330,14 @@ class TaskBatchServiceTest {
             TaskDataService taskData,
             Map<String, String> tasks
     ) throws Exception {
+        return service(taskData, submission(), tasks);
+    }
+
+    private TaskBatchService service(
+            TaskDataService taskData,
+            TaskCallItemSubmission submission,
+            Map<String, String> tasks
+    ) throws Exception {
         TaskBatchProperties properties = new TaskBatchProperties(
                 temporaryDirectory.resolve("data")
                         .resolve("rpc-task")
@@ -299,6 +353,7 @@ class TaskBatchServiceTest {
         return new TaskBatchService(
                 TaskBatchFileStore.open(properties),
                 taskData,
+                submission,
                 catalog,
                 properties,
                 Clock.fixed(
@@ -308,14 +363,23 @@ class TaskBatchServiceTest {
         );
     }
 
-    private static TaskItemsAppendResponse appended(
-            TaskItemsAppendRequest request
-    ) {
-        Map<String, CommandResultResponse> results = new LinkedHashMap<>();
-        request.items().forEach(item -> results.put(
+    private static TaskCallItemSubmission submission() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        when(submission.submit(eq("internal-task"), any()))
+                .thenAnswer(invocation -> submitted(invocation.getArgument(1)));
+        return submission;
+    }
+
+    private static TaskCallSubmissionResult submitted(List<TaskItem> items) {
+        Map<String, TaskItemAppendResult> results = new LinkedHashMap<>();
+        items.forEach(item -> results.put(
                 item.messageId(),
-                new CommandResultResponse(RuntimeCommandStatus.APPENDED, null)
+                new TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         ));
-        return new TaskItemsAppendResponse(results);
+        return new TaskCallSubmissionResult(
+                TaskCallSubmissionStatus.SUBMITTED,
+                results,
+                null
+        );
     }
 }

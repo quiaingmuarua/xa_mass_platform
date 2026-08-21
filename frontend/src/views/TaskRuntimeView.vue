@@ -26,13 +26,6 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
   selectedEntry.value = entry;
   detailsOpen.value = true;
 }
-
-function formattedEmptyClose(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "未设置";
-  }
-  return String(value);
-}
 </script>
 
 <template>
@@ -139,9 +132,9 @@ function formattedEmptyClose(value: number | null | undefined): string {
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="TYPE" width="132">
+          <el-table-column label="ALLOCATION" min-width="190">
             <template #default="{ row }">
-              {{ row.task?.taskType ?? "—" }}
+              {{ row.task?.workerAllocationMechanism ?? "—" }}
             </template>
           </el-table-column>
           <el-table-column label="PRIORITY" width="92" align="center">
@@ -159,9 +152,9 @@ function formattedEmptyClose(value: number | null | undefined): string {
               {{ row.task?.config.maxRetryTimes ?? "—" }}
             </template>
           </el-table-column>
-          <el-table-column label="EMPTY CLOSE" min-width="160">
+          <el-table-column label="IDLE" min-width="150">
             <template #default="{ row }">
-              <code>{{ formattedEmptyClose(row.task?.emptyCloseAtMillis) }}</code>
+              <code>{{ row.task?.idleDisposition ?? "—" }}</code>
             </template>
           </el-table-column>
           <el-table-column width="88" align="right">
@@ -202,12 +195,14 @@ function formattedEmptyClose(value: number | null | undefined): string {
               <dd>{{ selectedEntry.workerGroupId }}</dd>
             </div>
             <div>
-              <dt>Task type</dt>
-              <dd>{{ selectedEntry.task?.taskType ?? "描述符缺失" }}</dd>
+              <dt>Worker allocation</dt>
+              <dd>
+                {{ selectedEntry.task?.workerAllocationMechanism ?? "描述符缺失" }}
+              </dd>
             </div>
             <div>
-              <dt>Empty close</dt>
-              <dd>{{ formattedEmptyClose(selectedEntry.task?.emptyCloseAtMillis) }}</dd>
+              <dt>Idle disposition</dt>
+              <dd>{{ selectedEntry.task?.idleDisposition ?? "描述符缺失" }}</dd>
             </div>
           </dl>
         </section>

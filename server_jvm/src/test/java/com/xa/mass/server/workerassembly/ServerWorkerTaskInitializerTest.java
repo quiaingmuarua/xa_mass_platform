@@ -15,7 +15,8 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
@@ -28,7 +29,7 @@ import org.mockito.ArgumentCaptor;
 class ServerWorkerTaskInitializerTest {
 
     @Test
-    void createsAndApprovesOnePersistentItemDrivenTaskPerGroup() {
+    void createsAndApprovesOneReusableDirectTaskPerGroup() {
         TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
         TaskRuntime runtime = mock(TaskRuntime.class);
         TaskLifecycleCommands lifecycle = mock(TaskLifecycleCommands.class);
@@ -62,8 +63,14 @@ class ServerWorkerTaskInitializerTest {
         verify(runtime, times(2)).createTask(descriptors.capture(), eq(0));
         assertThat(descriptors.getAllValues())
                 .allSatisfy(descriptor -> {
-                    assertThat(descriptor.taskType())
-                            .isEqualTo(TaskType.ITEM_DRIVEN);
+                    assertThat(descriptor.workerAllocationMechanism())
+                            .isEqualTo(
+                                    WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                            );
+                    assertThat(descriptor.idleDisposition())
+                            .isEqualTo(
+                                    TaskIdleDisposition.PARK_WHEN_IDLE
+                            );
                     assertThat(descriptor.allocationRule()).isNull();
                     assertThat(descriptor.config()).containsExactlyInAnyOrderEntriesOf(
                             Map.of(
@@ -71,9 +78,6 @@ class ServerWorkerTaskInitializerTest {
                                     "maximumCandidateWorkers", "1",
                                     "maxRetryTimes", "3"
                             )
-                    );
-                    assertThat(descriptor.emptyCloseAtMillis()).isEqualTo(
-                            ServerWorkerTaskInitializer.EMPTY_CLOSE_AT_MILLIS
                     );
                 });
         verify(lifecycle).approveTask("scenario-rpc-phone-group");
@@ -116,14 +120,14 @@ class ServerWorkerTaskInitializerTest {
         TaskDescriptor conflict = new TaskDescriptor(
                 "scenario-rpc-phone-group",
                 "another-group",
-                TaskType.ITEM_DRIVEN,
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ),
-                ServerWorkerTaskInitializer.EMPTY_CLOSE_AT_MILLIS
+                )
         );
         when(catalog.loadTaskAllocationDescriptors(any()))
                 .thenReturn(Map.of(conflict.taskId(), conflict));
@@ -173,14 +177,14 @@ class ServerWorkerTaskInitializerTest {
         return new TaskDescriptor(
                 taskId,
                 workerGroupId,
-                TaskType.ITEM_DRIVEN,
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ),
-                ServerWorkerTaskInitializer.EMPTY_CLOSE_AT_MILLIS
+                )
         );
     }
 }

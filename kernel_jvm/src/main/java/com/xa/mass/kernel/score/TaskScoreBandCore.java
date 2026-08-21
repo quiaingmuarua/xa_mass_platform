@@ -36,7 +36,7 @@ public interface TaskScoreBandCore {
             List<String> taskIds
     );
 
-    int countRunningVisibleTasks();
+    int countRunningCapacityTasks();
 
     List<String> acquireBandTaskCandidates(
             TaskScoreBand band,
@@ -66,15 +66,25 @@ public interface TaskScoreBandCore {
             long targetTimeMillis
     );
 
-    TaskScoreTransitionResult rewriteObservedSameBandSuffix(
+    TaskScoreTransitionResult parkObservedIdleTask(
             String taskId,
-            long observedScore,
-            long targetTimeMillis,
-            int suffixDelta
+            long observedScore
+    );
+
+    TaskScoreTransitionResult releaseObservedIdleTask(
+            String taskId,
+            long observedParkScore,
+            long releaseTimeMillis
     );
 
     TaskScoreTransitionResult closeScore(
             String taskId,
+            long terminalScore
+    );
+
+    TaskScoreTransitionResult closeObservedScore(
+            String taskId,
+            long observedScore,
             long terminalScore
     );
 

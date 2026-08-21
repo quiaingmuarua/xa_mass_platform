@@ -268,14 +268,14 @@ public final class RuntimeViewService {
         return new TaskView(
                 descriptor.taskId(),
                 descriptor.workerGroupId(),
-                descriptor.taskType().name(),
+                descriptor.workerAllocationMechanism().name(),
+                descriptor.idleDisposition().name(),
                 descriptor.allocationRule() == null
                         ? null
                         : immutableMap(descriptor.allocationRule()),
                 Collections.unmodifiableMap(
                         new LinkedHashMap<>(descriptor.config())
-                ),
-                descriptor.emptyCloseAtMillis()
+                )
         );
     }
 

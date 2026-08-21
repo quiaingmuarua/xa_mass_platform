@@ -6,15 +6,16 @@ from dataclasses import fields
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
-    TaskType,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
     TaskResourceCatalog,
     TaskRuntime,
+    WorkerAllocationMechanism,
 )
 
 
@@ -23,7 +24,10 @@ class TaskRuntimeContractTest(unittest.TestCase):
         descriptor = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={"worker.battery": {"$gte": 20}},
             config={
                 "priority": "80",
@@ -37,45 +41,46 @@ class TaskRuntimeContractTest(unittest.TestCase):
             {
                 "task_id",
                 "worker_group_id",
-                "task_type",
+                "worker_allocation_mechanism",
+                "idle_disposition",
                 "allocation_rule",
                 "config",
-                "empty_close_at_millis",
             },
         )
         self.assertEqual(descriptor.config["priority"], "80")
         self.assertEqual(descriptor.config["maxRetryTimes"], "3")
-        self.assertIsNone(descriptor.empty_close_at_millis)
         self.assertFalse(hasattr(descriptor, "project_id"))
 
-    def test_task_descriptor_validates_empty_close_threshold(self) -> None:
+    def test_task_descriptor_requires_explicit_idle_disposition(self) -> None:
         config = {
             "priority": "80",
             "maximumCandidateWorkers": "10",
             "maxRetryTimes": "3",
         }
-        for value in (None, 0, 1_000):
-            with self.subTest(value=value):
-                descriptor = TaskDescriptor(
-                    task_id="task-1",
-                    worker_group_id="workers-a",
-                    task_type=TaskType.TASK_DRIVEN,
-                    allocation_rule={},
-                    config=config,
-                    empty_close_at_millis=value,
-                )
-                self.assertEqual(value, descriptor.empty_close_at_millis)
+        for disposition in TaskIdleDisposition:
+            descriptor = TaskDescriptor(
+                task_id="task-1",
+                worker_group_id="workers-a",
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                ),
+                idle_disposition=disposition,
+                allocation_rule={},
+                config=config,
+            )
+            self.assertIs(disposition, descriptor.idle_disposition)
 
-        for value in (-1, True, "1000"):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                TaskDescriptor(
-                    task_id="task-1",
-                    worker_group_id="workers-a",
-                    task_type=TaskType.TASK_DRIVEN,
-                    allocation_rule={},
-                    config=config,
-                    empty_close_at_millis=value,  # type: ignore[arg-type]
-                )
+        with self.assertRaises(ValueError):
+            TaskDescriptor(
+                task_id="task-1",
+                worker_group_id="workers-a",
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                ),
+                idle_disposition="PARK_WHEN_IDLE",  # type: ignore[arg-type]
+                allocation_rule={},
+                config=config,
+            )
 
     def test_task_item_keeps_only_canonical_record_fields(self) -> None:
         item = TaskItem(
@@ -192,7 +197,10 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 TaskDescriptor(
                     task_id="task-1",
                     worker_group_id="workers-a",
-                    task_type=TaskType.TASK_DRIVEN,
+                    worker_allocation_mechanism=(
+                        WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                    ),
+                    idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                     allocation_rule={"worker.runtime": {"$eq": "python"}},
                     config=config,
                 )
@@ -202,43 +210,55 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 TaskDescriptor(
                     task_id="task-1",
                     worker_group_id="workers-a",
-                    task_type=TaskType.TASK_DRIVEN,
+                    worker_allocation_mechanism=(
+                        WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                    ),
+                    idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                     allocation_rule={},
                     config={**base_config, "priority": priority},
                 )
 
-    def test_task_type_owns_rule_location(self) -> None:
+    def test_worker_allocation_mechanism_owns_rule_location(self) -> None:
         config = {
             "priority": "80",
             "maximumCandidateWorkers": "10",
             "maxRetryTimes": "3",
         }
-        task_driven = TaskDescriptor(
+        precomputed = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={},
             config=config,
         )
-        item_driven = TaskDescriptor(
+        direct = TaskDescriptor(
             task_id="task-2",
             worker_group_id="workers-a",
-            task_type=TaskType.ITEM_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
             allocation_rule=None,
             config=config,
         )
 
-        self.assertEqual({}, task_driven.allocation_rule)
-        self.assertIsNone(item_driven.allocation_rule)
+        self.assertEqual({}, precomputed.allocation_rule)
+        self.assertIsNone(direct.allocation_rule)
         self.assertEqual(
-            {"TASK_DRIVEN", "ITEM_DRIVEN"},
-            {task_type.value for task_type in TaskType},
+            {"PRECOMPUTED_TASK_RULE", "DIRECT_ITEM_RULE"},
+            {mechanism.value for mechanism in WorkerAllocationMechanism},
         )
         with self.assertRaises(ValueError):
             TaskDescriptor(
                 task_id="task-3",
                 worker_group_id="workers-a",
-                task_type=TaskType.TASK_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 allocation_rule=None,
                 config=config,
             )
@@ -246,7 +266,10 @@ class TaskRuntimeContractTest(unittest.TestCase):
             TaskDescriptor(
                 task_id="task-4",
                 worker_group_id="workers-a",
-                task_type=TaskType.ITEM_DRIVEN,
+                worker_allocation_mechanism=(
+                    WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                ),
+                idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
                 allocation_rule={},
                 config=config,
             )
@@ -314,7 +337,11 @@ class TaskRuntimeContractTest(unittest.TestCase):
 
     def test_task_runtime_contracts_are_package_exports(self) -> None:
         self.assertIs(executable_spec.TaskRuntime, TaskRuntime)
-        self.assertIs(executable_spec.TaskType, TaskType)
+        self.assertIs(
+            executable_spec.WorkerAllocationMechanism,
+            WorkerAllocationMechanism,
+        )
+        self.assertIs(executable_spec.TaskIdleDisposition, TaskIdleDisposition)
         self.assertFalse(hasattr(executable_spec, "AllocationRuleScope"))
         self.assertIs(executable_spec.TaskDescriptor, TaskDescriptor)
         self.assertIs(executable_spec.TaskItem, TaskItem)

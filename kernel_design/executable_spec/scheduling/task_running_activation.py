@@ -7,7 +7,11 @@ from typing import Protocol
 
 from ..kernel.task_item_score_band import TaskItemScoreBandCore
 from ..kernel.assignment_dispatch_runtime import CandidateWarmupSchedule
-from ..kernel.task_runtime import TaskDescriptor, TaskResourceCatalog
+from ..kernel.task_runtime import (
+    TaskDescriptor,
+    TaskResourceCatalog,
+    WorkerAllocationMechanism,
+)
 from ..kernel.task_score_band import (
     TaskId,
     TaskScoreBand,
@@ -16,7 +20,6 @@ from ..kernel.task_score_band import (
     TaskScoreTransitionStatus,
     TimeMillis,
 )
-from .task_scheduling_profile import resolve_task_scheduling_profile
 
 
 @dataclass(frozen=True)
@@ -96,7 +99,7 @@ class RunningSoftLimitSystemAdmissionPolicy:
         available_slots = max(
             0,
             self.running_task_soft_limit
-            - self.task_score.count_running_visible_tasks(),
+            - self.task_score.count_running_capacity_tasks(),
         )
         if available_slots == 0:
             return ()
@@ -194,9 +197,8 @@ class TaskRunningActivationPacer:
         warmup_task_ids = tuple(
             task_id
             for task_id in activated_task_ids
-            if resolve_task_scheduling_profile(
-                descriptors[task_id].task_type
-            ).candidate_precomputation_enabled
+            if descriptors[task_id].worker_allocation_mechanism
+            is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
         )
         if warmup_task_ids:
             self.candidate_warmup_schedule.schedule_candidate_warmups(

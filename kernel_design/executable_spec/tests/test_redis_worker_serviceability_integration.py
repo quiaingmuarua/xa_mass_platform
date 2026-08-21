@@ -14,9 +14,10 @@ from kernel_design.executable_spec import (
     RedisWorkerScoreCore,
     RedisWorkerServiceabilityRuntime,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskScoreBand,
     TaskScoreState,
-    TaskType,
+    WorkerAllocationMechanism,
     WorkerDescriptor,
     WorkerScoreCore,
     WorkerScorePolarity,
@@ -339,7 +340,10 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
                     task_id: TaskDescriptor(
                         task_id=task_id,
                         worker_group_id=self.group_id,
-                        task_type=TaskType.ITEM_DRIVEN,
+                        worker_allocation_mechanism=(
+                            WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                        ),
+                        idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
                         allocation_rule=None,
                         config={
                             "priority": "80",
@@ -420,7 +424,10 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
                     current_task_id: TaskDescriptor(
                         task_id=current_task_id,
                         worker_group_id=self.group_id,
-                        task_type=TaskType.ITEM_DRIVEN,
+                        worker_allocation_mechanism=(
+                            WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                        ),
+                        idle_disposition=TaskIdleDisposition.PARK_WHEN_IDLE,
                         allocation_rule=None,
                         config={
                             "priority": "80",

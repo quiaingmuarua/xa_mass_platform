@@ -39,9 +39,14 @@ public interface TaskRuntime {
             List<String> messageIds
     );
 
-    enum TaskType {
-        TASK_DRIVEN,
-        ITEM_DRIVEN
+    enum WorkerAllocationMechanism {
+        PRECOMPUTED_TASK_RULE,
+        DIRECT_ITEM_RULE
+    }
+
+    enum TaskIdleDisposition {
+        CLOSE_WHEN_IDLE,
+        PARK_WHEN_IDLE
     }
 
     enum TaskItemAppendStatus {
@@ -117,31 +122,32 @@ public interface TaskRuntime {
     record TaskDescriptor(
             String taskId,
             String workerGroupId,
-            TaskType taskType,
+            WorkerAllocationMechanism workerAllocationMechanism,
+            TaskIdleDisposition idleDisposition,
             @Nullable Map<String, Object> allocationRule,
-            Map<String, String> config,
-            @Nullable Long emptyCloseAtMillis
+            Map<String, String> config
     ) {
         public TaskDescriptor {
             requireNonBlank(taskId, "taskId");
             requireNonBlank(workerGroupId, "workerGroupId");
-            Objects.requireNonNull(taskType, "taskType");
+            Objects.requireNonNull(
+                    workerAllocationMechanism,
+                    "workerAllocationMechanism"
+            );
+            Objects.requireNonNull(idleDisposition, "idleDisposition");
             Objects.requireNonNull(config, "config");
-            if (taskType == TaskType.TASK_DRIVEN
+            if (workerAllocationMechanism
+                    == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                     && allocationRule == null) {
                 throw new IllegalArgumentException(
-                        "TASK_DRIVEN requires allocationRule"
+                        "PRECOMPUTED_TASK_RULE requires allocationRule"
                 );
             }
-            if (taskType == TaskType.ITEM_DRIVEN
+            if (workerAllocationMechanism
+                    == WorkerAllocationMechanism.DIRECT_ITEM_RULE
                     && allocationRule != null) {
                 throw new IllegalArgumentException(
-                        "ITEM_DRIVEN forbids allocationRule"
-                );
-            }
-            if (emptyCloseAtMillis != null && emptyCloseAtMillis < 0) {
-                throw new IllegalArgumentException(
-                        "emptyCloseAtMillis must be non-negative"
+                        "DIRECT_ITEM_RULE forbids allocationRule"
                 );
             }
             if (!config.keySet().equals(CONFIG_KEYS)) {

@@ -14,9 +14,14 @@ MessageId = str
 ItemPriority = int
 
 
-class TaskType(Enum):
-    TASK_DRIVEN = "TASK_DRIVEN"
-    ITEM_DRIVEN = "ITEM_DRIVEN"
+class WorkerAllocationMechanism(Enum):
+    PRECOMPUTED_TASK_RULE = "PRECOMPUTED_TASK_RULE"
+    DIRECT_ITEM_RULE = "DIRECT_ITEM_RULE"
+
+
+class TaskIdleDisposition(Enum):
+    CLOSE_WHEN_IDLE = "CLOSE_WHEN_IDLE"
+    PARK_WHEN_IDLE = "PARK_WHEN_IDLE"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -77,10 +82,10 @@ class TaskDescriptor:
 
     task_id: TaskId
     worker_group_id: WorkerGroupId
-    task_type: TaskType
+    worker_allocation_mechanism: WorkerAllocationMechanism
+    idle_disposition: TaskIdleDisposition
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
-    empty_close_at_millis: TimeMillis | None = None
 
     CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -95,21 +100,25 @@ class TaskDescriptor:
             raise ValueError("task id must be non-empty")
         if not self.worker_group_id:
             raise ValueError("worker group id must be non-empty")
-        if not isinstance(self.task_type, TaskType):
-            raise ValueError("task type is invalid")
-        if self.task_type is TaskType.TASK_DRIVEN:
+        if not isinstance(
+            self.worker_allocation_mechanism,
+            WorkerAllocationMechanism,
+        ):
+            raise ValueError("worker allocation mechanism is invalid")
+        if not isinstance(self.idle_disposition, TaskIdleDisposition):
+            raise ValueError("task idle disposition is invalid")
+        if (
+            self.worker_allocation_mechanism
+            is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        ):
             if not isinstance(self.allocation_rule, MappingABC):
-                raise ValueError("TASK_DRIVEN requires a Task allocation rule")
+                raise ValueError(
+                    "PRECOMPUTED_TASK_RULE requires a Task allocation rule"
+                )
         elif self.allocation_rule is not None:
-            raise ValueError("ITEM_DRIVEN forbids a Task allocation rule")
+            raise ValueError("DIRECT_ITEM_RULE forbids a Task allocation rule")
         if not isinstance(self.config, MappingABC):
             raise ValueError("task config must be a mapping")
-        if self.empty_close_at_millis is not None and (
-            not isinstance(self.empty_close_at_millis, int)
-            or isinstance(self.empty_close_at_millis, bool)
-            or self.empty_close_at_millis < 0
-        ):
-            raise ValueError("empty_close_at_millis must be non-negative")
         if set(self.config) != self.CONFIG_KEYS:
             raise ValueError("task config must contain exactly the declared keys")
         if any(
@@ -158,7 +167,7 @@ class TaskRuntime(ABC):
         descriptor: TaskDescriptor,
         suffix: Suffix,
     ) -> TaskCreationResult:
-        """Create one Task from a descriptor with resolved empty-close time."""
+        """Create one Task from a fully resolved scheduling descriptor."""
         pass
 
     @abstractmethod

@@ -12,18 +12,19 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    TaskType,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskItemAppendStatus,
     TaskItemScoreBand,
     TaskItemScoreTransitionStatus,
     TaskScoreTransitionStatus,
+    WorkerAllocationMechanism,
 )
 
 
@@ -84,14 +85,16 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            task_type=TaskType.TASK_DRIVEN,
+            worker_allocation_mechanism=(
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+            ),
+            idle_disposition=TaskIdleDisposition.CLOSE_WHEN_IDLE,
             allocation_rule={"worker.battery": {"$gte": 20}},
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "20",
                 "maxRetryTimes": "3",
             },
-            empty_close_at_millis=0,
         )
 
     def _task_key(self, task_id: str) -> str:
@@ -194,10 +197,10 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
             self._task_key(first.task_id),
             [
                 "workerGroupId",
-                "taskType",
+                "workerAllocationMechanism",
+                "idleDisposition",
                 "allocationRuleJson",
                 "configJson",
-                "emptyCloseAtMillis",
             ],
         )
         self.assertTrue(all(isinstance(value, bytes) for value in raw_fields))

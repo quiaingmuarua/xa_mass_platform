@@ -19,13 +19,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
+import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
@@ -39,7 +43,6 @@ import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseStatus;
 import com.xa.mass.server.taskdata.TaskDataService;
-import com.xa.mass.server.taskdata.TaskDispatchWakeSink;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
@@ -72,7 +75,6 @@ class RuntimeApiControllerTest {
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
-    private TaskDispatchWakeSink dispatchWake;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -83,7 +85,6 @@ class RuntimeApiControllerTest {
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
-        dispatchWake = mock(TaskDispatchWakeSink.class);
 
         when(workerCatalog.upsertWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
@@ -154,17 +155,37 @@ class RuntimeApiControllerTest {
             ));
             return results;
         });
+        TaskCallItemSubmission taskCallSubmission =
+                mock(TaskCallItemSubmission.class);
+        when(taskCallSubmission.submit(any(), anyList()))
+                .thenAnswer(invocation -> {
+                    List<TaskItem> items = invocation.getArgument(1);
+                    var results = new LinkedHashMap<
+                            String,
+                            TaskItemAppendResult
+                            >();
+                    items.forEach(item -> results.put(
+                            item.messageId(),
+                            new TaskItemAppendResult(
+                                    TaskItemAppendStatus.APPENDED
+                            )
+                    ));
+                    return new TaskCallSubmissionResult(
+                            TaskCallSubmissionStatus.SUBMITTED,
+                            results,
+                            null
+                    );
+                });
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         TaskDataService taskData = new TaskDataService(
                 taskRuntime,
-                taskCatalog,
-                dispatchWake
+                taskCatalog
         );
         TaskRpcProperties rpcProperties = rpcProperties();
         TaskRpcCallService taskRpc = new TaskRpcCallService(
-                taskData,
+                taskCallSubmission,
                 taskRuntime,
                 new TaskRpcWaitRegistry(rpcProperties),
                 rpcProperties
@@ -202,9 +223,7 @@ class RuntimeApiControllerTest {
                 10_000,
                 50,
                 100,
-                250,
-                10_000,
-                100
+                250
         );
     }
 
@@ -316,7 +335,7 @@ class RuntimeApiControllerTest {
                                 {
                                   "taskId": "task-1",
                                   "workerGroupId": "phone-tools",
-                                  "taskType": "TASK_DRIVEN",
+                                  "profile": "FINITE_PRECOMPUTED",
                                   "allocationRule": {},
                                   "config": {
                                     "priority": "0",
@@ -368,11 +387,10 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.results.message-1")
                         .value("{\"valid\":true}"))
                 .andExpect(jsonPath("$.results.message-2").isEmpty());
-        verify(dispatchWake).offer("task-1");
     }
 
     @Test
-    void itemDrivenAppendPassesOpaqueRulesToTheKernelMatcher()
+    void directAllocationAppendPassesOpaqueRulesToTheKernelMatcher()
             throws Exception {
         when(taskCatalog.loadTaskAllocationDescriptors(List.of("item-task")))
                 .thenReturn(Map.of(
@@ -380,14 +398,14 @@ class RuntimeApiControllerTest {
                         new TaskDescriptor(
                                 "item-task",
                                 "phone-tools",
-                                TaskType.ITEM_DRIVEN,
+                                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                                TaskIdleDisposition.PARK_WHEN_IDLE,
                                 null,
                                 Map.of(
                                         "priority", "0",
                                         "maximumCandidateWorkers", "1",
                                         "maxRetryTimes", "3"
-                                ),
-                                0L
+                                )
                         )
                 ));
         when(taskRuntime.appendItems(eq("item-task"), anyList()))
@@ -669,14 +687,18 @@ class RuntimeApiControllerTest {
         return new TaskDescriptor(
                 taskId,
                 "phone-tools",
-                scenarioRpc ? TaskType.ITEM_DRIVEN : TaskType.TASK_DRIVEN,
+                scenarioRpc
+                        ? WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                        : WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                scenarioRpc
+                        ? TaskIdleDisposition.PARK_WHEN_IDLE
+                        : TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 scenarioRpc ? null : Map.of(),
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ),
-                0L
+                )
         );
     }
 }

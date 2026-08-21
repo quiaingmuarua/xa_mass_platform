@@ -106,12 +106,14 @@
     "TaskScoreBandCore": [
       "acquire_band_task_candidates",
       "acquire_dispatch_work_tasks",
+      "close_observed_score",
       "close_score",
-      "count_running_visible_tasks",
+      "count_running_capacity_tasks",
       "get_score_states",
       "initialize_score",
+      "park_observed_idle_task",
+      "release_observed_idle_task",
       "release_observed_score_hold",
-      "rewrite_observed_same_band_suffix",
       "rewrite_same_band_time_millis",
       "rewrite_score"
     ],
@@ -172,10 +174,10 @@
     "TaskDescriptor": [
       "task_id",
       "worker_group_id",
-      "task_type",
+      "worker_allocation_mechanism",
+      "idle_disposition",
       "allocation_rule",
-      "config",
-      "empty_close_at_millis"
+      "config"
     ],
     "TaskItem": [
       "message_id",
@@ -297,9 +299,13 @@
       "stale",
       "invalid"
     ],
-    "TaskType": [
-      "TASK_DRIVEN",
-      "ITEM_DRIVEN"
+    "WorkerAllocationMechanism": [
+      "PRECOMPUTED_TASK_RULE",
+      "DIRECT_ITEM_RULE"
+    ],
+    "TaskIdleDisposition": [
+      "CLOSE_WHEN_IDLE",
+      "PARK_WHEN_IDLE"
     ],
     "WorkerCommandAppendStatus": [
       "APPENDED",

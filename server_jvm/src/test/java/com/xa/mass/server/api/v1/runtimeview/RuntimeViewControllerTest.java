@@ -17,7 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -131,8 +132,11 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath(
                         "$.entries[0].workerGroup.attributes.capability"
                 ).value("beta"))
-                .andExpect(jsonPath("$.entries[0].task.taskType")
-                        .value("ITEM_DRIVEN"))
+                .andExpect(jsonPath(
+                        "$.entries[0].task.workerAllocationMechanism"
+                ).value("DIRECT_ITEM_RULE"))
+                .andExpect(jsonPath("$.entries[0].task.idleDisposition")
+                        .value("PARK_WHEN_IDLE"))
                 .andExpect(jsonPath(
                         "$.entries[0].task.config.maxRetryTimes"
                 ).value("3"))
@@ -693,14 +697,14 @@ class RuntimeViewControllerTest {
         return new TaskDescriptor(
                 taskId,
                 workerGroupId,
-                TaskType.ITEM_DRIVEN,
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(
                         "priority", "0",
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
-                ),
-                9_999_999_999_900L
+                )
         );
     }
 }

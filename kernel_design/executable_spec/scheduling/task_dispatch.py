@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from threading import Lock
 from time import time_ns
 from typing import cast
 
@@ -20,9 +19,11 @@ from ..kernel.task_item_score_band import (
 from ..kernel.task_runtime import (
     MessageId,
     TaskDescriptor,
+    TaskIdleDisposition,
     TaskItem,
     TaskResourceCatalog,
     TaskRuntime,
+    WorkerAllocationMechanism,
 )
 from ..kernel.task_score_band import (
     Score,
@@ -42,11 +43,8 @@ from ..kernel.worker_delivery import (
 )
 from .worker_candidate import (
     WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
-)
-from .task_scheduling_profile import (
-    TaskAllocationRuleOwner,
-    resolve_task_scheduling_profile,
 )
 
 
@@ -66,8 +64,6 @@ class TaskDispatchConfig:
     task_batch_limit: int
     per_task_dispatch_limit: int
     item_claim_lease_duration_millis: TimeMillis
-    max_empty_recheck_times: int
-    empty_recheck_interval_millis: TimeMillis
 
     def __post_init__(self) -> None:
         if self.task_batch_limit <= 0:
@@ -76,50 +72,6 @@ class TaskDispatchConfig:
             raise ValueError("per-task dispatch limit must be positive")
         if self.item_claim_lease_duration_millis <= 0:
             raise ValueError("item claim lease duration must be positive")
-        if not (
-            1 <= self.max_empty_recheck_times <= TaskScoreBandCore.MAX_SUFFIX
-        ):
-            raise ValueError("max empty recheck times must be in 1..99")
-        if self.empty_recheck_interval_millis <= 0:
-            raise ValueError("empty recheck interval must be positive")
-
-
-class TaskDispatchWakeInbox:
-    """Bounded, coalesced acceleration hints for Task Dispatch.
-
-    The inbox is process-local policy state. Dropping a hint is safe because
-    Task score time coordinates remain the liveness mechanism.
-    """
-
-    def __init__(self, *, capacity: int = 10_000) -> None:
-        if capacity <= 0:
-            raise ValueError("wake inbox capacity must be positive")
-        self._capacity = capacity
-        self._task_ids: dict[TaskId, None] = {}
-        self._lock = Lock()
-
-    def offer(self, *, task_ids: tuple[TaskId, ...]) -> int:
-        accepted = 0
-        with self._lock:
-            for task_id in dict.fromkeys(task_ids):
-                if not task_id:
-                    raise ValueError("wake task ids must be non-empty")
-                if task_id in self._task_ids:
-                    continue
-                if len(self._task_ids) >= self._capacity:
-                    break
-                self._task_ids[task_id] = None
-                accepted += 1
-        return accepted
-
-    def consume(self, *, limit: int) -> tuple[TaskId, ...]:
-        if limit <= 0:
-            raise ValueError("wake consume limit must be positive")
-        with self._lock:
-            task_ids = tuple(self._task_ids)[:limit]
-            for task_id in task_ids:
-                del self._task_ids[task_id]
-        return task_ids
 
 
 class TaskItemDispatcher:
@@ -264,11 +216,13 @@ class TaskItemDispatcher:
     ) -> dict[MessageId, CandidateWorkerEntry]:
         priority = int(descriptor.config["priority"])
         task_items = tuple(item for item, _ in claimable_items)
-        profile = resolve_task_scheduling_profile(descriptor.task_type)
-        if profile.allocation_rule_owner is TaskAllocationRuleOwner.TASK:
+        if (
+            descriptor.worker_allocation_mechanism
+            is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+        ):
             task_rule = cast(Mapping[str, object], descriptor.allocation_rule)
             precomputed = self.candidate_acquirer.acquire_worker_candidates(
-                strategy=profile.dispatch_acquisition_strategy,
+                strategy=WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
                 worker_group_id=descriptor.worker_group_id,
                 candidate_requests={
                     task_id: WorkerCandidateRequest(
@@ -297,7 +251,7 @@ class TaskItemDispatcher:
                 allocation_rule=item_rule,
             )
         direct = self.candidate_acquirer.acquire_worker_candidates(
-            strategy=profile.dispatch_acquisition_strategy,
+            strategy=WorkerCandidateAcquisitionStrategy.DIRECT,
             worker_group_id=descriptor.worker_group_id,
             candidate_requests=direct_requests,
             lease_until_millis=lease_until_millis,
@@ -354,7 +308,7 @@ class TaskItemDispatcher:
 
 
 class TaskDispatchPacer:
-    """Pace RUNNING Tasks through Item dispatch or empty recheck."""
+    """Pace RUNNING Tasks through Item dispatch or their idle disposition."""
 
     def __init__(
         self,
@@ -362,17 +316,13 @@ class TaskDispatchPacer:
         task_catalog: TaskResourceCatalog,
         worker_command_runtime: WorkerCommandRuntime,
         item_score: TaskItemScoreBandCore,
-        candidate_warmup_schedule: CandidateWarmupSchedule,
         task_item_dispatcher: TaskItemDispatcher,
-        wake_inbox: TaskDispatchWakeInbox,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
         self.worker_command_runtime = worker_command_runtime
         self.item_score = item_score
-        self.candidate_warmup_schedule = candidate_warmup_schedule
         self.task_item_dispatcher = task_item_dispatcher
-        self.wake_inbox = wake_inbox
 
     def dispatch_tasks(
         self,
@@ -382,10 +332,6 @@ class TaskDispatchPacer:
         dispatch_time_millis = self._current_time_millis()
         claim_until_millis = (
             dispatch_time_millis + config.item_claim_lease_duration_millis
-        )
-        self._release_woken_empty_rechecks(
-            dispatch_time_millis=dispatch_time_millis,
-            limit=config.task_batch_limit,
         )
         active_tasks = self._acquire_dispatchable_tasks(
             limit=config.task_batch_limit,
@@ -400,10 +346,6 @@ class TaskDispatchPacer:
             tuple[TaskDescriptor, TaskScoreState],
         ] = {}
         for task_id, descriptor, state in active_tasks:
-            if state.suffix != TaskScoreBandCore.MIN_SUFFIX:
-                activity_recheck_tasks[task_id] = (descriptor, state)
-                continue
-
             claimable_items = self.task_item_dispatcher.observe_claimable_task_items(
                 task_id=task_id,
                 limit=config.per_task_dispatch_limit,
@@ -451,42 +393,22 @@ class TaskDispatchPacer:
             has_active_items = self.item_score.has_active_items(
                 task_ids=tuple(activity_recheck_tasks),
             )
+            parked_scores: dict[TaskId, Score] = {}
             for task_id, (descriptor, state) in activity_recheck_tasks.items():
-                self._apply_activity_recheck(
+                parked_score = self._apply_activity_recheck(
                     task_id=task_id,
                     descriptor=descriptor,
                     state=state,
                     has_active_items=has_active_items.get(task_id, False),
                     dispatch_time_millis=dispatch_time_millis,
-                    config=config,
                 )
-        return published_command_count
-
-    def _release_woken_empty_rechecks(
-        self,
-        *,
-        dispatch_time_millis: TimeMillis,
-        limit: int,
-    ) -> None:
-        task_ids = self.wake_inbox.consume(limit=limit)
-        if not task_ids:
-            return
-        states = self.task_score.get_score_states(task_ids=task_ids)
-        for task_id in task_ids:
-            state = states.get(task_id)
-            if (
-                state is None
-                or state.band is not TaskScoreBand.RUNNING_VISIBLE
-                or state.suffix is None
-                or state.suffix <= TaskScoreBandCore.MIN_SUFFIX
-                or state.time_millis is None
-                or state.time_millis <= dispatch_time_millis
-            ):
-                continue
-            self.task_score.release_observed_score_hold(
-                task_id=task_id,
-                observed_hold_score=state.score,
+                if parked_score is not None:
+                    parked_scores[task_id] = parked_score
+            self._release_parks_with_concurrent_items(
+                parked_scores,
+                release_time_millis=dispatch_time_millis,
             )
+        return published_command_count
 
     def _acquire_dispatchable_tasks(
         self,
@@ -507,7 +429,7 @@ class TaskDispatchPacer:
             if (descriptor := descriptors.get(task_id)) is not None
             and (state := states.get(task_id)) is not None
             and state.band is TaskScoreBand.RUNNING_VISIBLE
-            and state.suffix is not None
+            and state.suffix == TaskScoreBandCore.MIN_SUFFIX
         )
 
     def _apply_activity_recheck(
@@ -518,68 +440,49 @@ class TaskDispatchPacer:
         state: TaskScoreState,
         has_active_items: bool,
         dispatch_time_millis: TimeMillis,
-        config: TaskDispatchConfig,
-    ) -> None:
-        suffix = state.suffix
-        assert suffix is not None
-
+    ) -> Score | None:
         if has_active_items:
-            if suffix == TaskScoreBandCore.MIN_SUFFIX:
-                self.task_score.rewrite_same_band_time_millis(
-                    task_id=task_id,
-                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                    target_time_millis=dispatch_time_millis,
-                )
-                return
-            reset = self.task_score.rewrite_observed_same_band_suffix(
-                task_id=task_id,
-                observed_score=state.score,
-                target_time_millis=dispatch_time_millis,
-                suffix_delta=-suffix,
-            )
-            if (
-                reset.status is TaskScoreTransitionStatus.TRANSITIONED
-                and resolve_task_scheduling_profile(
-                    descriptor.task_type
-                ).candidate_precomputation_enabled
-            ):
-                self.candidate_warmup_schedule.schedule_candidate_warmups(
-                    task_ids=(task_id,),
-                    due_time_millis=dispatch_time_millis,
-                )
-            return
-
-        if suffix >= config.max_empty_recheck_times:
-            empty_close_at_millis = descriptor.empty_close_at_millis
-            assert empty_close_at_millis is not None
-            if dispatch_time_millis >= empty_close_at_millis:
-                self.task_score.close_score(
-                    task_id=task_id,
-                    terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
-                )
-                return
             self.task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
                 expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                target_time_millis=min(
-                    empty_close_at_millis,
-                    dispatch_time_millis
-                    + config.max_empty_recheck_times
-                    * config.empty_recheck_interval_millis,
-                ),
+                target_time_millis=dispatch_time_millis,
             )
-            return
+            return None
 
-        next_suffix = suffix + 1
-        self.task_score.rewrite_observed_same_band_suffix(
+        if descriptor.idle_disposition is TaskIdleDisposition.CLOSE_WHEN_IDLE:
+            self.task_score.close_observed_score(
+                task_id=task_id,
+                observed_score=state.score,
+                terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
+            )
+            return None
+
+        parked = self.task_score.park_observed_idle_task(
             task_id=task_id,
             observed_score=state.score,
-            target_time_millis=(
-                dispatch_time_millis
-                + next_suffix * config.empty_recheck_interval_millis
-            ),
-            suffix_delta=1,
         )
+        if parked.status is TaskScoreTransitionStatus.TRANSITIONED:
+            return parked.score
+        return None
+
+    def _release_parks_with_concurrent_items(
+        self,
+        parked_scores: Mapping[TaskId, Score],
+        *,
+        release_time_millis: TimeMillis,
+    ) -> None:
+        if not parked_scores:
+            return
+        has_active_items = self.item_score.has_active_items(
+            task_ids=tuple(parked_scores),
+        )
+        for task_id, parked_score in parked_scores.items():
+            if has_active_items.get(task_id, False):
+                self.task_score.release_observed_idle_task(
+                    task_id=task_id,
+                    observed_park_score=parked_score,
+                    release_time_millis=release_time_millis,
+                )
 
     def _publish_worker_commands(
         self,

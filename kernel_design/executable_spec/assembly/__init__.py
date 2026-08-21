@@ -1,5 +1,6 @@
 from ..kernel import (
-    TaskType,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
     EndpointManagerId,
     MessageId,
     DeliveryReport,
@@ -24,6 +25,10 @@ from ..kernel import (
     encode_delivery_command,
     encode_delivery_report,
 )
+from ..scheduling import (
+    TaskCallSubmissionResult,
+    TaskCallSubmissionStatus,
+)
 from .application import (
     KernelApplication,
     KernelApplicationConfig,
@@ -40,7 +45,8 @@ from .transport_clients import (
     WorkerCommandConsumerClient,
 )
 __all__ = [
-    "TaskType",
+    "TaskIdleDisposition",
+    "WorkerAllocationMechanism",
     "EndpointManagerId",
     "KernelApplication",
     "KernelApplicationConfig",
@@ -58,6 +64,8 @@ __all__ = [
     "TaskApprovalStatus",
     "TaskCloseResult",
     "TaskCloseStatus",
+    "TaskCallSubmissionResult",
+    "TaskCallSubmissionStatus",
     "TaskCreationResult",
     "TaskCreationStatus",
     "TaskDescriptor",

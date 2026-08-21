@@ -1,5 +1,6 @@
 package com.xa.mass.server.taskbatch;
 
+import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.server.taskdata.TaskDataService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
 import java.io.IOException;
@@ -30,6 +31,7 @@ public class TaskBatchConfiguration {
     TaskBatchService taskBatchService(
             TaskBatchFileStore files,
             TaskDataService taskData,
+            TaskCallItemSubmission taskCallSubmission,
             WorkerGroupTaskCatalog taskCatalog,
             TaskBatchProperties properties,
             Clock taskBatchClock
@@ -37,6 +39,7 @@ public class TaskBatchConfiguration {
         return new TaskBatchService(
                 files,
                 taskData,
+                taskCallSubmission,
                 taskCatalog,
                 properties,
                 taskBatchClock

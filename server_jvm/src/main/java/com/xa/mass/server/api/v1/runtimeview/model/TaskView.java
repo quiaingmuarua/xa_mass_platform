@@ -6,9 +6,9 @@ import org.jspecify.annotations.Nullable;
 public record TaskView(
         String taskId,
         String workerGroupId,
-        String taskType,
+        String workerAllocationMechanism,
+        String idleDisposition,
         @Nullable Map<String, Object> allocationRule,
-        Map<String, String> config,
-        @Nullable Long emptyCloseAtMillis
+        Map<String, String> config
 ) {
 }

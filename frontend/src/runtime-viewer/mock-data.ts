@@ -45,14 +45,14 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
 const mockTasks: TaskView[] = MOCK_WORKER_GROUPS.map((group) => ({
   taskId: `scenario-rpc-${group.workerGroupId}`,
   workerGroupId: group.workerGroupId,
-  taskType: "ITEM_DRIVEN",
+  workerAllocationMechanism: "DIRECT_ITEM_RULE",
+  idleDisposition: "PARK_WHEN_IDLE",
   allocationRule: null,
   config: {
     priority: "0",
     maximumCandidateWorkers: "1",
     maxRetryTimes: "3"
-  },
-  emptyCloseAtMillis: 9_999_999_999_900
+  }
 }));
 
 export const MOCK_CONFIGURED_RESOURCES: ConfiguredRuntimeResourcesResponse = {

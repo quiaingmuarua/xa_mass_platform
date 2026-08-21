@@ -359,7 +359,7 @@ has_due_active_items(taskIds)
 
 has_active_items(taskIds)
   -> taskId -> bool
-  -> Task empty-recheck read; complete ACTIVE band including future and budget 0
+  -> Task idle-lifecycle read; complete ACTIVE band including future and budget 0
 ```
 
 For the v0 active policy, scan the complete due ACTIVE range from `now` toward

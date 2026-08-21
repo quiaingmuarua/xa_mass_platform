@@ -8,7 +8,6 @@ from typing import Any, Mapping, Sequence
 
 from ..constraint_dsl import ConstraintEvaluator
 from ..kernel.task_runtime import (
-    TaskType,
     MessageId,
     TaskCreationResult,
     TaskCreationStatus,
@@ -18,6 +17,8 @@ from ..kernel.task_runtime import (
     TaskItemAppendStatus,
     TaskResourceCatalog,
     TaskRuntime,
+    TaskIdleDisposition,
+    WorkerAllocationMechanism,
 )
 from ..kernel.task_item_score_band import (
     TaskItemScoreBandCore,
@@ -87,11 +88,6 @@ class RedisTaskRuntime(TaskRuntime):
         descriptor: TaskDescriptor,
         suffix: Suffix,
     ) -> TaskCreationResult:
-        if descriptor.empty_close_at_millis is None:
-            return TaskCreationResult(
-                TaskCreationStatus.INVALID,
-                "descriptor empty_close_at_millis must be resolved",
-            )
         try:
             if descriptor.allocation_rule is not None:
                 ConstraintEvaluator.compile_match_rules(descriptor.allocation_rule)
@@ -109,10 +105,12 @@ class RedisTaskRuntime(TaskRuntime):
 
         descriptor_fields = {
             "workerGroupId": descriptor.worker_group_id,
-            "taskType": descriptor.task_type.value,
+            "workerAllocationMechanism": (
+                descriptor.worker_allocation_mechanism.value
+            ),
+            "idleDisposition": descriptor.idle_disposition.value,
             "allocationRuleJson": allocation_rule_json,
             "configJson": config_json,
-            "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
         }
         initialization = self._start_or_complete_task_creation(
             task_id=descriptor.task_id,
@@ -460,10 +458,10 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
 
     _HASH_FIELDS = (
         "workerGroupId",
-        "taskType",
+        "workerAllocationMechanism",
+        "idleDisposition",
         "allocationRuleJson",
         "configJson",
-        "emptyCloseAtMillis",
     )
 
     def __init__(
@@ -507,36 +505,32 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         try:
             (
                 worker_group_raw,
-                task_type_raw,
+                worker_allocation_mechanism_raw,
+                idle_disposition_raw,
                 allocation_rule_raw,
                 config_raw,
-                empty_close_at_millis_raw,
             ) = raw_row
             worker_group_id = (
                 worker_group_raw.decode("utf-8")
                 if isinstance(worker_group_raw, bytes)
                 else worker_group_raw
             )
-            task_type_value = (
-                task_type_raw.decode("utf-8")
-                if isinstance(task_type_raw, bytes)
-                else task_type_raw
+            worker_allocation_mechanism_value = (
+                worker_allocation_mechanism_raw.decode("utf-8")
+                if isinstance(worker_allocation_mechanism_raw, bytes)
+                else worker_allocation_mechanism_raw
             )
-            task_type = TaskType(task_type_value)
+            idle_disposition_value = (
+                idle_disposition_raw.decode("utf-8")
+                if isinstance(idle_disposition_raw, bytes)
+                else idle_disposition_raw
+            )
+            worker_allocation_mechanism = WorkerAllocationMechanism(
+                worker_allocation_mechanism_value
+            )
+            idle_disposition = TaskIdleDisposition(idle_disposition_value)
             allocation_rule = json.loads(allocation_rule_raw)
             config = json.loads(config_raw)
-            empty_close_at_millis_value = (
-                empty_close_at_millis_raw.decode("utf-8")
-                if isinstance(empty_close_at_millis_raw, bytes)
-                else empty_close_at_millis_raw
-            )
-            if (
-                not isinstance(empty_close_at_millis_value, str)
-                or not empty_close_at_millis_value.isascii()
-                or not empty_close_at_millis_value.isdecimal()
-            ):
-                return None
-            empty_close_at_millis = int(empty_close_at_millis_value)
         except (TypeError, ValueError, UnicodeDecodeError):
             return None
 
@@ -554,14 +548,14 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
             return TaskDescriptor(
                 task_id=task_id,
                 worker_group_id=worker_group_id,
-                task_type=task_type,
+                worker_allocation_mechanism=worker_allocation_mechanism,
+                idle_disposition=idle_disposition,
                 allocation_rule=(
                     dict(allocation_rule)
                     if allocation_rule is not None
                     else None
                 ),
                 config=dict(config),
-                empty_close_at_millis=empty_close_at_millis,
             )
         except ValueError:
             return None

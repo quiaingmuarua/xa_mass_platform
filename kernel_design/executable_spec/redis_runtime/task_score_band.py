@@ -91,6 +91,8 @@ redis.call("ZADD", key, next_score, task_id)
 return {"transitioned", tonumber(next_score)}
 """
 
+    _IDLE_PARK_TIME_SLOT: ClassVar[int] = TaskScoreBandCore.MAX_TIME_SLOT - 1
+
     def __init__(
         self,
         redis_client: Any,
@@ -125,12 +127,19 @@ return {"transitioned", tonumber(next_score)}
             )
         return states
 
-    def count_running_visible_tasks(self) -> int:
+    def count_running_capacity_tasks(self) -> int:
         tag = self.RUNNING_VISIBLE_TAG
+        idle_park_score = self._idle_park_score()
         return int(
             self.redis.zcount(
                 self.score_key,
                 self._score(tag, self.MIN_TIME_SLOT, self.MIN_SUFFIX),
+                idle_park_score - 1,
+            )
+        ) + int(
+            self.redis.zcount(
+                self.score_key,
+                idle_park_score + 1,
                 self._score(tag, self.MAX_TIME_SLOT, self.MAX_SUFFIX),
             )
         )
@@ -192,7 +201,10 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         lease_until_millis = current_time_millis + lease_duration_millis
         lease_until_slot = self._time_slot_from_millis(lease_until_millis)
-        if lease_until_slot > self.MAX_TIME_SLOT:
+        if (
+            lease_until_slot > self.MAX_TIME_SLOT
+            or lease_until_slot == self._IDLE_PARK_TIME_SLOT
+        ):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         lease_score = self._score(
@@ -232,7 +244,7 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self._valid_time_millis(target_time_millis):
+        if not self._valid_public_target_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_suffix is not None and not (
             self.MIN_SUFFIX <= target_suffix <= self.MAX_SUFFIX
@@ -264,7 +276,7 @@ return {"transitioned", tonumber(next_score)}
     ) -> TaskScoreTransitionResult:
         if expected_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self._valid_time_millis(target_time_millis):
+        if not self._valid_public_target_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         target_time_slot = self._time_slot_from_millis(target_time_millis)
         if target_time_slot <= self.MIN_TIME_SLOT:
@@ -285,36 +297,54 @@ return {"transitioned", tonumber(next_score)}
             target_suffix=None,
         )
 
-    def rewrite_observed_same_band_suffix(
+    def park_observed_idle_task(
         self,
         *,
         task_id: TaskId,
         observed_score: Score,
-        target_time_millis: TimeMillis,
-        suffix_delta: int,
     ) -> TaskScoreTransitionResult:
-        if suffix_delta == 0:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self._valid_time_millis(target_time_millis):
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-
         observed = self._decode_positive(observed_score)
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         observed_tag, observed_time_slot, observed_suffix = observed
-        target_time_slot = self._time_slot_from_millis(target_time_millis)
-        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.ADMISSION_VISIBLE_TAG}:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if target_time_slot <= observed_time_slot:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-
-        target_suffix = observed_suffix + suffix_delta
-        if target_suffix < self.MIN_SUFFIX or target_suffix > self.MAX_SUFFIX:
+        if (
+            observed_tag != self.RUNNING_VISIBLE_TAG
+            or observed_suffix != self.MIN_SUFFIX
+            or observed_time_slot >= self._IDLE_PARK_TIME_SLOT
+        ):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        next_score = self._score(observed_tag, target_time_slot, target_suffix)
-        return self._cas_update(task_id, observed_score, next_score)
+        return self._cas_update(
+            task_id,
+            observed_score,
+            self._idle_park_score(),
+        )
+
+    def release_observed_idle_task(
+        self,
+        *,
+        task_id: TaskId,
+        observed_park_score: Score,
+        release_time_millis: TimeMillis,
+    ) -> TaskScoreTransitionResult:
+        if observed_park_score != self._idle_park_score():
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if not self._valid_public_target_time_millis(release_time_millis):
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        release_time_slot = self._time_slot_from_millis(release_time_millis)
+        if release_time_slot >= self._IDLE_PARK_TIME_SLOT:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        return self._cas_update(
+            task_id,
+            observed_park_score,
+            self._score(
+                self.RUNNING_VISIBLE_TAG,
+                release_time_slot,
+                self.MIN_SUFFIX,
+            ),
+        )
 
     def close_score(
         self,
@@ -327,12 +357,27 @@ return {"transitioned", tonumber(next_score)}
 
         return self._close_positive_score(task_id, terminal_score)
 
+    def close_observed_score(
+        self,
+        *,
+        task_id: TaskId,
+        observed_score: Score,
+        terminal_score: Score,
+    ) -> TaskScoreTransitionResult:
+        if terminal_score > self.TERMINAL_SCORE_MAX:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if self._decode_positive(observed_score) is None:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        return self._cas_update(task_id, observed_score, terminal_score)
+
     def release_observed_score_hold(
         self,
         *,
         task_id: TaskId,
         observed_hold_score: Score,
     ) -> TaskScoreTransitionResult:
+        if observed_hold_score == self._idle_park_score():
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         observed = self._decode_positive(observed_hold_score)
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -576,6 +621,20 @@ return {"transitioned", tonumber(next_score)}
 
     def _valid_time_millis(self, time_millis: int) -> bool:
         return self.MIN_TIME_MILLIS <= time_millis <= self.MAX_TIME_MILLIS
+
+    def _valid_public_target_time_millis(self, time_millis: int) -> bool:
+        return (
+            self._valid_time_millis(time_millis)
+            and self._time_slot_from_millis(time_millis)
+            != self._IDLE_PARK_TIME_SLOT
+        )
+
+    def _idle_park_score(self) -> Score:
+        return self._score(
+            self.RUNNING_VISIBLE_TAG,
+            self._IDLE_PARK_TIME_SLOT,
+            self.MIN_SUFFIX,
+        )
 
     def _score_to_int(self, raw_score: Any) -> Score:
         score = int(raw_score)

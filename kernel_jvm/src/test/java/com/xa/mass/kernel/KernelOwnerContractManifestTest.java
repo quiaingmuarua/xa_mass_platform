@@ -169,7 +169,14 @@ class KernelOwnerContractManifestTest {
                             TaskScoreBandCore
                                     .TaskScoreTransitionStatus.class
                     ),
-                    Map.entry("TaskType", TaskRuntime.TaskType.class),
+                    Map.entry(
+                            "WorkerAllocationMechanism",
+                            TaskRuntime.WorkerAllocationMechanism.class
+                    ),
+                    Map.entry(
+                            "TaskIdleDisposition",
+                            TaskRuntime.TaskIdleDisposition.class
+                    ),
                     Map.entry(
                             "WorkerCommandAppendStatus",
                             WorkerCommandRuntime

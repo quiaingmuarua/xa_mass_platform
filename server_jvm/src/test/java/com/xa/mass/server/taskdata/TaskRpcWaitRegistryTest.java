@@ -226,9 +226,7 @@ class TaskRpcWaitRegistryTest {
                 maxWaiters,
                 50,
                 100,
-                250,
-                10_000,
-                100
+                250
         );
     }
 }

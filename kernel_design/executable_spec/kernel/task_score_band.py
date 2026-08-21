@@ -111,8 +111,8 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def count_running_visible_tasks(self) -> int:
-        """Count every RUNNING_VISIBLE member, including future holds."""
+    def count_running_capacity_tasks(self) -> int:
+        """Count RUNNING_VISIBLE members except the private idle park."""
         pass
 
     @abstractmethod
@@ -200,21 +200,28 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def rewrite_observed_same_band_suffix(
+    def park_observed_idle_task(
         self,
         *,
         task_id: TaskId,
         observed_score: Score,
-        target_time_millis: TimeMillis,
-        suffix_delta: int,
     ) -> TaskScoreTransitionResult:
-        """Rewrite same-band suffix using an exact observed-score fence.
+        """Move the exact observed RUNNING score to the idle park.
 
-        The stored score must still equal observed_score, otherwise the round is
-        stale and must not overwrite newer same-band classification.
-        suffix_delta must be non-zero. The caller owns suffix meaning; the score
-        core only validates the resulting suffix range and increasing time.
+        The private park coordinate belongs to the score owner. Callers cannot
+        choose it or use this operation as an arbitrary future hold.
         """
+        pass
+
+    @abstractmethod
+    def release_observed_idle_task(
+        self,
+        *,
+        task_id: TaskId,
+        observed_park_score: Score,
+        release_time_millis: TimeMillis,
+    ) -> TaskScoreTransitionResult:
+        """Release only the exact private idle park to a due RUNNING score."""
         pass
 
     @abstractmethod
@@ -225,6 +232,17 @@ class TaskScoreBandCore(ABC):
         terminal_score: Score,
     ) -> TaskScoreTransitionResult:
         """Close any positive score to a negative terminal score."""
+        pass
+
+    @abstractmethod
+    def close_observed_score(
+        self,
+        *,
+        task_id: TaskId,
+        observed_score: Score,
+        terminal_score: Score,
+    ) -> TaskScoreTransitionResult:
+        """Close the exact observed positive score to a terminal score."""
         pass
 
     @abstractmethod

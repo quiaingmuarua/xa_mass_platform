@@ -65,7 +65,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void appendAndSuccessLoadMatchTaskOwnerShape() {
         long createdAt = redisTimeMillis();
-        storeTask("task-1", "TASK_DRIVEN");
+        storeTask("task-1", "PRECOMPUTED_TASK_RULE");
         TaskItem item = new TaskItem(
                 "message-1",
                 "telecom.phone.inspect",
@@ -120,7 +120,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void catalogReadsTheCanonicalDescriptorAndMissingAppendIsNarrow() {
-        storeTask("task-1", "ITEM_DRIVEN");
+        storeTask("task-1", "DIRECT_ITEM_RULE");
 
         var descriptor = catalog.loadTaskAllocationDescriptors(
                 List.of("task-1", "missing")
@@ -148,7 +148,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void allocationRuleIsPersistedWithoutJvmDslInterpretation() {
         long createdAt = redisTimeMillis();
-        storeTask("task-1", "ITEM_DRIVEN");
+        storeTask("task-1", "DIRECT_ITEM_RULE");
         TaskItem item = new TaskItem(
                 "message-invalid",
                 "event",
@@ -175,19 +175,20 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         )).isNotNull();
     }
 
-    private void storeTask(String taskId, String taskType) {
+    private void storeTask(String taskId, String allocationMechanism) {
         redis.hset(
                 "tc:" + prefix + ":task:" + taskId,
                 Map.of(
                         "workerGroupId", "phone-tools",
-                        "taskType", taskType,
+                        "workerAllocationMechanism", allocationMechanism,
+                        "idleDisposition", "PARK_WHEN_IDLE",
                         "allocationRuleJson",
-                        "TASK_DRIVEN".equals(taskType) ? "{}" : "null",
+                        "PRECOMPUTED_TASK_RULE".equals(allocationMechanism)
+                                ? "{}" : "null",
                         "configJson",
                         "{\"maxRetryTimes\":\"3\","
                                 + "\"maximumCandidateWorkers\":\"1\","
-                                + "\"priority\":\"0\"}",
-                        "emptyCloseAtMillis", "0"
+                                + "\"priority\":\"0\"}"
                 )
         );
     }

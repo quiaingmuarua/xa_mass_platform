@@ -37,10 +37,10 @@ export interface WorkerGroupView {
 export interface TaskView {
   taskId: string;
   workerGroupId: string;
-  taskType: "TASK_DRIVEN" | "ITEM_DRIVEN";
+  workerAllocationMechanism: "PRECOMPUTED_TASK_RULE" | "DIRECT_ITEM_RULE";
+  idleDisposition: "CLOSE_WHEN_IDLE" | "PARK_WHEN_IDLE";
   allocationRule: Record<string, JsonValue> | null;
   config: Record<string, string>;
-  emptyCloseAtMillis: number | null;
 }
 
 export interface ConfiguredRuntimeResourceEntry {

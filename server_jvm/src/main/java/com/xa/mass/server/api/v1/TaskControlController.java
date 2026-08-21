@@ -4,9 +4,12 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
+import com.xa.mass.server.api.v1.model.TaskProfile;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
@@ -45,12 +48,10 @@ public class TaskControlController {
                 new TaskDescriptor(
                         request.taskId(),
                         request.workerGroupId(),
-                        TaskRuntime.TaskType.valueOf(
-                                request.taskType().name()
-                        ),
+                        allocationMechanism(request.profile()),
+                        idleDisposition(request.profile()),
                         request.allocationRule(),
-                        request.config(),
-                        request.emptyCloseAtMillis()
+                        request.config()
                 ),
                 0
         );
@@ -65,6 +66,26 @@ public class TaskControlController {
                 result.status().wireValue(),
                 result.reason()
         );
+    }
+
+    private static WorkerAllocationMechanism allocationMechanism(
+            TaskProfile profile
+    ) {
+        return switch (profile) {
+            case FINITE_PRECOMPUTED ->
+                    WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE;
+            case REUSABLE_DIRECT ->
+                    WorkerAllocationMechanism.DIRECT_ITEM_RULE;
+        };
+    }
+
+    private static TaskIdleDisposition idleDisposition(TaskProfile profile) {
+        return switch (profile) {
+            case FINITE_PRECOMPUTED ->
+                    TaskIdleDisposition.CLOSE_WHEN_IDLE;
+            case REUSABLE_DIRECT ->
+                    TaskIdleDisposition.PARK_WHEN_IDLE;
+        };
     }
 
     @PostMapping("/{taskId}/approve")

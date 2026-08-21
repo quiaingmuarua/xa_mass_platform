@@ -47,19 +47,22 @@ Provider ownership is deliberately mixed but explicit:
 
 | Boundary | Current provider/owner |
 | --- | --- |
-| Task create, approve, close and dispatch wake | Python Kernel HTTP |
+| Task create, approve, close and Task Call Item submission | Python Kernel HTTP |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus transparent Java Redis Adapter-evidence append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
-| WorkerGroup RPC and Task Batch | Server-bounded use cases over existing owners |
+| WorkerGroup RPC and Task Batch | Server-bounded use cases over Kernel Task Call submission and result reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
 | Other scheduling internals | Explicit JVM gaps |
 
-The bounded use cases do not create new truth: WorkerGroup RPC appends one Item
-and observes last success through one shared probe; Task Batch appends a finite
-input once and publishes complete or partial JSONL; pause/resume calls the
+The bounded use cases do not create new truth: WorkerGroup RPC submits one Item
+through the Kernel Task Call command and observes last success through one
+shared probe; Task Batch submits finite input in ordered chunks of at most 100
+and publishes complete or partial JSONL. Ordinary Task data append remains a
+pure data write and does not release the Kernel-private idle park;
+pause/resume calls the
 Worker score owner; DIRECT_CALL correlates caller-selected targets without
 creating Task or Result Routing truth. Its single public call is scoped to one
 configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
@@ -71,6 +74,12 @@ enumerate event support or convert an unknown event into an HTTP admission
 error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a DIRECT_CALL event whitelist.
+
+Public Task creation accepts only the finite Server profiles
+`FINITE_PRECOMPUTED` and `REUSABLE_DIRECT`. They map respectively to
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` and
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE`; the Kernel stores those two facts rather
+than the Server profile name.
 
 Runtime View may request one bounded `1..100` Worker scheduling observation.
 The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
