@@ -31,10 +31,10 @@ class WorkerDeliveryHttpCompositionTest {
                             IsolatedWorkerDeliveryHttpApplication.class
                     )
                     .withPropertyValues(
-                            "xa.mass.kernel-redis.redis-url="
+                            "xa.mass.redis.url="
                                     + "redis://127.0.0.1:6379/15",
-                            "xa.mass.kernel-redis.redis-prefix="
-                                    + "isolated-worker-delivery"
+                            "xa.mass.redis.scope="
+                                    + "test_worker_delivery_composition"
                     )
                     .withBean(
                             WorkerBindingService.class,

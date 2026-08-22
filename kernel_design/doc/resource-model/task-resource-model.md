@@ -390,7 +390,7 @@ catalog does not own WorkerGroup storage.
 One Task descriptor is one Redis HASH:
 
 ```text
-tc:{prefix}:task:{taskId}
+xa_mass:<scope>:task:<taskId>:descriptor
 
 workerGroupId       -> plain string
 workerAllocationMechanism -> `PRECOMPUTED_TASK_RULE` or `DIRECT_ITEM_RULE`

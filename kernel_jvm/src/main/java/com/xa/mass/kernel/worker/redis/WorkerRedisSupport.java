@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.worker.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.ScriptOutputType;
@@ -27,20 +28,26 @@ final class WorkerRedisSupport {
     private WorkerRedisSupport() {
     }
 
-    static String groupsKey(String prefix) {
-        return "wr:" + prefix + ":groups";
+    static String groupsKey(RedisKeyspace keyspace) {
+        return keyspace.base() + ":worker:groups";
     }
 
-    static String workerMetadataKey(String prefix, String workerGroupId) {
-        return "wr:" + prefix + ":worker-metadata:" + workerGroupId;
+    static String workerMetadataKey(
+            RedisKeyspace keyspace,
+            String workerGroupId
+    ) {
+        return keyspace.base() + ":worker:metadata:" + workerGroupId;
     }
 
-    static String workerPropertiesKey(String prefix, String workerGroupId) {
-        return "wr:" + prefix + ":worker-properties:" + workerGroupId;
+    static String workerPropertiesKey(
+            RedisKeyspace keyspace,
+            String workerGroupId
+    ) {
+        return keyspace.base() + ":worker:properties:" + workerGroupId;
     }
 
-    static String workerIdOwnersKey(String prefix) {
-        return "wr:" + prefix + ":worker-id-owners";
+    static String workerIdOwnersKey(RedisKeyspace keyspace) {
+        return keyspace.base() + ":worker:id_owners";
     }
 
     static boolean compareAndSetHashField(

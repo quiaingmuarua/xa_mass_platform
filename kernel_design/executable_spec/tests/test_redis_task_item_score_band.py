@@ -4,6 +4,7 @@ import unittest
 from collections.abc import Callable
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisTaskItemScoreBandCore,
     TaskItemScoreBand,
     TaskItemScoreTransitionStatus,
@@ -228,7 +229,10 @@ class FakeRedis:
 class RedisTaskItemScoreBandCoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.core = RedisTaskItemScoreBandCore(self.redis, prefix="test")
+        self.core = RedisTaskItemScoreBandCore(
+            self.redis,
+            keyspace=RedisKeyspace("test_task_item_score_unit"),
+        )
         self.task_id = "task-1"
         self.score_key = self.core._score_key(self.task_id)
 
@@ -525,7 +529,10 @@ class RedisTaskItemScoreBandCoreTest(unittest.TestCase):
         self.assertNotIn("FINAL_SUCCESS", script)
 
     def test_task_scoped_key_shape_is_explicit(self) -> None:
-        self.assertEqual("tr:test:task:task-1:item-score", self.score_key)
+        self.assertEqual(
+            "xa_mass:test_task_item_score_unit:task:task-1:item_score",
+            self.score_key,
+        )
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from ..kernel.task_item_score_band import (
 )
 from ..kernel.task_runtime import MessageId
 from ..kernel.task_score_band import Score, TaskId, TimeMillis
+from .keyspace import RedisKeyspace
 
 
 class RedisTaskItemScoreBandCore(TaskItemScoreBandCore):
@@ -61,10 +62,12 @@ return {"transitioned", target_score}
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def initialize_item_scores(
         self,
@@ -440,7 +443,7 @@ return {"transitioned", target_score}
         return tag * self.TAG_FACTOR + time_slot * self.SUFFIX_FACTOR + suffix
 
     def _score_key(self, task_id: TaskId) -> str:
-        return f"tr:{self.prefix}:task:{task_id}:item-score"
+        return f"{self.keyspace.base}:task:{task_id}:item_score"
 
     def _tag_from_band(self, band: TaskItemScoreBand) -> int | None:
         if band is TaskItemScoreBand.ACTIVE:

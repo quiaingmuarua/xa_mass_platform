@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
@@ -21,25 +22,25 @@ public final class RedisWorkerResultRuntime
 
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerResultRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null || codec == null) {
             throw new IllegalArgumentException(
                     "redisClient and codec must be present"
             );
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
         this.redisClient = redisClient;
         this.codec = codec;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -112,7 +113,7 @@ public final class RedisWorkerResultRuntime
     }
 
     private String resultKey(DeliveryReportOutcomeClass outcomeClass) {
-        return "rr:" + prefix + ":worker-results:"
+        return keyspace.base() + ":result:routing:"
                 + switch (outcomeClass) {
                     case SUCCESS -> "success";
                     case WORKER_FAILURE -> "worker-failure";

@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.serviceability.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -50,19 +51,19 @@ public final class RedisWorkerServiceabilityRuntime
 
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private final int resultCapacity;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerServiceabilityRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         this(
                 redisClient,
                 codec,
-                prefix,
+                keyspace,
                 DEFAULT_RESULT_CAPACITY
         );
     }
@@ -70,16 +71,13 @@ public final class RedisWorkerServiceabilityRuntime
     public RedisWorkerServiceabilityRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            String prefix,
+            RedisKeyspace keyspace,
             int resultCapacity
     ) {
         if (redisClient == null || codec == null) {
             throw new IllegalArgumentException(
                     "redisClient and codec must be present"
             );
-        }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
         }
         if (resultCapacity <= 0) {
             throw new IllegalArgumentException(
@@ -88,7 +86,10 @@ public final class RedisWorkerServiceabilityRuntime
         }
         this.redisClient = redisClient;
         this.codec = codec;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
         this.resultCapacity = resultCapacity;
     }
 
@@ -203,12 +204,13 @@ public final class RedisWorkerServiceabilityRuntime
     }
 
     private String requestKey(String adapterId) {
-        return "ws:{" + prefix + "}:adapter:"
-                + adapterId + ":probe-requests";
+        return keyspace.base() + ":worker:serviceability:adapter:"
+                + adapterId + ":probe_requests";
     }
 
     private String resultKey() {
-        return "ws:{" + prefix + "}:adapter-evidence-results";
+        return keyspace.base()
+                + ":worker:serviceability:evidence_results";
     }
 
     private static void requireLimit(int limit) {

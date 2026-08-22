@@ -3,7 +3,7 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -189,10 +189,10 @@ class PythonKernelPacerProcessTest {
         return System.getProperty("os.name").toLowerCase().contains("win");
     }
 
-    private static KernelRedisProperties redisProperties() {
-        return new KernelRedisProperties(
+    private static XaMassRedisProperties redisProperties() {
+        return new XaMassRedisProperties(
                 URI.create("redis://example:6380/3"),
-                "managed-prefix"
+                "profile_managed"
         );
     }
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisWorkerResultRuntime,
     DeliveryEndpoint,
     DeliveryReport,
@@ -63,7 +64,10 @@ class FakePipeline:
 class RedisWorkerResultRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.runtime = RedisWorkerResultRuntime(self.redis, prefix="test")
+        self.runtime = RedisWorkerResultRuntime(
+            self.redis,
+            keyspace=RedisKeyspace("test_worker_result_unit"),
+        )
 
     def key(self, outcome_class: DeliveryReportOutcomeClass) -> str:
         return self.runtime._queue_key(outcome_class)
@@ -105,7 +109,7 @@ class RedisWorkerResultRuntimeTest(unittest.TestCase):
             ),
         )
         self.assertTrue(
-            all(":worker-results:" in key for key in self.redis.lists)
+            all(":result:routing:" in key for key in self.redis.lists)
         )
         for outcome_class, expected in (
             (DeliveryReportOutcomeClass.SUCCESS, success),

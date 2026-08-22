@@ -4,6 +4,7 @@ import unittest
 from collections.abc import Callable
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
@@ -260,15 +261,19 @@ class FakeRedis:
 class RedisWorkerRuntimeFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.catalog = RedisWorkerResourceCatalog(self.redis, prefix="test")
+        self.keyspace = RedisKeyspace("test_worker_runtime_unit")
+        self.catalog = RedisWorkerResourceCatalog(
+            self.redis,
+            keyspace=self.keyspace,
+        )
         self.score_band = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix="wr:test:score",
+            keyspace=self.keyspace,
         )
         self.runtime = RedisWorkerRuntime(
             self.redis,
             self.score_band,
-            prefix="test",
+            keyspace=self.keyspace,
         )
         self.group = WorkerGroupDescriptor(
             worker_group_id="image-workers",

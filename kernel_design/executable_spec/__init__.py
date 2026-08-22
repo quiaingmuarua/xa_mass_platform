@@ -99,6 +99,7 @@ from .scheduling import (
     WorkerServiceabilityResultPacer,
 )
 from .redis_runtime import (
+    RedisKeyspace,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
     RedisTaskItemScoreBandCore,
@@ -112,6 +113,7 @@ from .redis_runtime import (
     RedisWorkerServiceabilityRuntime,
 )
 __all__ = [
+    "RedisKeyspace",
     "CandidateWorkerCache",
     "TimeMillis",
     "HomeBucketId",

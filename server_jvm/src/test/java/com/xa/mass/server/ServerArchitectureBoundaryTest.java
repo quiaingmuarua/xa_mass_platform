@@ -170,24 +170,36 @@ class ServerArchitectureBoundaryTest {
     void kernelOwnerRedisImplementationsStayDirectional()
             throws IOException {
         assertThat(readSources(TASK_REDIS))
+                .contains("RedisKeyspace")
+                .contains(":task:")
                 .contains(":items")
-                .contains(":item-score")
+                .contains(":item_score")
                 .contains(":results")
                 .doesNotContain("worker-commands")
                 .doesNotContain("seed-results")
+                .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:");
         assertThat(readSources(WORKER_REDIS))
-                .contains("\"wr:")
+                .contains("RedisKeyspace")
+                .contains(":worker:groups")
+                .contains(":worker:metadata:")
+                .contains(":worker:properties:")
+                .contains(":worker:id_owners")
                 .doesNotContain("\"tr:")
+                .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:");
         assertThat(readSources(WORKER_SCORE_REDIS))
-                .contains("\"wr:")
+                .contains("RedisKeyspace")
+                .contains(":worker:score:")
                 .doesNotContain("\"tr:")
+                .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:");
         assertThat(readSources(TASK_SCORE_REDIS))
-                .contains("\"tr:")
+                .contains("RedisKeyspace")
+                .contains(":task:score")
+                .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:");
@@ -198,10 +210,14 @@ class ServerArchitectureBoundaryTest {
                 .contains("HDEL")
                 .contains("commands().hrandfieldWithvalues(")
                 .contains("commands().rpush(")
+                .contains(":delivery:commands:")
+                .contains(":result:routing:")
                 .doesNotContain("commands().hscan(")
                 .doesNotContain("\"tc:")
                 .doesNotContain("\"tr:")
-                .doesNotContain("\"wr:");
+                .doesNotContain("\"wr:")
+                .doesNotContain("\"wd:")
+                .doesNotContain("\"rr:");
     }
 
     @Test

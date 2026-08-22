@@ -93,17 +93,26 @@ Server integration proofs use the checked `integration-test` profile:
 ```text
 Java readiness  http://127.0.0.1:<test-port>/actuator/health/readiness
 Redis           redis://127.0.0.1:6379/15
+Redis scope     test_runtime_boundary_<unique run token>
 ```
 
 The test starts one Java Spring context. Its `KernelPacerAssembly` starts the
 checked Python CLI with the Runtime Boundary Pacer configuration and waits for
 the exact readiness token. Redis remains an external dependency; failure to
-start the child or connect to Redis fails the proof. The Java profile uses the
-non-default `runtime-boundary-proof` prefix and injects it into the child, so
-the cross-process proof cannot pass merely because both sides independently
-default to `default`. Before Context refresh,
-Runtime Boundary clears its dedicated Redis DB 15 so old Task pages cannot
-alter the Pacer sweep proven by the current run.
+start the child or connect to Redis fails the proof. Each run generates one
+unique `test_*` scope and injects that exact scope into the child, so the
+cross-process proof cannot pass through matching defaults. It plants a sentinel
+in a different scope and proves the sentinel survives. After the Spring context
+and its Pacer child stop, cleanup uses cursor `SCAN` plus bounded `UNLINK` only
+for the exact run-owned scope; it never clears Redis DB 15.
+
+Redis Owner tests and Python Redis proofs generate the same kind of exact scope
+inside their fixtures. Worker Fleet, Task Batch, and Android Emulator CI set
+`XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
+process tree, retain that scope across an intentional restart, then clean only
+that scope after all writers stop. A proof may share the URL and DB with a
+running `profile_*` environment; neither side can see or delete the other's
+data.
 
 The same lane also runs a controlled no-network Python child to prove exact
 ready-token startup, exit-before-ready, readiness timeout, stdin-EOF shutdown,

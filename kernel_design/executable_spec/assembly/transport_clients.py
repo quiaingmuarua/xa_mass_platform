@@ -8,7 +8,11 @@ from ..kernel import (
     DeliveryCommand,
     WorkerId,
 )
-from ..redis_runtime import RedisWorkerResultRuntime, RedisWorkerCommandRuntime
+from ..redis_runtime import (
+    RedisKeyspace,
+    RedisWorkerCommandRuntime,
+    RedisWorkerResultRuntime,
+)
 from .application import KernelApplicationConfig
 
 
@@ -32,7 +36,7 @@ class WorkerCommandConsumerClient:
         resolved_config = config or KernelApplicationConfig.from_json()
         self._runtime = RedisWorkerCommandRuntime(
             _redis_client(resolved_config),
-            prefix=resolved_config.redis_prefix,
+            keyspace=RedisKeyspace(resolved_config.redis_scope),
         )
 
     @classmethod
@@ -74,7 +78,7 @@ class WorkerResultCommandClient:
         resolved_config = config or KernelApplicationConfig.from_json()
         self._runtime = RedisWorkerResultRuntime(
             _redis_client(resolved_config),
-            prefix=resolved_config.redis_prefix,
+            keyspace=RedisKeyspace(resolved_config.redis_scope),
         )
 
     @classmethod

@@ -2,7 +2,7 @@ package com.xa.mass.server.kernelpacer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -18,10 +18,10 @@ class KernelPacerPropertiesTest {
                             () -> JsonMapper.builder().build()
                     )
                     .withBean(
-                            KernelRedisProperties.class,
-                            () -> new KernelRedisProperties(
+                            XaMassRedisProperties.class,
+                            () -> new XaMassRedisProperties(
                                     URI.create("redis://example:6380/3"),
-                                    "managed-prefix"
+                                    "profile_managed"
                             )
                     )
                     .withPropertyValues(

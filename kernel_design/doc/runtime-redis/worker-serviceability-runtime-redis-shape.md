@@ -5,16 +5,18 @@ Status: active Kernel Redis ABI for the optional Worker Serviceability policy.
 ## Keys
 
 ```text
-ws:{prefix}:adapter:{adapterId}:probe-requests
+xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
   HASH field = workerId
   value       = "1"
 
-ws:{prefix}:adapter-evidence-results
+xa_mass:<scope>:worker:serviceability:evidence_results
   LIST item = canonical encoded DeliveryReport
 ```
 
-The `{prefix}` hash tag keeps each operation on one owner key. No operation
-spans Adapter request HASHes or combines a request and result key atomically.
+`xa_mass` is fixed and `scope` is the validated profile/test isolation
+boundary. No key uses a Redis Cluster hash tag. Each operation remains on one
+owner key; no operation spans Adapter request HASHes or combines a request and
+result key atomically.
 
 ## Request HASH
 

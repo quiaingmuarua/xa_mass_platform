@@ -13,6 +13,7 @@ from ..kernel.worker_delivery import (
 )
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_score import WorkerId
+from .keyspace import RedisKeyspace
 
 
 _OFFER_WORKER_COMMANDS_SCRIPT = """
@@ -61,12 +62,12 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def append_worker_commands(
         self,
@@ -256,8 +257,8 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         endpoint_manager_id: EndpointManagerId,
     ) -> str:
         return (
-            f"wd:{self.prefix}:endpoint-manager:"
-            f"{endpoint_manager_id}:worker-commands"
+            f"{self.keyspace.base}:delivery:commands:"
+            f"{endpoint_manager_id}"
         )
 
     @staticmethod

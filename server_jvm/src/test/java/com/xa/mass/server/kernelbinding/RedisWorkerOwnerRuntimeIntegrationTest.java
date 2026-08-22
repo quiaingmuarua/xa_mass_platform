@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
@@ -15,6 +16,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
+import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -23,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
@@ -34,7 +35,8 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerOwnerRuntimeIntegrationTest {
 
-    private String prefix;
+    private RedisTestScope testScope;
+    private RedisKeyspace keyspace;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
@@ -44,22 +46,20 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        prefix = "java-worker-owner-" + UUID.randomUUID();
+        testScope = RedisTestScope.create("java_worker_owner");
+        keyspace = testScope.keyspace();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        scoreCore = new RedisWorkerScoreCore(redisClient, prefix);
-        runtime = new RedisWorkerRuntime(redisClient, scoreCore, prefix);
-        catalog = new RedisWorkerResourceCatalog(redisClient, prefix);
+        scoreCore = new RedisWorkerScoreCore(redisClient, keyspace);
+        runtime = new RedisWorkerRuntime(redisClient, scoreCore, keyspace);
+        catalog = new RedisWorkerResourceCatalog(redisClient, keyspace);
     }
 
     @AfterEach
     void tearDown() {
         if (redis != null) {
-            var keys = redis.keys("wr:" + prefix + ":*");
-            if (!keys.isEmpty()) {
-                redis.del(keys.toArray(String[]::new));
-            }
+            testScope.cleanup(redis);
         }
         if (runtime != null) {
             runtime.close();
@@ -177,7 +177,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         var executor = Executors.newFixedThreadPool(2);
         try (var competing = new RedisWorkerResourceCatalog(
                 redisClient,
-                prefix
+                keyspace
         )) {
             var firstResult = executor.submit(() -> {
                 start.await();
@@ -780,23 +780,23 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     private String groupsKey() {
-        return "wr:" + prefix + ":groups";
+        return keyspace.base() + ":worker:groups";
     }
 
     private String metadataKey(String workerGroupId) {
-        return "wr:" + prefix + ":worker-metadata:" + workerGroupId;
+        return keyspace.base() + ":worker:metadata:" + workerGroupId;
     }
 
     private String propertiesKey(String workerGroupId) {
-        return "wr:" + prefix + ":worker-properties:" + workerGroupId;
+        return keyspace.base() + ":worker:properties:" + workerGroupId;
     }
 
     private String workerIdOwnersKey() {
-        return "wr:" + prefix + ":worker-id-owners";
+        return keyspace.base() + ":worker:id_owners";
     }
 
     private String scoreKey(String workerGroupId) {
-        return "wr:" + prefix + ":score:" + workerGroupId;
+        return keyspace.base() + ":worker:score:" + workerGroupId;
     }
 
     private long redisTimeMillis() {

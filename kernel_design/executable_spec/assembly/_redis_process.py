@@ -22,6 +22,7 @@ from ..scheduling import (
 )
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
+    RedisKeyspace,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
     RedisTaskItemScoreBandCore,
@@ -52,7 +53,7 @@ from .worker_serviceability_application import (
 
 @dataclass(frozen=True, slots=True)
 class _RedisKernelProcessConfig:
-    prefix: str
+    keyspace: RedisKeyspace
     running_task_soft_limit: int
     worker_candidate_scan_limit: int
     hot_eligibility_floor_millis: int | None
@@ -67,8 +68,8 @@ class _RedisKernelProcessConfig:
     stop_timeout_millis: int
 
     def __post_init__(self) -> None:
-        if not self.prefix:
-            raise ValueError("Redis kernel prefix must be non-empty")
+        if not isinstance(self.keyspace, RedisKeyspace):
+            raise TypeError("Redis keyspace must be RedisKeyspace")
         if self.running_task_soft_limit <= 0:
             raise ValueError("running Task soft limit must be positive")
         if self.worker_candidate_scan_limit <= 0:
@@ -111,42 +112,42 @@ class _RedisKernelProcess:
 
         self._task_score = RedisTaskScoreBandCore(
             redis_client,
-            score_key=f"tr:{config.prefix}:task:score",
+            keyspace=config.keyspace,
         )
         self._task_item_score = RedisTaskItemScoreBandCore(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         self._task_runtime = RedisTaskRuntime(
             redis_client,
             self._task_score,
             self._task_item_score,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         self._task_resource_catalog = RedisTaskResourceCatalog(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
 
         self._worker_score = RedisWorkerScoreCore(
             redis_client,
-            score_key_prefix=f"wr:{config.prefix}:score",
+            keyspace=config.keyspace,
         )
         self._worker_resource_catalog = RedisWorkerResourceCatalog(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         candidate_cache = RedisCandidateWorkerCache(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         candidate_warmup_schedule = RedisCandidateWarmupSchedule(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         self._worker_command_runtime = RedisWorkerCommandRuntime(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         worker_candidate_matcher = WorkerCandidateMatcher(
             self._worker_resource_catalog,
@@ -202,7 +203,7 @@ class _RedisKernelProcess:
         )
         self._worker_result_runtime = RedisWorkerResultRuntime(
             redis_client,
-            prefix=config.prefix,
+            keyspace=config.keyspace,
         )
         result_routing_policies = ResultRoutingBuiltinPolicies(
             task_runtime=self._task_runtime,
@@ -225,7 +226,7 @@ class _RedisKernelProcess:
         if config.worker_serviceability_dispatch is not None:
             serviceability_runtime = RedisWorkerServiceabilityRuntime(
                 redis_client,
-                prefix=config.prefix,
+                keyspace=config.keyspace,
             )
             self._worker_serviceability_result_application = (
                 WorkerServiceabilityResultApplication(

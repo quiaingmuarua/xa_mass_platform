@@ -49,7 +49,7 @@ describe("Runtime View response schemas", () => {
       name: "internal field",
       mutate: () => ({
         ...preview("group-a", []),
-        redisKey: "wr:test:workers:group-a"
+        redisKey: "xa_mass:profile_secret:worker:metadata:group-a"
       })
     }
   ])("rejects $name", ({ mutate }) => {

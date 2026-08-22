@@ -15,7 +15,7 @@ from .application import KernelApplication, KernelApplicationConfig
 
 _LOGGER = logging.getLogger(__name__)
 _MANAGED_REDIS_URL_ENV = "XA_MASS_KERNEL_PACER_REDIS_URL"
-_MANAGED_REDIS_PREFIX_ENV = "XA_MASS_KERNEL_PACER_REDIS_PREFIX"
+_MANAGED_REDIS_SCOPE_ENV = "XA_MASS_KERNEL_PACER_REDIS_SCOPE"
 
 
 def _write_ready_file(path: Path, instance_token: str) -> None:
@@ -40,7 +40,7 @@ def _run_application(
     ready_file: Path | None,
     input_stream: BinaryIO,
     managed_redis_url: str | None = None,
-    managed_redis_prefix: str | None = None,
+    managed_redis_scope: str | None = None,
     application_factory: Callable[[KernelApplicationConfig], KernelApplication] = (
         KernelApplication
     ),
@@ -53,17 +53,17 @@ def _run_application(
         raise ValueError("instance_token must be non-empty")
     managed = instance_token is not None
     has_managed_redis = (
-        managed_redis_url is not None or managed_redis_prefix is not None
+        managed_redis_url is not None or managed_redis_scope is not None
     )
     if managed != has_managed_redis:
         raise ValueError(
             "managed Redis coordinates must accompany the parent protocol"
         )
     if has_managed_redis and (
-        not managed_redis_url or not managed_redis_prefix
+        not managed_redis_url or not managed_redis_scope
     ):
         raise ValueError(
-            "managed Redis URL and prefix must both be non-empty"
+            "managed Redis URL and scope must both be non-empty"
         )
 
     config_json = (
@@ -81,7 +81,7 @@ def _run_application(
         config = replace(
             config,
             redis_url=managed_redis_url,
-            redis_prefix=managed_redis_prefix,
+            redis_scope=managed_redis_scope,
         )
     application = application_factory(
         config
@@ -147,8 +147,8 @@ def main() -> None:
             if args.instance_token is not None
             else None
         ),
-        managed_redis_prefix=(
-            os.environ.get(_MANAGED_REDIS_PREFIX_ENV)
+        managed_redis_scope=(
+            os.environ.get(_MANAGED_REDIS_SCOPE_ENV)
             if args.instance_token is not None
             else None
         ),

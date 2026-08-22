@@ -1,7 +1,7 @@
 package com.xa.mass.server.workerbinding;
 
 import com.xa.mass.kernel.worker.WorkerRuntime;
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
 import io.lettuce.core.RedisClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -22,11 +22,11 @@ public class WorkerBindingConfiguration {
     @Bean(destroyMethod = "close")
     WorkerBindingRegistry workerBindingRegistry(
             RedisClient redisClient,
-            KernelRedisProperties redisProperties
+            XaMassRedisProperties redisProperties
     ) {
         return new RedisWorkerBindingRegistry(
                 redisClient,
-                redisProperties.redisPrefix()
+                redisProperties.keyspace()
         );
     }
 

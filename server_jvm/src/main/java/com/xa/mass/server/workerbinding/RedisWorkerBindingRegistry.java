@@ -1,5 +1,6 @@
 package com.xa.mass.server.workerbinding;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.KeyValue;
@@ -23,15 +24,15 @@ final class RedisWorkerBindingRegistry
     private static final int MAX_BATCH_SIZE = 100;
 
     private final RedisClient redisClient;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    RedisWorkerBindingRegistry(RedisClient redisClient, String prefix) {
+    RedisWorkerBindingRegistry(
+            RedisClient redisClient,
+            RedisKeyspace keyspace
+    ) {
         this.redisClient = Objects.requireNonNull(redisClient, "redisClient");
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
-        this.prefix = prefix;
+        this.keyspace = Objects.requireNonNull(keyspace, "keyspace");
     }
 
     @Override
@@ -94,7 +95,7 @@ final class RedisWorkerBindingRegistry
     }
 
     String bindingKey(String workerId) {
-        return "wi:{" + prefix + "}:worker-bindings:" + bucket(workerId);
+        return keyspace.base() + ":worker:binding:" + bucket(workerId);
     }
 
     static String bucket(String workerId) {

@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.worker.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -22,21 +23,21 @@ public final class RedisWorkerResourceCatalog
     private static final int MAX_DESCRIPTOR_CAS_ATTEMPTS = 8;
 
     private final RedisClient redisClient;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerResourceCatalog(
             RedisClient redisClient,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
         this.redisClient = redisClient;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -165,11 +166,11 @@ public final class RedisWorkerResourceCatalog
             return Map.of();
         }
         List<KeyValue<String, String>> metadataRows = commands().hmget(
-                WorkerRedisSupport.workerMetadataKey(prefix, workerGroupId),
+                WorkerRedisSupport.workerMetadataKey(keyspace, workerGroupId),
                 workerIds.toArray(String[]::new)
         );
         List<KeyValue<String, String>> propertyRows = commands().hmget(
-                WorkerRedisSupport.workerPropertiesKey(prefix, workerGroupId),
+                WorkerRedisSupport.workerPropertiesKey(keyspace, workerGroupId),
                 workerIds.toArray(String[]::new)
         );
         var descriptors = new LinkedHashMap<String, WorkerDescriptor>();
@@ -204,7 +205,7 @@ public final class RedisWorkerResourceCatalog
             return Map.of();
         }
         List<KeyValue<String, String>> loaded = commands().hmget(
-                WorkerRedisSupport.workerIdOwnersKey(prefix),
+                WorkerRedisSupport.workerIdOwnersKey(keyspace),
                 workerIds.toArray(String[]::new)
         );
         var owners = new LinkedHashMap<String, @Nullable String>();
@@ -236,7 +237,7 @@ public final class RedisWorkerResourceCatalog
         List<KeyValue<String, String>> sampled =
                 commands().hrandfieldWithvalues(
                         WorkerRedisSupport.workerMetadataKey(
-                                prefix,
+                                keyspace,
                                 workerGroupId
                         ),
                         sampleLimit
@@ -250,7 +251,7 @@ public final class RedisWorkerResourceCatalog
                 .map(KeyValue::getKey)
                 .toArray(String[]::new);
         List<KeyValue<String, String>> propertyRows = commands().hmget(
-                WorkerRedisSupport.workerPropertiesKey(prefix, workerGroupId),
+                WorkerRedisSupport.workerPropertiesKey(keyspace, workerGroupId),
                 sampledWorkerIds
         );
         for (int index = 0; index < sampled.size(); index++) {
@@ -293,7 +294,7 @@ public final class RedisWorkerResourceCatalog
             }
         }
         String metadataKey = WorkerRedisSupport.workerMetadataKey(
-                prefix,
+                keyspace,
                 workerGroupId
         );
         for (int attempt = 0;
@@ -422,7 +423,7 @@ public final class RedisWorkerResourceCatalog
     }
 
     private String groupsKey() {
-        return WorkerRedisSupport.groupsKey(prefix);
+        return WorkerRedisSupport.groupsKey(keyspace);
     }
 
     private static void requireIds(List<String> values, String name) {

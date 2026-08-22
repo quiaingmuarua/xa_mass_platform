@@ -1,5 +1,7 @@
 xa:
   mass:
+    redis:
+      scope: ${XA_MASS_REDIS_SCOPE:profile_scenario_workers}
     task-batch:
       root: data/rpc-task
       max-input-bytes: 1048576

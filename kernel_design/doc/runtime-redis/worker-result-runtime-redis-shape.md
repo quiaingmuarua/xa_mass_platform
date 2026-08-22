@@ -6,9 +6,9 @@ executable-spec consume/routing implemented.
 ## Keys
 
 ```text
-rr:{prefix}:worker-results:success
-rr:{prefix}:worker-results:worker-failure
-rr:{prefix}:worker-results:adapter-rejection
+xa_mass:<scope>:result:routing:success
+xa_mass:<scope>:result:routing:worker-failure
+xa_mass:<scope>:result:routing:adapter-rejection
 ```
 
 Each key is a Redis LIST containing deterministic `DeliveryReport` JSON:
@@ -46,7 +46,7 @@ Ingress LISTs are transient evidence. Task success payload truth is owned by
 `TaskRuntime`:
 
 ```text
-tr:{prefix}:task:{taskId}:results
+xa_mass:<scope>:task:<taskId>:results
   HASH messageId -> payload
 ```
 

@@ -21,6 +21,7 @@ from ..kernel.worker_runtime import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
+from .keyspace import RedisKeyspace
 
 
 _COMPARE_AND_SET_HASH_FIELD_SCRIPT = """
@@ -34,20 +35,26 @@ return 1
 _MAX_DESCRIPTOR_CAS_ATTEMPTS = 8
 
 
-def _worker_groups_key(prefix: str) -> str:
-    return f"wr:{prefix}:groups"
+def _worker_groups_key(keyspace: RedisKeyspace) -> str:
+    return f"{keyspace.base}:worker:groups"
 
 
-def _worker_metadata_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
-    return f"wr:{prefix}:worker-metadata:{worker_group_id}"
+def _worker_metadata_key(
+    keyspace: RedisKeyspace,
+    worker_group_id: WorkerGroupId,
+) -> str:
+    return f"{keyspace.base}:worker:metadata:{worker_group_id}"
 
 
-def _worker_properties_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
-    return f"wr:{prefix}:worker-properties:{worker_group_id}"
+def _worker_properties_key(
+    keyspace: RedisKeyspace,
+    worker_group_id: WorkerGroupId,
+) -> str:
+    return f"{keyspace.base}:worker:properties:{worker_group_id}"
 
 
-def _worker_id_owners_key(prefix: str) -> str:
-    return f"wr:{prefix}:worker-id-owners"
+def _worker_id_owners_key(keyspace: RedisKeyspace) -> str:
+    return f"{keyspace.base}:worker:id_owners"
 
 
 def _valid_id(value: str) -> bool:
@@ -98,12 +105,12 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def register_worker_group(
         self,
@@ -259,7 +266,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             return {}
 
         owner_rows = self.redis.hmget(
-            _worker_id_owners_key(self.prefix),
+            _worker_id_owners_key(self.keyspace),
             list(worker_ids),
         )
         result: dict[WorkerId, WorkerGroupId | None] = {}
@@ -401,13 +408,13 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         )
 
     def _groups_key(self) -> str:
-        return _worker_groups_key(self.prefix)
+        return _worker_groups_key(self.keyspace)
 
     def _metadata_key(self, worker_group_id: WorkerGroupId) -> str:
-        return _worker_metadata_key(self.prefix, worker_group_id)
+        return _worker_metadata_key(self.keyspace, worker_group_id)
 
     def _properties_key(self, worker_group_id: WorkerGroupId) -> str:
-        return _worker_properties_key(self.prefix, worker_group_id)
+        return _worker_properties_key(self.keyspace, worker_group_id)
 
     @staticmethod
     def _valid_id(value: str) -> bool:
@@ -579,13 +586,13 @@ class RedisWorkerRuntime(WorkerRuntime):
         redis_client: Any,
         score_band: WorkerScoreCore,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
         self.score_band = score_band
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def upsert_worker(
         self,
@@ -619,7 +626,7 @@ class RedisWorkerRuntime(WorkerRuntime):
             )
         if (
             self.redis.hget(
-                _worker_groups_key(self.prefix),
+                _worker_groups_key(self.keyspace),
                 declaration.worker_group_id,
             )
             is None
@@ -629,7 +636,7 @@ class RedisWorkerRuntime(WorkerRuntime):
                 "worker group not found",
             )
 
-        owner_key = _worker_id_owners_key(self.prefix)
+        owner_key = _worker_id_owners_key(self.keyspace)
         owner_created = bool(
             self.redis.hsetnx(
                 owner_key,
@@ -660,7 +667,7 @@ class RedisWorkerRuntime(WorkerRuntime):
             )
 
         metadata_key = _worker_metadata_key(
-            self.prefix,
+            self.keyspace,
             declaration.worker_group_id,
         )
         metadata_created = bool(
@@ -691,7 +698,7 @@ class RedisWorkerRuntime(WorkerRuntime):
                 )
 
         properties_key = _worker_properties_key(
-            self.prefix,
+            self.keyspace,
             declaration.worker_group_id,
         )
         observed_properties = RedisWorkerResourceCatalog._decode_optional_text(

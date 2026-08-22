@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -18,7 +19,10 @@ class KernelOwnerAssemblyTest {
     void schedulingWorkerScoreOperationsRemainExplicitGaps() {
         RedisClient redisClient = mock(RedisClient.class);
         RedisWorkerScoreCore scoreCore =
-                new RedisWorkerScoreCore(redisClient, "test");
+                new RedisWorkerScoreCore(
+                        redisClient,
+                        new RedisKeyspace("test_kernel_owner_unit")
+                );
 
         assertThatThrownBy(() ->
                 scoreCore.acquireHotAcquireCandidates("group-1", null, 1))
@@ -42,7 +46,7 @@ class KernelOwnerAssemblyTest {
         RedisWorkerCommandRuntime commands = new RedisWorkerCommandRuntime(
                 redisClient,
                 new WorkerDeliveryCodec(),
-                "test"
+                new RedisKeyspace("test_kernel_owner_unit")
         );
 
         assertThatThrownBy(() -> commands.appendWorkerCommands(

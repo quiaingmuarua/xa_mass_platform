@@ -4,7 +4,6 @@ import json
 import os
 import time
 import unittest
-import uuid
 
 try:
     import redis as redis_module
@@ -19,6 +18,7 @@ from kernel_design.executable_spec import (
     TaskItemScoreBand,
     WorkerScorePolarity,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 from kernel_design.executable_spec.assembly import (
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     DeliveryEndpoint,
@@ -66,10 +66,11 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         assert _REDIS_URL is not None
-        self.prefix = f"result-closure-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("result_routing")
+        self.keyspace = self.test_scope.keyspace
         self.config = KernelApplicationConfig(
             redis_url=_REDIS_URL,
-            redis_prefix=self.prefix,
+            redis_scope=self.test_scope.scope,
             worker_allocation_interval_millis=500,
             running_activation_interval_millis=10,
             task_dispatch_interval_millis=10,
@@ -84,27 +85,25 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.application_open = True
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.task_runtime = RedisTaskRuntime(
             self.redis,
             RedisTaskScoreBandCore(
                 self.redis,
-                score_key=f"tr:{self.prefix}:task:score",
+                keyspace=self.keyspace,
             ),
             self.item_score,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.worker_score = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix=f"wr:{self.prefix}:score",
+            keyspace=self.keyspace,
         )
 
     def tearDown(self) -> None:
         self._close_application()
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     def test_precomputed_allocation_e2e_reaches_success_and_releases_worker(
         self,
@@ -120,12 +119,14 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.assertEqual(
             0,
             self.redis.exists(
-                f"ad:{self.prefix}:candidate:task-1:workers"
+                f"{self.keyspace.base}:dispatch:candidate:task-1:workers"
             ),
         )
         self.assertEqual(
             0,
-            self.redis.exists(f"ad:{self.prefix}:candidate-warmups"),
+            self.redis.exists(
+                f"{self.keyspace.base}:dispatch:candidate_warmups"
+            ),
         )
 
     def _run_success_e2e(
@@ -208,7 +209,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         assert state is not None
         self.assertIs(TaskItemScoreBand.FINAL_SUCCESS, state.band)
         stored_payload = self.redis.hget(
-            f"tr:{self.prefix}:task:task-1:results",
+            f"{self.keyspace.base}:task:task-1:results",
             "message-1",
         )
         self.assertIsNotNone(stored_payload)
@@ -218,7 +219,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(
             0,
-            self.redis.exists(f"rr:{self.prefix}:worker-results"),
+            self.redis.exists(f"{self.keyspace.base}:result:routing"),
         )
 
         self._close_application()
@@ -343,7 +344,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.assertEqual(
             0,
             self.redis.exists(
-                f"ad:{self.prefix}:candidate:task-1:workers"
+                f"{self.keyspace.base}:dispatch:candidate:task-1:workers"
             ),
         )
 

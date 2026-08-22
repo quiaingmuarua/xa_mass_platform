@@ -14,6 +14,7 @@ from ..kernel.worker_serviceability import (
     ProbeRequestOfferStatus,
     WorkerServiceabilityRuntime,
 )
+from .keyspace import RedisKeyspace
 
 
 _OFFER_PROBE_REQUESTS_SCRIPT = """
@@ -71,16 +72,16 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
         request_capacity_per_adapter: int = 10_000,
         result_capacity: int = 10_000,
     ) -> None:
-        if not isinstance(prefix, str) or not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         if request_capacity_per_adapter <= 0 or result_capacity <= 0:
             raise ValueError("serviceability capacities must be positive")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
         self.request_capacity_per_adapter = request_capacity_per_adapter
         self.result_capacity = result_capacity
 
@@ -186,10 +187,13 @@ class RedisWorkerServiceabilityRuntime(WorkerServiceabilityRuntime):
         return tuple(reports)
 
     def _requests_key(self, adapter_id: EndpointManagerId) -> str:
-        return f"ws:{{{self.prefix}}}:adapter:{adapter_id}:probe-requests"
+        return (
+            f"{self.keyspace.base}:worker:serviceability:adapter:"
+            f"{adapter_id}:probe_requests"
+        )
 
     def _results_key(self) -> str:
-        return f"ws:{{{self.prefix}}}:adapter-evidence-results"
+        return f"{self.keyspace.base}:worker:serviceability:evidence_results"
 
     @classmethod
     def _bounded_worker_ids(

@@ -4,13 +4,13 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 
+import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashSet;
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterEach;
@@ -23,26 +23,26 @@ class RedisWorkerBindingRegistryIntegrationTest {
 
     private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
-    private String prefix;
+    private RedisTestScope testScope;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisWorkerBindingRegistry registry;
 
     @BeforeEach
     void setUp() {
-        prefix = "worker-binding-" + UUID.randomUUID();
+        testScope = RedisTestScope.create("worker_binding");
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
-        registry = new RedisWorkerBindingRegistry(redisClient, prefix);
+        registry = new RedisWorkerBindingRegistry(
+                redisClient,
+                testScope.keyspace()
+        );
     }
 
     @AfterEach
     void tearDown() {
         if (connection != null) {
-            var keys = connection.sync().keys("wi:{" + prefix + "}:*");
-            if (!keys.isEmpty()) {
-                connection.sync().del(keys.toArray(String[]::new));
-            }
+            testScope.cleanup(connection.sync());
         }
         if (registry != null) {
             registry.close();
@@ -60,7 +60,7 @@ class RedisWorkerBindingRegistryIntegrationTest {
         assertThat(RedisWorkerBindingRegistry.bucket(WORKER_ID))
                 .isEqualTo("57");
         assertThat(registry.bindingKey(WORKER_ID)).isEqualTo(
-                "wi:{" + prefix + "}:worker-bindings:57"
+                testScope.keyspace().base() + ":worker:binding:57"
         );
 
         assertThat(registry.bindIfAbsent(WORKER_ID, "websocket-a"))

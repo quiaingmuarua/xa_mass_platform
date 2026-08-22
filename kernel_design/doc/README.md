@@ -28,6 +28,7 @@ The document families are grouped by design concern:
   [Task](resource-model/task-resource-model.md) metadata/query projection
   contracts.
 - Runtime Redis shapes:
+  [Redis Keyspace](runtime-redis/redis-keyspace.md),
   [Worker Runtime](runtime-redis/worker-runtime-redis-shape.md) and
   [Worker Result Runtime](runtime-redis/worker-result-runtime-redis-shape.md),
   plus the optional

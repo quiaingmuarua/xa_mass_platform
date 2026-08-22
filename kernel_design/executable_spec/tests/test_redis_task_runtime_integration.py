@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import time
 import unittest
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 try:
@@ -12,6 +11,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
@@ -26,6 +26,7 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionStatus,
     WorkerAllocationMechanism,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -49,32 +50,32 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
             raise unittest.SkipTest(f"real Redis is unavailable: {error}") from error
 
     def setUp(self) -> None:
-        self.prefix = f"integration-{uuid.uuid4().hex}"
-        self.score_key = f"tr:{self.prefix}:task:score"
+        self.test_scope = RedisTestScope.create("task_runtime")
+        self.keyspace = self.test_scope.keyspace
+        self.score_key = f"{self.keyspace.base}:task:score"
         self.score_band = RedisTaskScoreBandCore(
             self.redis,
-            score_key=self.score_key,
+            keyspace=self.keyspace,
         )
         self.item_score_band = RedisTaskItemScoreBandCore(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.runtime = RedisTaskRuntime(
             self.redis,
             self.score_band,
             self.item_score_band,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
             lease_duration_millis=200,
         )
-        self.catalog = RedisTaskResourceCatalog(self.redis, prefix=self.prefix)
+        self.catalog = RedisTaskResourceCatalog(
+            self.redis,
+            keyspace=self.keyspace,
+        )
         self.task_ids: set[str] = set()
 
     def tearDown(self) -> None:
-        keys = [self.score_key]
-        keys.extend(self._task_key(task_id) for task_id in self.task_ids)
-        keys.extend(self._items_key(task_id) for task_id in self.task_ids)
-        keys.extend(self._item_score_key(task_id) for task_id in self.task_ids)
-        self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     @staticmethod
     def descriptor(
@@ -98,13 +99,13 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         )
 
     def _task_key(self, task_id: str) -> str:
-        return f"tc:{self.prefix}:task:{task_id}"
+        return f"{self.keyspace.base}:task:{task_id}:descriptor"
 
     def _items_key(self, task_id: str) -> str:
-        return f"tr:{self.prefix}:task:{task_id}:items"
+        return f"{self.keyspace.base}:task:{task_id}:items"
 
     def _item_score_key(self, task_id: str) -> str:
-        return f"tr:{self.prefix}:task:{task_id}:item-score"
+        return f"{self.keyspace.base}:task:{task_id}:item_score"
 
     def test_real_redis_allows_only_one_creation_owner(self) -> None:
         task_id = "task-atomic"

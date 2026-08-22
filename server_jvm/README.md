@@ -273,7 +273,7 @@ Default coordinates:
 ```text
 Java Runtime API Server        http://127.0.0.1:18082
 Kernel Redis                   redis://localhost:6379/15
-Redis prefix                   default
+Redis scope                    profile_default
 Pacer CLI config               kernel_design/config/pacer-default.json
 Pacer lifecycle state          data/kernel-pacer
 Adapter instances              none
@@ -282,14 +282,20 @@ DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server
 Serviceability probe requests  10000 per Adapter HASH
-Serviceability evidence       10000 per Redis prefix
+Serviceability evidence       10000 per Redis scope
 ```
 
+Spring Profile controls assembly while `xa.mass.redis.scope` controls the data
+boundary; the Redis DB number is not a profile or test discriminator. Scope
+syntax and the complete physical ABI are owned by the Kernel
+[Redis Keyspace contract](../kernel_design/doc/runtime-redis/redis-keyspace.md).
+
 The optional Serviceability handoff uses
-`ws:{redisPrefix}:adapter:{adapterId}:probe-requests` and
-`ws:{redisPrefix}:adapter-evidence-results`. These are Kernel-owned best-effort
-handoffs, not current connectivity truth. Server implements only the bounded
-Adapter request consume and Adapter-evidence append needed by its HTTP bridge.
+`xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests` and
+`xa_mass:<scope>:worker:serviceability:evidence_results`. These are
+Kernel-owned best-effort handoffs, not current connectivity truth. Server
+implements only the bounded Adapter request consume and Adapter-evidence append
+needed by its HTTP bridge.
 
 The default Adapter section defines only remote API connection defaults. An
 Adapter instance is an explicit deployment declaration and must also have a
@@ -350,15 +356,16 @@ The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
 fixed by the assembly and cannot be configured as a shell command. Normal JVM
 tests use the `test` profile with this lifecycle disabled.
 
-`xa.mass.kernel-redis` is the single production source for the Redis URL and
-prefix. Java installs those exact values into the fixed child environment;
-managed Pacer policy JSON must not contain a `redis` object. This keeps Java
-commands and Python Pacers in one Redis universe without making Server parse
-Pacer policy. The Runtime Boundary profile deliberately uses the non-default
-`runtime-boundary-proof` prefix so this handoff is exercised rather than hidden
-by matching defaults.
+`xa.mass.redis` is the single production source for the Redis URL and scope.
+Java installs those exact values into the fixed child environment; managed
+Pacer policy JSON must not contain a `redis` object. This keeps Java commands
+and Python Pacers in one Redis universe without making Server parse Pacer
+policy. The Runtime Boundary proof generates a unique `test_*` scope and
+injects it into both sides so the handoff is exercised rather than hidden by
+matching defaults. The default profile uses `profile_default`; the checked
+Scenario profile defaults to `profile_scenario_workers`.
 
-Exactly one Server instance per Redis prefix may have the Pacer lifecycle
+Exactly one Server instance per Redis scope may have the Pacer lifecycle
 enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`.
 There is no distributed leader election in this temporary host. Sharing a
 state directory is not a substitute: when its owner record still identifies a

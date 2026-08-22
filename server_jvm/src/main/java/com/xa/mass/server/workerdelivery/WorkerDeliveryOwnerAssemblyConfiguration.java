@@ -6,7 +6,7 @@ import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.lettuce.core.RedisClient;
 import org.springframework.context.annotation.Bean;
@@ -19,12 +19,12 @@ public class WorkerDeliveryOwnerAssemblyConfiguration {
     WorkerCommandRuntime workerCommandRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerCommandRuntime(
                 redisClient,
                 codec,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
@@ -32,12 +32,12 @@ public class WorkerDeliveryOwnerAssemblyConfiguration {
     WorkerResultRuntime seedResultRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerResultRuntime(
                 redisClient,
                 codec,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
@@ -45,12 +45,12 @@ public class WorkerDeliveryOwnerAssemblyConfiguration {
     WorkerServiceabilityRuntime workerServiceabilityRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerServiceabilityRuntime(
                 redisClient,
                 codec,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 }

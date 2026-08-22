@@ -5,18 +5,19 @@ import json
 import os
 import time
 import unittest
-import uuid
 from dataclasses import fields
 from unittest.mock import Mock, patch
 
 import kernel_design.executable_spec as executable_spec_package
 import kernel_design.executable_spec.assembly as assembly_package
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisTaskItemScoreBandCore,
     RedisTaskRuntime,
     RedisTaskScoreBandCore,
     WorkerScoreCore,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 try:
     import redis as redis_module
@@ -61,7 +62,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
     def test_zero_config_uses_internal_defaults(self) -> None:
         expected = KernelApplicationConfig(
             redis_url="redis://localhost:6379/15",
-            redis_prefix="default",
+            redis_scope="profile_default",
             worker_allocation_interval_millis=100,
             running_activation_interval_millis=100,
             task_dispatch_interval_millis=100,
@@ -78,7 +79,10 @@ class KernelApplicationConfigTest(unittest.TestCase):
         config = KernelApplicationConfig.from_json(
             json.dumps(
                 {
-                    "redis": {"url": "redis://redis:6379/1", "prefix": "demo"},
+                    "redis": {
+                        "url": "redis://redis:6379/1",
+                        "scope": "profile_demo",
+                    },
                     "assignmentDispatch": {
                         "taskDispatchIntervalMillis": 250,
                     },
@@ -90,7 +94,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         )
 
         self.assertEqual("redis://redis:6379/1", config.redis_url)
-        self.assertEqual("demo", config.redis_prefix)
+        self.assertEqual("profile_demo", config.redis_scope)
         self.assertEqual(100, config.worker_allocation_interval_millis)
         self.assertEqual(100, config.running_activation_interval_millis)
         self.assertEqual(250, config.task_dispatch_interval_millis)
@@ -199,7 +203,9 @@ class KernelApplicationConfigTest(unittest.TestCase):
             "{bad-json",
             '{"unknown": 1}',
             '{"redis": {"host": "localhost"}}',
+            '{"redis": {"prefix": "default"}}',
             '{"redis": {"url": ""}}',
+            '{"redis": {"scope": "default"}}',
             '{"stopTimeoutMillis": 0}',
             '{"assignmentDispatch": {"workerAllocationIntervalMillis": -1}}',
             '{"assignmentDispatch": {"runningActivationIntervalMillis": true}}',
@@ -220,7 +226,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(
             [
                 "redis_url",
-                "redis_prefix",
+                "redis_scope",
                 "worker_allocation_interval_millis",
                 "running_activation_interval_millis",
                 "task_dispatch_interval_millis",
@@ -290,7 +296,10 @@ class KernelApplicationTest(unittest.TestCase):
         call = self.from_url.call_args
         self.assertEqual("redis://localhost:6379/15", call.kwargs["redis_url"])
         internal = call.kwargs["config"]
-        self.assertEqual("default", internal.prefix)
+        self.assertEqual(
+            RedisKeyspace("profile_default"),
+            internal.keyspace,
+        )
         self.assertEqual(100, internal.assignment_dispatch.worker_allocation.task_batch_limit)
 
         self.assertEqual(100, internal.worker_candidate_scan_limit)
@@ -775,10 +784,12 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         assert _REDIS_URL is not None
-        self.prefix = f"application-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("application")
+        self.scope = self.test_scope.scope
+        self.keyspace = self.test_scope.keyspace
         self.config = KernelApplicationConfig(
             redis_url=_REDIS_URL,
-            redis_prefix=self.prefix,
+            redis_scope=self.scope,
             worker_allocation_interval_millis=10,
             running_activation_interval_millis=10,
             task_dispatch_interval_millis=10,
@@ -790,21 +801,19 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             self.redis,
             RedisTaskScoreBandCore(
                 self.redis,
-                score_key=f"tr:{self.prefix}:task:score",
+                keyspace=self.keyspace,
             ),
             RedisTaskItemScoreBandCore(
                 self.redis,
-                prefix=self.prefix,
+                keyspace=self.keyspace,
             ),
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.application = KernelApplication(self.config)
 
     def tearDown(self) -> None:
         self.application.stop()
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     def test_control_application_and_task_runtime_reach_worker_command(self) -> None:
         worker_group_id = "image-workers"
@@ -884,7 +893,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         closed = self.application.close_task(task_id=task_id)
         time.sleep(0.2)
         stored_score = self.redis.zscore(
-            f"tr:{self.prefix}:task:score",
+            f"{self.keyspace.base}:task:score",
             task_id,
         )
         closed_again = self.application.close_task(task_id=task_id)

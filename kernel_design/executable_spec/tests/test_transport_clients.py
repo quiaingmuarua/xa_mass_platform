@@ -40,7 +40,7 @@ class TransportClientsTest(unittest.TestCase):
             self.addCleanup(active.stop)
         self.config = KernelApplicationConfig(
             redis_url="redis://redis:6379/9",
-            redis_prefix="transport-test",
+            redis_scope="test_transport_clients",
         )
 
     def test_system_polling_binding_is_a_fixed_logical_route(self) -> None:

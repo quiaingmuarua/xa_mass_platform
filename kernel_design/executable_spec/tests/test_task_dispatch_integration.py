@@ -4,7 +4,6 @@ import json
 import os
 import time
 import unittest
-import uuid
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -54,6 +53,7 @@ from kernel_design.executable_spec import (
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 from kernel_design.executable_spec.assembly.application import (
     TaskApprovalResult,
     TaskApprovalStatus,
@@ -87,51 +87,52 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             raise unittest.SkipTest(f"real Redis is unavailable: {error}") from error
 
     def setUp(self) -> None:
-        self.prefix = f"dispatch-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("task_dispatch")
+        self.keyspace = self.test_scope.keyspace
         self.task_id = "task-1"
         self.message_id = "message-1"
         self.task_score = RedisTaskScoreBandCore(
             self.redis,
-            score_key=f"tr:{self.prefix}:task:score",
+            keyspace=self.keyspace,
         )
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.task_runtime = RedisTaskRuntime(
             self.redis,
             self.task_score,
             self.item_score,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.task_catalog = RedisTaskResourceCatalog(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.candidate_cache = RedisCandidateWorkerCache(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.warmup_schedule = RedisCandidateWarmupSchedule(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.worker_command_runtime = RedisWorkerCommandRuntime(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.worker_score = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix=f"wr:{self.prefix}:score",
+            keyspace=self.keyspace,
         )
         self.worker_catalog = RedisWorkerResourceCatalog(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.worker_runtime = RedisWorkerRuntime(
             self.redis,
             self.worker_score,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
@@ -207,7 +208,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         competing_runtime = RedisWorkerCommandRuntime(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
 
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -347,7 +348,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         competing_runtime = RedisWorkerCommandRuntime(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
 
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -376,15 +377,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(
             0,
             self.redis.hlen(
-                f"wd:{self.prefix}:endpoint-manager:"
-                "endpoint-manager-1:worker-commands"
+                f"{self.keyspace.base}:delivery:commands:endpoint-manager-1"
             ),
         )
 
     def tearDown(self) -> None:
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     @staticmethod
     def _worker_command(
@@ -487,7 +485,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_ids=(self.task_id,)
         )[self.task_id]
         warmup_score = self.redis.zscore(
-            f"ad:{self.prefix}:candidate-warmups",
+            f"{self.keyspace.base}:dispatch:candidate_warmups",
             self.task_id,
         )
         candidate_count_before_worker_registration = (
@@ -572,7 +570,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             message_ids=(self.message_id,),
         )[self.message_id]
         warmup_score_after_dispatch = self.redis.zscore(
-            f"ad:{self.prefix}:candidate-warmups",
+            f"{self.keyspace.base}:dispatch:candidate_warmups",
             self.task_id,
         )
 
@@ -727,14 +725,14 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.assertIsNotNone(state)
             self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
         finally:
-            self.redis.delete(
+            self.redis.unlink(
                 *(
                     key
                     for task_id in task_ids
                     for key in (
-                        f"tc:{self.prefix}:task:{task_id}",
-                        f"tr:{self.prefix}:task:{task_id}:items",
-                        f"tr:{self.prefix}:task:{task_id}:item-score",
+                        f"{self.keyspace.base}:task:{task_id}:descriptor",
+                        f"{self.keyspace.base}:task:{task_id}:items",
+                        f"{self.keyspace.base}:task:{task_id}:item_score",
                     )
                 )
             )
@@ -790,7 +788,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
         )
         warmup_score_after_activation = self.redis.zscore(
-            f"ad:{self.prefix}:candidate-warmups",
+            f"{self.keyspace.base}:dispatch:candidate_warmups",
             self.task_id,
         )
         worker_scores_before_warmer = self.worker_score.get_score_states(
@@ -846,7 +844,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         self.assertIsNone(
             self.redis.zscore(
-                f"ad:{self.prefix}:candidate-warmups",
+                f"{self.keyspace.base}:dispatch:candidate_warmups",
                 self.task_id,
             )
         )
@@ -925,14 +923,14 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(
             0,
             self.redis.zcard(
-                f"ad:{self.prefix}:candidate:{self.task_id}:workers"
+                f"{self.keyspace.base}:dispatch:candidate:"
+                f"{self.task_id}:workers"
             ),
         )
         self.assertEqual(
             0,
             self.redis.hlen(
-                f"wd:{self.prefix}:endpoint-manager:"
-                "endpoint-manager-1:worker-commands"
+                f"{self.keyspace.base}:delivery:commands:endpoint-manager-1"
             ),
         )
 

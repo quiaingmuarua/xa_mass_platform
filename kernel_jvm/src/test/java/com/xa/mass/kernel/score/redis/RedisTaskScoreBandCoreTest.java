@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import io.lettuce.core.RedisClient;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,10 @@ class RedisTaskScoreBandCoreTest {
         );
         try {
             RedisTaskScoreBandCore scoreCore =
-                    new RedisTaskScoreBandCore(redisClient, "test");
+                    new RedisTaskScoreBandCore(
+                            redisClient,
+                            new RedisKeyspace("test_task_score_unit")
+                    );
 
             assertOperation(
                     "count_running_capacity_tasks",

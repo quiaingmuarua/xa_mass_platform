@@ -13,7 +13,7 @@ import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import io.lettuce.core.RedisClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,11 +24,11 @@ public class KernelOwnerAssemblyConfiguration {
     @Bean(destroyMethod = "close")
     RedisTaskScoreBandCore redisTaskScoreBandCore(
             RedisClient redisClient,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisTaskScoreBandCore(
                 redisClient,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
@@ -36,34 +36,34 @@ public class KernelOwnerAssemblyConfiguration {
     RedisTaskRuntime redisTaskRuntime(
             RedisClient redisClient,
             TaskScoreBandCore taskScore,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisTaskRuntime(
                 redisClient,
                 taskScore,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
     @Bean(destroyMethod = "close")
     RedisTaskResourceCatalog taskResourceCatalog(
             RedisClient redisClient,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisTaskResourceCatalog(
                 redisClient,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
     @Bean(destroyMethod = "close")
     RedisWorkerScoreCore redisWorkerScoreCore(
             RedisClient redisClient,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerScoreCore(
                 redisClient,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
@@ -71,23 +71,23 @@ public class KernelOwnerAssemblyConfiguration {
     RedisWorkerRuntime workerRuntime(
             RedisClient redisClient,
             RedisWorkerScoreCore scoreCore,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerRuntime(
                 redisClient,
                 scoreCore,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 
     @Bean(destroyMethod = "close")
     RedisWorkerResourceCatalog workerResourceCatalog(
             RedisClient redisClient,
-            KernelRedisProperties properties
+            XaMassRedisProperties properties
     ) {
         return new RedisWorkerResourceCatalog(
                 redisClient,
-                properties.redisPrefix()
+                properties.keyspace()
         );
     }
 

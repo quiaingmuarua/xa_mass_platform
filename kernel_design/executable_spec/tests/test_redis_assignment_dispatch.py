@@ -10,6 +10,7 @@ from kernel_design.executable_spec import (
     WorkerCommandOfferStatus,
     DeliveryEndpoint,
     RedisCandidateWorkerCache,
+    RedisKeyspace,
     RedisWorkerCommandRuntime,
     encode_delivery_command,
 )
@@ -282,15 +283,19 @@ class FakePipeline:
 class RedisCandidateWorkerCacheTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
+        self.keyspace = RedisKeyspace("test_assignment_dispatch_unit")
         self.runtime = RedisCandidateWorkerCache(
             self.redis,
-            prefix="test",
+            keyspace=self.keyspace,
         )
         self.worker_command_runtime = RedisWorkerCommandRuntime(
             self.redis,
-            prefix="test",
+            keyspace=self.keyspace,
         )
-        self.key = "ad:test:candidate:task-1:workers"
+        self.key = (
+            "xa_mass:test_assignment_dispatch_unit:"
+            "dispatch:candidate:task-1:workers"
+        )
 
     def test_candidate_and_worker_command_owners_are_separate(self) -> None:
         self.assertFalse(hasattr(self.runtime, "append_worker_commands"))
@@ -311,7 +316,8 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             result,
         )
         key = (
-            "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
+            "xa_mass:test_assignment_dispatch_unit:"
+            "delivery:commands:endpoint-manager-1"
         )
         payload = json.loads(self.redis.hashes[key]["worker-1"])
         self.assertEqual(
@@ -501,7 +507,8 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
     def test_mailbox_replaces_expired_or_corrupt_residue(self) -> None:
         seed = self._worker_command("message-2", "worker-1", 104_000)
         key = (
-            "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
+            "xa_mass:test_assignment_dispatch_unit:"
+            "delivery:commands:endpoint-manager-1"
         )
         expired = self._worker_command("message-1", "worker-1")
         expired_value = encode_delivery_command(expired)
@@ -641,7 +648,10 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             worker_commands_by_worker_id={"worker-1": seed}
         )
-        competing_runtime = RedisWorkerCommandRuntime(self.redis, prefix="test")
+        competing_runtime = RedisWorkerCommandRuntime(
+            self.redis,
+            keyspace=self.keyspace,
+        )
 
         self.assertEqual(
             seed,
@@ -804,7 +814,10 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         )
 
     def test_batch_count_cleans_expired_members_for_each_task(self) -> None:
-        second_key = "ad:test:candidate:task-2:workers"
+        second_key = (
+            "xa_mass:test_assignment_dispatch_unit:"
+            "dispatch:candidate:task-2:workers"
+        )
         self.redis.zsets[self.key] = {
             RedisCandidateWorkerCache._encode_entry(
                 self._entry("expired-1", 100)
@@ -887,11 +900,14 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
 class RedisCandidateWarmupScheduleTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
+        self.keyspace = RedisKeyspace("test_warmup_schedule_unit")
         self.schedule = RedisCandidateWarmupSchedule(
             self.redis,
-            prefix="test",
+            keyspace=self.keyspace,
         )
-        self.key = "ad:test:candidate-warmups"
+        self.key = (
+            "xa_mass:test_warmup_schedule_unit:dispatch:candidate_warmups"
+        )
 
     def test_schedule_deduplicates_and_consume_is_due_ordered_and_bounded(self) -> None:
         self.schedule.schedule_candidate_warmups(

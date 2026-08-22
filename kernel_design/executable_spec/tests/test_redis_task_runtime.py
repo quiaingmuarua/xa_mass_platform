@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
@@ -166,21 +167,25 @@ class RedisTaskRuntimeTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.redis = FakeRedis()
+        self.keyspace = RedisKeyspace("test_task_runtime_unit")
         self.score_band = RedisTaskScoreBandCore(
             self.redis,
-            score_key="tr:test:task:score",
+            keyspace=self.keyspace,
         )
         self.item_score_band = RedisTaskItemScoreBandCore(
             self.redis,
-            prefix="test",
+            keyspace=self.keyspace,
         )
         self.runtime = RedisTaskRuntime(
             self.redis,
             self.score_band,
             self.item_score_band,
-            prefix="test",
+            keyspace=self.keyspace,
         )
-        self.catalog = RedisTaskResourceCatalog(self.redis, prefix="test")
+        self.catalog = RedisTaskResourceCatalog(
+            self.redis,
+            keyspace=self.keyspace,
+        )
 
     @staticmethod
     def descriptor(
@@ -227,7 +232,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(TaskScoreBand.PRE_REVIEW, state.band)
         self.assertEqual(self.SUFFIX, state.suffix)
         self.assertEqual(self.redis.now_millis, state.time_millis)
-        fields = self.redis.hashes["tc:test:task:task-1"]
+        fields = self.redis.hashes[
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+        ]
         self.assertEqual(
             "PRECOMPUTED_TASK_RULE",
             fields["workerAllocationMechanism"],
@@ -250,17 +257,23 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(descriptor, loaded)
         self.assertEqual(
             "null",
-            self.redis.hashes["tc:test:task:task-1"]["allocationRuleJson"],
+            self.redis.hashes[
+                "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+            ]["allocationRuleJson"],
         )
         self.assertEqual(
             "PARK_WHEN_IDLE",
-            self.redis.hashes["tc:test:task:task-1"]["idleDisposition"],
+            self.redis.hashes[
+                "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+            ]["idleDisposition"],
         )
 
     def test_descriptor_without_idle_disposition_is_not_decoded(self) -> None:
         descriptor = self.descriptor("task-1")
         self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
-        del self.redis.hashes["tc:test:task:task-1"]["idleDisposition"]
+        del self.redis.hashes[
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+        ]["idleDisposition"]
 
         loaded = self.catalog.load_task_allocation_descriptors(
             task_ids=("task-1",),
@@ -269,7 +282,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertIsNone(loaded["task-1"])
 
     def test_old_allocation_scope_row_is_not_decoded(self) -> None:
-        self.redis.hashes["tc:test:task:task-1"] = {
+        self.redis.hashes[
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+        ] = {
             "workerGroupId": "workers",
             "allocationRuleScope": "TASK",
             "allocationRuleJson": "{}",
@@ -311,7 +326,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "allocationRuleJson": "{}",
             "configJson": "{}",
         }
-        self.redis.hashes["tc:test:task:task-1"] = dict(orphan)
+        self.redis.hashes[
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+        ] = dict(orphan)
         descriptor = self.descriptor("task-1")
 
         result = self.runtime.create_task(
@@ -320,7 +337,12 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
-        self.assertEqual(orphan, self.redis.hashes["tc:test:task:task-1"])
+        self.assertEqual(
+            orphan,
+            self.redis.hashes[
+                "xa_mass:test_task_runtime_unit:task:task-1:descriptor"
+            ],
+        )
         self.assertIsNone(self.redis.zscore(self.score_band.score_key, "task-1"))
 
     def test_pre_review_score_without_descriptor_completes_creation(self) -> None:
@@ -407,7 +429,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
-        self.assertNotIn("tc:test:task:task-1", self.redis.hashes)
+        self.assertNotIn(
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor",
+            self.redis.hashes,
+        )
 
     def test_descriptor_write_with_stale_release_is_retryable(self) -> None:
         descriptor = self.descriptor("task-1")
@@ -424,7 +449,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             )
 
         self.assertEqual(TaskCreationStatus.RETRYABLE, result.status)
-        self.assertIn("tc:test:task:task-1", self.redis.hashes)
+        self.assertIn(
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor",
+            self.redis.hashes,
+        )
 
     def test_stale_release_does_not_overwrite_owner_transition(self) -> None:
         descriptor = self.descriptor("task-1")
@@ -434,7 +462,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             lease_duration_millis=self.runtime.lease_duration_millis,
         )
         self.redis.hset(
-            "tc:test:task:task-1",
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor",
             mapping={
                 "workerGroupId": descriptor.worker_group_id,
                 "workerAllocationMechanism": (
@@ -462,7 +490,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             replacement_score,
             self.redis.zscore(self.score_band.score_key, "task-1"),
         )
-        self.assertIn("tc:test:task:task-1", self.redis.hashes)
+        self.assertIn(
+            "xa_mass:test_task_runtime_unit:task:task-1:descriptor",
+            self.redis.hashes,
+        )
 
     def test_non_json_descriptor_is_rejected_before_score_write(self) -> None:
         result = self.runtime.create_task(
@@ -518,7 +549,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.runtime.create_task(descriptor=task_1, suffix=self.SUFFIX)
         self.redis.now_millis += self.score_band.SLOT_MILLIS
         self.runtime.create_task(descriptor=task_2, suffix=self.SUFFIX)
-        self.redis.hashes["tc:test:task:task-2"]["configJson"] = "{bad-json"
+        self.redis.hashes[
+            "xa_mass:test_task_runtime_unit:task:task-2:descriptor"
+        ]["configJson"] = "{bad-json"
 
         rows = self.catalog.load_task_allocation_descriptors(
             task_ids=["task-1", "task-2"]
@@ -554,7 +587,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             items=[first],
         )
         first_score = self.redis.zscore(
-            "tr:test:task:task-1:item-score",
+            "xa_mass:test_task_runtime_unit:task:task-1:item_score",
             "message-1",
         )
         latest_result = self.runtime.append_items(
@@ -569,7 +602,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(TaskItemAppendStatus.APPENDED, first_result["message-1"].status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, latest_result["message-1"].status)
         self.assertEqual(first_score, self.redis.zscore(
-            "tr:test:task:task-1:item-score",
+            "xa_mass:test_task_runtime_unit:task:task-1:item_score",
             "message-1",
         ))
         self.assertEqual({"source": "latest"}, loaded.payload)
@@ -642,7 +675,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskItemAppendStatus.NOT_FOUND, result["message-1"].status)
-        self.assertNotIn("tr:test:task:missing:items", self.redis.hashes)
+        self.assertNotIn(
+            "xa_mass:test_task_runtime_unit:task:missing:items",
+            self.redis.hashes,
+        )
 
     def test_append_rejects_already_expired_item_without_writes(self) -> None:
         self.runtime.create_task(
@@ -663,9 +699,15 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskItemAppendStatus.INVALID, result["expired"].status)
-        self.assertNotIn("tr:test:task:task-1:items", self.redis.hashes)
+        self.assertNotIn(
+            "xa_mass:test_task_runtime_unit:task:task-1:items",
+            self.redis.hashes,
+        )
         self.assertIsNone(
-            self.redis.zscore("tr:test:task:task-1:item-score", "expired")
+            self.redis.zscore(
+                "xa_mass:test_task_runtime_unit:task:task-1:item_score",
+                "expired",
+            )
         )
 
     def test_success_results_are_task_scoped_bounded_and_last_write_wins(
@@ -712,7 +754,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
 
     def test_success_result_storage_rejects_invalid_owner_coordinates(self) -> None:
         self.runtime.store_task_item_success_results(task_id="task-1", results={})
-        self.assertNotIn("tr:test:task:task-1:results", self.redis.hashes)
+        self.assertNotIn(
+            "xa_mass:test_task_runtime_unit:task:task-1:results",
+            self.redis.hashes,
+        )
         for task_id, results in (
             ("", {"message-1": "null"}),
             ("task-1", {"": "null"}),
@@ -724,7 +769,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                         task_id=task_id,
                         results=results,
                     )
-        self.assertNotIn("tr:test:task:missing:item-score", self.redis.zsets)
+        self.assertNotIn(
+            "xa_mass:test_task_runtime_unit:task:missing:item_score",
+            self.redis.zsets,
+        )
 
     def test_append_score_failure_leaves_latest_record_for_retry(self) -> None:
         self.runtime.create_task(

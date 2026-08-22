@@ -1,3 +1,4 @@
+from .keyspace import RedisKeyspace
 from .task_item_score_band import RedisTaskItemScoreBandCore
 from .task_score_band import RedisTaskScoreBandCore
 from .assignment_dispatch import (
@@ -14,6 +15,7 @@ from .worker_runtime import (
 )
 
 __all__ = [
+    "RedisKeyspace",
     "RedisTaskItemScoreBandCore",
     "RedisTaskScoreBandCore",
     "RedisCandidateWorkerCache",

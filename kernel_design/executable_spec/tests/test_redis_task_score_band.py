@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisTaskScoreBandCore,
     TaskScoreBand,
     TaskScoreTransitionStatus,
@@ -198,7 +199,10 @@ class FakeRedis:
 class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.kernel = RedisTaskScoreBandCore(self.redis)
+        self.kernel = RedisTaskScoreBandCore(
+            self.redis,
+            keyspace=RedisKeyspace("test_task_score_unit"),
+        )
 
     def score(self, tag: int, time_slot: int, suffix: int) -> int:
         return tag * self.kernel.tag_factor + time_slot * 100 + suffix
@@ -638,7 +642,13 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
                 result = self.kernel.try_release_idle_park(task_id="task")
 
                 self.assertEqual(TaskScoreTransitionStatus.NOOP, result.status)
-                self.assertEqual(original, self.redis.zscore("task:score", "task"))
+                self.assertEqual(
+                    original,
+                    self.redis.zscore(
+                        "xa_mass:test_task_score_unit:task:score",
+                        "task",
+                    ),
+                )
 
     def test_try_release_idle_park_rejects_terminal_and_running_pause(self) -> None:
         protected_scores = (
@@ -662,7 +672,13 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
                 result = self.kernel.try_release_idle_park(task_id="task")
 
                 self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
-                self.assertEqual(protected, self.redis.zscore("task:score", "task"))
+                self.assertEqual(
+                    protected,
+                    self.redis.zscore(
+                        "xa_mass:test_task_score_unit:task:score",
+                        "task",
+                    ),
+                )
 
     def test_try_release_idle_park_returns_stale_for_missing_score(self) -> None:
         result = self.kernel.try_release_idle_park(task_id="missing")

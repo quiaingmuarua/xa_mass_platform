@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.worker.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
@@ -17,13 +18,13 @@ public final class RedisWorkerRuntime
 
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerRuntime(
             RedisClient redisClient,
             WorkerScoreCore scoreCore,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
@@ -31,12 +32,12 @@ public final class RedisWorkerRuntime
         if (scoreCore == null) {
             throw new IllegalArgumentException("scoreCore must be present");
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
         this.redisClient = redisClient;
         this.scoreCore = scoreCore;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -59,7 +60,7 @@ public final class RedisWorkerRuntime
             );
         }
         if (commands().hget(
-                WorkerRedisSupport.groupsKey(prefix),
+                WorkerRedisSupport.groupsKey(keyspace),
                 declaration.workerGroupId()
         ) == null) {
             return result(
@@ -68,7 +69,7 @@ public final class RedisWorkerRuntime
             );
         }
 
-        String ownerKey = WorkerRedisSupport.workerIdOwnersKey(prefix);
+        String ownerKey = WorkerRedisSupport.workerIdOwnersKey(keyspace);
         boolean ownerCreated = commands().hsetnx(
                 ownerKey,
                 declaration.workerId(),
@@ -102,7 +103,7 @@ public final class RedisWorkerRuntime
         }
 
         String metadataKey = WorkerRedisSupport.workerMetadataKey(
-                prefix,
+                keyspace,
                 declaration.workerGroupId()
         );
         boolean metadataCreated = commands().hsetnx(
@@ -129,7 +130,7 @@ public final class RedisWorkerRuntime
         }
 
         String propertiesKey = WorkerRedisSupport.workerPropertiesKey(
-                prefix,
+                keyspace,
                 declaration.workerGroupId()
         );
         String currentProperties = commands().hget(

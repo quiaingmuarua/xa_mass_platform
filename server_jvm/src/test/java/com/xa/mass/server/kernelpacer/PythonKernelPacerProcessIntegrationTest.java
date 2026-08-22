@@ -3,7 +3,7 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -37,7 +37,7 @@ class PythonKernelPacerProcessIntegrationTest {
             Path(config["pidFile"]).write_text(str(os.getpid()), encoding="utf-8")
             Path(config["environmentFile"]).write_text(json.dumps({
                 "redisUrl": os.environ["XA_MASS_KERNEL_PACER_REDIS_URL"],
-                "redisPrefix": os.environ["XA_MASS_KERNEL_PACER_REDIS_PREFIX"],
+                "redisScope": os.environ["XA_MASS_KERNEL_PACER_REDIS_SCOPE"],
             }), encoding="utf-8")
             mode = config["mode"]
             if mode == "exit":
@@ -108,7 +108,7 @@ class PythonKernelPacerProcessIntegrationTest {
         assertThat(owner.pid()).isEqualTo(pid);
         assertThat(Files.readString(environmentFile, StandardCharsets.UTF_8))
                 .contains("\"redisUrl\": \"redis://example:6380/3\"")
-                .contains("\"redisPrefix\": \"managed-prefix\"");
+                .contains("\"redisScope\": \"profile_managed\"");
 
         owner.stop();
         owner.stop();
@@ -184,9 +184,9 @@ class PythonKernelPacerProcessIntegrationTest {
                         startupTimeout,
                         shutdownTimeout
                 ),
-                new KernelRedisProperties(
+                new XaMassRedisProperties(
                         URI.create("redis://example:6380/3"),
-                        "managed-prefix"
+                        "profile_managed"
                 ),
                 JsonMapper.builder().build()
         );

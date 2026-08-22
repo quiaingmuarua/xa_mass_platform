@@ -84,7 +84,9 @@ record merely to make a mechanical signature look smaller.
 
 ## Redis Changes
 
-- Redis keys and Lua belong to the matching owner provider.
+- Redis keys and Lua belong to the matching owner provider. `RedisKeyspace`
+  supplies only the fixed root plus validated scope; it is not a global
+  business-key factory.
 - Avoid cross-owner scripts and global scans.
 - Use exact observed-value comparison for stale-sensitive transitions.
 - Pipeline only caller-bounded independent owner operations.
@@ -120,7 +122,7 @@ record merely to make a mechanical signature look smaller.
 - The assembly CLI is the only temporary production Pacer entry and exposes no
   network surface. Java Server may supervise its process lifecycle but must not
   interpret Pacer policy. In managed mode Java owns and injects the Redis URL
-  and prefix; the Pacer JSON contains policy only. Task commands remain
+  and scope; the Pacer JSON contains policy only. Task commands remain
   directly testable through the executable application and are not Python HTTP
   routes.
 

@@ -4,7 +4,6 @@ import json
 import os
 import time
 import unittest
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 try:
@@ -22,6 +21,7 @@ from kernel_design.executable_spec import (
     WorkerScorePolarity,
     WorkerScoreTransitionStatus,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -43,27 +43,25 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             raise unittest.SkipTest(f"real Redis is unavailable: {error}") from error
 
     def setUp(self) -> None:
-        self.prefix = f"integration-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("worker_runtime")
+        self.keyspace = self.test_scope.keyspace
         self.worker_group_id = "image-workers"
-        self.score_key_prefix = f"wr:{self.prefix}:score"
         self.score_band = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix=self.score_key_prefix,
+            keyspace=self.keyspace,
         )
         self.runtime = RedisWorkerRuntime(
             self.redis,
             self.score_band,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
         self.catalog = RedisWorkerResourceCatalog(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
         )
 
     def tearDown(self) -> None:
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     def test_worker_group_registration_and_random_sample_use_real_redis(
         self,
@@ -115,7 +113,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(len(sampled), 100)
         self.assertTrue(all(value is not None for value in sampled.values()))
 
-        groups_key = f"wr:{self.prefix}:groups"
+        groups_key = f"{self.keyspace.base}:worker:groups"
         self.redis.delete(groups_key)
         self.redis.hset(
             groups_key,
@@ -234,10 +232,10 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self,
     ) -> None:
         metadata_key = (
-            f"wr:{self.prefix}:worker-metadata:{self.worker_group_id}"
+            f"{self.keyspace.base}:worker:metadata:{self.worker_group_id}"
         )
         properties_key = (
-            f"wr:{self.prefix}:worker-properties:{self.worker_group_id}"
+            f"{self.keyspace.base}:worker:properties:{self.worker_group_id}"
         )
         metadata_rows = {
             f"worker-{index:03d}": json.dumps(
@@ -261,7 +259,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.redis.hset(metadata_key, mapping=metadata_rows)
         self.redis.hset(properties_key, mapping=property_rows)
         self.redis.hset(
-            f"wr:{self.prefix}:worker-metadata:other-workers",
+            f"{self.keyspace.base}:worker:metadata:other-workers",
             "other-worker",
             json.dumps(
                 {
@@ -274,7 +272,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             ),
         )
         self.redis.hset(
-            f"wr:{self.prefix}:worker-properties:other-workers",
+            f"{self.keyspace.base}:worker:properties:other-workers",
             "other-worker",
             "{}",
         )
@@ -318,7 +316,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )
 
         invalid_metadata_key = (
-            f"wr:{self.prefix}:worker-metadata:invalid-workers"
+            f"{self.keyspace.base}:worker:metadata:invalid-workers"
         )
         self.redis.hset(
             invalid_metadata_key,
@@ -345,7 +343,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             },
         )
         self.redis.hset(
-            f"wr:{self.prefix}:worker-properties:invalid-workers",
+            f"{self.keyspace.base}:worker:properties:invalid-workers",
             mapping={
                 "broken": "{}",
                 "wrong-id": "{}",

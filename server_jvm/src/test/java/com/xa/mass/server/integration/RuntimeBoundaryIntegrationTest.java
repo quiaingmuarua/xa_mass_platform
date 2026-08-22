@@ -1,6 +1,5 @@
 package com.xa.mass.server.integration;
 
-import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_PREFIX;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,10 +9,14 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.javase.JavaWorker;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
+import com.xa.mass.server.taskdata.TaskRpcResultProbe;
+import com.xa.mass.server.testsupport.RedisTestScope;
+import com.xa.mass.server.workerassembly.ServerWorkerAssemblyLifecycleHost;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -36,6 +39,8 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -54,6 +59,7 @@ import tools.jackson.databind.json.JsonMapper;
                 .DedicatedRedisInitializer.class
 )
 @Tag("runtime-boundary")
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RuntimeBoundaryIntegrationTest {
 
     private static final int SERVER_PORT = availablePort();
@@ -75,6 +81,14 @@ class RuntimeBoundaryIntegrationTest {
             "serviceability-runtime-boundary";
     private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final RedisTestScope REDIS_TEST_SCOPE =
+            RedisTestScope.create("runtime_boundary");
+    private static final RedisTestScope OUTSIDE_REDIS_TEST_SCOPE =
+            RedisTestScope.create("runtime_boundary_sentinel");
+    private static final RedisKeyspace REDIS_KEYSPACE =
+            REDIS_TEST_SCOPE.keyspace();
+    private static final String OUTSIDE_SENTINEL_KEY =
+            OUTSIDE_REDIS_TEST_SCOPE.keyspace().base() + ":worker:groups";
 
     public static final class DedicatedRedisInitializer implements
             ApplicationContextInitializer<ConfigurableApplicationContext> {
@@ -83,7 +97,11 @@ class RuntimeBoundaryIntegrationTest {
         public void initialize(ConfigurableApplicationContext context) {
             RedisClient client = RedisClient.create(REDIS_URL);
             try (var connection = client.connect(StringCodec.UTF8)) {
-                connection.sync().flushdb();
+                connection.sync().hset(
+                        OUTSIDE_SENTINEL_KEY,
+                        "runtime-boundary",
+                        "untouched"
+                );
             } finally {
                 client.shutdown();
             }
@@ -99,8 +117,18 @@ class RuntimeBoundaryIntegrationTest {
     @Autowired
     private KernelPacerAssembly kernelPacerAssembly;
 
+    @Autowired
+    private TaskRpcResultProbe taskRpcResultProbe;
+
+    @Autowired
+    private ServerWorkerAssemblyLifecycleHost workerAssemblyLifecycleHost;
+
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
+        registry.add(
+                "xa.mass.redis.scope",
+                REDIS_TEST_SCOPE::scope
+        );
         registry.add(
                 "server.port",
                 () -> Integer.toString(SERVER_PORT)
@@ -596,8 +624,8 @@ class RuntimeBoundaryIntegrationTest {
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
-            String scoreKey = "wr:" + redisPrefix()
-                    + ":score:" + workerGroupId;
+            String scoreKey = REDIS_KEYSPACE.base()
+                    + ":worker:score:" + workerGroupId;
             // Fixture-only: leave the Route connected while making the
             // periodic snapshot, rather than another Route transition, own
             // the RECOVERY -> HOT proof below.
@@ -656,10 +684,6 @@ class RuntimeBoundaryIntegrationTest {
         throw new AssertionError(
                 "Worker score did not become " + expectedPolarity
         );
-    }
-
-    private static String redisPrefix() {
-        return REDIS_PREFIX;
     }
 
     @Test
@@ -786,22 +810,55 @@ class RuntimeBoundaryIntegrationTest {
         RedisClient client = RedisClient.create(REDIS_URL);
         try (var connection = client.connect(StringCodec.UTF8)) {
             var redis = connection.sync();
-            String prefix = System.getenv().getOrDefault(
-                    "KERNEL_DESIGN_REDIS_PREFIX",
-                    "default"
-            );
             assertThat(redis.hexists(
-                    "tr:" + prefix + ":task:" + taskId + ":items",
+                    REDIS_KEYSPACE.base()
+                            + ":task:" + taskId + ":items",
                     messageId
             )).isTrue();
             Double score = redis.zscore(
-                    "tr:" + prefix + ":task:" + taskId + ":item-score",
+                    REDIS_KEYSPACE.base()
+                            + ":task:" + taskId + ":item_score",
                     messageId
             );
             assertThat(score).isNotNull();
             assertThat(score.longValue()
                     / TaskItemScoreBandCore.TAG_FACTOR)
                     .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    @AfterAll
+    void stopRuntimeOwnersAndCleanExactRedisScopes() {
+        try {
+            try {
+                workerAssemblyLifecycleHost.stop();
+            } finally {
+                try {
+                    taskRpcResultProbe.stop();
+                } finally {
+                    kernelPacerAssembly.stop();
+                }
+            }
+        } finally {
+            cleanExactRedisScopes();
+        }
+    }
+
+    private static void cleanExactRedisScopes() {
+        RedisClient client = RedisClient.create(REDIS_URL);
+        try (var connection = client.connect(StringCodec.UTF8)) {
+            var redis = connection.sync();
+            try {
+                assertThat(redis.hget(
+                        OUTSIDE_SENTINEL_KEY,
+                        "runtime-boundary"
+                )).isEqualTo("untouched");
+            } finally {
+                REDIS_TEST_SCOPE.cleanup(redis);
+                OUTSIDE_REDIS_TEST_SCOPE.cleanup(redis);
+            }
         } finally {
             client.shutdown();
         }

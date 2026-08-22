@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.score.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import io.lettuce.core.RedisClient;
@@ -125,25 +126,23 @@ public final class RedisTaskScoreBandCore
     private static final long IDLE_PARK_TIME_SLOT = MAX_TIME_SLOT - 1;
 
     private final RedisClient redisClient;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskScoreBandCore(
             RedisClient redisClient,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException(
                     "redisClient must be present"
             );
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException(
-                    "prefix must be non-blank"
-            );
-        }
         this.redisClient = redisClient;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -575,7 +574,7 @@ public final class RedisTaskScoreBandCore
     }
 
     private String scoreKey() {
-        return "tr:" + prefix + ":task:score";
+        return keyspace.base() + ":task:score";
     }
 
     @Override

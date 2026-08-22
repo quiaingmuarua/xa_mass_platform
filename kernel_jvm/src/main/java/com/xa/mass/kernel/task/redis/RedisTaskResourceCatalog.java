@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.task.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
@@ -22,18 +23,18 @@ public final class RedisTaskResourceCatalog
 
     private final RedisClient redisClient;
     private final ObjectMapper mapper = JsonMapper.builder().build();
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskResourceCatalog(
             RedisClient redisClient,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         this.redisClient = redisClient;
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -139,7 +140,7 @@ public final class RedisTaskResourceCatalog
     }
 
     private String taskDescriptorKey(String taskId) {
-        return "tc:" + prefix + ":task:" + taskId;
+        return keyspace.base() + ":task:" + taskId + ":descriptor";
     }
 
     private static String required(

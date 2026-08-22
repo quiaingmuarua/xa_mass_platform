@@ -56,7 +56,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                 ready_file=ready,
                 input_stream=_ReadyObservingInput(ready, token),
                 managed_redis_url="redis://example:6380/3",
-                managed_redis_prefix="managed-prefix",
+                managed_redis_scope="profile_managed",
                 application_factory=lambda _config: application,
             )
 
@@ -76,7 +76,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                     ready_file=ready,
                     input_stream=io.BytesIO(),
                     managed_redis_url="redis://example:6380/3",
-                    managed_redis_prefix="managed-prefix",
+                    managed_redis_scope="profile_managed",
                     application_factory=lambda _config: application,
                 )
             self.assertFalse(ready.exists())
@@ -121,7 +121,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                 ready_file=ready,
                 input_stream=io.BytesIO(),
                 managed_redis_url="redis://example:6380/3",
-                managed_redis_prefix="managed-prefix",
+                managed_redis_scope="profile_managed",
                 application_factory=lambda parsed: (
                     observed_configs.append(parsed) or application
                 ),
@@ -132,7 +132,7 @@ class KernelApplicationCliTest(unittest.TestCase):
             "redis://example:6380/3",
             observed_configs[0].redis_url,
         )
-        self.assertEqual("managed-prefix", observed_configs[0].redis_prefix)
+        self.assertEqual("profile_managed", observed_configs[0].redis_scope)
         self.assertEqual(17, observed_configs[0].result_routing_interval_millis)
 
     def test_managed_run_rejects_redis_in_policy_config(self) -> None:
@@ -155,7 +155,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                     ready_file=root / "ready",
                     input_stream=io.BytesIO(),
                     managed_redis_url="redis://example:6380/3",
-                    managed_redis_prefix="managed-prefix",
+                    managed_redis_scope="profile_managed",
                     application_factory=lambda _config: application,
                 )
 

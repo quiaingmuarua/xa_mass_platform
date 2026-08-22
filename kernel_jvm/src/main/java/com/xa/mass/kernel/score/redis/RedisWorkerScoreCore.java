@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.score.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import io.lettuce.core.RedisClient;
@@ -90,18 +91,21 @@ public final class RedisWorkerScoreCore
             """;
 
     private final RedisClient redisClient;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    public RedisWorkerScoreCore(RedisClient redisClient, String prefix) {
+    public RedisWorkerScoreCore(
+            RedisClient redisClient,
+            RedisKeyspace keyspace
+    ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
         this.redisClient = redisClient;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -593,7 +597,7 @@ public final class RedisWorkerScoreCore
     }
 
     private String scoreKey(String homeBucketId) {
-        return "wr:" + prefix + ":score:" + homeBucketId;
+        return keyspace.base() + ":worker:score:" + homeBucketId;
     }
 
     private RedisCommands<String, String> commands() {

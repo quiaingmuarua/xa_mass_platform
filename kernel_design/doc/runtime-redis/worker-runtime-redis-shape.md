@@ -6,11 +6,13 @@ oracle and JVM providers must read and write the same bytes.
 ## Namespace And Owners
 
 ```text
-wr:{prefix}:...
+xa_mass:<scope>:worker:...
 ```
 
-`prefix` is a deployment namespace. `workerGroupId` is the Worker home bucket
-and score partition. Redis structures are owned separately:
+`xa_mass` is the fixed root namespace. `scope` is the validated data-isolation
+boundary (`profile_*` for a runtime profile, `test_*` for one proof run).
+The Redis DB number is only a connection coordinate. `workerGroupId` is the
+Worker home bucket and score partition. Redis structures are owned separately:
 
 ```text
 WorkerResourceCatalog      WorkerGroup descriptors plus Worker metadata/properties
@@ -19,13 +21,15 @@ WorkerScoreCore            Worker scheduling score ZSET
 ```
 
 Delivery mailboxes, Worker results, and optional serviceability evidence use
-their own `wd:`, `rr:`, and `ws:` namespaces. Task assignment, connection
-state, and execution truth never enter the Worker resource keys.
+the `delivery`, `result`, and Worker-local `serviceability` domains under the
+same root and scope. Task assignment, connection state, and execution truth
+never enter the Worker resource keys. Keys do not use Redis Cluster hash tags;
+Cluster support requires a separate design.
 
 ## WorkerGroup Descriptors
 
 ```text
-wr:{prefix}:groups
+xa_mass:<scope>:worker:groups
   HASH field = workerGroupId
   value       = canonical WorkerGroupDescriptor JSON
 ```
@@ -60,15 +64,15 @@ currently installed on every Worker.
 ## Worker Metadata And Properties
 
 ```text
-wr:{prefix}:worker-metadata:{workerGroupId}
+xa_mass:<scope>:worker:metadata:<workerGroupId>
   HASH field = workerId
   value       = canonical WorkerMetadata JSON
 
-wr:{prefix}:worker-properties:{workerGroupId}
+xa_mass:<scope>:worker:properties:<workerGroupId>
   HASH field = workerId
   value       = canonical workerProperties JSON object
 
-wr:{prefix}:worker-id-owners
+xa_mass:<scope>:worker:id_owners
   HASH field = workerId
   value       = workerGroupId
 ```
@@ -90,7 +94,7 @@ Example Worker Properties row:
 {"arch":"arm64","region":"cn-east"}
 ```
 
-`worker-id-owners` is the immutable identity fence and backs only the bounded
+The `worker:id_owners` HASH is the immutable identity fence and backs only the bounded
 explicit-ID `get_worker_group_ids` owner read. It is not a global query catalog,
 Worker discovery source, or Transport routing structure.
 
@@ -121,11 +125,11 @@ The Server-owned identity and endpoint Binding registries use a separate
 namespace:
 
 ```text
-wi:{prefix}:worker-registrations:{workerGroupId}
+xa_mass:<scope>:worker:identity:<workerGroupId>
   HASH field = clientWorkerKey
   value       = canonical UUID workerId
 
-wi:{prefix}:worker-bindings:{00..ff}
+xa_mass:<scope>:worker:binding:<00..ff>
   HASH field = canonical UUID workerId
   value       = endpointManagerId
 ```
@@ -134,15 +138,14 @@ Identity registration establishes long-lived external identity. Binding
 establishes the persistent delivery route used to project `endpointManagerId`
 into Kernel Worker metadata. The public Worker Prepare use case composes these
 Server owners with Worker upsert, but does not merge their Redis ownership.
-The 256 bucket suffix is the first SHA-256 byte of the
-canonical workerId and only limits HASH size; the existing `{prefix}` hash tag
-remains unchanged. Neither registry is a Kernel owner key, candidate catalog,
-authentication record, or connectivity truth.
+The 256 bucket suffix is the first SHA-256 byte of the canonical workerId and
+only limits HASH size. Neither registry is a Kernel owner key, candidate
+catalog, authentication record, or connectivity truth.
 
 ## Worker Score
 
 ```text
-wr:{prefix}:score:{workerGroupId}
+xa_mass:<scope>:worker:score:<workerGroupId>
   ZSET member = workerId
   score       = opaque Worker score encoding
 ```
@@ -195,8 +198,8 @@ Strong stale-state protection is reserved for score compare-and-set and
 identity ownership. WorkerGroup registration is atomic create-only;
 Worker-property writes use bounded eventual convergence.
 
-- Do not add legacy JSON readers or dual writes; deployments use a clean
-  prefix for this ABI change.
+- Do not add legacy key readers or dual writes; deployments use a new scope for
+  this ABI change and old keys remain untouched.
 - Keep each Worker Properties value as the complete canonical JSON Map; do not
   wrap it in an update-time envelope or add timestamp arbitration.
 - Do not store score or decoded score coordinates in Worker metadata or
@@ -204,7 +207,7 @@ Worker-property writes use bounded eventual convergence.
 - Do not scan Worker descriptors for DIRECT matching.
 - Reject `index.*` allocation requirements rather than adding a hidden
   projection store.
-- Do not use `worker-id-owners` for global enumeration.
+- Do not use the `worker:id_owners` HASH for global enumeration.
 - Do not let Adapter, Worker, or Server controller code write Worker score
   directly.
 - Do not add broad locks, global repair scans, or transactions without a named

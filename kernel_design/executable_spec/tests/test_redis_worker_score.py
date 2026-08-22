@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.executable_spec import (
+    RedisKeyspace,
     RedisWorkerScoreCore,
     WorkerScorePolarity,
     WorkerScoreTransitionStatus,
@@ -304,6 +305,7 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.redis = FakeRedis()
         self.kernel = RedisWorkerScoreCore(
             self.redis,
+            keyspace=RedisKeyspace("test_worker_score_unit"),
             recovery_lookback_millis=10_000,
         )
         self.home_bucket_id = "group-a"

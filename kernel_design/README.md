@@ -166,6 +166,7 @@ to the change:
 - [Worker Delivery](doc/scheduling/worker-delivery-dispatch.md)
 - [Worker Serviceability](doc/scheduling/worker-serviceability-scheduling.md)
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
+- [Redis Keyspace](doc/runtime-redis/redis-keyspace.md)
 
 Redis documents describe current owner storage shapes; they are not public APIs
 unless an owner contract explicitly says so.

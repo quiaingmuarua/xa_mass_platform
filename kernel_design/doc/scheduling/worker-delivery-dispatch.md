@@ -213,7 +213,7 @@ over a pending Direct Command.
 ## Redis Mailbox
 
 ```text
-wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
+xa_mass:<scope>:delivery:commands:<endpointManagerId>
   HASH workerId -> DeliveryCommand JSON
 ```
 

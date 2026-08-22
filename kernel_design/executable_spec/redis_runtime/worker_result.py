@@ -10,6 +10,7 @@ from ..kernel.worker_delivery import (
     encode_delivery_report,
 )
 from ..kernel.worker_result_runtime import WorkerResultRuntime
+from .keyspace import RedisKeyspace
 
 
 class RedisWorkerResultRuntime(WorkerResultRuntime):
@@ -19,12 +20,12 @@ class RedisWorkerResultRuntime(WorkerResultRuntime):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def append_worker_results(
         self,
@@ -79,6 +80,6 @@ class RedisWorkerResultRuntime(WorkerResultRuntime):
 
     def _queue_key(self, outcome_class: DeliveryReportOutcomeClass) -> str:
         return (
-            f"rr:{self.prefix}:worker-results:"
+            f"{self.keyspace.base}:result:routing:"
             f"{outcome_class.value.lower().replace('_', '-')}"
         )

@@ -25,12 +25,12 @@ The item kernel does not model a ready queue. It stores one canonical Item
 record and one monotonic score coordinate:
 
 ```text
-task:{taskId}:items
+xa_mass:<scope>:task:<taskId>:items
   HASH
   field = messageId
   value = TaskItem
 
-task:{taskId}:item-score
+xa_mass:<scope>:task:<taskId>:item_score
   ZSET
   member = messageId
   score = ItemScore
@@ -368,7 +368,7 @@ the minimum ACTIVE coordinate:
 ```text
 beforeSlot = floor(beforeTimeMillis / SLOT_MILLIS)
 
-ZREVRANGEBYSCORE task:{taskId}:item-score
+ZREVRANGEBYSCORE xa_mass:<scope>:task:<taskId>:item_score
   score(TAG_ACTIVE, beforeSlot, MAX_SUFFIX)
   score(TAG_ACTIVE, MIN_TIME_SLOT, MIN_SUFFIX)
   WITHSCORES
@@ -426,12 +426,12 @@ For each Item independently:
 TaskRuntime
   validate messageId / eventCode and payload mapping
   materialize priority / expiry defaults
-  HSET task:{taskId}:items messageId latestTaskItem
+  HSET xa_mass:<scope>:task:<taskId>:items messageId latestTaskItem
 
 TaskItemScoreBandCore
   convert initialDueMillis to timeSlot
   mint internal TAG_ACTIVE / timeSlot / remaining-budget suffix
-  ZADD NX task:{taskId}:item-score internalScore messageId
+  ZADD NX xa_mass:<scope>:task:<taskId>:item_score internalScore messageId
 ```
 
 Neither owner writes the other's key or reconstructs its encoding. A bounded
@@ -700,11 +700,11 @@ The interface is implemented in
 [`executable_spec/kernel/task_item_score_band.py`](../../executable_spec/kernel/task_item_score_band.py).
 The Redis ZSET owner is implemented in
 [`executable_spec/redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py).
-Its physical key is `tr:{prefix}:task:{taskId}:item-score`.
+Its physical key is `xa_mass:<scope>:task:<taskId>:item_score`.
 
 Canonical TaskItem record append and bounded load are implemented by
 [`executable_spec/redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
-using `tr:{prefix}:task:{taskId}:items`. Real-Redis integration proof covers the
+using `xa_mass:<scope>:task:<taskId>:items`. Real-Redis integration proof covers the
 complete owner composition:
 
 ```text

@@ -218,26 +218,26 @@ runtime path.
 The executable spec deliberately uses a small number of Redis owner keys:
 
 ```text
-tr:{prefix}:task:score
+xa_mass:<scope>:task:score
   one global Task score ZSET
 
-wr:{prefix}:score:{workerGroupId}
+xa_mass:<scope>:worker:score:<workerGroupId>
   one Worker score ZSET per WorkerGroup
 
-tr:{prefix}:task:{taskId}:item-score
-tr:{prefix}:task:{taskId}:items
-tr:{prefix}:task:{taskId}:results
+xa_mass:<scope>:task:<taskId>:item_score
+xa_mass:<scope>:task:<taskId>:items
+xa_mass:<scope>:task:<taskId>:results
   Task-local Item score and record/result HASHes
 
-wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
+xa_mass:<scope>:delivery:commands:<endpointManagerId>
   one shared sparse DeliveryCommand HASH per Adapter route; TASK append may
   replace, while a generic offer fills only an empty worker field
 
-rr:{prefix}:worker-results:{outcomeClass}
+xa_mass:<scope>:result:routing:<outcomeClass>
   three global best-effort result LISTs
 
-ws:{prefix}:adapter:{adapterId}:probe-requests
-ws:{prefix}:adapter-evidence-results
+xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
+xa_mass:<scope>:worker:serviceability:evidence_results
   coalesced Adapter route-probe requests and bounded Adapter Report evidence
 
 ```

@@ -59,13 +59,20 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(stored, self.group)
 
     def test_worker_group_registration_rejects_unreadable_existing_value(self) -> None:
-        self.redis.hset("wr:test:groups", "image-workers", "not-json")
+        self.redis.hset(
+            "xa_mass:test_worker_runtime_unit:worker:groups",
+            "image-workers",
+            "not-json",
+        )
 
         result = self.catalog.register_worker_group(descriptor=self.group)
 
         self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
         self.assertEqual(
-            self.redis.hget("wr:test:groups", "image-workers"),
+            self.redis.hget(
+                "xa_mass:test_worker_runtime_unit:worker:groups",
+                "image-workers",
+            ),
             "not-json",
         )
 
@@ -79,13 +86,20 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 "eventCodes": [],
             }
         )
-        self.redis.hset("wr:test:groups", "image-workers", stored)
+        self.redis.hset(
+            "xa_mass:test_worker_runtime_unit:worker:groups",
+            "image-workers",
+            stored,
+        )
 
         result = self.catalog.register_worker_group(descriptor=self.group)
 
         self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
         self.assertEqual(
-            self.redis.hget("wr:test:groups", "image-workers"),
+            self.redis.hget(
+                "xa_mass:test_worker_runtime_unit:worker:groups",
+                "image-workers",
+            ),
             stored,
         )
 
@@ -108,15 +122,19 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(sampled["other-workers"], other)
         self.assertEqual(
             self.redis.hrandfield_calls,
-            [("wr:test:groups", 100, True)],
+            [("xa_mass:test_worker_runtime_unit:worker:groups", 100, True)],
         )
 
     def test_worker_group_sample_marks_invalid_or_mismatched_rows_unreadable(
         self,
     ) -> None:
-        self.redis.hset("wr:test:groups", "broken", "not-json")
         self.redis.hset(
-            "wr:test:groups",
+            "xa_mass:test_worker_runtime_unit:worker:groups",
+            "broken",
+            "not-json",
+        )
+        self.redis.hset(
+            "xa_mass:test_worker_runtime_unit:worker:groups",
             "mismatched",
             json.dumps(
                 {
@@ -141,7 +159,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_worker_group_field_identity_mismatch_is_not_read(self) -> None:
         self.redis.hset(
-            "wr:test:groups",
+            "xa_mass:test_worker_runtime_unit:worker:groups",
             "image-workers",
             json.dumps(
                 {
@@ -199,7 +217,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.register_group()
         declaration = self.worker_declaration("worker-1")
         self.upsert_worker(declaration)
-        score_key = "wr:test:score:image-workers"
+        score_key = "xa_mass:test_worker_runtime_unit:worker:score:image-workers"
         initial_score = self.redis.zscore(score_key, "worker-1")
         assert initial_score is not None
 
@@ -236,27 +254,42 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
         self.upsert_worker(declaration)
 
-        self.redis.hdel("wr:test:worker-id-owners", "worker-1")
+        self.redis.hdel(
+            "xa_mass:test_worker_runtime_unit:worker:id_owners",
+            "worker-1",
+        )
         owner_repair = self.runtime.upsert_worker(declaration=declaration)
         self.assertEqual(owner_repair.status, WorkerRuntimeStatus.OK)
 
-        self.redis.hdel("wr:test:worker-metadata:image-workers", "worker-1")
+        self.redis.hdel(
+            "xa_mass:test_worker_runtime_unit:worker:metadata:image-workers",
+            "worker-1",
+        )
         metadata_repair = self.runtime.upsert_worker(
             declaration=declaration
         )
         self.assertEqual(metadata_repair.status, WorkerRuntimeStatus.OK)
 
-        self.redis.hdel("wr:test:worker-properties:image-workers", "worker-1")
+        self.redis.hdel(
+            "xa_mass:test_worker_runtime_unit:worker:properties:image-workers",
+            "worker-1",
+        )
         properties_repair = self.runtime.upsert_worker(
             declaration=declaration
         )
         self.assertEqual(properties_repair.status, WorkerRuntimeStatus.OK)
 
-        self.redis.zrem("wr:test:score:image-workers", "worker-1")
+        self.redis.zrem(
+            "xa_mass:test_worker_runtime_unit:worker:score:image-workers",
+            "worker-1",
+        )
         score_repair = self.runtime.upsert_worker(declaration=declaration)
         self.assertEqual(score_repair.status, WorkerRuntimeStatus.OK)
         self.assertIsNotNone(
-            self.redis.zscore("wr:test:score:image-workers", "worker-1")
+            self.redis.zscore(
+                "xa_mass:test_worker_runtime_unit:worker:score:image-workers",
+                "worker-1",
+            )
         )
         self.assertEqual(
             self.runtime.upsert_worker(declaration=declaration).status,
@@ -297,7 +330,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(
             self.redis.hmget_calls[-1],
             (
-                "wr:test:worker-id-owners",
+                "xa_mass:test_worker_runtime_unit:worker:id_owners",
                 ("worker-2", "missing", "worker-1"),
             ),
         )
@@ -321,7 +354,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             worker_properties={"runtime": "initial"},
         )
         self.upsert_worker(declaration)
-        score_key = "wr:test:score:image-workers"
+        score_key = "xa_mass:test_worker_runtime_unit:worker:score:image-workers"
         self.redis.zrem(score_key, "worker-1")
 
         updated = self.runtime.upsert_worker(
@@ -406,11 +439,11 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
         self.upsert_worker(declaration)
         raw_metadata = self.redis.hget(
-            "wr:test:worker-metadata:image-workers",
+            "xa_mass:test_worker_runtime_unit:worker:metadata:image-workers",
             "worker-1",
         )
         raw_properties = self.redis.hget(
-            "wr:test:worker-properties:image-workers",
+            "xa_mass:test_worker_runtime_unit:worker:properties:image-workers",
             "worker-1",
         )
         self.assertEqual(
@@ -426,7 +459,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_legacy_worker_resource_shapes_are_not_read(self) -> None:
         self.redis.hset(
-            "wr:test:groups",
+            "xa_mass:test_worker_runtime_unit:worker:groups",
             "legacy-group",
             json.dumps(
                 {
@@ -438,7 +471,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             ),
         )
         self.redis.hset(
-            "wr:test:workers:legacy-group",
+            "xa_mass:test_worker_runtime_unit:worker:workers:legacy-group",
             "worker-1",
             json.dumps(
                 {
@@ -466,7 +499,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
     def test_descriptor_field_identity_mismatch_is_not_mutated(self) -> None:
         self.register_group()
         self.redis.hset(
-            "wr:test:worker-metadata:image-workers",
+            "xa_mass:test_worker_runtime_unit:worker:metadata:image-workers",
             "worker-1",
             json.dumps(
                 {
@@ -478,7 +511,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             ),
         )
         self.redis.hset(
-            "wr:test:worker-properties:image-workers",
+            "xa_mass:test_worker_runtime_unit:worker:properties:image-workers",
             "worker-1",
             "{}",
         )

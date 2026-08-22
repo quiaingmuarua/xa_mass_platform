@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import io.lettuce.core.RedisClient;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ class RedisWorkerScoreCoreTest {
         try {
             RedisWorkerScoreCore scoreCore = new RedisWorkerScoreCore(
                     redisClient,
-                    "test"
+                    new RedisKeyspace("test_worker_score_unit")
             );
 
             assertOperation(

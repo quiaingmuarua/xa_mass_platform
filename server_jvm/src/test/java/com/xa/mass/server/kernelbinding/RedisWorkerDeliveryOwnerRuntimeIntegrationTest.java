@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
+import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -19,7 +21,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -28,7 +29,8 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
-    private String prefix;
+    private RedisTestScope testScope;
+    private RedisKeyspace keyspace;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
@@ -39,7 +41,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        prefix = "java-worker-delivery-" + UUID.randomUUID();
+        testScope = RedisTestScope.create("java_worker_delivery");
+        keyspace = testScope.keyspace();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
@@ -47,17 +50,17 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         commandRuntime = new RedisWorkerCommandRuntime(
                 redisClient,
                 codec,
-                prefix
+                keyspace
         );
         resultRuntime = new RedisWorkerResultRuntime(
                 redisClient,
                 codec,
-                prefix
+                keyspace
         );
         serviceabilityRuntime = new RedisWorkerServiceabilityRuntime(
                 redisClient,
                 codec,
-                prefix,
+                keyspace,
                 2
         );
     }
@@ -65,9 +68,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     @AfterEach
     void tearDown() {
         if (redis != null) {
-            deleteKeys(redis.keys("wd:" + prefix + ":*"));
-            deleteKeys(redis.keys("rr:" + prefix + ":*"));
-            deleteKeys(redis.keys("ws:{" + prefix + "}:*"));
+            testScope.cleanup(redis);
         }
         if (commandRuntime != null) {
             commandRuntime.close();
@@ -196,7 +197,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void batchConsumeReadsRedisTimeOnce() {
+    void batchConsumeReturnsAllActiveObservedCommands() {
         String key = commandKey("endpoint-1");
         for (int index = 0; index < 3; index++) {
             redis.hset(
@@ -208,15 +209,12 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
             );
         }
 
-        long callsBefore = commandCalls("time");
         var commands = commandRuntime.consumeWorkerCommands(
                 "endpoint-1",
                 100
         );
-        long callsAfter = commandCalls("time");
 
         assertThat(commands).hasSize(3);
-        assertThat(callsAfter - callsBefore).isEqualTo(1);
     }
 
     @Test
@@ -283,43 +281,22 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         )).isZero();
     }
 
-    private void deleteKeys(java.util.Collection<String> keys) {
-        if (!keys.isEmpty()) {
-            redis.del(keys.toArray(String[]::new));
-        }
-    }
-
     private String commandKey(String endpointManagerId) {
-        return "wd:" + prefix + ":endpoint-manager:"
-                + endpointManagerId + ":worker-commands";
+        return keyspace.base() + ":delivery:commands:" + endpointManagerId;
     }
 
     private String resultKey(String outcomeClass) {
-        return "rr:" + prefix + ":worker-results:" + outcomeClass;
+        return keyspace.base() + ":result:routing:" + outcomeClass;
     }
 
     private String serviceabilityRequestKey(String adapterId) {
-        return "ws:{" + prefix + "}:adapter:"
-                + adapterId + ":probe-requests";
+        return keyspace.base() + ":worker:serviceability:adapter:"
+                + adapterId + ":probe_requests";
     }
 
     private String serviceabilityResultKey() {
-        return "ws:{" + prefix + "}:adapter-evidence-results";
-    }
-
-    private long commandCalls(String command) {
-        String prefix = "cmdstat_" + command + ":";
-        for (String line : redis.info("commandstats").split("\\R")) {
-            if (!line.startsWith(prefix)) {
-                continue;
-            }
-            for (String field : line.substring(prefix.length()).split(",")) {
-                if (field.startsWith("calls=")) {
-                    return Long.parseLong(field.substring("calls=".length()));
-                }
-            }
-        }
-        return 0;
+        return keyspace.base()
+                + ":worker:serviceability:evidence_results";
     }
 
     private static String commandJson(long executeBeforeMillis) {

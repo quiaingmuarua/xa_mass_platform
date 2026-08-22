@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.task.redis;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
@@ -61,26 +62,26 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private final RedisClient redisClient;
     private final TaskScoreBandCore scoreBand;
     private final ObjectMapper mapper = JsonMapper.builder().build();
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisTaskRuntime(
             RedisClient redisClient,
             TaskScoreBandCore scoreBand,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null) {
             throw new IllegalArgumentException("redisClient must be present");
-        }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
         }
         this.redisClient = redisClient;
         this.scoreBand = java.util.Objects.requireNonNull(
                 scoreBand,
                 "scoreBand"
         );
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -617,19 +618,19 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     }
 
     private String taskDescriptorKey(String taskId) {
-        return "tc:" + prefix + ":task:" + taskId;
+        return keyspace.base() + ":task:" + taskId + ":descriptor";
     }
 
     private String itemsKey(String taskId) {
-        return "tr:" + prefix + ":task:" + taskId + ":items";
+        return keyspace.base() + ":task:" + taskId + ":items";
     }
 
     private String itemScoreKey(String taskId) {
-        return "tr:" + prefix + ":task:" + taskId + ":item-score";
+        return keyspace.base() + ":task:" + taskId + ":item_score";
     }
 
     private String resultsKey(String taskId) {
-        return "tr:" + prefix + ":task:" + taskId + ":results";
+        return keyspace.base() + ":task:" + taskId + ":results";
     }
 
     private static KernelOperationNotImplementedException notImplemented(

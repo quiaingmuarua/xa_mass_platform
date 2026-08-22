@@ -106,13 +106,13 @@ describe("HttpRuntimeViewerDataSource", () => {
   });
 
   it("maps a 503 to a safe message, preserves request ID, and does not retry", async () => {
-    const error = new AxiosError("redis key wr:secret");
+    const error = new AxiosError("redis key xa_mass:profile_secret:worker:groups");
     Object.assign(error, {
       response: {
         status: 503,
         data: {
           code: 15002,
-          message: "redis key wr:secret",
+          message: "redis key xa_mass:profile_secret:worker:groups",
           requestId: "request-from-server"
         }
       }

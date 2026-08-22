@@ -11,6 +11,7 @@ from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerEntry,
 )
 from ..kernel.task_score_band import TaskId, TimeMillis
+from .keyspace import RedisKeyspace
 
 _CONSUME_CANDIDATES_SCRIPT = """
 local now_millis = tonumber(ARGV[1])
@@ -34,12 +35,12 @@ class RedisCandidateWarmupSchedule(CandidateWarmupSchedule):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def schedule_candidate_warmups(
         self,
@@ -91,7 +92,7 @@ class RedisCandidateWarmupSchedule(CandidateWarmupSchedule):
         )
 
     def _warmup_key(self) -> str:
-        return f"ad:{self.prefix}:candidate-warmups"
+        return f"{self.keyspace.base}:dispatch:candidate_warmups"
 
 
 class RedisCandidateWorkerCache(CandidateWorkerCache):
@@ -101,12 +102,12 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def append_candidate_workers(
         self,
@@ -191,7 +192,10 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
         return tuple(entries)
 
     def _candidate_key(self, candidate_id: CandidateId) -> str:
-        return f"ad:{self.prefix}:candidate:{candidate_id}:workers"
+        return (
+            f"{self.keyspace.base}:dispatch:candidate:"
+            f"{candidate_id}:workers"
+        )
 
     def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()

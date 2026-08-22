@@ -7,12 +7,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(KernelRedisProperties.class)
+@EnableConfigurationProperties(XaMassRedisProperties.class)
 public class KernelRedisConfiguration {
 
     @Bean(destroyMethod = "shutdown")
-    public RedisClient kernelRedisClient(KernelRedisProperties properties) {
-        return RedisClient.create(RedisURI.create(properties.redisUrl()));
+    public RedisClient kernelRedisClient(XaMassRedisProperties properties) {
+        return RedisClient.create(RedisURI.create(properties.url()));
     }
 
     @Bean

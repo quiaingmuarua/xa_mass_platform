@@ -173,7 +173,7 @@ consume_candidate_workers(candidateId, limit)
 Redis key:
 
 ```text
-ad:{prefix}:candidate:{candidateId}:workers
+xa_mass:<scope>:dispatch:candidate:<candidateId>:workers
 ```
 
 The ZSET score is cache expiry and matches the Worker lease deadline. The cache

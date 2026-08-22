@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.task.DefaultTaskCallItemSubmission;
 import com.xa.mass.kernel.task.DefaultTaskLifecycleCommands;
@@ -26,13 +27,13 @@ import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
 import com.xa.mass.server.api.v1.model.TaskProfile;
+import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -41,7 +42,8 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisTaskOwnerRuntimeIntegrationTest {
 
-    private String prefix;
+    private RedisTestScope testScope;
+    private RedisKeyspace keyspace;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
@@ -53,13 +55,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        prefix = "java-task-owner-" + UUID.randomUUID();
+        testScope = RedisTestScope.create("java_task_owner");
+        keyspace = testScope.keyspace();
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
-        scoreCore = new RedisTaskScoreBandCore(redisClient, prefix);
-        runtime = new RedisTaskRuntime(redisClient, scoreCore, prefix);
-        catalog = new RedisTaskResourceCatalog(redisClient, prefix);
+        scoreCore = new RedisTaskScoreBandCore(redisClient, keyspace);
+        runtime = new RedisTaskRuntime(redisClient, scoreCore, keyspace);
+        catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
         callSubmission = new DefaultTaskCallItemSubmission(
                 scoreCore,
@@ -70,10 +73,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @AfterEach
     void tearDown() {
         if (redis != null) {
-            var keys = redis.keys("*:" + prefix + ":*");
-            if (!keys.isEmpty()) {
-                redis.del(keys.toArray(String[]::new));
-            }
+            testScope.cleanup(redis);
         }
         if (runtime != null) {
             runtime.close();
@@ -113,7 +113,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 TaskItemAppendStatus.APPENDED
         );
         assertThat(redis.hget(
-                "tr:" + prefix + ":task:task-1:items",
+                keyspace.base() + ":task:task-1:items",
                 "message-1"
         )).isEqualTo(
                 "{\"allocationRule\":null,"
@@ -124,7 +124,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         + "\"priority\":0}"
         );
         double score = redis.zscore(
-                "tr:" + prefix + ":task:task-1:item-score",
+                keyspace.base() + ":task:task-1:item_score",
                 "message-1"
         );
         long expected = TaskItemScoreBandCore.ACTIVE_TAG
@@ -135,7 +135,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat((long) score).isEqualTo(expected);
 
         redis.hset(
-                "tr:" + prefix + ":task:task-1:results",
+                keyspace.base() + ":task:task-1:results",
                 "message-1",
                 "{\"valid\":true}"
         );
@@ -196,11 +196,11 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 TaskItemAppendStatus.APPENDED
         );
         assertThat(redis.hget(
-                "tr:" + prefix + ":task:task-1:items",
+                keyspace.base() + ":task:task-1:items",
                 "message-invalid"
         )).contains("\"$like\":\"worker-*\"");
         assertThat(redis.zscore(
-                "tr:" + prefix + ":task:task-1:item-score",
+                keyspace.base() + ":task:task-1:item_score",
                 "message-invalid"
         )).isNotNull();
     }
@@ -212,7 +212,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(runtime.createTask(descriptor).status())
                 .isEqualTo(TaskCreationStatus.CREATED);
         assertThat(redis.hgetall(
-                "tc:" + prefix + ":task:task-commands"
+                keyspace.base() + ":task:task-commands:descriptor"
         )).isEqualTo(Map.of(
                 "workerGroupId", "phone-tools",
                 "workerAllocationMechanism", "DIRECT_ITEM_RULE",
@@ -245,7 +245,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(approved.suffix()).isEqualTo(7);
 
         redis.zadd(
-                "tr:" + prefix + ":task:score",
+                keyspace.base() + ":task:score",
                 idleParkScore(),
                 "task-commands"
         );
@@ -312,10 +312,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(runtime.createTask(invalidRule).status())
                 .isEqualTo(TaskCreationStatus.INVALID);
         assertThat(redis.exists(
-                "tc:" + prefix + ":task:invalid-rule"
+                keyspace.base() + ":task:invalid-rule:descriptor"
         )).isZero();
         assertThat(redis.zscore(
-                "tr:" + prefix + ":task:score",
+                keyspace.base() + ":task:score",
                 "invalid-rule"
         )).isNull();
     }
@@ -339,7 +339,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         try (RedisTaskRuntime interrupted = new RedisTaskRuntime(
                 redisClient,
                 releaseFailure,
-                prefix
+                keyspace
         )) {
             assertThat(interrupted.createTask(
                     descriptor(taskId, 4)
@@ -347,7 +347,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
 
         assertThat(redis.hgetall(
-                "tc:" + prefix + ":task:" + taskId
+                keyspace.base() + ":task:" + taskId + ":descriptor"
         )).containsEntry("workerGroupId", "phone-tools")
                 .containsEntry("workerAllocationMechanism", "DIRECT_ITEM_RULE")
                 .containsEntry("idleDisposition", "PARK_WHEN_IDLE");
@@ -367,7 +367,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 .thenAnswer(invocation -> {
                     List<TaskItem> submittedItems = invocation.getArgument(1);
                     redis.zadd(
-                            "tr:" + prefix + ":task:score",
+                            keyspace.base() + ":task:score",
                             idleParkScore(),
                             taskId
                     );
@@ -515,7 +515,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     private void storeTask(String taskId, String allocationMechanism) {
         redis.hset(
-                "tc:" + prefix + ":task:" + taskId,
+                keyspace.base() + ":task:" + taskId + ":descriptor",
                 Map.of(
                         "workerGroupId", "phone-tools",
                         "workerAllocationMechanism", allocationMechanism,

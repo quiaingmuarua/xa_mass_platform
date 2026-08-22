@@ -42,7 +42,7 @@ consume_due_candidate_warmups(beforeTimeMillis, limit)
 Redis uses one deduplicating ZSET:
 
 ```text
-ad:{prefix}:candidate-warmups
+xa_mass:<scope>:dispatch:candidate_warmups
   member = taskId
   score  = dueTimeMillis
 ```
@@ -112,7 +112,7 @@ crosses Worker score queues.
 The Pacer appends acquired results under:
 
 ```text
-ad:{prefix}:candidate:{taskId}:workers
+xa_mass:<scope>:dispatch:candidate:<taskId>:workers
 ```
 
 Cache expiry equals the Worker allocation lease deadline. Empty result tuples

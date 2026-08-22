@@ -20,9 +20,9 @@ xa:
       state-directory: ${XA_MASS_KERNEL_PACER_STATE_DIRECTORY:data/kernel-pacer}
       startup-timeout: 10s
       shutdown-timeout: 5s
-    kernel-redis:
-      redis-url: redis://localhost:6379/15
-      redis-prefix: default
+    redis:
+      url: ${XA_MASS_REDIS_URL:redis://localhost:6379/15}
+      scope: ${XA_MASS_REDIS_SCOPE:profile_default}
     worker-binding:
       endpoints:
         system-polling:

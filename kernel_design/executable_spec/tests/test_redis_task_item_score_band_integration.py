@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import unittest
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 try:
@@ -15,6 +14,7 @@ from kernel_design.executable_spec import (
     TaskItemScoreBand,
     TaskItemScoreTransitionStatus,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -36,16 +36,16 @@ class RedisTaskItemScoreBandIntegrationTest(unittest.TestCase):
             raise unittest.SkipTest(f"real Redis is unavailable: {error}") from error
 
     def setUp(self) -> None:
-        self.prefix = f"item-integration-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("task_item_score")
         self.task_id = "task-1"
         self.core = RedisTaskItemScoreBandCore(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.test_scope.keyspace,
         )
         self.score_key = self.core._score_key(self.task_id)
 
     def tearDown(self) -> None:
-        self.redis.delete(self.score_key)
+        self.test_scope.cleanup(self.redis)
 
     def now_millis(self) -> int:
         seconds, microseconds = self.redis.time()

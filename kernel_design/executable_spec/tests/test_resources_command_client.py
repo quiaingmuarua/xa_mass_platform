@@ -4,7 +4,6 @@ import inspect
 import os
 import time
 import unittest
-import uuid
 from unittest.mock import Mock, patch
 
 try:
@@ -20,7 +19,11 @@ from kernel_design.executable_spec.assembly import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
-from kernel_design.executable_spec.redis_runtime import RedisWorkerScoreCore
+from kernel_design.executable_spec.redis_runtime import (
+    RedisKeyspace,
+    RedisWorkerScoreCore,
+)
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 
 class ResourcesCommandClientTest(unittest.TestCase):
@@ -53,7 +56,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
 
         self.config = KernelApplicationConfig(
             redis_url="redis://redis:6379/9",
-            redis_prefix="resources-test",
+            redis_scope="test_resources_client",
             worker_allocation_interval_millis=11,
             running_activation_interval_millis=12,
             task_dispatch_interval_millis=13,
@@ -97,19 +100,20 @@ class ResourcesCommandClientTest(unittest.TestCase):
             decode_responses=False,
         )
         from kernel_design.executable_spec.assembly import resources_command_client
+        keyspace = RedisKeyspace("test_resources_client")
 
         resources_command_client.RedisWorkerScoreCore.assert_called_once_with(
             self.redis_client,
-            score_key_prefix="wr:resources-test:score",
+            keyspace=keyspace,
         )
         resources_command_client.RedisWorkerResourceCatalog.assert_called_once_with(
             self.redis_client,
-            prefix="resources-test",
+            keyspace=keyspace,
         )
         resources_command_client.RedisWorkerRuntime.assert_called_once_with(
             self.redis_client,
             self.score,
-            prefix="resources-test",
+            keyspace=keyspace,
         )
 
     def test_resource_commands_delegate_without_application_lifecycle(self) -> None:
@@ -147,7 +151,8 @@ class ResourcesCommandClientTest(unittest.TestCase):
         redis.Redis.from_url.reset_mock()  # type: ignore[attr-defined]
 
         ResourcesCommandClient.from_json(
-            '{"redis":{"url":"redis://redis:6379/7","prefix":"shared"},'
+            '{"redis":{"url":"redis://redis:6379/7",'
+            '"scope":"test_shared"},'
             '"assignmentDispatch":{"workerAllocationIntervalMillis":25}}'
         )
 
@@ -174,17 +179,17 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         assert _REDIS_URL is not None
-        self.prefix = f"resource-client-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("resource_client")
+        self.scope = self.test_scope.scope
+        self.keyspace = self.test_scope.keyspace
         self.config = KernelApplicationConfig(
             redis_url=_REDIS_URL,
-            redis_prefix=self.prefix,
+            redis_scope=self.scope,
         )
         self.client = ResourcesCommandClient(self.config)
 
     def tearDown(self) -> None:
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     def test_upsert_initializes_hot_worker_without_start(self) -> None:
         group_id = "image-workers"
@@ -205,7 +210,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
         )
         score = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix=f"wr:{self.prefix}:score",
+            keyspace=self.keyspace,
         )
 
         deadline = time.monotonic() + 1

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import unittest
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from kernel_design.executable_spec import (
@@ -25,6 +24,7 @@ from kernel_design.executable_spec import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
 )
+from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
 try:
     import redis as redis_module
@@ -45,23 +45,22 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         assert _REDIS_URL is not None
         self.redis = redis_module.Redis.from_url(_REDIS_URL, decode_responses=False)
         self.redis.ping()
-        self.prefix = f"serviceability-{uuid.uuid4().hex}"
+        self.test_scope = RedisTestScope.create("worker_serviceability")
+        self.keyspace = self.test_scope.keyspace
         self.runtime = RedisWorkerServiceabilityRuntime(
             self.redis,
-            prefix=self.prefix,
+            keyspace=self.keyspace,
             request_capacity_per_adapter=3,
             result_capacity=3,
         )
         self.score = RedisWorkerScoreCore(
             self.redis,
-            score_key_prefix=f"wr:{self.prefix}:score",
+            keyspace=self.keyspace,
         )
         self.group_id = "group-a"
 
     def tearDown(self) -> None:
-        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
-        if keys:
-            self.redis.delete(*keys)
+        self.test_scope.cleanup(self.redis)
 
     def test_probe_request_offer_is_atomic_coalesced_and_capacity_bounded(self) -> None:
         def offer(worker_ids: tuple[str, ...]) -> dict[str, ProbeRequestOfferStatus]:
@@ -396,7 +395,7 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         task_id = "active-task"
         task_score = RedisTaskScoreBandCore(
             self.redis,
-            score_key=f"tr:{self.prefix}:task:score",
+            keyspace=self.keyspace,
         )
         due_task_score = task_score._score(
             task_score.RUNNING_VISIBLE_TAG,

@@ -48,6 +48,10 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
   background coordination in the caller or policy unless a named invariant
   proves otherwise.
 - Keep scores opaque outside score-owner operations.
+- Build Redis keys from the fixed `xa_mass:<scope>` `RedisKeyspace` base;
+  each owner appends only its own domain suffix. Proofs use unique `test_*`
+  scopes and may clean only that exact scope with `SCAN` plus `UNLINK`; never
+  use `KEYS`, `FLUSHDB`, or `FLUSHALL`.
 - Best-effort hints must not become correctness prerequisites.
 - Do not add bridges, compatibility aliases, mirrored DTOs, fallback owners or
   speculative modules.

@@ -1,6 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
-import com.xa.mass.server.kernelredis.KernelRedisProperties;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -23,8 +23,8 @@ final class PythonKernelPacerProcess {
             "kernel_design.executable_spec.assembly";
     static final String REDIS_URL_ENV =
             "XA_MASS_KERNEL_PACER_REDIS_URL";
-    static final String REDIS_PREFIX_ENV =
-            "XA_MASS_KERNEL_PACER_REDIS_PREFIX";
+    static final String REDIS_SCOPE_ENV =
+            "XA_MASS_KERNEL_PACER_REDIS_SCOPE";
     private static final String OWNER_FILE_NAME = "owner.json";
     private static final String READY_FILE_NAME = "ready";
     private static final long READY_POLL_MILLIS = 25;
@@ -33,7 +33,7 @@ final class PythonKernelPacerProcess {
     );
 
     private final KernelPacerProperties properties;
-    private final KernelRedisProperties redisProperties;
+    private final XaMassRedisProperties redisProperties;
     private final JsonMapper json;
     private final Path workingDirectory;
     private final Path configPath;
@@ -46,7 +46,7 @@ final class PythonKernelPacerProcess {
 
     PythonKernelPacerProcess(
             KernelPacerProperties properties,
-            KernelRedisProperties redisProperties,
+            XaMassRedisProperties redisProperties,
             JsonMapper json
     ) {
         this.properties = Objects.requireNonNull(properties, "properties");
@@ -144,11 +144,11 @@ final class PythonKernelPacerProcess {
                 .redirectError(ProcessBuilder.Redirect.INHERIT);
         builder.environment().put(
                 REDIS_URL_ENV,
-                redisProperties.redisUrl().toString()
+                redisProperties.url().toString()
         );
         builder.environment().put(
-                REDIS_PREFIX_ENV,
-                redisProperties.redisPrefix()
+                REDIS_SCOPE_ENV,
+                redisProperties.scope()
         );
         return builder.start();
     }

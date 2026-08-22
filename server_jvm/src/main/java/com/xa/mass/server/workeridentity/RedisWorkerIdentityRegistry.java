@@ -1,5 +1,6 @@
 package com.xa.mass.server.workeridentity;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -11,15 +12,15 @@ final class RedisWorkerIdentityRegistry
         implements WorkerIdentityRegistry, AutoCloseable {
 
     private final RedisClient redisClient;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    RedisWorkerIdentityRegistry(RedisClient redisClient, String prefix) {
+    RedisWorkerIdentityRegistry(
+            RedisClient redisClient,
+            RedisKeyspace keyspace
+    ) {
         this.redisClient = Objects.requireNonNull(redisClient, "redisClient");
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
-        this.prefix = prefix;
+        this.keyspace = Objects.requireNonNull(keyspace, "keyspace");
     }
 
     @Override
@@ -45,8 +46,7 @@ final class RedisWorkerIdentityRegistry
     }
 
     private String workerIdsKey(String workerGroupId) {
-        return "wi:{" + prefix + "}:worker-registrations:"
-                + workerGroupId;
+        return keyspace.base() + ":worker:identity:" + workerGroupId;
     }
 
     private RedisCommands<String, String> commands() {

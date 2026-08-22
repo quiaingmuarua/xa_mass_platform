@@ -13,6 +13,7 @@ from ..kernel.task_score_band import (
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
+from .keyspace import RedisKeyspace
 
 
 class RedisTaskScoreBandCore(TaskScoreBandCore):
@@ -133,13 +134,15 @@ return {"invalid", stored_score}
         self,
         redis_client: Any,
         *,
-        score_key: str = "task:score",
+        keyspace: RedisKeyspace,
         tag_factor: int = TaskScoreBandCore.DEFAULT_TAG_FACTOR,
         suffix_factor: int = TaskScoreBandCore.SUFFIX_FACTOR,
     ) -> None:
         super().__init__(tag_factor=tag_factor, suffix_factor=suffix_factor)
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.score_key = score_key
+        self.score_key = f"{keyspace.base}:task:score"
         self.tag_factor = tag_factor
         self.suffix_factor = suffix_factor
 

@@ -11,10 +11,7 @@ public final class ServerIntegrationProfile {
     private static final Properties PROPERTIES = load();
 
     public static final String REDIS_URL = value(
-            "xa.mass.kernel-redis.redis-url"
-    );
-    public static final String REDIS_PREFIX = value(
-            "xa.mass.kernel-redis.redis-prefix"
+            "xa.mass.redis.url"
     );
 
     private ServerIntegrationProfile() {

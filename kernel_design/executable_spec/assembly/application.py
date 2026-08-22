@@ -30,6 +30,7 @@ from ..kernel import (
     WorkerScoreCore,
 )
 from ..scheduling import ResultRoutingConfig
+from ..redis_runtime.keyspace import RedisKeyspace
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
 from .result_routing_application import ResultRoutingApplicationConfig
@@ -40,7 +41,7 @@ from .worker_serviceability_application import (
 
 
 _DEFAULT_REDIS_URL = "redis://localhost:6379/15"
-_DEFAULT_REDIS_PREFIX = "default"
+_DEFAULT_REDIS_SCOPE = "profile_default"
 _DEFAULT_PACER_INTERVAL_MILLIS = 100
 _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
 _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS = 1_000
@@ -162,7 +163,7 @@ class WorkerServiceabilityConfig:
 @dataclass(frozen=True, slots=True)
 class KernelApplicationConfig:
     redis_url: str = _DEFAULT_REDIS_URL
-    redis_prefix: str = _DEFAULT_REDIS_PREFIX
+    redis_scope: str = _DEFAULT_REDIS_SCOPE
     worker_allocation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     running_activation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     task_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
@@ -173,7 +174,7 @@ class KernelApplicationConfig:
 
     def __post_init__(self) -> None:
         _non_empty_string(self.redis_url, name="Redis URL")
-        _non_empty_string(self.redis_prefix, name="Redis prefix")
+        RedisKeyspace(self.redis_scope)
         _positive_integer(
             self.worker_allocation_interval_millis,
             name="worker allocation interval",
@@ -235,7 +236,7 @@ class KernelApplicationConfig:
         redis_config = _mapping(config.get("redis", {}), name="redis config")
         _reject_unknown(
             redis_config,
-            allowed=frozenset({"url", "prefix"}),
+            allowed=frozenset({"url", "scope"}),
             name="redis config",
         )
         scheduling_config = _mapping(
@@ -365,9 +366,9 @@ class KernelApplicationConfig:
                 redis_config.get("url", defaults.redis_url),
                 name="Redis URL",
             ),
-            redis_prefix=_non_empty_string(
-                redis_config.get("prefix", defaults.redis_prefix),
-                name="Redis prefix",
+            redis_scope=_non_empty_string(
+                redis_config.get("scope", defaults.redis_scope),
+                name="Redis scope",
             ),
             worker_allocation_interval_millis=_positive_integer(
                 scheduling_config.get(
@@ -655,7 +656,7 @@ class KernelApplication:
                 * WorkerScoreCore.SLOT_MILLIS
             )
         return _RedisKernelProcessConfig(
-            prefix=config.redis_prefix,
+            keyspace=RedisKeyspace(config.redis_scope),
             running_task_soft_limit=config.running_task_soft_limit,
             worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
             hot_eligibility_floor_millis=hot_eligibility_floor_millis,

@@ -15,7 +15,7 @@ Java-supervised Python Pacer CLI
   -> KernelApplication
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
-  -> Redis URL and prefix injected by the Java parent
+  -> Redis URL and scope injected by the Java parent
   -> policy JSON cannot declare Redis coordinates in managed mode
   -> exact ready-file token after all Pacers start
   -> stdin EOF stops the application
@@ -86,10 +86,11 @@ Python Task HTTP fallback.
 
 Direct executable-spec use may still construct `KernelApplicationConfig` with
 Redis coordinates. Managed production mode is narrower: Java's
-`xa.mass.kernel-redis` configuration is authoritative and is copied into the
-fixed child environment. A managed Pacer config containing a `redis` object is
-rejected before startup. This is infrastructure address handoff, not Server
-interpretation of scheduling policy.
+`xa.mass.redis` configuration is authoritative and is copied into the fixed
+child environment as `XA_MASS_KERNEL_PACER_REDIS_URL` and
+`XA_MASS_KERNEL_PACER_REDIS_SCOPE`. A managed Pacer config containing a
+`redis` object is rejected before startup. This is infrastructure address and
+data-boundary handoff, not Server interpretation of scheduling policy.
 
 The JVM incremental assembly is explicit per operation:
 
@@ -198,7 +199,7 @@ The optional JSON contract is:
 {
   "redis": {
     "url": "redis://localhost:6379/15",
-    "prefix": "default"
+    "scope": "profile_default"
   },
   "assignmentDispatch": {
     "workerAllocationIntervalMillis": 100,
@@ -271,7 +272,7 @@ application instance may restart.
 
 `ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
 `WorkerResultCommandClient` have no `start` or `stop`. Each may use a separate
-redis-py pool while sharing the same URL, prefix, and Redis owner truth. The
+redis-py pool while sharing the same URL, scope, and Redis owner truth. The
 latter two remain Python executable-spec/test-support clients; Java owns the
 public Worker Delivery HTTP operations.
 

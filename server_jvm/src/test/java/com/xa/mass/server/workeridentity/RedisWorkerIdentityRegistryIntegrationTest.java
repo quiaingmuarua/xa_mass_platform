@@ -3,6 +3,7 @@ package com.xa.mass.server.workeridentity;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.StringCodec;
@@ -19,26 +20,26 @@ import org.junit.jupiter.api.Test;
 @Tag("redis-owner")
 class RedisWorkerIdentityRegistryIntegrationTest {
 
-    private String prefix;
+    private RedisTestScope testScope;
     private RedisClient redisClient;
     private StatefulRedisConnection<String, String> connection;
     private RedisWorkerIdentityRegistry registry;
 
     @BeforeEach
     void setUp() {
-        prefix = "worker-identity-" + UUID.randomUUID();
+        testScope = RedisTestScope.create("worker_identity");
         redisClient = RedisClient.create(REDIS_URL);
         connection = redisClient.connect(StringCodec.UTF8);
-        registry = new RedisWorkerIdentityRegistry(redisClient, prefix);
+        registry = new RedisWorkerIdentityRegistry(
+                redisClient,
+                testScope.keyspace()
+        );
     }
 
     @AfterEach
     void tearDown() {
         if (connection != null) {
-            var keys = connection.sync().keys("wi:{" + prefix + "}:*");
-            if (!keys.isEmpty()) {
-                connection.sync().del(keys.toArray(String[]::new));
-            }
+            testScope.cleanup(connection.sync());
         }
         if (registry != null) {
             registry.close();
@@ -72,6 +73,11 @@ class RedisWorkerIdentityRegistryIntegrationTest {
                     "installation-1",
                     workerId
             )).isTrue();
+            assertThat(connection.sync().hget(
+                    testScope.keyspace().base()
+                            + ":worker:identity:group-1",
+                    "installation-1"
+            )).isEqualTo(workerId);
         }
     }
 

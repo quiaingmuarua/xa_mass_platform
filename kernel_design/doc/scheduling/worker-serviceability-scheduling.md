@@ -46,17 +46,17 @@ range. New Worker initialization uses current time and therefore starts after
 the active floor.
 
 The floor is not an evidence timestamp or persistent generation. This cut
-assumes one active Kernel scheduling application per Redis prefix.
+assumes one active Kernel scheduling application per Redis scope.
 
 ## Best-Effort Runtime
 
 `WorkerServiceabilityRuntime` owns only two bounded handoffs:
 
 ```text
-ws:{prefix}:adapter:{adapterId}:probe-requests
+xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
   HASH workerId -> "1"
 
-ws:{prefix}:adapter-evidence-results
+xa_mass:<scope>:worker:serviceability:evidence_results
   LIST encoded DeliveryReport
 ```
 

@@ -6,6 +6,7 @@ from ..kernel import (
     WorkerRuntimeResult,
 )
 from ..redis_runtime import (
+    RedisKeyspace,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
@@ -34,18 +35,19 @@ class ResourcesCommandClient:
             resolved_config.redis_url,
             decode_responses=False,
         )
+        keyspace = RedisKeyspace(resolved_config.redis_scope)
         worker_score = RedisWorkerScoreCore(
             redis_client,
-            score_key_prefix=f"wr:{resolved_config.redis_prefix}:score",
+            keyspace=keyspace,
         )
         self._resource_catalog = RedisWorkerResourceCatalog(
             redis_client,
-            prefix=resolved_config.redis_prefix,
+            keyspace=keyspace,
         )
         self._worker_runtime = RedisWorkerRuntime(
             redis_client,
             worker_score,
-            prefix=resolved_config.redis_prefix,
+            keyspace=keyspace,
         )
 
     @classmethod

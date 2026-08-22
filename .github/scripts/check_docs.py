@@ -59,6 +59,16 @@ FORBIDDEN_CURRENT_TERMS = {
     "replace_worker_properties",
     "platform.worker.properties.changed",
     "platform.adapter.worker-properties.changed",
+    "xa.mass.kernel-redis",
+    "XA_MASS_KERNEL_PACER_REDIS_PREFIX",
+    "tc:{prefix}",
+    "tr:{prefix}",
+    "wr:{prefix}",
+    "wd:{prefix}",
+    "rr:{prefix}",
+    "ad:{prefix}",
+    "ws:{prefix}",
+    "wi:{prefix}",
 }
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")

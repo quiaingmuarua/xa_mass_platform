@@ -129,12 +129,13 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`frontend/`](frontend/) is the read-only Runtime viewer, Task Batch Lab,
   Scalar link surface and architecture overview host.
 
-Exactly one Java Server instance per Kernel Redis prefix may run with
+Exactly one Java Server instance per Kernel Redis scope may run with
 `xa.mass.kernel-pacer.enabled=true`. Additional API replicas must disable that
 lifecycle; there is no distributed Pacer leader election. The enabled Server
-owns the Redis URL and prefix used by both its Java providers and its supervised
-Python child. The checked Pacer JSON contains policy only and cannot select a
-different Redis universe.
+owns the `xa.mass.redis` URL and scope used by both its Java providers and its
+supervised Python child. Spring Profile selects assembly; Redis scope selects
+the persistent data boundary. The checked Pacer JSON contains policy only and
+cannot select a different Redis universe.
 
 The shared contracts and Transport modules are repository-local artifacts,
 not published SDKs. The superseded Java platform exists only at the annotated

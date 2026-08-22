@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.delivery.redis;
 
+import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -63,25 +64,25 @@ public final class RedisWorkerCommandRuntime
 
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
-    private final String prefix;
+    private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
 
     public RedisWorkerCommandRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            String prefix
+            RedisKeyspace keyspace
     ) {
         if (redisClient == null || codec == null) {
             throw new IllegalArgumentException(
                     "redisClient and codec must be present"
             );
         }
-        if (prefix == null || prefix.isBlank()) {
-            throw new IllegalArgumentException("prefix must be non-blank");
-        }
         this.redisClient = redisClient;
         this.codec = codec;
-        this.prefix = prefix;
+        this.keyspace = java.util.Objects.requireNonNull(
+                keyspace,
+                "keyspace"
+        );
     }
 
     @Override
@@ -308,8 +309,7 @@ public final class RedisWorkerCommandRuntime
     }
 
     private String commandKey(String endpointManagerId) {
-        return "wd:" + prefix + ":endpoint-manager:"
-                + endpointManagerId + ":worker-commands";
+        return keyspace.base() + ":delivery:commands:" + endpointManagerId;
     }
 
     private static void requireNonBlank(String value, String name) {

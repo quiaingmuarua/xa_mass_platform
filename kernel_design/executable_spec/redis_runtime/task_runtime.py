@@ -32,18 +32,19 @@ from ..kernel.task_score_band import (
     TaskScoreBandCore,
     TaskScoreTransitionStatus,
 )
+from .keyspace import RedisKeyspace
 
 
-def _task_descriptor_key(prefix: str, task_id: TaskId) -> str:
-    return f"tc:{prefix}:task:{task_id}"
+def _task_descriptor_key(keyspace: RedisKeyspace, task_id: TaskId) -> str:
+    return f"{keyspace.base}:task:{task_id}:descriptor"
 
 
-def _task_items_key(prefix: str, task_id: TaskId) -> str:
-    return f"tr:{prefix}:task:{task_id}:items"
+def _task_items_key(keyspace: RedisKeyspace, task_id: TaskId) -> str:
+    return f"{keyspace.base}:task:{task_id}:items"
 
 
-def _task_item_results_key(prefix: str, task_id: TaskId) -> str:
-    return f"tr:{prefix}:task:{task_id}:results"
+def _task_item_results_key(keyspace: RedisKeyspace, task_id: TaskId) -> str:
+    return f"{keyspace.base}:task:{task_id}:results"
 
 
 def _encode_json(payload: Mapping[str, object]) -> str:
@@ -69,17 +70,17 @@ class RedisTaskRuntime(TaskRuntime):
         score_band: TaskScoreBandCore,
         item_score_band: TaskItemScoreBandCore,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
         lease_duration_millis: int = DEFAULT_LEASE_DURATION_MILLIS,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         if lease_duration_millis <= 0:
             raise ValueError("lease_duration_millis must be positive")
         self.redis = redis_client
         self.score_band = score_band
         self.item_score_band = item_score_band
-        self.prefix = prefix
+        self.keyspace = keyspace
         self.lease_duration_millis = lease_duration_millis
 
     def create_task(
@@ -162,7 +163,7 @@ class RedisTaskRuntime(TaskRuntime):
         suffix: Suffix,
         descriptor_fields: Mapping[str, object],
     ) -> Score | TaskCreationResult:
-        descriptor_key = _task_descriptor_key(self.prefix, task_id)
+        descriptor_key = _task_descriptor_key(self.keyspace, task_id)
         if self.redis.exists(descriptor_key):
             return TaskCreationResult(
                 TaskCreationStatus.CONFLICT,
@@ -215,7 +216,7 @@ class RedisTaskRuntime(TaskRuntime):
         task_id: TaskId,
         descriptor_fields: Mapping[str, object],
     ) -> bool:
-        key = _task_descriptor_key(self.prefix, task_id)
+        key = _task_descriptor_key(self.keyspace, task_id)
         if self.redis.exists(key):
             return False
         with self.redis.pipeline(transaction=True) as pipe:
@@ -344,7 +345,7 @@ class RedisTaskRuntime(TaskRuntime):
         ):
             raise ValueError("success results require non-empty ids and payloads")
         self.redis.hset(
-            _task_item_results_key(self.prefix, task_id),
+            _task_item_results_key(self.keyspace, task_id),
             mapping=dict(results),
         )
 
@@ -360,7 +361,7 @@ class RedisTaskRuntime(TaskRuntime):
         if not unique_message_ids:
             return {}
         raw_results = self.redis.hmget(
-            _task_item_results_key(self.prefix, task_id),
+            _task_item_results_key(self.keyspace, task_id),
             unique_message_ids,
         )
         return {
@@ -377,11 +378,11 @@ class RedisTaskRuntime(TaskRuntime):
         }
 
     def _items_key(self, task_id: TaskId) -> str:
-        return _task_items_key(self.prefix, task_id)
+        return _task_items_key(self.keyspace, task_id)
 
     def _load_max_retry_times(self, task_id: TaskId) -> int | None:
         raw_config = self.redis.hget(
-            _task_descriptor_key(self.prefix, task_id),
+            _task_descriptor_key(self.keyspace, task_id),
             "configJson",
         )
         if raw_config is None:
@@ -468,12 +469,12 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         self,
         redis_client: Any,
         *,
-        prefix: str = "default",
+        keyspace: RedisKeyspace,
     ) -> None:
-        if not prefix:
-            raise ValueError("prefix must be non-empty")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.prefix = prefix
+        self.keyspace = keyspace
 
     def load_task_allocation_descriptors(
         self,
@@ -495,7 +496,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         }
 
     def _task_key(self, task_id: TaskId) -> str:
-        return _task_descriptor_key(self.prefix, task_id)
+        return _task_descriptor_key(self.keyspace, task_id)
 
     @staticmethod
     def _decode_descriptor(

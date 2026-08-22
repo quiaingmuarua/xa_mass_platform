@@ -15,6 +15,7 @@ from ..kernel.worker_score import (
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
+from .keyspace import RedisKeyspace
 
 
 class RedisWorkerScoreCore(WorkerScoreCore):
@@ -163,7 +164,7 @@ return {"transitioned", target_score}
         self,
         redis_client: Any,
         *,
-        score_key_prefix: str = "worker:score",
+        keyspace: RedisKeyspace,
         lane_rank_factor: int = WorkerScoreCore.LANE_RANK_FACTOR,
         dirty_factor: int = WorkerScoreCore.DIRTY_FACTOR,
         recovery_lookback_millis: int = 86_400_000,
@@ -174,8 +175,10 @@ return {"transitioned", target_score}
         )
         if recovery_lookback_millis <= 0:
             raise ValueError("recovery_lookback_millis must be positive")
+        if not isinstance(keyspace, RedisKeyspace):
+            raise TypeError("keyspace must be RedisKeyspace")
         self.redis = redis_client
-        self.score_key_prefix = score_key_prefix
+        self.score_key_prefix = f"{keyspace.base}:worker:score"
         self.lane_rank_factor = lane_rank_factor
         self.dirty_factor = dirty_factor
         self.slot_factor = lane_rank_factor * dirty_factor

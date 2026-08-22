@@ -7,6 +7,7 @@ from kernel_design.executable_spec import (
     DeliveryEndpoint,
     DeliveryReport,
     ProbeRequestOfferStatus,
+    RedisKeyspace,
     RedisWorkerServiceabilityRuntime,
     encode_delivery_report,
 )
@@ -91,7 +92,7 @@ class RedisWorkerServiceabilityRuntimeTest(unittest.TestCase):
         self.redis = FakeRedis()
         self.runtime = RedisWorkerServiceabilityRuntime(
             self.redis,
-            prefix="test",
+            keyspace=RedisKeyspace("test_serviceability_unit"),
             request_capacity_per_adapter=2,
             result_capacity=2,
         )
