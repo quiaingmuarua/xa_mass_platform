@@ -231,14 +231,10 @@ class ServerApplicationContextTest {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
 
-        assertThat(groupResponse.statusCode()).isEqualTo(400);
-        assertThat(groupResponse.body()).contains("\"code\":19001");
-        assertThat(indexedGroupResponse.statusCode()).isEqualTo(400);
-        assertThat(indexedGroupResponse.body()).contains("\"code\":19001");
-        assertThat(workerResponse.statusCode()).isEqualTo(400);
-        assertThat(workerResponse.body()).contains("\"code\":19001");
-        assertThat(bindingResponse.statusCode()).isEqualTo(400);
-        assertThat(bindingResponse.body()).contains("\"code\":19001");
+        assertThat(groupResponse.statusCode()).isEqualTo(404);
+        assertThat(indexedGroupResponse.statusCode()).isEqualTo(404);
+        assertThat(workerResponse.statusCode()).isEqualTo(404);
+        assertThat(bindingResponse.statusCode()).isEqualTo(404);
     }
 
     private URI endpoint(String path) {

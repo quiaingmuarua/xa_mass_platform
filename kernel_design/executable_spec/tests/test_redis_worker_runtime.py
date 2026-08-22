@@ -14,73 +14,130 @@ from kernel_design.executable_spec.tests.redis_worker_runtime_test_support impor
 
 
 class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
-    def test_worker_group_replaces_attributes(self) -> None:
-        self.upsert_group()
+    def test_worker_group_registration_is_idempotent(self) -> None:
+        first = self.catalog.register_worker_group(descriptor=self.group)
+        repeated = self.catalog.register_worker_group(descriptor=self.group)
+
+        self.assertEqual(first.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(repeated.status, WorkerRuntimeStatus.NOOP)
+
+    def test_worker_group_registration_conflicts_without_replacing_attributes(
+        self,
+    ) -> None:
+        self.register_group()
         changed = WorkerGroupDescriptor(
             worker_group_id="image-workers",
             attributes={"kind": "image-v2"},
             event_codes=self.group.event_codes,
         )
 
-        result = self.catalog.upsert_worker_group(descriptor=changed)
+        result = self.catalog.register_worker_group(descriptor=changed)
         stored = self.catalog.get_worker_group_descriptors(
             worker_group_ids=["image-workers"]
         )["image-workers"]
 
-        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(stored, changed)
+        self.assertEqual(result.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(stored, self.group)
 
-    def test_worker_group_replaces_event_code_catalog_summary(self) -> None:
-        self.upsert_group()
+    def test_worker_group_registration_conflicts_without_replacing_event_codes(
+        self,
+    ) -> None:
+        self.register_group()
         changed = WorkerGroupDescriptor(
             worker_group_id="image-workers",
             attributes={"kind": "updated"},
             event_codes=frozenset({"other"}),
         )
-        result = self.catalog.upsert_worker_group(
+        result = self.catalog.register_worker_group(
             descriptor=changed
         )
-        repeated = self.catalog.upsert_worker_group(descriptor=changed)
         stored = self.catalog.get_worker_group_descriptors(
             worker_group_ids=["image-workers"]
         )["image-workers"]
 
-        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(repeated.status, WorkerRuntimeStatus.NOOP)
-        self.assertEqual(stored, changed)
+        self.assertEqual(result.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(stored, self.group)
 
-    def test_worker_group_replacement_retries_after_concurrent_change(
-        self,
-    ) -> None:
-        self.upsert_group()
-        changed = WorkerGroupDescriptor(
-            worker_group_id="image-workers",
-            attributes={"kind": "final"},
-            event_codes=frozenset({"final.event"}),
+    def test_worker_group_registration_rejects_unreadable_existing_value(self) -> None:
+        self.redis.hset("wr:test:groups", "image-workers", "not-json")
+
+        result = self.catalog.register_worker_group(descriptor=self.group)
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
+        self.assertEqual(
+            self.redis.hget("wr:test:groups", "image-workers"),
+            "not-json",
         )
 
-        def replace_observed(key: str, field: str) -> None:
-            self.redis.hset(
-                key,
-                field,
-                json.dumps(
-                    {
-                        "attributes": {"kind": "raced"},
-                        "eventCodes": ["raced.event"],
-                        "workerGroupId": "image-workers",
-                    }
-                ),
-            )
+    def test_worker_group_registration_rejects_mismatched_existing_identity(
+        self,
+    ) -> None:
+        stored = json.dumps(
+            {
+                "workerGroupId": "different-workers",
+                "attributes": {},
+                "eventCodes": [],
+            }
+        )
+        self.redis.hset("wr:test:groups", "image-workers", stored)
 
-        self.redis.before_hash_cas = replace_observed
+        result = self.catalog.register_worker_group(descriptor=self.group)
 
-        result = self.catalog.upsert_worker_group(descriptor=changed)
-        stored = self.catalog.get_worker_group_descriptors(
-            worker_group_ids=["image-workers"]
-        )["image-workers"]
+        self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
+        self.assertEqual(
+            self.redis.hget("wr:test:groups", "image-workers"),
+            stored,
+        )
 
-        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(stored, changed)
+    def test_worker_group_sample_is_one_bounded_random_hash_read(self) -> None:
+        self.register_group()
+        other = WorkerGroupDescriptor(
+            worker_group_id="other-workers",
+            attributes={"kind": "other"},
+            event_codes=frozenset({"other.event"}),
+        )
+        self.assertEqual(
+            self.catalog.register_worker_group(descriptor=other).status,
+            WorkerRuntimeStatus.OK,
+        )
+
+        sampled = self.catalog.sample_worker_group_descriptors(sample_limit=100)
+
+        self.assertEqual(set(sampled), {"image-workers", "other-workers"})
+        self.assertEqual(sampled["image-workers"], self.group)
+        self.assertEqual(sampled["other-workers"], other)
+        self.assertEqual(
+            self.redis.hrandfield_calls,
+            [("wr:test:groups", 100, True)],
+        )
+
+    def test_worker_group_sample_marks_invalid_or_mismatched_rows_unreadable(
+        self,
+    ) -> None:
+        self.redis.hset("wr:test:groups", "broken", "not-json")
+        self.redis.hset(
+            "wr:test:groups",
+            "mismatched",
+            json.dumps(
+                {
+                    "workerGroupId": "different",
+                    "attributes": {},
+                    "eventCodes": [],
+                }
+            ),
+        )
+
+        sampled = self.catalog.sample_worker_group_descriptors(sample_limit=100)
+
+        self.assertEqual(sampled, {"broken": None, "mismatched": None})
+
+    def test_worker_group_sample_rejects_invalid_limits(self) -> None:
+        for sample_limit in (0, 101, True, 1.5):
+            with self.subTest(sample_limit=sample_limit):
+                with self.assertRaisesRegex(ValueError, "between 1 and 100"):
+                    self.catalog.sample_worker_group_descriptors(
+                        sample_limit=sample_limit  # type: ignore[arg-type]
+                    )
 
     def test_worker_group_field_identity_mismatch_is_not_read(self) -> None:
         self.redis.hset(
@@ -102,7 +159,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
     def test_upsert_replaces_worker_properties_and_preserves_platform(self) -> None:
-        self.upsert_group()
+        self.register_group()
         first = self.worker_declaration(
             "worker-1",
             worker_properties={"arch": "arm64", "removed": True},
@@ -139,7 +196,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
     def test_repeated_upsert_preserves_every_existing_score_state(self) -> None:
-        self.upsert_group()
+        self.register_group()
         declaration = self.worker_declaration("worker-1")
         self.upsert_worker(declaration)
         score_key = "wr:test:score:image-workers"
@@ -172,7 +229,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 )
 
     def test_upsert_repairs_partial_resource_stages(self) -> None:
-        self.upsert_group()
+        self.register_group()
         declaration = self.worker_declaration(
             "worker-1",
             worker_properties={"runtime": "initial"},
@@ -207,7 +264,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
     def test_worker_group_lookup_reads_only_explicit_worker_owners(self) -> None:
-        self.upsert_group()
+        self.register_group()
         self.upsert_worker(self.worker_declaration("worker-1"))
         other_group = WorkerGroupDescriptor(
             worker_group_id="other-workers",
@@ -215,7 +272,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             event_codes=frozenset(),
         )
         self.assertEqual(
-            self.catalog.upsert_worker_group(descriptor=other_group).status,
+            self.catalog.register_worker_group(descriptor=other_group).status,
             WorkerRuntimeStatus.OK,
         )
         self.upsert_worker(
@@ -258,7 +315,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             self.catalog.get_worker_group_ids(worker_ids=[""])
 
     def test_upsert_repairs_missing_score_and_refreshes_properties(self) -> None:
-        self.upsert_group()
+        self.register_group()
         declaration = self.worker_declaration(
             "worker-1",
             worker_properties={"runtime": "initial"},
@@ -286,7 +343,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
     def test_platform_properties_patch_and_null_delete(self) -> None:
-        self.upsert_group()
+        self.register_group()
         self.upsert_worker(
             self.worker_declaration(
                 "worker-1",
@@ -313,7 +370,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(descriptor.platform_properties, {"pool": "burst"})
 
     def test_platform_patch_and_worker_upsert_are_hash_isolated(self) -> None:
-        self.upsert_group()
+        self.register_group()
         self.upsert_worker(
             self.worker_declaration(
                 "worker-1",
@@ -342,7 +399,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(descriptor.platform_properties, {"pool": "batch"})
 
     def test_worker_redis_shape_separates_metadata_and_properties(self) -> None:
-        self.upsert_group()
+        self.register_group()
         declaration = self.worker_declaration(
             "worker-1",
             worker_properties={"arch": "arm64"},
@@ -407,7 +464,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
     def test_descriptor_field_identity_mismatch_is_not_mutated(self) -> None:
-        self.upsert_group()
+        self.register_group()
         self.redis.hset(
             "wr:test:worker-metadata:image-workers",
             "worker-1",

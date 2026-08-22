@@ -4,9 +4,9 @@
 depends on `transport:worker-core` and OkHttp, but not on
 `transport:java-worker`.
 
-It owns `AndroidWorker`, its package-private Platform resources, Android
-identity storage, Android Register/Bind and WebSocket Clients, and Application
-Context adaptation. Core owns Preparation, lifecycle coordination, text
+It owns `AndroidWorker`, its package-private Platform resources, persistent
+WorkerGroup/client key coordinates, Android Prepare and WebSocket Clients, and
+Application Context adaptation. Core owns Preparation, lifecycle coordination, text
 Worker protocol, and synchronous Definition dispatch.
 
 Android does not implement a second Worker lifecycle, persist Endpoint URIs,
@@ -32,13 +32,12 @@ worker.start();
 ```
 
 `create()` builds the complete Worker and local Platform resources but does
-not read or mutate Identity, call Register/Bind, or connect. The common
-overloads omit extensions and/or use default connection options. Android
-generates and stores a canonical UUID client key with the
-platform-issued Worker ID under the
-application package and WorkerGroup coordinate. A valid Worker ID skips
-Register on later starts. The Properties function cannot override the
-reserved `clientWorkerKey` field.
+not load the client key, call Prepare, or connect. The common overloads omit
+extensions and/or use default connection options. Android generates and stores
+a canonical UUID client key together with its WorkerGroup coordinate. It never
+stores the platform-issued Worker ID; any legacy preference value for that ID
+is ignored. The Properties function cannot override the reserved
+`clientWorkerKey` field.
 
 The supplied Definitions are business extensions, not a complete Handler map.
 Assembly delegates to Core's static Definition assembly, which adds
@@ -90,14 +89,13 @@ plus OkHttp's internal threads. A per-Client Handler is not a thread.
 start from any Host thread, including the Main Looper
   -> submit one startup request to the internal Control executor
   -> load and defensively copy one complete Properties map
-  -> recover Worker ID, or Register and persist it
-  -> always Bind
+  -> one Prepare request resolves Worker ID and Endpoint
   -> install one Core TextMessageWorkerTransport
   -> return while WebSocket connection proceeds asynchronously
 
 temporary disconnect
   -> reconnect to the current URI within the Client budget
-  -> no Register or Bind
+  -> no Prepare
 
 endpoint retry exhausted
   -> stop accepting Commands
@@ -106,12 +104,12 @@ endpoint retry exhausted
   -> wait for an explicit Host start
 ```
 
-The preparation Bind is the only canonical Properties refresh. A running
+Prepare is the only canonical Properties refresh. A running
 provider change can be read through an explicit Worker snapshot Command, but
 it is not published and reaches Kernel resource truth only after the next
 explicit stop/start.
 
-Register or Bind failure ends that single start attempt. `start()` and
+Prepare failure ends that single start attempt. `start()` and
 `stop()` return after submitting their request, so Android hosts do not need a
 lifecycle Executor wrapper. `close()` is synchronous and may wait for the
 current protocol callback before it releases the Controller and Platform.
@@ -121,8 +119,8 @@ and reconnect attempts are private Client state, not Adapter, Kernel, or
 scheduling truth. Listener calls are synchronous and are not moved to the Main
 Looper automatically.
 
-Applications decide whether Android Backup may migrate Worker Identity. The
-repository demo excludes the Android Worker preference file from backup.
+Applications decide whether Android Backup may migrate the stable client key.
+The repository demo excludes the Android Worker preference file from backup.
 
 ## Verification
 

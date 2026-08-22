@@ -164,7 +164,7 @@ class WorkerCoreArchitectureBoundaryTest {
     }
 
     @Test
-    void controlClientIsAPlatformNeutralRegisterAndBindContract() {
+    void controlClientIsAPlatformNeutralPreparationContract() {
         for (Method method : WorkerControlClient.class
                 .getDeclaredMethods()) {
             String signature = method.toGenericString();
@@ -180,15 +180,7 @@ class WorkerCoreArchitectureBoundaryTest {
 
         assertTrue(hasMethod(
                 WorkerControlClient.class,
-                "register",
-                String.class,
-                java.util.Map.class,
-                java.time.Duration.class
-        ));
-        assertTrue(hasMethod(
-                WorkerControlClient.class,
-                "bind",
-                String.class,
+                "prepare",
                 String.class,
                 WorkerTransportType.class,
                 java.util.Map.class,
@@ -372,7 +364,7 @@ class WorkerCoreArchitectureBoundaryTest {
 
         String preparation = Files.readString(sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/"
-                        + "RegisteredWorkerPreparation.java"
+                        + "WorkerControlPreparation.java"
         ));
         String preparedWorker = Files.readString(sourceRoot.resolve(
                 "com/xa/mass/worker/runtime/PreparedWorker.java"

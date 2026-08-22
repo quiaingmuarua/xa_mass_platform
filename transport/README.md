@@ -23,7 +23,7 @@ module map and common implementation boundaries.
   -> synchronous single Preparation on the Host calling thread
   -> synchronous WorkerCommandExecutor and TextMessageClient ports
   -> Polling remains a separate request-response mechanism
-  -> network Client, Identity, Properties, and Register/Bind contracts
+  -> network Client, Properties, and one-shot Prepare contracts
   -> no concrete network or platform implementation
 
 :transport:java-worker
@@ -32,7 +32,7 @@ module map and common implementation boundaries.
 
 :transport:android-worker
   -> shared Android OkHttp, HandlerThread, and Control resources
-  -> Android Identity persistence and complete Worker assembly
+  -> persistent Android client key and complete Worker assembly
 ```
 
 `transport/` groups local transport mechanisms and implementations. It does
@@ -59,13 +59,13 @@ into that wire contract.
 
 `transport:worker-core` is not a generic transport framework. Its long-lived
 path has three owners: a concrete Client owns networking and transparent
-reconnect, the package-private Transport owns Bind/Command/Result protocol, and
+reconnect, the package-private Transport owns identity/Command/Result protocol, and
 `WorkerRunController` owns only the two-state Worker run. Java and Android
-hosts compose `RegisteredWorkerPreparation` with one Controller and expose the
+hosts compose `WorkerControlPreparation` with one Controller and expose the
 same `WorkerLifecycle` contract. One accepted `start()` performs exactly one
 Preparation synchronously and, if successful, starts one reconnecting endpoint
-Client. Platform modules provide Identity storage, concrete network Clients,
-shared network resources, and any asynchronous Host scheduling. A Client's
+Client. Platform modules provide the one-shot control Client, concrete network
+Clients, shared network resources, and any asynchronous Host scheduling. A Client's
 ordered protocol callback synchronously enters the Transport, Dispatcher, and
 Handler; there is no long-connection Command executor or queue. Worker Core
 creates and closes no thread, executor, or scheduler.

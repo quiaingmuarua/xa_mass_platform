@@ -17,8 +17,9 @@ The `initial` phase proves these relationships:
 
 ```text
 checked clientWorkerKeys
-  <-> Scenario Lab identity files
-  <-> 20 globally unique Worker IDs
+  <-> exact schema-v2 Scenario Lab files without Worker IDs
+  <-> Runtime Worker Preview client-key mapping
+  <-> 20 globally unique Server-owned Worker IDs
   <-> public Network Runtime View reports connected
   <-> one probe Direct Call returns observed/200 for every target
   <-> same-round Worker Properties snapshots match Adapter-local observations

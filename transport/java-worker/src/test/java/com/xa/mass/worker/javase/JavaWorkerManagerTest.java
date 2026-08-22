@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 import java.lang.reflect.Field;
@@ -111,7 +110,7 @@ class JavaWorkerManagerTest {
         AtomicInteger calls = new AtomicInteger();
         List<JavaWorkerPlatform> platforms = new ArrayList<>();
         JavaWorkerManager.Builder builder = configuredBuilder()
-                .workerAssembler((platform, key, identity, properties) -> {
+                .workerAssembler((platform, key, properties) -> {
                     platforms.add(platform);
                     if (calls.getAndIncrement() == 0) {
                         return first;
@@ -155,7 +154,6 @@ class JavaWorkerManagerTest {
                 IllegalArgumentException.class,
                 () -> duplicate.replica(
                         "client-1",
-                        WorkerIdentityStore.noCache(),
                         Map::of
                 )
         );
@@ -166,7 +164,6 @@ class JavaWorkerManagerTest {
         JavaWorkerManager manager = baseBuilder()
                 .replica(
                         "client",
-                        WorkerIdentityStore.noCache(),
                         Map::of
                 )
                 .build();
@@ -182,7 +179,6 @@ class JavaWorkerManagerTest {
                 .extendEventDefinitions(List.of(definition))
                 .replica(
                         "client",
-                        WorkerIdentityStore.noCache(),
                         Map::of
                 );
 
@@ -213,12 +209,11 @@ class JavaWorkerManagerTest {
         );
         JavaWorkerManager.Builder builder = baseBuilder()
                 .extendEventDefinitions(definitions())
-                .workerAssembler((platform, key, identity, properties) ->
+                .workerAssembler((platform, key, properties) ->
                         assembled.removeFirst());
         for (int index = 0; index < workers.length; index++) {
             builder.replica(
                     "client-" + (index + 1),
-                    WorkerIdentityStore.noCache(),
                     Map::of
             );
         }
@@ -229,7 +224,7 @@ class JavaWorkerManagerTest {
             List<JavaWorkerPlatform> platforms
     ) {
         return configuredBuilder()
-                .workerAssembler((platform, key, identity, properties) -> {
+                .workerAssembler((platform, key, properties) -> {
                     platforms.add(platform);
                     return new FakeWorker(key, new ArrayList<>());
                 })
@@ -241,12 +236,10 @@ class JavaWorkerManagerTest {
                 .extendEventDefinitions(definitions())
                 .replica(
                         "client-1",
-                        WorkerIdentityStore.noCache(),
                         Map::of
                 )
                 .replica(
                         "client-2",
-                        WorkerIdentityStore.noCache(),
                         Map::of
                 );
     }

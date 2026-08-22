@@ -6,7 +6,7 @@ local Lab. It composes existing owners instead of copying their mechanisms:
 ```text
 AndroidWorkerDemoApplication
   -> AndroidWorker
-     -> persistent Worker identity, Register/Bind, WebSocket Transport
+     -> persistent client key, Prepare, WebSocket Transport
   -> AndroidDemoCapabilities
      -> extension.worker.android.state.read
      -> extension.worker.android.battery.read
@@ -30,9 +30,11 @@ implementation code.
 
 The Application creates and starts one `AndroidWorker` for
 `android-demo-workers`. Android Worker owns the long-lived `clientWorkerKey`
-and platform-issued Worker ID, performs Register/Bind, and reconnects through
-the shared Worker Core mechanism. The App stores no Endpoint URI and does not
-interpret network connection state as Worker online truth.
+and WorkerGroup coordinate, performs one Prepare per explicit start, and
+reconnects through the shared Worker Core mechanism. The platform-issued
+Worker ID is held only for the current run and resolved again by Server from
+the same client key on a later start. The App stores no Worker ID or Endpoint
+URI and does not interpret network connection state as Worker online truth.
 
 The Application separately owns `AndroidDemoCapabilities` and passes its three
 immutable business Definitions into both `AndroidWorker.create(...)` and the

@@ -132,7 +132,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self,
         allocation_mechanism: WorkerAllocationMechanism,
     ) -> None:
-        group_result = self.resources.upsert_worker_group(
+        group_result = self.resources.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="phone-tools",
                 attributes={},
@@ -237,7 +237,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
     def test_adapter_rejection_releases_and_resource_refresh_preserves_hot(
         self,
     ) -> None:
-        self.resources.upsert_worker_group(
+        self.resources.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},

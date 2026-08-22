@@ -60,7 +60,6 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("JavaWorkerManager.builder")
                 .contains(".extendEventDefinitions(")
                 .contains(".replica(")
-                .contains("WorkerIdentityStore")
                 .contains("ScenarioWorkerLab")
                 .contains("ScenarioWorkerStateFile")
                 .contains("ScenarioWorkersJsonParser");
@@ -73,6 +72,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("interface WorkerReference")
                 .doesNotContain("FileLock")
                 .doesNotContain("worker.lock")
+                .doesNotContain("WorkerIdentityStore")
                 .doesNotContain("java.net.http.HttpClient")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");

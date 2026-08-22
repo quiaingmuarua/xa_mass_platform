@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -77,23 +79,25 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void upsertSplitsMetadataAndPropertiesWithoutResettingOtherTruth() {
+    void groupRegistrationIsCreateOnlyAndWorkerUpsertPreservesOtherTruth() {
         WorkerGroupDescriptor initialGroup = group(
                 "group-1",
                 Map.of("kind", "initial"),
                 Set.of("event.b", "event.a")
         );
-        assertThat(catalog.upsertWorkerGroup(initialGroup).status())
+        assertThat(catalog.registerWorkerGroup(initialGroup).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         WorkerGroupDescriptor updatedGroup = group(
                 "group-1",
                 Map.of("kind", "updated"),
                 Set.of("event.other")
         );
-        assertThat(catalog.upsertWorkerGroup(updatedGroup).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(catalog.upsertWorkerGroup(updatedGroup).status())
+        assertThat(catalog.registerWorkerGroup(initialGroup).status())
                 .isEqualTo(WorkerRuntimeStatus.NOOP);
+        assertThat(catalog.registerWorkerGroup(updatedGroup).status())
+                .isEqualTo(WorkerRuntimeStatus.CONFLICT);
+        assertThat(catalog.getWorkerGroupDescriptors(List.of("group-1")))
+                .containsEntry("group-1", initialGroup);
 
         WorkerDeclaration first = worker(
                 "worker-1",
@@ -157,9 +161,103 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void concurrentDifferentGroupRegistrationsChooseOneImmutableDeclaration()
+            throws Exception {
+        WorkerGroupDescriptor first = group(
+                "group-race",
+                Map.of("candidate", "first"),
+                Set.of("event.first")
+        );
+        WorkerGroupDescriptor second = group(
+                "group-race",
+                Map.of("candidate", "second"),
+                Set.of("event.second")
+        );
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try (var competing = new RedisWorkerResourceCatalog(
+                redisClient,
+                prefix
+        )) {
+            var firstResult = executor.submit(() -> {
+                start.await();
+                return catalog.registerWorkerGroup(first);
+            });
+            var secondResult = executor.submit(() -> {
+                start.await();
+                return competing.registerWorkerGroup(second);
+            });
+            start.countDown();
+
+            assertThat(List.of(
+                    firstResult.get().status(),
+                    secondResult.get().status()
+            )).containsExactlyInAnyOrder(
+                    WorkerRuntimeStatus.OK,
+                    WorkerRuntimeStatus.CONFLICT
+            );
+            WorkerGroupDescriptor stored = catalog
+                    .getWorkerGroupDescriptors(List.of("group-race"))
+                    .get("group-race");
+            assertThat(stored).isIn(first, second);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void groupRegistrationRejectsCorruptStoredIdentityWithoutMutation() {
+        String stored = "{\"attributes\":{},\"eventCodes\":[],"
+                + "\"workerGroupId\":\"different\"}";
+        redis.hset(groupsKey(), "group-1", stored);
+
+        assertThat(catalog.registerWorkerGroup(group(
+                "group-1",
+                Map.of(),
+                Set.of()
+        )).status()).isEqualTo(WorkerRuntimeStatus.INVALID);
+        assertThat(redis.hget(groupsKey(), "group-1")).isEqualTo(stored);
+    }
+
+    @Test
+    void samplesWorkerGroupsWithOneBoundedHashOperationSemantics() {
+        for (int index = 0; index < 120; index++) {
+            assertThat(catalog.registerWorkerGroup(group(
+                    "group-%03d".formatted(index),
+                    Map.of("index", index),
+                    Set.of("event")
+            )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        }
+
+        assertThat(catalog.sampleWorkerGroupDescriptors(1)).hasSize(1);
+        Map<String, WorkerGroupDescriptor> sampled =
+                catalog.sampleWorkerGroupDescriptors(100);
+        assertThat(sampled).hasSize(100);
+        assertThat(sampled.values()).allSatisfy(descriptor ->
+                assertThat(descriptor).isNotNull());
+
+        redis.del(groupsKey());
+        redis.hset(groupsKey(), Map.of(
+                "broken", "{not-json",
+                "mismatched", "{\"attributes\":{},"
+                        + "\"eventCodes\":[],"
+                        + "\"workerGroupId\":\"different\"}"
+        ));
+        assertThat(catalog.sampleWorkerGroupDescriptors(100))
+                .containsOnlyKeys("broken", "mismatched")
+                .allSatisfy((workerGroupId, descriptor) ->
+                        assertThat(descriptor).isNull());
+
+        assertThatThrownBy(() -> catalog.sampleWorkerGroupDescriptors(0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> catalog.sampleWorkerGroupDescriptors(101))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void ownerFenceAndMissingStagesConvergeThroughUpsert() {
-        catalog.upsertWorkerGroup(group("group-1", Map.of(), Set.of("event")));
-        catalog.upsertWorkerGroup(group("group-2", Map.of(), Set.of("event")));
+        catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
+        catalog.registerWorkerGroup(group("group-2", Map.of(), Set.of("event")));
         WorkerDeclaration declaration = worker(
                 "worker-1",
                 "group-1",
@@ -212,12 +310,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void resolvesBoundedWorkerGroupOwnersWithoutDescriptorScan() {
-        assertThat(catalog.upsertWorkerGroup(group(
+        assertThat(catalog.registerWorkerGroup(group(
                 "group-1",
                 Map.of(),
                 Set.of()
         )).status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(catalog.upsertWorkerGroup(group(
+        assertThat(catalog.registerWorkerGroup(group(
                 "group-2",
                 Map.of(),
                 Set.of()
@@ -333,7 +431,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void repeatedUpsertPreservesAllExistingScoreShapes() {
-        catalog.upsertWorkerGroup(group("group-1", Map.of(), Set.of("event")));
+        catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
         WorkerDeclaration declaration = worker(
                 "worker-1",
                 "group-1",
@@ -577,7 +675,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     @Test
     void workerAndPlatformPropertiesRemainIndependentAndScoreNeutral() {
-        catalog.upsertWorkerGroup(group("group-1", Map.of(), Set.of("event")));
+        catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
         runtime.upsertWorker(worker(
                 "worker-1",
                 "group-1",

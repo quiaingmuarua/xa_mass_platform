@@ -30,6 +30,60 @@ final class RuntimeApiClient {
                 .build();
     }
 
+    Map<String, String> previewWorkerIdentities(String workerGroupId) {
+        Map<String, Object> response = post(
+                "/api/v1/runtime-view/worker-groups/"
+                        + workerGroupId
+                        + "/workers:preview",
+                Map.of("sampleLimit", 100),
+                "workerRuntime.preview"
+        );
+        Object unreadable = response.get("unreadableCount");
+        if (!(unreadable instanceof Number)
+                || ((Number) unreadable).intValue() != 0) {
+            throw new IllegalStateException(
+                    "Worker Runtime preview contains unreadable descriptors"
+            );
+        }
+        Object rawWorkers = response.get("workers");
+        if (!(rawWorkers instanceof List<?> workers)) {
+            throw new IllegalStateException(
+                    "Worker Runtime preview workers must be an array"
+            );
+        }
+        Map<String, String> identities = new LinkedHashMap<>();
+        for (Object rawWorker : workers) {
+            Map<String, Object> worker = objectMap(
+                    rawWorker,
+                    "Worker Runtime preview worker"
+            );
+            if (!workerGroupId.equals(worker.get("workerGroupId"))
+                    || !(worker.get("workerId") instanceof String workerId)
+                    || workerId.isBlank()) {
+                throw new IllegalStateException(
+                        "Worker Runtime preview identity is invalid"
+                );
+            }
+            Map<String, Object> properties = objectMap(
+                    worker.get("workerProperties"),
+                    "Worker Runtime preview properties"
+            );
+            Object rawClientKey = properties.get("clientWorkerKey");
+            if (!(rawClientKey instanceof String clientWorkerKey)
+                    || clientWorkerKey.isBlank()) {
+                throw new IllegalStateException(
+                        "Worker Runtime preview has no clientWorkerKey"
+                );
+            }
+            if (identities.putIfAbsent(clientWorkerKey, workerId) != null) {
+                throw new IllegalStateException(
+                        "Worker Runtime preview has duplicate clientWorkerKey"
+                );
+            }
+        }
+        return Collections.unmodifiableMap(identities);
+    }
+
     Map<String, String> observeNetwork(
             String endpointManagerId,
             List<String> workerIds

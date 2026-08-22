@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -52,42 +54,44 @@ class JavaOkHttpWorkerControlClientTest {
     }
 
     @Test
-    void registersClientKeyWithoutEmbeddingSecurityPolicy()
+    void preparesWorkerWithOneRequestAndReturnsIdentityAndEndpoint()
             throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\"}")
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":"
+                        + "\"ws://127.0.0.1:18083/connect\"}")
                 .build());
 
-        assertEquals(
-                WORKER_ID,
-                client.register(
-                        "group a",
-                        Map.of(
-                                "clientWorkerKey",
-                                "installation/1",
-                                "runtime",
-                                "java"
-                        ),
-                        Duration.ofSeconds(2)
-                )
+        PreparedWorker prepared = client.prepare(
+                "group a",
+                WorkerTransportType.WEBSOCKET,
+                Map.of(
+                        "clientWorkerKey", "installation/1",
+                        "runtime", "java"
+                ),
+                Duration.ofSeconds(2)
         );
 
+        assertEquals(WORKER_ID, prepared.workerId());
+        assertEquals(
+                URI.create("ws://127.0.0.1:18083/connect"),
+                prepared.endpointUri()
+        );
         RecordedRequest request = server.takeRequest(1, TimeUnit.SECONDS);
         assertNotNull(request);
         assertEquals(
-                "/api/v1/worker-groups/group%20a/workers:register",
+                "/api/v1/worker-groups/group%20a/workers:prepare",
                 request.getTarget()
         );
         assertNull(request.getHeaders().get("X-XA-Mass-Platform-Key"));
         assertEquals(
                 Map.of(
-                        "workerProperties",
-                        Map.of(
-                                "clientWorkerKey",
-                                "installation/1",
-                                "runtime",
-                                "java"
+                        "transportType", "WEBSOCKET",
+                        "workerProperties", Map.of(
+                                "clientWorkerKey", "installation/1",
+                                "runtime", "java"
                         )
                 ),
                 Jsons.parseObject(request.getBody().utf8())
@@ -95,131 +99,60 @@ class JavaOkHttpWorkerControlClientTest {
     }
 
     @Test
-    void bindsWorkerAndReturnsOnlyTheEndpointUri() throws Exception {
+    void rejectsIncompleteOrTransportMismatchedPreparationResponses() {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"transportType\":\"WEBSOCKET\","
-                        + "\"endpointUri\":\"ws://127.0.0.1:18083/connect\"}")
+                .body("{\"workerId\":\"\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"ws://127.0.0.1:18083\"}")
                 .build());
-
-        URI endpoint = client.bind(
-                "group a",
-                WORKER_ID,
-                WorkerTransportType.WEBSOCKET,
-                Map.of(
-                        "clientWorkerKey",
-                        "installation/1",
-                        "region",
-                        "local"
-                ),
-                Duration.ofSeconds(2)
-        );
-
-        assertEquals(
-                URI.create("ws://127.0.0.1:18083/connect"),
-                endpoint
-        );
-        RecordedRequest request = server.takeRequest(1, TimeUnit.SECONDS);
-        assertNotNull(request);
-        assertEquals(
-                "/api/v1/worker-groups/group%20a/workers/"
-                        + WORKER_ID + ":bind",
-                request.getTarget()
-        );
-        assertEquals(
-                Map.of(
-                        "transportType",
-                        "WEBSOCKET",
-                        "workerProperties",
-                        Map.of(
-                                "clientWorkerKey",
-                                "installation/1",
-                                "region",
-                                "local"
-                        )
-                ),
-                Jsons.parseObject(request.getBody().utf8())
-        );
-    }
-
-    @Test
-    void acceptsOpaqueNonBlankWorkerIdAndRejectsInvalidBindingResponse()
-            throws Exception {
-        server.enqueue(new MockResponse.Builder()
-                .code(200)
-                .body("{\"workerId\":\"worker-1\"}")
-                .build());
-        assertEquals(
-                "worker-1",
-                client.register(
-                    "group",
-                    Map.of("clientWorkerKey", "installation"),
-                    Duration.ofSeconds(2)
-                )
-        );
+        assertThrows(WorkerException.class, () -> prepare());
 
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"transportType\":\"SOCKET\","
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"SOCKET\","
                         + "\"endpointUri\":\"tcp://127.0.0.1:18084\"}")
                 .build());
-        assertThrows(
-                WorkerException.class,
-                () -> client.bind(
-                        "group",
-                        WORKER_ID,
-                        WorkerTransportType.WEBSOCKET,
-                        Map.of("clientWorkerKey", "installation"),
-                        Duration.ofSeconds(2)
-                )
-        );
+        assertThrows(WorkerException.class, () -> prepare());
     }
 
     @Test
-    void rejectsBlankRegistrationWorkerId() {
+    void classifiesFailuresAndCarriesSafeServerDiagnostics() {
         server.enqueue(new MockResponse.Builder()
-                .code(200)
-                .body("{\"workerId\":\" \"}")
+                .code(503)
+                .body("{\"code\":15007,\"message\":\"hidden\","
+                        + "\"requestId\":\"request-1\"}")
                 .build());
-
-        assertThrows(
-                WorkerException.class,
-                () -> client.register(
-                        "group",
-                        Map.of("clientWorkerKey", "installation"),
-                        Duration.ofSeconds(2)
-                )
-        );
-    }
-
-    @Test
-    void classifiesRetryableAndRejectedControlResponses() {
-        server.enqueue(new MockResponse.Builder().code(503).build());
         WorkerException unavailable = assertThrows(
                 WorkerException.class,
-                () -> client.register(
-                        "group",
-                        Map.of("clientWorkerKey", "installation"),
-                        Duration.ofSeconds(2)
-                )
+                this::prepare
         );
         assertEquals(
                 WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
                 unavailable.errorCode()
         );
+        assertTrue(unavailable.getMessage().contains("code=15007"));
+        assertTrue(unavailable.getMessage().contains("requestId=request-1"));
+        assertTrue(!unavailable.getMessage().contains("hidden"));
 
         server.enqueue(new MockResponse.Builder().code(409).build());
         WorkerException rejected = assertThrows(
                 WorkerException.class,
-                () -> client.register(
-                        "group",
-                        Map.of("clientWorkerKey", "installation"),
-                        Duration.ofSeconds(2)
-                )
+                this::prepare
         );
         assertEquals(
                 WorkerErrorCode.WORKER_CONTROL_REJECTED,
                 rejected.errorCode()
+        );
+    }
+
+    private PreparedWorker prepare() throws IOException {
+        return client.prepare(
+                "group",
+                WorkerTransportType.WEBSOCKET,
+                Map.of("clientWorkerKey", "installation"),
+                Duration.ofSeconds(2)
         );
     }
 }

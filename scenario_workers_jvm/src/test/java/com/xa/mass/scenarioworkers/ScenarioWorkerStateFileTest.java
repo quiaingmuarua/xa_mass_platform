@@ -28,29 +28,33 @@ class ScenarioWorkerStateFileTest {
     }
 
     @Test
-    void persistsIdentityInTheSameFileAndReopensTheSnapshot()
+    void migratesLegacyIdentityOutOfTheSameFileAndPreservesProperties()
             throws Exception {
         Path path = temporaryDirectory.resolve("client-1.json");
-        writeWorker(path, null, Map.of("region", "initial"));
+        writeWorker(path, WORKER_ID, Map.of("region", "initial"));
 
         ScenarioWorkerStateFile first = ScenarioWorkerStateFile.open(
                 path,
                 "client-1"
         );
-        assertThat(first.loadWorkerId()).isEmpty();
         assertThat(first.workerProperties())
                 .containsExactlyEntriesOf(Map.of("region", "initial"));
-
-        first.saveWorkerId(WORKER_ID);
-        first.saveWorkerId(WORKER_ID);
 
         ScenarioWorkerStateFile reopened = ScenarioWorkerStateFile.open(
                 path,
                 "client-1"
         );
-        assertThat(reopened.loadWorkerId()).contains(WORKER_ID);
         assertThat(reopened.workerProperties())
                 .containsExactlyEntriesOf(Map.of("region", "initial"));
+        assertThat(Jsons.parseObject(Files.readString(
+                path,
+                StandardCharsets.UTF_8
+        ))).containsEntry("schemaVersion", 2L)
+                .containsEntry(
+                        "workerProperties",
+                        Map.of("region", "initial")
+                )
+                .doesNotContainKey("workerId");
         try (var files = Files.list(temporaryDirectory)) {
             assertThat(files.map(item -> item.getFileName().toString()))
                     .containsExactly("client-1.json");
@@ -58,18 +62,19 @@ class ScenarioWorkerStateFileTest {
     }
 
     @Test
-    void refusesToReplaceAnExistingWorkerId() throws Exception {
+    void acceptsVersionTwoWithoutWorkerPropertiesAsEmpty() throws Exception {
         Path path = temporaryDirectory.resolve("client-1.json");
-        writeWorker(path, WORKER_ID, Map.of());
+        Files.writeString(
+                path,
+                "{\"schemaVersion\":2}",
+                StandardCharsets.UTF_8
+        );
         ScenarioWorkerStateFile state = ScenarioWorkerStateFile.open(
                 path,
                 "client-1"
         );
 
-        assertThatThrownBy(() -> state.saveWorkerId("different-id"))
-                .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .extracting("errorCode")
-                .isEqualTo(14013);
+        assertThat(state.workerProperties()).isEmpty();
     }
 
     @Test
@@ -77,14 +82,14 @@ class ScenarioWorkerStateFileTest {
         Path path = temporaryDirectory.resolve("client-1.json");
         Files.writeString(
                 path,
-                "{\"schemaVersion\":2}",
+                "{\"schemaVersion\":3}",
                 StandardCharsets.UTF_8
         );
         assertInvalid(path);
 
         Files.writeString(
                 path,
-                "{\"schemaVersion\":1,\"extra\":true}",
+                "{\"schemaVersion\":2,\"extra\":true}",
                 StandardCharsets.UTF_8
         );
         assertInvalid(path);

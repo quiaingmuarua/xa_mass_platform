@@ -98,11 +98,16 @@ final class WorkerFleetAcceptance {
         Duration maximumWait = Duration.ofMillis(
                 options.maximumWaitMillis()
         );
+        RuntimeApiClient api = new RuntimeApiClient(
+                options.serverBaseUrl(),
+                Duration.ofMillis(options.requestTimeoutMillis())
+        );
         Map<String, Map<String, String>> inventory;
         try {
             inventory = ScenarioWorkerInventory.await(
                         options.scenarioWorkerLabRoot(),
                         spec,
+                        api,
                         maximumWait
                 );
         } catch (ScenarioWorkerInventory.InventoryMismatch error) {
@@ -126,10 +131,6 @@ final class WorkerFleetAcceptance {
             verifyBaseline(inventory, baseline, evidence);
         }
 
-        RuntimeApiClient api = new RuntimeApiClient(
-                options.serverBaseUrl(),
-                Duration.ofMillis(options.requestTimeoutMillis())
-        );
         awaitConnected(api, spec, inventory, evidence, maximumWait);
         verifyProbe(api, spec, inventory, evidence);
         verifyProperties(api, spec, inventory, evidence);

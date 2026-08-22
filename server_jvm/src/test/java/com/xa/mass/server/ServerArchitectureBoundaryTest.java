@@ -251,7 +251,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(occurrences(
                 catalog,
                 "hrandfieldWithvalues"
-        )).isEqualTo(1);
+        )).isEqualTo(2);
         assertThat(catalog)
                 .doesNotContain(".hscan(")
                 .doesNotContain(".scan(")

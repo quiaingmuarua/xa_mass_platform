@@ -9,6 +9,7 @@ import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourceEntr
 import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.TaskView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
@@ -38,6 +39,8 @@ public final class RuntimeViewService {
             "runtimeView.configuredResources";
     private static final String PREVIEW_OPERATION =
             "runtimeView.previewWorkers";
+    private static final String GROUP_PREVIEW_OPERATION =
+            "runtimeView.previewWorkerGroups";
     private static final String SCHEDULING_OBSERVE_OPERATION =
             "runtimeView.observeWorkerScheduling";
 
@@ -210,6 +213,40 @@ public final class RuntimeViewService {
             throw unavailable(
                     PREVIEW_OPERATION,
                     workerGroupId,
+                    requestId,
+                    error
+            );
+        }
+    }
+
+    public WorkerGroupPreviewResponse previewWorkerGroups(
+            int sampleLimit,
+            String requestId
+    ) {
+        try {
+            Map<String, WorkerGroupDescriptor> sampled =
+                    workerCatalog.sampleWorkerGroupDescriptors(sampleLimit);
+            var groups = new ArrayList<WorkerGroupView>();
+            int unreadableCount = 0;
+            for (WorkerGroupDescriptor descriptor : sampled.values()) {
+                if (descriptor == null) {
+                    unreadableCount++;
+                    continue;
+                }
+                groups.add(toView(descriptor));
+            }
+            return new WorkerGroupPreviewResponse(
+                    sampleLimit,
+                    sampled.size(),
+                    groups.size(),
+                    unreadableCount,
+                    Instant.now(),
+                    List.copyOf(groups)
+            );
+        } catch (RuntimeException error) {
+            throw unavailable(
+                    GROUP_PREVIEW_OPERATION,
+                    "worker-groups",
                     requestId,
                     error
             );

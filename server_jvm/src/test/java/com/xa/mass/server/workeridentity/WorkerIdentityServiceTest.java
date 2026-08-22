@@ -68,7 +68,7 @@ class WorkerIdentityServiceTest {
                 properties("installation-1", 1)
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode())
-                        .isEqualTo(ServerErrorCode.WORKER_IDENTITY_NOT_FOUND));
+                        .isEqualTo(ServerErrorCode.WORKER_GROUP_NOT_FOUND));
 
         when(catalog.getWorkerGroupDescriptors(List.of("group-1")))
                 .thenReturn(Map.of("group-1", group("group-1")));

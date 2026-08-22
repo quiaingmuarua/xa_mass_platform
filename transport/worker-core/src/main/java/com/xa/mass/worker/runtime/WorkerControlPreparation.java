@@ -2,8 +2,6 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
-import java.io.IOException;
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,28 +9,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
-/**
- * Restores or registers one Worker identity and refreshes its endpoint bind.
- */
-public final class RegisteredWorkerPreparation
-        implements WorkerPreparation {
+/** Loads complete Worker Properties and performs one control preparation. */
+public final class WorkerControlPreparation implements WorkerPreparation {
 
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
 
     private final String workerGroupId;
     private final WorkerTransportType transportType;
-    private final WorkerIdentityStore identityStore;
     private final WorkerPropertiesProvider propertiesProvider;
     private final WorkerControlClient controlClient;
     private final Duration requestTimeout;
     private boolean closed;
 
-    public RegisteredWorkerPreparation(
+    public WorkerControlPreparation(
             String workerGroupId,
             WorkerTransportType transportType,
-            WorkerIdentityStore identityStore,
             WorkerPropertiesProvider propertiesProvider,
             WorkerControlClient controlClient,
             Duration requestTimeout
@@ -44,10 +36,6 @@ public final class RegisteredWorkerPreparation
         this.transportType = Objects.requireNonNull(
                 transportType,
                 "transportType"
-        );
-        this.identityStore = Objects.requireNonNull(
-                identityStore,
-                "identityStore"
         );
         this.propertiesProvider = Objects.requireNonNull(
                 propertiesProvider,
@@ -69,26 +57,15 @@ public final class RegisteredWorkerPreparation
         Map<String, Object> properties = immutableProperties(
                 propertiesProvider.loadProperties()
         );
-        Optional<String> cached = identityStore.loadWorkerId();
-        String workerId;
-        if (cached.isPresent()) {
-            workerId = requireWorkerId(cached.get());
-        } else {
-            workerId = requireWorkerId(controlClient.register(
-                    workerGroupId,
-                    properties,
-                    requestTimeout
-            ));
-            persistWorkerId(workerId);
-        }
-        URI endpointUri = controlClient.bind(
-                workerGroupId,
-                workerId,
-                transportType,
-                properties,
-                requestTimeout
+        return Objects.requireNonNull(
+                controlClient.prepare(
+                        workerGroupId,
+                        transportType,
+                        properties,
+                        requestTimeout
+                ),
+                "preparedWorker"
         );
-        return new PreparedWorker(workerId, endpointUri);
     }
 
     @Override
@@ -100,24 +77,12 @@ public final class RegisteredWorkerPreparation
         controlClient.close();
     }
 
-    private void persistWorkerId(String workerId) throws IOException {
-        try {
-            identityStore.saveWorkerId(workerId);
-        } catch (IOException error) {
-            throw new IOException("Unable to persist workerId", error);
-        }
-    }
-
     private void requireOpen() {
         if (closed) {
             throw new IllegalStateException(
-                    "RegisteredWorkerPreparation is closed"
+                    "WorkerControlPreparation is closed"
             );
         }
-    }
-
-    private static String requireWorkerId(String value) {
-        return requireNonBlank(value, "workerId");
     }
 
     private static Map<String, Object> immutableProperties(

@@ -104,14 +104,35 @@ class WorkerResourceCatalog(ABC):
     """
 
     MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100
+    MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT = 100
     MAX_WORKER_GROUP_LOOKUP_LIMIT = 100
 
     @abstractmethod
-    def upsert_worker_group(
+    def register_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
     ) -> WorkerRuntimeResult:
+        """Create one immutable WorkerGroup declaration.
+
+        A byte-independent equivalent declaration is idempotent. An existing
+        different declaration conflicts and is never replaced.
+        """
+        pass
+
+    @abstractmethod
+    def sample_worker_group_descriptors(
+        self,
+        *,
+        sample_limit: int,
+    ) -> Mapping[WorkerGroupId, WorkerGroupDescriptor | None]:
+        """Read one unordered, incomplete WorkerGroup descriptor sample.
+
+        The owner performs one random HASH sample. Results have no ordering,
+        stability, pagination, total-count, or completeness guarantee. An
+        unreadable or identity-mismatched row is represented by the sampled
+        WorkerGroup id mapped to None.
+        """
         pass
 
     @abstractmethod

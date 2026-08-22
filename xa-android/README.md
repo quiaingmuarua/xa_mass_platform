@@ -19,7 +19,7 @@ transport mechanics.
   -> API 33 Emulator acceptance and real-device WorkerGroup drivers
 
 :transport:android-worker
-  -> Worker identity, Register/Bind, networking, reconnect, and lifecycle
+  -> client-key persistence, Prepare, networking, reconnect, and lifecycle
 ```
 
 Capabilities depend on Worker Core, not on the Android Worker assembly. A

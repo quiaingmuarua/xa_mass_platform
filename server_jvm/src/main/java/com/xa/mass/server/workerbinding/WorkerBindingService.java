@@ -206,7 +206,7 @@ public final class WorkerBindingService {
                 return;
             }
             case NOT_FOUND -> throw failure(
-                    ServerErrorCode.WORKER_IDENTITY_NOT_FOUND,
+                    ServerErrorCode.WORKER_GROUP_NOT_FOUND,
                     operation,
                     result.reason(),
                     null

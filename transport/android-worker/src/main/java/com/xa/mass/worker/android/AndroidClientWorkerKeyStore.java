@@ -2,15 +2,17 @@ package com.xa.mass.worker.android;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 final class AndroidClientWorkerKeyStore {
+
+    static final String PREFERENCES = "xa-mass-android-worker";
 
     private final SharedPreferences preferences;
     private final String workerGroupId;
     private final String groupIdKey;
     private final String clientKeyKey;
-    private final String workerIdKey;
 
     AndroidClientWorkerKeyStore(Context context, String workerGroupId) {
         if (context == null) {
@@ -22,24 +24,21 @@ final class AndroidClientWorkerKeyStore {
             );
         }
         preferences = context.getSharedPreferences(
-                AndroidWorkerIdentityStore.PREFERENCES,
+                PREFERENCES,
                 Context.MODE_PRIVATE
         );
         this.workerGroupId = workerGroupId;
-        String prefix = AndroidWorkerIdentityStore.keyPrefix(workerGroupId)
+        String prefix = keyPrefix(workerGroupId)
                 + ".identity.";
         groupIdKey = prefix + "workerGroupId";
         clientKeyKey = prefix + "clientWorkerKey";
-        workerIdKey = prefix + "workerId";
     }
 
     synchronized String loadOrCreate() {
         String storedGroup = preferences.getString(groupIdKey, null);
         String clientWorkerKey = preferences.getString(clientKeyKey, null);
-        String workerId = preferences.getString(workerIdKey, null);
         boolean any = storedGroup != null
-                || clientWorkerKey != null
-                || workerId != null;
+                || clientWorkerKey != null;
         if (any && (storedGroup == null || clientWorkerKey == null)) {
             throw new IllegalStateException(
                     "Stored Android Worker identity is incomplete"
@@ -68,5 +67,11 @@ final class AndroidClientWorkerKeyStore {
             );
         }
         return generated;
+    }
+
+    static String keyPrefix(String workerGroupId) {
+        return "worker." + UUID.nameUUIDFromBytes(
+                workerGroupId.getBytes(StandardCharsets.UTF_8)
+        );
     }
 }

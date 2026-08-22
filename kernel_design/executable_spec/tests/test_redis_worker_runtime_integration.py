@@ -5,6 +5,7 @@ import os
 import time
 import unittest
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import redis as redis_module
@@ -64,11 +65,81 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
+    def test_worker_group_registration_and_random_sample_use_real_redis(
+        self,
+    ) -> None:
+        first = WorkerGroupDescriptor(
+            worker_group_id="group-race",
+            attributes={"candidate": "first"},
+            event_codes=frozenset({"event.first"}),
+        )
+        second = WorkerGroupDescriptor(
+            worker_group_id="group-race",
+            attributes={"candidate": "second"},
+            event_codes=frozenset({"event.second"}),
+        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    lambda descriptor: self.catalog.register_worker_group(
+                        descriptor=descriptor
+                    ),
+                    (first, second),
+                )
+            )
+        self.assertCountEqual(
+            (result.status for result in results),
+            (WorkerRuntimeStatus.OK, WorkerRuntimeStatus.CONFLICT),
+        )
+        stored = self.catalog.get_worker_group_descriptors(
+            worker_group_ids=("group-race",)
+        )["group-race"]
+        self.assertIn(stored, (first, second))
+
+        for index in range(120):
+            result = self.catalog.register_worker_group(
+                descriptor=WorkerGroupDescriptor(
+                    worker_group_id=f"group-{index:03d}",
+                    attributes={"index": index},
+                    event_codes=frozenset({"event"}),
+                )
+            )
+            self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(
+            len(self.catalog.sample_worker_group_descriptors(sample_limit=1)),
+            1,
+        )
+        sampled = self.catalog.sample_worker_group_descriptors(
+            sample_limit=100
+        )
+        self.assertEqual(len(sampled), 100)
+        self.assertTrue(all(value is not None for value in sampled.values()))
+
+        groups_key = f"wr:{self.prefix}:groups"
+        self.redis.delete(groups_key)
+        self.redis.hset(
+            groups_key,
+            mapping={
+                "broken": "not-json",
+                "mismatched": json.dumps(
+                    {
+                        "workerGroupId": "different",
+                        "attributes": {},
+                        "eventCodes": [],
+                    }
+                ),
+            },
+        )
+        self.assertEqual(
+            self.catalog.sample_worker_group_descriptors(sample_limit=100),
+            {"broken": None, "mismatched": None},
+        )
+
     def test_repeated_bind_replaces_canonical_properties_without_score_change(
         self,
     ) -> None:
         for worker_group_id in (self.worker_group_id, "other-workers"):
-            self.catalog.upsert_worker_group(
+            self.catalog.register_worker_group(
                 descriptor=WorkerGroupDescriptor(
                     worker_group_id=worker_group_id,
                     attributes={},
@@ -116,7 +187,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
 
     def test_worker_id_is_globally_unique_across_groups(self) -> None:
         for worker_group_id in (self.worker_group_id, "audio-workers"):
-            self.catalog.upsert_worker_group(
+            self.catalog.register_worker_group(
                 descriptor=WorkerGroupDescriptor(
                     worker_group_id=worker_group_id,
                     attributes={},
@@ -312,7 +383,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             worker_properties={"runtime": "python"},
         )
-        self.catalog.upsert_worker_group(descriptor=group)
+        self.catalog.register_worker_group(descriptor=group)
 
         registered = self.runtime.upsert_worker(
             declaration=worker,
@@ -363,7 +434,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
     def test_upsert_preserves_recovery_and_identity_conflict_fails_closed(
         self,
     ) -> None:
-        self.catalog.upsert_worker_group(
+        self.catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
                 attributes={},
@@ -445,7 +516,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(descriptor.worker_properties, {"runtime": "java"})
 
     def test_polarity_transitions_reset_lane_rank(self) -> None:
-        self.catalog.upsert_worker_group(
+        self.catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
                 attributes={},
@@ -545,7 +616,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
     def test_upsert_preserves_active_lease_fence(
         self,
     ) -> None:
-        self.catalog.upsert_worker_group(
+        self.catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
                 attributes={},

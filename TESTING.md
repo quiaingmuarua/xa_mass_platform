@@ -15,9 +15,9 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while Java Task commands, Polling, WebSocket, and Socket close real Task paths; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab identities, Adapter routes, probe execution, Properties observation, and restart identity mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and restart mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Task Batch | The checked profile uses bounded Java Task Call submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
-| Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Register/Bind, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
+| Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
@@ -69,7 +69,8 @@ capacity invariant.
 
 The separate `Worker Fleet` lane starts the real Scenario Host on an isolated,
 initially absent Lab root. Its initial phase relates the exact configured
-client keys to 20 unique Lab Worker IDs, connected Adapter routes, one probe
+client keys to 20 unique Worker IDs read through Runtime Preview, connected
+Adapter routes, one probe
 Result per target, and same-round Worker/Adapter Properties observations. CI
 then terminates the Host, requires shutdown within 15 seconds, restarts the
 same Host with Redis, Kernel, and Lab retained, and requires the complete

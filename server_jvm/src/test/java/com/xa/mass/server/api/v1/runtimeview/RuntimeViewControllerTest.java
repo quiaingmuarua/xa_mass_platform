@@ -312,6 +312,76 @@ class RuntimeViewControllerTest {
     }
 
     @Test
+    void groupPreviewCountsUnreadableRowsWithoutListSemantics()
+            throws Exception {
+        var sampled = new LinkedHashMap<String, WorkerGroupDescriptor>();
+        sampled.put("group-b", group(
+                "group-b",
+                Map.of("capability", "beta"),
+                Set.of("event.b")
+        ));
+        sampled.put("broken", null);
+        sampled.put("group-a", group(
+                "group-a",
+                Map.of("capability", "alpha"),
+                Set.of("event.a")
+        ));
+        when(workerCatalog.sampleWorkerGroupDescriptors(100))
+                .thenReturn(sampled);
+
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/"
+                                        + "worker-groups:preview"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sampleLimit\":100}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sampleLimit").value(100))
+                .andExpect(jsonPath("$.sampledCount").value(3))
+                .andExpect(jsonPath("$.returnedCount").value(2))
+                .andExpect(jsonPath("$.unreadableCount").value(1))
+                .andExpect(jsonPath("$.generatedAt").isString())
+                .andExpect(jsonPath("$.workerGroups[0].workerGroupId")
+                        .value("group-b"))
+                .andExpect(jsonPath("$.workerGroups[1].workerGroupId")
+                        .value("group-a"))
+                .andExpect(jsonPath("$.cursor").doesNotExist())
+                .andExpect(jsonPath("$.total").doesNotExist())
+                .andExpect(jsonPath("$.hasMore").doesNotExist())
+                .andExpect(jsonPath("$.complete").doesNotExist());
+
+        verify(workerCatalog).sampleWorkerGroupDescriptors(100);
+    }
+
+    @Test
+    void groupPreviewValidatesLimitAndMapsProviderFailure()
+            throws Exception {
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/"
+                                        + "worker-groups:preview"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sampleLimit\":101}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+        verifyNoInteractions(workerCatalog);
+
+        when(workerCatalog.sampleWorkerGroupDescriptors(100))
+                .thenThrow(new IllegalStateException("redis unavailable"));
+        mockMvc.perform(post(
+                                "/api/v1/runtime-view/"
+                                        + "worker-groups:preview"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "group-preview-request")
+                        .content("{\"sampleLimit\":100}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(15002))
+                .andExpect(jsonPath("$.requestId")
+                        .value("group-preview-request"));
+    }
+
+    @Test
     void previewCountsUnreadableRowsAndExposesOnlyDescriptorFields()
             throws Exception {
         when(workerCatalog.getWorkerGroupDescriptors(

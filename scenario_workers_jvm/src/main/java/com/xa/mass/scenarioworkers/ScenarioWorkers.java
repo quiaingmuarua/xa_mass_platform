@@ -4,7 +4,6 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -160,8 +159,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     : discoveredGroup.workers()) {
                 replicas.add(new PreparedReplica(
                         worker.clientWorkerKey(),
-                        worker.workerProperties(),
-                        worker
+                        worker.workerProperties()
                 ));
             }
             preparedGroups.add(new PreparedGroup(
@@ -233,7 +231,6 @@ public final class ScenarioWorkers implements AutoCloseable {
         for (PreparedReplica replica : preparedGroup.replicas()) {
             builder.replica(
                     replica.clientWorkerKey(),
-                    replica.identityStore(),
                     replica::workerProperties
             );
         }
@@ -366,8 +363,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     record PreparedReplica(
             String clientWorkerKey,
-            Map<String, Object> workerProperties,
-            WorkerIdentityStore identityStore
+            Map<String, Object> workerProperties
     ) {
     }
 

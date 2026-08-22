@@ -812,7 +812,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         task_id = "task-1"
         message_id = "message-1"
 
-        group_result = self.resources_client.upsert_worker_group(
+        group_result = self.resources_client.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=worker_group_id,
                 attributes={"kind": "image"},

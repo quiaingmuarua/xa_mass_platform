@@ -22,7 +22,7 @@ class ServerWorkerGroupInitializerTest {
     @Test
     void initializesCatalogInDeclarationOrderAndIsIdempotent() {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        when(catalog.upsertWorkerGroup(any()))
+        when(catalog.registerWorkerGroup(any()))
                 .thenReturn(result(WorkerRuntimeStatus.OK))
                 .thenReturn(result(WorkerRuntimeStatus.NOOP));
         ServerWorkerGroupInitializer initializer =
@@ -46,7 +46,7 @@ class ServerWorkerGroupInitializerTest {
 
         ArgumentCaptor<WorkerGroupDescriptor> descriptor =
                 ArgumentCaptor.forClass(WorkerGroupDescriptor.class);
-        verify(catalog, times(2)).upsertWorkerGroup(
+        verify(catalog, times(2)).registerWorkerGroup(
                 descriptor.capture()
         );
         assertThat(descriptor.getAllValues())
@@ -56,10 +56,10 @@ class ServerWorkerGroupInitializerTest {
                 .containsEntry("capability", "phone");
         assertThat(descriptor.getAllValues().get(1).attributes()).isEmpty();
         InOrder order = inOrder(catalog);
-        order.verify(catalog).upsertWorkerGroup(
+        order.verify(catalog).registerWorkerGroup(
                 descriptor.getAllValues().get(0)
         );
-        order.verify(catalog).upsertWorkerGroup(
+        order.verify(catalog).registerWorkerGroup(
                 descriptor.getAllValues().get(1)
         );
     }
@@ -80,7 +80,7 @@ class ServerWorkerGroupInitializerTest {
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duplicates");
 
-        when(catalog.upsertWorkerGroup(any())).thenReturn(
+        when(catalog.registerWorkerGroup(any())).thenReturn(
                 new WorkerRuntimeResult(
                         WorkerRuntimeStatus.INVALID,
                         "stored descriptor is invalid"

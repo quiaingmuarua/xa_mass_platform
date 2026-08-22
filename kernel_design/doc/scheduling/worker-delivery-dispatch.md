@@ -9,8 +9,8 @@ The control and connection vocabulary is deliberately split by Owner:
 
 | Mechanism | Owner and effect | Not truth for |
 | --- | --- | --- |
-| Identity Register | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
-| Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
+| Prepare identity resolution | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
+| Prepare Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects the complete Properties through Kernel Worker upsert | connection liveness or credentials |
 | Connection identity Report | Worker sends `worker.connection.identify` with `src=WORKER/sourceId=workerId` and exact `null` payload | persistent Endpoint Binding, WorkerGroup membership, or authentication |
 | Route Verification | Server read-only compares the workerId's persisted Binding with the receiving endpoint; Adapter caches the first successful workerId route until process close/restart | authentication, online truth, or persistent Binding |
 | Connection Activation | Adapter installs its process-local current Channel | Worker resource, online, or attribute truth |
@@ -263,7 +263,7 @@ POST /api/v1/worker-delivery/endpoint-managers/{id}/workers/{workerId}/commands:
 POST /api/v1/worker-delivery/endpoint-managers/{id}/workers/{workerId}/results
 ```
 
-The Worker first completes Server Register and Bind control calls outside this
+The Worker first completes one Server Prepare control call outside this
 delivery API. Each point request verifies that the persisted Worker Binding is
 `system-polling`; this is a route-consistency check rather than authentication.
 Point poll returns `204` or the direct `DeliveryCommand` fields. Point result

@@ -42,21 +42,20 @@ Example:
 
 Keys are emitted in stable order, sets are sorted, and JSON is compact.
 
-Upsert behavior:
+Registration behavior:
 
 ```text
 HSETNX establishes WorkerGroup
 identical descriptor -> NOOP
-changed attributes and/or eventCodes -> exact CAS full replacement
-stored descriptor identity mismatch -> CONFLICT
+changed attributes and/or eventCodes -> CONFLICT, stored value unchanged
+stored descriptor identity mismatch -> INVALID
 damaged stored descriptor -> INVALID
-repeated CAS contention -> STALE
 ```
 
 `workerGroupId` is the stable HASH field and scheduling partition identity.
-`eventCodes` is replaceable control-plane catalog metadata; it is not read by
-Matcher or Dispatch and does not assert the Handler set currently installed on
-every Worker.
+`attributes` and `eventCodes` form one create-only control-plane declaration.
+They are not read by Matcher or Dispatch and do not assert the Handler set
+currently installed on every Worker.
 
 ## Worker Metadata And Properties
 
@@ -131,9 +130,11 @@ wi:{prefix}:worker-bindings:{00..ff}
   value       = endpointManagerId
 ```
 
-Registration establishes long-lived external identity. Binding establishes the
-persistent delivery route used to project `endpointManagerId` into Kernel
-Worker metadata. The 256 bucket suffix is the first SHA-256 byte of the
+Identity registration establishes long-lived external identity. Binding
+establishes the persistent delivery route used to project `endpointManagerId`
+into Kernel Worker metadata. The public Worker Prepare use case composes these
+Server owners with Worker upsert, but does not merge their Redis ownership.
+The 256 bucket suffix is the first SHA-256 byte of the
 canonical workerId and only limits HASH size; the existing `{prefix}` hash tag
 remains unchanged. Neither registry is a Kernel owner key, candidate catalog,
 authentication record, or connectivity truth.
@@ -167,9 +168,16 @@ Catalog reads are caller-bounded:
 
 ```text
 get_worker_group_descriptors(explicit WorkerGroupIds)
+sample_worker_group_descriptors(sampleLimit <= 100)
 get_worker_descriptors(one WorkerGroupId, explicit WorkerIds)
 sample_worker_descriptors(one WorkerGroupId, sampleLimit <= 100)
 ```
+
+WorkerGroup preview performs exactly one positive-count
+`HRANDFIELD ... WITHVALUES` against the Group HASH. It is an unordered,
+unstable, incomplete sample with no cursor, total, or completeness claim.
+Unreadable JSON and field/descriptor identity mismatch are returned as
+`workerGroupId -> None`.
 
 Worker preview samples metadata with one positive-count
 `HRANDFIELD ... WITHVALUES`, then loads the corresponding properties rows. It
@@ -177,15 +185,15 @@ is an unordered incomplete sample with no cursor, total, stability, or
 completeness claim. A missing or unreadable row on either side is returned as
 `workerId -> None`.
 
-Runtime View exposes only WorkerGroup descriptors and Worker descriptor
-Properties. It does not join score, mailbox, connection, or Task assignment
-data.
+Runtime View exposes random WorkerGroup and Worker descriptor samples plus the
+existing explicit-ID reads. It does not join score, mailbox, connection, or
+Task assignment data.
 
 ## Consistency And Guardrails
 
 Strong stale-state protection is reserved for score compare-and-set and
-identity ownership. Descriptor replacement and property writes use bounded
-eventual convergence.
+identity ownership. WorkerGroup registration is atomic create-only;
+Worker-property writes use bounded eventual convergence.
 
 - Do not add legacy JSON readers or dual writes; deployments use a clean
   prefix for this ABI change.

@@ -4,6 +4,7 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
@@ -41,46 +42,14 @@ final class AndroidOkHttpWorkerControlClient
     }
 
     @Override
-    public String register(
+    public PreparedWorker prepare(
             String workerGroupId,
-            Map<String, Object> workerProperties,
-            Duration timeout
-    ) throws IOException {
-        requireOpen();
-        requireProperties(workerProperties);
-        HttpUrl url = workerGroupBase(
-                requireNonBlank(workerGroupId, "workerGroupId")
-        ).newBuilder().addPathSegment("workers:register").build();
-        Map<String, Object> response = executeObject(
-                url,
-                Map.of("workerProperties", workerProperties),
-                timeout,
-                "workerControl.register"
-        );
-        if (!response.keySet().equals(Set.of("workerId"))
-                || !(response.get("workerId") instanceof String)
-                || ((String) response.get("workerId")).isBlank()) {
-            throw failure(
-                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    "workerControl.register",
-                    "Worker registration response is invalid",
-                    null
-            );
-        }
-        return (String) response.get("workerId");
-    }
-
-    @Override
-    public URI bind(
-            String workerGroupId,
-            String workerId,
             WorkerTransportType transportType,
             Map<String, Object> workerProperties,
             Duration timeout
     ) throws IOException {
         requireOpen();
         String group = requireNonBlank(workerGroupId, "workerGroupId");
-        String resolvedWorkerId = requireNonBlank(workerId, "workerId");
         if (transportType == null) {
             throw new IllegalArgumentException(
                     "transportType must be present"
@@ -88,8 +57,7 @@ final class AndroidOkHttpWorkerControlClient
         }
         requireProperties(workerProperties);
         HttpUrl url = workerGroupBase(group).newBuilder()
-                .addPathSegment("workers")
-                .addPathSegment(resolvedWorkerId + ":bind")
+                .addPathSegment("workers:prepare")
                 .build();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("transportType", transportType.name());
@@ -98,12 +66,15 @@ final class AndroidOkHttpWorkerControlClient
                 url,
                 body,
                 timeout,
-                "workerControl.bind"
+                "workerControl.prepare"
         );
         if (!response.keySet().equals(Set.of(
+                "workerId",
                 "transportType",
                 "endpointUri"
         ))
+                || !(response.get("workerId") instanceof String)
+                || ((String) response.get("workerId")).isBlank()
                 || !(response.get("transportType") instanceof String)
                 || !(response.get("endpointUri") instanceof String)
                 || !transportType.name().equals(
@@ -111,14 +82,17 @@ final class AndroidOkHttpWorkerControlClient
                 )) {
             throw failure(
                     WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    "workerControl.bind",
-                    "Worker binding response is invalid",
+                    "workerControl.prepare",
+                    "Worker preparation response is invalid",
                     null
             );
         }
-        return requireEndpointUri(
-                (String) response.get("endpointUri"),
-                transportType
+        return new PreparedWorker(
+                (String) response.get("workerId"),
+                requireEndpointUri(
+                        (String) response.get("endpointUri"),
+                        transportType
+                )
         );
     }
 
@@ -161,8 +135,7 @@ final class AndroidOkHttpWorkerControlClient
                 throw failure(
                         WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
                         operation,
-                        "Worker control request failed with HTTP "
-                                + response.code(),
+                        errorMessage(response),
                         null
                 );
             }
@@ -170,8 +143,7 @@ final class AndroidOkHttpWorkerControlClient
                 throw failure(
                         WorkerErrorCode.WORKER_CONTROL_REJECTED,
                         operation,
-                        "Worker control request failed with HTTP "
-                                + response.code(),
+                        errorMessage(response),
                         null
                 );
             }
@@ -225,8 +197,8 @@ final class AndroidOkHttpWorkerControlClient
         } catch (IllegalArgumentException error) {
             throw failure(
                     WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    "workerControl.bind",
-                    "Worker binding response contains an invalid endpointUri",
+                    "workerControl.prepare",
+                    "Worker preparation response contains an invalid endpointUri",
                     error
             );
         }
@@ -244,8 +216,8 @@ final class AndroidOkHttpWorkerControlClient
         if (!valid) {
             throw failure(
                     WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                    "workerControl.bind",
-                    "Worker binding response contains an endpointUri "
+                    "workerControl.prepare",
+                    "Worker preparation response contains an endpointUri "
                             + "incompatible with " + transportType,
                     null
             );
@@ -311,5 +283,30 @@ final class AndroidOkHttpWorkerControlClient
                 message,
                 cause
         );
+    }
+
+    private static String errorMessage(Response response) {
+        String diagnostic = "Worker control request failed with HTTP "
+                + response.code();
+        if (response.body() == null) {
+            return diagnostic;
+        }
+        try {
+            Map<String, Object> payload = Jsons.parseObject(
+                    response.body().string()
+            );
+            Object code = payload.get("code");
+            Object requestId = payload.get("requestId");
+            if (code instanceof Number) {
+                diagnostic += " code=" + code;
+            }
+            if (requestId instanceof String
+                    && !((String) requestId).isBlank()) {
+                diagnostic += " requestId=" + requestId;
+            }
+        } catch (IOException | IllegalArgumentException ignored) {
+            // The HTTP status remains the safe diagnostic.
+        }
+        return diagnostic;
     }
 }

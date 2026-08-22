@@ -73,7 +73,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
         self.assertEqual(
             {
                 "upsert_worker",
-                "upsert_worker_group",
+                "register_worker_group",
             },
             public_instance_methods,
         )
@@ -126,12 +126,12 @@ class ResourcesCommandClientTest(unittest.TestCase):
         )
         group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-        self.catalog.upsert_worker_group.return_value = group_result
+        self.catalog.register_worker_group.return_value = group_result
         self.runtime.upsert_worker.return_value = worker_result
 
         self.assertIs(
             group_result,
-            self.client.upsert_worker_group(descriptor=group),
+            self.client.register_worker_group(descriptor=group),
         )
         self.assertIs(
             worker_result,
@@ -188,7 +188,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
 
     def test_upsert_initializes_hot_worker_without_start(self) -> None:
         group_id = "image-workers"
-        group_result = self.client.upsert_worker_group(
+        group_result = self.client.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=group_id,
                 attributes={},

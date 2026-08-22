@@ -16,7 +16,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
@@ -32,7 +31,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
@@ -167,15 +165,15 @@ class RuntimeBoundaryIntegrationTest {
         String taskId = "property-task-" + suffix;
 
         assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId,
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + ":register",
                 """
                         {
                           "eventCodes": ["%s"]
                         }
                         """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
-        BoundWorker boundWorker = registerAndBindWorker(
+        PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
@@ -249,15 +247,15 @@ class RuntimeBoundaryIntegrationTest {
         String clientWorkerKey = "direct-worker-" + suffix;
 
         assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId,
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + ":register",
                 """
                         {
                           "eventCodes": ["%s", "%s"]
                         }
                         """.formatted(TEST_EVENT_CODE, DIRECT_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
-        BoundWorker boundWorker = registerAndBindWorker(
+        PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
@@ -355,15 +353,15 @@ class RuntimeBoundaryIntegrationTest {
         String clientWorkerKey = "serviceability-worker-" + suffix;
 
         assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId,
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + ":register",
                 """
                         {
                           "eventCodes": ["%s"]
                         }
                         """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
-        BoundWorker boundWorker = registerAndBindWorker(
+        PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,
                 clientWorkerKey,
                 TransportProfile.WEBSOCKET,
@@ -689,8 +687,8 @@ class RuntimeBoundaryIntegrationTest {
         String secondMessageId = "message-2-" + suffix;
 
         assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId,
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + ":register",
                 """
                         {
                           "eventCodes": ["%s"]
@@ -698,7 +696,7 @@ class RuntimeBoundaryIntegrationTest {
                         """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
 
-        BoundWorker boundWorker = registerAndBindWorker(
+        PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,
                 clientWorkerKey,
                 transportProfile,
@@ -911,7 +909,6 @@ class RuntimeBoundaryIntegrationTest {
                 URI.create("http://127.0.0.1:" + port),
                 workerGroupId,
                 clientWorkerKey,
-                fixedIdentity(workerId),
                 transportType,
                 () -> workerProperties,
                 definitions,
@@ -931,23 +928,7 @@ class RuntimeBoundaryIntegrationTest {
         );
     }
 
-    private static WorkerIdentityStore fixedIdentity(String workerId) {
-        return new WorkerIdentityStore() {
-            @Override
-            public Optional<String> loadWorkerId() {
-                return Optional.of(workerId);
-            }
-
-            @Override
-            public void saveWorkerId(String value) {
-                throw new IllegalStateException(
-                        "Existing integration identity must be reused"
-                );
-            }
-        };
-    }
-
-    private BoundWorker registerAndBindWorker(
+    private PreparedCoordinate prepareWorker(
             String workerGroupId,
             String clientWorkerKey,
             TransportProfile profile,
@@ -959,36 +940,29 @@ class RuntimeBoundaryIntegrationTest {
         String propertiesJson = JSON.writeValueAsString(
                 completeProperties
         );
-        HttpResponse<String> registerResponse = send(
-                "POST",
-                "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers:register",
-                "{\"workerProperties\":" + propertiesJson + "}"
-        );
-        assertThat(registerResponse.statusCode()).isEqualTo(200);
-        String workerId = JSON.readTree(registerResponse.body())
-                .get("workerId")
-                .asText();
         String transportType = switch (profile) {
             case POLLING -> "POLLING";
             case WEBSOCKET -> "WEBSOCKET";
             case SOCKET -> "SOCKET";
         };
-        HttpResponse<String> bindResponse = send(
+        HttpResponse<String> prepareResponse = send(
                 "POST",
                 "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers/" + workerId + ":bind",
+                        + "/workers:prepare",
                 "{\"transportType\":\"" + transportType
                         + "\",\"workerProperties\":"
                         + propertiesJson + "}"
         );
-        assertThat(bindResponse.statusCode()).isEqualTo(200);
+        assertThat(prepareResponse.statusCode()).isEqualTo(200);
+        String workerId = JSON.readTree(prepareResponse.body())
+                .get("workerId")
+                .asText();
         URI endpointUri = URI.create(
-                JSON.readTree(bindResponse.body())
+                JSON.readTree(prepareResponse.body())
                         .get("endpointUri")
                         .asText()
         );
-        return new BoundWorker(workerId, endpointUri);
+        return new PreparedCoordinate(workerId, endpointUri);
     }
 
     private void awaitWorkerRegistered(
@@ -1221,7 +1195,7 @@ class RuntimeBoundaryIntegrationTest {
         void close();
     }
 
-    private record BoundWorker(String workerId, URI endpointUri) {
+    private record PreparedCoordinate(String workerId, URI endpointUri) {
     }
 
     private enum TransportProfile {

@@ -88,6 +88,47 @@ Public Task creation accepts only the finite Server profiles
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE`; the Kernel stores those two facts rather
 than the Server profile name.
 
+## WorkerGroup And Worker Preparation
+
+WorkerGroup is a predeclared control-plane resource. The public registration
+route is create-only:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}:register
+```
+
+An equivalent `attributes + eventCodes` declaration returns
+`already_registered`; a different declaration returns conflict and never
+updates the stored Group. Attributes and Event Names are directory metadata,
+not Matcher, Dispatch, or per-Worker capability truth.
+
+Runtime View offers two intentionally different reads:
+
+```text
+POST /api/v1/runtime-view/worker-groups:batch-get
+POST /api/v1/runtime-view/worker-groups:preview
+```
+
+Batch-get reads at most 20 explicit IDs in request order. Preview performs one
+positive `HRANDFIELD ... WITHVALUES` for `1..100` random Groups. Preview has no
+cursor, total, stable order, or completeness meaning; unreadable sampled rows
+are counted and omitted from the returned views.
+
+One Worker start uses one public control call:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
+```
+
+Prepare requires an existing Group and a non-blank
+`workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
+Worker identity, selects or reuses the persistent Endpoint Binding, upserts the
+complete Worker Properties snapshot and initializes missing scheduling truth.
+These are separate owners and Redis keys, not one transaction; a repeated
+Prepare converges interrupted stages. Workers persist only their Group/client
+key coordinate and never send a Worker ID hint. Transparent reconnect reuses
+the current in-memory identity and Endpoint without preparing again.
+
 Runtime View may request one bounded `1..100` Worker scheduling observation.
 The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
 batch read; `WorkerSchedulingService` projects only facts derivable from that
@@ -161,10 +202,10 @@ Provider selection stays in Server assembly. The shared `kernelredis` package
 owns connection and health only; Redis key operations live in owner-local
 provider packages.
 
-Worker Register establishes Server-owned identity. Every explicit Worker Bind
-validates that identity, persists its Endpoint route, and upserts the complete
-Worker Properties Map through the Kernel owner. Bind is the sole canonical
-Properties refresh; a transparent Client reconnect performs neither operation.
+Worker Prepare composes Server-owned identity resolution and Endpoint Binding
+with the Kernel Worker upsert. The owners and registries remain separate.
+Prepare is the sole canonical Properties refresh; a transparent Client
+reconnect performs no control operation.
 
 ### Worker Delivery
 
@@ -210,7 +251,7 @@ or turn its cache into a KERNEL Report.
 The default profile starts no Adapter and no Scenario Worker. An explicit
 profile or external configuration may:
 
-1. declare advisory WorkerGroup catalogs;
+1. create-only seed advisory WorkerGroup declarations;
 2. create or reuse the deterministic Profile Task for each configured Group;
 3. construct and start configured Adapters;
 4. pass opaque capability assembly JSON, the Lab root and Runtime API base URL

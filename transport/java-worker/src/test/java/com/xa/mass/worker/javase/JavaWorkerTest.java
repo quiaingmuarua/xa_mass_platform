@@ -14,7 +14,6 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -33,7 +32,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -69,37 +67,30 @@ class JavaWorkerTest {
     @Test
     void injectsFixedClientKeyAndDelegatesEachStartToSharedRuntime()
             throws Exception {
-        MemoryIdentityStore identity = new MemoryIdentityStore();
-        enqueueSession(true);
-        worker = worker(identity, Map.of("runtime", "java"));
+        enqueueSession();
+        worker = worker(Map.of("runtime", "java"));
 
         assertEquals(0, server.getRequestCount());
 
         worker.start();
-        RecordedRequest register = takeRequest();
-        RecordedRequest firstBind = takeRequest();
+        RecordedRequest firstPrepare = takeRequest();
         takeRequest();
 
-        assertEquals(WORKER_ID, identity.workerId);
         assertEquals(
                 "fixed-installation",
-                properties(register).get("clientWorkerKey")
+                properties(firstPrepare).get("clientWorkerKey")
         );
-        assertEquals("java", properties(register).get("runtime"));
-        assertEquals(
-                "fixed-installation",
-                properties(firstBind).get("clientWorkerKey")
-        );
+        assertEquals("java", properties(firstPrepare).get("runtime"));
 
         worker.stop();
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
-        enqueueSession(false);
+        enqueueSession();
         worker.start();
-        RecordedRequest secondBind = takeRequest();
+        RecordedRequest secondPrepare = takeRequest();
         takeRequest();
-        assertTrue(secondBind.getTarget().endsWith(
-                "/workers/" + WORKER_ID + ":bind"
+        assertTrue(secondPrepare.getTarget().endsWith(
+                "/workers:prepare"
         ));
         assertEquals(WORKER_ID, worker.snapshot().workerId());
     }
@@ -107,18 +98,16 @@ class JavaWorkerTest {
     @Test
     void changedPropertiesAreLoadedByTheNextExplicitStart()
             throws Exception {
-        MemoryIdentityStore identity = new MemoryIdentityStore();
         AtomicReference<Map<String, Object>> properties =
                 new AtomicReference<>(Map.of(
                         "runtime", "java",
                         "region", "initial"
                 ));
-        enqueueSession(true);
+        enqueueSession();
         worker = JavaWorker.create(
                 URI.create(server.url("/").toString()),
                 "group-1",
                 "fixed-installation",
-                identity,
                 WorkerTransportType.WEBSOCKET,
                 properties::get,
                 definitions(),
@@ -129,10 +118,9 @@ class JavaWorkerTest {
         );
 
         worker.start();
+        RecordedRequest firstPrepare = takeRequest();
         takeRequest();
-        RecordedRequest firstBind = takeRequest();
-        takeRequest();
-        assertEquals("initial", properties(firstBind).get("region"));
+        assertEquals("initial", properties(firstPrepare).get("region"));
 
         properties.set(Map.of(
                 "runtime", "java",
@@ -141,28 +129,27 @@ class JavaWorkerTest {
         worker.stop();
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
-        enqueueSession(false);
+        enqueueSession();
         worker.start();
-        RecordedRequest secondBind = takeRequest();
+        RecordedRequest secondPrepare = takeRequest();
         takeRequest();
 
-        assertTrue(secondBind.getTarget().endsWith(
-                "/workers/" + WORKER_ID + ":bind"
+        assertTrue(secondPrepare.getTarget().endsWith(
+                "/workers:prepare"
         ));
-        assertEquals("updated", properties(secondBind).get("region"));
+        assertEquals("updated", properties(secondPrepare).get("region"));
     }
 
     @Test
-    void createRequiresExplicitIdentityStore() {
+    void createRequiresPropertiesProvider() {
         assertThrows(
                 NullPointerException.class,
                 () -> JavaWorker.create(
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
-                        null,
                         WorkerTransportType.WEBSOCKET,
-                        Map::of
+                        null
                 )
         );
     }
@@ -173,7 +160,6 @@ class JavaWorkerTest {
                 URI.create(server.url("/").toString()),
                 "group-1",
                 "fixed-installation",
-                WorkerIdentityStore.noCache(),
                 WorkerTransportType.WEBSOCKET,
                 Map::of
         );
@@ -189,7 +175,6 @@ class JavaWorkerTest {
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
-                        WorkerIdentityStore.noCache(),
                         WorkerTransportType.WEBSOCKET,
                         Map::of,
                         List.of(WorkerEventDefinition.extension(
@@ -203,10 +188,7 @@ class JavaWorkerTest {
 
     @Test
     void callerCannotOverrideReservedClientWorkerKey() throws Exception {
-        worker = worker(
-                WorkerIdentityStore.noCache(),
-                Map.of("clientWorkerKey", "caller-owned")
-        );
+        worker = worker(Map.of("clientWorkerKey", "caller-owned"));
 
         worker.start();
         await(() -> worker.snapshot().state()
@@ -217,15 +199,11 @@ class JavaWorkerTest {
         ));
     }
 
-    private JavaWorker worker(
-            WorkerIdentityStore identity,
-            Map<String, Object> properties
-    ) {
+    private JavaWorker worker(Map<String, Object> properties) {
         return JavaWorker.create(
                 URI.create(server.url("/").toString()),
                 "group-1",
                 "fixed-installation",
-                identity,
                 WorkerTransportType.WEBSOCKET,
                 () -> properties,
                 definitions(),
@@ -244,7 +222,6 @@ class JavaWorkerTest {
                         URI.create(server.url("/").toString()),
                         "group-1",
                         "fixed-installation",
-                        WorkerIdentityStore.noCache(),
                         WorkerTransportType.POLLING,
                         Map::of
                 )
@@ -253,22 +230,20 @@ class JavaWorkerTest {
 
     @Test
     void socketTypeSelectsTheLineClient() throws Exception {
-        MemoryIdentityStore identity = new MemoryIdentityStore();
-        identity.workerId = WORKER_ID;
         try (ServerSocket lineServer = new ServerSocket(0)) {
             URI endpoint = URI.create(
                     "tcp://127.0.0.1:" + lineServer.getLocalPort()
             );
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"transportType\":\"SOCKET\","
+                    .body("{\"workerId\":\"" + WORKER_ID + "\","
+                            + "\"transportType\":\"SOCKET\","
                             + "\"endpointUri\":\"" + endpoint + "\"}")
                     .build());
             worker = JavaWorker.create(
                     URI.create(server.url("/").toString()),
                     "group-1",
                     "fixed-installation",
-                    identity,
                     WorkerTransportType.SOCKET,
                     () -> Map.of("runtime", "java"),
                     definitions(),
@@ -328,19 +303,14 @@ class JavaWorkerTest {
         );
     }
 
-    private void enqueueSession(boolean registration) {
-        if (registration) {
-            server.enqueue(new MockResponse.Builder()
-                    .code(200)
-                    .body("{\"workerId\":\"" + WORKER_ID + "\"}")
-                    .build());
-        }
+    private void enqueueSession() {
         URI endpoint = URI.create(server.url(
                 "/api/v1/worker-delivery/websocket"
         ).toString().replaceFirst("^http", "ws"));
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"transportType\":\"WEBSOCKET\","
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpoint + "\"}")
                 .build());
         server.enqueue(new MockResponse.Builder()
@@ -379,19 +349,4 @@ class JavaWorkerTest {
         boolean satisfied() throws Exception;
     }
 
-    private static final class MemoryIdentityStore
-            implements WorkerIdentityStore {
-
-        private String workerId;
-
-        @Override
-        public Optional<String> loadWorkerId() {
-            return Optional.ofNullable(workerId);
-        }
-
-        @Override
-        public void saveWorkerId(String value) {
-            workerId = value;
-        }
-    }
 }

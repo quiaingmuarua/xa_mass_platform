@@ -105,7 +105,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         self.redis = redis_client
         self.prefix = prefix
 
-    def upsert_worker_group(
+    def register_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
@@ -123,38 +123,66 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         ):
             return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
 
-        for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
-            observed = self.redis.hget(
-                self._groups_key(),
-                descriptor.worker_group_id,
-            )
-            current = self._decode_worker_group_descriptor(observed)
-            if current is None:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.INVALID,
-                    "stored worker group descriptor is invalid",
-                )
-            if current.worker_group_id != descriptor.worker_group_id:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.CONFLICT,
-                    "stored worker group identity does not match",
-                )
-            if current == descriptor:
-                return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
-            if self.redis.eval(
-                _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
-                1,
-                self._groups_key(),
-                descriptor.worker_group_id,
-                observed,
-                encoded,
-            ) == 1:
-                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-
-        return WorkerRuntimeResult(
-            WorkerRuntimeStatus.STALE,
-            "worker group descriptor changed during metadata replacement",
+        observed = self.redis.hget(
+            self._groups_key(),
+            descriptor.worker_group_id,
         )
+        current = self._decode_worker_group_descriptor(observed)
+        if current is None:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "stored worker group descriptor is invalid",
+            )
+        if current.worker_group_id != descriptor.worker_group_id:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "stored worker group identity does not match",
+            )
+        if current == descriptor:
+            return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+        return WorkerRuntimeResult(
+            WorkerRuntimeStatus.CONFLICT,
+            "worker group is already registered with a different descriptor",
+        )
+
+    def sample_worker_group_descriptors(
+        self,
+        *,
+        sample_limit: int,
+    ) -> Mapping[WorkerGroupId, WorkerGroupDescriptor | None]:
+        if (
+            isinstance(sample_limit, bool)
+            or not isinstance(sample_limit, int)
+            or sample_limit < 1
+            or sample_limit > self.MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT
+        ):
+            raise ValueError(
+                "sampleLimit must be between 1 and "
+                f"{self.MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT}"
+            )
+
+        observed = self.redis.hrandfield(
+            self._groups_key(),
+            count=sample_limit,
+            withvalues=True,
+        )
+        raw_values = list(observed or ())
+        if len(raw_values) % 2 != 0:
+            raise RuntimeError("Redis HRANDFIELD returned an invalid response")
+
+        result: dict[WorkerGroupId, WorkerGroupDescriptor | None] = {}
+        for index in range(0, len(raw_values), 2):
+            worker_group_id = self._decode_optional_text(raw_values[index])
+            if worker_group_id is None:
+                raise RuntimeError("Redis HRANDFIELD returned an invalid field")
+            descriptor = self._decode_worker_group_descriptor(raw_values[index + 1])
+            result[worker_group_id] = (
+                descriptor
+                if descriptor is not None
+                and descriptor.worker_group_id == worker_group_id
+                else None
+            )
+        return result
 
     def get_worker_group_descriptors(
         self,

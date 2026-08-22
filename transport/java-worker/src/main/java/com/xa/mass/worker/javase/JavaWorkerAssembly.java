@@ -4,10 +4,9 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
-import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerControlPreparation;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
 
@@ -30,7 +29,6 @@ final class JavaWorkerAssembly {
             String workerGroupId,
             String clientWorkerKey,
             WorkerTransportType transportType,
-            WorkerIdentityStore identityStore,
             WorkerPropertiesProvider workerProperties,
             Collection<? extends WorkerEventDefinition<?>>
                     definitionExtensions,
@@ -71,10 +69,9 @@ final class JavaWorkerAssembly {
                 )
         );
         return new WorkerRunController(
-                new RegisteredWorkerPreparation(
+                new WorkerControlPreparation(
                         workerGroupId,
                         transportType,
-                        identityStore,
                         completeProperties,
                         platform.controlClient(runtimeApiBaseUrl),
                         options.requestTimeout()

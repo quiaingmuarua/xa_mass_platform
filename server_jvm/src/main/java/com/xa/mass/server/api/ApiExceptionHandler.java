@@ -56,6 +56,7 @@ public final class ApiExceptionHandler {
                     WORKER_ENDPOINT_UNAVAILABLE,
                     RUNTIME_VIEW_UNAVAILABLE,
                     WORKER_SCHEDULING_UNAVAILABLE,
+                    WORKER_GROUP_REGISTRATION_UNAVAILABLE,
                     TASK_BATCH_UNAVAILABLE,
                     DIRECT_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
@@ -71,6 +72,7 @@ public final class ApiExceptionHandler {
             case KERNEL_REJECTED_CONFLICT,
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
+                    WORKER_GROUP_REGISTRATION_CONFLICT,
                     TASK_BATCH_CONFLICT -> HttpStatus.CONFLICT;
             case RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
                     HttpStatus.UNPROCESSABLE_ENTITY;
@@ -78,6 +80,7 @@ public final class ApiExceptionHandler {
                     INVALID_WORKER_DELIVERY_REQUEST,
                     INVALID_WORKER_IDENTITY_REQUEST,
                     INVALID_WORKER_BINDING_REQUEST,
+                    INVALID_WORKER_GROUP_REQUEST,
                     TASK_BATCH_INVALID_REQUEST,
                     INVALID_DIRECT_CALL_REQUEST,
                     MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;

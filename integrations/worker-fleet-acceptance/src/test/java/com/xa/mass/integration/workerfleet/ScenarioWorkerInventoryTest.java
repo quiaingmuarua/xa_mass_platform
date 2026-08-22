@@ -7,7 +7,6 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,89 +19,135 @@ class ScenarioWorkerInventoryTest {
     Path temporaryDirectory;
 
     @Test
-    void loadsExactConfiguredInventory() throws Exception {
+    void validatesSchemaV2LabWithoutPersistedWorkerIdentity()
+            throws Exception {
         FleetSpec spec = spec();
-        Map<String, String> expected = createGroup(
-                "group-a",
-                List.of("client-1", "client-2")
+        createGroup("group-a", List.of("client-1", "client-2"));
+        Files.writeString(
+                temporaryDirectory.resolve("group-a/client-2.json"),
+                "{\"schemaVersion\":2}",
+                StandardCharsets.UTF_8
         );
 
-        Map<String, Map<String, String>> inventory =
-                ScenarioWorkerInventory.load(temporaryDirectory, spec);
-
-        assertEquals(expected, inventory.get("group-a"));
+        ScenarioWorkerInventory.validateLab(temporaryDirectory, spec);
     }
 
     @Test
-    void rejectsMissingExtraAndDuplicateIdentities() throws Exception {
+    void rejectsMissingExtraAndInvalidLabState() throws Exception {
         FleetSpec spec = spec();
-        Map<String, String> workers = createGroup(
-                "group-a",
-                List.of("client-1", "client-2")
-        );
+        createGroup("group-a", List.of("client-1", "client-2"));
         Files.writeString(
-                temporaryDirectory.resolve("group-a").resolve("extra.json"),
-                state(UUID.randomUUID().toString()),
+                temporaryDirectory.resolve("group-a/extra.json"),
+                state(),
                 StandardCharsets.UTF_8
         );
         ScenarioWorkerInventory.InventoryMismatch extra = assertThrows(
                 ScenarioWorkerInventory.InventoryMismatch.class,
-                () -> ScenarioWorkerInventory.load(temporaryDirectory, spec)
+                () -> ScenarioWorkerInventory.validateLab(
+                        temporaryDirectory,
+                        spec
+                )
         );
         assertEquals(List.of("extra"), extra.unexpectedIds());
 
-        Files.delete(temporaryDirectory.resolve("group-a").resolve(
-                "extra.json"
-        ));
-        Files.delete(temporaryDirectory.resolve("group-a").resolve(
-                "client-2.json"
-        ));
+        Files.delete(temporaryDirectory.resolve("group-a/extra.json"));
+        Files.delete(temporaryDirectory.resolve("group-a/client-2.json"));
         ScenarioWorkerInventory.InventoryMismatch missing = assertThrows(
                 ScenarioWorkerInventory.InventoryMismatch.class,
-                () -> ScenarioWorkerInventory.load(temporaryDirectory, spec)
+                () -> ScenarioWorkerInventory.validateLab(
+                        temporaryDirectory,
+                        spec
+                )
         );
         assertEquals(List.of("client-2"), missing.missingIds());
 
         Files.writeString(
-                temporaryDirectory.resolve("group-a").resolve(
-                        "client-2.json"
-                ),
-                state(workers.get("client-1")),
-                StandardCharsets.UTF_8
-        );
-        ScenarioWorkerInventory.InventoryMismatch duplicate = assertThrows(
-                ScenarioWorkerInventory.InventoryMismatch.class,
-                () -> ScenarioWorkerInventory.load(temporaryDirectory, spec)
-        );
-        assertEquals(
-                List.of(workers.get("client-1")),
-                duplicate.inconsistentIds()
-        );
-    }
-
-    @Test
-    void reportsWrongGroupAndInvalidWorkerId() throws Exception {
-        FleetSpec spec = spec();
-        createGroup("wrong-group", List.of("client-1", "client-2"));
-        ScenarioWorkerInventory.InventoryMismatch groups = assertThrows(
-                ScenarioWorkerInventory.InventoryMismatch.class,
-                () -> ScenarioWorkerInventory.load(temporaryDirectory, spec)
-        );
-        assertEquals(List.of("group-a"), groups.missingIds());
-        assertEquals(List.of("wrong-group"), groups.unexpectedIds());
-
-        Files.move(
-                temporaryDirectory.resolve("wrong-group"),
-                temporaryDirectory.resolve("group-a")
-        );
-        Files.writeString(
                 temporaryDirectory.resolve("group-a/client-2.json"),
-                state("not-a-worker-id"),
+                Jsons.toJson(Map.of(
+                        "schemaVersion", 1,
+                        "workerId", UUID.randomUUID().toString(),
+                        "workerProperties", Map.of()
+                )),
                 StandardCharsets.UTF_8
         );
         ScenarioWorkerInventory.InventoryMismatch invalid = assertThrows(
                 ScenarioWorkerInventory.InventoryMismatch.class,
-                () -> ScenarioWorkerInventory.load(temporaryDirectory, spec)
+                () -> ScenarioWorkerInventory.validateLab(
+                        temporaryDirectory,
+                        spec
+                )
+        );
+        assertEquals(List.of("client-2"), invalid.inconsistentIds());
+    }
+
+    @Test
+    void rejectsWrongLabGroup() throws Exception {
+        FleetSpec spec = spec();
+        createGroup("wrong-group", List.of("client-1", "client-2"));
+
+        ScenarioWorkerInventory.InventoryMismatch mismatch = assertThrows(
+                ScenarioWorkerInventory.InventoryMismatch.class,
+                () -> ScenarioWorkerInventory.validateLab(
+                        temporaryDirectory,
+                        spec
+                )
+        );
+
+        assertEquals(List.of("group-a"), mismatch.missingIds());
+        assertEquals(List.of("wrong-group"), mismatch.unexpectedIds());
+    }
+
+    @Test
+    void mapsRuntimePreviewAndRequiresCanonicalUniqueIdentities() {
+        FleetSpec spec = spec();
+        String workerOne = UUID.randomUUID().toString();
+        String workerTwo = UUID.randomUUID().toString();
+
+        Map<String, Map<String, String>> inventory =
+                ScenarioWorkerInventory.loadRuntime(
+                        spec,
+                        ignored -> Map.of(
+                                "client-1", workerOne,
+                                "client-2", workerTwo,
+                                "unrelated-worker", UUID.randomUUID().toString()
+                        )
+                );
+
+        assertEquals(
+                Map.of("client-1", workerOne, "client-2", workerTwo),
+                inventory.get("group-a")
+        );
+
+        ScenarioWorkerInventory.InventoryMismatch missing = assertThrows(
+                ScenarioWorkerInventory.InventoryMismatch.class,
+                () -> ScenarioWorkerInventory.loadRuntime(
+                        spec,
+                        ignored -> Map.of("client-1", workerOne)
+                )
+        );
+        assertEquals(List.of("client-2"), missing.missingIds());
+
+        ScenarioWorkerInventory.InventoryMismatch duplicate = assertThrows(
+                ScenarioWorkerInventory.InventoryMismatch.class,
+                () -> ScenarioWorkerInventory.loadRuntime(
+                        spec,
+                        ignored -> Map.of(
+                                "client-1", workerOne,
+                                "client-2", workerOne
+                        )
+                )
+        );
+        assertEquals(List.of(workerOne), duplicate.inconsistentIds());
+
+        ScenarioWorkerInventory.InventoryMismatch invalid = assertThrows(
+                ScenarioWorkerInventory.InventoryMismatch.class,
+                () -> ScenarioWorkerInventory.loadRuntime(
+                        spec,
+                        ignored -> Map.of(
+                                "client-1", workerOne,
+                                "client-2", "not-a-worker-id"
+                        )
+                )
         );
         assertEquals(List.of("client-2"), invalid.inconsistentIds());
     }
@@ -114,30 +159,23 @@ class ScenarioWorkerInventoryTest {
         );
     }
 
-    private Map<String, String> createGroup(
-            String groupId,
-            List<String> clientKeys
-    ) throws Exception {
+    private void createGroup(String groupId, List<String> clientKeys)
+            throws Exception {
         Path group = Files.createDirectories(
                 temporaryDirectory.resolve(groupId)
         );
-        Map<String, String> workers = new LinkedHashMap<>();
         for (String clientKey : clientKeys) {
-            String workerId = UUID.randomUUID().toString();
-            workers.put(clientKey, workerId);
             Files.writeString(
                     group.resolve(clientKey + ".json"),
-                    state(workerId),
+                    state(),
                     StandardCharsets.UTF_8
             );
         }
-        return workers;
     }
 
-    private static String state(String workerId) {
+    private static String state() {
         return Jsons.toJson(Map.of(
-                "schemaVersion", 1,
-                "workerId", workerId,
+                "schemaVersion", 2,
                 "workerProperties", Map.of(
                         "dynamic",
                         UUID.randomUUID().toString()

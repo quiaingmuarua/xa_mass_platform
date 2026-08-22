@@ -2,7 +2,6 @@ package com.xa.mass.scenarioworkers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -21,7 +20,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -159,36 +157,33 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void workerIdentityWrittenByPreparationIsReusedAfterRestart()
+    void legacyWorkerIdentityIsRemovedBeforeManagerAssembly()
             throws Exception {
         createLabRoot();
         writeWorker(
                 GROUP,
                 "client-1",
                 Map.of("region", "persistent"),
-                null
+                WORKER_ID_1
         );
-        List<Optional<String>> observedIds = new ArrayList<>();
-
-        ScenarioWorkers first = identityWorkers(observedIds);
-        first.start();
-        first.close();
-        ScenarioWorkers second = identityWorkers(observedIds);
-        second.start();
-        second.close();
-
-        assertThat(observedIds).containsExactly(
-                Optional.empty(),
-                Optional.of(WORKER_ID_1)
+        JavaWorkerManager manager = mock(JavaWorkerManager.class);
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                (runtimeApiBaseUrl, preparedGroup) -> manager
         );
+
+        workers.start();
+        workers.close();
+
         assertThat(Jsons.parseObject(Files.readString(
                 labRoot().resolve(GROUP).resolve("client-1.json"),
                 StandardCharsets.UTF_8
-        ))).containsEntry("workerId", WORKER_ID_1)
+        ))).containsEntry("schemaVersion", 2L)
                 .containsEntry(
                         "workerProperties",
                         Map.of("region", "persistent")
-                );
+                )
+                .doesNotContainKey("workerId");
     }
 
     @Test
@@ -242,29 +237,6 @@ class ScenarioWorkersTest {
         InOrder closeOrder = inOrder(first, second);
         closeOrder.verify(second).close();
         closeOrder.verify(first).close();
-    }
-
-    private ScenarioWorkers identityWorkers(
-            List<Optional<String>> observedIds
-    ) {
-        JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        return workers(
-                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                (runtimeApiBaseUrl, preparedGroup) -> {
-                    ScenarioWorkers.PreparedReplica replica =
-                            preparedGroup.replicas().get(0);
-                    doAnswer(invocation -> {
-                        Optional<String> workerId =
-                                replica.identityStore().loadWorkerId();
-                        observedIds.add(workerId);
-                        if (workerId.isEmpty()) {
-                            replica.identityStore().saveWorkerId(WORKER_ID_1);
-                        }
-                        return null;
-                    }).when(manager).start();
-                    return manager;
-                }
-        );
     }
 
     private ScenarioWorkers workers(

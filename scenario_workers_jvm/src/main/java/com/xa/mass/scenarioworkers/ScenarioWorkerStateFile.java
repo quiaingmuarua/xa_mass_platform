@@ -1,6 +1,5 @@
 package com.xa.mass.scenarioworkers;
 
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,39 +11,37 @@ import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
-final class ScenarioWorkerStateFile implements WorkerIdentityStore {
+final class ScenarioWorkerStateFile {
 
     private static final int LAB_INVALID = 14013;
     private static final int LAB_UNAVAILABLE = 14014;
     private static final int LAB_PERSIST_FAILED = 14015;
-    private static final long SCHEMA_VERSION = 1L;
-    private static final Set<String> FIELDS = Set.of(
+    private static final long LEGACY_SCHEMA_VERSION = 1L;
+    private static final long SCHEMA_VERSION = 2L;
+    private static final Set<String> LEGACY_FIELDS = Set.of(
             "schemaVersion",
             "workerId",
             "workerProperties"
     );
+    private static final Set<String> FIELDS = Set.of(
+            "schemaVersion",
+            "workerProperties"
+    );
 
-    private final Path path;
     private final String clientWorkerKey;
     private final Map<String, Object> workerProperties;
-    private String workerId;
 
     private ScenarioWorkerStateFile(
-            Path path,
             String clientWorkerKey,
-            Map<String, Object> workerProperties,
-            String workerId
+            Map<String, Object> workerProperties
     ) {
-        this.path = path;
         this.clientWorkerKey = clientWorkerKey;
         this.workerProperties = immutableJsonMap(
                 workerProperties,
                 "workerProperties"
         );
-        this.workerId = workerId;
     }
 
     static ScenarioWorkerStateFile open(
@@ -73,14 +70,16 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
             throw invalid(normalized, error);
         }
 
-        for (String field : value.keySet()) {
-            if (!FIELDS.contains(field)) {
-                throw invalid(normalized, null);
-            }
+        if (!(value.get("schemaVersion") instanceof Long)) {
+            throw invalid(normalized, null);
         }
-        if (!(value.get("schemaVersion") instanceof Long)
-                || ((Long) value.get("schemaVersion"))
-                != SCHEMA_VERSION) {
+        long schemaVersion = (Long) value.get("schemaVersion");
+        Set<String> allowedFields = schemaVersion == LEGACY_SCHEMA_VERSION
+                ? LEGACY_FIELDS
+                : FIELDS;
+        if ((schemaVersion != LEGACY_SCHEMA_VERSION
+                && schemaVersion != SCHEMA_VERSION)
+                || !allowedFields.containsAll(value.keySet())) {
             throw invalid(normalized, null);
         }
 
@@ -90,22 +89,23 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
                 normalized
         );
 
-        String workerId = null;
-        if (value.containsKey("workerId")) {
+        if (schemaVersion == LEGACY_SCHEMA_VERSION
+                && value.containsKey("workerId")) {
             Object rawWorkerId = value.get("workerId");
-            if (!(rawWorkerId instanceof String)) {
+            if (!(rawWorkerId instanceof String)
+                    || ((String) rawWorkerId).trim().isEmpty()) {
                 throw invalid(normalized, null);
             }
-            workerId = requireWorkerId(
-                    (String) rawWorkerId,
-                    "scenarioWorkerStateFile.open"
-            );
+        }
+        if (schemaVersion == LEGACY_SCHEMA_VERSION) {
+            Map<String, Object> migrated = new LinkedHashMap<>();
+            migrated.put("schemaVersion", SCHEMA_VERSION);
+            migrated.put("workerProperties", workerProperties);
+            writeJson(normalized, migrated);
         }
         return new ScenarioWorkerStateFile(
-                normalized,
                 clientWorkerKey,
-                workerProperties,
-                workerId
+                workerProperties
         );
     }
 
@@ -115,36 +115,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
 
     Map<String, Object> workerProperties() {
         return workerProperties;
-    }
-
-    @Override
-    public synchronized Optional<String> loadWorkerId() {
-        return Optional.ofNullable(workerId);
-    }
-
-    @Override
-    public synchronized void saveWorkerId(String value) {
-        String resolvedWorkerId = requireWorkerId(
-                value,
-                "scenarioWorkerStateFile.storeIdentity"
-        );
-        if (workerId != null) {
-            if (!workerId.equals(resolvedWorkerId)) {
-                throw new ScenarioWorkerAssemblyException(
-                        LAB_INVALID,
-                        "scenarioWorkerStateFile.storeIdentity",
-                        "Scenario Worker file already contains a different workerId"
-                );
-            }
-            return;
-        }
-
-        Map<String, Object> persisted = new LinkedHashMap<>();
-        persisted.put("schemaVersion", SCHEMA_VERSION);
-        persisted.put("workerId", resolvedWorkerId);
-        persisted.put("workerProperties", workerProperties);
-        writeJson(path, persisted);
-        workerId = resolvedWorkerId;
     }
 
     private static void writeJson(
@@ -182,7 +152,7 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
         } catch (IOException | IllegalArgumentException error) {
             throw new ScenarioWorkerAssemblyException(
                     LAB_PERSIST_FAILED,
-                    "scenarioWorkerStateFile.storeIdentity",
+                    "scenarioWorkerStateFile.migrate",
                     "Could not persist Scenario Worker file " + target,
                     error
             );
@@ -195,20 +165,6 @@ final class ScenarioWorkerStateFile implements WorkerIdentityStore {
                 }
             }
         }
-    }
-
-    private static String requireWorkerId(
-            String value,
-            String operation
-    ) {
-        if (value == null || value.trim().isEmpty()) {
-            throw new ScenarioWorkerAssemblyException(
-                    LAB_INVALID,
-                    operation,
-                    "Scenario Worker file contains a blank workerId"
-            );
-        }
-        return value;
     }
 
     private static Map<String, Object> optionalObject(

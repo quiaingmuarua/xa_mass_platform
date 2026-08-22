@@ -29,7 +29,7 @@ final class ServerWorkerGroupInitializer {
             return;
         }
         for (WorkerGroupDescriptor descriptor : descriptors) {
-            WorkerRuntimeResult result = workerCatalog.upsertWorkerGroup(
+            WorkerRuntimeResult result = workerCatalog.registerWorkerGroup(
                     descriptor
             );
             if (result == null

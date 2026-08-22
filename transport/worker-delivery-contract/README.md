@@ -82,10 +82,10 @@ opaque payload. An Adapter may instead report a pre-delivery rejection as
 fields needed by downstream owners.
 
 Before opening a Worker transport, the Worker obtains a long-lived
-platform-issued `workerId` from the Server Identity API using its
-`workerGroupId + clientWorkerKey`. It then calls the Server Bind API with its
-requested transport and complete Worker Properties snapshot. Bind persists the
-delivery endpoint and returns its public URI. Worker Delivery treats
+platform-issued `workerId` and public Endpoint URI from one Server Prepare call
+using its `workerGroupId + clientWorkerKey`, requested transport, and complete
+Worker Properties snapshot. The Worker does not persist or hint that ID on a
+later explicit start. Worker Delivery treats
 `workerId` as an opaque non-blank routing value; its concrete format remains
 owned by the Server Identity implementation.
 

@@ -14,8 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 final class ScenarioWorkerInventory {
+
+    private static final Set<String> STATE_FIELDS = Set.of(
+            "schemaVersion",
+            "workerProperties"
+    );
 
     private ScenarioWorkerInventory() {
     }
@@ -23,13 +29,15 @@ final class ScenarioWorkerInventory {
     static Map<String, Map<String, String>> await(
             Path root,
             FleetSpec spec,
+            RuntimeApiClient api,
             Duration maximumWait
     ) {
         long deadline = System.nanoTime() + maximumWait.toNanos();
         RuntimeException latest = null;
         while (System.nanoTime() < deadline) {
             try {
-                return load(root, spec);
+                validateLab(root, spec);
+                return loadRuntime(api, spec);
             } catch (IOException | RuntimeException error) {
                 latest = error instanceof RuntimeException runtime
                         ? runtime
@@ -57,10 +65,7 @@ final class ScenarioWorkerInventory {
         );
     }
 
-    static Map<String, Map<String, String>> load(
-            Path root,
-            FleetSpec spec
-    ) throws IOException {
+    static void validateLab(Path root, FleetSpec spec) throws IOException {
         if (!Files.isDirectory(root)) {
             throw new IllegalStateException(
                     "Scenario Worker Lab does not exist"
@@ -78,12 +83,11 @@ final class ScenarioWorkerInventory {
             );
         }
 
-        Set<String> allWorkerIds = new HashSet<>();
-        Map<String, Map<String, String>> inventory = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> expected
                 : spec.clientWorkerKeysByGroup().entrySet()) {
-            Path groupRoot = root.resolve(expected.getKey());
-            Map<String, Path> files = workerFiles(groupRoot);
+            Map<String, Path> files = workerFiles(root.resolve(
+                    expected.getKey()
+            ));
             Set<String> expectedKeys = new LinkedHashSet<>(expected.getValue());
             if (!files.keySet().equals(expectedKeys)) {
                 throw mismatch(
@@ -95,7 +99,6 @@ final class ScenarioWorkerInventory {
                         List.of()
                 );
             }
-            Map<String, String> group = new LinkedHashMap<>();
             for (String clientWorkerKey : expected.getValue()) {
                 Map<String, Object> state = Jsons.parseObject(
                         Files.readString(
@@ -104,21 +107,65 @@ final class ScenarioWorkerInventory {
                         )
                 );
                 Object schemaVersion = state.get("schemaVersion");
-                if (!(schemaVersion instanceof Number number)
-                        || number.intValue() != 1) {
+                boolean propertiesValid =
+                        !state.containsKey("workerProperties")
+                                || state.get("workerProperties")
+                                instanceof Map<?, ?>;
+                if (!STATE_FIELDS.containsAll(state.keySet())
+                        || !(schemaVersion instanceof Number number)
+                        || number.intValue() != 2
+                        || !propertiesValid) {
                     throw inconsistent(
                             "lab.worker-state",
                             expected.getKey(),
-                            "Scenario Worker state has invalid schemaVersion",
+                            "Scenario Worker state is not schema v2",
                             clientWorkerKey
                     );
                 }
+            }
+        }
+    }
+
+    static Map<String, Map<String, String>> loadRuntime(
+            RuntimeApiClient api,
+            FleetSpec spec
+    ) {
+        return loadRuntime(spec, api::previewWorkerIdentities);
+    }
+
+    static Map<String, Map<String, String>> loadRuntime(
+            FleetSpec spec,
+            Function<String, Map<String, String>> previewByGroup
+    ) {
+        Set<String> allWorkerIds = new HashSet<>();
+        Map<String, Map<String, String>> inventory = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> expected
+                : spec.clientWorkerKeysByGroup().entrySet()) {
+            Map<String, String> observed = previewByGroup.apply(
+                    expected.getKey()
+            );
+            Set<String> expectedKeys = new LinkedHashSet<>(expected.getValue());
+            Set<String> observedKeys = observed.keySet();
+            if (!observedKeys.containsAll(expectedKeys)) {
+                throw mismatch(
+                        "runtime.client-worker-keys",
+                        expected.getKey(),
+                        "Runtime Worker preview is missing fleet identities",
+                        expectedKeys,
+                        observedKeys,
+                        List.of()
+                );
+            }
+            Map<String, String> group = new LinkedHashMap<>();
+            for (String clientWorkerKey : expected.getValue()) {
                 String workerId;
                 try {
-                    workerId = canonicalWorkerId(state.get("workerId"));
+                    workerId = canonicalWorkerId(
+                            observed.get(clientWorkerKey)
+                    );
                 } catch (IllegalStateException error) {
                     throw inconsistent(
-                            "lab.worker-id",
+                            "runtime.worker-id",
                             expected.getKey(),
                             error.getMessage(),
                             clientWorkerKey
@@ -126,9 +173,9 @@ final class ScenarioWorkerInventory {
                 }
                 if (!allWorkerIds.add(workerId)) {
                     throw inconsistent(
-                            "lab.worker-id-uniqueness",
+                            "runtime.worker-id-uniqueness",
                             expected.getKey(),
-                            "Scenario Worker IDs must be globally unique",
+                            "Runtime Worker IDs must be globally unique",
                             workerId
                     );
                 }
@@ -147,8 +194,7 @@ final class ScenarioWorkerInventory {
         Set<String> directories = new LinkedHashSet<>();
         try (var paths = Files.list(root)) {
             for (Path path : paths.sorted().toList()) {
-                if (Files.isDirectory(path)
-                        && !Files.isSymbolicLink(path)) {
+                if (Files.isDirectory(path) && !Files.isSymbolicLink(path)) {
                     directories.add(path.getFileName().toString());
                 }
             }
@@ -181,18 +227,18 @@ final class ScenarioWorkerInventory {
     private static String canonicalWorkerId(Object value) {
         if (!(value instanceof String workerId) || workerId.isBlank()) {
             throw new IllegalStateException(
-                    "Scenario Worker state has no Worker ID"
+                    "Runtime Worker descriptor has no Worker ID"
             );
         }
         try {
             if (!UUID.fromString(workerId).toString().equals(workerId)) {
                 throw new IllegalStateException(
-                        "Scenario Worker ID is not canonical"
+                        "Runtime Worker ID is not canonical"
                 );
             }
         } catch (IllegalArgumentException error) {
             throw new IllegalStateException(
-                    "Scenario Worker ID is invalid",
+                    "Runtime Worker ID is invalid",
                     error
             );
         }

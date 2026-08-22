@@ -207,7 +207,7 @@ class WorkerFleetAcceptanceMainTest {
             for (String clientKey : group.getValue()) {
                 String workerId = UUID.randomUUID().toString();
                 groupIds.put(clientKey, workerId);
-                writeState(directory.resolve(clientKey + ".json"), workerId);
+                writeState(directory.resolve(clientKey + ".json"));
             }
             workerIds.put(group.getKey(), groupIds);
         }
@@ -258,19 +258,14 @@ class WorkerFleetAcceptanceMainTest {
     ) throws Exception {
         String workerId = UUID.randomUUID().toString();
         fixture.workerIds().get(groupId).put(clientKey, workerId);
-        writeState(
-                fixture.lab().resolve(groupId).resolve(clientKey + ".json"),
-                workerId
-        );
     }
 
-    private static void writeState(Path path, String workerId)
+    private static void writeState(Path path)
             throws Exception {
         Files.writeString(
                 path,
                 Jsons.toJson(Map.of(
-                        "schemaVersion", 1,
-                        "workerId", workerId,
+                        "schemaVersion", 2,
                         "workerProperties", Map.of("dynamic", true)
                 )),
                 StandardCharsets.UTF_8
@@ -288,6 +283,7 @@ class WorkerFleetAcceptanceMainTest {
     private static final class FakeFleetServer implements AutoCloseable {
 
         private final HttpServer server;
+        private final Map<String, Map<String, String>> workersByGroup;
         private final Map<String, String> groupByWorkerId =
                 new LinkedHashMap<>();
         private final Map<String, Map<String, Object>> latestProperties =
@@ -304,6 +300,7 @@ class WorkerFleetAcceptanceMainTest {
                 Map<String, Map<String, String>> workers
         ) {
             this.server = server;
+            this.workersByGroup = workers;
             workers.forEach((groupId, group) -> group.values().forEach(
                     workerId -> groupByWorkerId.put(workerId, groupId)
             ));
@@ -325,7 +322,10 @@ class WorkerFleetAcceptanceMainTest {
         private void handle(HttpExchange exchange) throws IOException {
             try {
                 String path = exchange.getRequestURI().getPath();
-                if (path.endsWith("/workers:network-observe")) {
+                if (path.contains("/runtime-view/worker-groups/")
+                        && path.endsWith("/workers:preview")) {
+                    workerPreview(exchange, path);
+                } else if (path.endsWith("/workers:network-observe")) {
                     network(exchange);
                 } else if (path.endsWith("/direct-calls")) {
                     directCall(exchange);
@@ -335,6 +335,39 @@ class WorkerFleetAcceptanceMainTest {
             } catch (RuntimeException error) {
                 respond(exchange, 500, Map.of("error", "fixture failure"));
             }
+        }
+
+        private void workerPreview(HttpExchange exchange, String path)
+                throws IOException {
+            String marker = "/runtime-view/worker-groups/";
+            int start = path.indexOf(marker) + marker.length();
+            String groupId = path.substring(
+                    start,
+                    path.length() - "/workers:preview".length()
+            );
+            Map<String, String> identities = workersByGroup.get(groupId);
+            if (identities == null) {
+                respond(exchange, 404, Map.of());
+                return;
+            }
+            List<Map<String, Object>> workers = identities.entrySet()
+                    .stream()
+                    .map(entry -> Map.<String, Object>of(
+                            "workerId", entry.getValue(),
+                            "workerGroupId", groupId,
+                            "workerProperties", Map.of(
+                                    "clientWorkerKey",
+                                    entry.getKey()
+                            )
+                    ))
+                    .toList();
+            respond(exchange, 200, Map.of(
+                    "sampleLimit", 100,
+                    "sampledCount", workers.size(),
+                    "returnedCount", workers.size(),
+                    "unreadableCount", 0,
+                    "workers", workers
+            ));
         }
 
         private void network(HttpExchange exchange) throws IOException {

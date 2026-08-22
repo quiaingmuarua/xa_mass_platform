@@ -6,7 +6,7 @@ implementation for [`transport:worker-core`](../worker-core/README.md).
 ```text
 JavaWorker
   -> owns one package-private JavaWorkerPlatform
-  -> RegisteredWorkerPreparation
+  -> WorkerControlPreparation
   -> WorkerCommandDispatcher
   -> TextMessageWorkerTransportFactory
   -> WorkerRunController
@@ -34,7 +34,6 @@ JavaWorker worker = JavaWorker.create(
         URI.create("http://127.0.0.1:18082"),
         "phone-workers",
         "stable-installation-key",
-        identityStore,
         WorkerTransportType.WEBSOCKET,
         () -> Map.of(
                 "runtime", "java",
@@ -50,8 +49,9 @@ worker.close();
 
 The fixed client key is injected as the reserved
 `workerProperties.clientWorkerKey`; caller Properties may not override it.
-Long-lived Hosts supply a persistent `WorkerIdentityStore`. Finite tests may
-use `WorkerIdentityStore.noCache()` and rely on Register idempotency.
+Java Worker does not store Worker ID. Each explicit start sends the Group,
+fixed client key and complete Properties to Server Prepare; the Server-owned
+identity registry returns the same Worker ID while its Redis state remains.
 
 `WEBSOCKET` selects the internal OkHttp text Client and `SOCKET` selects the
 internal UTF-8 line Client. `POLLING` remains a separate request-response
@@ -69,7 +69,7 @@ Neither exposes the assembly-owned `clientWorkerKey`. Connection close is
 handled by Transport rather than registered as a Definition. The common
 overload omits both extensions and options; another overload accepts extensions
 with default connection options.
-`create()` assembles local resources but performs no Register, Bind, or
+`create()` assembles local resources but performs no Prepare or
 connection I/O until `start()`.
 
 `start()` submits one Preparation to the Worker's internal Control executor
@@ -77,15 +77,15 @@ and returns immediately:
 
 ```text
 load Properties
--> recover or Register workerId
--> Endpoint Bind
+-> one Worker Prepare request
+-> receive workerId and Endpoint
 -> install TextMessageWorkerTransport
 -> return while the concrete Client connects asynchronously
 ```
 
 Temporary disconnects reuse the prepared URI. Reconnect exhaustion returns
 the Worker to `STOPPED`; only an explicit later `start()` performs another
-Bind. That Bind carries the only canonical Properties refresh; a running
+Prepare. That Prepare carries the only canonical Properties refresh; a running
 provider change is observable through an explicit Worker snapshot Command but
 waits for the next stop/start before it reaches Kernel resource truth. The
 Worker caches no Endpoint URI, Command, or Result.
@@ -122,8 +122,8 @@ JavaWorkerManager manager = JavaWorkerManager.builder(
         .extendEventDefinitions(phoneDefinitionExtensions)
         .extendEventDefinitions(commonDefinitionExtensions)
         .options(WorkerConnectionOptions.defaults())
-        .replica("installation-1", identityStore1, properties1)
-        .replica("installation-2", identityStore2, properties2)
+        .replica("installation-1", properties1)
+        .replica("installation-2", properties2)
         .build();
 ```
 

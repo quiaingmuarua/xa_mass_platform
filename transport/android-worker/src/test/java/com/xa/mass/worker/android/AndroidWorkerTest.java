@@ -67,7 +67,7 @@ public class AndroidWorkerTest {
     public void setUp() throws Exception {
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
-                AndroidWorkerIdentityStore.PREFERENCES,
+                AndroidClientWorkerKeyStore.PREFERENCES,
                 Context.MODE_PRIVATE
         ).edit().clear().commit();
         server = new MockWebServer();
@@ -91,15 +91,14 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void firstStartRegistersBindsAndExecutesThroughCoreTransport()
+    public void firstStartPreparesAndExecutesThroughCoreTransport()
             throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         CountDownLatch resultReceived = new CountDownLatch(1);
         AtomicReference<DeliveryReport> identity =
                 new AtomicReference<>();
         AtomicReference<DeliveryReport> result = new AtomicReference<>();
-        enqueueRegister();
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
@@ -125,16 +124,15 @@ public class AndroidWorkerTest {
         worker.start();
         assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
 
-        RecordedRequest register = takeRequest();
-        RecordedRequest binding = takeRequest();
+        RecordedRequest preparation = takeRequest();
         RecordedRequest socket = takeRequest();
-        assertTrue(register.getTarget().endsWith("workers:register"));
-        Map<String, Object> registerBody = Jsons.parseObject(
-                register.getBody().utf8()
+        assertTrue(preparation.getTarget().endsWith("workers:prepare"));
+        Map<String, Object> preparationBody = Jsons.parseObject(
+                preparation.getBody().utf8()
         );
         @SuppressWarnings("unchecked")
         Map<String, Object> registeredProperties =
-                (Map<String, Object>) registerBody.get("workerProperties");
+                (Map<String, Object>) preparationBody.get("workerProperties");
         String clientWorkerKey = (String) registeredProperties.get(
                 "clientWorkerKey"
         );
@@ -143,15 +141,8 @@ public class AndroidWorkerTest {
                 clientWorkerKey
         );
         assertEquals("android", registeredProperties.get("runtime"));
-        assertTrue(binding.getTarget().endsWith(
-                "/workers/" + WORKER_ID + ":bind"
-        ));
-        assertFalse(Jsons.parseObject(binding.getBody().utf8())
+        assertFalse(preparationBody
                 .containsKey("clientWorkerKey"));
-        assertEquals(
-                clientWorkerKey,
-                bindingProperties(binding).get("clientWorkerKey")
-        );
         assertEquals(
                 "/api/v1/worker-delivery/websocket",
                 socket.getTarget()
@@ -177,38 +168,36 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void stopThenStartReusesWorkerIdButAlwaysBindsAgain()
+    public void stopThenStartKeepsClientKeyAndPreparesAgain()
             throws Exception {
-        enqueueRegister();
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        RecordedRequest firstRegister = takeRequest();
-        RecordedRequest firstBind = takeRequest();
+        RecordedRequest firstPrepare = takeRequest();
         takeRequest();
-        String clientWorkerKey = (String) bindingProperties(firstBind).get(
+        String clientWorkerKey = (String) bindingProperties(firstPrepare).get(
                 "clientWorkerKey"
         );
-        assertTrue(firstRegister.getTarget().endsWith("workers:register"));
+        assertTrue(firstPrepare.getTarget().endsWith("workers:prepare"));
 
         worker.stop();
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
 
-        RecordedRequest secondBind = takeRequest();
+        RecordedRequest secondPrepare = takeRequest();
         RecordedRequest secondSocket = takeRequest();
-        assertTrue(secondBind.getTarget().endsWith(
-                "/workers/" + WORKER_ID + ":bind"
+        assertTrue(secondPrepare.getTarget().endsWith(
+                "/workers:prepare"
         ));
         assertEquals(
                 clientWorkerKey,
-                bindingProperties(secondBind).get("clientWorkerKey")
+                bindingProperties(secondPrepare).get("clientWorkerKey")
         );
         assertEquals(
                 "/api/v1/worker-delivery/websocket",
@@ -220,13 +209,11 @@ public class AndroidWorkerTest {
     @Test
     public void changedPropertiesAreLoadedByTheNextExplicitStart()
             throws Exception {
-        enqueueRegister();
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker = worker(context -> properties.get());
         worker.start();
-        takeRequest();
         takeRequest();
         takeRequest();
 
@@ -239,7 +226,7 @@ public class AndroidWorkerTest {
         worker.stop();
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
@@ -247,7 +234,7 @@ public class AndroidWorkerTest {
         takeRequest();
 
         assertTrue(refreshed.getTarget().endsWith(
-                "/workers/" + WORKER_ID + ":bind"
+                "/workers:prepare"
         ));
         assertEquals(
                 "updated",
@@ -308,8 +295,7 @@ public class AndroidWorkerTest {
 
     @Test
     public void onlyOneActiveWorkerPerApplicationAndGroup() throws Exception {
-        enqueueRegister();
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker = worker(context -> properties.get());
@@ -329,8 +315,7 @@ public class AndroidWorkerTest {
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch duplicateOpen = new CountDownLatch(1);
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        enqueueRegister();
-        enqueueBind();
+        enqueuePrepare();
         server.enqueue(webSocketSession(new WebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
@@ -381,7 +366,7 @@ public class AndroidWorkerTest {
             await(() -> worker.snapshot().state()
                     == WorkerLifecycle.State.STOPPED);
 
-            enqueueBind();
+            enqueuePrepare();
             server.enqueue(webSocketSession(new WebSocketListener() {
                 @Override
                 public void onOpen(
@@ -456,17 +441,11 @@ public class AndroidWorkerTest {
         }
     }
 
-    private void enqueueRegister() {
+    private void enqueuePrepare() {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workerId\":\"" + WORKER_ID + "\"}")
-                .build());
-    }
-
-    private void enqueueBind() {
-        server.enqueue(new MockResponse.Builder()
-                .code(200)
-                .body("{\"transportType\":\"WEBSOCKET\","
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"" + endpointUri() + "\"}")
                 .build());
     }

@@ -3,7 +3,6 @@ package com.xa.mass.worker.javase;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 
@@ -177,7 +176,6 @@ public final class JavaWorkerManager implements AutoCloseable {
         WorkerLifecycle assemble(
                 JavaWorkerPlatform platform,
                 String clientWorkerKey,
-                WorkerIdentityStore identityStore,
                 WorkerPropertiesProvider workerProperties
         );
     }
@@ -236,7 +234,6 @@ public final class JavaWorkerManager implements AutoCloseable {
 
         public Builder replica(
                 String clientWorkerKey,
-                WorkerIdentityStore identityStore,
                 WorkerPropertiesProvider workerProperties
         ) {
             String key = requireNonBlank(
@@ -250,7 +247,6 @@ public final class JavaWorkerManager implements AutoCloseable {
             }
             replicas.put(key, new ReplicaSpec(
                     key,
-                    Objects.requireNonNull(identityStore, "identityStore"),
                     Objects.requireNonNull(
                             workerProperties,
                             "workerProperties"
@@ -280,7 +276,6 @@ public final class JavaWorkerManager implements AutoCloseable {
                                     workerGroupId,
                                     replica.clientWorkerKey,
                                     transportType,
-                                    replica.identityStore,
                                     replica.workerProperties,
                                     definitionExtensions,
                                     options,
@@ -289,7 +284,6 @@ public final class JavaWorkerManager implements AutoCloseable {
                             : workerAssembler.assemble(
                                     platform,
                                     replica.clientWorkerKey,
-                                    replica.identityStore,
                                     replica.workerProperties
                             );
                     if (worker == null) {
@@ -342,16 +336,13 @@ public final class JavaWorkerManager implements AutoCloseable {
     private static final class ReplicaSpec {
 
         private final String clientWorkerKey;
-        private final WorkerIdentityStore identityStore;
         private final WorkerPropertiesProvider workerProperties;
 
         private ReplicaSpec(
                 String clientWorkerKey,
-                WorkerIdentityStore identityStore,
                 WorkerPropertiesProvider workerProperties
         ) {
             this.clientWorkerKey = clientWorkerKey;
-            this.identityStore = identityStore;
             this.workerProperties = workerProperties;
         }
     }

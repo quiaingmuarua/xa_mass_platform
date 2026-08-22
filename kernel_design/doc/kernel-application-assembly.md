@@ -9,7 +9,7 @@ The current system exposes narrow control, data, and delivery boundaries:
 ```text
 Direct Python SDK / executable-spec support
   -> ResourcesCommandClient
-     -> WorkerGroup upsert and Worker upsert
+     -> WorkerGroup registration and Worker upsert
 
 Java-supervised Python Pacer CLI
   -> KernelApplication
@@ -40,7 +40,7 @@ not implement Pacers or their candidate/dispatch Score operations.
 
 ```text
 ResourcesCommandClient
-upsert_worker_group
+register_worker_group
 upsert_worker
 
 KernelApplication
@@ -94,7 +94,7 @@ interpretation of scheduling policy.
 The JVM incremental assembly is explicit per operation:
 
 ```text
-WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
+WorkerGroup register            -> Java Redis WorkerResourceCatalog provider
 Worker upsert                     -> Java Redis WorkerRuntime provider
 Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
 Worker upsert score operations      -> Java Redis WorkerScoreCore provider
@@ -116,23 +116,24 @@ The JVM delivery slice implements the generic non-overwriting
 consume operations. Authoritative `appendWorkerCommands` remains an explicit
 JVM gap; Python scheduling continues to own that publication path.
 
-WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts
+WorkerGroup registration reuses `WorkerGroupDescriptor`. Worker upsert accepts
 the caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains
 a query projection containing Worker and Platform property snapshots. The
 Kernel Runtime Server owns its HTTP request models because they are
 protocol-edge translations.
 
-An explicit WorkerGroup upsert atomically replaces its `attributes` and
-`eventCodes`; identical content is a no-op. `workerGroupId` remains the stable
-scheduling partition identity. The replaced fields are control-plane catalog
-metadata and are not consulted by Matcher or Dispatch.
+An explicit WorkerGroup registration atomically creates its `attributes` and
+`eventCodes`; identical content is a no-op and different content conflicts
+without replacement. `workerGroupId` remains the stable scheduling partition
+identity. The declared fields are control-plane catalog metadata and are not
+consulted by Matcher or Dispatch.
 
 First Worker upsert fixes lane rank at zero and initializes
 the Worker HOT score without requiring the scheduling process to be running.
 Compatible repeat upsert repairs a missing owner, metadata, properties row, or
 score and replaces the complete `workerProperties` snapshot while preserving
 `platformProperties` and every existing score. The external Server invokes it
-while processing Worker Bind; the operation itself is not durable connectivity,
+while processing Worker Prepare; the operation itself is not durable connectivity,
 activation, or serviceability evidence.
 `create_task` selects the initial PRE_REVIEW owner code internally. It is a
 create-only command: an existing descriptor conflicts and is never overwritten.
@@ -417,9 +418,9 @@ The Java Runtime API Server exposes Worker resources, Task data, and Worker
 Delivery at port `18082`:
 
 ```text
-PUT  /api/v1/worker-groups/{workerGroupId}
-POST /api/v1/worker-groups/{workerGroupId}/workers:register
-POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:bind
+POST /api/v1/worker-groups/{workerGroupId}:register
+POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
+POST /api/v1/runtime-view/worker-groups:preview
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
@@ -438,15 +439,21 @@ the standard Item unchanged through Task data. WorkerGroup is the URL
 coordinate; it is not copied into the Item, and the response exposes neither
 the internal Task ID nor the selected Worker.
 
-Identity registration receives complete Worker Properties and maps
+WorkerGroup registration is create-only control-plane setup: an equivalent
+declaration is idempotent and a different declaration conflicts without
+changing the existing Group. The bounded Runtime View preview performs one
+random HASH sample and makes no list, order, count, or completeness claim.
+
+Worker Prepare receives complete Worker Properties and maps
 `workerGroupId + workerProperties.clientWorkerKey` to a long-lived
 platform-issued Worker UUID in a Server-owned namespace; other Properties do
-not enter that coordinate and Register does not call a Kernel owner. Bind
-receives the same complete snapshot, verifies its client key, persists an
-Endpoint Manager, and invokes Kernel Worker upsert with that snapshot.
-This Bind is the canonical Worker Properties refresh point. Transparent Client
-reconnect sends only connection identity, while Adapter properties snapshots
-remain process-local observation and never invoke a Kernel write owner.
+not enter that coordinate. It then verifies or establishes the separate
+Endpoint Binding and invokes Kernel Worker upsert with the same snapshot.
+Prepare is deliberately multi-owner and retry-convergent rather than a
+cross-key transaction. It is the canonical Worker Properties refresh point.
+Transparent Client reconnect sends only connection identity, while Adapter
+properties snapshots remain process-local observation and never invoke a
+Kernel write owner.
 Pure polling Workers bind to the fixed logical `system-polling` endpoint
 manager and cannot scan the mailbox. Point calls and Adapter connections verify
 the persisted route; this is routing consistency, not authentication.
@@ -463,7 +470,7 @@ declare `src=WORKER` and
 `src=ADAPTER + sourceId=adapterId`. Result ingress does not carry a deadline.
 Delivery has no outer message or correlation ID.
 
-The Worker host knows its WorkerGroup/client key for Register and Bind, then
+The Worker host knows its WorkerGroup/client key for Prepare, then
 receives the platform-issued WorkerId and public endpoint URI. The Worker
 Transport knows the WorkerId, endpoint URI, Worker Delivery contracts, and
 statically provided event definitions. It does not know a WorkerGroup or an
@@ -483,8 +490,8 @@ same-lifetime scheduler, round isolation, shutdown phase, and reverse finish
 order. The Adapter aggregate still owns lifecycle and network ordering. The Server only
 parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
-Workers Register and establish Endpoint Binding before connecting; the Bind
-control call carries the complete Worker Properties snapshot. The connection
+Workers Prepare before connecting; the one control call carries the complete
+Worker Properties snapshot and returns the resolved identity and endpoint. The connection
 identity Report carries WorkerId in `sourceId` and exact `null` payload; the
 Adapter asks Server only whether that WorkerId's persisted
 Binding points to the receiving Endpoint Manager before activating the Channel

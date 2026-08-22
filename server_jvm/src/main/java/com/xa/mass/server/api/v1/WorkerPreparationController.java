@@ -1,8 +1,8 @@
 package com.xa.mass.server.api.v1;
 
-import com.xa.mass.server.api.v1.model.WorkerBindingRequest;
-import com.xa.mass.server.api.v1.model.WorkerBindingResponse;
-import com.xa.mass.server.workerbinding.WorkerBindingService;
+import com.xa.mass.server.api.v1.model.WorkerPreparationRequest;
+import com.xa.mass.server.api.v1.model.WorkerPreparationResponse;
+import com.xa.mass.server.workerpreparation.WorkerPreparationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
@@ -15,23 +15,23 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/worker-groups")
-public class WorkerBindingController {
+public class WorkerPreparationController {
 
-    private final WorkerBindingService bindings;
+    private final WorkerPreparationService preparations;
 
-    public WorkerBindingController(WorkerBindingService bindings) {
-        this.bindings = bindings;
+    public WorkerPreparationController(
+            WorkerPreparationService preparations
+    ) {
+        this.preparations = preparations;
     }
 
-    @PostMapping("/{workerGroupId}/workers/{workerId}:bind")
-    public WorkerBindingResponse bindWorker(
+    @PostMapping("/{workerGroupId}/workers:prepare")
+    public WorkerPreparationResponse prepareWorker(
             @PathVariable @NotBlank String workerGroupId,
-            @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody WorkerBindingRequest request
+            @Valid @RequestBody WorkerPreparationRequest request
     ) {
-        return WorkerBindingResponse.from(bindings.bind(
+        return WorkerPreparationResponse.from(preparations.prepare(
                 workerGroupId,
-                workerId,
                 request.transportType(),
                 request.workerProperties()
         ));

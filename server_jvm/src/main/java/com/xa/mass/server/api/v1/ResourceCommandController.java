@@ -1,22 +1,18 @@
 package com.xa.mass.server.api.v1;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
-import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerPropertiesPatchRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import java.util.LinkedHashSet;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,20 +28,6 @@ public class ResourceCommandController {
             WorkerResourceCatalog workerCatalog
     ) {
         this.workerCatalog = workerCatalog;
-    }
-
-    @PutMapping("/{workerGroupId}")
-    public ResponseEntity<CommandResultResponse> upsertWorkerGroup(
-            @PathVariable @NotBlank String workerGroupId,
-            @Valid @RequestBody WorkerGroupUpsertRequest request
-    ) {
-        return response(workerCatalog.upsertWorkerGroup(
-                new WorkerGroupDescriptor(
-                        workerGroupId,
-                        request.attributes(),
-                        new LinkedHashSet<>(request.eventCodes())
-                )
-        ));
     }
 
     @PatchMapping(

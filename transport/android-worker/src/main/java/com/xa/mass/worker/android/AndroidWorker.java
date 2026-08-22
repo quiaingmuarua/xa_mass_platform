@@ -6,7 +6,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerManagementEventDefinitions;
-import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerControlPreparation;
 import com.xa.mass.worker.runtime.TextMessageWorkerTransportFactory;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
@@ -119,11 +119,6 @@ public final class AndroidWorker implements WorkerLifecycle {
                         resolvedContext,
                         resolvedWorkerGroupId
                 );
-        AndroidWorkerIdentityStore identityStore =
-                new AndroidWorkerIdentityStore(
-                        resolvedContext,
-                        resolvedWorkerGroupId
-                );
         WorkerPropertiesProvider liveProperties = () ->
                 resolvedWorkerProperties.getProperties(resolvedContext);
         WorkerPropertiesProvider completeProperties = () -> {
@@ -159,10 +154,9 @@ public final class AndroidWorker implements WorkerLifecycle {
         WorkerRunController worker = null;
         try {
             worker = new WorkerRunController(
-                    new RegisteredWorkerPreparation(
+                    new WorkerControlPreparation(
                             resolvedWorkerGroupId,
                             WorkerTransportType.WEBSOCKET,
-                            identityStore,
                             completeProperties,
                             platform.controlClient(
                                     resolvedRuntimeApiBaseUrl

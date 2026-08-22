@@ -4,6 +4,8 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupPreviewRequest;
+import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerPreviewRequest;
@@ -54,6 +56,17 @@ public class RuntimeViewController {
     ) {
         return runtimeView.batchGetWorkerGroups(
                 request.workerGroupIds(),
+                requestId(httpRequest)
+        );
+    }
+
+    @PostMapping("/worker-groups:preview")
+    public WorkerGroupPreviewResponse previewWorkerGroups(
+            @Valid @RequestBody WorkerGroupPreviewRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return runtimeView.previewWorkerGroups(
+                request.sampleLimit(),
                 requestId(httpRequest)
         );
     }

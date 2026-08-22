@@ -81,6 +81,18 @@ public enum ServerErrorCode {
             15004,
             "Worker scheduling control is unavailable"
     ),
+    INVALID_WORKER_GROUP_REQUEST(
+            15005,
+            "WorkerGroup registration request is invalid"
+    ),
+    WORKER_GROUP_REGISTRATION_CONFLICT(
+            15006,
+            "WorkerGroup registration conflicts with current declaration"
+    ),
+    WORKER_GROUP_REGISTRATION_UNAVAILABLE(
+            15007,
+            "WorkerGroup registration is unavailable"
+    ),
     TASK_BATCH_INVALID_REQUEST(
             16001,
             "Task Batch request is invalid"

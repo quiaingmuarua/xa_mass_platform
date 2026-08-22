@@ -40,7 +40,7 @@ public final class RedisWorkerResourceCatalog
     }
 
     @Override
-    public WorkerRuntimeResult upsertWorkerGroup(
+    public WorkerRuntimeResult registerWorkerGroup(
             WorkerGroupDescriptor descriptor
     ) {
         if (descriptor == null) {
@@ -64,46 +64,62 @@ public final class RedisWorkerResourceCatalog
             return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
         }
 
-        for (int attempt = 0;
-                attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
-                attempt++) {
-            String observed = commands().hget(
-                    groupsKey(),
-                    descriptor.workerGroupId()
+        String observed = commands().hget(
+                groupsKey(),
+                descriptor.workerGroupId()
+        );
+        WorkerGroupDescriptor current =
+                WorkerRedisSupport.decodeWorkerGroup(observed);
+        if (current == null) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker group descriptor is invalid"
             );
-            WorkerGroupDescriptor current =
-                    WorkerRedisSupport.decodeWorkerGroup(observed);
-            if (current == null) {
-                return new WorkerRuntimeResult(
-                        WorkerRuntimeStatus.INVALID,
-                        "stored worker group descriptor is invalid"
-                );
-            }
-            if (!current.workerGroupId().equals(
-                    descriptor.workerGroupId()
-            )) {
-                return new WorkerRuntimeResult(
-                        WorkerRuntimeStatus.CONFLICT,
-                        "stored worker group identity does not match"
-                );
-            }
-            if (current.equals(descriptor)) {
-                return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
-            }
-            if (WorkerRedisSupport.compareAndSetHashField(
-                    commands(),
-                    groupsKey(),
-                    descriptor.workerGroupId(),
-                    observed,
-                    encoded
-            )) {
-                return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
-            }
+        }
+        if (!current.workerGroupId().equals(descriptor.workerGroupId())) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker group identity does not match"
+            );
+        }
+        if (current.equals(descriptor)) {
+            return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
         }
         return new WorkerRuntimeResult(
-                WorkerRuntimeStatus.STALE,
-                "worker group descriptor changed during metadata replacement"
+                WorkerRuntimeStatus.CONFLICT,
+                "worker group is already registered with a different descriptor"
         );
+    }
+
+    @Override
+    public Map<String, WorkerGroupDescriptor> sampleWorkerGroupDescriptors(
+            int sampleLimit
+    ) {
+        if (sampleLimit < 1
+                || sampleLimit > MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT) {
+            throw new IllegalArgumentException(
+                    "sampleLimit must be between 1 and "
+                            + MAX_WORKER_GROUP_DESCRIPTOR_SAMPLE_LIMIT
+            );
+        }
+        List<KeyValue<String, String>> sampled =
+                commands().hrandfieldWithvalues(groupsKey(), sampleLimit);
+        var descriptors =
+                new LinkedHashMap<String, WorkerGroupDescriptor>();
+        for (KeyValue<String, String> row : sampled) {
+            String workerGroupId = row.getKey();
+            WorkerGroupDescriptor descriptor = row.hasValue()
+                    ? WorkerRedisSupport.decodeWorkerGroup(row.getValue())
+                    : null;
+            descriptors.put(
+                    workerGroupId,
+                    descriptor != null
+                            && workerGroupId.equals(descriptor.workerGroupId())
+                            ? descriptor
+                            : null
+            );
+        }
+        return descriptors;
     }
 
     @Override

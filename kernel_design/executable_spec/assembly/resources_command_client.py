@@ -55,12 +55,12 @@ class ResourcesCommandClient:
     ) -> ResourcesCommandClient:
         return cls(KernelApplicationConfig.from_json(config_json))
 
-    def upsert_worker_group(
+    def register_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
     ) -> WorkerRuntimeResult:
-        return self._resource_catalog.upsert_worker_group(
+        return self._resource_catalog.register_worker_group(
             descriptor=descriptor,
         )
 

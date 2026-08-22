@@ -276,8 +276,8 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             event_codes=frozenset({"resize"}),
         )
 
-    def upsert_group(self) -> None:
-        result = self.catalog.upsert_worker_group(descriptor=self.group)
+    def register_group(self) -> None:
+        result = self.catalog.register_worker_group(descriptor=self.group)
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
 
     def worker_declaration(

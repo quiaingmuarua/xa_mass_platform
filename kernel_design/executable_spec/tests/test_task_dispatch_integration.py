@@ -496,7 +496,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )[self.task_id]
         )
 
-        group_result = self.worker_catalog.upsert_worker_group(
+        group_result = self.worker_catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
@@ -740,7 +740,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
 
     def test_direct_allocation_redis_proof_uses_complete_item_rules(self) -> None:
-        group_result = self.worker_catalog.upsert_worker_group(
+        group_result = self.worker_catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
@@ -937,7 +937,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
     def test_close_when_idle_task_closes_immediately(self) -> None:
-        self.worker_catalog.upsert_worker_group(
+        self.worker_catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
@@ -1019,7 +1019,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(0, self.task_score.count_running_capacity_tasks())
 
     def test_park_when_idle_task_resumes_through_call_submission(self) -> None:
-        self.worker_catalog.upsert_worker_group(
+        self.worker_catalog.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},

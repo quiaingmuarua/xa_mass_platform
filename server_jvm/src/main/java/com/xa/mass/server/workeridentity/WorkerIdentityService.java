@@ -39,7 +39,7 @@ public final class WorkerIdentityService {
                     List.of(workerGroupId)
             ).get(workerGroupId) == null) {
                 throw failure(
-                        ServerErrorCode.WORKER_IDENTITY_NOT_FOUND,
+                        ServerErrorCode.WORKER_GROUP_NOT_FOUND,
                         operation,
                         "WorkerGroup was not found",
                         null

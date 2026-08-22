@@ -16,10 +16,7 @@ import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(application = Application.class)
-public class AndroidWorkerIdentityStoreTest {
-
-    private static final String WORKER_ID =
-            "server-issued-worker-id";
+public class AndroidClientWorkerKeyStoreTest {
 
     private Application application;
 
@@ -27,7 +24,7 @@ public class AndroidWorkerIdentityStoreTest {
     public void clearState() {
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
-                AndroidWorkerIdentityStore.PREFERENCES,
+                AndroidClientWorkerKeyStore.PREFERENCES,
                 Context.MODE_PRIVATE
         ).edit().clear().commit();
     }
@@ -49,33 +46,7 @@ public class AndroidWorkerIdentityStoreTest {
     }
 
     @Test
-    public void workerIdStorePersistsAndRefusesReplacement() throws Exception {
-        new AndroidClientWorkerKeyStore(
-                application,
-                "group-1"
-        ).loadOrCreate();
-        AndroidWorkerIdentityStore store = new AndroidWorkerIdentityStore(
-                application,
-                "group-1"
-        );
-
-        assertFalse(store.loadWorkerId().isPresent());
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.saveWorkerId(" ")
-        );
-        store.saveWorkerId(WORKER_ID);
-        store.saveWorkerId(WORKER_ID);
-        assertEquals(WORKER_ID, store.loadWorkerId().orElseThrow());
-
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.saveWorkerId("different-worker-id")
-        );
-    }
-
-    @Test
-    public void coordinatesAreIsolatedByWorkerGroup() throws Exception {
+    public void coordinatesAreIsolatedByWorkerGroup() {
         String firstKey = new AndroidClientWorkerKeyStore(
                 application,
                 "group-1"
@@ -86,26 +57,38 @@ public class AndroidWorkerIdentityStoreTest {
         ).loadOrCreate();
 
         assertFalse(firstKey.equals(secondKey));
-        new AndroidWorkerIdentityStore(
-                application,
-                "group-1"
-        ).saveWorkerId(WORKER_ID);
-        assertFalse(new AndroidWorkerIdentityStore(
-                application,
-                "group-2"
-        ).loadWorkerId().isPresent());
     }
 
     @Test
-    public void incompletePersistedIdentityFailsClosed() {
-        String prefix = AndroidWorkerIdentityStore.keyPrefix("group-1")
+    public void legacyWorkerIdIsIgnored() {
+        String prefix = AndroidClientWorkerKeyStore.keyPrefix("group-1")
                 + ".identity.";
         application.getSharedPreferences(
-                AndroidWorkerIdentityStore.PREFERENCES,
+                AndroidClientWorkerKeyStore.PREFERENCES,
                 Context.MODE_PRIVATE
         ).edit().putString(
                 prefix + "workerId",
-                WORKER_ID
+                "old-server-worker-id"
+        ).commit();
+
+        String generated = new AndroidClientWorkerKeyStore(
+                application,
+                "group-1"
+        ).loadOrCreate();
+
+        assertEquals(UUID.fromString(generated).toString(), generated);
+    }
+
+    @Test
+    public void incompleteCurrentCoordinateFailsClosed() {
+        String prefix = AndroidClientWorkerKeyStore.keyPrefix("group-1")
+                + ".identity.";
+        application.getSharedPreferences(
+                AndroidClientWorkerKeyStore.PREFERENCES,
+                Context.MODE_PRIVATE
+        ).edit().putString(
+                prefix + "workerGroupId",
+                "group-1"
         ).commit();
 
         assertThrows(
@@ -114,13 +97,6 @@ public class AndroidWorkerIdentityStoreTest {
                         application,
                         "group-1"
                 ).loadOrCreate()
-        );
-        assertThrows(
-                IllegalStateException.class,
-                () -> new AndroidWorkerIdentityStore(
-                        application,
-                        "group-1"
-                ).loadWorkerId()
         );
     }
 }

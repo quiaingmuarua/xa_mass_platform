@@ -1039,7 +1039,7 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| Worker upsert during Server Bind | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; replace Worker Properties and preserve every existing score exactly |
+| Worker upsert during Server Prepare | only when score is missing | initialize HOT_ACQUIRE laneRank=0, dirty=0; replace Worker Properties and preserve every existing score exactly |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |

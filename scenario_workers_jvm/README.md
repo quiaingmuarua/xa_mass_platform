@@ -87,8 +87,9 @@ one configured Group directory resets only that Group to its defaults on the
 next start; deleting the complete Lab root resets every configured Group. A
 newly configured Group is initialized only when its directory is absent.
 Unconfigured directories, including older top-level sandbox directories, are
-ignored. There is no flag file, template version, migration, compatibility
-reader, file watcher, or multi-process lock.
+ignored. There is no flag file, template version, default-set merge, file
+watcher, or multi-process lock. The only file-schema transition is the bounded
+v1-to-v2 migration described below.
 
 The Lab root must end in `data/scenario-workers` and must not pass through a
 symbolic link. Only direct, non-symlink lowercase `*.json` children of configured
@@ -102,8 +103,7 @@ snapshot:
 
 ```json
 {
-  "schemaVersion": 1,
-  "workerId": "optional-platform-issued-id",
+  "schemaVersion": 2,
   "workerProperties": {
     "runtime": "java",
     "region": "local"
@@ -111,12 +111,13 @@ snapshot:
 }
 ```
 
-`schemaVersion` must be integer `1`; `workerId` is optional until first
-Register; `workerProperties` defaults to `{}`; unknown fields are rejected. The
+`schemaVersion` must be integer `2`; `workerProperties` defaults to `{}` and
+unknown fields are rejected. A legal v1 file is read once, preserves its
+Properties, drops its former `workerId`, and is atomically rewritten as v2. The
 filename and parent directory are the only client-key and group coordinates,
-so those values are not duplicated inside the JSON. The first platform-issued
-Worker ID is written back through a temporary file and atomic replacement. A
-different existing ID is never silently replaced.
+so those values are not duplicated inside the JSON. Scenario never persists a
+platform-issued Worker ID; the Server identity registry resolves it from the
+Group and client key on every explicit Worker start.
 
 ## Runtime lifecycle
 
@@ -126,25 +127,26 @@ then performs:
 ```text
 one JavaWorkerManager for each non-empty configured WorkerGroup
 -> start its fixed replica set
--> load persisted workerId, or Register and persist it
--> Bind workerId as WEBSOCKET with the complete Properties snapshot
--> connect through the public Adapter URI returned by Bind
+-> Prepare once with Group, client key and complete Properties
+-> receive workerId and WEBSOCKET Endpoint
+-> connect through the public Adapter URI returned by Prepare
 -> return without waiting for initial Adapter verification
 ```
 
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
 Worker until an explicit later Host start; Scenario does not expose Manager
-reconciliation. The Bind in that explicit start is the only canonical
+reconciliation. Prepare in that explicit start is the only canonical
 Properties refresh; file edits and live Provider changes otherwise wait for the
 next process start.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
-unchanged. Persistent Worker means stable identity, Properties, and replica
-topology across Server restarts; it does not persist Endpoint URI,
-Binding, Channels, connection state, Commands, Results, Tasks, or scores. File
-edits take effect only on the next process start. One Lab root supports one
-Scenario Server process.
+unchanged. Persistent Lab state means stable client keys, Properties, and
+replica topology. With Server identity Redis retained, repeated Prepare maps
+those coordinates back to the same Worker IDs; the files themselves do not
+store IDs. The Lab does not persist Endpoint URI, Binding, Channels, connection
+state, Commands, Results, Tasks, or scores. File edits take effect only on the
+next process start. One Lab root supports one Scenario Server process.
 
 The module depends only on Worker Core, Java Worker, the shared transport
 contract, and its finite capability libraries. It has no Kernel, Spring,
@@ -160,9 +162,9 @@ the temporary Python Pacer CLI and assembles the Adapter plus these Lab Workers;
 two independent clients then prove the boundary:
 
 - [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
-  the exact two-by-ten replica topology, stable Lab identity mapping, Adapter
-  routes, probe execution, Properties observation, and identity reuse across a
-  real Server/Scenario Host restart;
+  the exact two-by-ten replica topology, schema-v2 Lab files, Runtime Preview
+  client-key identity mapping, Adapter routes, probe execution, Properties
+  observation, and identity reuse across a real Server/Scenario Host restart;
 - [`worker-capability-rpc`](../integrations/worker-capability-rpc/) proves six
   Group/Event Task Batches close 60 submitted inputs to 60 uniquely correlated
   results.

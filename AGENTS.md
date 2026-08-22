@@ -106,6 +106,7 @@ Server may own:
 - public API validation and error mapping;
 - bounded use-case orchestration;
 - Worker Identity and Endpoint Binding;
+- create-only WorkerGroup registration and bounded Runtime projections;
 - Runtime projections;
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
@@ -235,8 +236,10 @@ the `WorkerDeliveryAdapter` contract.
   execution.
 - `WorkerRunController` owns only the `RUNNING/STOPPED` run lifecycle.
 - Each explicit `start()` preparation loads the complete Worker Properties and
-  refreshes canonical truth through Register/Bind. Transparent Client reconnect
-  sends only connection identity; there is no runtime Properties-change event.
+  refreshes canonical truth through one Prepare call. Worker identity remains
+  Server-owned and is resolved from WorkerGroup plus clientWorkerKey; Workers
+  do not persist or hint workerId. Transparent Client reconnect sends only
+  connection identity; there is no runtime Properties-change event.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - One Client callback lane serializes Commands. Do not add Command queues,
@@ -269,7 +272,7 @@ owner, Server profile, Adapter, deployment unit or plugin system.
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
-- Server owns profile coordinates and advisory WorkerGroup catalog setup.
+- Server owns profile coordinates and create-only advisory WorkerGroup seeds.
 - Existing Group directories are not seeded or repaired; missing configured
   directories may receive checked defaults.
 

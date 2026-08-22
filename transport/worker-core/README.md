@@ -9,7 +9,7 @@ It owns:
   mapping.
 - Final Definition registry composition from Core built-ins and Host-supplied
   extensions.
-- `WorkerPreparation` and the default Register/Bind implementation.
+- `WorkerPreparation` and the default single-request Prepare implementation.
 - `WorkerRunController`, the two-state coordinator for one explicit Worker
   run.
 - `TextMessageWorkerTransportFactory` and the package-private one-endpoint
@@ -139,7 +139,7 @@ On every physical connection open, Transport first sends
 `DeliveryReport(src=WORKER,sourceId=workerId,dst=ADAPTER,`
 `messageType=worker.connection.identify,`
 `payload="null",forward="")`. `PreparedWorker` and the Transport factory carry
-only the prepared workerId and Endpoint; WorkerGroup remains a Register/Bind
+only the prepared workerId and Endpoint; WorkerGroup remains a Prepare
 control-plane coordinate owned by Preparation. Identity has no message ID or
 correlation value. A failed identity send asks
 the Client to close the current physical connection and consume its normal
@@ -162,18 +162,20 @@ RUNNING
   -> STOPPED
 ```
 
-`RegisteredWorkerPreparation` owns `WorkerIdentityStore`,
-`WorkerPropertiesProvider`, and `WorkerControlClient`. Each call loads one
-Properties map, validates and recursively copies it, restores or registers the
-Worker ID, persists a newly issued ID, and performs Endpoint Bind. It does not
-start networking or execute Commands. Core requires `workerId` to be non-blank
-but does not parse its Server-owned format.
+`WorkerControlPreparation` owns `WorkerPropertiesProvider` and
+`WorkerControlClient`. Each call loads one Properties map, validates and
+recursively copies it, and performs exactly one Prepare request. Server resolves
+the long-lived Worker ID from `workerGroupId + clientWorkerKey`, establishes
+the Endpoint Binding, refreshes canonical Worker truth, and returns one
+`PreparedWorker`. Core never persists Worker ID, starts networking, or executes
+Commands during preparation. It requires `workerId` to be non-blank but does
+not parse its Server-owned format.
 
-That preparation Bind is the only canonical Worker Properties refresh. A live
+That Prepare is the only canonical Worker Properties refresh. A live
 provider change may be returned by an explicit
 `platform.worker.properties.snapshot` Command for observation, but it is not
 published as a lifecycle event and does not write Kernel truth. The next
-explicit stop/start loads and binds a new complete snapshot.
+explicit stop/start loads and prepares a new complete snapshot.
 
 Preparation failure or Endpoint termination ends the run. Core does not retry
 Preparation, schedule restart, or persist the Endpoint URI. A Host may

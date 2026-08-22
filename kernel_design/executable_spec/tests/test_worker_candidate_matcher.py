@@ -60,7 +60,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             event_codes=frozenset({"resize"}),
         )
         self.matcher = WorkerCandidateMatcher(self.catalog)
-        self.upsert_group()
+        self.register_group()
 
     def add_worker(
         self,

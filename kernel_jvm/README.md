@@ -49,8 +49,9 @@ TaskCallItemSubmission
   submit
 
 WorkerResourceCatalog
-  upsertWorkerGroup
+  registerWorkerGroup
   getWorkerGroupDescriptors
+  sampleWorkerGroupDescriptors
   getWorkerDescriptors
   sampleWorkerDescriptors
   patchWorkerPlatformProperties

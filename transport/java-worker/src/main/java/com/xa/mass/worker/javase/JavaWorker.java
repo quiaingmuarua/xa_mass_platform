@@ -3,7 +3,6 @@ package com.xa.mass.worker.javase;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
-import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRunController;
@@ -29,7 +28,6 @@ public final class JavaWorker implements WorkerLifecycle {
             URI runtimeApiBaseUrl,
             String workerGroupId,
             String clientWorkerKey,
-            WorkerIdentityStore identityStore,
             WorkerTransportType transportType,
             WorkerPropertiesProvider workerProperties
     ) {
@@ -37,7 +35,6 @@ public final class JavaWorker implements WorkerLifecycle {
                 runtimeApiBaseUrl,
                 workerGroupId,
                 clientWorkerKey,
-                identityStore,
                 transportType,
                 workerProperties,
                 Collections.emptyList(),
@@ -49,7 +46,6 @@ public final class JavaWorker implements WorkerLifecycle {
             URI runtimeApiBaseUrl,
             String workerGroupId,
             String clientWorkerKey,
-            WorkerIdentityStore identityStore,
             WorkerTransportType transportType,
             WorkerPropertiesProvider workerProperties,
             Collection<? extends WorkerEventDefinition<?>>
@@ -59,7 +55,6 @@ public final class JavaWorker implements WorkerLifecycle {
                 runtimeApiBaseUrl,
                 workerGroupId,
                 clientWorkerKey,
-                identityStore,
                 transportType,
                 workerProperties,
                 definitionExtensions,
@@ -71,7 +66,6 @@ public final class JavaWorker implements WorkerLifecycle {
             URI runtimeApiBaseUrl,
             String workerGroupId,
             String clientWorkerKey,
-            WorkerIdentityStore identityStore,
             WorkerTransportType transportType,
             WorkerPropertiesProvider workerProperties,
             Collection<? extends WorkerEventDefinition<?>>
@@ -88,10 +82,6 @@ public final class JavaWorker implements WorkerLifecycle {
         String resolvedClientWorkerKey = requireNonBlank(
                 clientWorkerKey,
                 "clientWorkerKey"
-        );
-        WorkerIdentityStore resolvedIdentityStore = Objects.requireNonNull(
-                identityStore,
-                "identityStore"
         );
         WorkerTransportType resolvedTransportType =
                 requireTextMessageTransportType(transportType);
@@ -118,7 +108,6 @@ public final class JavaWorker implements WorkerLifecycle {
                     resolvedWorkerGroupId,
                     resolvedClientWorkerKey,
                     resolvedTransportType,
-                    resolvedIdentityStore,
                     resolvedWorkerProperties,
                     resolvedDefinitionExtensions,
                     resolvedOptions,

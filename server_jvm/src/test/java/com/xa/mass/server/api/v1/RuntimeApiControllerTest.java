@@ -50,6 +50,8 @@ import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointBinding;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
+import com.xa.mass.server.workerpreparation.WorkerPreparationService;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -84,7 +86,7 @@ class RuntimeApiControllerTest {
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
 
-        when(workerCatalog.upsertWorkerGroup(any()))
+        when(workerCatalog.registerWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
         when(workerIdentity.register(any(), any()))
                 .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
@@ -194,8 +196,17 @@ class RuntimeApiControllerTest {
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(workerCatalog),
-                        new WorkerIdentityController(workerIdentity),
-                        new WorkerBindingController(workerBinding),
+                        new WorkerGroupRegistrationController(
+                                new WorkerGroupRegistrationService(
+                                        workerCatalog
+                                )
+                        ),
+                        new WorkerPreparationController(
+                                new WorkerPreparationService(
+                                        workerIdentity,
+                                        workerBinding
+                                )
+                        ),
                         new TaskControlController(
                                 taskRuntime,
                                 taskLifecycle
@@ -226,8 +237,8 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void exposesVersionedResourceCommands() throws Exception {
-        mockMvc.perform(put("/api/v1/worker-groups/phone-tools")
+    void exposesWorkerGroupRegistrationAndWorkerPreparation() throws Exception {
+        mockMvc.perform(post("/api/v1/worker-groups/phone-tools:register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "request-1")
                         .content("""
@@ -237,18 +248,21 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "request-1"))
-                .andExpect(jsonPath("$.status").value("ok"));
+                .andExpect(jsonPath("$.workerGroupId").value("phone-tools"))
+                .andExpect(jsonPath("$.status").value("registered"));
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
-                                        + "workers:register"
+                                        + "workers:prepare"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
+                                  "transportType":"WEBSOCKET",
                                   "workerProperties": {
                                     "clientWorkerKey": "installation-1",
-                                    "runtime": "java"
+                                    "runtime": "java",
+                                    "region": "local"
                                   }
                                 }
                                 """))
@@ -262,30 +276,11 @@ class RuntimeApiControllerTest {
                         "clientWorkerKey",
                         "installation-1",
                         "runtime",
-                        "java"
+                        "java",
+                        "region",
+                        "local"
                 )
         );
-
-        mockMvc.perform(post(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
-                                        + ":bind"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "transportType":"WEBSOCKET",
-                                  "workerProperties":{
-                                    "clientWorkerKey":"installation-1",
-                                    "region":"local"
-                                  }
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.transportType")
-                        .value("WEBSOCKET"))
-                .andExpect(jsonPath("$.endpointUri")
-                        .value("ws://127.0.0.1:18083/connect"));
         verify(workerBinding).bind(
                 "phone-tools",
                 "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
@@ -293,10 +288,17 @@ class RuntimeApiControllerTest {
                 Map.of(
                         "clientWorkerKey",
                         "installation-1",
+                        "runtime",
+                        "java",
                         "region",
                         "local"
                 )
         );
+
+        mockMvc.perform(put("/api/v1/worker-groups/phone-tools")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventCodes\":[]}"))
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
@@ -304,7 +306,7 @@ class RuntimeApiControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"clientWorkerKey\":\"legacy\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
         mockMvc.perform(patch(
                                 "/api/v1/worker-groups/phone-tools/workers/"
                                         + "worker-1/platform-properties"
@@ -321,8 +323,35 @@ class RuntimeApiControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
+                                        + ":bind"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+
+    }
+
+    @Test
+    void mapsWorkerGroupDeclarationValidationToItsPublicErrorCode()
+            throws Exception {
+        mockMvc.perform(post("/api/v1/worker-groups/group-1:register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "group-request")
+                        .content("{\"eventCodes\":[\"event\",\"event\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(15005))
+                .andExpect(jsonPath("$.requestId").value("group-request"));
+
+        mockMvc.perform(post("/api/v1/worker-groups/group-1:register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(15005));
     }
 
     @Test
