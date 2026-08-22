@@ -49,15 +49,23 @@ const filteredWorkers = computed(() =>
   filterCurrentSample(activeWorkers.value, searchText.value)
 );
 const isRefreshing = computed(() => store.activeSampleState?.status === "refreshing");
+const isGroupRefreshing = computed(
+  () => store.workerGroupPreviewState.status === "refreshing"
+);
 const isInitialSampleLoading = computed(
   () =>
     store.activeSampleState?.status === "loading" && store.activeSample === undefined
 );
-const canRefresh = computed(
+const canRefreshSample = computed(
   () =>
     store.activeGroup !== undefined &&
     store.activeSampleState?.status !== "loading" &&
     store.activeSampleState?.status !== "refreshing"
+);
+const canRefreshGroups = computed(
+  () =>
+    store.workerGroupPreviewState.status !== "loading" &&
+    store.workerGroupPreviewState.status !== "refreshing"
 );
 const isStatusRefreshing = computed(() => workerStatus.isLoading(activeWorkers.value));
 const networkSummary = computed(() => {
@@ -109,6 +117,16 @@ async function selectGroup(workerGroupId: string): Promise<void> {
   observeCurrentSampleIfPresent();
 }
 
+async function refreshGroups(): Promise<void> {
+  const previousGroupId = store.activeWorkerGroupId;
+  await store.refreshWorkerGroups();
+  if (store.activeWorkerGroupId !== previousGroupId) {
+    closeDetails();
+    searchText.value = "";
+  }
+  observeCurrentSampleIfPresent();
+}
+
 async function refreshSample(): Promise<void> {
   const workerGroupId = store.activeWorkerGroupId;
   closeDetails();
@@ -151,10 +169,6 @@ function openDetails(worker: WorkerView): void {
 function closeDetails(): void {
   detailsOpen.value = false;
   selectedWorker.value = undefined;
-}
-
-function isMissing(workerGroupId: string): boolean {
-  return store.missingWorkerGroupIds.includes(workerGroupId);
 }
 
 function groupDisplayName(workerGroupId: string): string {
@@ -246,29 +260,40 @@ function metricValue(value: number, observed: number): string {
       </div>
       <div class="worker-page__heading-actions">
         <span class="generated-at" data-testid="generated-at">
-          生成于 {{ formattedTime(store.activeSample?.generatedAt) }}
+          Group
+          {{ formattedTime(store.workerGroupPreviewState.preview?.generatedAt) }} ·
+          Worker {{ formattedTime(store.activeSample?.generatedAt) }}
         </span>
+        <el-button
+          :icon="Collection"
+          :loading="isGroupRefreshing"
+          :disabled="!canRefreshGroups"
+          data-testid="refresh-groups-button"
+          @click="refreshGroups"
+        >
+          刷新 Group 样本
+        </el-button>
         <el-button
           type="primary"
           :icon="RefreshRight"
           :loading="isRefreshing"
-          :disabled="!canRefresh"
+          :disabled="!canRefreshSample"
           data-testid="refresh-button"
           @click="refreshSample"
         >
-          刷新样本
+          刷新 Worker 样本
         </el-button>
       </div>
     </header>
 
     <div class="metric-grid" aria-label="Worker 样本与状态指标">
       <MetricCard
-        label="已配置 Group"
-        :value="store.configuredWorkerGroupIds.length"
-        hint="Profile directory"
+        label="Group 样本"
+        :value="store.workerGroupPreviewState.preview?.sampledCount ?? '—'"
+        :hint="`${store.workerGroupPreviewState.preview?.returnedCount ?? 0} valid · ${store.workerGroupPreviewState.preview?.unreadableCount ?? 0} unreadable`"
         :icon="Collection"
         tone="primary"
-        test-id="metric-configured-groups"
+        test-id="metric-group-sample"
       />
       <MetricCard
         label="当前样本"
@@ -312,40 +337,61 @@ function metricValue(value: number, observed: number): string {
 
     <section class="worker-panel" aria-label="Worker 样本">
       <div
-        v-if="store.resourceLoadStatus === 'loading'"
+        v-if="
+          store.workerGroupPreviewState.status === 'loading' &&
+          store.workerGroupPreviewState.preview === undefined
+        "
         class="panel-state"
         data-testid="group-loading"
       >
         <el-icon class="is-loading"><RefreshRight /></el-icon>
-        正在读取配置的 WorkerGroup…
+        正在随机采样 WorkerGroup…
       </div>
 
       <div
-        v-else-if="store.resourceLoadStatus === 'error'"
+        v-else-if="
+          store.workerGroupPreviewState.status === 'error' &&
+          store.workerGroupPreviewState.preview === undefined
+        "
         class="panel-state panel-state--error"
         data-testid="group-error"
       >
         <el-icon><Warning /></el-icon>
         <div>
-          <strong>{{ store.resourceLoadError?.title }}</strong>
-          <p>{{ store.resourceLoadError?.message }}</p>
-          <small v-if="store.resourceLoadError?.requestId">
-            Request ID: {{ store.resourceLoadError.requestId }}
+          <strong>{{ store.workerGroupPreviewState.error?.title }}</strong>
+          <p>{{ store.workerGroupPreviewState.error?.message }}</p>
+          <small v-if="store.workerGroupPreviewState.error?.requestId">
+            Request ID: {{ store.workerGroupPreviewState.error.requestId }}
           </small>
         </div>
-        <el-button @click="initializePage">重新读取目录</el-button>
+        <el-button @click="initializePage">重新采样 Group</el-button>
       </div>
 
       <template v-else>
+        <el-alert
+          v-if="store.workerGroupPreviewState.stale"
+          class="stale-sample-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          data-testid="stale-group-sample"
+        >
+          <template #title>
+            Group 刷新失败，仍显示上一次内存样本；该 Group 样本已标记为陈旧。
+            <span v-if="store.workerGroupPreviewState.error?.requestId">
+              Request ID: {{ store.workerGroupPreviewState.error.requestId }}
+            </span>
+          </template>
+        </el-alert>
+
         <div class="worker-group-tabs" role="tablist" aria-label="WorkerGroup">
           <button
-            v-for="workerGroupId in store.configuredWorkerGroupIds"
+            v-for="workerGroupId in store.workerGroupIds"
             :key="workerGroupId"
             type="button"
             class="worker-group-tab"
             :class="{
-              'worker-group-tab--active': store.activeWorkerGroupId === workerGroupId,
-              'worker-group-tab--missing': isMissing(workerGroupId)
+              'worker-group-tab--active': store.activeWorkerGroupId === workerGroupId
             }"
             role="tab"
             :aria-selected="store.activeWorkerGroupId === workerGroupId"
@@ -356,37 +402,21 @@ function metricValue(value: number, observed: number): string {
               <strong>{{ groupDisplayName(workerGroupId) }}</strong>
               <small>{{ workerGroupId }}</small>
             </span>
-            <em v-if="isMissing(workerGroupId)">未找到</em>
-            <em v-else-if="sampleCount(workerGroupId) !== undefined">
+            <em v-if="sampleCount(workerGroupId) !== undefined">
               {{ sampleCount(workerGroupId) }}
             </em>
           </button>
         </div>
 
         <div
-          v-if="store.configuredWorkerGroupIds.length === 0"
+          v-if="store.workerGroupIds.length === 0"
           class="panel-state"
-          data-testid="empty-configured-groups"
+          data-testid="empty-group-sample"
         >
           <el-icon><InfoFilled /></el-icon>
           <div>
-            <strong>当前 Profile 没有配置 WorkerGroup</strong>
-            <p>Runtime View 成功读取了一个空的配置资源目录。</p>
-          </div>
-        </div>
-
-        <div
-          v-else-if="store.activeWorkerGroupId && isMissing(store.activeWorkerGroupId)"
-          class="panel-state panel-state--warning"
-          data-testid="missing-group"
-        >
-          <el-icon><Warning /></el-icon>
-          <div>
-            <strong>WorkerGroup 未找到</strong>
-            <p>
-              配置中的 {{ store.activeWorkerGroupId }} 当前没有 Owner 描述符。这不表示
-              Group 或 Worker 的网络或调度状态。
-            </p>
+            <strong>当前 WorkerGroup 样本为空</strong>
+            <p>Owner 成功返回空样本；这不是完整目录或 WorkerGroup 不存在的证明。</p>
           </div>
         </div>
 
@@ -653,7 +683,8 @@ function metricValue(value: number, observed: number): string {
             <footer class="sample-footnote">
               当前筛选 {{ filteredWorkers.length }} / 有效描述符
               {{ store.activeSample.returnedCount }}；不可读描述符
-              {{ store.activeSample.unreadableCount }}。本页没有 cursor、总数或下一页。
+              {{ store.activeSample.unreadableCount }}。Group 与 Worker
+              都是非稳定随机预览； 本页没有 cursor、总数或下一页。
             </footer>
           </template>
         </template>

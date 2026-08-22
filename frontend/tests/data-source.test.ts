@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createRuntimeViewerDataSource } from "@/runtime-viewer/data-source";
 import { HttpRuntimeViewerDataSource } from "@/runtime-viewer/http-data-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
-import { configuredEntry, preview, worker } from "./fixtures";
+import { configuredEntry, groupPreview, preview, worker } from "./fixtures";
 
 describe("RuntimeViewerDataSource selection", () => {
   it("uses HTTP in API mode and never installs a Mock fallback", () => {
@@ -66,6 +66,24 @@ describe("HttpRuntimeViewerDataSource", () => {
       sampleLimit: 100,
       filter: null
     });
+    expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
+  });
+
+  it("loads a bounded WorkerGroup preview without using configured resources", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: groupPreview(["group-b", "group-a"])
+    });
+    const source = new HttpRuntimeViewerDataSource("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await expect(source.previewWorkerGroups(100)).resolves.toMatchObject({
+      returnedCount: 2,
+      workerGroups: [{ workerGroupId: "group-b" }, { workerGroupId: "group-a" }]
+    });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0]?.[0]).toBe("/v1/runtime-view/worker-groups:preview");
+    expect(post.mock.calls[0]?.[1]).toEqual({ sampleLimit: 100 });
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 

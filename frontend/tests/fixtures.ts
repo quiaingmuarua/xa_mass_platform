@@ -1,6 +1,7 @@
 import type {
   ConfiguredRuntimeResourceEntry,
   TaskView,
+  WorkerGroupPreviewResponse,
   WorkerGroupView,
   WorkerPreviewResponse,
   WorkerView
@@ -55,6 +56,21 @@ export function worker(workerGroupId: string, workerId: string): WorkerView {
     platformProperties: {
       runtime: "test"
     }
+  };
+}
+
+export function groupPreview(
+  workerGroupIds: string[],
+  unreadableCount = 0,
+  generatedAt = "2026-07-31T12:00:00.000Z"
+): WorkerGroupPreviewResponse {
+  return {
+    sampleLimit: 100,
+    sampledCount: workerGroupIds.length + unreadableCount,
+    returnedCount: workerGroupIds.length,
+    unreadableCount,
+    generatedAt,
+    workerGroups: workerGroupIds.map(workerGroup)
   };
 }
 

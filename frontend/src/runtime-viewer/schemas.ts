@@ -3,6 +3,7 @@ import { z } from "zod";
 import type {
   ConfiguredRuntimeResourcesResponse,
   JsonValue,
+  WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "./types";
 
@@ -93,6 +94,46 @@ export const configuredRuntimeResourcesResponseSchema: z.ZodType<ConfiguredRunti
         });
       }
     });
+
+export const workerGroupPreviewResponseSchema: z.ZodType<WorkerGroupPreviewResponse> = z
+  .object({
+    sampleLimit: z.number().int().min(1).max(100),
+    sampledCount: z.number().int().nonnegative(),
+    returnedCount: z.number().int().nonnegative(),
+    unreadableCount: z.number().int().nonnegative(),
+    generatedAt: z.string().datetime({ offset: true }),
+    workerGroups: z.array(workerGroupViewSchema)
+  })
+  .strict()
+  .superRefine((response, context) => {
+    if (response.sampledCount > response.sampleLimit) {
+      context.addIssue({
+        code: "custom",
+        message: "sampledCount exceeds sampleLimit"
+      });
+    }
+    if (response.returnedCount + response.unreadableCount !== response.sampledCount) {
+      context.addIssue({
+        code: "custom",
+        message: "WorkerGroup preview counts are inconsistent"
+      });
+    }
+    if (response.workerGroups.length !== response.returnedCount) {
+      context.addIssue({
+        code: "custom",
+        message: "workerGroups length differs from returnedCount"
+      });
+    }
+    if (
+      new Set(response.workerGroups.map((group) => group.workerGroupId)).size !==
+      response.workerGroups.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "preview contains duplicate WorkerGroup identities"
+      });
+    }
+  });
 
 export const workerViewSchema = z
   .object({

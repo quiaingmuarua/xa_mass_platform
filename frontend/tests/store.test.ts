@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeViewerError } from "@/runtime-viewer/errors";
 import { createRuntimeViewerStore } from "@/stores/runtime-viewer";
 import type {
-  ConfiguredRuntimeResourcesResponse,
   RuntimeViewerConfig,
   RuntimeViewerDataSource,
+  WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
-import { configuredEntry, preview, worker } from "./fixtures";
+import { configuredEntry, groupPreview, preview, worker } from "./fixtures";
 
 const config: RuntimeViewerConfig = {
   mode: "api",
@@ -21,7 +21,7 @@ describe("runtime viewer store", () => {
     setActivePinia(createPinia());
   });
 
-  it("loads only the active group, caches each group, and resamples only on refresh", async () => {
+  it("loads Groups independently, then only the active Worker sample", async () => {
     const previewWorkers = vi.fn(
       async (workerGroupId: string): Promise<WorkerPreviewResponse> =>
         preview(workerGroupId, [worker(workerGroupId, `${workerGroupId}-worker`)])
@@ -33,8 +33,11 @@ describe("runtime viewer store", () => {
     expect(previewWorkers).not.toHaveBeenCalled();
     expect(store.configuredWorkerGroupIds).toEqual(["group-a", "group-b"]);
     expect(store.tasks).toHaveLength(2);
+    expect(store.workerGroupIds).toEqual([]);
 
     await store.initializeWorkerView();
+    expect(dataSource.previewWorkerGroups).toHaveBeenCalledTimes(1);
+    expect(store.workerGroupIds).toEqual(["group-a", "group-b"]);
     expect(previewWorkers).toHaveBeenCalledTimes(1);
     expect(previewWorkers.mock.calls[0]?.[0]).toBe("group-a");
 
@@ -50,32 +53,64 @@ describe("runtime viewer store", () => {
     expect(previewWorkers.mock.calls[2]?.[0]).toBe("group-a");
   });
 
-  it("waits for the in-flight resource directory before loading the worker sample", async () => {
-    let resolveResources!: (value: ConfiguredRuntimeResourcesResponse) => void;
-    const loadConfiguredResources = vi.fn(
+  it("waits for the in-flight Group preview before loading the Worker sample", async () => {
+    let resolveGroups!: (value: WorkerGroupPreviewResponse) => void;
+    const previewWorkerGroups = vi.fn(
       () =>
-        new Promise<ConfiguredRuntimeResourcesResponse>((resolve) => {
-          resolveResources = resolve;
+        new Promise<WorkerGroupPreviewResponse>((resolve) => {
+          resolveGroups = resolve;
         })
     );
     const previewWorkers = vi.fn(async (workerGroupId: string) =>
       preview(workerGroupId, [worker(workerGroupId, "worker-a")])
     );
+    const loadConfiguredResources = vi.fn(async () => ({ entries: [] }));
     const store = createRuntimeViewerStore(config, {
       loadConfiguredResources,
+      previewWorkerGroups,
       previewWorkers
     });
 
-    const catalogLoad = store.initialize();
-    const workerLoad = store.initializeWorkerView();
-    expect(loadConfiguredResources).toHaveBeenCalledTimes(1);
+    const firstLoad = store.initializeWorkerView();
+    const secondLoad = store.initializeWorkerView();
+    expect(previewWorkerGroups).toHaveBeenCalledTimes(1);
     expect(previewWorkers).not.toHaveBeenCalled();
 
-    resolveResources({ entries: [configuredEntry("group-a")] });
-    await Promise.all([catalogLoad, workerLoad]);
+    resolveGroups(groupPreview(["group-a"]));
+    await Promise.all([firstLoad, secondLoad]);
 
+    expect(store.entries).toEqual([]);
+    expect(loadConfiguredResources).not.toHaveBeenCalled();
     expect(previewWorkers).toHaveBeenCalledTimes(1);
     expect(previewWorkers.mock.calls[0]?.[0]).toBe("group-a");
+  });
+
+  it("refreshes only the Group sample and preserves cached Workers for surviving Groups", async () => {
+    const previewWorkerGroups = vi
+      .fn()
+      .mockResolvedValueOnce(groupPreview(["group-b", "group-a"]))
+      .mockResolvedValueOnce(groupPreview(["group-c", "group-b"]));
+    const previewWorkers = vi.fn(async (workerGroupId: string) =>
+      preview(workerGroupId, [worker(workerGroupId, `${workerGroupId}-worker`)])
+    );
+    const store = createRuntimeViewerStore(config, {
+      loadConfiguredResources: vi.fn(async () => ({ entries: [] })),
+      previewWorkerGroups,
+      previewWorkers
+    });
+
+    await store.initializeWorkerView();
+    expect(store.workerGroupIds).toEqual(["group-a", "group-b"]);
+    await store.selectGroup("group-b");
+    expect(previewWorkers).toHaveBeenCalledTimes(2);
+
+    await store.refreshWorkerGroups();
+
+    expect(store.workerGroupIds).toEqual(["group-b", "group-c"]);
+    expect(store.activeWorkerGroupId).toBe("group-b");
+    expect(store.samples["group-a"]).toBeUndefined();
+    expect(store.samples["group-b"]?.sample?.workerGroupId).toBe("group-b");
+    expect(previewWorkers).toHaveBeenCalledTimes(2);
   });
 
   it("retains the last good sample and marks it stale after refresh failure", async () => {
@@ -172,6 +207,7 @@ function source(
     loadConfiguredResources: vi.fn(async () => ({
       entries: workerGroupIds.map((workerGroupId) => configuredEntry(workerGroupId))
     })),
+    previewWorkerGroups: vi.fn(async () => groupPreview(workerGroupIds)),
     previewWorkers
   };
 }

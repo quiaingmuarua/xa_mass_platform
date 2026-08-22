@@ -10,6 +10,7 @@ import type {
   ConfiguredRuntimeResourceEntry,
   RuntimeViewerConfig,
   RuntimeViewerDataSource,
+  WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
 
@@ -23,6 +24,13 @@ export interface WorkerGroupSampleState {
   error?: RuntimeViewerErrorPresentation;
 }
 
+export interface WorkerGroupPreviewState {
+  status: SampleLoadStatus;
+  preview?: WorkerGroupPreviewResponse;
+  stale: boolean;
+  error?: RuntimeViewerErrorPresentation;
+}
+
 export function createRuntimeViewerStore(
   config: RuntimeViewerConfig,
   dataSource: RuntimeViewerDataSource
@@ -31,11 +39,18 @@ export function createRuntimeViewerStore(
     const resourceLoadStatus = ref<ResourceLoadStatus>("idle");
     const resourceLoadError = ref<RuntimeViewerErrorPresentation>();
     const entries = ref<ConfiguredRuntimeResourceEntry[]>([]);
+    const workerGroupPreviewState = reactive<WorkerGroupPreviewState>({
+      status: "idle",
+      stale: false
+    });
     const activeWorkerGroupId = ref<string>();
     const samples = reactive<Record<string, WorkerGroupSampleState>>({});
 
     let resourceLoadController: AbortController | undefined;
     let resourceLoadPromise: Promise<void> | undefined;
+    let workerGroupLoadController: AbortController | undefined;
+    let workerGroupLoadPromise: Promise<void> | undefined;
+    let workerGroupLoadVersion = 0;
     const sampleControllers = new Map<string, AbortController>();
     const sampleVersions = new Map<string, number>();
 
@@ -46,6 +61,12 @@ export function createRuntimeViewerStore(
       entries.value.flatMap((entry) =>
         entry.workerGroup === null ? [] : [entry.workerGroup]
       )
+    );
+    const workerGroups = computed(
+      () => workerGroupPreviewState.preview?.workerGroups ?? []
+    );
+    const workerGroupIds = computed(() =>
+      workerGroups.value.map((group) => group.workerGroupId)
     );
     const tasks = computed(() =>
       entries.value.flatMap((entry) => (entry.task === null ? [] : [entry.task]))
@@ -59,7 +80,7 @@ export function createRuntimeViewerStore(
       entries.value.filter((entry) => entry.task === null).map((entry) => entry.taskId)
     );
     const groupById = computed(
-      () => new Map(groups.value.map((group) => [group.workerGroupId, group]))
+      () => new Map(workerGroups.value.map((group) => [group.workerGroupId, group]))
     );
     const activeGroup = computed(() =>
       activeWorkerGroupId.value
@@ -92,20 +113,6 @@ export function createRuntimeViewerStore(
           resourceLoadController.signal
         );
         entries.value = response.entries;
-        for (const entry of response.entries) {
-          samples[entry.workerGroupId] ??= {
-            status: "idle",
-            stale: false
-          };
-        }
-        const configured = new Set(configuredWorkerGroupIds.value);
-        if (
-          activeWorkerGroupId.value === undefined ||
-          !configured.has(activeWorkerGroupId.value) ||
-          !groupById.value.has(activeWorkerGroupId.value)
-        ) {
-          activeWorkerGroupId.value = response.entries[0]?.workerGroupId;
-        }
         resourceLoadStatus.value = "ready";
       } catch (error) {
         if (isRuntimeViewerCancellation(error)) {
@@ -120,16 +127,106 @@ export function createRuntimeViewerStore(
     }
 
     async function initializeWorkerView(): Promise<void> {
-      await initialize();
+      await loadWorkerGroupDirectory(false);
+      if (activeWorkerGroupId.value !== undefined) {
+        await loadSample(activeWorkerGroupId.value, false);
+      }
+    }
+
+    async function refreshWorkerGroups(): Promise<void> {
+      await loadWorkerGroupDirectory(true);
       if (
-        resourceLoadStatus.value === "ready" &&
-        activeWorkerGroupId.value !== undefined
+        workerGroupPreviewState.status === "ready" &&
+        activeWorkerGroupId.value !== undefined &&
+        samples[activeWorkerGroupId.value]?.sample === undefined
       ) {
         await loadSample(activeWorkerGroupId.value, false);
       }
     }
 
+    function loadWorkerGroupDirectory(force: boolean): Promise<void> {
+      if (!force && workerGroupPreviewState.status === "ready") {
+        return Promise.resolve();
+      }
+      if (!force && workerGroupLoadPromise !== undefined) {
+        return workerGroupLoadPromise;
+      }
+
+      workerGroupLoadController?.abort();
+      const controller = new AbortController();
+      workerGroupLoadController = controller;
+      const version = ++workerGroupLoadVersion;
+      const previousPreview = workerGroupPreviewState.preview;
+      workerGroupPreviewState.status =
+        previousPreview === undefined ? "loading" : "refreshing";
+      workerGroupPreviewState.error = undefined;
+
+      const request = (async () => {
+        try {
+          const response = await dataSource.previewWorkerGroups(100, controller.signal);
+          if (workerGroupLoadVersion !== version) {
+            return;
+          }
+          const sortedGroups = [...response.workerGroups].sort((left, right) =>
+            left.workerGroupId.localeCompare(right.workerGroupId)
+          );
+          const nextPreview = {
+            ...response,
+            workerGroups: sortedGroups
+          };
+          const nextIds = new Set(sortedGroups.map((group) => group.workerGroupId));
+
+          Object.keys(samples).forEach((workerGroupId) => {
+            if (!nextIds.has(workerGroupId)) {
+              sampleControllers.get(workerGroupId)?.abort();
+              sampleControllers.delete(workerGroupId);
+              sampleVersions.delete(workerGroupId);
+              delete samples[workerGroupId];
+            }
+          });
+          sortedGroups.forEach((group) => {
+            samples[group.workerGroupId] ??= {
+              status: "idle",
+              stale: false
+            };
+          });
+
+          workerGroupPreviewState.preview = nextPreview;
+          workerGroupPreviewState.status = "ready";
+          workerGroupPreviewState.stale = false;
+          workerGroupPreviewState.error = undefined;
+          if (
+            activeWorkerGroupId.value === undefined ||
+            !nextIds.has(activeWorkerGroupId.value)
+          ) {
+            activeWorkerGroupId.value = sortedGroups[0]?.workerGroupId;
+          }
+        } catch (error) {
+          if (
+            isRuntimeViewerCancellation(error) ||
+            workerGroupLoadVersion !== version
+          ) {
+            return;
+          }
+          workerGroupPreviewState.preview = previousPreview;
+          workerGroupPreviewState.status = "error";
+          workerGroupPreviewState.stale = previousPreview !== undefined;
+          workerGroupPreviewState.error = presentRuntimeViewerError(error);
+        } finally {
+          if (workerGroupLoadVersion === version) {
+            workerGroupLoadController = undefined;
+            workerGroupLoadPromise = undefined;
+          }
+        }
+      })();
+      workerGroupLoadPromise = request;
+      return request;
+    }
+
     async function selectGroup(workerGroupId: string): Promise<void> {
+      if (!groupById.value.has(workerGroupId)) {
+        return;
+      }
       activeWorkerGroupId.value = workerGroupId;
       const state = samples[workerGroupId];
       if (
@@ -206,6 +303,7 @@ export function createRuntimeViewerStore(
 
     function dispose(): void {
       resourceLoadController?.abort();
+      workerGroupLoadController?.abort();
       sampleControllers.forEach((controller) => controller.abort());
       sampleControllers.clear();
     }
@@ -217,6 +315,9 @@ export function createRuntimeViewerStore(
       entries,
       configuredWorkerGroupIds,
       groups,
+      workerGroupPreviewState,
+      workerGroups,
+      workerGroupIds,
       tasks,
       missingWorkerGroupIds,
       missingTaskIds,
@@ -227,6 +328,7 @@ export function createRuntimeViewerStore(
       samples,
       initialize,
       initializeWorkerView,
+      refreshWorkerGroups,
       selectGroup,
       refreshActiveGroup,
       dispose

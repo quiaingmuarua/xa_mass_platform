@@ -4,11 +4,13 @@ import { RuntimeViewerError } from "./errors";
 import {
   apiErrorResponseSchema,
   configuredRuntimeResourcesResponseSchema,
+  workerGroupPreviewResponseSchema,
   workerPreviewResponseSchema
 } from "./schemas";
 import type {
   ConfiguredRuntimeResourcesResponse,
   RuntimeViewerDataSource,
+  WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "./types";
 
@@ -48,6 +50,34 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         response.data,
         requestId
       );
+    } catch (error) {
+      throw mapHttpError(error, requestId);
+    }
+  }
+
+  async previewWorkerGroups(
+    sampleLimit: number,
+    signal?: AbortSignal
+  ): Promise<WorkerGroupPreviewResponse> {
+    const requestId = createRequestId();
+    try {
+      const response = await this.client.post(
+        "/v1/runtime-view/worker-groups:preview",
+        { sampleLimit },
+        {
+          signal,
+          headers: { "X-Request-Id": requestId }
+        }
+      );
+      const parsed = parseResponse(
+        workerGroupPreviewResponseSchema,
+        response.data,
+        requestId
+      );
+      if (parsed.sampleLimit !== sampleLimit) {
+        throw schemaError(requestId);
+      }
+      return parsed;
     } catch (error) {
       throw mapHttpError(error, requestId);
     }

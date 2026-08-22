@@ -21,9 +21,11 @@ pnpm dev --host 127.0.0.1
 ```
 
 The default data source is the real API. Vite proxies relative `/api` requests
-to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. WorkerGroup and
-long-lived Task coordinates come from the Server's configured resource
-directory, not a frontend environment list.
+to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. The Worker page
+first obtains a bounded, unstable WorkerGroup preview and then obtains Workers
+only for the selected Group. Long-lived Task coordinates and the Task Batch
+selection catalog continue to come from the Server's Profile-configured
+resource directory; neither path uses a frontend environment list.
 
 Routes:
 
@@ -111,9 +113,12 @@ pnpm test
 pnpm build
 ```
 
-The Worker page remains an unstable, incomplete sample. Its Mock Scheduling
-axis may label a semantic lease projection, but it does not expose raw Score or
-prove execution. The Task page keeps real Profile descriptors read-only and
+Both the WorkerGroup tabs and the selected Group's Workers remain unstable,
+incomplete samples. Refreshing the Group sample does not resample cached
+Workers for Groups that remain visible; refreshing the Worker sample never
+reloads the configured Task directory. The Mock Scheduling axis may label a
+semantic lease projection, but it does not expose raw Score or prove execution.
+The Task page keeps real Profile descriptors read-only and
 separates them from the finite Task interaction Mock; Mock `Dispatch Visible`
 is not an execution claim. Neither Runtime page infers Worker totals, a
 combined online state, transport sessions, history, or complete matching

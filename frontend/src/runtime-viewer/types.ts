@@ -54,6 +54,15 @@ export interface ConfiguredRuntimeResourcesResponse {
   entries: ConfiguredRuntimeResourceEntry[];
 }
 
+export interface WorkerGroupPreviewResponse {
+  sampleLimit: number;
+  sampledCount: number;
+  returnedCount: number;
+  unreadableCount: number;
+  generatedAt: string;
+  workerGroups: WorkerGroupView[];
+}
+
 export interface WorkerView {
   workerId: string;
   workerGroupId: string;
@@ -76,6 +85,11 @@ export interface RuntimeViewerDataSource {
   loadConfiguredResources(
     signal?: AbortSignal
   ): Promise<ConfiguredRuntimeResourcesResponse>;
+
+  previewWorkerGroups(
+    sampleLimit: number,
+    signal?: AbortSignal
+  ): Promise<WorkerGroupPreviewResponse>;
 
   previewWorkers(
     workerGroupId: string,

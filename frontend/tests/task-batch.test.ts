@@ -148,6 +148,7 @@ function runtimeStore() {
         }
       ]
     })),
+    previewWorkerGroups: vi.fn(),
     previewWorkers: vi.fn()
   });
 }

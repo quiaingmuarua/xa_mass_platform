@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   configuredRuntimeResourcesResponseSchema,
+  workerGroupPreviewResponseSchema,
   workerPreviewResponseSchema
 } from "@/runtime-viewer/schemas";
-import { configuredEntry, preview, worker } from "./fixtures";
+import { configuredEntry, groupPreview, preview, worker } from "./fixtures";
 
 describe("Runtime View response schemas", () => {
   it("accepts the bounded public preview DTO", () => {
@@ -14,6 +15,14 @@ describe("Runtime View response schemas", () => {
     ]);
 
     expect(workerPreviewResponseSchema.parse(value)).toEqual(value);
+  });
+
+  it("accepts a bounded WorkerGroup preview and rejects duplicate identities", () => {
+    const value = groupPreview(["group-a", "group-b"], 1);
+    expect(workerGroupPreviewResponseSchema.parse(value)).toEqual(value);
+
+    const duplicate = groupPreview(["group-a", "group-a"]);
+    expect(workerGroupPreviewResponseSchema.safeParse(duplicate).success).toBe(false);
   });
 
   it.each([
