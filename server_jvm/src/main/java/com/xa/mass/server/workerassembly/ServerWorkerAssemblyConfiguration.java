@@ -1,10 +1,7 @@
 package com.xa.mass.server.workerassembly;
 
-import com.xa.mass.kernel.task.TaskResourceCatalog;
-import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
-import com.xa.mass.kernel.task.TaskLifecycleCommands;
+import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.springframework.boot.context.properties
@@ -28,26 +25,11 @@ public class ServerWorkerAssemblyConfiguration {
     @Bean
     ServerWorkerGroupInitializer serverWorkerGroupInitializer(
             ServerWorkerAssemblyManifest manifest,
-            WorkerResourceCatalog workerCatalog
+            WorkerGroupRegistrationService registrations
     ) {
         return new ServerWorkerGroupInitializer(
                 manifest,
-                workerCatalog
-        );
-    }
-
-    @Bean
-    ServerWorkerTaskInitializer serverWorkerTaskInitializer(
-            ServerWorkerAssemblyManifest manifest,
-            TaskResourceCatalog taskCatalog,
-            TaskRuntime taskRuntime,
-            TaskLifecycleCommands taskLifecycle
-    ) {
-        return new ServerWorkerTaskInitializer(
-                manifest,
-                taskCatalog,
-                taskRuntime,
-                taskLifecycle
+                registrations
         );
     }
 
@@ -66,13 +48,11 @@ public class ServerWorkerAssemblyConfiguration {
     ServerWorkerAssemblyLifecycleHost
     serverWorkerAssemblyLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
-            ServerWorkerTaskInitializer taskInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             ScenarioWorkers scenarioWorkers
     ) {
         return new ServerWorkerAssemblyLifecycleHost(
                 groupInitializer,
-                taskInitializer,
                 adapterManager,
                 scenarioWorkers
         );

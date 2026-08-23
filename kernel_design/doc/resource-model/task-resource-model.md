@@ -126,19 +126,24 @@ cannot mint, select or release the park through a generic time rewrite.
 Ordinary Item append remains a pure Task data write and never wakes a parked
 Task. The bounded `TaskCallItemSubmission` command deliberately does not read
 this descriptor or interpret either mechanism. It invokes the score owner's
-idempotent idle-park release before and after bounded Item append. Server RPC
-and Task Batch assembly decide when to use that command; explicit Task close
-can terminate either idle disposition at any time.
+idempotent idle-park release before and after bounded Item append. WorkerGroup
+Task Call and Task Batch assembly decide when to use that command. The Kernel
+close owner can terminate either idle disposition, but the generic public
+Server lifecycle routes expose close only for finite Tasks.
 
-Server exposes only two finite assembly profiles:
+Server exposes the two supported combinations through separate use cases:
 
-| Server profile | Worker allocation | Idle disposition |
+| Server use case | Worker allocation | Idle disposition |
 | --- | --- | --- |
-| `FINITE_PRECOMPUTED` | `PRECOMPUTED_TASK_RULE` | `CLOSE_WHEN_IDLE` |
-| `REUSABLE_DIRECT` | `DIRECT_ITEM_RULE` | `PARK_WHEN_IDLE` |
+| Generic public Task create | `PRECOMPUTED_TASK_RULE` | `CLOSE_WHEN_IDLE` |
+| WorkerGroup registration-provisioned Task Call | `DIRECT_ITEM_RULE` | `PARK_WHEN_IDLE` |
 
-Those names are Server API assembly choices; they are not additional Kernel
-enums or score states.
+Generic creation has no profile or mechanism selector. WorkerGroup registration
+derives one internal Task coordinate and converges the exact descriptor plus
+approval. It is not an arbitrary reusable Task registration surface, and the
+internal Task is hidden from the generic Task lifecycle, Item and result
+routes. These Server assembly decisions are not additional Kernel enums or
+score states.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -338,8 +343,9 @@ Every admitted Task enters `RUNNING_VISIBLE` with suffix `0`. When the complete
 ACTIVE Item band is empty, Task Dispatch applies the descriptor's idle
 disposition immediately. Any ACTIVE Item prevents close or park, and a
 post-park check can exact-release a park installed concurrently with Task Call
-append. Item execution retry remains TaskItem-score truth. A server may still
-close the Task explicitly at any time.
+append. Item execution retry remains TaskItem-score truth. The Kernel close
+owner remains valid for either disposition; generic public Server close is
+limited to finite Tasks and cannot close the internal Task Call Task.
 Initial finite Items may be appended before approval; after a finite Task
 reaches RUNNING with an empty ACTIVE band it may close immediately. Task Call
 submission treats valid PRE_REVIEW and ADMISSION scores as score no-ops, so a

@@ -26,7 +26,6 @@ import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskProfile;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -466,16 +465,16 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void publicTaskControlUsesJavaOwnersWithoutPythonHttp() {
+    void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 runtime,
-                lifecycle
+                lifecycle,
+                catalog
         );
         var created = controller.createTask(new TaskCreateRequest(
                 "public-task",
                 "phone-tools",
-                TaskProfile.REUSABLE_DIRECT,
-                null,
+                Map.of(),
                 config(2)
         ));
 

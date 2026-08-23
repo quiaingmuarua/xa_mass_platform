@@ -16,7 +16,7 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveRespon
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,13 +46,13 @@ public final class RuntimeViewService {
 
     private final WorkerResourceCatalog workerCatalog;
     private final TaskResourceCatalog taskCatalog;
-    private final WorkerGroupTaskCatalog configuredTasks;
+    private final ConfiguredWorkerGroupTaskCallCatalog configuredTasks;
     private final WorkerSchedulingService workerScheduling;
 
     public RuntimeViewService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
-            WorkerGroupTaskCatalog configuredTasks,
+            ConfiguredWorkerGroupTaskCallCatalog configuredTasks,
             WorkerSchedulingService workerScheduling
     ) {
         this.workerCatalog = workerCatalog;
@@ -65,7 +65,7 @@ public final class RuntimeViewService {
             String requestId
     ) {
         Map<String, String> configured =
-                configuredTasks.taskIdsByWorkerGroup();
+                configuredTasks.configuredTaskIdsByWorkerGroup();
         if (configured.isEmpty()) {
             return new ConfiguredRuntimeResourcesResponse(List.of());
         }

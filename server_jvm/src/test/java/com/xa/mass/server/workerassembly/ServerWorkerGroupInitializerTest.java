@@ -1,30 +1,25 @@
 package com.xa.mass.server.workerassembly;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 class ServerWorkerGroupInitializerTest {
 
     @Test
-    void initializesCatalogInDeclarationOrderAndIsIdempotent() {
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        when(catalog.registerWorkerGroup(any()))
-                .thenReturn(result(WorkerRuntimeStatus.OK))
-                .thenReturn(result(WorkerRuntimeStatus.NOOP));
+    void registersEveryDeclaredGroupWithItsTaskCallInDeclarationOrder() {
+        WorkerGroupRegistrationService registrations = mock(
+                WorkerGroupRegistrationService.class
+        );
         ServerWorkerGroupInitializer initializer =
                 new ServerWorkerGroupInitializer(
                         ServerWorkerAssemblyManifest.fromJson("""
@@ -38,35 +33,32 @@ class ServerWorkerGroupInitializerTest {
                           }
                         }
                         """),
-                        catalog
+                        registrations
                 );
 
         initializer.initialize();
         initializer.initialize();
 
-        ArgumentCaptor<WorkerGroupDescriptor> descriptor =
-                ArgumentCaptor.forClass(WorkerGroupDescriptor.class);
-        verify(catalog, times(2)).registerWorkerGroup(
-                descriptor.capture()
+        InOrder order = inOrder(registrations);
+        order.verify(registrations).register(
+                "phone-group",
+                Map.of("capability", "phone"),
+                List.of("phone.lookup")
         );
-        assertThat(descriptor.getAllValues())
-                .extracting(WorkerGroupDescriptor::workerGroupId)
-                .containsExactly("phone-group", "string-group");
-        assertThat(descriptor.getAllValues().get(0).attributes())
-                .containsEntry("capability", "phone");
-        assertThat(descriptor.getAllValues().get(1).attributes()).isEmpty();
-        InOrder order = inOrder(catalog);
-        order.verify(catalog).registerWorkerGroup(
-                descriptor.getAllValues().get(0)
+        order.verify(registrations).register(
+                "string-group",
+                Map.of(),
+                List.of("string.hash")
         );
-        order.verify(catalog).registerWorkerGroup(
-                descriptor.getAllValues().get(1)
+        verify(registrations, times(2)).register(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
         );
     }
 
     @Test
-    void rejectsInvalidConfigurationAndOwnerFailure() {
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+    void rejectsInvalidConfiguration() {
         assertThatThrownBy(() -> ServerWorkerAssemblyManifest.fromJson(
                 """
                         {"group":{"eventCodes":[],"workers":[]}}
@@ -79,11 +71,24 @@ class ServerWorkerGroupInitializerTest {
                         """
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duplicates");
+    }
 
-        when(catalog.registerWorkerGroup(any())).thenReturn(
-                new WorkerRuntimeResult(
-                        WorkerRuntimeStatus.INVALID,
-                        "stored descriptor is invalid"
+    @Test
+    void aRegistrationFailureDoesNotMarkInitializationComplete() {
+        WorkerGroupRegistrationService registrations = mock(
+                WorkerGroupRegistrationService.class
+        );
+        RuntimeException failure = new RuntimeException(
+                "Task Call registration unavailable"
+        );
+        when(registrations.register(
+                "group",
+                Map.of(),
+                List.of()
+        )).thenThrow(failure).thenReturn(
+                new WorkerGroupRegistrationService.Registration(
+                        "group",
+                        "registered"
                 )
         );
         ServerWorkerGroupInitializer initializer =
@@ -91,19 +96,16 @@ class ServerWorkerGroupInitializerTest {
                         ServerWorkerAssemblyManifest.fromJson(
                                 "{\"group\":{\"eventCodes\":[]}}"
                         ),
-                        catalog
+                        registrations
                 );
 
-        assertThatThrownBy(initializer::initialize)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("group")
-                .hasMessageContaining("invalid")
-                .hasMessageContaining("stored descriptor is invalid");
-    }
+        assertThatThrownBy(initializer::initialize).isSameAs(failure);
+        initializer.initialize();
 
-    private static WorkerRuntimeResult result(
-            WorkerRuntimeStatus status
-    ) {
-        return new WorkerRuntimeResult(status);
+        verify(registrations, times(2)).register(
+                "group",
+                Map.of(),
+                List.of()
+        );
     }
 }

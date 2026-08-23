@@ -239,7 +239,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(runtimeView)
                 .contains("WorkerResourceCatalog")
                 .contains("TaskResourceCatalog")
-                .contains("taskIdsByWorkerGroup")
+                .contains("configuredTaskIdsByWorkerGroup")
                 .contains("WorkerSchedulingService")
                 .contains("WorkerNetworkObservationService")
                 .contains("DirectCallService")
@@ -278,14 +278,14 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void taskBatchUsesProfileTaskCallSubmissionAndResultReadBoundary()
+    void taskBatchUsesRegisteredTaskCallSubmissionAndResultReadBoundary()
             throws IOException {
         String taskBatch = readSources(TASK_BATCH)
                 + readSources(TASK_BATCH_HTTP);
         assertThat(taskBatch)
                 .contains("TaskDataService")
                 .contains("TaskCallItemSubmission")
-                .contains("WorkerGroupTaskCatalog")
+                .contains("WorkerGroupTaskCallRegistrationService")
                 .contains("loadTaskItemSuccessResults")
                 .doesNotContain("appendTaskItems")
                 .doesNotContain("/api/v1/worker-groups/")
@@ -416,13 +416,14 @@ class ServerArchitectureBoundaryTest {
                 .contains("groupInitializer.initialize()")
                 .contains("adapterManager.start()")
                 .contains("adapterManager.close()")
-                .contains("WorkerResourceCatalog")
+                .contains("WorkerGroupRegistrationService")
                 .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
                 .contains("properties.capabilityAssemblyJson()")
                 .contains("properties.runtimeApiBaseUrl()")
                 .doesNotContain("ScenarioWorkerBundles")
                 .doesNotContain("ScenarioWorkerBundleConfig")
+                .doesNotContain("WorkerResourceCatalog")
                 .doesNotContain("adapter.netty.internal")
                 .doesNotContain("PHONE_NUMBER")
                 .doesNotContain("STRING_UTILS")

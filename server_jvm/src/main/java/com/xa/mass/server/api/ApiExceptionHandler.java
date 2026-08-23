@@ -50,6 +50,7 @@ public final class ApiExceptionHandler {
     private static HttpStatus statusFor(ServerErrorCode errorCode) {
         return switch (errorCode) {
             case TASK_DATA_UNAVAILABLE,
+                    TASK_CALL_REGISTRATION_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
                     WORKER_IDENTITY_UNAVAILABLE,
                     WORKER_BINDING_UNAVAILABLE,
@@ -64,12 +65,14 @@ public final class ApiExceptionHandler {
                     DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
             case TASK_NOT_FOUND,
+                    TASK_CALL_NOT_REGISTERED,
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
                     TASK_BATCH_RESOURCE_NOT_FOUND,
                     DIRECT_CALL_TARGET_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case KERNEL_REJECTED_CONFLICT,
+                    TASK_CALL_REGISTRATION_CONFLICT,
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
                     WORKER_GROUP_REGISTRATION_CONFLICT,

@@ -27,7 +27,7 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService.SchedulingState;
 import java.time.Instant;
@@ -50,7 +50,7 @@ class RuntimeViewControllerTest {
 
     private WorkerResourceCatalog workerCatalog;
     private TaskResourceCatalog taskCatalog;
-    private WorkerGroupTaskCatalog configuredTasks;
+    private ConfiguredWorkerGroupTaskCallCatalog configuredTasks;
     private WorkerSchedulingService workerScheduling;
     private WorkerNetworkObservationService workerNetwork;
     private MockMvc mockMvc;
@@ -59,10 +59,11 @@ class RuntimeViewControllerTest {
     void setUp() {
         workerCatalog = mock(WorkerResourceCatalog.class);
         taskCatalog = mock(TaskResourceCatalog.class);
-        configuredTasks = mock(WorkerGroupTaskCatalog.class);
+        configuredTasks = mock(ConfiguredWorkerGroupTaskCallCatalog.class);
         workerScheduling = mock(WorkerSchedulingService.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of());
+        when(configuredTasks.configuredTaskIdsByWorkerGroup())
+                .thenReturn(Map.of());
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -90,7 +91,7 @@ class RuntimeViewControllerTest {
         configured.put("group-b", "task-b");
         configured.put("missing", "task-missing");
         configured.put("group-a", "task-a");
-        when(configuredTasks.taskIdsByWorkerGroup())
+        when(configuredTasks.configuredTaskIdsByWorkerGroup())
                 .thenReturn(configured);
 
         var groups = new LinkedHashMap<String, WorkerGroupDescriptor>();
@@ -167,7 +168,7 @@ class RuntimeViewControllerTest {
     @Test
     void configuredResourcesRejectIdentityDriftAsUnavailable()
             throws Exception {
-        when(configuredTasks.taskIdsByWorkerGroup()).thenReturn(Map.of(
+        when(configuredTasks.configuredTaskIdsByWorkerGroup()).thenReturn(Map.of(
                 "group-a",
                 "task-a"
         ));

@@ -148,7 +148,7 @@ function formatDuration(millis: number): string {
       show-icon
     >
       <template #title>
-        This Lab appends ordinary Items to the selected WorkerGroup's Profile Task.
+        This Lab submits Items through the selected WorkerGroup's built-in Task Call.
         WorkerGroup event codes are a selection catalog, not dispatch authorization.
       </template>
     </el-alert>

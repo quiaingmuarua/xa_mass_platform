@@ -122,8 +122,8 @@ configuration:
   --args="--spring.profiles.active=scenario-workers --xa.mass.kernel-pacer.config-path=xa-android/worker-demo/kernel-config.json"
 ```
 
-The profile initializes the advisory `android-demo-workers` catalog and the
-long-lived Group Task, but does not construct the Android Worker. Route the
+The profile initializes the advisory `android-demo-workers` catalog and its
+registered Task Call, but does not construct the Android Worker. Route the
 Runtime API and WebSocket Adapter to the device:
 
 ```powershell
@@ -148,7 +148,8 @@ WorkerGroup route:
 
 The driver sends three standard Items with `allocationRule: {}` and prints the
 State, Battery, and parameterized string digest results. It does not create
-or close a Task, expose the Profile-owned Task ID, or select a Worker ID.
+or close a Task, expose the internal registered Task Call ID, or select a
+Worker ID.
 
 Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab

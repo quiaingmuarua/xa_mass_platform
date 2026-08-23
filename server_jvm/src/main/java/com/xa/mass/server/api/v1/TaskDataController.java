@@ -31,7 +31,10 @@ public class TaskDataController {
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskItemsAppendRequest request
     ) {
-        return ResponseEntity.ok(taskData.appendTaskItems(taskId, request));
+        return ResponseEntity.ok(taskData.appendFiniteTaskItems(
+                taskId,
+                request
+        ));
     }
 
     @PostMapping("/{taskId}/results:load")
@@ -39,7 +42,7 @@ public class TaskDataController {
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskItemResultsLoadRequest request
     ) {
-        return ResponseEntity.ok(taskData.loadTaskItemSuccessResults(
+        return ResponseEntity.ok(taskData.loadFiniteTaskItemSuccessResults(
                 taskId,
                 request.messageIds()
         ));

@@ -5,6 +5,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,13 +18,19 @@ public final class WorkerGroupRegistrationService {
     private static final String OPERATION = "workerGroup.register";
 
     private final WorkerResourceCatalog workerCatalog;
+    private final WorkerGroupTaskCallRegistrationService taskCallRegistrations;
 
     public WorkerGroupRegistrationService(
-            WorkerResourceCatalog workerCatalog
+            WorkerResourceCatalog workerCatalog,
+            WorkerGroupTaskCallRegistrationService taskCallRegistrations
     ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
+        );
+        this.taskCallRegistrations = Objects.requireNonNull(
+                taskCallRegistrations,
+                "taskCallRegistrations"
         );
     }
 
@@ -56,12 +63,9 @@ public final class WorkerGroupRegistrationService {
                     null
             );
         }
-        return switch (result.status()) {
-            case OK -> new Registration(workerGroupId, "registered");
-            case NOOP -> new Registration(
-                    workerGroupId,
-                    "already_registered"
-            );
+        boolean groupRegistered = switch (result.status()) {
+            case OK -> true;
+            case NOOP -> false;
             case CONFLICT -> throw failure(
                     ServerErrorCode.WORKER_GROUP_REGISTRATION_CONFLICT,
                     result.reason(),
@@ -73,6 +77,14 @@ public final class WorkerGroupRegistrationService {
                     null
             );
         };
+        WorkerGroupTaskCallRegistrationService.Registration taskCall =
+                taskCallRegistrations.register(workerGroupId);
+        return new Registration(
+                workerGroupId,
+                groupRegistered || taskCall.newlyRegistered()
+                        ? "registered"
+                        : "already_registered"
+        );
     }
 
     private static void requireValid(

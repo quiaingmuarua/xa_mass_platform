@@ -69,7 +69,7 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
         <MetricCard
           label="配置 Task"
           :value="store.entries.length"
-          hint="profile entries"
+          hint="configured entries"
           :icon="Tickets"
           tone="primary"
           test-id="metric-configured-tasks"

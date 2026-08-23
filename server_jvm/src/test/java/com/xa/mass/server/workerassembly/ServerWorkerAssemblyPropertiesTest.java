@@ -3,17 +3,15 @@ package com.xa.mass.server.workerassembly;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.xa.mass.kernel.task.TaskResourceCatalog;
-import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
-import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterProperties;
+import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.List;
 import java.util.Map;
@@ -42,16 +40,10 @@ class ServerWorkerAssemblyPropertiesTest {
                             () -> mock(WorkerResourceCatalog.class)
                     )
                     .withBean(
-                            TaskResourceCatalog.class,
-                            () -> mock(TaskResourceCatalog.class)
-                    )
-                    .withBean(
-                            TaskRuntime.class,
-                            () -> mock(TaskRuntime.class)
-                    )
-                    .withBean(
-                            TaskLifecycleCommands.class,
-                            () -> mock(TaskLifecycleCommands.class)
+                            WorkerGroupRegistrationService.class,
+                            () -> mock(
+                                    WorkerGroupRegistrationService.class
+                            )
                     )
                     .withBean(WorkerEndpointDirectory.class, () -> {
                         WorkerEndpointDirectory directory = mock(
@@ -72,6 +64,9 @@ class ServerWorkerAssemblyPropertiesTest {
             assertThat(context.getBean(
                     ServerWorkerAssemblyProperties.class
             ).groupConfigJson()).isEqualTo("{}");
+            assertThat(context.getBean(
+                    ServerWorkerAssemblyManifest.class
+            ).configuredTaskIdsByWorkerGroup()).isEmpty();
             assertThat(context.getBean(
                     ServerWorkerAssemblyProperties.class
             ).capabilityAssemblyJson()).isEqualTo("{}");
@@ -111,6 +106,22 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"extension.worker.android.state.read\"")
                     .contains("\"extension.worker.android.battery.read\"")
                     .doesNotContain("\"workers\"");
+            assertThat(context.getBean(
+                    ServerWorkerAssemblyManifest.class
+            ).configuredTaskIdsByWorkerGroup()).containsExactly(
+                    Map.entry(
+                            "scenario-phone-number-workers",
+                            "scenario-rpc-scenario-phone-number-workers"
+                    ),
+                    Map.entry(
+                            "scenario-string-utils-workers",
+                            "scenario-rpc-scenario-string-utils-workers"
+                    ),
+                    Map.entry(
+                            "android-demo-workers",
+                            "scenario-rpc-android-demo-workers"
+                    )
+            );
             Map<String, Object> groups = Jsons.parseObject(
                     properties.groupConfigJson()
             );
@@ -169,6 +180,15 @@ class ServerWorkerAssemblyPropertiesTest {
                         + "{\"group\":{\"eventCodes\":["
                         + "\"extension.worker.string.md5\"]}}"
         ).run(context -> assertThat(context).hasNotFailed());
+    }
+
+    @Test
+    void theRemovedTaskCallAllowlistIsRejected() {
+        contextRunner.withPropertyValues(
+                "xa.mass.worker-assembly.group-config-json="
+                        + "{\"group\":{\"eventCodes\":[]}}",
+                "xa.mass.worker-assembly.task-call-worker-group-ids[0]=group"
+        ).run(context -> assertThat(context).hasFailed());
     }
 
     @Test

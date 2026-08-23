@@ -37,25 +37,17 @@ public final class TaskDataService {
         this.taskCatalog = taskCatalog;
     }
 
-    public TaskItemsAppendResponse appendTaskItems(
+    public TaskItemsAppendResponse appendFiniteTaskItems(
             String taskId,
             TaskItemsAppendRequest request
     ) {
-        return appendResponse(appendTaskItems(
+        return appendResponse(appendFiniteTaskItems(
                 taskId,
                 request.items()
         ));
     }
 
-    public TaskItemAppendResult appendTaskItem(
-            String taskId,
-            TaskItemRequest request
-    ) {
-        return appendTaskItems(taskId, List.of(request))
-                .get(request.messageId());
-    }
-
-    private Map<String, TaskItemAppendResult> appendTaskItems(
+    private Map<String, TaskItemAppendResult> appendFiniteTaskItems(
             String taskId,
             List<TaskItemRequest> requestedItems
     ) {
@@ -66,6 +58,12 @@ public final class TaskDataService {
                     .loadTaskAllocationDescriptors(List.of(taskId))
                     .get(taskId);
             if (descriptor == null) {
+                return uniformResults(
+                        latest.keySet(),
+                        TaskItemAppendStatus.NOT_FOUND
+                );
+            }
+            if (!isPublicFiniteTask(descriptor)) {
                 return uniformResults(
                         latest.keySet(),
                         TaskItemAppendStatus.NOT_FOUND
@@ -115,6 +113,21 @@ public final class TaskDataService {
             String taskId,
             List<String> messageIds
     ) {
+        return loadTaskItemSuccessResults(taskId, messageIds, false);
+    }
+
+    public TaskItemResultsLoadResponse loadFiniteTaskItemSuccessResults(
+            String taskId,
+            List<String> messageIds
+    ) {
+        return loadTaskItemSuccessResults(taskId, messageIds, true);
+    }
+
+    private TaskItemResultsLoadResponse loadTaskItemSuccessResults(
+            String taskId,
+            List<String> messageIds,
+            boolean publicFiniteOnly
+    ) {
         try {
             List<String> uniqueIds = new ArrayList<>(
                     new LinkedHashSet<>(messageIds)
@@ -123,6 +136,14 @@ public final class TaskDataService {
                     .loadTaskAllocationDescriptors(List.of(taskId))
                     .get(taskId);
             if (descriptor == null) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_NOT_FOUND,
+                        "taskData.loadSuccessResults",
+                        null,
+                        null
+                );
+            }
+            if (publicFiniteOnly && !isPublicFiniteTask(descriptor)) {
                 throw new ServerException(
                         ServerErrorCode.TASK_NOT_FOUND,
                         "taskData.loadSuccessResults",
@@ -146,6 +167,13 @@ public final class TaskDataService {
                     error
             );
         }
+    }
+
+    private static boolean isPublicFiniteTask(TaskDescriptor descriptor) {
+        return descriptor.workerAllocationMechanism()
+                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
+                && descriptor.idleDisposition()
+                == TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE;
     }
 
     private static void validateRuleLocation(

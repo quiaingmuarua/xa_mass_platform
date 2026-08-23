@@ -31,8 +31,9 @@ import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
+import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
@@ -104,7 +105,10 @@ class ServerApplicationContextTest {
                 WorkerGroupTaskCallService.class
         )).isNotNull();
         assertThat(applicationContext.getBean(
-                WorkerGroupTaskCatalog.class
+                WorkerGroupTaskCallRegistrationService.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                ConfiguredWorkerGroupTaskCallCatalog.class
         )).isNotNull();
         assertThat(applicationContext.getBean(RuntimeViewController.class))
                 .isNotNull();
@@ -230,11 +234,29 @@ class ServerApplicationContextTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
+        HttpResponse<String> reusableTaskResponse = client.send(
+                HttpRequest.newBuilder(endpoint("/api/v1/tasks"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"taskId\":\"legacy-reusable\","
+                                        + "\"workerGroupId\":\"legacy-group\","
+                                        + "\"profile\":\"REUSABLE_DIRECT\","
+                                        + "\"allocationRule\":{},"
+                                        + "\"config\":{"
+                                        + "\"priority\":\"0\","
+                                        + "\"maximumCandidateWorkers\":\"1\","
+                                        + "\"maxRetryTimes\":\"3\"}}",
+                                StandardCharsets.UTF_8
+                        ))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
 
         assertThat(groupResponse.statusCode()).isEqualTo(404);
         assertThat(indexedGroupResponse.statusCode()).isEqualTo(404);
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
+        assertThat(reusableTaskResponse.statusCode()).isEqualTo(400);
     }
 
     private URI endpoint(String path) {

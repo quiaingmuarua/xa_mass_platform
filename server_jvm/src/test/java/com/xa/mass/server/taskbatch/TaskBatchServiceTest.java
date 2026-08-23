@@ -21,7 +21,7 @@ import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunRequest;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.taskdata.TaskDataService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -348,13 +348,28 @@ class TaskBatchServiceTest {
                 30_000,
                 300_000
         );
-        WorkerGroupTaskCatalog catalog = mock(WorkerGroupTaskCatalog.class);
-        when(catalog.taskIdsByWorkerGroup()).thenReturn(tasks);
+        WorkerGroupTaskCallRegistrationService registrations =
+                mock(WorkerGroupTaskCallRegistrationService.class);
+        when(registrations.requireRegisteredTaskId(any())).thenAnswer(
+                invocation -> {
+                    String workerGroupId = invocation.getArgument(0);
+                    String taskId = tasks.get(workerGroupId);
+                    if (taskId != null) {
+                        return taskId;
+                    }
+                    throw new ServerException(
+                            ServerErrorCode.TASK_CALL_NOT_REGISTERED,
+                            "taskCall.resolve",
+                            null,
+                            null
+                    );
+                }
+        );
         return new TaskBatchService(
                 TaskBatchFileStore.open(properties),
                 taskData,
                 submission,
-                catalog,
+                registrations,
                 properties,
                 Clock.fixed(
                         Instant.ofEpochMilli(1_786_680_000_123L),

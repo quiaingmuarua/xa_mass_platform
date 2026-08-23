@@ -1,7 +1,8 @@
 package com.xa.mass.server.workerassembly;
 
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,9 +13,8 @@ import java.util.Map;
 import java.util.Set;
 
 final class ServerWorkerAssemblyManifest
-        implements WorkerGroupTaskCatalog {
+        implements ConfiguredWorkerGroupTaskCallCatalog {
 
-    private static final String TASK_ID_PREFIX = "scenario-rpc-";
     private static final Set<String> GROUP_FIELDS = Set.of(
             "attributes",
             "eventCodes"
@@ -54,7 +54,12 @@ final class ServerWorkerAssemblyManifest
                     optionalObject(group, "attributes"),
                     new LinkedHashSet<>(requireEventCodes(group))
             ));
-            taskIds.put(workerGroupId, TASK_ID_PREFIX + workerGroupId);
+            taskIds.put(
+                    workerGroupId,
+                    WorkerGroupTaskCallRegistrationService.taskId(
+                            workerGroupId
+                    )
+            );
         });
         return new ServerWorkerAssemblyManifest(descriptors, taskIds);
     }
@@ -64,7 +69,7 @@ final class ServerWorkerAssemblyManifest
     }
 
     @Override
-    public Map<String, String> taskIdsByWorkerGroup() {
+    public Map<String, String> configuredTaskIdsByWorkerGroup() {
         return taskIds;
     }
 

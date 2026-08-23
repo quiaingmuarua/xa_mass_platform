@@ -93,8 +93,11 @@ orthogonal scheduling inputs or workload properties.
 
 This is a summary of the canonical
 [Task Resource Model](../resource-model/task-resource-model.md) contract.
-Server exposes only the finite `FINITE_PRECOMPUTED` and `REUSABLE_DIRECT`
-profiles; it does not expose an arbitrary mechanism matrix.
+Generic public Server Task creation exposes only
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`. WorkerGroup registration provisions
+the fixed internal Task Call
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` assembly. Neither surface exposes an
+arbitrary mechanism matrix.
 
 WorkerAllocationMechanism is the allocation boundary. It does not define a
 public Cartesian product of cache, acquisition, trigger, fairness, or retry

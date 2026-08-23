@@ -123,11 +123,12 @@ a query projection containing Worker and Platform property snapshots. The
 Kernel Runtime Server owns its HTTP request models because they are
 protocol-edge translations.
 
-An explicit WorkerGroup registration atomically creates its `attributes` and
-`eventCodes`; identical content is a no-op and different content conflicts
-without replacement. `workerGroupId` remains the stable scheduling partition
-identity. The declared fields are control-plane catalog metadata and are not
-consulted by Matcher or Dispatch.
+The WorkerGroup owner step atomically creates `attributes` and `eventCodes`;
+identical content is a no-op and different content conflicts without
+replacement. Server then provisions the Group's fixed Task Call through the
+independent Task owners. `workerGroupId` remains the stable scheduling
+partition identity. The declared fields are control-plane catalog metadata and
+are not consulted by Matcher or Dispatch.
 
 First Worker upsert fixes lane rank at zero and initializes
 the Worker HOT score without requiring the scheduling process to be running.
@@ -154,25 +155,29 @@ The caller owns an explicit close decision and its business evidence. Task
 Dispatch independently applies the persisted `TaskIdleDisposition` only after
 proving that the complete ACTIVE Item band is empty: it either exact-closes the
 Task or exact-parks it at the Kernel-private idle coordinate.
-Java ordinary TaskData append enforces only the stable allocation-rule location
-contract: `PRECOMPUTED_TASK_RULE` forbids Item rules and
-`DIRECT_ITEM_RULE` requires a non-empty Item rule. It preserves that
-JSON-compatible rule as opaque scheduling input. The
+Java public TaskData append is limited to the public
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` combination and enforces its stable
+allocation-rule location contract: Task-level rules are allowed and Item rules
+are forbidden. WorkerGroup Task Call submits a `DIRECT_ITEM_RULE` Item through
+the separate bounded command and preserves its JSON-compatible rule as opaque
+scheduling input. The
 Python matcher owns the evolving rule DSL, including candidate derivation,
 operators, and fail-closed behavior. Item rules cannot change WorkerGroup.
-Ordinary append does not alter Task score. Reusable RPC and Task Batch flows use
-the bounded Kernel `TaskCallItemSubmission`. It calls
+Ordinary append does not alter Task score. WorkerGroup Task Call and Task Batch
+flows use the bounded Kernel `TaskCallItemSubmission`. It calls
 `try_release_idle_park`, appends at most 100 Items, then calls the same
 idempotent operation again. A recognized private park becomes a due RUNNING
 score; any valid nearer positive coordinate is a no-op. The command does not
-load Task metadata, inspect ACTIVE Items, interpret a Server profile, or create
-an urgent scheduling lane. The second call repairs a park installed by Task
-Dispatch during the append window.
+load Task metadata, inspect ACTIVE Items, interpret a Server registration, or
+create an urgent scheduling lane. The second call repairs a park installed by
+Task Dispatch during the append window.
 
 The Kernel descriptor stores allocation mechanism and idle disposition as
-orthogonal facts. The finite public Server `TaskProfile` maps to the two
-currently supported combinations; the Kernel does not own that API profile or
-an internal profile resolver.
+orthogonal facts. Generic public Server Task creation maps only to
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`. WorkerGroup registration also
+converges one derived internal
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task. The Kernel owns neither that
+WorkerGroup-scoped API use case nor its deterministic coordinate derivation.
 
 Candidate matching reads canonical Worker and Platform Properties only after a
 bounded candidate source has supplied Worker IDs. DIRECT obtains candidates
@@ -368,21 +373,23 @@ CLI child that runs Pacers against the shared Redis state, and its readiness
 reflects that child's lifecycle. The proof then uses the Java Server's Worker
 Delivery owner providers.
 `PRECOMPUTED_TASK_RULE` polling
-calls the point HTTP API directly. `DIRECT_ITEM_RULE` uses configured WebSocket
-or Socket Adapter instances, each of which still calls the same batch HTTP
-contract through loopback. The WorkerGroup Point RPC path holds one
-asynchronous HTTP waiter while a shared Java virtual thread probes one
+calls the point HTTP API directly. The proof registers each WorkerGroup and its
+attached Task Call, then `DIRECT_ITEM_RULE` uses configured WebSocket or Socket Adapter
+instances, each of which still calls the same batch HTTP contract through
+loopback. The WorkerGroup call path holds one bounded synchronous HTTP wait
+while a shared Java virtual thread probes one
 Task-scoped messageId at a time. Duplicate waits for that same TaskItem may
 share the observation. The Server Task Batch Lab path does not use that waiter
-or probe: it appends one caller-bounded Item batch, then loads the
-remaining message IDs together on each polling round. Java TaskData and
+or probe: it appends caller-bounded Item chunks, then loads the remaining
+message IDs together on each polling round. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
 for resource declaration: score read and missing-score initialization.
 Separate Redis proofs cover TaskData Item-score initialization,
 `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` releasing RUNNING soft-limit capacity,
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` exact park/unpark followed by dispatch, and
-explicit public close remaining terminal.
+the generic finite public close remaining terminal. The internal Task Call Task
+is not exposed through generic lifecycle routes.
 
 ## Production Host
 
@@ -424,6 +431,7 @@ POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
 POST /api/v1/runtime-view/worker-groups:preview
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/worker-groups/{workerGroupId}/items:call
+POST /api/v1/worker-groups/{workerGroupId}/item-results:load
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
@@ -435,15 +443,33 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:cons
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
-The Group call route resolves a Server profile-owned persistent Task and sends
-the standard Item unchanged through Task data. WorkerGroup is the URL
-coordinate; it is not copied into the Item, and the response exposes neither
-the internal Task ID nor the selected Worker.
+WorkerGroup registration creates the Group through its owner, derives one
+internal Task ID, and converges the exact
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` descriptor plus approval through existing
+Task owners. It adds no Server Redis key or mutable WorkerGroup-to-Task mapping.
+Success guarantees both resources; an exact repeat is `already_registered`
+only when both already exist, while a missing Task is backfilled and descriptor
+drift conflicts. Group create, Task create and approval are separate owner
+operations rather than a cross-key transaction. A Task-side failure may leave
+the Group created; retrying the exact registration re-reads owner truth and
+converges.
+The Group call route resolves that descriptor and submits the standard Item
+through the bounded Task Call command. WorkerGroup is the URL coordinate; it is
+not copied into the Item, and the response exposes neither the internal Task ID
+nor a selected Worker. The request waits only for its bounded interval: HTTP
+`200` reports an observed success, while HTTP `202` reports `pending`; the
+Group result route supports a later bounded read by Message ID.
 
-WorkerGroup registration is create-only control-plane setup: an equivalent
-declaration is idempotent and a different declaration conflicts without
-changing the existing Group. The bounded Runtime View preview performs one
-random HASH sample and makes no list, order, count, or completeness claim.
+Generic `/api/v1/tasks` creation always assembles
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` and has no mechanism/profile field.
+Its lifecycle, Item and result routes hide internal Task Call Tasks as not
+found.
+
+WorkerGroup registration is create-only control-plane setup with attached Task
+Call provisioning: an equivalent complete registration is idempotent and a
+different declaration conflicts without changing the existing Group. The
+bounded Runtime View preview performs one random HASH sample and makes no list,
+order, count, or completeness claim.
 
 Worker Prepare receives complete Worker Properties and maps
 `workerGroupId + workerProperties.clientWorkerKey` to a long-lived

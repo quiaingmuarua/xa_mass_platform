@@ -165,23 +165,14 @@ class RuntimeBoundaryIntegrationTest {
     @Test
     void finitePrecomputedClosesThroughTheJavaPollingWorker()
             throws Exception {
-        runWorkerDeliveryClosure(
-                "FINITE_PRECOMPUTED",
-                TransportProfile.POLLING
-        );
+        runFiniteWorkerDeliveryClosure(TransportProfile.POLLING);
     }
 
     @Test
-    void reusableDirectClosesThroughWebSocketAndSocketAdapters()
+    void registeredTaskCallWaitsForWebSocketAndSocketWorkerResults()
             throws Exception {
-        runWorkerDeliveryClosure(
-                "REUSABLE_DIRECT",
-                TransportProfile.WEBSOCKET
-        );
-        runWorkerDeliveryClosure(
-                "REUSABLE_DIRECT",
-                TransportProfile.SOCKET
-        );
+        runWorkerGroupTaskCall(TransportProfile.WEBSOCKET);
+        runWorkerGroupTaskCall(TransportProfile.SOCKET);
     }
 
     @Test
@@ -226,11 +217,6 @@ class RuntimeBoundaryIntegrationTest {
                             + "/platform-properties",
                     "{\"properties\":{\"pool\":\"batch\"}}"
             ).statusCode()).isEqualTo(200);
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, "REUSABLE_DIRECT")
-            ).statusCode()).isEqualTo(201);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
             String propertyRule = "{"
@@ -238,16 +224,13 @@ class RuntimeBoundaryIntegrationTest {
                     + "\"worker.region\":{\"$eq\":\"cn-east\"},"
                     + "\"platform.pool\":{\"$in\":[\"batch\"]}"
                     + "}";
-            appendItemWithAllocationRule(
-                    taskId,
-                    firstMessageId,
-                    propertyRule
-            );
-            appendItemWithAllocationRule(
-                    taskId,
-                    secondMessageId,
-                    propertyRule
-            );
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks",
+                    taskRequest(taskId, workerGroupId, propertyRule)
+            ).statusCode()).isEqualTo(201);
+            appendItem(taskId, firstMessageId);
+            appendItem(taskId, secondMessageId);
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/approve",
@@ -460,7 +443,8 @@ class RuntimeBoundaryIntegrationTest {
                     taskRequest(
                             demandTaskId,
                             workerGroupId,
-                            "REUSABLE_DIRECT"
+                            "{\"workerId\":{\"$eq\":\"missing-worker-"
+                                    + suffix + "\"}}"
                     )
             ).statusCode()).isEqualTo(201);
             demandTaskCreated = true;
@@ -469,11 +453,9 @@ class RuntimeBoundaryIntegrationTest {
                     "/api/v1/tasks/" + demandTaskId + "/approve",
                     null
             ).statusCode()).isEqualTo(200);
-            appendItemWithAllocationRule(
+            appendItem(
                     demandTaskId,
-                    "serviceability-demand-item-" + suffix,
-                    "{\"workerId\":{\"$eq\":\"missing-worker-"
-                            + suffix + "\"}}"
+                    "serviceability-demand-item-" + suffix
             );
             awaitServiceabilitySnapshot(workerGroupId, workerId);
         } finally {
@@ -699,8 +681,7 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(readiness.body()).contains("\"status\":\"UP\"");
     }
 
-    private void runWorkerDeliveryClosure(
-            String taskProfile,
+    private void runFiniteWorkerDeliveryClosure(
             TransportProfile transportProfile
     ) throws Exception {
         String suffix = UUID.randomUUID().toString();
@@ -741,20 +722,10 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, taskProfile)
+                    taskRequest(taskId, workerGroupId, "{}")
             ).statusCode()).isEqualTo(201);
-            appendItem(
-                    taskId,
-                    firstMessageId,
-                    workerId,
-                    "REUSABLE_DIRECT".equals(taskProfile)
-            );
-            appendItem(
-                    taskId,
-                    secondMessageId,
-                    workerId,
-                    "REUSABLE_DIRECT".equals(taskProfile)
-            );
+            appendItem(taskId, firstMessageId);
+            appendItem(taskId, secondMessageId);
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/approve",
@@ -774,33 +745,126 @@ class RuntimeBoundaryIntegrationTest {
         }
     }
 
-    private void appendItemWithAllocationRule(
-            String taskId,
-            String messageId,
-            String allocationRule
+    private void runWorkerGroupTaskCall(
+            TransportProfile transportProfile
+    ) throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String workerGroupId = "task-call-tools-" + suffix;
+        String clientWorkerKey = "task-call-worker-" + suffix;
+
+        HttpResponse<String> registration = send(
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + ":register",
+                """
+                        {
+                          "eventCodes": ["%s"]
+                        }
+                        """.formatted(TEST_EVENT_CODE)
+        );
+        assertThat(registration.statusCode()).isEqualTo(200);
+        assertThat(registration.body()).contains("\"status\":\"registered\"");
+
+        PreparedCoordinate boundWorker = prepareWorker(
+                workerGroupId,
+                clientWorkerKey,
+                transportProfile,
+                Map.of("runtime", "java-task-call")
+        );
+        String workerId = boundWorker.workerId();
+        RunningWorker worker = startWorker(
+                workerGroupId,
+                clientWorkerKey,
+                workerId,
+                boundWorker.endpointUri(),
+                Map.of("runtime", "java-task-call"),
+                transportProfile
+        );
+        try {
+            awaitWorkerRegistered(workerGroupId, workerId);
+            String firstMessageId = "task-call-message-1-" + suffix;
+            String secondMessageId = "task-call-message-2-" + suffix;
+            assertTaskCallSucceeded(
+                    workerGroupId,
+                    workerId,
+                    firstMessageId
+            );
+            assertTaskCallSucceeded(
+                    workerGroupId,
+                    workerId,
+                    secondMessageId
+            );
+
+            HttpResponse<String> loaded = send(
+                    "POST",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/item-results:load",
+                    "{\"messageIds\":[\"" + firstMessageId + "\"]}"
+            );
+            assertThat(loaded.statusCode()).isEqualTo(200);
+            assertThat(JSON.readTree(loaded.body())
+                    .get("results")
+                    .get(firstMessageId)
+                    .stringValue()).isEqualTo(TEST_RESULT);
+
+            HttpResponse<String> repeatedRegistration = send(
+                    "POST",
+                    "/api/v1/worker-groups/" + workerGroupId + ":register",
+                    """
+                            {
+                              "eventCodes": ["%s"]
+                            }
+                            """.formatted(TEST_EVENT_CODE)
+            );
+            assertThat(repeatedRegistration.statusCode()).isEqualTo(200);
+            assertThat(repeatedRegistration.body())
+                    .contains("\"status\":\"already_registered\"");
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/scenario-rpc-" + workerGroupId
+                            + "/close",
+                    null
+            ).statusCode()).isEqualTo(404);
+        } finally {
+            worker.close();
+        }
+    }
+
+    private void assertTaskCallSucceeded(
+            String workerGroupId,
+            String workerId,
+            String messageId
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
-                "/api/v1/tasks/" + taskId + "/items",
+                "/api/v1/worker-groups/" + workerGroupId + "/items:call",
                 """
                         {
-                          "items": [{
+                          "item": {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "createdAtMillis": %d,
                             "payload": {"value": "input"},
-                            "allocationRule": %s
-                          }]
+                            "allocationRule": {
+                              "workerId": {"$eq": "%s"}
+                            }
+                          },
+                          "waitTimeoutMillis": 10000
                         }
                         """.formatted(
                         messageId,
                         TEST_EVENT_CODE,
                         System.currentTimeMillis() - 1_000,
-                        allocationRule
+                        workerId
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("\"status\":\"appended\"");
+        assertThat(JSON.readTree(response.body()).get("status").asText())
+                .isEqualTo("succeeded");
+        assertThat(JSON.readTree(response.body()).get("messageId").asText())
+                .isEqualTo(messageId);
+        assertThat(JSON.readTree(response.body())
+                .get("opaqueResultPayload")
+                .stringValue()).isEqualTo(TEST_RESULT);
     }
 
     private void assertStoredItemAndFinalSuccess(
@@ -866,14 +930,8 @@ class RuntimeBoundaryIntegrationTest {
 
     private void appendItem(
             String taskId,
-            String messageId,
-            String workerId,
-            boolean directAllocation
+            String messageId
     ) throws Exception {
-        String allocationRule = directAllocation
-                ? ",\"allocationRule\":{\"workerId\":{\"$eq\":\""
-                + workerId + "\"}}"
-                : "";
         HttpResponse<String> response = send(
                 "POST",
                 "/api/v1/tasks/" + taskId + "/items",
@@ -883,14 +941,13 @@ class RuntimeBoundaryIntegrationTest {
                             "messageId": "%s",
                             "eventCode": "%s",
                             "createdAtMillis": %d,
-                            "payload": {"value": "input"}%s
+                            "payload": {"value": "input"}
                           }]
                         }
                         """.formatted(
                         messageId,
                         TEST_EVENT_CODE,
-                        System.currentTimeMillis() - 1_000,
-                        allocationRule
+                        System.currentTimeMillis() - 1_000
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
@@ -1073,17 +1130,13 @@ class RuntimeBoundaryIntegrationTest {
     private String taskRequest(
             String taskId,
             String workerGroupId,
-            String taskProfile
+            String allocationRule
     ) {
-        String allocationRule = "FINITE_PRECOMPUTED".equals(taskProfile)
-                ? "\"allocationRule\":{},"
-                : "";
         return """
                 {
                   "taskId": "%s",
                   "workerGroupId": "%s",
-                  "profile": "%s",
-                  %s
+                  "allocationRule": %s,
                   "config": {
                     "priority": "0",
                     "maximumCandidateWorkers": "1",
@@ -1093,7 +1146,6 @@ class RuntimeBoundaryIntegrationTest {
                 """.formatted(
                 taskId,
                 workerGroupId,
-                taskProfile,
                 allocationRule
         );
     }

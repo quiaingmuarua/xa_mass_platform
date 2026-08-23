@@ -16,9 +16,9 @@ phone-seed.txt / string-seed.txt
 ```
 
 The client supplies six explicit WorkerGroup/Event/Payload-key cases. Server
-owns line-to-Payload conversion, one batch Item append, pending-result polling,
-and authoritative output files. This integration verifies six successful runs,
-ten results per batch, sixty total results, globally unique Message IDs,
+owns line-to-Payload conversion, ordered bounded Item chunks, pending-result
+polling, and authoritative output files. This integration verifies six
+successful runs, ten results per batch, sixty total results, globally unique Message IDs,
 and each row's expected WorkerGroup/Event ownership. It deliberately does not
 assert capability-specific Result fields or values and does not prove Worker
 identity; those responsibilities belong to capability unit tests and Worker

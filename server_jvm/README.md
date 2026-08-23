@@ -39,7 +39,7 @@ Worker Delivery
   -> DeliveryCommand / DeliveryReport owner runtime
 
 Configured deployment
-  -> initialize advisory WorkerGroups and Profile Tasks
+  -> register advisory WorkerGroups with their Task Calls
   -> start Adapter Manager
   -> start ScenarioWorkers aggregate
 ```
@@ -64,13 +64,16 @@ Provider ownership is deliberately mixed but explicit:
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
 | Other scheduling internals | Explicit JVM gaps |
 
-The bounded use cases do not create new truth: WorkerGroup RPC submits one Item
-through the Kernel Task Call command and observes last success through one
-shared probe; Task Batch submits finite input in ordered chunks of at most 100
-and publishes complete or partial JSONL. Ordinary Task data append remains a
-pure data write and does not release the Kernel-private idle park;
-pause/resume calls the
-Worker score owner; DIRECT_CALL correlates caller-selected targets without
+WorkerGroup registration creates no Server mapping or second Task catalog. In
+addition to the create-only Group declaration, it derives one internal Task
+coordinate, creates the fixed `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` descriptor
+through Kernel owners, and approves it. Calls submit one Item through the
+Kernel Task Call command and observe last success through one shared probe;
+Task Batch submits finite input in ordered chunks of at most 100 and publishes
+complete or partial JSONL.
+Ordinary Task data append remains a pure data write and does not release the
+Kernel-private idle park; pause/resume calls the Worker score owner;
+DIRECT_CALL correlates caller-selected targets without
 creating Task or Result Routing truth. Its single public call is scoped to one
 configured Adapter. A top-level `opaquePayload` targets that Adapter; supplying
 one WorkerGroup plus a `1..100` entry `workerId -> opaquePayload` map targets
@@ -82,25 +85,50 @@ error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a DIRECT_CALL event whitelist.
 
-Public Task creation accepts only the finite Server profiles
-`FINITE_PRECOMPUTED` and `REUSABLE_DIRECT`. They map respectively to
-`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` and
-`DIRECT_ITEM_RULE + PARK_WHEN_IDLE`; the Kernel stores those two facts rather
-than the Server profile name.
+Generic public Task creation has no profile selector. Every request creates
+only `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; its create, append, result,
+approve and close routes treat internal Task Call Tasks as not found.
+
+Every registered WorkerGroup has the Group-scoped Task Call surfaces:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}:register
+POST /api/v1/worker-groups/{workerGroupId}/items:call
+POST /api/v1/worker-groups/{workerGroupId}/item-results:load
+```
+
+The registration request contains only the Group declaration and no public
+Task configuration. Success guarantees both the exact Group descriptor and the
+exact derived Task plus approval. It returns `already_registered` only when
+both already exist; repeating an exact legacy Group declaration backfills a
+missing Task Call and returns `registered`. Group descriptor drift or derived
+Task descriptor drift returns conflict. The Task ID is an implementation
+coordinate, not caller authority and not part of call responses.
+Group create, Task create and approval remain separate owner operations, not
+one transaction. If Task provisioning fails after Group creation, the Group
+remains and the request fails; retrying the exact Group declaration re-reads
+owner truth and converges the interrupted registration.
+
+`items:call` submits once and synchronously waits within the caller's bounded
+`waitTimeoutMillis`. HTTP `200` carries `succeeded` and the opaque result;
+HTTP `202` carries `pending`, meaning only that the wait ended before a success
+was observed. The caller can later read the same Message IDs through the
+WorkerGroup-scoped result route. Neither route selects a Worker; the optional
+Item allocation rule remains Kernel scheduling input.
 
 ## WorkerGroup And Worker Preparation
 
 WorkerGroup is a predeclared control-plane resource. The public registration
-route is create-only:
+route is create-only and also provisions its Task Call:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}:register
 ```
 
-An equivalent `attributes + eventCodes` declaration returns
-`already_registered`; a different declaration returns conflict and never
-updates the stored Group. Attributes and Event Names are directory metadata,
-not Matcher, Dispatch, or per-Worker capability truth.
+An equivalent `attributes + eventCodes` declaration with an exact approved
+Task Call returns `already_registered`; a different Group declaration returns
+conflict and never updates the stored Group. Attributes and Event Names are
+directory metadata, not Matcher, Dispatch, or per-Worker capability truth.
 
 Runtime View offers two intentionally different reads:
 
@@ -251,10 +279,10 @@ or turn its cache into a KERNEL Report.
 The default profile starts no Adapter and no Scenario Worker. An explicit
 profile or external configuration may:
 
-1. create-only seed advisory WorkerGroup declarations;
-2. create or reuse the deterministic Profile Task for each configured Group;
-3. construct and start configured Adapters;
-4. pass opaque capability assembly JSON, the Lab root and Runtime API base URL
+1. register create-only advisory WorkerGroup declarations and their
+   deterministic Task Calls;
+2. construct and start configured Adapters;
+3. pass opaque capability assembly JSON, the Lab root and Runtime API base URL
    to `ScenarioWorkers`.
 
 Server does not parse Worker files, construct business Definitions or own
@@ -262,8 +290,9 @@ individual Worker lifecycle. Those responsibilities belong to
 [`scenario_workers_jvm`](../scenario_workers_jvm/README.md).
 
 The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
-Scenario WorkerGroups and the advisory external Android demo group. Its local
-Task Batch proof is owned by
+Scenario WorkerGroups and the advisory external Android demo group. Registering
+those three declarations automatically provisions all three Task Calls. Its
+local Task Batch proof is owned by
 [`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/README.md).
 
 ## Configuration
@@ -320,7 +349,7 @@ Start the checked local Scenario profile from the repository root:
 
 The profile uses repository-relative Lab directories. Existing Worker files
 are persistent local state; Scenario shutdown closes network resources but does
-not delete Workers, WorkerGroups or Profile Tasks.
+not delete Workers, WorkerGroups or registered Task Call Tasks.
 
 Health endpoints:
 

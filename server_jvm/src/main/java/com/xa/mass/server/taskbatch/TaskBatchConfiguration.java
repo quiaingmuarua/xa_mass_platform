@@ -2,7 +2,7 @@ package com.xa.mass.server.taskbatch;
 
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.server.taskdata.TaskDataService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import java.io.IOException;
 import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -32,7 +32,7 @@ public class TaskBatchConfiguration {
             TaskBatchFileStore files,
             TaskDataService taskData,
             TaskCallItemSubmission taskCallSubmission,
-            WorkerGroupTaskCatalog taskCatalog,
+            WorkerGroupTaskCallRegistrationService registrations,
             TaskBatchProperties properties,
             Clock taskBatchClock
     ) {
@@ -40,7 +40,7 @@ public class TaskBatchConfiguration {
                 files,
                 taskData,
                 taskCallSubmission,
-                taskCatalog,
+                registrations,
                 properties,
                 taskBatchClock
         );

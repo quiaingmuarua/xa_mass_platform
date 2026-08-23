@@ -9,7 +9,7 @@ import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.taskdata.TaskDataService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCatalog;
+import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -28,7 +28,7 @@ public final class TaskBatchService {
     private final TaskBatchFileStore files;
     private final TaskDataService taskData;
     private final TaskCallItemSubmission taskCallSubmission;
-    private final WorkerGroupTaskCatalog taskCatalog;
+    private final WorkerGroupTaskCallRegistrationService registrations;
     private final TaskBatchProperties properties;
     private final Clock clock;
     private final AtomicLong lastRunMillis = new AtomicLong(-1);
@@ -37,14 +37,14 @@ public final class TaskBatchService {
             TaskBatchFileStore files,
             TaskDataService taskData,
             TaskCallItemSubmission taskCallSubmission,
-            WorkerGroupTaskCatalog taskCatalog,
+            WorkerGroupTaskCallRegistrationService registrations,
             TaskBatchProperties properties,
             Clock clock
     ) {
         this.files = files;
         this.taskData = taskData;
         this.taskCallSubmission = taskCallSubmission;
-        this.taskCatalog = taskCatalog;
+        this.registrations = registrations;
         this.properties = properties;
         this.clock = clock;
     }
@@ -281,16 +281,30 @@ public final class TaskBatchService {
     }
 
     private String taskId(String workerGroupId) {
-        String taskId = taskCatalog.taskIdsByWorkerGroup().get(workerGroupId);
-        if (taskId == null) {
-            throw new ServerException(
-                    ServerErrorCode.TASK_BATCH_RESOURCE_NOT_FOUND,
-                    RUN_OPERATION,
-                    null,
-                    null
-            );
+        try {
+            return registrations.requireRegisteredTaskId(workerGroupId);
+        } catch (ServerException error) {
+            if (error.errorCode() == ServerErrorCode.WORKER_GROUP_NOT_FOUND
+                    || error.errorCode()
+                    == ServerErrorCode.TASK_CALL_NOT_REGISTERED) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_BATCH_RESOURCE_NOT_FOUND,
+                        RUN_OPERATION,
+                        null,
+                        error
+                );
+            }
+            if (error.errorCode()
+                    == ServerErrorCode.TASK_CALL_REGISTRATION_CONFLICT) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_BATCH_CONFLICT,
+                        RUN_OPERATION,
+                        error.getMessage(),
+                        error
+                );
+            }
+            throw error;
         }
-        return taskId;
     }
 
     private ValidatedRun validate(TaskBatchRunRequest request) {

@@ -7,7 +7,6 @@ import java.util.Map;
 public record TaskCreateRequest(
         @NotBlank String taskId,
         @NotBlank String workerGroupId,
-        @NotNull TaskProfile profile,
         Map<String, Object> allocationRule,
         @NotNull Map<String, String> config
 ) {
