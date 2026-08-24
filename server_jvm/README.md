@@ -430,6 +430,20 @@ The profile uses repository-relative Lab directories. Existing Worker files
 are persistent local state; Scenario shutdown closes network resources but does
 not delete Workers, WorkerGroups or registered Task Call Tasks.
 
+For a repository-independent Server deployment, build or download the
+[`distribution/server`](../distribution/server/) Runtime ZIP. After extraction,
+Java 21, Python 3.11.3 through 3.13 and external Redis are the only machine
+prerequisites:
+
+```text
+python bin/run-server.py -- --xa.mass.redis.url=redis://127.0.0.1:6379/15
+```
+
+The launcher owns `scenario-workers`, its private offline venv, the absolute
+Pacer policy path and compiled frontend path. It does not start Redis or own
+the Pacer directly; the packaged Java Server still supervises that child.
+Source `bootRun` remains unchanged for repository development.
+
 Health endpoints:
 
 ```text

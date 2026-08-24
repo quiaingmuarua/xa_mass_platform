@@ -30,6 +30,7 @@ jobs:
       android_host: ${{ steps.filter.outputs.android_host }}
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      runtime_distribution: ${{ steps.filter.outputs.runtime_distribution }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -782,6 +783,70 @@ jobs:
           echo "- **Frontend:** ${{ job.status }}" \
             >> "$GITHUB_STEP_SUMMARY"
 
+  runtime-distribution:
+    name: Runtime Distribution
+    needs: changes
+    if: >-
+      needs.changes.outputs.runtime_distribution == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      XA_MASS_REDIS_URL: redis://127.0.0.1:6379/15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.11.3"
+          cache: pip
+          cache-dependency-path: |
+            kernel_design/pyproject.toml
+            kernel_design/requirements-runtime.lock
+      - uses: pnpm/action-setup@v6.0.10
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Build and prove unpacked Runtime archive
+        run: >-
+          ./gradlew --no-daemon
+          :distribution:server:runtimeDistributionTest
+          -PxaMassVersion=0.1.0
+      - name: Summarize Runtime Distribution proof
+        if: always()
+        run: |
+          echo "- **Runtime Distribution:** ${{ job.status }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Runtime archive
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-server-runtime-${{ github.run_attempt }}
+          path: distribution/server/build/distributions/xa-mass-server-runtime-0.1.0.zip
+          if-no-files-found: ignore
+          retention-days: 7
+
   proof-gate:
     name: Proof Gate
     if: always()
@@ -796,6 +861,7 @@ jobs:
       - android-host
       - android-emulator-worker
       - frontend
+      - runtime-distribution
       - docs-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -820,6 +886,8 @@ jobs:
       ANDROID_EMULATOR_RESULT: ${{ needs.android-emulator-worker.result }}
       FRONTEND_SELECTED: ${{ needs.changes.outputs.frontend }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
+      RUNTIME_DISTRIBUTION_SELECTED: ${{ needs.changes.outputs.runtime_distribution }}
+      RUNTIME_DISTRIBUTION_RESULT: ${{ needs.runtime-distribution.result }}
       DOCS_RESULT: ${{ needs.docs-contract.result }}
     steps:
       - name: Require every selected proof lane
@@ -869,6 +937,8 @@ jobs:
             "Android Emulator Worker" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
           check_lane \
             "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
+          check_lane \
+            "Runtime Distribution" "$RUNTIME_DISTRIBUTION_SELECTED" "$RUNTIME_DISTRIBUTION_RESULT"
           check_lane \
             "Docs Contract" "true" "$DOCS_RESULT"
 

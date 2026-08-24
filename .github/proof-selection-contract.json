@@ -24,7 +24,8 @@
         "redis_owner",
         "runtime_boundary",
         "task_batch",
-        "worker_fleet"
+        "worker_fleet",
+        "runtime_distribution"
       ],
       "reason": "Kernel mechanism changes require the oracle and every current JVM/runtime parity consumer."
     },
@@ -36,7 +37,8 @@
         "task_batch",
         "worker_fleet",
         "android_host",
-        "android_emulator"
+        "android_emulator",
+        "runtime_distribution"
       ],
       "reason": "Worker Core production behavior reaches Java, Android and all long-lived runtime proofs."
     },
@@ -58,7 +60,8 @@
         "runtime_boundary",
         "task_batch",
         "worker_fleet",
-        "android_emulator"
+        "android_emulator",
+        "runtime_distribution"
       ],
       "reason": "Adapter Route production changes reach every long-lived Worker implementation."
     },
@@ -115,7 +118,8 @@
         "redis_owner",
         "runtime_boundary",
         "task_batch",
-        "worker_fleet"
+        "worker_fleet",
+        "runtime_distribution"
       ],
       "reason": "The current conservative Server boundary reaches every JVM runtime proof."
     },
@@ -127,7 +131,8 @@
         "runtime_boundary",
         "task_batch",
         "worker_fleet",
-        "android_emulator"
+        "android_emulator",
+        "runtime_distribution"
       ],
       "reason": "The supervised Pacer lifecycle reaches every Java-hosted runtime proof, including the Android production route."
     },
@@ -139,14 +144,16 @@
         "runtime_boundary",
         "task_batch",
         "worker_fleet",
-        "android_emulator"
+        "android_emulator",
+        "runtime_distribution"
       ],
       "reason": "Worker Binding additionally reaches the real Android production route."
     },
     {
       "path": "frontend/src/views/WorkerRuntimeView.vue",
       "lanes": [
-        "frontend"
+        "frontend",
+        "runtime_distribution"
       ],
       "reason": "Frontend production changes remain isolated from runtime owners."
     },
@@ -179,7 +186,8 @@
         "worker_fleet",
         "android_host",
         "android_emulator",
-        "frontend"
+        "frontend",
+        "runtime_distribution"
       ],
       "reason": "Workflow changes re-prove the complete gate."
     },
@@ -194,9 +202,24 @@
         "worker_fleet",
         "android_host",
         "android_emulator",
-        "frontend"
+        "frontend",
+        "runtime_distribution"
       ],
       "reason": "Selection-contract changes re-prove the complete gate."
+    },
+    {
+      "path": "distribution/server/build.gradle",
+      "lanes": [
+        "runtime_distribution"
+      ],
+      "reason": "Distribution assembly changes are proved from the unpacked publishable archive."
+    },
+    {
+      "path": ".github/workflows/release-server-runtime.yml",
+      "lanes": [
+        "runtime_distribution"
+      ],
+      "reason": "Release orchestration must reproduce the unpacked Runtime proof before publication."
     }
   ]
 }

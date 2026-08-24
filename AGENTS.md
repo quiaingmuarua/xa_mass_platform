@@ -296,6 +296,9 @@ controls.
   It must not create scheduling, Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.
+- `distribution/server` is a packaging owner only. It may assemble the current
+  Server, production Pacer, frontend and configuration, but must not add a
+  fallback runtime owner, a second Spring Profile, or scheduling behavior.
 
 ## Verification
 

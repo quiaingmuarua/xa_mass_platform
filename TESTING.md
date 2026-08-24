@@ -20,6 +20,7 @@ boundary named below.
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
+| Runtime Distribution | One versioned ZIP contains matching Server JAR, production-only Pacer wheel, hash-locked offline dependency, frontend and manifest; after extraction outside the repository it creates its private venv, reaches readiness and closes a managed Task Call | Redis 7, Java 21, Python 3.11.3 (minimum supported), Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest -PxaMassVersion=0.1.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Task Batch` command uploads two text fixtures, executes six explicit
@@ -237,6 +238,22 @@ corepack pnpm test
 corepack pnpm build
 ```
 
+Runtime Distribution builds every publishable component, checks the archive
+ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
+proof extracts the ZIP to a temporary directory outside the checkout, removes
+`PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
+packaged Server against one unique `test_*` scope, loads Scalar and Frontend,
+and closes one managed String Task Call. It then stops the launcher process
+tree and cleans only that exact scope:
+
+```powershell
+.\gradlew.bat :distribution:server:runtimeDistributionTest `
+  "-PxaMassVersion=0.1.0"
+```
+
+This lane proves the deployable Server boundary, not Worker SDK publication,
+an OCI image, Redis lifecycle, or an Android device.
+
 Documentation contract:
 
 ```powershell
@@ -292,7 +309,9 @@ Representative selection rules:
 - Worker Core or Delivery contract changes also run their downstream Runtime,
   Worker Fleet, Task Batch, Android Host, and Android Emulator proofs;
 - Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
-  Runtime, Worker Fleet, and Task Batch proofs.
+  Runtime, Worker Fleet, Task Batch, and Runtime Distribution proofs;
+- production inputs embedded in the Server archive run Runtime Distribution;
+  test-only changes in those modules do not select it.
 
 CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
 Task Batch, and Android Emulator upload only schema-versioned safe evidence:

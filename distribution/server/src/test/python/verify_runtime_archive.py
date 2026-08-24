@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Verify the stable XA Mass Server Runtime ZIP ABI."""
+
+from __future__ import annotations
+
+import argparse
+import email.parser
+import json
+import re
+import zipfile
+from pathlib import Path, PurePosixPath
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def verify(archive: Path, version: str) -> None:
+    root = f"xa-mass-server-runtime-{version}"
+    with zipfile.ZipFile(archive) as runtime:
+        names = runtime.namelist()
+        _require(names, "runtime archive is empty")
+        _require(
+            all(PurePosixPath(name).parts[0] == root for name in names),
+            "runtime archive has an entry outside its versioned root",
+        )
+        _require(
+            not any(
+                "__pycache__" in PurePosixPath(name).parts
+                or name.endswith(".pyc")
+                for name in names
+            ),
+            "runtime archive contains Python build cache",
+        )
+        required = {
+            f"{root}/bin/run-server.py",
+            f"{root}/lib/xa-mass-server-jvm-{version}.jar",
+            f"{root}/kernel/wheelhouse/"
+            f"xa_mass_kernel_pacer-{version}-py3-none-any.whl",
+            f"{root}/kernel/wheelhouse/redis-8.0.0-py3-none-any.whl",
+            f"{root}/config/pacer-default.json",
+            f"{root}/frontend/dist/index.html",
+            f"{root}/manifest.json",
+            f"{root}/THIRD_PARTY_NOTICES.md",
+            f"{root}/LICENSE.pure-admin-thin",
+        }
+        missing = required - set(names)
+        _require(not missing, f"runtime archive is missing: {sorted(missing)}")
+
+        manifest = json.loads(runtime.read(f"{root}/manifest.json"))
+        _require(manifest.get("schemaVersion") == 1, "manifest schema mismatch")
+        _require(manifest.get("version") == version, "manifest version mismatch")
+        _require(
+            re.fullmatch(r"[0-9a-f]{40}", manifest.get("gitCommit", ""))
+            is not None,
+            "manifest gitCommit is not full SHA",
+        )
+        _require(
+            manifest.get("serverJar")
+            == f"lib/xa-mass-server-jvm-{version}.jar",
+            "manifest Server JAR mismatch",
+        )
+        _require(
+            manifest.get("kernelWheel")
+            == "kernel/wheelhouse/"
+            f"xa_mass_kernel_pacer-{version}-py3-none-any.whl",
+            "manifest Kernel wheel mismatch",
+        )
+        _require(manifest.get("javaVersion") == 21, "Java version mismatch")
+        _require(
+            manifest.get("pythonRequires") == ">=3.11.3,<3.14",
+            "Python requirement mismatch",
+        )
+        _require(
+            manifest.get("springProfile") == "scenario-workers",
+            "Spring profile mismatch",
+        )
+        _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
+
+        wheel_name = (
+            f"{root}/kernel/wheelhouse/"
+            f"xa_mass_kernel_pacer-{version}-py3-none-any.whl"
+        )
+        wheel_path = archive.parent / f".{archive.name}.kernel-wheel.tmp"
+        try:
+            wheel_path.write_bytes(runtime.read(wheel_name))
+            with zipfile.ZipFile(wheel_path) as wheel:
+                wheel_names = wheel.namelist()
+                _require(
+                    "kernel_design/executable_spec/assembly/__main__.py"
+                    in wheel_names,
+                    "Kernel wheel does not contain the Pacer entrypoint",
+                )
+                _require(
+                    not any(
+                        "/tests/" in name or "/test_support/" in name
+                        for name in wheel_names
+                    ),
+                    "Kernel wheel contains test packages",
+                )
+                metadata_name = next(
+                    name for name in wheel_names if name.endswith(".dist-info/METADATA")
+                )
+                metadata = email.parser.BytesParser().parsebytes(
+                    wheel.read(metadata_name)
+                )
+                _require(metadata["Name"] == "xa-mass-kernel-pacer", "wheel name")
+                _require(metadata["Version"] == version, "wheel version")
+                _require(
+                    "redis==8.0.0" in metadata.get_all("Requires-Dist", []),
+                    "wheel Redis dependency is not pinned",
+                )
+        finally:
+            wheel_path.unlink(missing_ok=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--version", required=True)
+    arguments = parser.parse_args()
+    verify(arguments.archive.resolve(), arguments.version)
+    print(f"Runtime archive verified: {arguments.archive}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

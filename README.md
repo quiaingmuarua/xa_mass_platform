@@ -128,6 +128,9 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   owns no Kernel, Server or Transport mechanism.
 - [`frontend/`](frontend/) is the read-only Runtime viewer, Task Batch Lab,
   Scalar link surface and architecture overview host.
+- [`distribution/server/`](distribution/server/) packages those existing
+  owners into one versioned Server Runtime ZIP. It adds no scheduling or
+  Transport behavior and still requires external Redis.
 
 Exactly one Java Server instance per Kernel Redis scope may run with
 `xa.mass.kernel-pacer.enabled=true`. Additional API replicas must disable that
@@ -141,6 +144,14 @@ The shared contracts and Transport modules are repository-local artifacts,
 not published SDKs. The superseded Java platform exists only at the annotated
 tag `legacy-java-platform-final-2026-07-24` and carries no compatibility
 obligation.
+
+The Server deployment boundary is publishable independently from Worker SDKs:
+`xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
+production-only Python Pacer wheel and offline dependency, the compiled
+frontend, and one launcher. The launcher always uses the checked
+`scenario-workers` profile; callers vary data and port coordinates through
+ordinary Spring arguments and public APIs rather than maintaining another
+profile.
 
 ## Reading Path
 

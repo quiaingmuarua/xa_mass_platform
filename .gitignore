@@ -1,5 +1,6 @@
 target/
 build/
+.runtime/
 .gradle/
 .kotlin/
 
@@ -14,6 +15,7 @@ build/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 
 .env
 .env.*

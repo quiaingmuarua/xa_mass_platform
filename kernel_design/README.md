@@ -42,6 +42,16 @@ The authoritative implementation-status table lives in
 [Kernel Core Scheduling](doc/scheduling/README.md). This README deliberately
 does not maintain a second status matrix.
 
+## Published Pacer Cut
+
+`pyproject.toml` builds `xa-mass-kernel-pacer`. The wheel preserves the fixed
+`python -m kernel_design.executable_spec.assembly` entrypoint and contains only
+the production assembly, Kernel, scheduling, Redis runtime and Constraint DSL
+packages. Tests, `test_support`, documents and policy configuration are not
+wheel contents. `distribution/server` supplies the checked policy file next to
+the wheel and pins `redis==8.0.0` in an offline, hash-locked wheelhouse. Java
+Server remains the sole production Pacer process supervisor.
+
 ## Core Axioms
 
 ### Owners Maintain Truth
