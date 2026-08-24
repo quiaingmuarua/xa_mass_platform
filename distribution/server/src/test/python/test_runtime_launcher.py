@@ -19,6 +19,19 @@ SPEC = importlib.util.spec_from_file_location("xa_mass_runtime_launcher", LAUNCH
 assert SPEC is not None and SPEC.loader is not None
 launcher = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(launcher)
+WORKER_LAUNCHER = (
+    Path(__file__).resolve().parents[2]
+    / "main"
+    / "dist"
+    / "bin"
+    / "run-scenario-workers.py"
+)
+WORKER_SPEC = importlib.util.spec_from_file_location(
+    "xa_mass_scenario_worker_launcher", WORKER_LAUNCHER
+)
+assert WORKER_SPEC is not None and WORKER_SPEC.loader is not None
+worker_launcher = importlib.util.module_from_spec(WORKER_SPEC)
+WORKER_SPEC.loader.exec_module(worker_launcher)
 PYTHON_REQUIRES = ">=3.11.3,<3.14"
 
 
@@ -114,6 +127,60 @@ class RuntimeLauncherTest(unittest.TestCase):
                     for argument in command
                 )
             )
+            self.assertNotIn(worker_launcher._MAIN_CLASS, command)
+
+    def test_manifest_requires_an_optional_non_autostart_worker_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/run-scenario-workers.py").write_text(
+                "# launcher\n", encoding="utf-8"
+            )
+            manifest = {
+                "schemaVersion": 2,
+                "version": "0.2.0",
+                "gitCommit": "a" * 40,
+                "serverJar": "lib/server.jar",
+                "kernelWheel": "kernel/wheelhouse/kernel.whl",
+                "javaVersion": 21,
+                "pythonRequires": PYTHON_REQUIRES,
+                "springProfile": "scenario-workers",
+                "frontendIncluded": True,
+                "scenarioWorkerHost": {
+                    "launcher": "bin/run-scenario-workers.py",
+                    "autoStart": False,
+                },
+            }
+            (root / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            self.assertEqual(manifest, launcher._load_manifest(root))
+            manifest["scenarioWorkerHost"]["autoStart"] = True
+            (root / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            with self.assertRaises(launcher.LauncherError):
+                launcher._load_manifest(root)
+
+    def test_worker_launcher_uses_only_packaged_host_libraries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library_root = root / "scenario-workers/lib"
+            library_root.mkdir(parents=True)
+            (library_root / "host.jar").write_bytes(b"jar")
+            sandbox = root / "lab"
+            command = worker_launcher._java_command(
+                root,
+                "http://127.0.0.1:19082",
+                sandbox,
+            )
+            self.assertEqual(worker_launcher._MAIN_CLASS, command[3])
+            self.assertEqual(str(library_root / "*"), command[2])
+            self.assertIn(
+                "--runtime-api-base-url=http://127.0.0.1:19082",
+                command,
+            )
+            self.assertIn(f"--sandbox-root={sandbox.resolve()}", command)
 
     def test_marker_reader_rejects_non_object_json(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -88,6 +88,11 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("java.lang.reflect")
                 .doesNotContain("ServiceLoader");
         assertThat(build)
+                .contains("id 'application'")
+                .contains(
+                        "com.xa.mass.scenarioworkers."
+                                + "ScenarioWorkerHostMain"
+                )
                 .contains(
                         "implementation "
                                 + "project(':transport:worker-core')"

@@ -35,7 +35,10 @@ def verify(archive: Path, version: str) -> None:
         )
         required = {
             f"{root}/bin/run-server.py",
+            f"{root}/bin/run-scenario-workers.py",
             f"{root}/lib/xa-mass-server-jvm-{version}.jar",
+            f"{root}/scenario-workers/lib/"
+            f"xa-mass-scenario-workers-jvm-{version}.jar",
             f"{root}/kernel/wheelhouse/"
             f"xa_mass_kernel_pacer-{version}-py3-none-any.whl",
             f"{root}/kernel/wheelhouse/redis-8.0.0-py3-none-any.whl",
@@ -49,7 +52,7 @@ def verify(archive: Path, version: str) -> None:
         _require(not missing, f"runtime archive is missing: {sorted(missing)}")
 
         manifest = json.loads(runtime.read(f"{root}/manifest.json"))
-        _require(manifest.get("schemaVersion") == 1, "manifest schema mismatch")
+        _require(manifest.get("schemaVersion") == 2, "manifest schema mismatch")
         _require(manifest.get("version") == version, "manifest version mismatch")
         _require(
             re.fullmatch(r"[0-9a-f]{40}", manifest.get("gitCommit", ""))
@@ -77,6 +80,35 @@ def verify(archive: Path, version: str) -> None:
             "Spring profile mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
+        _require(
+            manifest.get("scenarioWorkerHost")
+            == {
+                "launcher": "bin/run-scenario-workers.py",
+                "autoStart": False,
+            },
+            "Scenario Worker Host manifest mismatch",
+        )
+
+        server_jar_name = f"{root}/lib/xa-mass-server-jvm-{version}.jar"
+        server_jar_path = archive.parent / f".{archive.name}.server-jar.tmp"
+        try:
+            server_jar_path.write_bytes(runtime.read(server_jar_name))
+            with zipfile.ZipFile(server_jar_path) as server_jar:
+                server_entries = server_jar.namelist()
+                _require(
+                    not any(
+                        name.startswith(
+                            "BOOT-INF/lib/xa-mass-scenario-workers"
+                        )
+                        or name.startswith("BOOT-INF/lib/libphonenumber-")
+                        or name.startswith("BOOT-INF/lib/carrier-")
+                        or name.endswith("default-capability-assembly.json")
+                        for name in server_entries
+                    ),
+                    "Server Boot JAR contains Scenario Worker implementation",
+                )
+        finally:
+            server_jar_path.unlink(missing_ok=True)
 
         wheel_name = (
             f"{root}/kernel/wheelhouse/"

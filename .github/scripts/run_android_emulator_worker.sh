@@ -17,7 +17,6 @@ maximum_wait_millis=${ANDROID_WORKER_MAXIMUM_WAIT_MILLIS:-30000}
 process_marker_grace_millis=5000
 evidence_root="$proof_root/evidence"
 log_root="$proof_root/logs"
-lab_root="$proof_root/data/scenario-workers"
 server_pid=
 process_restart_pid=
 
@@ -35,7 +34,6 @@ mkdir -p "$proof_root/data" "$evidence_root" "$log_root"
 test -f "$apk"
 test -f "$driver"
 test -f "$kernel_config"
-test ! -e "$lab_root"
 
 collect_android_log() {
     {
@@ -102,7 +100,6 @@ start_server() {
         --xa.mass.kernel-pacer.working-directory="$workspace" \
         --xa.mass.kernel-pacer.config-path="$kernel_config" \
         --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
-        --xa.mass.worker-assembly.sandbox-root="$lab_root" \
         > "$log_root/server-$phase.log" 2>&1 &
     server_pid=$!
     if ! wait_for_url \
@@ -110,6 +107,26 @@ start_server() {
         cat "$log_root/server-$phase.log"
         return 1
     fi
+    python - <<'PY'
+import json
+import urllib.request
+
+for group in (
+    "scenario-phone-number-workers",
+    "scenario-string-utils-workers",
+):
+    request = urllib.request.Request(
+        "http://127.0.0.1:18082/api/v1/runtime-view/worker-groups/"
+        f"{group}/workers:preview",
+        data=json.dumps({"sampleLimit": 100}).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request) as response:
+        workers = json.load(response)["workers"]
+    if workers:
+        raise SystemExit(f"Server implicitly started JVM Workers for {group}")
+PY
 }
 
 stop_server_gracefully() {

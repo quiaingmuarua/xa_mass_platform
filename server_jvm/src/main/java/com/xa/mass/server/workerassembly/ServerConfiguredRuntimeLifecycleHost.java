@@ -1,25 +1,22 @@
 package com.xa.mass.server.workerassembly;
 
-import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import java.util.Objects;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.SmartLifecycle;
 
-public final class ServerWorkerAssemblyLifecycleHost
+public final class ServerConfiguredRuntimeLifecycleHost
         implements SmartLifecycle {
 
     private final ServerWorkerGroupInitializer groupInitializer;
     private final WorkerDeliveryAdapterManager adapterManager;
-    private final ScenarioWorkers scenarioWorkers;
     private boolean started;
     private boolean closed;
 
-    public ServerWorkerAssemblyLifecycleHost(
+    public ServerConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
-            WorkerDeliveryAdapterManager adapterManager,
-            ScenarioWorkers scenarioWorkers
+            WorkerDeliveryAdapterManager adapterManager
     ) {
         this.groupInitializer = Objects.requireNonNull(
                 groupInitializer,
@@ -29,17 +26,13 @@ public final class ServerWorkerAssemblyLifecycleHost
                 adapterManager,
                 "adapterManager"
         );
-        this.scenarioWorkers = Objects.requireNonNull(
-                scenarioWorkers,
-                "scenarioWorkers"
-        );
     }
 
     @Override
     public synchronized void start() {
         if (closed) {
             throw new IllegalStateException(
-                    "Server Worker assembly lifecycle is closed"
+                    "Server configured Runtime lifecycle is closed"
             );
         }
         if (started) {
@@ -55,10 +48,8 @@ public final class ServerWorkerAssemblyLifecycleHost
 
         try {
             adapterManager.start();
-            scenarioWorkers.start();
             started = true;
         } catch (RuntimeException failure) {
-            closeAndSuppress(scenarioWorkers, failure);
             closeAndSuppress(adapterManager, failure);
             closed = true;
             throw failure;
@@ -72,24 +63,7 @@ public final class ServerWorkerAssemblyLifecycleHost
         }
         closed = true;
         started = false;
-        RuntimeException failure = null;
-        try {
-            scenarioWorkers.close();
-        } catch (RuntimeException error) {
-            failure = error;
-        }
-        try {
-            adapterManager.close();
-        } catch (RuntimeException error) {
-            if (failure == null) {
-                failure = error;
-            } else {
-                failure.addSuppressed(error);
-            }
-        }
-        if (failure != null) {
-            throw failure;
-        }
+        adapterManager.close();
     }
 
     @Override
@@ -104,9 +78,6 @@ public final class ServerWorkerAssemblyLifecycleHost
 
     @Override
     public int getPhase() {
-        // Start only after the web server has completed its lifecycle phase.
-        // Stop before graceful HTTP shutdown; lower-phase infrastructure is
-        // then released by its own lifecycle owner.
         return WebServerApplicationContext.GRACEFUL_SHUTDOWN_PHASE + 1;
     }
 

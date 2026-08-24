@@ -1,7 +1,7 @@
 # XA Mass JVM Runtime API Server
 
 Status: current external Runtime API, incremental Kernel provider assembly and
-opt-in Scenario host.
+configured Server runtime host.
 
 `server_jvm` owns:
 
@@ -12,7 +12,7 @@ opt-in Scenario host.
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as finite Task Result export, managed
   Task Call and DIRECT_CALL correlation;
-- configured Adapter and Scenario startup order.
+- configured WorkerGroup/Task seed and Adapter startup order.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
 retry, recovery, Task finality, Adapter connection routing or Worker event
@@ -41,7 +41,7 @@ Worker Delivery
 Configured deployment
   -> register advisory WorkerGroups with their Task Calls
   -> start Adapter Manager
-  -> start ScenarioWorkers aggregate
+  -> become ready without starting any Worker process
 ```
 
 Task control, Task data, Worker resources, selected Worker scheduling and
@@ -366,23 +366,24 @@ or turn its cache into a KERNEL Report.
 
 ### Worker And Scenario Assembly
 
-The default profile starts no Adapter and no Scenario Worker. An explicit
-profile or external configuration may:
+The default profile starts no Adapter and declares no Scenario WorkerGroup. An
+explicit profile or external configuration may:
 
 1. register create-only advisory WorkerGroup declarations and their
    deterministic Task Calls;
-2. construct and start configured Adapters;
-3. pass opaque capability assembly JSON, the Lab root and Runtime API base URL
-   to `ScenarioWorkers`.
+2. construct and start configured Adapters.
 
 Server does not parse Worker files, construct business Definitions or own
-individual Worker lifecycle. Those responsibilities belong to
-[`scenario_workers_jvm`](../scenario_workers_jvm/README.md).
+individual Worker lifecycle, and it never starts a Scenario Worker process.
+Those responsibilities belong to the independently launched
+[`scenario_workers_jvm`](../scenario_workers_jvm/README.md) Host.
 
 The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
-Scenario WorkerGroups and the advisory external Android demo group. Registering
-those three declarations automatically provisions all three Task Calls. Its
-finite Capability Task proof is owned by
+Scenario WorkerGroup declarations and the advisory external Android demo
+Group. Registering those three declarations automatically provisions all three
+Task Calls. Server readiness does not depend on a Worker Host. The root
+`run_scenario_workers.py` starts Server first and the standalone JVM Host only
+after readiness. Its finite Capability Task proof is owned by
 [`integrations/worker-capability-task`](../integrations/worker-capability-task/README.md).
 
 ## Configuration
@@ -437,9 +438,18 @@ Start the checked local Scenario profile from the repository root:
   --args="--spring.profiles.active=scenario-workers"
 ```
 
-The profile uses repository-relative Lab directories. Existing Worker files
-are persistent local state; Scenario shutdown closes network resources but does
-not delete Workers, WorkerGroups or registered Task Call Tasks.
+This starts Group/Task seeds, Pacer and Adapter, but no JVM Worker. For the
+complete local Lab use the one-command process launcher:
+
+```text
+python run_scenario_workers.py
+```
+
+It builds and starts Server first, waits for readiness, then starts the
+standalone Scenario Worker Host against `data/scenario-workers`. Existing
+Worker files remain persistent local state. Stopping Host closes its network
+resources without stopping Server or deleting Workers, WorkerGroups or managed
+Task Calls.
 
 For a repository-independent Server deployment, build or download the
 [`distribution/server`](../distribution/server/) Runtime ZIP. After extraction,
@@ -452,8 +462,10 @@ python bin/run-server.py -- --xa.mass.redis.url=redis://127.0.0.1:6379/15
 
 The launcher owns `scenario-workers`, its private offline venv, the absolute
 Pacer policy path and compiled frontend path. It does not start Redis or own
-the Pacer directly; the packaged Java Server still supervises that child.
-Source `bootRun` remains unchanged for repository development.
+the Pacer directly; the packaged Java Server still supervises that child. It
+also never starts the optional packaged Scenario Worker Host. Use
+`bin/run-scenario-workers.py` explicitly when that finite Lab is wanted. Source
+`bootRun` remains unchanged for repository development.
 
 Health endpoints:
 

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.adapter
@@ -67,17 +66,9 @@ class ServerWorkerAssemblyPropertiesTest {
             assertThat(context.getBean(
                     ServerWorkerAssemblyManifest.class
             ).configuredTaskIdsByWorkerGroup()).isEmpty();
-            assertThat(context.getBean(
-                    ServerWorkerAssemblyProperties.class
-            ).capabilityAssemblyJson()).isEqualTo("{}");
-            assertThat(context.getBean(
-                    ServerWorkerAssemblyProperties.class
-            ).runtimeApiBaseUrl().toString())
-                    .isEqualTo("http://127.0.0.1:18082");
-            assertThat(context.getBean(
-                    ServerWorkerAssemblyProperties.class
-            ).sandboxRoot()).isEqualTo("data/scenario-workers");
-            assertThat(context).hasSingleBean(ScenarioWorkers.class);
+            assertThat(context).hasSingleBean(
+                    ServerConfiguredRuntimeLifecycleHost.class
+            );
         });
     }
 
@@ -134,33 +125,13 @@ class ServerWorkerAssemblyPropertiesTest {
                             "extension.worker.android.battery.read",
                             "extension.worker.android.string.digest"
                     ));
-            assertThat(properties.capabilityAssemblyJson())
-                    .contains("\"scenario-phone-number-workers\"")
-                    .contains("\"scenario-string-utils-workers\"")
-                    .contains("\"extension.worker.phonenumber.e164\"")
-                    .contains("\"extension.worker.phonenumber.country\"")
-                    .contains("\"extension.worker.string.md5\"")
-                    .contains("\"extension.worker.string.base64.encode\"")
-                    .doesNotContain("\"type\"")
-                    .doesNotContain("\"workerGroupId\"")
-                    .doesNotContain("\"attributes\"")
-                    .doesNotContain("\"workers\"")
-                    .doesNotContain("\"android-demo-workers\"")
-                    .doesNotContain("extension.worker.android.state.read")
-                    .doesNotContain("clientWorkerKey")
-                    .doesNotContain("sandboxDirectory");
-            assertThat(properties.sandboxRoot())
-                    .isEqualTo("data/scenario-workers");
         });
     }
 
     @Test
-    void malformedGroupOrCapabilityAssemblyJsonFailsDuringAssembly() {
+    void malformedGroupJsonFailsDuringAssembly() {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.group-config-json={bad-json"
-        ).run(context -> assertThat(context).hasFailed());
-        contextRunner.withPropertyValues(
-                "xa.mass.worker-assembly.capability-assembly-json={bad-json"
         ).run(context -> assertThat(context).hasFailed());
     }
 
@@ -169,17 +140,6 @@ class ServerWorkerAssemblyPropertiesTest {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.config-json={}"
         ).run(context -> assertThat(context).hasFailed());
-    }
-
-    @Test
-    void catalogSummaryMayDriftFromScenarioDefinitions() {
-        contextRunner.withPropertyValues(
-                "xa.mass.worker-assembly.group-config-json="
-                        + "{\"group\":{\"eventCodes\":[\"catalog.old\"]}}",
-                "xa.mass.worker-assembly.capability-assembly-json="
-                        + "{\"group\":{\"eventCodes\":["
-                        + "\"extension.worker.string.md5\"]}}"
-        ).run(context -> assertThat(context).hasNotFailed());
     }
 
     @Test
@@ -199,9 +159,15 @@ class ServerWorkerAssemblyPropertiesTest {
     }
 
     @Test
-    void blankSandboxRootIsRejected() {
-        contextRunner.withPropertyValues(
-                "xa.mass.worker-assembly.sandbox-root= "
-        ).run(context -> assertThat(context).hasFailed());
+    void removedWorkerHostConfigurationIsRejected() {
+        for (String property : List.of(
+                "capability-assembly-json={}",
+                "runtime-api-base-url=http://127.0.0.1:18082",
+                "sandbox-root=data/scenario-workers"
+        )) {
+            contextRunner.withPropertyValues(
+                    "xa.mass.worker-assembly." + property
+            ).run(context -> assertThat(context).hasFailed());
+        }
     }
 }

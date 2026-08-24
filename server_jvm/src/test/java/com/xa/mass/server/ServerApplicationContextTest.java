@@ -35,9 +35,8 @@ import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerassembly
-        .ServerWorkerAssemblyLifecycleHost;
+        .ServerConfiguredRuntimeLifecycleHost;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterProperties;
 import java.net.URI;
@@ -151,10 +150,8 @@ class ServerApplicationContextTest {
                 ServerWorkerDeliveryAdapterProperties.class
         ).instanceConfigs()).isEmpty();
         assertThat(applicationContext.getBean(
-                ServerWorkerAssemblyLifecycleHost.class
+                ServerConfiguredRuntimeLifecycleHost.class
         )).isNotNull();
-        assertThat(applicationContext.getBean(ScenarioWorkers.class))
-                .isNotNull();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

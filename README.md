@@ -115,12 +115,14 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server also owns the
   lifecycle of the temporary Python Pacer CLI child, Worker Identity, Endpoint
-  Binding, bounded use cases, and configured Adapter/Scenario startup. Python
-  exposes no production HTTP surface.
+  Binding, bounded use cases, configured Group/Task seeds, and Adapter startup.
+  It does not start Worker processes. Python exposes no production HTTP
+  surface.
 - [`transport/`](transport/) contains the Java 11 delivery contract, Worker
   Core, Netty Adapter, Java Worker and Android Worker implementations.
-- [`scenario_workers_jvm/`](scenario_workers_jvm/) owns the finite JVM Scenario
-  capabilities and persistent local Lab Worker assembly.
+- [`scenario_workers_jvm/`](scenario_workers_jvm/) is the independently launched
+  finite JVM Scenario Worker Host. It owns the checked capabilities and
+  persistent local Lab Worker assembly.
 - [`xa-android/`](xa-android/) owns reusable Android capabilities, a loopback
   capability/Host control surface, the demo Worker host, and its Emulator
   acceptance driver.
@@ -148,10 +150,11 @@ obligation.
 The Server deployment boundary is publishable independently from Worker SDKs:
 `xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
 production-only Python Pacer wheel and offline dependency, the compiled
-frontend, and one launcher. The launcher always uses the checked
-`scenario-workers` profile; callers vary data and port coordinates through
-ordinary Spring arguments and public APIs rather than maintaining another
-profile.
+frontend, and the optional Scenario Worker Host. Its two launchers are
+independent: `run-server.py` always uses the checked `scenario-workers` profile
+and never starts Workers; `run-scenario-workers.py` starts only the finite JVM
+Lab Host. Consumers such as AgentForge use only the Server launcher and vary
+data and port coordinates through ordinary Spring arguments and public APIs.
 
 ## Reading Path
 

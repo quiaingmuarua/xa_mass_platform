@@ -24,6 +24,11 @@ def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
 def expectedKernelWheel = "xa_mass_kernel_pacer-${runtimeVersion}-py3-none-any.whl"
 def expectedRedisWheel = 'redis-8.0.0-py3-none-any.whl'
 def serverBootJar = project(':server_jvm').tasks.named('bootJar')
+def scenarioWorkerInstall = project(':scenario_workers_jvm').tasks.named(
+        'installDist'
+)
+def scenarioWorkerInstallDirectory = project(':scenario_workers_jvm')
+        .layout.buildDirectory.dir('install/xa-mass-scenario-workers')
 def gitCommit = providers.exec {
     workingDir repositoryRoot
     commandLine 'git', 'rev-parse', 'HEAD'
@@ -150,7 +155,11 @@ tasks.register('buildFrontend', Exec) {
 tasks.register('generateRuntimeManifest') {
     group = 'distribution'
     description = 'Generates the checked runtime archive manifest.'
-    dependsOn serverBootJar, tasks.named('buildKernelWheel')
+    dependsOn(
+            serverBootJar,
+            scenarioWorkerInstall,
+            tasks.named('buildKernelWheel')
+    )
     inputs.property('runtimeVersion', runtimeVersion)
     inputs.property('gitCommit', gitCommit)
     inputs.file(serverBootJar.flatMap { it.archiveFile })
@@ -165,7 +174,7 @@ tasks.register('generateRuntimeManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion   : 1,
+                        schemaVersion   : 2,
                         version         : runtimeVersion,
                         gitCommit       : resolvedGitCommit,
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
@@ -173,7 +182,11 @@ tasks.register('generateRuntimeManifest') {
                         javaVersion     : 21,
                         pythonRequires  : '>=3.11.3,<3.14',
                         springProfile   : 'scenario-workers',
-                        frontendIncluded: true
+                        frontendIncluded: true,
+                        scenarioWorkerHost: [
+                                launcher: 'bin/run-scenario-workers.py',
+                                autoStart: false
+                        ]
                 ])) + System.lineSeparator(),
                 'UTF-8'
         )
@@ -186,6 +199,7 @@ tasks.register('stageRuntime', Sync) {
     dependsOn(
             tasks.named('validateRuntimeVersion'),
             serverBootJar,
+            scenarioWorkerInstall,
             tasks.named('buildKernelWheel'),
             tasks.named('downloadRuntimeDependencies'),
             tasks.named('buildFrontend'),
@@ -194,6 +208,9 @@ tasks.register('stageRuntime', Sync) {
     into stagedDirectory
     from(serverBootJar.flatMap { it.archiveFile }) {
         into 'lib'
+    }
+    from(scenarioWorkerInstallDirectory.map { it.dir('lib') }) {
+        into 'scenario-workers/lib'
     }
     from(kernelWheelDirectory) {
         into 'kernel/wheelhouse'
@@ -237,6 +254,7 @@ tasks.register('launcherTest', Exec) {
     workingDir repositoryRoot
     inputs.files(fileTree('src/test/python') { include '**/*.py' })
     inputs.file('src/main/dist/bin/run-server.py')
+    inputs.file('src/main/dist/bin/run-scenario-workers.py')
     commandLine(
             pythonExecutable.get(), '-m', 'unittest', 'discover',
             '-s', file('src/test/python').absolutePath,

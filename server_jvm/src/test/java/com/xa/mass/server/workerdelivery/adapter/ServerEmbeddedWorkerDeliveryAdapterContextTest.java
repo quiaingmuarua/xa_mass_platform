@@ -3,7 +3,7 @@ package com.xa.mass.server.workerdelivery.adapter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.server.workerassembly
-        .ServerWorkerAssemblyLifecycleHost;
+        .ServerConfiguredRuntimeLifecycleHost;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -77,7 +77,7 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
             assertThat(socket.isConnected()).isTrue();
         }
         assertThat(applicationContext.getBean(
-                ServerWorkerAssemblyLifecycleHost.class
+                ServerConfiguredRuntimeLifecycleHost.class
         )).isNotNull();
     }
 

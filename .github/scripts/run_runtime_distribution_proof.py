@@ -98,6 +98,51 @@ def _wait_for_readiness(base_url: str, process: subprocess.Popen[Any]) -> None:
     raise RuntimeError(f"Runtime readiness timed out: {last_error}")
 
 
+def _preview_worker_count(base_url: str, worker_group_id: str) -> int:
+    status, payload, _ = _request(
+        "POST",
+        f"{base_url}/api/v1/runtime-view/worker-groups/"
+        f"{worker_group_id}/workers:preview",
+        {"sampleLimit": 100},
+    )
+    if status != 200:
+        raise RuntimeError(
+            f"Worker preview for {worker_group_id} returned HTTP {status}"
+        )
+    workers = json.loads(payload).get("workers")
+    if not isinstance(workers, list):
+        raise RuntimeError(f"Worker preview for {worker_group_id} is invalid")
+    return len(workers)
+
+
+def _wait_for_worker_fleet(
+    base_url: str,
+    host_process: subprocess.Popen[Any],
+) -> None:
+    expected = {
+        "scenario-phone-number-workers": 10,
+        "scenario-string-utils-workers": 10,
+    }
+    deadline = time.monotonic() + 90
+    observed: dict[str, int] = {}
+    while time.monotonic() < deadline:
+        if host_process.poll() is not None:
+            raise RuntimeError(
+                "Scenario Worker Host exited before fleet readiness: "
+                f"{host_process.returncode}"
+            )
+        observed = {
+            group: _preview_worker_count(base_url, group)
+            for group in expected
+        }
+        if observed == expected:
+            return
+        time.sleep(0.5)
+    raise RuntimeError(
+        f"Scenario Worker fleet readiness timed out: {observed}"
+    )
+
+
 def _stop_process(process: subprocess.Popen[Any]) -> None:
     if process.poll() is not None:
         return
@@ -165,8 +210,10 @@ def _prove_runtime(
     while adapter_port == server_port:
         adapter_port = _free_port()
     base_url = f"http://127.0.0.1:{server_port}"
-    launcher = runtime_root / "bin/run-server.py"
-    log_path = proof_root / "runtime-server.log"
+    server_launcher = runtime_root / "bin/run-server.py"
+    worker_launcher = runtime_root / "bin/run-scenario-workers.py"
+    server_log_path = proof_root / "runtime-server.log"
+    worker_log_path = proof_root / "scenario-worker-host.log"
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     environment["PYTHONNOUSERSITE"] = "1"
@@ -174,12 +221,9 @@ def _prove_runtime(
     environment["XA_MASS_REDIS_SCOPE"] = scope
     command = [
         sys.executable,
-        str(launcher),
+        str(server_launcher),
         "--",
         f"--server.port={server_port}",
-        f"--xa.mass.worker-assembly.runtime-api-base-url={base_url}",
-        "--xa.mass.worker-assembly.sandbox-root="
-        f"{proof_root / 'data/scenario-workers'}",
         "--xa.mass.worker-delivery.adapter.instances."
         f"scenario-websocket.listen-port={adapter_port}",
         "--xa.mass.worker-binding.endpoints.scenario-websocket.public-uri="
@@ -190,17 +234,45 @@ def _prove_runtime(
         flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         flags["start_new_session"] = True
-    with log_path.open("wb") as log:
-        process = subprocess.Popen(
+    worker_process: subprocess.Popen[Any] | None = None
+    with server_log_path.open("wb") as server_log, worker_log_path.open(
+        "wb"
+    ) as worker_log:
+        server_process = subprocess.Popen(
             command,
             cwd=proof_root,
             env=environment,
-            stdout=log,
+            stdout=server_log,
             stderr=subprocess.STDOUT,
             **flags,
         )
         try:
-            _wait_for_readiness(base_url, process)
+            _wait_for_readiness(base_url, server_process)
+
+            for worker_group_id in (
+                "scenario-phone-number-workers",
+                "scenario-string-utils-workers",
+            ):
+                if _preview_worker_count(base_url, worker_group_id) != 0:
+                    raise RuntimeError(
+                        "Server launcher implicitly started Scenario Workers"
+                    )
+
+            worker_process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(worker_launcher),
+                    f"--runtime-api-base-url={base_url}",
+                    "--sandbox-root="
+                    f"{proof_root / 'data/scenario-workers'}",
+                ],
+                cwd=proof_root,
+                env=environment,
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+                **flags,
+            )
+            _wait_for_worker_fleet(base_url, worker_process)
 
             status, scalar, scalar_type = _request("GET", f"{base_url}/scalar")
             if status != 200 or scalar_type != "text/html":
@@ -261,8 +333,14 @@ def _prove_runtime(
                 "Runtime distribution proof succeeded: "
                 f"scope={scope}, taskId={task_id}, messageId={message_id}"
             )
+
+            _stop_process(worker_process)
+            worker_process = None
+            _wait_for_readiness(base_url, server_process)
         finally:
-            _stop_process(process)
+            if worker_process is not None:
+                _stop_process(worker_process)
+            _stop_process(server_process)
 
 
 def main() -> int:
@@ -288,17 +366,23 @@ def main() -> int:
                 proof_root,
             )
         except Exception:
-            log_path = proof_root / "runtime-server.log"
-            if log_path.is_file():
-                print("--- Runtime Server log tail ---", file=sys.stderr)
-                print(
-                    "\n".join(
-                        log_path.read_text(
-                            encoding="utf-8", errors="replace"
-                        ).splitlines()[-200:]
-                    ),
-                    file=sys.stderr,
-                )
+            for label, log_path in (
+                ("Runtime Server", proof_root / "runtime-server.log"),
+                (
+                    "Scenario Worker Host",
+                    proof_root / "scenario-worker-host.log",
+                ),
+            ):
+                if log_path.is_file():
+                    print(f"--- {label} log tail ---", file=sys.stderr)
+                    print(
+                        "\n".join(
+                            log_path.read_text(
+                                encoding="utf-8", errors="replace"
+                            ).splitlines()[-200:]
+                        ),
+                        file=sys.stderr,
+                    )
             raise
         finally:
             _clean_scope(

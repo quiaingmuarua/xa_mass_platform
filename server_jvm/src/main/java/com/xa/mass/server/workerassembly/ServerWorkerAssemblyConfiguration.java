@@ -1,6 +1,5 @@
 package com.xa.mass.server.workerassembly;
 
-import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
@@ -34,27 +33,14 @@ public class ServerWorkerAssemblyConfiguration {
     }
 
     @Bean
-    ScenarioWorkers scenarioWorkers(
-            ServerWorkerAssemblyProperties properties
-    ) {
-        return ScenarioWorkers.fromJson(
-                properties.capabilityAssemblyJson(),
-                properties.sandboxRoot(),
-                properties.runtimeApiBaseUrl()
-        );
-    }
-
-    @Bean
-    ServerWorkerAssemblyLifecycleHost
-    serverWorkerAssemblyLifecycleHost(
+    ServerConfiguredRuntimeLifecycleHost
+    serverConfiguredRuntimeLifecycleHost(
             ServerWorkerGroupInitializer groupInitializer,
-            WorkerDeliveryAdapterManager adapterManager,
-            ScenarioWorkers scenarioWorkers
+            WorkerDeliveryAdapterManager adapterManager
     ) {
-        return new ServerWorkerAssemblyLifecycleHost(
+        return new ServerConfiguredRuntimeLifecycleHost(
                 groupInitializer,
-                adapterManager,
-                scenarioWorkers
+                adapterManager
         );
     }
 }

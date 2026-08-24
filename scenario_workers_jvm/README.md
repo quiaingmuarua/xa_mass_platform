@@ -1,9 +1,10 @@
 # XA Mass Scenario Workers JVM
 
-`scenario_workers_jvm` is the finite Java 21 capability assembly used by the
-checked-in `scenario-workers` Server profile. It is a local Worker Lab, not a
-Kernel owner, privileged Server extension, Adapter, plugin SPI, or independently
-deployed application.
+`scenario_workers_jvm` is the finite standalone Java 21 Worker Host used with
+the checked-in `scenario-workers` Server profile. It is a local Worker Lab, not
+a Kernel owner, privileged Server extension, Adapter, production Worker
+platform, or plugin SPI. Server has no compile-time or lifecycle dependency on
+this module.
 
 The module owns the checked-in phone-number and string-utility
 `WorkerEventDefinition` extensions. A configured WorkerGroup selects one
@@ -17,21 +18,20 @@ Capability implementations register short names such as
 `extension.worker.phonenumber.e164` Event Name. TaskItem `eventCode`, Control
 Call `messageType`, and WorkerGroup `eventCodes` always carry that full name.
 
-The only public assembly surface is:
+The supported process entry is:
 
-```java
-ScenarioWorkers workers = ScenarioWorkers.fromJson(
-        capabilityAssemblyJson,
-        "data/scenario-workers",
-        URI.create("http://127.0.0.1:18082")
-);
-workers.start();
-workers.close();
+```powershell
+.\gradlew.bat :scenario_workers_jvm:runScenarioWorkers `
+  --args="--runtime-api-base-url=http://127.0.0.1:18082 `
+  --sandbox-root=D:\proof\data\scenario-workers"
 ```
 
-The `capabilityAssemblyJson` document declares locally hosted Groups, their
-concrete Event Definitions, and local runtime options only. It never lists
-individual Workers:
+`ScenarioWorkerHostMain` loads the checked
+`default-capability-assembly.json`; callers cannot replace it with dynamic
+classes, Spring configuration, Redis coordinates or Adapter URIs. The only
+arguments are the Runtime API base URL and Lab root. The fixed assembly
+declares the two locally hosted Groups, their concrete Event Definitions and
+local reconnect options. It never lists individual Workers:
 
 ```json
 {
@@ -57,7 +57,7 @@ Adapter URI fields are rejected.
 
 ## Persistent Worker Lab
 
-The checked-in profile exclusively owns this writable local directory:
+One standalone Host process exclusively owns this writable local directory:
 
 ```text
 data/scenario-workers/
@@ -146,7 +146,7 @@ replica topology. With Server identity Redis retained, repeated Prepare maps
 those coordinates back to the same Worker IDs; the files themselves do not
 store IDs. The Lab does not persist Endpoint URI, Binding, Channels, connection
 state, Commands, Results, Tasks, or scores. File edits take effect only on the
-next process start. One Lab root supports one Scenario Server process.
+next process start. One Lab root supports one Scenario Worker Host process.
 
 The module depends only on Worker Core, Java Worker, the shared transport
 contract, and its finite capability libraries. It has no Kernel, Spring,
@@ -155,16 +155,19 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 
 ```text
 ./gradlew :scenario_workers_jvm:test
+./gradlew :scenario_workers_jvm:installDist
 ```
 
-Repository-level acceptance starts Redis and one Java Server. Server supervises
-the temporary Python Pacer CLI and assembles the Adapter plus these Lab Workers;
-two independent clients then prove the boundary:
+Repository-level acceptance starts Redis, one Java Server and one independent
+Scenario Worker Host. Server supervises only the temporary Python Pacer CLI and
+its configured Adapter; the proof launcher owns the Worker Host process. Two
+independent clients then prove the boundary:
 
 - [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
   the exact two-by-ten replica topology, schema-v2 Lab files, Runtime Preview
   client-key identity mapping, Adapter routes, probe execution, Properties
-  observation, and identity reuse across a real Server/Scenario Host restart;
+  observation, and identity reuse across a real standalone Host restart while
+  Server, Pacer, Redis and Lab remain available;
 - [`worker-capability-task`](../integrations/worker-capability-task/) proves two
   finite Tasks close 60 submitted Items across six Group/Event combinations to
   60 uniquely correlated exported success Results.

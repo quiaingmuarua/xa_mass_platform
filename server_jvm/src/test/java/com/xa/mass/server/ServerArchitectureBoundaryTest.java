@@ -112,9 +112,7 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .contains(
-                        "implementation project(':scenario_workers_jvm')"
-                )
+                .doesNotContain("scenario_workers_jvm")
                 .doesNotContain("scenario_rpc_jvm")
                 .contains("implementation project(':transport:netty-adapter')")
                 .contains(
@@ -408,10 +406,11 @@ class ServerArchitectureBoundaryTest {
                 .contains("adapterManager.start()")
                 .contains("adapterManager.close()")
                 .contains("WorkerGroupRegistrationService")
-                .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
-                .contains("properties.capabilityAssemblyJson()")
-                .contains("properties.runtimeApiBaseUrl()")
+                .doesNotContain("ScenarioWorkers")
+                .doesNotContain("capabilityAssemblyJson")
+                .doesNotContain("runtimeApiBaseUrl")
+                .doesNotContain("sandboxRoot")
                 .doesNotContain("ScenarioWorkerBundles")
                 .doesNotContain("ScenarioWorkerBundleConfig")
                 .doesNotContain("WorkerResourceCatalog")

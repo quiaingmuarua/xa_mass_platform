@@ -31,7 +31,14 @@ the response stream.
 ## Run
 
 Start Redis and one Java Server with the `scenario-workers` Profile. Server
-supervises the configured Python Pacer CLI child. Then run:
+supervises the configured Python Pacer CLI child and Adapter but starts no
+Workers. Start the standalone `scenario_workers_jvm` Host, then run:
+
+```powershell
+.\gradlew.bat :scenario_workers_jvm:runScenarioWorkers
+```
+
+In a separate terminal:
 
 ```powershell
 .\gradlew.bat :integrations:worker-capability-task:runCapabilityTaskScenario

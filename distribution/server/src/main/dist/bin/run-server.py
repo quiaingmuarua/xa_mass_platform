@@ -61,8 +61,8 @@ def _load_manifest(root: Path) -> dict[str, Any]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise LauncherError(f"Runtime manifest is unreadable: {path}") from error
-    if not isinstance(document, dict) or document.get("schemaVersion") != 1:
-        raise LauncherError("Runtime manifest schemaVersion must be 1")
+    if not isinstance(document, dict) or document.get("schemaVersion") != 2:
+        raise LauncherError("Runtime manifest schemaVersion must be 2")
     required = {
         "version": str,
         "gitCommit": str,
@@ -81,6 +81,19 @@ def _load_manifest(root: Path) -> dict[str, Any]:
             raise LauncherError(f"Runtime manifest field is invalid: {name}")
     if document["springProfile"] != _OWNED_PROFILE:
         raise LauncherError("Runtime manifest does not own scenario-workers")
+    worker_host = document.get("scenarioWorkerHost")
+    if (
+        not isinstance(worker_host, dict)
+        or not isinstance(worker_host.get("launcher"), str)
+        or not worker_host["launcher"]
+        or worker_host.get("autoStart") is not False
+    ):
+        raise LauncherError("Runtime manifest Scenario Worker Host is invalid")
+    _safe_member(
+        root,
+        worker_host["launcher"],
+        name="scenarioWorkerHost.launcher",
+    )
     _python_requirement_bounds(document["pythonRequires"])
     return document
 

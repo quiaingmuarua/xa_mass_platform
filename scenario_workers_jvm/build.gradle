@@ -1,5 +1,6 @@
 plugins {
     id 'java-library'
+    id 'application'
 }
 
 base {
@@ -10,6 +11,11 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+application {
+    applicationName = 'xa-mass-scenario-workers'
+    mainClass = 'com.xa.mass.scenarioworkers.ScenarioWorkerHostMain'
 }
 
 dependencies {
@@ -28,4 +34,12 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.register('runScenarioWorkers', JavaExec) {
+    description = 'Runs the standalone Scenario Worker Host.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    workingDir = rootProject.projectDir
 }

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ServerWorkerAssemblyArchitectureTest {
 
     @Test
-    void serverAssemblyOnlyComposesScenarioWorkerModule()
+    void serverAssemblyOnlyComposesConfiguredGroupsAndAdapters()
             throws Exception {
         Path root = Path.of(
                 "src/main/java/com/xa/mass/server/workerassembly"
@@ -31,11 +31,7 @@ class ServerWorkerAssemblyArchitectureTest {
         }
 
         assertThat(sources)
-                .contains("ScenarioWorkers")
                 .contains("properties.groupConfigJson()")
-                .contains("properties.capabilityAssemblyJson()")
-                .contains("properties.sandboxRoot()")
-                .contains("properties.runtimeApiBaseUrl()")
                 .contains("WorkerGroupRegistrationService")
                 .contains("groupInitializer.initialize()")
                 .contains("adapterManager.start()")
@@ -44,6 +40,10 @@ class ServerWorkerAssemblyArchitectureTest {
                 .doesNotContain("ScenarioWorkerBundle")
                 .doesNotContain("ScenarioWorkerBundleConfig")
                 .doesNotContain("ScenarioWorkerBundles")
+                .doesNotContain("ScenarioWorkers")
+                .doesNotContain("capabilityAssemblyJson")
+                .doesNotContain("sandboxRoot")
+                .doesNotContain("runtimeApiBaseUrl")
                 .doesNotContain("PHONE_NUMBER")
                 .doesNotContain("STRING_UTILS")
                 .doesNotContain("workerIdPrefix")

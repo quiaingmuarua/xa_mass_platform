@@ -15,12 +15,12 @@ boundary named below.
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and exports its success Results, and WorkerGroup registration returns a managed Task ID whose Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and restart mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
+| Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacer stay up | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and finite Task create/append/approve/export flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
-| Runtime Distribution | One versioned ZIP contains matching Server JAR, production-only Pacer wheel, hash-locked offline dependency, frontend and manifest; after extraction outside the repository it creates its private venv, reaches readiness and closes a managed Task Call | Redis 7, Java 21, Python 3.11.3 (minimum supported), Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest -PxaMassVersion=0.1.0` |
+| Runtime Distribution | One versioned ZIP contains matching Server JAR, production-only Pacer wheel, hash-locked offline dependency, frontend, optional standalone Worker Host and schema-v2 manifest; outside the repository the Server reaches readiness with zero JVM Workers, the separate Host closes a managed Task Call, and stopping Host leaves Server ready | Redis 7, Java 21, Python 3.11.3 (minimum supported), Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest -PxaMassVersion=0.2.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Capability Task` command reads two local text fixtures, creates two
@@ -68,14 +68,16 @@ capacity invariant.
 | Task and Result correlation | Kernel owner/oracle plus Server boundary tests | owner-local retry, finality, scan and correlation cases | Runtime Boundary and Capability Task | throughput, fairness, soak or crash recovery |
 | Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
 
-The separate `Worker Fleet` lane starts the real Scenario Host on an isolated,
-initially absent Lab root. Its initial phase relates the exact configured
+The separate `Worker Fleet` lane first starts Server and proves both JVM Group
+previews are empty, then starts the real standalone Scenario Host on an
+isolated, initially absent Lab root. Its initial phase relates the exact configured
 client keys to 20 unique Worker IDs read through Runtime Preview, connected
 Adapter routes, one probe
 Result per target, and same-round Worker/Adapter Properties observations. CI
-then terminates the Host, requires shutdown within 15 seconds, restarts the
-same Host with Redis, Kernel, and Lab retained, and requires the complete
-client-key-to-Worker-ID mapping and all live relationships to close again.
+then terminates the Host, requires Server and its Pacer child to remain ready,
+restarts the same Host with Redis, Kernel, Server and Lab retained, and requires
+the complete client-key-to-Worker-ID mapping and all live relationships to
+close again.
 
 The `Android Emulator Worker` lane installs the Demo APK on one API 33
 Emulator. ADB is limited to installation, process lifecycle, and loopback port
@@ -110,7 +112,7 @@ for the exact run-owned scope; it never clears Redis DB 15.
 Redis Owner tests and Python Redis proofs generate the same kind of exact scope
 inside their fixtures. Worker Fleet, Capability Task, and Android Emulator CI set
 `XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
-process tree, retain that scope across an intentional restart, then clean only
+process trees, retain that scope across an intentional restart, then clean only
 that scope after all writers stop. A proof may share the URL and DB with a
 running `profile_*` environment; neither side can see or delete the other's
 data.
@@ -120,8 +122,9 @@ ready-token startup, exit-before-ready, readiness timeout, stdin-EOF shutdown,
 forced shutdown, idempotent cleanup, and removal of owner/ready files. Unit
 proofs keep disk-state recovery non-destructive: dead or PID-reused owner state
 is cleaned, while a matching live process blocks startup and remains untouched.
-The Worker/Adapter assembly has an explicit higher lifecycle phase, so it
-starts after the child and closes before it.
+The configured Group/Task and Adapter assembly has an explicit higher lifecycle
+phase, so it starts after the child and closes before it. The standalone
+Scenario Worker Host is outside the Spring lifecycle.
 
 The Python Kernel Oracle is a separate proof owner and still uses its explicit
 Redis test switch:
@@ -244,16 +247,18 @@ ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
 proof extracts the ZIP to a temporary directory outside the checkout, removes
 `PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
 packaged Server against one unique `test_*` scope, loads Scalar and Frontend,
-and closes one managed String Task Call. It then stops the launcher process
-tree and cleans only that exact scope:
+proves both JVM Worker previews are empty, starts the packaged Host separately,
+and closes one managed String Task Call. It then stops only the Host, proves
+Server readiness remains UP, stops Server, and cleans only that exact scope:
 
 ```powershell
 .\gradlew.bat :distribution:server:runtimeDistributionTest `
-  "-PxaMassVersion=0.1.0"
+  "-PxaMassVersion=0.2.0"
 ```
 
-This lane proves the deployable Server boundary, not Worker SDK publication,
-an OCI image, Redis lifecycle, or an Android device.
+This lane proves the deployable Server boundary and optional finite Lab Host
+packaging, not Worker SDK publication, an OCI image, Redis lifecycle, or an
+Android device.
 
 Documentation contract:
 

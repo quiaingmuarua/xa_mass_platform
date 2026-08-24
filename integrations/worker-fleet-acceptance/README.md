@@ -25,8 +25,8 @@ checked clientWorkerKeys
   <-> same-round Worker Properties snapshots match Adapter-local observations
 ```
 
-The `restart` phase repeats the same checks after the real Server/Scenario Host
-process is restarted and additionally requires the complete
+The `restart` phase repeats the same checks after only the standalone Scenario
+Worker Host process is restarted and additionally requires the complete
 `clientWorkerKey -> workerId` mapping to equal the successful initial evidence.
 Only Network observation is retried. Probe and Properties Direct Calls are each
 issued once after all routes are connected, so a missing Command or Result is
@@ -43,8 +43,15 @@ timestamps. Failure attempts to write partial evidence before exiting nonzero.
 ## Run
 
 Start Redis and one Java Server with the `scenario-workers` profile. Server
-supervises the configured Python Pacer CLI child. Use a Scenario Lab root
-ending in `data/scenario-workers`, then run:
+supervises the configured Python Pacer CLI child and Adapter but starts no
+Workers. Start the standalone Host against a Scenario Lab root ending in
+`data/scenario-workers`, then run:
+
+```powershell
+.\gradlew.bat :scenario_workers_jvm:runScenarioWorkers `
+  --args="--runtime-api-base-url=http://127.0.0.1:18082 `
+  --sandbox-root=C:\proof\data\scenario-workers"
+```
 
 ```powershell
 .\gradlew.bat :integrations:worker-fleet-acceptance:runFleetAcceptance `
@@ -55,9 +62,8 @@ ending in `data/scenario-workers`, then run:
   --evidence-file=C:\proof\initial.json"
 ```
 
-After stopping and restarting the same Server process while retaining Redis and
-Lab state, the old Pacer child must be gone and the new Server creates a fresh
-child before becoming ready:
+After stopping and restarting only the same Worker Host while retaining Server,
+Pacer, Redis and Lab state:
 
 ```powershell
 .\gradlew.bat :integrations:worker-fleet-acceptance:runFleetAcceptance `

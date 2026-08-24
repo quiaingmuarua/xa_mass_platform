@@ -289,26 +289,25 @@ jobs:
         run: >-
           ./gradlew --no-daemon
           :server_jvm:bootJar
+          :scenario_workers_jvm:installDist
           :integrations:worker-fleet-acceptance:classes
       - name: Prepare isolated Fleet Lab
         run: |
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           mkdir -p "$proof_root/data" "$proof_root/evidence"
           test ! -e "$proof_root/data/scenario-workers"
-      - name: Start initial Scenario Worker Host
+      - name: Start Server without Scenario Workers
         run: |
           server_jar=$(find server_jvm/build/libs \
             -name 'xa-mass-server-jvm-*.jar' \
             ! -name '*-plain.jar' -print -quit)
           test -n "$server_jar"
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
-          lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
             --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
-            --xa.mass.worker-assembly.sandbox-root="$lab_root" \
-            > fleet-server-initial.log 2>&1 &
+            > fleet-server.log 2>&1 &
           echo $! > fleet-server.pid
           for _ in $(seq 1 90); do
             if python -c \
@@ -316,12 +315,43 @@ jobs:
               >/dev/null 2>&1; then
               cp "$proof_root/kernel-pacer/owner.json" \
                 "$proof_root/initial-pacer-owner.json"
-              exit 0
+              break
             fi
             sleep 1
           done
-          cat fleet-server-initial.log
-          exit 1
+          test -f "$proof_root/initial-pacer-owner.json" || {
+            cat fleet-server.log
+            exit 1
+          }
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          for group in (
+              "scenario-phone-number-workers",
+              "scenario-string-utils-workers",
+          ):
+              request = urllib.request.Request(
+                  "http://127.0.0.1:18082/api/v1/runtime-view/worker-groups/"
+                  f"{group}/workers:preview",
+                  data=json.dumps({"sampleLimit": 100}).encode(),
+                  method="POST",
+                  headers={"Content-Type": "application/json"},
+              )
+              with urllib.request.urlopen(request) as response:
+                  workers = json.load(response)["workers"]
+              if workers:
+                  raise SystemExit(f"Server implicitly started Workers for {group}")
+          PY
+      - name: Start initial Scenario Worker Host
+        run: |
+          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
+          java -cp "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*" \
+            com.xa.mass.scenarioworkers.ScenarioWorkerHostMain \
+            --runtime-api-base-url=http://127.0.0.1:18082 \
+            --sandbox-root="$proof_root/data/scenario-workers" \
+            > fleet-host-initial.log 2>&1 &
+          echo $! > fleet-host.pid
       - name: Prove initial Worker Fleet
         run: >-
           ./gradlew --no-daemon
@@ -339,7 +369,8 @@ jobs:
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           child_pid=$(python -c \
             "import json; print(json.load(open('$proof_root/kernel-pacer/owner.json'))['pid'])")
-          pid=$(cat fleet-server.pid)
+          server_pid=$(cat fleet-server.pid)
+          pid=$(cat fleet-host.pid)
           kill "$pid"
           stopped=false
           for _ in $(seq 1 15); do
@@ -351,60 +382,24 @@ jobs:
           done
           if [ "$stopped" != true ]; then
             kill -9 "$pid" 2>/dev/null || true
-            rm -f fleet-server.pid
+            rm -f fleet-host.pid
             echo "Scenario Worker Host did not stop within 15 seconds"
             exit 1
           fi
-          rm -f fleet-server.pid
-          for _ in $(seq 1 15); do
-            if ! kill -0 "$child_pid" 2>/dev/null; then
-              test ! -e "$proof_root/kernel-pacer/owner.json"
-              test ! -e "$proof_root/kernel-pacer/ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Supervised Pacer child survived Java Server shutdown"
-          exit 1
+          rm -f fleet-host.pid
+          kill -0 "$server_pid"
+          kill -0 "$child_pid"
+          python -c \
+            "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')"
       - name: Restart the same Scenario Worker Host
         run: |
-          server_jar=$(find server_jvm/build/libs \
-            -name 'xa-mass-server-jvm-*.jar' \
-            ! -name '*-plain.jar' -print -quit)
-          test -n "$server_jar"
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
-          lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
-          java -jar "$server_jar" \
-            --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
-            --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
-            --xa.mass.worker-assembly.sandbox-root="$lab_root" \
-            > fleet-server-restart.log 2>&1 &
-          echo $! > fleet-server.pid
-          for _ in $(seq 1 90); do
-            if python -c \
-              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
-              >/dev/null 2>&1; then
-              python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          root = Path(os.environ["GITHUB_WORKSPACE"]) / "build/worker-fleet-proof"
-          before = json.loads((root / "initial-pacer-owner.json").read_text())
-          after = json.loads((root / "kernel-pacer/owner.json").read_text())
-          if before["instanceToken"] == after["instanceToken"]:
-              raise SystemExit("Pacer instance token did not change after restart")
-          if before["pid"] == after["pid"]:
-              raise SystemExit("Pacer child PID did not change after restart")
-          (root / "initial-pacer-owner.json").unlink()
-          PY
-              exit 0
-            fi
-            sleep 1
-          done
-          cat fleet-server-restart.log
-          exit 1
+          java -cp "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*" \
+            com.xa.mass.scenarioworkers.ScenarioWorkerHostMain \
+            --runtime-api-base-url=http://127.0.0.1:18082 \
+            --sandbox-root="$proof_root/data/scenario-workers" \
+            > fleet-host-restart.log 2>&1 &
+          echo $! > fleet-host.pid
       - name: Prove restarted Worker Fleet
         run: >-
           ./gradlew --no-daemon
@@ -431,7 +426,7 @@ jobs:
       - name: Stop Worker Fleet processes
         if: always()
         run: |
-          for pid_file in fleet-server.pid; do
+          for pid_file in fleet-host.pid fleet-server.pid; do
             if [ ! -f "$pid_file" ]; then
               continue
             fi
@@ -458,8 +453,9 @@ jobs:
           name: worker-fleet-${{ github.run_attempt }}
           path: |
             build/worker-fleet-proof/evidence/*.json
-            fleet-server-initial.log
-            fleet-server-restart.log
+            fleet-server.log
+            fleet-host-initial.log
+            fleet-host-restart.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -501,8 +497,9 @@ jobs:
         run: >-
           ./gradlew --no-daemon
           :server_jvm:bootJar
+          :scenario_workers_jvm:installDist
           :integrations:worker-capability-task:classes
-      - name: Start Server and Scenario Workers
+      - name: Start Server
         run: |
           SERVER_JAR=$(find server_jvm/build/libs \
             -name 'xa-mass-server-jvm-*.jar' \
@@ -523,6 +520,14 @@ jobs:
           done
           cat scenario-server.log
           exit 1
+      - name: Start Scenario Worker Host
+        run: |
+          java -cp "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*" \
+            com.xa.mass.scenarioworkers.ScenarioWorkerHostMain \
+            --runtime-api-base-url=http://127.0.0.1:18082 \
+            --sandbox-root="$GITHUB_WORKSPACE/build/capability-task-proof/data/scenario-workers" \
+            > scenario-worker-host.log 2>&1 &
+          echo $! > scenario-worker-host.pid
       - name: Verify 2 finite Tasks and 60 Results
         run: >-
           ./gradlew --no-daemon
@@ -544,7 +549,7 @@ jobs:
       - name: Stop Scenario processes
         if: always()
         run: |
-          for pid_file in scenario-server.pid; do
+          for pid_file in scenario-worker-host.pid scenario-server.pid; do
             if [ ! -f "$pid_file" ]; then
               continue
             fi
@@ -571,6 +576,7 @@ jobs:
           name: capability-task-${{ github.run_attempt }}
           path: |
             scenario-server.log
+            scenario-worker-host.log
             integrations/worker-capability-task/ci-results/**
           if-no-files-found: ignore
           retention-days: 7
@@ -828,7 +834,7 @@ jobs:
         run: >-
           ./gradlew --no-daemon
           :distribution:server:runtimeDistributionTest
-          -PxaMassVersion=0.1.0
+          -PxaMassVersion=0.2.0
       - name: Summarize Runtime Distribution proof
         if: always()
         run: |
@@ -839,7 +845,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-server-runtime-${{ github.run_attempt }}
-          path: distribution/server/build/distributions/xa-mass-server-runtime-0.1.0.zip
+          path: distribution/server/build/distributions/xa-mass-server-runtime-0.2.0.zip
           if-no-files-found: ignore
           retention-days: 7
 

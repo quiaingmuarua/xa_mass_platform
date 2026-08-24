@@ -16,7 +16,8 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.server.taskdata.TaskRpcResultProbe;
 import com.xa.mass.server.testsupport.RedisTestScope;
-import com.xa.mass.server.workerassembly.ServerWorkerAssemblyLifecycleHost;
+import com.xa.mass.server.workerassembly
+        .ServerConfiguredRuntimeLifecycleHost;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.transport.client.WorkerTransportType;
@@ -121,7 +122,7 @@ class RuntimeBoundaryIntegrationTest {
     private TaskRpcResultProbe taskRpcResultProbe;
 
     @Autowired
-    private ServerWorkerAssemblyLifecycleHost workerAssemblyLifecycleHost;
+    private ServerConfiguredRuntimeLifecycleHost workerAssemblyLifecycleHost;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {

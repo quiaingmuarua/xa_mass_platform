@@ -269,14 +269,17 @@ Server, Kernel, Redis, score, Pacer or platform business handlers.
 
 ## Scenario And Android Capabilities
 
-`scenario_workers_jvm` is a finite Java 21 capability assembly, not a Kernel
-owner, Server profile, Adapter, deployment unit or plugin system.
+`scenario_workers_jvm` is a finite standalone Java 21 Lab Worker Host, not a
+Kernel owner, Server profile, Adapter, production Worker platform or plugin
+system.
 
 - It may depend on Worker Core and Java Worker, not Kernel, Server, Adapter,
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
+- Server never depends on, constructs, starts or stops the Host. The root local
+  launcher and proof lanes own the two independent process lifecycles.
 - Existing Group directories are not seeded or repaired; missing configured
   directories may receive checked defaults.
 
@@ -300,8 +303,10 @@ controls.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.
 - `distribution/server` is a packaging owner only. It may assemble the current
-  Server, production Pacer, frontend and configuration, but must not add a
-  fallback runtime owner, a second Spring Profile, or scheduling behavior.
+  Server, production Pacer, frontend, configuration and optional standalone
+  Scenario Worker Host, but `run-server.py` must never auto-start that Host. It
+  must not add a fallback runtime owner, a second Spring Profile, or scheduling
+  behavior.
 
 ## Verification
 

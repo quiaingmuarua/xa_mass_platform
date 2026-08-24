@@ -1,0 +1,16 @@
+{
+  "scenario-phone-number-workers": {
+    "eventCodes": [
+      "extension.worker.phonenumber.e164",
+      "extension.worker.phonenumber.country",
+      "extension.worker.phonenumber.original-carrier"
+    ]
+  },
+  "scenario-string-utils-workers": {
+    "eventCodes": [
+      "extension.worker.string.md5",
+      "extension.worker.string.sha1",
+      "extension.worker.string.base64.encode"
+    ]
+  }
+}
