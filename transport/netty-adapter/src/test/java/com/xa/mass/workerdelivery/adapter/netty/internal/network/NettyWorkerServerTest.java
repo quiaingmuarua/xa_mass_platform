@@ -78,6 +78,10 @@ class NettyWorkerServerTest {
             );
             assertThat(peer.awaitMessage()).isEqualTo("terminal");
             assertThat(peer.awaitClosed()).isTrue();
+            assertThat(handler.channel.closeFuture().await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
             assertThat(server.writeText(handler.channel, "late"))
                     .isEqualTo(TextWriteAttempt.RETRY_LATER);
         } finally {
