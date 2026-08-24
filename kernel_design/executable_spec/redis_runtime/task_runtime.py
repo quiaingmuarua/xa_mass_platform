@@ -15,6 +15,7 @@ from ..kernel.task_runtime import (
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
+    TaskItemSuccessResultPage,
     TaskResourceCatalog,
     TaskRuntime,
     TaskIdleDisposition,
@@ -376,6 +377,45 @@ class RedisTaskRuntime(TaskRuntime):
                 strict=True,
             )
         }
+
+    def scan_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        cursor: str,
+        count_hint: int,
+    ) -> TaskItemSuccessResultPage:
+        if not task_id:
+            raise ValueError("task id must be non-empty")
+        if not cursor or not cursor.isascii() or not cursor.isdecimal():
+            raise ValueError("cursor must be decimal text")
+        if (
+            not isinstance(count_hint, int)
+            or isinstance(count_hint, bool)
+            or not 1 <= count_hint <= self.MAX_SUCCESS_RESULT_SCAN_COUNT_HINT
+        ):
+            raise ValueError("count_hint must be in 1..1000")
+        next_cursor, raw_results = self.redis.hscan(
+            _task_item_results_key(self.keyspace, task_id),
+            cursor=int(cursor),
+            count=count_hint,
+        )
+        results = {
+            (
+                raw_message_id.decode("utf-8")
+                if isinstance(raw_message_id, bytes)
+                else raw_message_id
+            ): (
+                raw_payload.decode("utf-8")
+                if isinstance(raw_payload, bytes)
+                else raw_payload
+            )
+            for raw_message_id, raw_payload in raw_results.items()
+        }
+        return TaskItemSuccessResultPage(
+            next_cursor=str(next_cursor),
+            results=results,
+        )
 
     def _items_key(self, task_id: TaskId) -> str:
         return _task_items_key(self.keyspace, task_id)

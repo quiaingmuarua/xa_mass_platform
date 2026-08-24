@@ -19,7 +19,7 @@ EXPECTED_LANES = {
     "jvm_contracts",
     "redis_owner",
     "runtime_boundary",
-    "task_batch",
+    "capability_task",
     "worker_fleet",
     "android_host",
     "android_emulator",

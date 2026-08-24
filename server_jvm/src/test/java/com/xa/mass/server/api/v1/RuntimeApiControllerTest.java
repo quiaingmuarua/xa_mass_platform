@@ -49,6 +49,7 @@ import com.xa.mass.server.taskdata.TaskItemMapper;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
+import com.xa.mass.server.taskdata.TaskResultsExportService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerbinding.WorkerEndpointBinding;
@@ -80,6 +81,7 @@ class RuntimeApiControllerTest {
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
+    private TaskResultsExportService taskResultsExport;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -90,6 +92,7 @@ class RuntimeApiControllerTest {
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
+        taskResultsExport = mock(TaskResultsExportService.class);
 
         when(workerCatalog.registerWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
@@ -254,7 +257,11 @@ class RuntimeApiControllerTest {
                                 taskCatalog,
                                 taskCreation
                         ),
-                        new TaskDataController(taskData, taskRpc)
+                        new TaskDataController(
+                                taskData,
+                                taskRpc,
+                                taskResultsExport
+                        )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -730,6 +737,48 @@ class RuntimeApiControllerTest {
                         .content("{\"items\":[null]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        String tooManyItems = IntStream.range(0, 101)
+                .mapToObj(index -> """
+                        {
+                          "messageId":"message-%d",
+                          "eventCode":"event",
+                          "payload":{}
+                        }
+                        """.formatted(index))
+                .collect(Collectors.joining(",", "[", "]"));
+        mockMvc.perform(post("/api/v1/tasks/task-1/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":" + tooManyItems + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+    }
+
+    @Test
+    void finiteTaskExportReturnsNotReadyWithoutLeakingTaskCoordinates()
+            throws Exception {
+        when(taskResultsExport.export("task-1", 30_000L))
+                .thenReturn(new TaskResultsExportService.TaskResultsExport(
+                        false,
+                        null
+                ));
+
+        var pending = mockMvc.perform(post("/api/v1/tasks/task-1/results:export")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"waitTimeoutMillis\":30000}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(pending))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("not_ready"))
+                .andExpect(jsonPath("$.taskId").doesNotExist())
+                .andExpect(jsonPath("$.workerGroupId").doesNotExist());
     }
 
     @Test

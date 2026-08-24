@@ -165,10 +165,10 @@ two independent clients then prove the boundary:
   the exact two-by-ten replica topology, schema-v2 Lab files, Runtime Preview
   client-key identity mapping, Adapter routes, probe execution, Properties
   observation, and identity reuse across a real Server/Scenario Host restart;
-- [`worker-capability-rpc`](../integrations/worker-capability-rpc/) proves six
-  Group/Event Task Batches close 60 submitted inputs to 60 uniquely correlated
-  results.
+- [`worker-capability-task`](../integrations/worker-capability-task/) proves two
+  finite Tasks close 60 submitted Items across six Group/Event combinations to
+  60 uniquely correlated exported success Results.
 
-Task Batch rows deliberately do not claim which Worker executed them, and
-Fleet acceptance does not freeze dynamic Properties or business Result
+Capability Task evidence deliberately does not claim which Worker executed an
+Item. Fleet acceptance does not freeze dynamic Properties or business Result
 payloads.

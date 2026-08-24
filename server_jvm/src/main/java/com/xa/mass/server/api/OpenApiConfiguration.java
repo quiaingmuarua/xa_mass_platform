@@ -12,8 +12,7 @@ import org.springframework.context.annotation.Configuration;
                 version = "v1",
                 description = "Kernel decides scheduling; Server exposes, "
                         + "validates and correlates Runtime APIs; Transport "
-                        + "delivers and executes assigned work. Task Batch "
-                        + "Lab is a local demonstration surface."
+                        + "delivers and executes assigned work."
         ),
         tags = {
                 @Tag(
@@ -24,8 +23,8 @@ import org.springframework.context.annotation.Configuration;
                 @Tag(
                         name = ApiTags.TASKS,
                         description = "Create and control Tasks, append "
-                                + "Items, load Results and call managed "
-                                + "Tasks by Task ID."
+                                + "Items, load or export Results and call "
+                                + "managed Tasks by Task ID."
                 ),
                 @Tag(
                         name = ApiTags.RUNTIME_VIEW,
@@ -36,11 +35,6 @@ import org.springframework.context.annotation.Configuration;
                         name = ApiTags.WORKER_DELIVERY,
                         description = "Worker and Adapter delivery boundaries "
                                 + "plus best-effort Direct Call."
-                ),
-                @Tag(
-                        name = ApiTags.TASK_BATCH_LAB,
-                        description = "Local file-backed Task Batch Lab "
-                                + "operations."
                 )
         }
 )

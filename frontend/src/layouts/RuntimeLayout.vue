@@ -9,7 +9,6 @@ import {
   Moon,
   Sunny,
   Tickets,
-  VideoPlay,
   View
 } from "@element-plus/icons-vue";
 
@@ -24,9 +23,7 @@ const sourceLabel = computed(() =>
   config.mode === "api" ? "API source" : "Mock source"
 );
 const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
-const pageSection = computed(() =>
-  route.name === "runtime-task-batches" ? "Lab" : "Runtime"
-);
+const pageSection = computed(() => "Runtime");
 
 onMounted(() => theme.apply());
 onBeforeUnmount(() => store.dispose());
@@ -49,7 +46,7 @@ onBeforeUnmount(() => store.dispose());
         </div>
       </div>
 
-      <nav class="runtime-navigation" aria-label="Runtime and Lab">
+      <nav class="runtime-navigation" aria-label="Runtime">
         <span class="runtime-navigation__eyebrow">RUNTIME</span>
         <router-link class="runtime-navigation__link" to="/runtime/workers">
           <el-icon><Collection /></el-icon>
@@ -59,15 +56,6 @@ onBeforeUnmount(() => store.dispose());
           <el-icon><Tickets /></el-icon>
           <span>Tasks</span>
         </router-link>
-
-        <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
-          LAB
-        </span>
-        <router-link class="runtime-navigation__link" to="/runtime/task-batches">
-          <el-icon><VideoPlay /></el-icon>
-          <span>Task Batches</span>
-        </router-link>
-
         <span class="runtime-navigation__eyebrow runtime-navigation__eyebrow--section">
           REFERENCE
         </span>
@@ -84,11 +72,11 @@ onBeforeUnmount(() => store.dispose());
       <div class="runtime-sidebar__note">
         <span class="runtime-sidebar__note-title">
           <el-icon aria-hidden="true"><View /></el-icon>
-          Runtime + Lab
+          Runtime API
         </span>
         <p>
-          Runtime truth remains read-only. Finite Tasks are browser-session Mock; Task
-          Batch Lab uploads input, appends Items and keeps generated output files.
+          Runtime truth remains read-only. Finite Task actions use public APIs and only
+          their browser-session coordinates are retained here.
         </p>
       </div>
     </aside>

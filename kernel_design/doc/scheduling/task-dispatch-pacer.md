@@ -126,7 +126,7 @@ pass the private park coordinate. Explicit close remains available for either
 disposition.
 
 Ordinary `TaskRuntime.append_items` is a pure data write and does not release a
-private Task park. Reusable RPC and Task Batch callers use
+private Task park. Managed Task Call callers use
 `TaskCallItemSubmission`, whose fixed composition is:
 
 ```text

@@ -109,22 +109,6 @@ public enum ServerErrorCode {
             15007,
             "WorkerGroup registration is unavailable"
     ),
-    TASK_BATCH_INVALID_REQUEST(
-            16001,
-            "Task Batch request is invalid"
-    ),
-    TASK_BATCH_RESOURCE_NOT_FOUND(
-            16002,
-            "Task Batch resource was not found"
-    ),
-    TASK_BATCH_CONFLICT(
-            16003,
-            "Task Batch conflicts with current Lab state"
-    ),
-    TASK_BATCH_UNAVAILABLE(
-            16004,
-            "Task Batch is unavailable"
-    ),
     INVALID_DIRECT_CALL_REQUEST(
             17001,
             "Direct Call request is invalid"

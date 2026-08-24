@@ -14,19 +14,19 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and WorkerGroup registration returns a managed Task ID whose Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and exports its success Results, and WorkerGroup registration returns a managed Task ID whose Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and restart mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Task Batch | The checked profile registers every declared WorkerGroup with its attached Task Call, then uses bounded Java submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
+| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
-| Frontend | The read-only Runtime views and Task Batch Lab public-API flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
+| Frontend | The read-only Runtime views and finite Task create/append/approve/export flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
 | Runtime Distribution | One versioned ZIP contains matching Server JAR, production-only Pacer wheel, hash-locked offline dependency, frontend and manifest; after extraction outside the repository it creates its private venv, reaches readiness and closes a managed Task Call | Redis 7, Java 21, Python 3.11.3 (minimum supported), Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest -PxaMassVersion=0.1.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
-The `Task Batch` command uploads two text fixtures, executes six explicit
-WorkerGroup/Event/Payload-key batches, downloads six successful JSONL outputs,
-and validates exactly 60 results, ten per expected Group/Event combination,
-with globally unique Message IDs. It does not attribute a result to a
+The `Capability Task` command reads two local text fixtures, creates two
+finite Tasks, appends 30 Items to each, approves them, downloads two successful
+JSONL exports, and validates exactly 60 results, ten per expected Group/Event
+combination, with globally unique Message IDs. It does not attribute a result to a
 particular Worker or freeze capability-specific Result fields and values.
 
 Owner and capability unit tests remain the strict place for DTO shape,
@@ -65,7 +65,7 @@ capacity invariant.
 | Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
 | Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
 | Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, partial failure and reverse close | Worker Fleet | dynamic scaling or automatic reconcile |
-| Task and Result correlation | Kernel owner/oracle plus Server boundary tests | owner-local retry, finality and correlation cases | Runtime Boundary and Task Batch | throughput, fairness, soak or crash recovery |
+| Task and Result correlation | Kernel owner/oracle plus Server boundary tests | owner-local retry, finality, scan and correlation cases | Runtime Boundary and Capability Task | throughput, fairness, soak or crash recovery |
 | Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
 
 The separate `Worker Fleet` lane starts the real Scenario Host on an isolated,
@@ -108,7 +108,7 @@ and its Pacer child stop, cleanup uses cursor `SCAN` plus bounded `UNLINK` only
 for the exact run-owned scope; it never clears Redis DB 15.
 
 Redis Owner tests and Python Redis proofs generate the same kind of exact scope
-inside their fixtures. Worker Fleet, Task Batch, and Android Emulator CI set
+inside their fixtures. Worker Fleet, Capability Task, and Android Emulator CI set
 `XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
 process tree, retain that scope across an intentional restart, then clean only
 that scope after all writers stop. A proof may share the URL and DB with a
@@ -143,7 +143,7 @@ Non-Android JVM contracts:
   :transport:netty-adapter:build `
   :scenario_workers_jvm:build `
   :server_jvm:build `
-  :integrations:worker-capability-rpc:build `
+  :integrations:worker-capability-task:build `
   :integrations:worker-fleet-acceptance:build
 ```
 
@@ -164,8 +164,9 @@ remain Java-to-Redis:
 The same proof invokes an unpaused real WebSocket Worker through DIRECT_CALL,
 exercises a custom SYSTEM handler and the default probe/properties/events
 handlers, observes the current Adapter Channel through the public Runtime View,
-closes it through DIRECT_CALL, and proves transparent reconnect. A dedicated
-finite Task proves the generic create/approve/close surface through Polling.
+closes it through DIRECT_CALL, and proves transparent reconnect. Finite Tasks
+prove the generic create/approve/close surface through Polling and the
+terminal-only success Result export route.
 Separate WebSocket and Socket Workers each prove WorkerGroup registration with
 its returned managed Task ID, idempotent aggregate re-registration, two
 consecutive bounded Task-ID-addressed calls, the shared Task result read, and
@@ -196,11 +197,11 @@ retry/cold policy, or the final meaning of positive and negative evidence. It
 also does not prove distributed Direct Call waiter correlation, Binding
 generation fencing, clock synchronization, or reliable evidence delivery.
 
-Worker Fleet, Task Batch process startup, and Android Emulator/real-device
+Worker Fleet, Capability Task process startup, and Android Emulator/real-device
 acceptance are documented by their owning modules:
 
 - [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
-- [`integrations/worker-capability-rpc`](integrations/worker-capability-rpc/README.md)
+- [`integrations/worker-capability-task`](integrations/worker-capability-task/README.md)
 - [`xa-android/worker-demo`](xa-android/worker-demo/README.md)
 
 Android Host CI-equivalent proof:
@@ -267,9 +268,9 @@ excludes historical `doc/archive` content and does not generate documentation
 or access the network.
 
 The frontend proof keeps UI testing deliberately small. It validates Runtime
-schemas and stores plus the Task Batch Lab's strict response schemas, public
-upload/run/download routes, configured Group/Event selection, and Mock-mode
-no-call boundary. It does not run visual regression or browser
+schemas and stores plus TXT validation, stable message IDs, 100-Item chunks,
+the public create/append/approve/export sequence, 202 retry behavior, and the
+Mock-mode no-call boundary. It does not run visual regression or browser
 compatibility suites.
 
 ## CI Selection and Gate
@@ -300,21 +301,21 @@ Representative selection rules:
   otherwise reach only `Proof Gate`;
 - the human overview additionally runs the Frontend lane;
 - Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet, and
-  Task Batch; WebSocket/Route production changes also run Android Emulator
+  Capability Task; WebSocket/Route production changes also run Android Emulator
   Worker;
-- Task-Batch-only changes run JVM Contracts and Task Batch;
+- Capability-Task-only changes run JVM Contracts and Capability Task;
 - Worker-Fleet-only changes run JVM Contracts and Worker Fleet;
 - Android test-only changes run Android Host; Android production, Manifest,
   build, or Emulator driver changes also run Android Emulator Worker;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
-  Worker Fleet, Task Batch, Android Host, and Android Emulator proofs;
+  Worker Fleet, Capability Task, Android Host, and Android Emulator proofs;
 - Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
-  Runtime, Worker Fleet, Task Batch, and Runtime Distribution proofs;
+  Runtime, Worker Fleet, Capability Task, and Runtime Distribution proofs;
 - production inputs embedded in the Server archive run Runtime Distribution;
   test-only changes in those modules do not select it.
 
 CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
-Task Batch, and Android Emulator upload only schema-versioned safe evidence:
+Capability Task, and Android Emulator upload only schema-versioned safe evidence:
 IDs, relation sets, run summaries, counts, and differences. Android adds
 filtered logs but no screenshot or video. These lanes do not upload full
 Worker Result, Task output, Properties content, or business Payload. Failures

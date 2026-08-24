@@ -24,7 +24,7 @@ Status: current repository document index.
 - [Transport Platform Event Catalog](../transport/EVENTS.md)
 - [Scenario Workers](../scenario_workers_jvm/README.md)
 - [Android surfaces](../xa-android/README.md)
-- [External acceptance](../integrations/worker-capability-rpc/README.md)
+- [External acceptance](../integrations/worker-capability-task/README.md)
 - [Frontend](../frontend/README.md)
 
 Module READMEs explain only their assembly, public entrypoints, local owner

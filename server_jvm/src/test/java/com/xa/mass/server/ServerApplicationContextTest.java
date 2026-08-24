@@ -284,7 +284,7 @@ class ServerApplicationContextTest {
                 .isEqualTo("v1");
         assertThat(document.path("info").path("description").asText())
                 .contains("Kernel decides scheduling")
-                .contains("Task Batch Lab");
+                .doesNotContain("Task Batch Lab");
 
         var tagNames = new ArrayList<String>();
         document.path("tags").forEach(tag ->
@@ -293,8 +293,7 @@ class ServerApplicationContextTest {
                 ApiTags.WORKER_RESOURCES,
                 ApiTags.TASKS,
                 ApiTags.RUNTIME_VIEW,
-                ApiTags.WORKER_DELIVERY,
-                ApiTags.TASK_BATCH_LAB
+                ApiTags.WORKER_DELIVERY
         );
 
         Set<String> allowedTags = Set.copyOf(tagNames);
@@ -345,6 +344,23 @@ class ServerApplicationContextTest {
                 .path("tags")
                 .get(0)
                 .asText()).isEqualTo(ApiTags.TASKS);
+        var exportOperation = document.path("paths")
+                .path("/api/v1/tasks/{taskId}/results:export")
+                .path("post");
+        assertThat(exportOperation.path("tags")
+                .get(0)
+                .asText()).isEqualTo(ApiTags.TASKS);
+        assertThat(exportOperation.path("responses")
+                .path("200")
+                .path("content")
+                .has("application/x-ndjson")).isTrue();
+        assertThat(exportOperation.path("responses")
+                .path("202")
+                .path("content")
+                .has("application/json")).isTrue();
+        assertThat(document.path("paths").has(
+                "/api/v1/task-batches/runs"
+        )).isFalse();
         assertThat(document.path("paths").has(
                 "/api/v1/worker-groups/{workerGroupId}/tasks"
         )).isFalse();

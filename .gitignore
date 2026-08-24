@@ -28,6 +28,7 @@ __pycache__/
 local.properties
 data/
 integrations/**/results/
+integrations/**/ci-results/
 logs/
 tmp/
 

@@ -11,6 +11,8 @@ import org.jspecify.annotations.Nullable;
 
 public interface TaskRuntime {
 
+    int MAX_SUCCESS_RESULT_SCAN_COUNT_HINT = 1000;
+
     Set<String> CONFIG_KEYS = Set.of(
             "priority",
             "maximumCandidateWorkers",
@@ -37,6 +39,12 @@ public interface TaskRuntime {
     Map<String, @Nullable String> loadTaskItemSuccessResults(
             String taskId,
             List<String> messageIds
+    );
+
+    TaskItemSuccessResultPage scanTaskItemSuccessResults(
+            String taskId,
+            String cursor,
+            int countHint
     );
 
     enum WorkerAllocationMechanism {
@@ -198,6 +206,23 @@ public interface TaskRuntime {
         }
     }
 
+    record TaskItemSuccessResultPage(
+            String nextCursor,
+            Map<String, String> results
+    ) {
+        public TaskItemSuccessResultPage {
+            requireDecimal(nextCursor, "nextCursor");
+            Objects.requireNonNull(results, "results");
+            results.forEach((messageId, payload) -> {
+                requireNonBlank(messageId, "result messageId");
+                requireNonBlank(payload, "result payload");
+            });
+            results = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(results)
+            );
+        }
+    }
+
     record TaskCreationResult(
             TaskCreationStatus status,
             @Nullable String reason
@@ -241,6 +266,18 @@ public interface TaskRuntime {
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isEmpty()) {
             throw new IllegalArgumentException(name + " must be non-empty");
+        }
+    }
+
+    private static void requireDecimal(String value, String name) {
+        requireNonBlank(value, name);
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                throw new IllegalArgumentException(
+                        name + " must be decimal text"
+                );
+            }
         }
     }
 }

@@ -77,6 +77,29 @@ class TaskItemAppendResult:
 
 
 @dataclass(frozen=True)
+class TaskItemSuccessResultPage:
+    next_cursor: str
+    results: Mapping[MessageId, str]
+
+    def __post_init__(self) -> None:
+        if (
+            not self.next_cursor
+            or not self.next_cursor.isascii()
+            or not self.next_cursor.isdecimal()
+        ):
+            raise ValueError("next cursor must be decimal text")
+        if not isinstance(self.results, MappingABC):
+            raise ValueError("success result page must be a mapping")
+        if any(
+            not message_id
+            or not isinstance(payload, str)
+            or not payload
+            for message_id, payload in self.results.items()
+        ):
+            raise ValueError("success result page entries must be non-empty")
+
+
+@dataclass(frozen=True)
 class TaskDescriptor:
     """Stable Task scheduling metadata, separate from score runtime truth."""
 
@@ -160,6 +183,8 @@ class TaskCreationResult:
 class TaskRuntime(ABC):
     """Task, canonical TaskItem, and last-success result owner surface."""
 
+    MAX_SUCCESS_RESULT_SCAN_COUNT_HINT = 1000
+
     @abstractmethod
     def create_task(
         self,
@@ -208,6 +233,20 @@ class TaskRuntime(ABC):
         message_ids: Sequence[MessageId],
     ) -> Mapping[MessageId, str | None]:
         """Load bounded Task-scoped last-success result payloads."""
+        pass
+
+    @abstractmethod
+    def scan_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        cursor: str,
+        count_hint: int,
+    ) -> TaskItemSuccessResultPage:
+        """Scan one Task-scoped last-success Hash page.
+
+        ``count_hint`` is a Redis scan hint rather than a strict page bound.
+        """
         pass
 
 

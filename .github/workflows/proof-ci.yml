@@ -26,7 +26,7 @@ jobs:
       redis_owner: ${{ steps.filter.outputs.redis_owner }}
       runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
       worker_fleet: ${{ steps.filter.outputs.worker_fleet }}
-      task_batch: ${{ steps.filter.outputs.task_batch }}
+      capability_task: ${{ steps.filter.outputs.capability_task }}
       android_host: ${{ steps.filter.outputs.android_host }}
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -130,7 +130,7 @@ jobs:
           :transport:netty-adapter:build
           :scenario_workers_jvm:build
           :server_jvm:build
-          :integrations:worker-capability-rpc:build
+          :integrations:worker-capability-task:build
           :integrations:worker-fleet-acceptance:build
       - name: Summarize JVM proof
         if: always()
@@ -303,13 +303,11 @@ jobs:
           test -n "$server_jar"
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
-          task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
             --xa.mass.worker-assembly.sandbox-root="$lab_root" \
-            --xa.mass.task-batch.root="$task_root" \
             > fleet-server-initial.log 2>&1 &
           echo $! > fleet-server.pid
           for _ in $(seq 1 90); do
@@ -376,13 +374,11 @@ jobs:
           test -n "$server_jar"
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           lab_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/scenario-workers"
-          task_root="$GITHUB_WORKSPACE/build/worker-fleet-proof/data/rpc-task"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
             --xa.mass.worker-assembly.sandbox-root="$lab_root" \
-            --xa.mass.task-batch.root="$task_root" \
             > fleet-server-restart.log 2>&1 &
           echo $! > fleet-server.pid
           for _ in $(seq 1 90); do
@@ -467,11 +463,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  task-batch:
-    name: Task Batch
+  capability-task:
+    name: Capability Task
     needs: changes
     if: >-
-      needs.changes.outputs.task_batch == 'true' ||
+      needs.changes.outputs.capability_task == 'true' ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -486,7 +482,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      XA_MASS_REDIS_SCOPE: test_task_batch_${{ github.run_id }}_${{ github.run_attempt }}
+      XA_MASS_REDIS_SCOPE: test_capability_task_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v5.7.0
@@ -501,11 +497,11 @@ jobs:
           cache-dependency-path: kernel_design/requirements.txt
       - name: Install Python dependencies
         run: python -m pip install -r kernel_design/requirements.txt
-      - name: Build Task Batch acceptance artifacts
+      - name: Build Capability Task acceptance artifacts
         run: >-
           ./gradlew --no-daemon
           :server_jvm:bootJar
-          :integrations:worker-capability-rpc:classes
+          :integrations:worker-capability-task:classes
       - name: Start Server and Scenario Workers
         run: |
           SERVER_JAR=$(find server_jvm/build/libs \
@@ -514,7 +510,7 @@ jobs:
           test -n "$SERVER_JAR"
           java -jar "$SERVER_JAR" \
             --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-rpc/kernel-config.json \
+            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             > scenario-server.log 2>&1 &
           echo $! > scenario-server.pid
           for _ in $(seq 1 90); do
@@ -527,22 +523,22 @@ jobs:
           done
           cat scenario-server.log
           exit 1
-      - name: Verify 6 Server Task Batch runs
+      - name: Verify 2 finite Tasks and 60 Results
         run: >-
           ./gradlew --no-daemon
-          :integrations:worker-capability-rpc:runRpcScenario
+          :integrations:worker-capability-task:runCapabilityTaskScenario
           --args="--proof-id=ci-worker-capability
           --result-dir=ci-results
           --maximum-wait-millis=30000
           --request-timeout-millis=120000"
-      - name: Summarize Task Batch proof
+      - name: Summarize Capability Task proof
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Task Batch:** batches=6, submitted=60, completed=60" \
+            echo "- **Capability Task:** tasks=2, submitted=60, exported=60" \
               >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Task Batch:** failed; inspect uploaded evidence" \
+            echo "- **Capability Task:** failed; inspect uploaded evidence" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Stop Scenario processes
@@ -562,20 +558,20 @@ jobs:
             done
             kill -9 "$pid" 2>/dev/null || true
           done
-      - name: Clean exact Task Batch Redis scope
+      - name: Clean exact Capability Task Redis scope
         if: always()
         run: >-
           python .github/scripts/cleanup_redis_test_scope.py
           --redis-url redis://127.0.0.1:6379/15
           --scope "$XA_MASS_REDIS_SCOPE"
-      - name: Upload Task Batch evidence
+      - name: Upload Capability Task evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: task-batch-${{ github.run_attempt }}
+          name: capability-task-${{ github.run_attempt }}
           path: |
             scenario-server.log
-            integrations/worker-capability-rpc/ci-results/**
+            integrations/worker-capability-task/ci-results/**
           if-no-files-found: ignore
           retention-days: 7
 
@@ -857,7 +853,7 @@ jobs:
       - redis-owner
       - runtime-boundary
       - worker-fleet
-      - task-batch
+      - capability-task
       - android-host
       - android-emulator-worker
       - frontend
@@ -878,8 +874,8 @@ jobs:
       RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
       WORKER_FLEET_SELECTED: ${{ needs.changes.outputs.worker_fleet }}
       WORKER_FLEET_RESULT: ${{ needs.worker-fleet.result }}
-      TASK_BATCH_SELECTED: ${{ needs.changes.outputs.task_batch }}
-      TASK_BATCH_RESULT: ${{ needs.task-batch.result }}
+      CAPABILITY_TASK_SELECTED: ${{ needs.changes.outputs.capability_task }}
+      CAPABILITY_TASK_RESULT: ${{ needs.capability-task.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
       ANDROID_HOST_RESULT: ${{ needs.android-host.result }}
       ANDROID_EMULATOR_SELECTED: ${{ needs.changes.outputs.android_emulator }}
@@ -930,7 +926,7 @@ jobs:
           check_lane \
             "Worker Fleet" "$WORKER_FLEET_SELECTED" "$WORKER_FLEET_RESULT"
           check_lane \
-            "Task Batch" "$TASK_BATCH_SELECTED" "$TASK_BATCH_RESULT"
+            "Capability Task" "$CAPABILITY_TASK_SELECTED" "$CAPABILITY_TASK_RESULT"
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
           check_lane \

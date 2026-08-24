@@ -58,7 +58,6 @@ public final class ApiExceptionHandler {
                     RUNTIME_VIEW_UNAVAILABLE,
                     WORKER_SCHEDULING_UNAVAILABLE,
                     WORKER_GROUP_REGISTRATION_UNAVAILABLE,
-                    TASK_BATCH_UNAVAILABLE,
                     DIRECT_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
             case TASK_RPC_CAPACITY_EXCEEDED,
@@ -69,14 +68,12 @@ public final class ApiExceptionHandler {
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
-                    TASK_BATCH_RESOURCE_NOT_FOUND,
                     DIRECT_CALL_TARGET_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case KERNEL_REJECTED_CONFLICT,
                     TASK_CALL_REGISTRATION_CONFLICT,
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
-                    WORKER_GROUP_REGISTRATION_CONFLICT,
-                    TASK_BATCH_CONFLICT -> HttpStatus.CONFLICT;
+                    WORKER_GROUP_REGISTRATION_CONFLICT -> HttpStatus.CONFLICT;
             case TASK_OPERATION_NOT_SUPPORTED,
                     RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
                     HttpStatus.UNPROCESSABLE_CONTENT;
@@ -85,7 +82,6 @@ public final class ApiExceptionHandler {
                     INVALID_WORKER_IDENTITY_REQUEST,
                     INVALID_WORKER_BINDING_REQUEST,
                     INVALID_WORKER_GROUP_REQUEST,
-                    TASK_BATCH_INVALID_REQUEST,
                     INVALID_DIRECT_CALL_REQUEST,
                     MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
         };

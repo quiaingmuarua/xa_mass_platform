@@ -235,6 +235,30 @@ class RuntimeBoundaryIntegrationTest {
             awaitStoredResult(taskId, firstMessageId);
             awaitStoredResult(taskId, secondMessageId);
 
+            HttpResponse<String> exported = send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/results:export",
+                    "{\"waitTimeoutMillis\":10000}"
+            );
+            assertThat(exported.statusCode()).isEqualTo(200);
+            assertThat(exported.headers().firstValue("Content-Type"))
+                    .hasValueSatisfying(value -> assertThat(value)
+                            .startsWith("application/x-ndjson"));
+            Map<String, String> exportedResults = new LinkedHashMap<>();
+            for (String line : exported.body().lines().toList()) {
+                var row = JSON.readTree(line);
+                exportedResults.put(
+                        row.get("messageId").asText(),
+                        row.get("opaqueResultPayload").stringValue()
+                );
+            }
+            assertThat(exportedResults).containsExactlyInAnyOrderEntriesOf(
+                    Map.of(
+                            firstMessageId, TEST_RESULT,
+                            secondMessageId, TEST_RESULT
+                    )
+            );
+
             assertThat(send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/close",

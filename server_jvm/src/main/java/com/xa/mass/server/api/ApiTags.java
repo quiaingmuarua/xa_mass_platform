@@ -6,7 +6,6 @@ public final class ApiTags {
     public static final String TASKS = "Tasks";
     public static final String RUNTIME_VIEW = "Runtime View";
     public static final String WORKER_DELIVERY = "Worker Delivery";
-    public static final String TASK_BATCH_LAB = "Task Batch Lab";
 
     private ApiTags() {
     }

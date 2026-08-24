@@ -93,6 +93,7 @@ class FakeRedis:
         self.now_millis = 100_000
         self.pipeline_transaction_flags: list[bool] = []
         self.pipeline_executions: list[tuple[tuple[str, str, tuple[object, ...]], ...]] = []
+        self.hscan_calls: list[tuple[str, int, int]] = []
 
     def exists(self, key: str) -> int:
         return int(key in self.hashes)
@@ -122,6 +123,19 @@ class FakeRedis:
             return 0
         row[key] = str(value)
         return 1
+
+    def hscan(
+        self,
+        name: str,
+        *,
+        cursor: int,
+        count: int,
+    ) -> tuple[int, dict[str, str]]:
+        self.hscan_calls.append((name, cursor, count))
+        entries = list(self.hashes.get(name, {}).items())
+        end = min(len(entries), cursor + count)
+        next_cursor = 0 if end == len(entries) else end
+        return next_cursor, dict(entries[cursor:end])
 
     def zscore(self, key: str, member: str) -> int | None:
         return self.zsets.get(key, {}).get(member)
@@ -751,6 +765,71 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                 message_ids=(),
             ),
         )
+
+    def test_success_results_scan_one_task_hash_page_per_call(self) -> None:
+        self.runtime.store_task_item_success_results(
+            task_id="task-1",
+            results={
+                "message-1": '{"version":1}',
+                "message-2": '{"version":2}',
+            },
+        )
+        self.runtime.store_task_item_success_results(
+            task_id="task-2",
+            results={"message-1": '{"task":2}'},
+        )
+
+        first = self.runtime.scan_task_item_success_results(
+            task_id="task-1",
+            cursor="0",
+            count_hint=1,
+        )
+        second = self.runtime.scan_task_item_success_results(
+            task_id="task-1",
+            cursor=first.next_cursor,
+            count_hint=1,
+        )
+
+        self.assertEqual({"message-1": '{"version":1}'}, first.results)
+        self.assertNotEqual("0", first.next_cursor)
+        self.assertEqual({"message-2": '{"version":2}'}, second.results)
+        self.assertEqual("0", second.next_cursor)
+        self.assertEqual(
+            [
+                (
+                    "xa_mass:test_task_runtime_unit:task:task-1:results",
+                    0,
+                    1,
+                ),
+                (
+                    "xa_mass:test_task_runtime_unit:task:task-1:results",
+                    1,
+                    1,
+                ),
+            ],
+            self.redis.hscan_calls,
+        )
+
+    def test_success_result_scan_rejects_invalid_coordinates(self) -> None:
+        for task_id, cursor, count_hint in (
+            ("", "0", 1),
+            ("task-1", "", 1),
+            ("task-1", "-1", 1),
+            ("task-1", "0", 0),
+            ("task-1", "0", 1001),
+        ):
+            with self.subTest(
+                task_id=task_id,
+                cursor=cursor,
+                count_hint=count_hint,
+            ):
+                with self.assertRaises(ValueError):
+                    self.runtime.scan_task_item_success_results(
+                        task_id=task_id,
+                        cursor=cursor,
+                        count_hint=count_hint,
+                    )
+        self.assertEqual([], self.redis.hscan_calls)
 
     def test_success_result_storage_rejects_invalid_owner_coordinates(self) -> None:
         self.runtime.store_task_item_success_results(task_id="task-1", results={})

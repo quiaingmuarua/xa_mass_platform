@@ -13,6 +13,7 @@ from kernel_design.executable_spec import (
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
+    TaskItemSuccessResultPage,
     TaskResourceCatalog,
     TaskRuntime,
     WorkerAllocationMechanism,
@@ -284,6 +285,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "load_task_items",
                 "store_task_item_success_results",
                 "load_task_item_success_results",
+                "scan_task_item_success_results",
             },
         )
         self.assertEqual(
@@ -297,6 +299,14 @@ class TaskRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             set(inspect.signature(TaskRuntime.load_task_items).parameters),
             {"self", "task_id", "message_ids"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    TaskRuntime.scan_task_item_success_results
+                ).parameters
+            ),
+            {"self", "task_id", "cursor", "count_hint"},
         )
         self.assertEqual(
             set(
@@ -347,6 +357,10 @@ class TaskRuntimeContractTest(unittest.TestCase):
         self.assertIs(executable_spec.TaskItem, TaskItem)
         self.assertIs(executable_spec.TaskItemAppendResult, TaskItemAppendResult)
         self.assertIs(executable_spec.TaskItemAppendStatus, TaskItemAppendStatus)
+        self.assertIs(
+            executable_spec.TaskItemSuccessResultPage,
+            TaskItemSuccessResultPage,
+        )
         self.assertIs(executable_spec.TaskResourceCatalog, TaskResourceCatalog)
 
 

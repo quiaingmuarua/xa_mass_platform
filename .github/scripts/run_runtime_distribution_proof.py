@@ -180,7 +180,6 @@ def _prove_runtime(
         f"--xa.mass.worker-assembly.runtime-api-base-url={base_url}",
         "--xa.mass.worker-assembly.sandbox-root="
         f"{proof_root / 'data/scenario-workers'}",
-        "--xa.mass.task-batch.root=" f"{proof_root / 'data/rpc-task'}",
         "--xa.mass.worker-delivery.adapter.instances."
         f"scenario-websocket.listen-port={adapter_port}",
         "--xa.mass.worker-binding.endpoints.scenario-websocket.public-uri="

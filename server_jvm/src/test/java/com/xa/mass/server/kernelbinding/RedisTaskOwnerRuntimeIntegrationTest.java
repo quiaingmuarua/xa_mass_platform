@@ -145,6 +145,16 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(loaded.get("message-1"))
                 .isEqualTo("{\"valid\":true}");
         assertThat(loaded).containsEntry("missing", null);
+
+        var page = runtime.scanTaskItemSuccessResults(
+                "task-1",
+                "0",
+                1000
+        );
+        assertThat(page.nextCursor()).isEqualTo("0");
+        assertThat(page.results()).containsExactly(
+                Map.entry("message-1", "{\"valid\":true}")
+        );
     }
 
     @Test

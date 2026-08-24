@@ -52,10 +52,6 @@ tasks.named('bootRun') {
             'xa.mass.worker-assembly.sandbox-root',
             rootProject.file('data/scenario-workers').absolutePath
     )
-    systemProperty(
-            'xa.mass.task-batch.root',
-            rootProject.file('data/rpc-task').absolutePath
-    )
 }
 
 def registerStrictIntegrationTest = {

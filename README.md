@@ -126,8 +126,8 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   acceptance driver.
 - [`integrations/`](integrations/) contains external acceptance clients; it
   owns no Kernel, Server or Transport mechanism.
-- [`frontend/`](frontend/) is the read-only Runtime viewer, Task Batch Lab,
-  Scalar link surface and architecture overview host.
+- [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
+  Task file client, Scalar link surface and architecture overview host.
 - [`distribution/server/`](distribution/server/) packages those existing
   owners into one versioned Server Runtime ZIP. It adds no scheduling or
   Transport behavior and still requires external Redis.
@@ -182,11 +182,11 @@ python -m compileall -q kernel_design/executable_spec
   :transport:netty-adapter:build \
   :scenario_workers_jvm:build \
   :server_jvm:build \
-  :integrations:worker-capability-rpc:build \
+  :integrations:worker-capability-task:build \
   :integrations:worker-fleet-acceptance:build
 ```
 
-Real Redis, cross-process Runtime Boundary, Worker Fleet, Task Batch, Android
+Real Redis, cross-process Runtime Boundary, Worker Fleet, Capability Task, Android
 Emulator, real-device Android, and frontend proofs have separate prerequisites
 and commands in the proof registry. Strict owner/capability tests fix
 structures and business values; cross-process acceptance fixes stable

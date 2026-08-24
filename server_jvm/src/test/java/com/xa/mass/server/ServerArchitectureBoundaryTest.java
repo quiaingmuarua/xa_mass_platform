@@ -94,11 +94,8 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/runtimeview"
     );
-    private static final Path TASK_BATCH = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/taskbatch"
-    );
-    private static final Path TASK_BATCH_HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/api/v1/taskbatch"
+    private static final Path TASK_DATA = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/taskdata"
     );
     private static final Path DIRECT_CALL = SERVER_SOURCE.resolve(
             "com/xa/mass/server/directcall"
@@ -278,25 +275,19 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void taskBatchUsesRegisteredTaskCallSubmissionAndResultReadBoundary()
+    void taskResultExportUsesOnlyTaskOwnerContracts()
             throws IOException {
-        String taskBatch = readSources(TASK_BATCH)
-                + readSources(TASK_BATCH_HTTP);
-        assertThat(taskBatch)
-                .contains("TaskDataService")
-                .contains("TaskCallItemSubmission")
-                .contains("WorkerGroupTaskCallRegistrationService")
-                .contains("loadTaskItemSuccessResults")
-                .doesNotContain("appendTaskItems")
-                .doesNotContain("/api/v1/worker-groups/")
-                .doesNotContain("TaskRpcCallService")
-                .doesNotContain("TaskRpcWaitRegistry")
-                .doesNotContain("TaskLifecycleCommands")
-                .doesNotContain("TaskResourceCatalog")
-                .doesNotContain("WorkerResourceCatalog")
+        String taskData = readSources(TASK_DATA);
+        assertThat(taskData)
+                .contains("scanTaskItemSuccessResults")
+                .contains("getScoreStates")
+                .contains("TaskResourceCatalog")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")
-                .doesNotContain("com.xa.mass.kernel.score")
+                .doesNotContain("RedisTaskRuntime")
+                .doesNotContain("RedisTaskScoreBandCore")
+                .doesNotContain(".hscan(")
+                .doesNotContain(".hgetall(")
                 .doesNotContain("com.xa.mass.transport")
                 .doesNotContain("ScenarioWorkers");
     }

@@ -23,7 +23,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "runtime_distribution"
       ],
@@ -34,7 +34,7 @@
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_host",
         "android_emulator",
@@ -47,7 +47,7 @@
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_host"
       ],
@@ -58,7 +58,7 @@
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_emulator",
         "runtime_distribution"
@@ -96,12 +96,21 @@
       "reason": "Driver-test-only changes stay on the deterministic Host lane."
     },
     {
-      "path": "integrations/worker-capability-rpc/src/main/java/com/xa/mass/integration/workercapability/WorkerCapabilityRpcMain.java",
+      "path": "integrations/worker-capability-task/src/main/java/com/xa/mass/integration/workercapability/WorkerCapabilityTaskMain.java",
       "lanes": [
         "jvm_contracts",
-        "task_batch"
+        "capability_task"
       ],
-      "reason": "Task Batch acceptance code owns no Fleet identity proof."
+      "reason": "Capability Task acceptance code owns no Fleet identity proof."
+    },
+    {
+      "path": "integrations/worker-capability-task/kernel-config.json",
+      "lanes": [
+        "jvm_contracts",
+        "capability_task",
+        "worker_fleet"
+      ],
+      "reason": "The checked fast Pacer policy is shared by Capability Task and Worker Fleet scenario startup."
     },
     {
       "path": "integrations/worker-fleet-acceptance/src/main/java/com/xa/mass/integration/workerfleet/WorkerFleetAcceptanceMain.java",
@@ -109,7 +118,7 @@
         "jvm_contracts",
         "worker_fleet"
       ],
-      "reason": "Fleet acceptance code owns no Task Batch business proof."
+      "reason": "Fleet acceptance code owns no Capability Task business proof."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
@@ -117,7 +126,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "runtime_distribution"
       ],
@@ -129,7 +138,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_emulator",
         "runtime_distribution"
@@ -142,7 +151,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_emulator",
         "runtime_distribution"
@@ -169,7 +178,7 @@
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "frontend"
       ],
@@ -182,7 +191,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_host",
         "android_emulator",
@@ -198,7 +207,7 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "task_batch",
+        "capability_task",
         "worker_fleet",
         "android_host",
         "android_emulator",

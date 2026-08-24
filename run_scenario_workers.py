@@ -34,7 +34,6 @@ try:
     print("[2/2] Starting Server, Pacer child, Adapter, and Scenario Workers")
     print("Open http://127.0.0.1:18082/runtime/workers")
     print("Tasks http://127.0.0.1:18082/runtime/tasks")
-    print("Task Batches http://127.0.0.1:18082/runtime/task-batches")
     gradle = "gradlew.bat" if os.name == "nt" else "./gradlew"
     subprocess.run(
         [
@@ -42,7 +41,7 @@ try:
             ":server_jvm:bootRun",
             "--args=--spring.profiles.active=scenario-workers "
             "--xa.mass.kernel-pacer.config-path="
-            "integrations/worker-capability-rpc/kernel-config.json",
+            "integrations/worker-capability-task/kernel-config.json",
             "--console=plain",
         ],
         cwd=ROOT,

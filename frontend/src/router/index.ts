@@ -28,14 +28,6 @@ export const router = createRouter({
           meta: {
             title: "Tasks"
           }
-        },
-        {
-          path: "runtime/task-batches",
-          name: "runtime-task-batches",
-          component: () => import("@/views/TaskBatchView.vue"),
-          meta: {
-            title: "Task Batches"
-          }
         }
       ]
     },

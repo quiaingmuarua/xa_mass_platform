@@ -273,8 +273,8 @@ the dispatch round does not infer type or strategy from Item contents.
   preference ranking, stronger cardinality planning, quotas, and fairness are
   deferred policies. Point Property Indexes do not discover or intersect
   candidate sets.
-- Ordinary TaskItem append does not alter Task scheduling. Reusable RPC and
-  Task Batch flows call the bounded Kernel `TaskCallItemSubmission`, which
+- Ordinary TaskItem append does not alter Task scheduling. Managed Task Call
+  flows call the bounded Kernel `TaskCallItemSubmission`, which
   invokes the idempotent score-owner idle-park release before and after bounded
   append. It does not interpret allocation or idle-disposition policy.
   Released Tasks use the ordinary due scan; there is no urgent selection path.

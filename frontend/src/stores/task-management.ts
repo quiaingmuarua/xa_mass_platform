@@ -2,106 +2,94 @@ import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 
 import {
-  browserTaskManagementScheduler,
-  buildMockResults,
+  chunkTaskItems,
+  DEFAULT_EXPORT_WAIT_MILLIS,
   buildSeedItems,
-  encodeMockJsonl,
+  materializeTaskItems,
   MAX_TASK_SEED_BYTES,
-  parseSeedLines,
-  presentationStatus,
-  TASK_ADMISSION_DELAY_MILLIS,
-  TASK_DISPATCH_DELAY_MILLIS
+  parseSeedLines
 } from "@/task-management/model";
+import {
+  finiteTaskConfigurationError,
+  presentFiniteTaskError,
+  type FiniteTaskErrorPresentation
+} from "@/task-management/errors";
 import type {
-  AttachMockFiniteTaskSeedRequest,
-  CreateMockFiniteTaskRequest,
-  MockFiniteTask,
-  MockTaskDownload,
-  TaskManagementCatalog,
-  TaskManagementScheduler
+  CreateFiniteTaskExecutionRequest,
+  FiniteTaskClient,
+  FiniteTaskDownload,
+  FiniteTaskSession,
+  TaskManagementCatalog
 } from "@/task-management/types";
 
 export function createTaskManagementStore(
   catalog: TaskManagementCatalog,
-  scheduler: TaskManagementScheduler = browserTaskManagementScheduler
+  client: FiniteTaskClient
 ) {
   return defineStore("taskManagement", () => {
-    const tasks = ref<MockFiniteTask[]>([]);
-    const error = ref<string>();
+    const tasks = ref<FiniteTaskSession[]>([]);
+    const error = ref<FiniteTaskErrorPresentation>();
+    const notice = ref<string>();
+    const activeTaskId = ref<string>();
 
-    const awaitingApprovalCount = computed(
-      () =>
-        tasks.value.filter((task) => presentationStatus(task) === "awaiting-approval")
-          .length
+    const available = computed(() => catalog.mode === "api");
+    const isBusy = computed(() => activeTaskId.value !== undefined);
+    const appendedCount = computed(
+      () => tasks.value.filter((task) => task.stage === "ITEMS_APPENDED").length
     );
-    const schedulingCount = computed(
-      () =>
-        tasks.value.filter((task) =>
-          ["waiting-admission", "dispatch-visible"].includes(presentationStatus(task))
-        ).length
+    const approvedCount = computed(
+      () => tasks.value.filter((task) => task.stage === "APPROVED").length
     );
-    const closedCount = computed(
-      () => tasks.value.filter((task) => task.lifecycleState === "TERMINAL").length
+    const exportReadyCount = computed(
+      () => tasks.value.filter((task) => task.stage === "EXPORT_READY").length
     );
 
-    function createTask(
-      request: CreateMockFiniteTaskRequest
-    ): MockFiniteTask | undefined {
-      clearError();
-      const taskId = request.taskId.trim();
-      if (taskId.length === 0) {
-        return fail("Task ID must not be blank.");
+    async function createAndAppend(
+      request: CreateFiniteTaskExecutionRequest
+    ): Promise<FiniteTaskSession | undefined> {
+      clearMessages();
+      if (!available.value) {
+        return fail(
+          finiteTaskConfigurationError(
+            "Finite Task operations are disabled while the Runtime Viewer uses Mock data."
+          )
+        );
       }
-      if (tasks.value.some((task) => task.taskId === taskId)) {
-        return fail("Task ID already exists in this browser session.");
+      if (isBusy.value) {
+        return fail(
+          finiteTaskConfigurationError("Another finite Task operation is in progress.")
+        );
       }
-      if (workerGroup(request.workerGroupId) === undefined) {
-        return fail("Select an available WorkerGroup.");
+
+      const group = workerGroup(request.workerGroupId);
+      const payloadKey = request.payloadKey.trim();
+      if (group === undefined) {
+        return fail(finiteTaskConfigurationError("Select an available WorkerGroup."));
+      }
+      if (!group.eventCodes.includes(request.eventCode)) {
+        return fail(
+          finiteTaskConfigurationError(
+            "Select an EventCode from the WorkerGroup catalog."
+          )
+        );
+      }
+      if (payloadKey.length === 0) {
+        return fail(finiteTaskConfigurationError("Payload Key must not be blank."));
       }
       if (!validConfig(request.config)) {
-        return fail("Task scheduling values are outside their supported ranges.");
-      }
-
-      const now = timestamp();
-      const task: MockFiniteTask = {
-        taskId,
-        workerGroupId: request.workerGroupId,
-        lifecycleState: "PRE_REVIEW",
-        seedState: "MISSING",
-        allocationRule: {},
-        config: { ...request.config },
-        results: [],
-        createdAt: now,
-        updatedAt: now
-      };
-      tasks.value.unshift(task);
-      return task;
-    }
-
-    async function attachSeed(
-      request: AttachMockFiniteTaskSeedRequest
-    ): Promise<MockFiniteTask | undefined> {
-      clearError();
-      const task = findTask(request.taskId);
-      if (task === undefined) {
-        return fail("Task does not exist in this browser session.");
-      }
-      if (task.lifecycleState !== "PRE_REVIEW") {
-        return fail("Seeds cannot be replaced after Task approval.");
-      }
-      const group = workerGroup(task.workerGroupId);
-      if (group === undefined || !group.eventCodes.includes(request.eventCode)) {
-        return fail("Select an EventCode from the WorkerGroup catalog.");
-      }
-      const payloadKey = request.payloadKey.trim();
-      if (payloadKey.length === 0) {
-        return fail("Payload Key must not be blank.");
+        return fail(
+          finiteTaskConfigurationError(
+            "Task scheduling values are outside their supported ranges."
+          )
+        );
       }
       if (!request.file.name.toLocaleLowerCase().endsWith(".txt")) {
-        return fail("The seed file must use .txt.");
+        return fail(finiteTaskConfigurationError("The input file must use .txt."));
       }
       if (request.file.size > MAX_TASK_SEED_BYTES) {
-        return fail("The seed file must not exceed 1 MiB.");
+        return fail(
+          finiteTaskConfigurationError("The input file must not exceed 1 MiB.")
+        );
       }
 
       let content: ArrayBuffer;
@@ -111,84 +99,127 @@ export function createTaskManagementStore(
         lines = parseSeedLines(content);
       } catch (failure) {
         return fail(
-          failure instanceof Error ? failure.message : "The seed file is invalid."
+          finiteTaskConfigurationError(
+            failure instanceof Error ? failure.message : "The input file is invalid."
+          )
         );
       }
-      if (lines.length === 0) {
-        return fail("The seed file must contain at least one line.");
+      if (content.byteLength === 0 || lines.length === 0) {
+        return fail(
+          finiteTaskConfigurationError("The input file must contain at least one line.")
+        );
       }
 
-      task.seed = {
-        originalFileName: request.file.name,
-        byteCount: content.byteLength,
-        lineCount: lines.length,
-        eventCode: request.eventCode,
-        payloadKey,
-        items: buildSeedItems(lines, payloadKey)
-      };
-      task.seedState = "READY";
-      task.updatedAt = timestamp();
-      return task;
+      activeTaskId.value = "creating";
+      try {
+        const created = await client.createTask({
+          workerGroupId: request.workerGroupId,
+          allocationRule: {},
+          ...request.config
+        });
+        const now = new Date().toISOString();
+        const task: FiniteTaskSession = {
+          taskId: created.taskId,
+          workerGroupId: request.workerGroupId,
+          eventCode: request.eventCode,
+          payloadKey,
+          originalFileName: request.file.name,
+          byteCount: content.byteLength,
+          lineCount: lines.length,
+          appendedCount: 0,
+          stage: "CREATED",
+          config: { ...request.config },
+          createdAt: now,
+          updatedAt: now
+        };
+        tasks.value.unshift(task);
+        activeTaskId.value = task.taskId;
+
+        const items = materializeTaskItems(
+          task.taskId,
+          task.eventCode,
+          buildSeedItems(lines, payloadKey)
+        );
+        for (const chunk of chunkTaskItems(items)) {
+          const response = await client.appendItems(task.taskId, chunk);
+          const rejected = chunk.find(
+            (item) => response.results[item.messageId]?.status !== "appended"
+          );
+          if (rejected !== undefined) {
+            throw new Error(
+              response.results[rejected.messageId]?.reason ??
+                `Item ${rejected.messageId} was not appended.`
+            );
+          }
+          task.appendedCount += chunk.length;
+          task.updatedAt = new Date().toISOString();
+        }
+        task.stage = "ITEMS_APPENDED";
+        return task;
+      } catch (failure) {
+        return fail(failure);
+      } finally {
+        activeTaskId.value = undefined;
+      }
     }
 
     async function approveTask(taskId: string): Promise<boolean> {
-      clearError();
+      clearMessages();
       const task = findTask(taskId);
-      if (task === undefined) {
-        fail("Task does not exist in this browser session.");
+      if (task === undefined || task.stage !== "ITEMS_APPENDED") {
+        fail(
+          finiteTaskConfigurationError("Task Items must be appended before approval.")
+        );
         return false;
       }
-      if (task.lifecycleState !== "PRE_REVIEW" || task.seed === undefined) {
-        fail("Task must have reviewed Seeds before approval.");
+      activeTaskId.value = taskId;
+      try {
+        await client.approveTask(taskId);
+        task.stage = "APPROVED";
+        task.updatedAt = new Date().toISOString();
+        return true;
+      } catch (failure) {
+        fail(failure);
         return false;
+      } finally {
+        activeTaskId.value = undefined;
       }
-
-      task.lifecycleState = "ADMISSION_VISIBLE";
-      task.approvedAt = timestamp();
-      task.updatedAt = task.approvedAt;
-
-      await scheduler.wait(TASK_ADMISSION_DELAY_MILLIS);
-      if (task.lifecycleState !== "ADMISSION_VISIBLE") {
-        return false;
-      }
-      task.lifecycleState = "RUNNING_VISIBLE";
-      task.updatedAt = timestamp();
-
-      await scheduler.wait(TASK_DISPATCH_DELAY_MILLIS);
-      if (task.lifecycleState !== "RUNNING_VISIBLE") {
-        return false;
-      }
-      task.results = buildMockResults(task);
-      task.lifecycleState = "TERMINAL";
-      task.outputFile = `${task.taskId}.mock.jsonl`;
-      task.closedAt = timestamp();
-      task.updatedAt = task.closedAt;
-      return true;
     }
 
-    function downloadTask(taskId: string): MockTaskDownload | undefined {
-      clearError();
+    async function exportTask(taskId: string): Promise<FiniteTaskDownload | undefined> {
+      clearMessages();
       const task = findTask(taskId);
       if (
         task === undefined ||
-        task.lifecycleState !== "TERMINAL" ||
-        task.outputFile === undefined
+        (task.stage !== "APPROVED" && task.stage !== "EXPORT_READY")
       ) {
-        return fail("This Task does not have a published Mock output.");
+        return fail(
+          finiteTaskConfigurationError("Only an approved Task can export results.")
+        );
       }
-      return {
-        fileName: task.outputFile,
-        blob: new Blob([encodeMockJsonl(task.results)], {
-          type: "application/x-ndjson;charset=utf-8"
-        })
-      };
+      activeTaskId.value = taskId;
+      try {
+        const exported = await client.exportResults(taskId, DEFAULT_EXPORT_WAIT_MILLIS);
+        if (!exported.ready) {
+          notice.value = "结果尚未就绪，请稍后手工重试导出。";
+          return undefined;
+        }
+        task.stage = "EXPORT_READY";
+        task.updatedAt = new Date().toISOString();
+        return { fileName: exported.fileName, blob: exported.blob };
+      } catch (failure) {
+        return fail(failure);
+      } finally {
+        activeTaskId.value = undefined;
+      }
     }
 
-    function clearError(): void {
+    function clearMessages(): void {
       error.value = undefined;
+      notice.value = undefined;
     }
 
-    function findTask(taskId: string): MockFiniteTask | undefined {
+    function findTask(taskId: string): FiniteTaskSession | undefined {
       return tasks.value.find((task) => task.taskId === taskId);
     }
 
@@ -200,31 +231,30 @@ export function createTaskManagementStore(
       );
     }
 
-    function timestamp(): string {
-      return new Date(scheduler.now()).toISOString();
-    }
-
-    function fail(message: string): undefined {
-      error.value = message;
+    function fail(failure: unknown): undefined {
+      error.value = presentFiniteTaskError(failure);
       return undefined;
     }
 
     return {
       tasks,
       error,
-      awaitingApprovalCount,
-      schedulingCount,
-      closedCount,
-      createTask,
-      attachSeed,
+      notice,
+      activeTaskId,
+      available,
+      isBusy,
+      appendedCount,
+      approvedCount,
+      exportReadyCount,
+      createAndAppend,
       approveTask,
-      downloadTask,
-      clearError
+      exportTask,
+      clearMessages
     };
   })();
 }
 
-function validConfig(config: CreateMockFiniteTaskRequest["config"]): boolean {
+function validConfig(config: CreateFiniteTaskExecutionRequest["config"]): boolean {
   return (
     Number.isInteger(config.priority) &&
     config.priority >= 0 &&

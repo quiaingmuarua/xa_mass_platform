@@ -94,7 +94,11 @@ def repository_files(patterns: list[str]) -> list[str]:
         text=True,
         encoding="utf-8",
     )
-    return sorted(path for path in result.stdout.splitlines() if path)
+    return sorted(
+        path
+        for path in result.stdout.splitlines()
+        if path and (ROOT / path).is_file()
+    )
 
 
 def current_markdown_files() -> list[str]:

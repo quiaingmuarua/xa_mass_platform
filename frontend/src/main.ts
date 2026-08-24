@@ -18,15 +18,13 @@ import { router } from "./router";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
-  taskBatchStoreKey,
   taskManagementStoreKey,
   workerStatusStoreKey
 } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
 import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
-import { HttpTaskBatchClient } from "./task-batch/http-client";
+import { HttpFiniteTaskClient } from "./task-management/http-client";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
-import { createTaskBatchStore } from "./stores/task-batch";
 import { createTaskManagementStore } from "./stores/task-management";
 import { createWorkerStatusStore } from "./stores/worker-status";
 import { createWorkerStatusDataSource } from "./worker-status/data-source";
@@ -68,18 +66,15 @@ app.use(router);
 if (configResult.ok) {
   const dataSource = createRuntimeViewerDataSource(configResult.value);
   const runtimeViewerStore = createRuntimeViewerStore(configResult.value, dataSource);
-  const taskBatchStore = createTaskBatchStore(
-    configResult.value,
-    new HttpTaskBatchClient(configResult.value.apiBaseUrl),
-    runtimeViewerStore
+  const taskManagementStore = createTaskManagementStore(
+    runtimeViewerStore,
+    new HttpFiniteTaskClient(configResult.value.apiBaseUrl)
   );
-  const taskManagementStore = createTaskManagementStore(runtimeViewerStore);
   const workerStatusStore = createWorkerStatusStore(
     createWorkerStatusDataSource(configResult.value)
   );
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
-  app.provide(taskBatchStoreKey, taskBatchStore);
   app.provide(taskManagementStoreKey, taskManagementStore);
   app.provide(workerStatusStoreKey, workerStatusStore);
 }

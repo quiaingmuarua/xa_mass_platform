@@ -1,5 +1,8 @@
 {
   "constants": {
+    "TaskRuntime": {
+      "MAX_SUCCESS_RESULT_SCAN_COUNT_HINT": 1000
+    },
     "TaskItemScoreBandCore": {
       "ACTIVE_TAG": 1,
       "FINAL_FAILED_TAG": 5,
@@ -102,6 +105,7 @@
       "create_task",
       "load_task_item_success_results",
       "load_task_items",
+      "scan_task_item_success_results",
       "store_task_item_success_results"
     ],
     "TaskScoreBandCore": [
@@ -193,6 +197,10 @@
     "TaskItemAppendResult": [
       "status",
       "reason"
+    ],
+    "TaskItemSuccessResultPage": [
+      "next_cursor",
+      "results"
     ],
     "TaskItemScoreState": [
       "score",

@@ -127,7 +127,7 @@ Ordinary Item append remains a pure Task data write and never wakes a parked
 Task. The bounded `TaskCallItemSubmission` command deliberately does not read
 this descriptor or interpret either mechanism. It invokes the score owner's
 idempotent idle-park release before and after bounded Item append. WorkerGroup
-Task Call and Task Batch assembly decide when to use that command. The Kernel
+Task Call assembly decides when to use that command. The Kernel
 close owner can terminate either idle disposition, but the generic public
 Server lifecycle routes expose close only for finite Tasks.
 
@@ -251,12 +251,20 @@ append_items(task_id, items)
 load_task_items(task_id, message_ids)
 store_task_item_success_results(task_id, results)
 load_task_item_success_results(task_id, message_ids)
+scan_task_item_success_results(task_id, cursor, count_hint)
 ```
 
 `messageId` is unique only inside a Task. Re-append replaces the canonical
 record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
+
+The scan operation exposes one Task's existing success-result HASH in bounded
+owner pages. One call performs one Redis `HSCAN` with a `1..1000` COUNT hint
+and returns the next cursor plus opaque `messageId -> payload` entries. COUNT
+is not a strict page-size contract, ordering is undefined, and callers must
+deduplicate across pages. This supports caller-owned export without adding a
+second result store or allowing Server to read Redis directly.
 
 `eventCode` stores the full opaque Event Name and is passed through to the
 selected Worker's local handler dispatch. Kernel Task admission, matching, and

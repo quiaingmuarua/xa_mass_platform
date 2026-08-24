@@ -343,6 +343,40 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskItemScoreBand.FINAL_SUCCESS, final_state.band)
         self.assertIsNone(final_state.remaining_budget)
 
+    def test_real_redis_scans_task_scoped_success_results(self) -> None:
+        self.runtime.store_task_item_success_results(
+            task_id="task-results-a",
+            results={
+                "message-1": '{"value":1}',
+                "message-2": '{"value":2}',
+            },
+        )
+        self.runtime.store_task_item_success_results(
+            task_id="task-results-b",
+            results={"message-1": '{"other":true}'},
+        )
+
+        cursor = "0"
+        scanned: dict[str, str] = {}
+        while True:
+            page = self.runtime.scan_task_item_success_results(
+                task_id="task-results-a",
+                cursor=cursor,
+                count_hint=1,
+            )
+            scanned.update(page.results)
+            cursor = page.next_cursor
+            if cursor == "0":
+                break
+
+        self.assertEqual(
+            {
+                "message-1": '{"value":1}',
+                "message-2": '{"value":2}',
+            },
+            scanned,
+        )
+
     def test_real_redis_acquires_lower_item_priority_number_first(self) -> None:
         task_id = "task-item-priority"
         self.task_ids.add(task_id)

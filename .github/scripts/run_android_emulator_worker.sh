@@ -18,7 +18,6 @@ process_marker_grace_millis=5000
 evidence_root="$proof_root/evidence"
 log_root="$proof_root/logs"
 lab_root="$proof_root/data/scenario-workers"
-task_root="$proof_root/data/rpc-task"
 server_pid=
 process_restart_pid=
 
@@ -104,7 +103,6 @@ start_server() {
         --xa.mass.kernel-pacer.config-path="$kernel_config" \
         --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
         --xa.mass.worker-assembly.sandbox-root="$lab_root" \
-        --xa.mass.task-batch.root="$task_root" \
         > "$log_root/server-$phase.log" 2>&1 &
     server_pid=$!
     if ! wait_for_url \

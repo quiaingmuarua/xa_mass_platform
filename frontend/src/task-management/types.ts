@@ -1,88 +1,95 @@
-import type { JsonValue } from "@/runtime-viewer/types";
+import type { JsonValue, RuntimeDataSourceMode } from "@/runtime-viewer/types";
 
-export type MockFiniteTaskLifecycleState =
-  | "PRE_REVIEW"
-  | "ADMISSION_VISIBLE"
-  | "RUNNING_VISIBLE"
-  | "TERMINAL";
+export type FiniteTaskStage =
+  | "CREATED"
+  | "ITEMS_APPENDED"
+  | "APPROVED"
+  | "EXPORT_READY";
 
-export type MockFiniteTaskSeedState = "MISSING" | "READY";
-
-export interface MockFiniteTaskConfig {
+export interface FiniteTaskConfig {
   priority: number;
   maximumCandidateWorkers: number;
   maxRetryTimes: number;
 }
 
-export interface MockFiniteTaskSeedItem {
+export interface FiniteTaskSeedItem {
   lineNumber: number;
-  rawLine: string;
   payload: Record<string, string>;
 }
 
-export interface MockFiniteTaskSeed {
+export interface FiniteTaskSession {
+  taskId: string;
+  workerGroupId: string;
+  eventCode: string;
+  payloadKey: string;
   originalFileName: string;
   byteCount: number;
   lineCount: number;
-  eventCode: string;
-  payloadKey: string;
-  items: MockFiniteTaskSeedItem[];
-}
-
-export interface MockFiniteTaskResultLine {
-  workerGroupId: string;
-  messageId: string;
-  eventCode: string;
-  input: Record<string, string>;
-  result: {
-    valid: true;
-    mock: true;
-    lineNumber: number;
-  };
-}
-
-export interface MockFiniteTask {
-  taskId: string;
-  workerGroupId: string;
-  lifecycleState: MockFiniteTaskLifecycleState;
-  seedState: MockFiniteTaskSeedState;
-  allocationRule: Record<string, JsonValue>;
-  config: MockFiniteTaskConfig;
-  seed?: MockFiniteTaskSeed;
-  results: MockFiniteTaskResultLine[];
+  appendedCount: number;
+  stage: FiniteTaskStage;
+  config: FiniteTaskConfig;
   createdAt: string;
   updatedAt: string;
-  approvedAt?: string;
-  closedAt?: string;
-  outputFile?: string;
 }
 
-export interface CreateMockFiniteTaskRequest {
-  taskId: string;
+export interface CreateFiniteTaskExecutionRequest {
   workerGroupId: string;
-  config: MockFiniteTaskConfig;
-}
-
-export interface AttachMockFiniteTaskSeedRequest {
-  taskId: string;
   eventCode: string;
   payloadKey: string;
   file: File;
+  config: FiniteTaskConfig;
 }
 
-export type MockFiniteTaskPresentationStatus =
-  | "awaiting-seeds"
-  | "awaiting-approval"
-  | "waiting-admission"
-  | "dispatch-visible"
-  | "closed";
+export interface TaskCreateApiRequest extends FiniteTaskConfig {
+  workerGroupId: string;
+  allocationRule: Record<string, JsonValue>;
+}
 
-export interface TaskManagementScheduler {
-  now(): number;
-  wait(delayMillis: number): Promise<void>;
+export interface TaskCreateApiResponse {
+  taskId: string;
+  status: "created";
+}
+
+export interface TaskItemApiRequest {
+  messageId: string;
+  eventCode: string;
+  payload: Record<string, string>;
+}
+
+export interface TaskItemsAppendApiResponse {
+  results: Record<
+    string,
+    {
+      status: string;
+      reason: string | null;
+    }
+  >;
+}
+
+export interface TaskExportDownload {
+  ready: true;
+  fileName: string;
+  blob: Blob;
+}
+
+export interface TaskExportNotReady {
+  ready: false;
+}
+
+export type TaskExportResult = TaskExportDownload | TaskExportNotReady;
+
+export interface FiniteTaskClient {
+  createTask(request: TaskCreateApiRequest): Promise<TaskCreateApiResponse>;
+  appendItems(
+    taskId: string,
+    items: TaskItemApiRequest[]
+  ): Promise<TaskItemsAppendApiResponse>;
+  approveTask(taskId: string): Promise<void>;
+  exportResults(taskId: string, waitTimeoutMillis: number): Promise<TaskExportResult>;
 }
 
 export interface TaskManagementCatalog {
+  readonly mode: RuntimeDataSourceMode;
   readonly entries: Array<{
     workerGroupId: string;
     workerGroup: {
@@ -91,7 +98,7 @@ export interface TaskManagementCatalog {
   }>;
 }
 
-export interface MockTaskDownload {
+export interface FiniteTaskDownload {
   fileName: string;
   blob: Blob;
 }

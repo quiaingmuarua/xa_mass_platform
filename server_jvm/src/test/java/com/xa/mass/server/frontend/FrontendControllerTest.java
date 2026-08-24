@@ -21,9 +21,7 @@ class FrontendControllerTest {
                 "/runtime/workers",
                 "/runtime/workers/",
                 "/runtime/tasks",
-                "/runtime/tasks/",
-                "/runtime/task-batches",
-                "/runtime/task-batches/"
+                "/runtime/tasks/"
         }) {
             mockMvc.perform(get(path))
                     .andExpect(status().isOk())

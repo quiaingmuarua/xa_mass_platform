@@ -62,6 +62,7 @@ JVM TaskRuntime provider
 createTask(descriptor)
 appendItems(taskId, items)
 loadTaskItemSuccessResults(taskId, messageIds)
+scanTaskItemSuccessResults(taskId, cursor, countHint)
 
 JVM Task lifecycle / Call commands
 approveTask(taskId)
@@ -77,7 +78,8 @@ Python HTTP routes. Python has no production network host. The Java Server
 Worker Delivery application
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and the Task-scoped
-`load_task_item_success_results` likewise remain the Python mechanism oracle.
+`load_task_item_success_results` and the one-page
+`scan_task_item_success_results` likewise remain the Python mechanism oracle.
 The public ordinary Task data HTTP operations are orchestrated by Java
 `TaskDataService` and delegated to the Java `RedisTaskRuntime` provider through
 the same owner contract. Create, lifecycle and the bounded Task Call
@@ -163,8 +165,8 @@ the separate bounded command and preserves its JSON-compatible rule as opaque
 scheduling input. The
 Python matcher owns the evolving rule DSL, including candidate derivation,
 operators, and fail-closed behavior. Item rules cannot change WorkerGroup.
-Ordinary append does not alter Task score. WorkerGroup Task Call and Task Batch
-flows use the bounded Kernel `TaskCallItemSubmission`. It calls
+Ordinary append does not alter Task score. WorkerGroup Task Call uses the
+bounded Kernel `TaskCallItemSubmission`. It calls
 `try_release_idle_park`, appends at most 100 Items, then calls the same
 idempotent operation again. A recognized private park becomes a due RUNNING
 score; any valid nearer positive coordinate is a no-op. The command does not
@@ -379,9 +381,9 @@ instances, each of which still calls the same batch HTTP contract through
 loopback. The Task-ID call path holds one bounded synchronous HTTP wait
 while a shared Java virtual thread probes one
 Task-scoped messageId at a time. Duplicate waits for that same TaskItem may
-share the observation. The Server Task Batch Lab path does not use that waiter
-or probe: it appends caller-bounded Item chunks, then loads the remaining
-message IDs together on each polling round. Java TaskData and
+share the observation. Finite Task callers do not use that waiter or probe:
+they append caller-bounded ordinary Item chunks and may export success Results
+only after observing Task terminality. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
 for resource declaration: score read and missing-score initialization.

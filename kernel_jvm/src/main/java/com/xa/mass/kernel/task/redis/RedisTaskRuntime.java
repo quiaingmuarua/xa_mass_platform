@@ -13,9 +13,13 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemSuccessResultPage;
 import io.lettuce.core.KeyValue;
+import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisFuture;
+import io.lettuce.core.ScanArgs;
+import io.lettuce.core.ScanCursor;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -394,6 +398,35 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             );
         }
         return results;
+    }
+
+    @Override
+    public TaskItemSuccessResultPage scanTaskItemSuccessResults(
+            String taskId,
+            String cursor,
+            int countHint
+    ) {
+        requireNonBlank(taskId, "taskId");
+        if (!isAsciiDecimal(cursor)) {
+            throw new IllegalArgumentException(
+                    "cursor must be decimal text"
+            );
+        }
+        if (countHint < 1
+                || countHint > MAX_SUCCESS_RESULT_SCAN_COUNT_HINT) {
+            throw new IllegalArgumentException(
+                    "countHint must be in 1..1000"
+            );
+        }
+        MapScanCursor<String, String> page = commands().hscan(
+                resultsKey(taskId),
+                ScanCursor.of(cursor),
+                new ScanArgs().limit(countHint)
+        );
+        return new TaskItemSuccessResultPage(
+                page.getCursor(),
+                page.getMap()
+        );
     }
 
     private Integer loadMaxRetryTimes(String taskId) {

@@ -12,8 +12,6 @@ public final class FrontendController {
             "/runtime/workers/",
             "/runtime/tasks",
             "/runtime/tasks/",
-            "/runtime/task-batches",
-            "/runtime/task-batches/"
     })
     public String index() {
         return "forward:/index.html";

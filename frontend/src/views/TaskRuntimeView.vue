@@ -36,7 +36,7 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
       <div>
         <p class="worker-page__eyebrow">RUNTIME / TASKS</p>
         <h1>Tasks</h1>
-        <p>有限 Task 交互 Mock 与当前 Profile 长期 Task 只读目录</p>
+        <p>真实有限 Task 文件执行与当前 Profile 长期 Task 只读目录</p>
       </div>
     </header>
 
@@ -47,7 +47,7 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
         :class="{ 'is-active': activeTab === 'finite' }"
         @click="activeTab = 'finite'"
       >
-        Finite Tasks <span>MOCK</span>
+        Finite Tasks <span>API</span>
       </button>
       <button
         type="button"

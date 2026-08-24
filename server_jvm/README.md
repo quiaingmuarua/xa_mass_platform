@@ -10,8 +10,8 @@ opt-in Scenario host.
 - process health, the fixed Python Pacer CLI child lifecycle, and public
   OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
-- bounded application use cases such as Task Batch, managed Task Call and
-  DIRECT_CALL correlation;
+- bounded application use cases such as finite Task Result export, managed
+  Task Call and DIRECT_CALL correlation;
 - configured Adapter and Scenario startup order.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
@@ -59,7 +59,7 @@ Provider ownership is deliberately mixed but explicit:
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus transparent Java Redis Adapter-evidence append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
-| Managed Task Call and Task Batch | Server-bounded use cases over Kernel Task Call submission and result reads |
+| Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
 | Other scheduling internals | Explicit JVM gaps |
@@ -69,8 +69,10 @@ addition to the create-only Group declaration, it derives one internal Task
 coordinate, creates the fixed `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` descriptor
 through Kernel owners, and approves it. Calls submit one Item through the
 Kernel Task Call command and observe last success through one shared probe;
-Task Batch submits finite input in ordered chunks of at most 100 and publishes
-complete or partial JSONL.
+Finite Task input remains caller-owned and is appended through the ordinary
+Task data API in chunks of at most 100. Result export waits only for a finite
+Task's `TERMINAL` score, scans the existing Result owner Hash, and streams a
+request-local JSONL file; Server owns no Lab input/output directory.
 Ordinary Task data append remains a pure data write and does not release the
 Kernel-private idle park; pause/resume calls the Worker score owner;
 DIRECT_CALL correlates caller-selected targets without
@@ -144,12 +146,22 @@ POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
+POST /api/v1/tasks/{taskId}/results:export
 ```
 
 Finite Tasks support explicit approval, close, ordinary Item append and result
 load. Managed Tasks support synchronous Item Call and result load; their
 lifecycle and ordinary append remain non-public. Calling an operation with the
 wrong public Task type returns `422`; a missing Task returns `404`.
+
+`results:export` supports only finite Tasks. It waits up to the caller's
+`1..300000` millisecond budget (30 seconds by default) for the Task score to
+become `TERMINAL`, returning `202 {"status":"not_ready"}` when that is not
+observed. Once terminal, Server iterates the Task-scoped success Result Hash
+through bounded owner `HSCAN` pages, deduplicates message IDs, and streams
+`application/x-ndjson`. Each line contains only `messageId` and the unchanged
+`opaqueResultPayload`; ordering is not a contract. The temporary file is
+deleted after the response stream closes, including failure paths.
 
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
@@ -286,7 +298,7 @@ Architecture Overview http://127.0.0.1:18082/overview.htm
 Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external
 fonts are disabled.
 
-Scalar navigation uses five caller-facing API groups:
+Scalar navigation uses four caller-facing API groups:
 
 | Tag | Surface |
 | --- | --- |
@@ -294,7 +306,6 @@ Scalar navigation uses five caller-facing API groups:
 | `Tasks` | Task creation, lifecycle, Item Call and Result access by Task ID |
 | `Runtime View` | Read-only bounded runtime projections |
 | `Worker Delivery` | Worker/Adapter delivery and best-effort Direct Call |
-| `Task Batch Lab` | Local file-backed Task Batch Lab |
 
 These tags are documentation navigation, not Redis storage domains or runtime
 owners. Redis `scope`, `result` and `dispatch` boundaries do not become public
@@ -371,8 +382,8 @@ individual Worker lifecycle. Those responsibilities belong to
 The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
 Scenario WorkerGroups and the advisory external Android demo group. Registering
 those three declarations automatically provisions all three Task Calls. Its
-local Task Batch proof is owned by
-[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/README.md).
+finite Capability Task proof is owned by
+[`integrations/worker-capability-task`](../integrations/worker-capability-task/README.md).
 
 ## Configuration
 

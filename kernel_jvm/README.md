@@ -29,6 +29,7 @@ TaskRuntime
   createTask
   appendItems
   loadTaskItemSuccessResults
+  scanTaskItemSuccessResults
 
 TaskResourceCatalog
   loadTaskAllocationDescriptors

@@ -1,159 +1,231 @@
+import type { AxiosInstance } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { HttpFiniteTaskClient } from "@/task-management/http-client";
 import {
   buildSeedItems,
+  chunkTaskItems,
+  materializeTaskItems,
   MAX_TASK_SEED_LINES,
-  parseSeedLines,
-  presentationLabel,
-  presentationStatus,
-  TASK_ADMISSION_DELAY_MILLIS,
-  TASK_DISPATCH_DELAY_MILLIS
+  parseSeedLines
 } from "@/task-management/model";
-import type { TaskManagementScheduler } from "@/task-management/types";
+import type {
+  FiniteTaskClient,
+  TaskCreateApiResponse,
+  TaskExportResult,
+  TaskItemApiRequest,
+  TaskItemsAppendApiResponse
+} from "@/task-management/types";
 import { createTaskManagementStore } from "@/stores/task-management";
 
-describe("finite Task seed model", () => {
-  it("keeps internal empty lines and ignores one trailing line terminator", () => {
+describe("finite Task input model", () => {
+  it("parses UTF-8, keeps empty lines, and creates stable five-digit IDs", () => {
     const lines = parseSeedLines(bytes("one\n\nthree\n"));
+    const seeds = buildSeedItems(lines, "value");
 
     expect(lines).toEqual(["one", "", "three"]);
-    expect(buildSeedItems(lines, "value")).toEqual([
-      { lineNumber: 1, rawLine: "one", payload: { value: "one" } },
-      { lineNumber: 2, rawLine: "", payload: { value: "" } },
-      { lineNumber: 3, rawLine: "three", payload: { value: "three" } }
+    expect(materializeTaskItems("task-1", "string.md5", seeds)).toEqual([
+      { messageId: "task-1-00001", eventCode: "string.md5", payload: { value: "one" } },
+      { messageId: "task-1-00002", eventCode: "string.md5", payload: { value: "" } },
+      {
+        messageId: "task-1-00003",
+        eventCode: "string.md5",
+        payload: { value: "three" }
+      }
     ]);
   });
 
-  it("rejects invalid UTF-8 and more than 1000 lines", () => {
-    expect(() => parseSeedLines(new Uint8Array([0xc3, 0x28]).buffer)).toThrow(
-      "valid UTF-8"
-    );
+  it("enforces 10,000 lines and chunks Items by 100", () => {
     expect(() =>
       parseSeedLines(
         bytes(Array.from({ length: MAX_TASK_SEED_LINES + 1 }, () => "x").join("\n"))
       )
-    ).toThrow("1000 lines");
+    ).toThrow("10000 lines");
+    expect(chunkTaskItems(Array.from({ length: 201 }, (_, index) => index))).toEqual([
+      Array.from({ length: 100 }, (_, index) => index),
+      Array.from({ length: 100 }, (_, index) => index + 100),
+      [200]
+    ]);
+  });
+});
+
+describe("HttpFiniteTaskClient", () => {
+  it("uses only the finite Task create, append, approve, and export routes", async () => {
+    const download = new Blob(["{}\n"], { type: "application/x-ndjson" });
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { taskId: "task-1", status: "created" } })
+      .mockResolvedValueOnce({
+        data: { results: { "task-1-00001": { status: "appended", reason: null } } }
+      })
+      .mockResolvedValueOnce({ data: { status: "approved", reason: null } })
+      .mockResolvedValueOnce({ data: download, status: 200, headers: {} });
+    const client = new HttpFiniteTaskClient("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await client.createTask({
+      workerGroupId: "group-1",
+      allocationRule: {},
+      priority: 50,
+      maximumCandidateWorkers: 10,
+      maxRetryTimes: 3
+    });
+    await client.appendItems("task-1", [
+      { messageId: "task-1-00001", eventCode: "event", payload: { value: "a" } }
+    ]);
+    await client.approveTask("task-1");
+    await expect(client.exportResults("task-1", 30_000)).resolves.toMatchObject({
+      ready: true,
+      fileName: "task-1-results.jsonl"
+    });
+
+    expect(post.mock.calls.map((call) => call[0])).toEqual([
+      "/v1/tasks",
+      "/v1/tasks/task-1/items",
+      "/v1/tasks/task-1/approve",
+      "/v1/tasks/task-1/results:export"
+    ]);
+    expect(post.mock.calls[1]?.[1].items[0]).not.toHaveProperty("allocationRule");
   });
 });
 
 describe("finite Task management store", () => {
   beforeEach(() => setActivePinia(createPinia()));
 
-  it("creates an awaiting-seeds Task and rejects duplicate session IDs", () => {
-    const store = createTaskManagementStore(catalog());
+  it("creates, chunks, waits for explicit approval, and manually retries export", async () => {
+    const order: string[] = [];
+    const client = fakeClient({
+      createTask: vi.fn(async () => {
+        order.push("create");
+        return { taskId: "task-1", status: "created" as const };
+      }),
+      appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) => {
+        order.push(`append-${items.length}`);
+        return appended(items.map((item) => item.messageId));
+      }),
+      approveTask: vi.fn(async () => {
+        order.push("approve");
+      }),
+      exportResults: vi
+        .fn()
+        .mockResolvedValueOnce({ ready: false })
+        .mockResolvedValueOnce({
+          ready: true,
+          fileName: "task-1-results.jsonl",
+          blob: new Blob(["{}\n"])
+        })
+    });
+    const store = createTaskManagementStore(catalog("api"), client);
 
-    const task = store.createTask(createRequest());
+    const task = await store.createAndAppend(
+      executionRequest(
+        Array.from({ length: 101 }, (_, index) => `line-${index}`).join("\n")
+      )
+    );
 
+    expect(order).toEqual(["create", "append-100", "append-1"]);
     expect(task).toMatchObject({
-      lifecycleState: "PRE_REVIEW",
-      seedState: "MISSING",
-      allocationRule: {}
+      taskId: "task-1",
+      appendedCount: 101,
+      stage: "ITEMS_APPENDED"
     });
-    expect(presentationLabel(presentationStatus(task!))).toBe("Awaiting Seeds");
-    expect(store.createTask(createRequest())).toBeUndefined();
-    expect(store.error).toContain("already exists");
+    expect(client.approveTask).not.toHaveBeenCalled();
+
+    await expect(store.approveTask("task-1")).resolves.toBe(true);
+    expect(task?.stage).toBe("APPROVED");
+    await expect(store.exportTask("task-1")).resolves.toBeUndefined();
+    expect(store.notice).toContain("尚未就绪");
+    await expect(store.exportTask("task-1")).resolves.toMatchObject({
+      fileName: "task-1-results.jsonl"
+    });
+    expect(task?.stage).toBe("EXPORT_READY");
   });
 
-  it("allows later review and advances only after explicit approval", async () => {
-    const scheduler = new ManualScheduler();
-    const store = createTaskManagementStore(catalog(), scheduler);
-    const task = store.createTask(createRequest())!;
-
-    await store.attachSeed({
-      taskId: task.taskId,
-      eventCode: "extension.worker.string.md5",
-      payloadKey: "value",
-      file: textFile("seed.txt", "one\n\nthree\n")
+  it("stops after an Append failure and never approves the Task", async () => {
+    const client = fakeClient({
+      appendItems: vi
+        .fn()
+        .mockResolvedValueOnce(
+          appended(
+            Array.from(
+              { length: 100 },
+              (_, index) => `task-1-${String(index + 1).padStart(5, "0")}`
+            )
+          )
+        )
+        .mockResolvedValueOnce({
+          results: { "task-1-00101": { status: "retryable", reason: "unavailable" } }
+        })
     });
+    const store = createTaskManagementStore(catalog("api"), client);
 
-    expect(presentationStatus(task)).toBe("awaiting-approval");
-    expect(task.seed?.items.map((item) => item.payload)).toEqual([
-      { value: "one" },
-      { value: "" },
-      { value: "three" }
-    ]);
-    expect(task.lifecycleState).toBe("PRE_REVIEW");
+    await store.createAndAppend(
+      executionRequest(Array.from({ length: 101 }, () => "line").join("\n"))
+    );
 
-    const completion = store.approveTask(task.taskId);
-    expect(task.lifecycleState).toBe("ADMISSION_VISIBLE");
-    expect(scheduler.pendingDelay()).toBe(TASK_ADMISSION_DELAY_MILLIS);
-
-    await scheduler.advance();
-    expect(task.lifecycleState).toBe("RUNNING_VISIBLE");
-    expect(scheduler.pendingDelay()).toBe(TASK_DISPATCH_DELAY_MILLIS);
-
-    await scheduler.advance();
-    await expect(completion).resolves.toBe(true);
-    expect(task.lifecycleState).toBe("TERMINAL");
-    expect(task.outputFile).toBe("finite-task-001.mock.jsonl");
-    expect(task.results.map((result) => result.messageId)).toEqual([
-      "finite-task-001-0001",
-      "finite-task-001-0002",
-      "finite-task-001-0003"
-    ]);
-    expect(task.results[1]).toMatchObject({
-      input: { value: "" },
-      result: { valid: true, mock: true, lineNumber: 2 }
-    });
+    expect(store.tasks[0]).toMatchObject({ stage: "CREATED", appendedCount: 100 });
+    expect(client.approveTask).not.toHaveBeenCalled();
+    expect(store.error?.message).toContain("unavailable");
   });
 
-  it("publishes ordered JSONL and a fresh Store starts empty", async () => {
-    const scheduler = new ManualScheduler();
-    const store = createTaskManagementStore(catalog(), scheduler);
-    const task = store.createTask(createRequest())!;
-    await store.attachSeed({
-      taskId: task.taskId,
-      eventCode: "extension.worker.string.md5",
-      payloadKey: "value",
-      file: textFile("seed.txt", "a\nb")
-    });
-    const completion = store.approveTask(task.taskId);
-    await scheduler.advance();
-    await scheduler.advance();
-    await completion;
+  it("disables every real operation in Mock mode without client fallback", async () => {
+    const client = fakeClient();
+    const store = createTaskManagementStore(catalog("mock"), client);
 
-    const download = store.downloadTask(task.taskId)!;
-    const jsonl = await readBlob(download.blob);
-    expect(download.fileName).toBe("finite-task-001.mock.jsonl");
-    expect(
-      jsonl
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line))
-    ).toEqual(task.results);
+    await store.createAndAppend(executionRequest("line"));
 
-    setActivePinia(createPinia());
-    expect(createTaskManagementStore(catalog()).tasks).toEqual([]);
+    expect(store.tasks).toEqual([]);
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.appendItems).not.toHaveBeenCalled();
   });
 });
 
-function catalog() {
+function catalog(mode: "api" | "mock") {
   return {
+    mode,
     entries: [
       {
         workerGroupId: "scenario-string-utils-workers",
-        workerGroup: {
-          eventCodes: ["extension.worker.string.md5"]
-        }
-      },
-      {
-        workerGroupId: "missing-group",
-        workerGroup: null
+        workerGroup: { eventCodes: ["extension.worker.string.md5"] }
       }
     ]
   };
 }
 
-function createRequest() {
+function executionRequest(contents: string) {
   return {
-    taskId: "finite-task-001",
     workerGroupId: "scenario-string-utils-workers",
-    config: {
-      priority: 50,
-      maximumCandidateWorkers: 10,
-      maxRetryTimes: 3
-    }
+    eventCode: "extension.worker.string.md5",
+    payloadKey: "value",
+    file: textFile("seed.txt", contents),
+    config: { priority: 50, maximumCandidateWorkers: 10, maxRetryTimes: 3 }
+  };
+}
+
+function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient {
+  return {
+    createTask: vi.fn(
+      async (): Promise<TaskCreateApiResponse> => ({
+        taskId: "task-1",
+        status: "created"
+      })
+    ),
+    appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) =>
+      appended(items.map((item) => item.messageId))
+    ),
+    approveTask: vi.fn(async () => undefined),
+    exportResults: vi.fn(async (): Promise<TaskExportResult> => ({ ready: false })),
+    ...overrides
+  };
+}
+
+function appended(messageIds: string[]): TaskItemsAppendApiResponse {
+  return {
+    results: Object.fromEntries(
+      messageIds.map((messageId) => [messageId, { status: "appended", reason: null }])
+    )
   };
 }
 
@@ -168,41 +240,4 @@ function textFile(name: string, contents: string): File {
     value: vi.fn(async () => bytes(contents))
   });
   return file;
-}
-
-function readBlob(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(blob);
-  });
-}
-
-class ManualScheduler implements TaskManagementScheduler {
-  private currentMillis = Date.parse("2026-08-21T00:00:00Z");
-  private readonly pending: Array<{ delayMillis: number; resolve: () => void }> = [];
-
-  now(): number {
-    return this.currentMillis;
-  }
-
-  wait(delayMillis: number): Promise<void> {
-    return new Promise((resolve) => {
-      this.pending.push({ delayMillis, resolve });
-    });
-  }
-
-  pendingDelay(): number | undefined {
-    return this.pending[0]?.delayMillis;
-  }
-
-  async advance(): Promise<void> {
-    const next = this.pending.shift();
-    if (next === undefined) throw new Error("No scheduled transition");
-    this.currentMillis += next.delayMillis;
-    next.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  }
 }

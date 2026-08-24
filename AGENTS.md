@@ -290,9 +290,12 @@ controls.
 
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
-- Task Batch input/output files are real local Lab artifacts, not simulated
-  results.
-- Frontend is read only for Runtime truth and uses the public Task Batch API.
+- Capability Task inputs are caller-owned local files. Integrations and the
+  frontend turn lines into ordinary finite TaskItems through public Task APIs;
+  Server owns no Lab input/output directory.
+- Frontend is read only for Runtime truth. Its finite Task file flow may create,
+  append, approve, and export only through public Task APIs and must not infer
+  scheduling state from elapsed time.
   It must not create scheduling, Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.

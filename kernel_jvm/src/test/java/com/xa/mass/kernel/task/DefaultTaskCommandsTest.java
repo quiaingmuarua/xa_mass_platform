@@ -491,6 +491,15 @@ class DefaultTaskCommandsTest {
         ) {
             throw unsupported();
         }
+
+        @Override
+        public TaskItemSuccessResultPage scanTaskItemSuccessResults(
+                String taskId,
+                String cursor,
+                int countHint
+        ) {
+            throw unsupported();
+        }
     }
 
     private static UnsupportedOperationException unsupported() {

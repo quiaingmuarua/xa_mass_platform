@@ -90,6 +90,10 @@ class KernelOwnerContractManifestTest {
                     TaskRuntime.TaskItemAppendResult.class
             ),
             Map.entry(
+                    "TaskItemSuccessResultPage",
+                    TaskRuntime.TaskItemSuccessResultPage.class
+            ),
+            Map.entry(
                     "TaskItemScoreState",
                     TaskItemScoreBandCore.TaskItemScoreState.class
             ),
@@ -324,6 +328,7 @@ class KernelOwnerContractManifestTest {
     private static Map<String, Map<String, Long>> constants()
             throws IllegalAccessException {
         var classes = Map.of(
+                "TaskRuntime", TaskRuntime.class,
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
                 "WorkerResourceCatalog", WorkerResourceCatalog.class,

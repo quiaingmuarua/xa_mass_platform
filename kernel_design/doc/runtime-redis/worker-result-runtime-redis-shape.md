@@ -68,6 +68,7 @@ ResultRoutingPacer
 
 TaskRuntime
   owns Task-scoped last-success payload truth
+  exposes requested-ID reads and one-page cursor scans
 
 TaskItemScoreBandCore / WorkerScoreCore
   own score validation and mutation
