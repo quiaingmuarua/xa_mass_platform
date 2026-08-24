@@ -2,6 +2,7 @@ package com.xa.mass.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
@@ -46,18 +47,33 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.json.JsonMapper;
 
 @ActiveProfiles("test")
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 class ServerApplicationContextTest {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final Set<String> HTTP_METHODS = Set.of(
+            "get",
+            "put",
+            "post",
+            "delete",
+            "patch",
+            "options",
+            "head",
+            "trace"
+    );
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -257,6 +273,64 @@ class ServerApplicationContextTest {
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
         assertThat(reusableTaskResponse.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void exposesStableOpenApiNavigationContract() throws Exception {
+        HttpResponse<String> response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(endpoint("/v3/api-docs"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        var document = JSON.readTree(response.body());
+        assertThat(document.path("info").path("title").asText())
+                .isEqualTo("XA Mass Runtime API");
+        assertThat(document.path("info").path("version").asText())
+                .isEqualTo("v1");
+        assertThat(document.path("info").path("description").asText())
+                .contains("Kernel decides scheduling")
+                .contains("Task Batch Lab");
+
+        var tagNames = new ArrayList<String>();
+        document.path("tags").forEach(tag ->
+                tagNames.add(tag.path("name").asText()));
+        assertThat(tagNames).containsExactly(
+                ApiTags.WORKER_RESOURCES,
+                ApiTags.TASKS,
+                ApiTags.RUNTIME_VIEW,
+                ApiTags.WORKER_DELIVERY,
+                ApiTags.TASK_BATCH_LAB
+        );
+
+        Set<String> allowedTags = Set.copyOf(tagNames);
+        int operationCount = 0;
+        for (var path : document.path("paths").properties()) {
+            for (var candidate : path.getValue().properties()) {
+                if (!HTTP_METHODS.contains(candidate.getKey())) {
+                    continue;
+                }
+                operationCount++;
+                var operationTags = candidate.getValue().path("tags");
+                assertThat(operationTags.size())
+                        .as("tag count for %s %s", candidate.getKey(), path.getKey())
+                        .isEqualTo(1);
+                String operationTag = operationTags.get(0).asText();
+                assertThat(operationTag)
+                        .as("tag for %s %s", candidate.getKey(), path.getKey())
+                        .isIn(allowedTags)
+                        .doesNotEndWith("-controller");
+            }
+        }
+        assertThat(operationCount).isPositive();
+        assertThat(document.path("paths")
+                .path("/api/v1/worker-groups/{workerGroupId}/tasks")
+                .path("post")
+                .path("tags")
+                .get(0)
+                .asText()).isEqualTo(ApiTags.TASKS);
     }
 
     private URI endpoint(String path) {

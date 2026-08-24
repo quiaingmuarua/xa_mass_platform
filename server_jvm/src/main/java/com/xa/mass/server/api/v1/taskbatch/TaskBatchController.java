@@ -1,9 +1,11 @@
 package com.xa.mass.server.api.v1.taskbatch;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchInputUploadResponse;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunRequest;
 import com.xa.mass.server.api.v1.taskbatch.model.TaskBatchRunResponse;
 import com.xa.mass.server.taskbatch.TaskBatchService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ContentDisposition;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = ApiTags.TASK_BATCH_LAB)
 @Validated
 @RestController
 @Profile("scenario-workers")

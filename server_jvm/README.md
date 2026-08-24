@@ -264,6 +264,20 @@ Architecture Overview http://127.0.0.1:18082/overview.htm
 Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external
 fonts are disabled.
 
+Scalar navigation uses five caller-facing API groups:
+
+| Tag | Surface |
+| --- | --- |
+| `Worker Resources` | WorkerGroup declaration and Worker preparation or control |
+| `Tasks` | Task lifecycle/data and WorkerGroup Task Call |
+| `Runtime View` | Read-only bounded runtime projections |
+| `Worker Delivery` | Worker/Adapter delivery and best-effort Direct Call |
+| `Task Batch Lab` | Local file-backed Task Batch Lab |
+
+These tags are documentation navigation, not Redis storage domains or runtime
+owners. Redis `scope`, `result` and `dispatch` boundaries do not become public
+API categories merely because they own physical keys.
+
 ## Assembly Boundaries
 
 ### Kernel Providers

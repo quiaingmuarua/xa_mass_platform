@@ -1,10 +1,12 @@
 package com.xa.mass.server.api.v1;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.taskdata.TaskDataService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = ApiTags.TASKS)
 @Validated
 @RestController
 @RequestMapping("/api/v1/tasks")

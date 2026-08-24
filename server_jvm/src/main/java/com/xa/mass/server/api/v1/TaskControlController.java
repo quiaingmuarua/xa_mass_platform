@@ -7,8 +7,10 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseResult;
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = ApiTags.TASKS)
 @Validated
 @RestController
 @RequestMapping("/api/v1/tasks")

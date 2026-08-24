@@ -1,8 +1,10 @@
 package com.xa.mass.server.api.v1;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.WorkerPreparationRequest;
 import com.xa.mass.server.api.v1.model.WorkerPreparationResponse;
 import com.xa.mass.server.workerpreparation.WorkerPreparationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = ApiTags.WORKER_RESOURCES)
 @Validated
 @RestController
 @RequestMapping("/api/v1/worker-groups")

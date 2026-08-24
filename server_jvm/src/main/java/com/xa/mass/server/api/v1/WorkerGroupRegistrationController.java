@@ -1,14 +1,17 @@
 package com.xa.mass.server.api.v1;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterRequest;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterResponse;
 import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = ApiTags.WORKER_RESOURCES)
 @RestController
 @RequestMapping("/api/v1/worker-groups")
 public class WorkerGroupRegistrationController {

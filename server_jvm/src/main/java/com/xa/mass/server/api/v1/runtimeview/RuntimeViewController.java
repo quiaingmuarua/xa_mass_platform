@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1.runtimeview;
 
+import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
@@ -14,6 +15,7 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveReques
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.async.DeferredResult;
 
+@Tag(name = ApiTags.RUNTIME_VIEW)
 @Validated
 @RestController
 @RequestMapping("/api/v1/runtime-view")
