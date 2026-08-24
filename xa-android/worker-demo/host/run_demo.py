@@ -104,8 +104,10 @@ def run_demo(
         raise ValueError("wait timeout must be in 1..60000 milliseconds")
 
     client = RuntimeApiClient(server_base_url, request_timeout_seconds)
+    task_id = configured_task_id(client)
     results = call_capabilities(
         client=client,
+        task_id=task_id,
         wait_timeout_millis=wait_timeout_millis,
     )
     return {
@@ -114,20 +116,46 @@ def run_demo(
     }
 
 
+def configured_task_id(client: RuntimeApiClient) -> str:
+    operation = "configuredResources.load"
+    response = client.send(
+        "GET",
+        "/api/v1/runtime-view/configured-resources",
+        None,
+        operation,
+    )
+    body = require_status(response, 200, operation)
+    entries = body.get("entries")
+    if not isinstance(entries, list):
+        raise RuntimeError(f"{operation} entries are missing")
+    matches = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("workerGroupId") == WORKER_GROUP_ID
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"{operation} did not resolve exactly one Task")
+    task_id = matches[0].get("taskId")
+    if not isinstance(task_id, str) or not task_id:
+        raise RuntimeError(f"{operation} taskId is missing")
+    return task_id
+
+
 def call_capabilities(
     *,
     client: RuntimeApiClient,
+    task_id: str,
     wait_timeout_millis: int,
 ) -> list[dict[str, Any]]:
     calls = [
         (str(uuid.uuid4()), event_code, payload)
         for event_code, payload in CAPABILITY_CALLS
     ]
-    operation = "workerGroupItems.call"
+    operation = "taskItems.call"
     call = client.send(
         "POST",
-        "/api/v1/worker-groups/"
-        f"{quote(WORKER_GROUP_ID, safe='')}/items:call",
+        f"/api/v1/tasks/{quote(task_id, safe='')}/items:call",
         {
             "items": [
                 {

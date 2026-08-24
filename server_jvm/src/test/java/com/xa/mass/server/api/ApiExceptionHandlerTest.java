@@ -70,6 +70,10 @@ class ApiExceptionHandlerTest {
                         HttpStatus.TOO_MANY_REQUESTS
                 ),
                 Arguments.of(
+                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                        HttpStatus.UNPROCESSABLE_CONTENT
+                ),
+                Arguments.of(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
                         HttpStatus.BAD_REQUEST
                 ),

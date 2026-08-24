@@ -177,7 +177,7 @@ orthogonal facts. Generic public Server Task creation maps only to
 `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`. WorkerGroup registration also
 converges one derived internal
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task. The Kernel owns neither that
-WorkerGroup-scoped API use case nor its deterministic coordinate derivation.
+Server-managed Task use case nor its deterministic coordinate derivation.
 
 Candidate matching reads canonical Worker and Platform Properties only after a
 bounded candidate source has supplied Worker IDs. DIRECT obtains candidates
@@ -376,7 +376,7 @@ Delivery owner providers.
 calls the point HTTP API directly. The proof registers each WorkerGroup and its
 attached Task Call, then `DIRECT_ITEM_RULE` uses configured WebSocket or Socket Adapter
 instances, each of which still calls the same batch HTTP contract through
-loopback. The WorkerGroup call path holds one bounded synchronous HTTP wait
+loopback. The Task-ID call path holds one bounded synchronous HTTP wait
 while a shared Java virtual thread probes one
 Task-scoped messageId at a time. Duplicate waits for that same TaskItem may
 share the observation. The Server Task Batch Lab path does not use that waiter
@@ -388,7 +388,7 @@ for resource declaration: score read and missing-score initialization.
 Separate Redis proofs cover TaskData Item-score initialization,
 `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` releasing RUNNING soft-limit capacity,
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` exact park/unpark followed by dispatch, and
-the generic finite public close remaining terminal. The internal Task Call Task
+the generic finite public close remaining terminal. The managed Task Call Task
 is not exposed through generic lifecycle routes.
 
 ## Production Host
@@ -429,10 +429,9 @@ Delivery at port `18082`:
 POST /api/v1/worker-groups/{workerGroupId}:register
 POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
 POST /api/v1/runtime-view/worker-groups:preview
-POST /api/v1/worker-groups/{workerGroupId}/tasks
+POST /api/v1/tasks
 POST /api/v1/tasks/{taskId}/items
-POST /api/v1/worker-groups/{workerGroupId}/items:call
-POST /api/v1/worker-groups/{workerGroupId}/item-results:load
+POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
@@ -453,23 +452,25 @@ only when both already exist, while a missing Task is backfilled and descriptor
 drift conflicts. Group create, Task create and approval are separate owner
 operations rather than a cross-key transaction. A Task-side failure may leave
 the Group created; retrying the exact registration re-reads owner truth and
-converges.
-The Group call route resolves that descriptor once and submits `1..100`
-standard Items through the bounded Task Call command. WorkerGroup is the URL
-coordinate; it is not copied into an Item, and the response exposes neither
-the internal Task ID nor a selected Worker. The request waits only for its
+converges. Registration returns the managed Task ID; callers use that value or
+the configured Runtime projection rather than deriving the deterministic ID.
+The Task call route validates that descriptor once and submits `1..100`
+standard Items through the bounded Task Call command. WorkerGroup remains Task
+descriptor scope and is not copied into an Item; the call response exposes no
+selected Worker. The request waits only for its
 bounded interval: HTTP `200` means every Message ID has an observed success,
-while HTTP `202` marks only the missing entries as `not_observed`; the Group
-result route supports a later bounded read by Message ID.
+while HTTP `202` marks only the missing entries as `not_observed`; the shared
+Task result route supports a later bounded read by Message ID.
 
 Generic Task creation is scoped by an existing WorkerGroup. Server generates
 the `task-{UUID}` coordinate and always assembles
-`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; the request has no Task ID,
-WorkerGroup body field, mechanism or profile selector. Public Item requests
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; the request carries WorkerGroup ID
+but no Task ID, mechanism or profile selector. Public Item requests
 retain caller-owned Message IDs while Server stamps creation time and derives
 optional absolute expiry from `ttlMillis`. Lifecycle, Item and result routes
-continue under `/api/v1/tasks/{taskId}/...` and hide internal Task Call Tasks as
-not found.
+continue under `/api/v1/tasks/{taskId}/...`. Managed Task lifecycle and normal
+append remain non-public, while Task Call and result load use the returned
+managed Task ID.
 
 WorkerGroup registration is create-only control-plane setup with attached Task
 Call provisioning: an equivalent complete registration is idempotent and a

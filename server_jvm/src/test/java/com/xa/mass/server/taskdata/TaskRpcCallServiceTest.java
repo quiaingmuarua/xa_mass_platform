@@ -13,10 +13,14 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
@@ -253,15 +257,45 @@ class TaskRpcCallServiceTest {
             TaskRpcWaitRegistry registry,
             TaskRpcProperties properties
     ) {
+        TaskResourceCatalog taskCatalog = mock(TaskResourceCatalog.class);
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
+                .thenAnswer(invocation -> {
+                    List<String> taskIds = invocation.getArgument(0);
+                    var descriptors = new LinkedHashMap<
+                            String,
+                            TaskDescriptor
+                            >();
+                    taskIds.forEach(taskId -> descriptors.put(
+                            taskId,
+                            callableDescriptor(taskId)
+                    ));
+                    return descriptors;
+                });
         return new TaskRpcCallService(
                 submission,
                 taskRuntime,
+                taskCatalog,
                 registry,
                 new TaskItemMapper(Clock.fixed(
                         Instant.ofEpochMilli(1_000),
                         ZoneOffset.UTC
                 )),
                 properties
+        );
+    }
+
+    private static TaskDescriptor callableDescriptor(String taskId) {
+        return new TaskDescriptor(
+                taskId,
+                "group-1",
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
+                null,
+                Map.of(
+                        "priority", "0",
+                        "maximumCandidateWorkers", "1",
+                        "maxRetryTimes", "3"
+                )
         );
     }
 

@@ -132,5 +132,5 @@ The repository demo excludes the Android Worker preference file from backup.
 There is no instrumentation or UI-automation source set. The path-selected
 API 33 Emulator Worker acceptance belongs to `xa-android/worker-demo` and
 proves this assembly through the real Server/Adapter route. Real-device
-WorkerGroup RPC remains a separate manual proof for vendor systems, physical
+Managed Task Call remains a separate manual proof for vendor systems, physical
 Battery behavior, and background execution limits.

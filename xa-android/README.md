@@ -33,7 +33,7 @@ Hook state into a generic capability layer.
 
 Capability HTTP proves only that the installed App can execute its local
 capability resolver and Handler. It owns no Worker identity or connection
-truth and is not a substitute for the WorkerGroup RPC end-to-end proof. The
+truth and is not a substitute for the managed Task Call end-to-end proof. The
 path-selected Emulator CI relates that local surface to real Worker identity,
 Adapter route, Command/Result, Properties observation, explicit lifecycle,
 Server terminal, and App process-restart behavior without UI automation.

@@ -25,6 +25,7 @@ import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.TaskControlController;
+import com.xa.mass.server.taskdata.TaskCreationService;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -467,7 +468,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 lifecycle,
-                catalog
+                catalog,
+                mock(TaskCreationService.class)
         );
         var created = runtime.createTask(new TaskDescriptor(
                 "public-task",

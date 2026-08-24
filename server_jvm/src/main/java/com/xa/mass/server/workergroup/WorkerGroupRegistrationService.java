@@ -81,6 +81,7 @@ public final class WorkerGroupRegistrationService {
                 taskCallRegistrations.register(workerGroupId);
         return new Registration(
                 workerGroupId,
+                taskCall.taskId(),
                 groupRegistered || taskCall.newlyRegistered()
                         ? "registered"
                         : "already_registered"
@@ -128,6 +129,10 @@ public final class WorkerGroupRegistrationService {
         return new ServerException(code, OPERATION, message, cause);
     }
 
-    public record Registration(String workerGroupId, String status) {
+    public record Registration(
+            String workerGroupId,
+            String taskId,
+            String status
+    ) {
     }
 }

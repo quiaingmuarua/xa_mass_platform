@@ -14,7 +14,7 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission prove the six-operation Java Task Score slice, and the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and WorkerGroup registration-provisioned Task Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and WorkerGroup registration returns a managed Task ID whose Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The checked Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and restart mapping close over the same 20 Worker IDs | Redis 7, Python plus `redis` dependency, Java Server restarted once | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Task Batch | The checked profile registers every declared WorkerGroup with its attached Task Call, then uses bounded Java submissions to batch-run six WorkerGroup/Event cases through long-lived Tasks and closes 60 inputs to 60 uniquely correlated results | Redis 7, Python plus `redis` dependency, Java Server | `./gradlew :integrations:worker-capability-rpc:runRpcScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
@@ -166,8 +166,9 @@ handlers, observes the current Adapter Channel through the public Runtime View,
 closes it through DIRECT_CALL, and proves transparent reconnect. A dedicated
 finite Task proves the generic create/approve/close surface through Polling.
 Separate WebSocket and Socket Workers each prove WorkerGroup registration with
-its Task Call, idempotent aggregate re-registration, two consecutive bounded synchronous calls, the
-WorkerGroup result read, and generic lifecycle isolation of the internal Task.
+its returned managed Task ID, idempotent aggregate re-registration, two
+consecutive bounded Task-ID-addressed calls, the shared Task result read, and
+generic lifecycle isolation of the managed Task.
 A dedicated Worker also proves the full current Serviceability behavior:
 
 The checked Runtime Boundary config uses a deliberately short recovery retry
@@ -304,6 +305,6 @@ are not automatically retried.
 
 There is no coverage threshold, multi-JDK or multi-OS matrix, flaky-test retry,
 browser visual regression, Android API matrix, UI automation, performance
-test, or soak lane. The Android real-device WorkerGroup RPC remains a separate
+test, or soak lane. The Android real-device managed Task Call remains a separate
 manual proof for vendor systems, physical Battery behavior, and background
 execution limits; the hosted Emulator lane does not claim those properties.

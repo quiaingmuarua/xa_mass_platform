@@ -95,7 +95,7 @@ This is a summary of the canonical
 [Task Resource Model](../resource-model/task-resource-model.md) contract.
 Generic public Server Task creation exposes only
 `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`. WorkerGroup registration provisions
-the fixed internal Task Call
+the fixed managed Task Call
 `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` assembly. Neither surface exposes an
 arbitrary mechanism matrix.
 

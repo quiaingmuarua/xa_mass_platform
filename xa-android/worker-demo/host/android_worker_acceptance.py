@@ -250,6 +250,7 @@ class DeviceApiClient:
 class RuntimeApiClient:
     def __init__(self, base_url: str, timeout_millis: int) -> None:
         self._http = JsonHttpClient(base_url, timeout_millis)
+        self._managed_task_id: str | None = None
 
     def network_state(self, endpoint_manager_id: str, worker_id: str) -> str | None:
         response = self._http.request(
@@ -355,11 +356,11 @@ class RuntimeApiClient:
         return payload
 
     def task_call(self, event_name: str, payload: dict[str, Any]) -> str:
+        task_id = self._task_id()
         message_id = str(uuid.uuid4())
         response = self._http.request(
             "POST",
-            "/api/v1/worker-groups/"
-            f"{quote(WORKER_GROUP_ID, safe='')}/items:call",
+            f"/api/v1/tasks/{quote(task_id, safe='')}/items:call",
             {
                 "items": [{
                     "messageId": message_id,
@@ -369,7 +370,7 @@ class RuntimeApiClient:
                 }],
                 "waitTimeoutMillis": 30_000,
             },
-            f"workerGroupItem.call[{event_name}]",
+            f"taskItem.call[{event_name}]",
         )
         results = require_object(
             response.get("results"),
@@ -397,6 +398,41 @@ class RuntimeApiClient:
             ) from error
         require_object(decoded, "Android WorkerGroup result")
         return message_id
+
+    def _task_id(self) -> str:
+        if self._managed_task_id is not None:
+            return self._managed_task_id
+        response = self._http.request(
+            "GET",
+            "/api/v1/runtime-view/configured-resources",
+            None,
+            "configuredResources.load",
+        )
+        entries = response.get("entries")
+        if not isinstance(entries, list):
+            raise ProofFailure(
+                "task-call.configured-resources",
+                "Configured Runtime resources are invalid",
+            )
+        matches = [
+            entry
+            for entry in entries
+            if isinstance(entry, dict)
+            and entry.get("workerGroupId") == WORKER_GROUP_ID
+        ]
+        if len(matches) != 1:
+            raise ProofFailure(
+                "task-call.task-id",
+                "Android WorkerGroup managed Task was not resolved",
+            )
+        task_id = matches[0].get("taskId")
+        if not isinstance(task_id, str) or not task_id:
+            raise ProofFailure(
+                "task-call.task-id",
+                "Android WorkerGroup managed Task ID is invalid",
+            )
+        self._managed_task_id = task_id
+        return task_id
 
     def _direct_call(
         self,

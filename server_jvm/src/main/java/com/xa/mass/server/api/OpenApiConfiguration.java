@@ -24,8 +24,8 @@ import org.springframework.context.annotation.Configuration;
                 @Tag(
                         name = ApiTags.TASKS,
                         description = "Create and control Tasks, append "
-                                + "Items, load Results and call Group-scoped "
-                                + "Task endpoints."
+                                + "Items, load Results and call managed "
+                                + "Tasks by Task ID."
                 ),
                 @Tag(
                         name = ApiTags.RUNTIME_VIEW,

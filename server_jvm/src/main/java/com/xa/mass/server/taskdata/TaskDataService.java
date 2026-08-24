@@ -61,15 +61,19 @@ public final class TaskDataService {
                     .loadTaskAllocationDescriptors(List.of(taskId))
                     .get(taskId);
             if (descriptor == null) {
-                return uniformResults(
-                        latest.keySet(),
-                        TaskItemAppendStatus.NOT_FOUND
+                throw new ServerException(
+                        ServerErrorCode.TASK_NOT_FOUND,
+                        "taskData.appendItems",
+                        null,
+                        null
                 );
             }
             if (!isPublicFiniteTask(descriptor)) {
-                return uniformResults(
-                        latest.keySet(),
-                        TaskItemAppendStatus.NOT_FOUND
+                throw new ServerException(
+                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                        "taskData.appendItems",
+                        "Task does not support ordinary Item append",
+                        null
                 );
             }
 
@@ -116,20 +120,12 @@ public final class TaskDataService {
             String taskId,
             List<String> messageIds
     ) {
-        return loadTaskItemSuccessResults(taskId, messageIds, false);
+        return loadTaskItemSuccessResultsInternal(taskId, messageIds);
     }
 
-    public TaskItemResultsLoadResponse loadFiniteTaskItemSuccessResults(
+    private TaskItemResultsLoadResponse loadTaskItemSuccessResultsInternal(
             String taskId,
             List<String> messageIds
-    ) {
-        return loadTaskItemSuccessResults(taskId, messageIds, true);
-    }
-
-    private TaskItemResultsLoadResponse loadTaskItemSuccessResults(
-            String taskId,
-            List<String> messageIds,
-            boolean publicFiniteOnly
     ) {
         try {
             List<String> uniqueIds = new ArrayList<>(
@@ -146,11 +142,12 @@ public final class TaskDataService {
                         null
                 );
             }
-            if (publicFiniteOnly && !isPublicFiniteTask(descriptor)) {
+            if (!isPublicFiniteTask(descriptor)
+                    && !isManagedCallTask(descriptor)) {
                 throw new ServerException(
-                        ServerErrorCode.TASK_NOT_FOUND,
+                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
                         "taskData.loadSuccessResults",
-                        null,
+                        "Task does not support Result load",
                         null
                 );
             }
@@ -179,6 +176,13 @@ public final class TaskDataService {
                 == TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE;
     }
 
+    private static boolean isManagedCallTask(TaskDescriptor descriptor) {
+        return descriptor.workerAllocationMechanism()
+                == WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                && descriptor.idleDisposition()
+                == TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE;
+    }
+
     private static LinkedHashMap<String, TaskItemRequest> latestItems(
             List<TaskItemRequest> items
     ) {
@@ -195,21 +199,6 @@ public final class TaskDataService {
             latest.put(item.messageId(), item);
         }
         return latest;
-    }
-
-    private static Map<String, TaskItemAppendResult> uniformResults(
-            Set<String> messageIds,
-            TaskItemAppendStatus status
-    ) {
-        var results = new LinkedHashMap<
-                String,
-                TaskItemAppendResult
-                >();
-        messageIds.forEach(messageId -> results.put(
-                messageId,
-                new TaskItemAppendResult(status)
-        ));
-        return results;
     }
 
     private static Map<String, TaskItemAppendResult> orderedResults(

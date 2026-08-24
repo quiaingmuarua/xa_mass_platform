@@ -77,8 +77,9 @@ public final class ApiExceptionHandler {
                     WORKER_BINDING_CONFLICT,
                     WORKER_GROUP_REGISTRATION_CONFLICT,
                     TASK_BATCH_CONFLICT -> HttpStatus.CONFLICT;
-            case RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
-                    HttpStatus.UNPROCESSABLE_ENTITY;
+            case TASK_OPERATION_NOT_SUPPORTED,
+                    RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
+                    HttpStatus.UNPROCESSABLE_CONTENT;
             case INVALID_TASK_DATA_REQUEST,
                     INVALID_WORKER_DELIVERY_REQUEST,
                     INVALID_WORKER_IDENTITY_REQUEST,

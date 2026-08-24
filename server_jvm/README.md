@@ -10,7 +10,7 @@ opt-in Scenario host.
 - process health, the fixed Python Pacer CLI child lifecycle, and public
   OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
-- bounded application use cases such as Task Batch, WorkerGroup RPC and
+- bounded application use cases such as Task Batch, managed Task Call and
   DIRECT_CALL correlation;
 - configured Adapter and Scenario startup order.
 
@@ -59,7 +59,7 @@ Provider ownership is deliberately mixed but explicit:
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Worker Serviceability bridge | Lowest-priority Adapter snapshot construction plus transparent Java Redis Adapter-evidence append |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
-| WorkerGroup RPC and Task Batch | Server-bounded use cases over Kernel Task Call submission and result reads |
+| Managed Task Call and Task Batch | Server-bounded use cases over Kernel Task Call submission and result reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
 | Other scheduling internals | Explicit JVM gaps |
@@ -89,18 +89,17 @@ Generic public Task creation is scoped by an existing WorkerGroup and has no
 profile selector:
 
 ```text
-POST /api/v1/worker-groups/{workerGroupId}/tasks
+POST /api/v1/tasks
 ```
 
-The request contains only allocation and numeric Task configuration. Server
-generates the `task-{UUID}` coordinate and creates
-`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; callers do not supply either Task ID
-or WorkerGroup ID in the body. Its append, result, approve and close routes
-continue to use `/api/v1/tasks/{taskId}/...` and treat internal Task Call Tasks
-as not found.
+The request identifies one registered WorkerGroup and contains allocation plus
+numeric Task configuration. Server generates the `task-{UUID}` coordinate and
+creates only `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; callers do not supply a
+Task ID or Task type. Multiple finite Tasks may belong to the same Group.
 
 ```json
 {
+  "workerGroupId": "scenario-string-utils-workers",
   "allocationRule": {},
   "priority": 50,
   "maximumCandidateWorkers": 10,
@@ -108,13 +107,19 @@ as not found.
 }
 ```
 
-Every registered WorkerGroup has the Group-scoped Task Call surfaces:
+Every registered WorkerGroup also owns exactly one managed, approved
+`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task. Registration returns its Task ID:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}:register
-POST /api/v1/worker-groups/{workerGroupId}/tasks
-POST /api/v1/worker-groups/{workerGroupId}/items:call
-POST /api/v1/worker-groups/{workerGroupId}/item-results:load
+```
+
+```json
+{
+  "workerGroupId": "scenario-string-utils-workers",
+  "taskId": "scenario-rpc-scenario-string-utils-workers",
+  "status": "registered"
+}
 ```
 
 The registration request contains only the Group declaration and no public
@@ -122,18 +127,35 @@ Task configuration. Success guarantees both the exact Group descriptor and the
 exact derived Task plus approval. It returns `already_registered` only when
 both already exist; repeating an exact legacy Group declaration backfills a
 missing Task Call and returns `registered`. Group descriptor drift or derived
-Task descriptor drift returns conflict. The Task ID is an implementation
-coordinate, not caller authority and not part of call responses.
+Task descriptor drift returns conflict. Re-registration always returns the
+same Task ID. Callers use that response value, or the value projected by
+`GET /api/v1/runtime-view/configured-resources`; they must not derive it from
+the current deterministic naming formula.
 Group create, Task create and approval remain separate owner operations, not
 one transaction. If Task provisioning fails after Group creation, the Group
 remains and the request fails; retrying the exact Group declaration re-reads
 owner truth and converges the interrupted registration.
 
+All public Task data operations are Task-ID-addressed:
+
+```text
+POST /api/v1/tasks/{taskId}/approve
+POST /api/v1/tasks/{taskId}/close
+POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/items:call
+POST /api/v1/tasks/{taskId}/results:load
+```
+
+Finite Tasks support explicit approval, close, ordinary Item append and result
+load. Managed Tasks support synchronous Item Call and result load; their
+lifecycle and ordinary append remain non-public. Calling an operation with the
+wrong public Task type returns `422`; a missing Task returns `404`.
+
 Public Item requests contain caller-owned `messageId`, Event Name, Payload,
 optional priority and optional `ttlMillis`. Server stamps creation time and
 derives the absolute expiry. Finite Task append forbids an Item allocation
-rule; WorkerGroup Task Call requires an allocation-rule object, where `{}`
-means no Worker restriction inside the Group.
+rule; managed Task Call requires an allocation-rule object, where `{}` means no
+Worker restriction inside the Group.
 
 `items:call` accepts `1..100` Items, submits the bounded batch once and
 synchronously waits within the caller's `waitTimeoutMillis`. The response is a
@@ -141,7 +163,7 @@ Message-ID-keyed result map. HTTP `200` means every entry is `succeeded`; HTTP
 `202` marks only unobserved entries as `not_observed`, without inferring their
 runtime state. Duplicate Message IDs in one request use the latest Item and
 produce one response entry. The caller can later read the same Message IDs
-through the WorkerGroup-scoped result route. Neither route selects a Worker;
+through the same Task-ID-scoped result route. Neither route selects a Worker;
 the Item allocation rule remains Kernel scheduling input.
 
 ```json
@@ -269,7 +291,7 @@ Scalar navigation uses five caller-facing API groups:
 | Tag | Surface |
 | --- | --- |
 | `Worker Resources` | WorkerGroup declaration and Worker preparation or control |
-| `Tasks` | Task lifecycle/data and WorkerGroup Task Call |
+| `Tasks` | Task creation, lifecycle, Item Call and Result access by Task ID |
 | `Runtime View` | Read-only bounded runtime projections |
 | `Worker Delivery` | Worker/Adapter delivery and best-effort Direct Call |
 | `Task Batch Lab` | Local file-backed Task Batch Lab |
@@ -363,7 +385,7 @@ Redis scope                    profile_default
 Pacer CLI config               kernel_design/config/pacer-default.json
 Pacer lifecycle state          data/kernel-pacer
 Adapter instances              none
-WorkerGroup RPC wait           30s default / 60s maximum
+Managed Task Call wait         30s default / 60s maximum
 DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server

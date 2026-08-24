@@ -139,17 +139,17 @@ adb shell am start -n `
   com.xa.mass.integration.androidworker/com.xa.mass.android.workerdemo.MainActivity
 ```
 
-Wait for `RUNNING`, then call all three capabilities through the public
-WorkerGroup route:
+Wait for `RUNNING`, then call all three capabilities through the managed Task:
 
 ```powershell
 .\gradlew.bat :xa-android:worker-demo:runDemoRpc
 ```
 
-The driver sends three standard Items with `allocationRule: {}` and prints the
-State, Battery, and parameterized string digest results. It does not create
-or close a Task, expose the internal registered Task Call ID, or select a
-Worker ID.
+The driver reads `GET /api/v1/runtime-view/configured-resources`, takes the
+Task ID associated with `android-demo-workers`, and sends three standard Items
+to `/api/v1/tasks/{taskId}/items:call` with `allocationRule: {}`. It prints the
+State, Battery, and parameterized string digest results. It does not create or
+close a Task, derive the managed Task ID, or select a Worker ID.
 
 Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab
@@ -165,7 +165,7 @@ Emulator, and uses ADB only to install/start/force-stop the App and map ports
 `18082`, `18083`, and `18084`. All device-side Worker controls use the three
 local Host Events above. The standard-library driver then relates the App's
 snapshot to public Adapter Network, Direct Call, Properties observation, and
-WorkerGroup RPC APIs.
+managed Task Call APIs.
 
 The proof has four safe-evidence phases:
 

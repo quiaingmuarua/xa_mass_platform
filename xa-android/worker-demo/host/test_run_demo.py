@@ -19,7 +19,17 @@ class FakeRuntimeApiClient:
 
     def send(self, method: str, path: str, body: object, operation: str):
         self.requests.append((method, path, body, operation))
-        if operation != "workerGroupItems.call":
+        if operation == "configuredResources.load":
+            return run_demo.ApiResponse(
+                200,
+                {
+                    "entries": [{
+                        "workerGroupId": run_demo.WORKER_GROUP_ID,
+                        "taskId": "managed-task",
+                    }]
+                },
+            )
+        if operation != "taskItems.call":
             raise AssertionError(operation)
         results = {}
         for item in body["items"]:
@@ -57,7 +67,9 @@ class RunDemoTest(unittest.TestCase):
         FakeRuntimeApiClient.last_instance = None
         FakeRuntimeApiClient.fail_event_code = None
 
-    def test_calls_the_group_with_an_unrestricted_item(self) -> None:
+    def test_resolves_the_managed_task_and_calls_it_with_unrestricted_items(
+        self,
+    ) -> None:
         with patch.object(
             run_demo,
             "RuntimeApiClient",
@@ -71,15 +83,24 @@ class RunDemoTest(unittest.TestCase):
 
         client = FakeRuntimeApiClient.last_instance
         self.assertIsNotNone(client)
-        self.assertEqual(1, len(client.requests))
+        self.assertEqual(2, len(client.requests))
+        self.assertEqual(
+            (
+                "GET",
+                "/api/v1/runtime-view/configured-resources",
+                None,
+                "configuredResources.load",
+            ),
+            client.requests[0],
+        )
         expected_payloads = dict(run_demo.CAPABILITY_CALLS)
-        method, path, call_body, operation = client.requests[0]
+        method, path, call_body, operation = client.requests[1]
         self.assertEqual("POST", method)
         self.assertEqual(
-            "/api/v1/worker-groups/android-demo-workers/items:call",
+            "/api/v1/tasks/managed-task/items:call",
             path,
         )
-        self.assertEqual("workerGroupItems.call", operation)
+        self.assertEqual("taskItems.call", operation)
         event_codes = []
         for item in call_body["items"]:
             event_code = item["eventCode"]
@@ -130,7 +151,7 @@ class RunDemoTest(unittest.TestCase):
                 )
 
         self.assertEqual(
-            ["workerGroupItems.call"],
+            ["configuredResources.load", "taskItems.call"],
             [
                 request[3]
                 for request in FakeRuntimeApiClient.last_instance.requests

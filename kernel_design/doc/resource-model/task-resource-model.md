@@ -139,11 +139,12 @@ Server exposes the two supported combinations through separate use cases:
 | WorkerGroup registration-provisioned Task Call | `DIRECT_ITEM_RULE` | `PARK_WHEN_IDLE` |
 
 Generic creation has no profile or mechanism selector. WorkerGroup registration
-derives one internal Task coordinate and converges the exact descriptor plus
-approval. It is not an arbitrary reusable Task registration surface, and the
-internal Task is hidden from the generic Task lifecycle, Item and result
-routes. These Server assembly decisions are not additional Kernel enums or
-score states.
+derives one managed Task coordinate and converges the exact descriptor plus
+approval. It is not an arbitrary reusable Task registration surface.
+Registration returns that coordinate: Task-ID Call and result load are public,
+while lifecycle commands and ordinary Item append reject the managed type.
+These Server assembly decisions are not additional Kernel enums or score
+states.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -345,7 +346,7 @@ disposition immediately. Any ACTIVE Item prevents close or park, and a
 post-park check can exact-release a park installed concurrently with Task Call
 append. Item execution retry remains TaskItem-score truth. The Kernel close
 owner remains valid for either disposition; generic public Server close is
-limited to finite Tasks and cannot close the internal Task Call Task.
+limited to finite Tasks and cannot close the managed Task Call Task.
 Initial finite Items may be appended before approval; after a finite Task
 reaches RUNNING with an empty ACTIVE band it may close immediately. Task Call
 submission treats valid PRE_REVIEW and ADMISSION scores as score no-ops, so a

@@ -6,7 +6,6 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
-import com.xa.mass.server.api.v1.WorkerGroupTaskController;
 import com.xa.mass.server.api.v1.runtimeview.RuntimeViewController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterDirectCallController;
@@ -33,7 +32,6 @@ import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
@@ -114,12 +112,6 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(
-                WorkerGroupTaskController.class
-        )).isNotNull();
-        assertThat(applicationContext.getBean(
-                WorkerGroupTaskCallService.class
-        )).isNotNull();
         assertThat(applicationContext.getBean(
                 WorkerGroupTaskCallRegistrationService.class
         )).isNotNull();
@@ -272,7 +264,7 @@ class ServerApplicationContextTest {
         assertThat(indexedGroupResponse.statusCode()).isEqualTo(404);
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
-        assertThat(reusableTaskResponse.statusCode()).isEqualTo(404);
+        assertThat(reusableTaskResponse.statusCode()).isEqualTo(400);
     }
 
     @Test
@@ -326,11 +318,42 @@ class ServerApplicationContextTest {
         }
         assertThat(operationCount).isPositive();
         assertThat(document.path("paths")
-                .path("/api/v1/worker-groups/{workerGroupId}/tasks")
+                .path("/api/v1/tasks")
                 .path("post")
                 .path("tags")
                 .get(0)
                 .asText()).isEqualTo(ApiTags.TASKS);
+        assertThat(document.path("paths")
+                .path("/api/v1/tasks")
+                .path("post")
+                .path("summary")
+                .asText()).isEqualTo("Create a finite Task");
+        assertThat(document.path("paths")
+                .path("/api/v1/tasks/{taskId}/items:call")
+                .path("post")
+                .path("tags")
+                .get(0)
+                .asText()).isEqualTo(ApiTags.TASKS);
+        assertThat(document.path("paths")
+                .path("/api/v1/tasks/{taskId}/items:call")
+                .path("post")
+                .path("summary")
+                .asText()).isEqualTo("Call a managed Task");
+        assertThat(document.path("paths")
+                .path("/api/v1/tasks/{taskId}/results:load")
+                .path("post")
+                .path("tags")
+                .get(0)
+                .asText()).isEqualTo(ApiTags.TASKS);
+        assertThat(document.path("paths").has(
+                "/api/v1/worker-groups/{workerGroupId}/tasks"
+        )).isFalse();
+        assertThat(document.path("paths").has(
+                "/api/v1/worker-groups/{workerGroupId}/items:call"
+        )).isFalse();
+        assertThat(document.path("paths").has(
+                "/api/v1/worker-groups/{workerGroupId}/item-results:load"
+        )).isFalse();
     }
 
     private URI endpoint(String path) {

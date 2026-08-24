@@ -38,15 +38,12 @@ public final class TaskCreationService {
         this.taskIds = Objects.requireNonNull(taskIds, "taskIds");
     }
 
-    public TaskCreateResponse create(
-            String workerGroupId,
-            TaskCreateRequest request
-    ) {
-        requireWorkerGroup(workerGroupId);
+    public TaskCreateResponse create(TaskCreateRequest request) {
+        requireWorkerGroup(request.workerGroupId());
         String taskId = taskIds.nextTaskId();
         TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
-                workerGroupId,
+                request.workerGroupId(),
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 request.allocationRule(),

@@ -748,6 +748,10 @@ class RuntimeBoundaryIntegrationTest {
         );
         assertThat(registration.statusCode()).isEqualTo(200);
         assertThat(registration.body()).contains("\"status\":\"registered\"");
+        String taskId = JSON.readTree(registration.body())
+                .get("taskId")
+                .asText();
+        assertThat(taskId).isNotBlank();
 
         PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,
@@ -769,20 +773,19 @@ class RuntimeBoundaryIntegrationTest {
             String firstMessageId = "task-call-message-1-" + suffix;
             String secondMessageId = "task-call-message-2-" + suffix;
             assertTaskCallSucceeded(
-                    workerGroupId,
+                    taskId,
                     workerId,
                     firstMessageId
             );
             assertTaskCallSucceeded(
-                    workerGroupId,
+                    taskId,
                     workerId,
                     secondMessageId
             );
 
             HttpResponse<String> loaded = send(
                     "POST",
-                    "/api/v1/worker-groups/" + workerGroupId
-                            + "/item-results:load",
+                    "/api/v1/tasks/" + taskId + "/results:load",
                     "{\"messageIds\":[\"" + firstMessageId + "\"]}"
             );
             assertThat(loaded.statusCode()).isEqualTo(200);
@@ -803,25 +806,27 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(repeatedRegistration.statusCode()).isEqualTo(200);
             assertThat(repeatedRegistration.body())
                     .contains("\"status\":\"already_registered\"");
+            assertThat(JSON.readTree(repeatedRegistration.body())
+                    .get("taskId")
+                    .asText()).isEqualTo(taskId);
             assertThat(send(
                     "POST",
-                    "/api/v1/tasks/scenario-rpc-" + workerGroupId
-                            + "/close",
+                    "/api/v1/tasks/" + taskId + "/close",
                     null
-            ).statusCode()).isEqualTo(404);
+            ).statusCode()).isEqualTo(422);
         } finally {
             worker.close();
         }
     }
 
     private void assertTaskCallSucceeded(
-            String workerGroupId,
+            String taskId,
             String workerId,
             String messageId
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
-                "/api/v1/worker-groups/" + workerGroupId + "/items:call",
+                "/api/v1/tasks/" + taskId + "/items:call",
                 """
                         {
                           "items": [{
@@ -1115,15 +1120,17 @@ class RuntimeBoundaryIntegrationTest {
     ) throws Exception {
         HttpResponse<String> response = send(
                 "POST",
-                "/api/v1/worker-groups/" + workerGroupId + "/tasks",
+                "/api/v1/tasks",
                 """
                 {
+                  "workerGroupId": "%s",
                   "allocationRule": %s,
                   "priority": 0,
                   "maximumCandidateWorkers": 1,
                   "maxRetryTimes": 3
                 }
                 """.formatted(
+                workerGroupId,
                 allocationRule
                 )
         );

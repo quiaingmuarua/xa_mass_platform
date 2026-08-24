@@ -443,7 +443,15 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
         )
 
     def test_runtime_client_rejects_uncorrelated_task_response(self) -> None:
-        response = FakeHttpResponse(
+        configured = FakeHttpResponse(
+            {
+                "entries": [{
+                    "workerGroupId": acceptance.WORKER_GROUP_ID,
+                    "taskId": "managed-task",
+                }]
+            }
+        )
+        call = FakeHttpResponse(
             {
                 "results": {
                     OTHER_WORKER_ID: {
@@ -456,8 +464,8 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
         with patch.object(
             acceptance,
             "urlopen",
-            return_value=response,
-        ):
+            side_effect=[configured, call],
+        ) as urlopen:
             client = acceptance.RuntimeApiClient(
                 acceptance.DEFAULT_SERVER_BASE_URL,
                 1_000,
@@ -468,6 +476,18 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
                 "Task Call result",
             ):
                 client.task_call(acceptance.STRING_DIGEST_EVENT, {})
+
+        requests = [call.args[0] for call in urlopen.call_args_list]
+        self.assertEqual(
+            acceptance.DEFAULT_SERVER_BASE_URL
+            + "/api/v1/runtime-view/configured-resources",
+            requests[0].full_url,
+        )
+        self.assertEqual(
+            acceptance.DEFAULT_SERVER_BASE_URL
+            + "/api/v1/tasks/managed-task/items:call",
+            requests[1].full_url,
+        )
 
     def test_driver_has_no_repository_implementation_imports(self) -> None:
         source = Path(acceptance.__file__).read_text()

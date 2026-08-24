@@ -19,7 +19,7 @@ public enum ServerErrorCode {
     ),
     TASK_RPC_CAPACITY_EXCEEDED(
             12004,
-            "WorkerGroup RPC waiter capacity is exhausted"
+            "Task Call waiter capacity is exhausted"
     ),
     TASK_CALL_NOT_REGISTERED(
             12005,
@@ -32,6 +32,10 @@ public enum ServerErrorCode {
     TASK_CALL_REGISTRATION_UNAVAILABLE(
             12007,
             "WorkerGroup Task Call provisioning is unavailable"
+    ),
+    TASK_OPERATION_NOT_SUPPORTED(
+            12008,
+            "Task does not support this operation"
     ),
     INVALID_WORKER_DELIVERY_REQUEST(
             13001,

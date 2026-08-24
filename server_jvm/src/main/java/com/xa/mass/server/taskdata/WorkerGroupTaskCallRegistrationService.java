@@ -97,9 +97,14 @@ public final class WorkerGroupTaskCallRegistrationService {
 
         TaskApprovalResult approval = approve(expected.taskId());
         return switch (approval.status()) {
-            case APPROVED -> new Registration(workerGroupId, true);
+            case APPROVED -> new Registration(
+                    workerGroupId,
+                    expected.taskId(),
+                    true
+            );
             case ALREADY_APPROVED -> new Registration(
                     workerGroupId,
+                    expected.taskId(),
                     created
             );
             case NOT_FOUND, RETRYABLE -> throw unavailable(
@@ -264,6 +269,7 @@ public final class WorkerGroupTaskCallRegistrationService {
 
     public record Registration(
             String workerGroupId,
+            String taskId,
             boolean newlyRegistered
     ) {
     }

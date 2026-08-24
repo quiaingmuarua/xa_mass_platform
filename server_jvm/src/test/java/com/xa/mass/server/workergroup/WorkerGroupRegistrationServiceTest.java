@@ -52,20 +52,24 @@ class WorkerGroupRegistrationServiceTest {
                 new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
         );
         when(taskCallRegistrations.register("group-1")).thenReturn(
-                new Registration("group-1", true),
-                new Registration("group-1", false)
+                new Registration("group-1", "scenario-rpc-group-1", true),
+                new Registration("group-1", "scenario-rpc-group-1", false)
         );
 
-        assertThat(service.register(
+        var created = service.register(
                 "group-1",
                 descriptor.attributes(),
                 List.of("event.b", "event.a")
-        ).status()).isEqualTo("registered");
-        assertThat(service.register(
+        );
+        assertThat(created.status()).isEqualTo("registered");
+        assertThat(created.taskId()).isEqualTo("scenario-rpc-group-1");
+        var existing = service.register(
                 "group-1",
                 descriptor.attributes(),
                 List.of("event.a", "event.b")
-        ).status()).isEqualTo("already_registered");
+        );
+        assertThat(existing.status()).isEqualTo("already_registered");
+        assertThat(existing.taskId()).isEqualTo("scenario-rpc-group-1");
     }
 
     @Test
@@ -74,7 +78,7 @@ class WorkerGroupRegistrationServiceTest {
                 org.mockito.ArgumentMatchers.any()
         )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP));
         when(taskCallRegistrations.register("group-1")).thenReturn(
-                new Registration("group-1", true)
+                new Registration("group-1", "scenario-rpc-group-1", true)
         );
 
         assertThat(service.register(
@@ -100,7 +104,11 @@ class WorkerGroupRegistrationServiceTest {
         );
         when(taskCallRegistrations.register("group-1"))
                 .thenThrow(failure)
-                .thenReturn(new Registration("group-1", true));
+                .thenReturn(new Registration(
+                        "group-1",
+                        "scenario-rpc-group-1",
+                        true
+                ));
 
         assertThatThrownBy(() -> service.register(
                 "group-1",

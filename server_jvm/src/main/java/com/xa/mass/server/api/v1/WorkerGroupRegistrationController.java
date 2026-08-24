@@ -4,6 +4,7 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterRequest;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterResponse;
 import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +25,9 @@ public class WorkerGroupRegistrationController {
         this.registrations = registrations;
     }
 
+    @Operation(
+            summary = "Register a WorkerGroup and ensure its managed Task"
+    )
     @PostMapping("/{workerGroupId}:register")
     public WorkerGroupRegisterResponse registerWorkerGroup(
             @PathVariable String workerGroupId,
@@ -37,6 +41,7 @@ public class WorkerGroupRegistrationController {
                 );
         return new WorkerGroupRegisterResponse(
                 registration.workerGroupId(),
+                registration.taskId(),
                 registration.status()
         );
     }

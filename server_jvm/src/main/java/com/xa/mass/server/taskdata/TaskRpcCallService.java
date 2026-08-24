@@ -2,9 +2,13 @@ package com.xa.mass.server.taskdata;
 
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionResult;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
@@ -23,6 +27,7 @@ public final class TaskRpcCallService {
 
     private final TaskCallItemSubmission taskCallSubmission;
     private final TaskRuntime taskRuntime;
+    private final TaskResourceCatalog taskCatalog;
     private final TaskRpcWaitRegistry registry;
     private final TaskItemMapper taskItems;
     private final long defaultWaitTimeoutMillis;
@@ -31,12 +36,14 @@ public final class TaskRpcCallService {
     public TaskRpcCallService(
             TaskCallItemSubmission taskCallSubmission,
             TaskRuntime taskRuntime,
+            TaskResourceCatalog taskCatalog,
             TaskRpcWaitRegistry registry,
             TaskItemMapper taskItems,
             TaskRpcProperties properties
     ) {
         this.taskCallSubmission = taskCallSubmission;
         this.taskRuntime = taskRuntime;
+        this.taskCatalog = taskCatalog;
         this.registry = registry;
         this.taskItems = taskItems;
         this.defaultWaitTimeoutMillis =
@@ -48,6 +55,7 @@ public final class TaskRpcCallService {
             String taskId,
             TaskRpcCallRequest request
     ) {
+        requireCallableTask(taskId);
         long timeoutMillis = resolveTimeout(request.waitTimeoutMillis());
         LinkedHashMap<String, TaskItemRequest> requestedItems = latestItems(
                 request.items()
@@ -92,6 +100,41 @@ public final class TaskRpcCallService {
 
         registry.register(taskId, messageIds, observed, deferred);
         return deferred;
+    }
+
+    private void requireCallableTask(String taskId) {
+        TaskDescriptor descriptor;
+        try {
+            descriptor = taskCatalog.loadTaskAllocationDescriptors(
+                    List.of(taskId)
+            ).get(taskId);
+        } catch (RuntimeException error) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.loadDescriptor",
+                    null,
+                    error
+            );
+        }
+        if (descriptor == null) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_NOT_FOUND,
+                    "taskRpc.loadDescriptor",
+                    null,
+                    null
+            );
+        }
+        if (descriptor.workerAllocationMechanism()
+                != WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                || descriptor.idleDisposition()
+                != TaskIdleDisposition.PARK_WHEN_IDLE) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                    "taskRpc.validateTask",
+                    "Task does not support synchronous Item Call",
+                    null
+            );
+        }
     }
 
     private long resolveTimeout(Long requested) {

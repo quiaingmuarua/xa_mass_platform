@@ -76,6 +76,8 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         var registration = service.register("phone-tools");
 
         assertThat(registration.workerGroupId()).isEqualTo("phone-tools");
+        assertThat(registration.taskId())
+                .isEqualTo("scenario-rpc-phone-tools");
         assertThat(registration.newlyRegistered()).isTrue();
         ArgumentCaptor<TaskDescriptor> descriptor =
                 ArgumentCaptor.forClass(TaskDescriptor.class);
@@ -98,6 +100,8 @@ class WorkerGroupTaskCallRegistrationServiceTest {
 
         var registration = service.register("phone-tools");
 
+        assertThat(registration.taskId())
+                .isEqualTo("scenario-rpc-phone-tools");
         assertThat(registration.newlyRegistered()).isFalse();
         verify(taskRuntime, never()).createTask(any());
     }
