@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum TaskRpcCallStatus {
     SUCCEEDED("succeeded"),
-    PENDING("pending");
+    NOT_OBSERVED("not_observed");
 
     private final String wireValue;
 

@@ -181,7 +181,6 @@ class RuntimeBoundaryIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "property-tools-" + suffix;
         String clientWorkerKey = "property-worker-" + suffix;
-        String taskId = "property-task-" + suffix;
 
         assertThat(send(
                 "POST",
@@ -224,11 +223,7 @@ class RuntimeBoundaryIntegrationTest {
                     + "\"worker.region\":{\"$eq\":\"cn-east\"},"
                     + "\"platform.pool\":{\"$in\":[\"batch\"]}"
                     + "}";
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, propertyRule)
-            ).statusCode()).isEqualTo(201);
+            String taskId = createTask(workerGroupId, propertyRule);
             appendItem(taskId, firstMessageId);
             appendItem(taskId, secondMessageId);
             assertThat(send(
@@ -396,7 +391,7 @@ class RuntimeBoundaryIntegrationTest {
                 TransportProfile.WEBSOCKET
         );
         RunningWorker reconnected = null;
-        String demandTaskId = "serviceability-demand-" + suffix;
+        String demandTaskId = null;
         boolean demandTaskCreated = false;
         try {
             awaitConnectionState(workerId, "CONNECTED");
@@ -437,16 +432,11 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(restored.laneRank())
                     .isEqualTo(WorkerScoreCore.MIN_LANE_RANK);
 
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks",
-                    taskRequest(
-                            demandTaskId,
-                            workerGroupId,
-                            "{\"workerId\":{\"$eq\":\"missing-worker-"
-                                    + suffix + "\"}}"
-                    )
-            ).statusCode()).isEqualTo(201);
+            demandTaskId = createTask(
+                    workerGroupId,
+                    "{\"workerId\":{\"$eq\":\"missing-worker-"
+                            + suffix + "\"}}"
+            );
             demandTaskCreated = true;
             assertThat(send(
                     "POST",
@@ -687,7 +677,6 @@ class RuntimeBoundaryIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "integration-tools-" + suffix;
         String clientWorkerKey = "worker-" + suffix;
-        String taskId = "task-" + suffix;
         String firstMessageId = "message-1-" + suffix;
         String secondMessageId = "message-2-" + suffix;
 
@@ -719,11 +708,7 @@ class RuntimeBoundaryIntegrationTest {
         );
         try {
             awaitWorkerRegistered(workerGroupId, workerId);
-            assertThat(send(
-                    "POST",
-                    "/api/v1/tasks",
-                    taskRequest(taskId, workerGroupId, "{}")
-            ).statusCode()).isEqualTo(201);
+            String taskId = createTask(workerGroupId, "{}");
             appendItem(taskId, firstMessageId);
             appendItem(taskId, secondMessageId);
             assertThat(send(
@@ -839,30 +824,29 @@ class RuntimeBoundaryIntegrationTest {
                 "/api/v1/worker-groups/" + workerGroupId + "/items:call",
                 """
                         {
-                          "item": {
+                          "items": [{
                             "messageId": "%s",
                             "eventCode": "%s",
-                            "createdAtMillis": %d,
                             "payload": {"value": "input"},
                             "allocationRule": {
                               "workerId": {"$eq": "%s"}
                             }
-                          },
+                          }],
                           "waitTimeoutMillis": 10000
                         }
                         """.formatted(
                         messageId,
                         TEST_EVENT_CODE,
-                        System.currentTimeMillis() - 1_000,
                         workerId
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(JSON.readTree(response.body()).get("status").asText())
+        var itemResult = JSON.readTree(response.body())
+                .get("results")
+                .get(messageId);
+        assertThat(itemResult.get("status").asText())
                 .isEqualTo("succeeded");
-        assertThat(JSON.readTree(response.body()).get("messageId").asText())
-                .isEqualTo(messageId);
-        assertThat(JSON.readTree(response.body())
+        assertThat(itemResult
                 .get("opaqueResultPayload")
                 .stringValue()).isEqualTo(TEST_RESULT);
     }
@@ -940,14 +924,12 @@ class RuntimeBoundaryIntegrationTest {
                           "items": [{
                             "messageId": "%s",
                             "eventCode": "%s",
-                            "createdAtMillis": %d,
                             "payload": {"value": "input"}
                           }]
                         }
                         """.formatted(
                         messageId,
-                        TEST_EVENT_CODE,
-                        System.currentTimeMillis() - 1_000
+                        TEST_EVENT_CODE
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
@@ -1127,27 +1109,30 @@ class RuntimeBoundaryIntegrationTest {
         throw new AssertionError("TaskItem success result was not stored");
     }
 
-    private String taskRequest(
-            String taskId,
+    private String createTask(
             String workerGroupId,
             String allocationRule
-    ) {
-        return """
+    ) throws Exception {
+        HttpResponse<String> response = send(
+                "POST",
+                "/api/v1/worker-groups/" + workerGroupId + "/tasks",
+                """
                 {
-                  "taskId": "%s",
-                  "workerGroupId": "%s",
                   "allocationRule": %s,
-                  "config": {
-                    "priority": "0",
-                    "maximumCandidateWorkers": "1",
-                    "maxRetryTimes": "3"
-                  }
+                  "priority": 0,
+                  "maximumCandidateWorkers": 1,
+                  "maxRetryTimes": 3
                 }
                 """.formatted(
-                taskId,
-                workerGroupId,
                 allocationRule
+                )
         );
+        assertThat(response.statusCode()).isEqualTo(201);
+        String taskId = JSON.readTree(response.body())
+                .get("taskId")
+                .asText();
+        assertThat(taskId).startsWith("task-");
+        return taskId;
     }
 
     private HttpResponse<String> send(

@@ -361,21 +361,27 @@ class RuntimeApiClient:
             "/api/v1/worker-groups/"
             f"{quote(WORKER_GROUP_ID, safe='')}/items:call",
             {
-                "item": {
+                "items": [{
                     "messageId": message_id,
                     "eventCode": event_name,
-                    "createdAtMillis": int(time.time() * 1_000),
                     "payload": dict(payload),
                     "allocationRule": {},
-                },
+                }],
                 "waitTimeoutMillis": 30_000,
             },
             f"workerGroupItem.call[{event_name}]",
         )
-        encoded_result = response.get("opaqueResultPayload")
+        results = require_object(
+            response.get("results"),
+            "WorkerGroup Task Call results",
+        )
+        item_result = require_object(
+            results.get(message_id),
+            "WorkerGroup Task Call result",
+        )
+        encoded_result = item_result.get("opaqueResultPayload")
         if (
-            response.get("status") != "succeeded"
-            or response.get("messageId") != message_id
+            item_result.get("status") != "succeeded"
             or not isinstance(encoded_result, str)
         ):
             raise ProofFailure(

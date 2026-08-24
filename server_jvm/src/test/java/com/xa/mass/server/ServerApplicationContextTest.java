@@ -256,7 +256,7 @@ class ServerApplicationContextTest {
         assertThat(indexedGroupResponse.statusCode()).isEqualTo(404);
         assertThat(workerResponse.statusCode()).isEqualTo(404);
         assertThat(bindingResponse.statusCode()).isEqualTo(404);
-        assertThat(reusableTaskResponse.statusCode()).isEqualTo(400);
+        assertThat(reusableTaskResponse.statusCode()).isEqualTo(404);
     }
 
     private URI endpoint(String path) {

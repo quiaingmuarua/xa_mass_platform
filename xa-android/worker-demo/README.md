@@ -153,9 +153,9 @@ Worker ID.
 
 Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab
-devices. Persisted but disconnected candidates can legitimately leave a call
-at `202 pending`; the driver does not retry or silently switch to a targeted
-Worker.
+devices. If a success is not observed before the bounded wait ends, the batch
+entry is returned as `202 not_observed`; the driver does not retry or silently
+switch to a targeted Worker.
 
 ## Hosted Emulator acceptance
 

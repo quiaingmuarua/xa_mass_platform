@@ -20,128 +20,103 @@ import org.springframework.web.context.request.async.DeferredResult;
 class TaskRpcWaitRegistryTest {
 
     @Test
-    void coalescesSameItemAndCompletesDuplicateWaiters()
-            throws Exception {
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties(10));
+    void coalescesSameItemAndCompletesBothBatchWaiters() throws Exception {
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties(10));
         DeferredResult<ResponseEntity<TaskRpcCallResponse>> first =
                 new DeferredResult<>(1_000L);
         DeferredResult<ResponseEntity<TaskRpcCallResponse>> second =
                 new DeferredResult<>(1_000L);
 
-        registry.register("task-1", "message-1", first);
-        registry.register("task-1", "message-1", second);
+        registry.register(
+                "task-1",
+                List.of("message-1"),
+                Map.of(),
+                first
+        );
+        registry.register(
+                "task-1",
+                List.of("message-1"),
+                Map.of(),
+                second
+        );
 
         TaskRpcWaitRegistry.ProbeRequest request = registry.takeDue();
         assertThat(request.taskId()).isEqualTo("task-1");
         assertThat(request.messageId()).isEqualTo("message-1");
 
-        registry.completeSuccess(
-                "task-1",
-                "message-1",
-                "{\"ok\":true}"
-        );
-        assertSucceeded(first);
-        assertSucceeded(second);
+        registry.completeSuccess("task-1", "message-1", "{\"ok\":true}");
+        assertSucceeded(first, "message-1");
+        assertSucceeded(second, "message-1");
         assertThat(registry.waiterCount()).isZero();
         registry.finishProbe("task-1", "message-1", 0);
     }
 
     @Test
-    void differentItemsRemainIndependentProbeRequests()
-            throws Exception {
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties(10));
-        registry.register(
-                "task-1",
-                "message-1",
-                new DeferredResult<>(1_000L)
-        );
-        registry.register(
-                "task-1",
-                "message-2",
-                new DeferredResult<>(1_000L)
-        );
-
-        TaskRpcWaitRegistry.ProbeRequest first = registry.takeDue();
-        TaskRpcWaitRegistry.ProbeRequest second = registry.takeDue();
-
-        assertThat(List.of(first.messageId(), second.messageId()))
-                .containsExactlyInAnyOrder("message-1", "message-2");
-        assertThat(first.taskId()).isEqualTo("task-1");
-        assertThat(second.taskId()).isEqualTo("task-1");
-        registry.finishProbe(
-                first.taskId(),
-                first.messageId(),
-                250
-        );
-        registry.finishProbe(
-                second.taskId(),
-                second.messageId(),
-                250
-        );
-        registry.shutdown();
-    }
-
-    @Test
-    void resultAndTimeoutHaveOneCompletionWinner() {
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties(10));
+    void batchWaitsForEveryItemAndTimeoutMarksOnlyMissingItems() {
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties(10));
         DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
                 new DeferredResult<>(1_000L);
-        TaskRpcWaitRegistry.Waiter waiter = registry.register(
+        TaskRpcWaitRegistry.BatchWaiter waiter = registry.register(
                 "task-1",
-                "message-1",
+                List.of("message-1", "message-2"),
+                Map.of("message-1", "one"),
                 deferred
         );
 
-        assertThat(waiter.completeSuccess("{\"ok\":true}")).isTrue();
-        assertThat(waiter.completePending()).isFalse();
-        assertSucceeded(deferred);
+        assertThat(waiter.completeNotObserved()).isTrue();
+        assertThat(waiter.completeNotObserved()).isFalse();
+        ResponseEntity<TaskRpcCallResponse> response = result(deferred);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody().results().get("message-1").status()
+                .wireValue()).isEqualTo("succeeded");
+        assertThat(response.getBody().results().get("message-2").status()
+                .wireValue()).isEqualTo("not_observed");
         assertThat(registry.waiterCount()).isZero();
     }
 
     @Test
-    void enforcesWaiterCapacityAndUsesConfiguredIntervals() {
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties(1));
-        registry.register(
+    void capacityContinuesToCountWaitingRequests() {
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties(1));
+
+        TaskRpcWaitRegistry.BatchWaiter first = registry.register(
                 "task-1",
-                "message-1",
+                List.of("message-1", "message-2"),
+                Map.of(),
                 new DeferredResult<>(1_000L)
         );
-
         assertThatThrownBy(() -> registry.register(
                 "task-2",
-                "message-2",
+                List.of("message-3"),
+                Map.of(),
                 new DeferredResult<>(1_000L)
         )).isInstanceOf(ServerException.class);
-        assertThat(registry.intervalForWaiterAgeMillis(1_000))
-                .isEqualTo(50);
-        assertThat(registry.intervalForWaiterAgeMillis(1_001))
-                .isEqualTo(100);
-        assertThat(registry.intervalForWaiterAgeMillis(5_001))
-                .isEqualTo(250);
+        assertThat(registry.waiterCount()).isOne();
+
+        first.completeNotObserved();
+        assertThat(registry.waiterCount()).isZero();
+        assertThat(registry.intervalForWaiterAgeMillis(1_000)).isEqualTo(50);
+        assertThat(registry.intervalForWaiterAgeMillis(1_001)).isEqualTo(100);
+        assertThat(registry.intervalForWaiterAgeMillis(5_001)).isEqualTo(250);
     }
 
     @Test
-    void sharedVirtualThreadProbesOneItemAtATime()
-            throws Exception {
+    void sharedVirtualThreadProbeCompletesABatchItem() throws Exception {
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(10);
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         TaskRpcResultProbe probe = new TaskRpcResultProbe(
                 taskRuntime,
                 registry,
                 properties
         );
-        DeferredResult<ResponseEntity<TaskRpcCallResponse>> first =
+        DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
                 new DeferredResult<>(2_000L);
-        DeferredResult<ResponseEntity<TaskRpcCallResponse>> second =
-                new DeferredResult<>(2_000L);
-        registry.register("task-1", "message-1", first);
-        registry.register("task-1", "message-1", second);
+        registry.register(
+                "task-1",
+                List.of("message-1"),
+                Map.of(),
+                deferred
+        );
         when(taskRuntime.loadTaskItemSuccessResults(
                 "task-1",
                 List.of("message-1")
@@ -154,20 +129,17 @@ class TaskRpcWaitRegistryTest {
                             "task-1",
                             List.of("message-1")
                     );
-            assertSucceeded(first);
-            assertSucceeded(second);
+            assertSucceeded(deferred, "message-1");
         } finally {
             probe.stop();
         }
     }
 
     @Test
-    void redisFailureReschedulesTheItemWithoutFailingTheWaiter()
-            throws Exception {
+    void redisFailureReschedulesWithoutFailingTheBatch() throws Exception {
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(10);
-        TaskRpcWaitRegistry registry =
-                new TaskRpcWaitRegistry(properties);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         TaskRpcResultProbe probe = new TaskRpcResultProbe(
                 taskRuntime,
                 registry,
@@ -175,7 +147,12 @@ class TaskRpcWaitRegistryTest {
         );
         DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
                 new DeferredResult<>(2_000L);
-        registry.register("task-1", "message-1", deferred);
+        registry.register(
+                "task-1",
+                List.of("message-1"),
+                Map.of(),
+                deferred
+        );
         when(taskRuntime.loadTaskItemSuccessResults(
                 "task-1",
                 List.of("message-1")
@@ -190,15 +167,15 @@ class TaskRpcWaitRegistryTest {
                             "task-1",
                             List.of("message-1")
                     );
-            assertSucceeded(deferred);
+            assertSucceeded(deferred, "message-1");
         } finally {
             probe.stop();
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static void assertSucceeded(
-            DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred
+            DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred,
+            String messageId
     ) {
         long deadline = System.nanoTime()
                 + java.time.Duration.ofSeconds(1).toNanos();
@@ -210,13 +187,19 @@ class TaskRpcWaitRegistryTest {
                 break;
             }
         }
-        ResponseEntity<TaskRpcCallResponse> response =
-                (ResponseEntity<TaskRpcCallResponse>) deferred.getResult();
+        ResponseEntity<TaskRpcCallResponse> response = result(deferred);
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().status().wireValue())
-                .isEqualTo("succeeded");
+        assertThat(response.getBody().results().get(messageId).status()
+                .wireValue()).isEqualTo("succeeded");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ResponseEntity<TaskRpcCallResponse> result(
+            DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred
+    ) {
+        return (ResponseEntity<TaskRpcCallResponse>) deferred.getResult();
     }
 
     private static TaskRpcProperties properties(int maxWaiters) {

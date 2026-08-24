@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -105,65 +104,74 @@ def run_demo(
         raise ValueError("wait timeout must be in 1..60000 milliseconds")
 
     client = RuntimeApiClient(server_base_url, request_timeout_seconds)
-    results = [
-        call_capability(
-            client=client,
-            event_code=event_code,
-            payload=payload,
-            wait_timeout_millis=wait_timeout_millis,
-        )
-        for event_code, payload in CAPABILITY_CALLS
-    ]
+    results = call_capabilities(
+        client=client,
+        wait_timeout_millis=wait_timeout_millis,
+    )
     return {
         "workerGroupId": WORKER_GROUP_ID,
         "results": results,
     }
 
 
-def call_capability(
+def call_capabilities(
     *,
     client: RuntimeApiClient,
-    event_code: str,
-    payload: dict[str, Any],
     wait_timeout_millis: int,
-) -> dict[str, Any]:
-    message_id = str(uuid.uuid4())
-    operation = f"workerGroupItem.call[{event_code}]"
+) -> list[dict[str, Any]]:
+    calls = [
+        (str(uuid.uuid4()), event_code, payload)
+        for event_code, payload in CAPABILITY_CALLS
+    ]
+    operation = "workerGroupItems.call"
     call = client.send(
         "POST",
         "/api/v1/worker-groups/"
         f"{quote(WORKER_GROUP_ID, safe='')}/items:call",
         {
-            "item": {
-                "messageId": message_id,
-                "eventCode": event_code,
-                "createdAtMillis": int(time.time() * 1000),
-                "payload": dict(payload),
-                "allocationRule": {},
-            },
+            "items": [
+                {
+                    "messageId": message_id,
+                    "eventCode": event_code,
+                    "payload": dict(payload),
+                    "allocationRule": {},
+                }
+                for message_id, event_code, payload in calls
+            ],
             "waitTimeoutMillis": wait_timeout_millis,
         },
         operation,
     )
     response_body = require_status(call, 200, operation)
-    if response_body.get("status") != "succeeded":
-        raise RuntimeError(f"{operation} did not return succeeded")
-    encoded_result = response_body.get("opaqueResultPayload")
-    if not isinstance(encoded_result, str) or not encoded_result:
-        raise RuntimeError(f"{operation} result payload is missing")
-    try:
-        result = json.loads(encoded_result)
-    except json.JSONDecodeError as error:
-        raise RuntimeError(
-            f"{operation} returned invalid result JSON"
-        ) from error
-    if not isinstance(result, dict):
-        raise RuntimeError(f"{operation} result must be a JSON object")
-    return {
-        "messageId": message_id,
-        "eventCode": event_code,
-        "result": result,
-    }
+    observed = response_body.get("results")
+    if not isinstance(observed, dict):
+        raise RuntimeError(f"{operation} results are missing")
+    results: list[dict[str, Any]] = []
+    for message_id, event_code, _ in calls:
+        item_result = observed.get(message_id)
+        if not isinstance(item_result, dict):
+            raise RuntimeError(f"{operation} omitted {message_id}")
+        if item_result.get("status") != "succeeded":
+            raise RuntimeError(f"{operation} did not return succeeded")
+        encoded_result = item_result.get("opaqueResultPayload")
+        if not isinstance(encoded_result, str) or not encoded_result:
+            raise RuntimeError(f"{operation} result payload is missing")
+        try:
+            result = json.loads(encoded_result)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                f"{operation} returned invalid result JSON"
+            ) from error
+        if not isinstance(result, dict):
+            raise RuntimeError(f"{operation} result must be a JSON object")
+        results.append(
+            {
+                "messageId": message_id,
+                "eventCode": event_code,
+                "result": result,
+            }
+        )
+    return results
 
 
 def main() -> None:

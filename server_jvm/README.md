@@ -85,14 +85,34 @@ error; the Adapter (`23005`) or Worker (`3302`) returns an observed execution
 result. Future API Session authorization may restrict caller/target/event
 access before this use case, but it is not a DIRECT_CALL event whitelist.
 
-Generic public Task creation has no profile selector. Every request creates
-only `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; its create, append, result,
-approve and close routes treat internal Task Call Tasks as not found.
+Generic public Task creation is scoped by an existing WorkerGroup and has no
+profile selector:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/tasks
+```
+
+The request contains only allocation and numeric Task configuration. Server
+generates the `task-{UUID}` coordinate and creates
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; callers do not supply either Task ID
+or WorkerGroup ID in the body. Its append, result, approve and close routes
+continue to use `/api/v1/tasks/{taskId}/...` and treat internal Task Call Tasks
+as not found.
+
+```json
+{
+  "allocationRule": {},
+  "priority": 50,
+  "maximumCandidateWorkers": 10,
+  "maxRetryTimes": 3
+}
+```
 
 Every registered WorkerGroup has the Group-scoped Task Call surfaces:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}:register
+POST /api/v1/worker-groups/{workerGroupId}/tasks
 POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/worker-groups/{workerGroupId}/item-results:load
 ```
@@ -109,12 +129,35 @@ one transaction. If Task provisioning fails after Group creation, the Group
 remains and the request fails; retrying the exact Group declaration re-reads
 owner truth and converges the interrupted registration.
 
-`items:call` submits once and synchronously waits within the caller's bounded
-`waitTimeoutMillis`. HTTP `200` carries `succeeded` and the opaque result;
-HTTP `202` carries `pending`, meaning only that the wait ended before a success
-was observed. The caller can later read the same Message IDs through the
-WorkerGroup-scoped result route. Neither route selects a Worker; the optional
-Item allocation rule remains Kernel scheduling input.
+Public Item requests contain caller-owned `messageId`, Event Name, Payload,
+optional priority and optional `ttlMillis`. Server stamps creation time and
+derives the absolute expiry. Finite Task append forbids an Item allocation
+rule; WorkerGroup Task Call requires an allocation-rule object, where `{}`
+means no Worker restriction inside the Group.
+
+`items:call` accepts `1..100` Items, submits the bounded batch once and
+synchronously waits within the caller's `waitTimeoutMillis`. The response is a
+Message-ID-keyed result map. HTTP `200` means every entry is `succeeded`; HTTP
+`202` marks only unobserved entries as `not_observed`, without inferring their
+runtime state. Duplicate Message IDs in one request use the latest Item and
+produce one response entry. The caller can later read the same Message IDs
+through the WorkerGroup-scoped result route. Neither route selects a Worker;
+the Item allocation rule remains Kernel scheduling input.
+
+```json
+{
+  "items": [
+    {
+      "messageId": "caller-message-001",
+      "eventCode": "extension.worker.string.md5",
+      "payload": {"value": "hello"},
+      "ttlMillis": 30000,
+      "allocationRule": {}
+    }
+  ],
+  "waitTimeoutMillis": 30000
+}
+```
 
 ## WorkerGroup And Worker Preparation
 

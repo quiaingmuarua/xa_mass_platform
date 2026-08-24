@@ -28,13 +28,16 @@ public final class TaskDataService {
 
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
+    private final TaskItemMapper taskItems;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
-            TaskResourceCatalog taskCatalog
+            TaskResourceCatalog taskCatalog,
+            TaskItemMapper taskItems
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
+        this.taskItems = taskItems;
     }
 
     public TaskItemsAppendResponse appendFiniteTaskItems(
@@ -75,14 +78,14 @@ public final class TaskDataService {
                     String,
                     TaskItemAppendResult
                     >();
+            long createdAtMillis = taskItems.nowMillis();
             for (Map.Entry<String, TaskItemRequest> entry
                     : latest.entrySet()) {
                 try {
-                    validateRuleLocation(
-                            descriptor,
-                            entry.getValue().allocationRule()
-                    );
-                    validItems.add(toItem(entry.getValue()));
+                    validItems.add(taskItems.finiteItem(
+                            entry.getValue(),
+                            createdAtMillis
+                    ));
                 } catch (IllegalArgumentException error) {
                     results.put(
                             entry.getKey(),
@@ -174,38 +177,6 @@ public final class TaskDataService {
                 == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
                 && descriptor.idleDisposition()
                 == TaskRuntime.TaskIdleDisposition.CLOSE_WHEN_IDLE;
-    }
-
-    private static void validateRuleLocation(
-            TaskDescriptor descriptor,
-            Map<String, Object> rule
-    ) {
-        if (descriptor.workerAllocationMechanism()
-                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-            if (rule != null) {
-                throw new IllegalArgumentException(
-                        "PRECOMPUTED_TASK_RULE forbids TaskItem allocationRule"
-                );
-            }
-            return;
-        }
-        if (rule == null) {
-            throw new IllegalArgumentException(
-                    "DIRECT_ITEM_RULE requires a TaskItem allocationRule"
-            );
-        }
-    }
-
-    private static TaskItem toItem(TaskItemRequest item) {
-        return new TaskItem(
-                item.messageId(),
-                item.eventCode(),
-                item.createdAtMillis(),
-                item.payload(),
-                item.priority(),
-                item.expireAtMillis(),
-                item.allocationRule()
-        );
     }
 
     private static LinkedHashMap<String, TaskItemRequest> latestItems(

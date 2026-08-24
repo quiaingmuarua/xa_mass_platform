@@ -19,34 +19,36 @@ class FakeRuntimeApiClient:
 
     def send(self, method: str, path: str, body: object, operation: str):
         self.requests.append((method, path, body, operation))
-        event_code = body["item"]["eventCode"]
-        expected_operation = f"workerGroupItem.call[{event_code}]"
-        if operation != expected_operation:
+        if operation != "workerGroupItems.call":
             raise AssertionError(operation)
-        if event_code == self.fail_event_code:
-            raise RuntimeError("scripted call failure")
-        if event_code == "extension.worker.android.state.read":
-            result = {"counter": 7, "sdkInt": 33}
-        elif event_code == "extension.worker.android.battery.read":
-            result = {
-                "available": True,
-                "capacityPercent": 82,
-                "charging": False,
-            }
-        elif event_code == "extension.worker.android.string.digest":
-            result = {
-                "algorithm": "MD5",
-                "input": "hello",
-                "digest": "5d41402abc4b2a76b9719d911017c592",
-            }
-        else:
-            raise AssertionError(event_code)
-        return run_demo.ApiResponse(
-            200,
-            {
+        results = {}
+        for item in body["items"]:
+            event_code = item["eventCode"]
+            if event_code == self.fail_event_code:
+                raise RuntimeError("scripted call failure")
+            if event_code == "extension.worker.android.state.read":
+                result = {"counter": 7, "sdkInt": 33}
+            elif event_code == "extension.worker.android.battery.read":
+                result = {
+                    "available": True,
+                    "capacityPercent": 82,
+                    "charging": False,
+                }
+            elif event_code == "extension.worker.android.string.digest":
+                result = {
+                    "algorithm": "MD5",
+                    "input": "hello",
+                    "digest": "5d41402abc4b2a76b9719d911017c592",
+                }
+            else:
+                raise AssertionError(event_code)
+            results[item["messageId"]] = {
                 "status": "succeeded",
                 "opaqueResultPayload": json.dumps(result),
-            },
+            }
+        return run_demo.ApiResponse(
+            200,
+            {"results": results},
         )
 
 
@@ -69,29 +71,28 @@ class RunDemoTest(unittest.TestCase):
 
         client = FakeRuntimeApiClient.last_instance
         self.assertIsNotNone(client)
-        self.assertEqual(3, len(client.requests))
+        self.assertEqual(1, len(client.requests))
         expected_payloads = dict(run_demo.CAPABILITY_CALLS)
+        method, path, call_body, operation = client.requests[0]
+        self.assertEqual("POST", method)
+        self.assertEqual(
+            "/api/v1/worker-groups/android-demo-workers/items:call",
+            path,
+        )
+        self.assertEqual("workerGroupItems.call", operation)
         event_codes = []
-        for method, path, call_body, operation in client.requests:
-            self.assertEqual("POST", method)
-            self.assertEqual(
-                "/api/v1/worker-groups/android-demo-workers/items:call",
-                path,
-            )
-            event_code = call_body["item"]["eventCode"]
+        for item in call_body["items"]:
+            event_code = item["eventCode"]
             event_codes.append(event_code)
-            self.assertEqual(
-                f"workerGroupItem.call[{event_code}]",
-                operation,
-            )
-            self.assertEqual({}, call_body["item"]["allocationRule"])
+            self.assertEqual({}, item["allocationRule"])
             self.assertEqual(
                 expected_payloads[event_code],
-                call_body["item"]["payload"],
+                item["payload"],
             )
-            self.assertNotIn("workerId", call_body["item"])
-            self.assertNotIn("workerGroupId", call_body["item"])
-            self.assertNotIn("taskId", call_body)
+            self.assertNotIn("workerId", item)
+            self.assertNotIn("workerGroupId", item)
+            self.assertNotIn("createdAtMillis", item)
+        self.assertNotIn("taskId", call_body)
         self.assertEqual(list(run_demo.EVENT_CODES), event_codes)
         self.assertEqual(
             list(run_demo.EVENT_CODES),
@@ -129,10 +130,7 @@ class RunDemoTest(unittest.TestCase):
                 )
 
         self.assertEqual(
-            [
-                "workerGroupItem.call[extension.worker.android.state.read]",
-                "workerGroupItem.call[extension.worker.android.battery.read]",
-            ],
+            ["workerGroupItems.call"],
             [
                 request[3]
                 for request in FakeRuntimeApiClient.last_instance.requests

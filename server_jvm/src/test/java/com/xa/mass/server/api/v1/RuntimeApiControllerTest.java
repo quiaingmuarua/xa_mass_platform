@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,6 +43,9 @@ import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalStatus;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseResult;
 import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseStatus;
 import com.xa.mass.server.taskdata.TaskDataService;
+import com.xa.mass.server.taskdata.TaskCreationService;
+import com.xa.mass.server.taskdata.TaskIdGenerator;
+import com.xa.mass.server.taskdata.TaskItemMapper;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
@@ -205,15 +209,18 @@ class RuntimeApiControllerTest {
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
+        TaskItemMapper taskItems = new TaskItemMapper();
         TaskDataService taskData = new TaskDataService(
                 taskRuntime,
-                taskCatalog
+                taskCatalog,
+                taskItems
         );
         TaskRpcProperties rpcProperties = rpcProperties();
         TaskRpcCallService taskRpc = new TaskRpcCallService(
                 taskCallSubmission,
                 taskRuntime,
                 new TaskRpcWaitRegistry(rpcProperties),
+                taskItems,
                 rpcProperties
         );
         WorkerGroupTaskCallRegistrationService registrations =
@@ -243,12 +250,18 @@ class RuntimeApiControllerTest {
                                 )
                         ),
                         new TaskControlController(
-                                taskRuntime,
                                 taskLifecycle,
                                 taskCatalog
                         ),
                         new TaskDataController(taskData),
-                        new WorkerGroupTaskController(taskCall)
+                        new WorkerGroupTaskController(
+                                taskCall,
+                                new TaskCreationService(
+                                        workerCatalog,
+                                        taskRuntime,
+                                        new TaskIdGenerator()
+                                )
+                        )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -387,22 +400,34 @@ class RuntimeApiControllerTest {
 
     @Test
     void exposesVersionedTaskCommandsAndWrapsItemResults() throws Exception {
-        mockMvc.perform(post("/api/v1/tasks")
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/tasks"
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "taskId": "task-1",
-                                  "workerGroupId": "phone-tools",
-                                  "allocationRule": {},
-                                  "config": {
-                                    "priority": "0",
-                                    "maximumCandidateWorkers": "1",
-                                    "maxRetryTimes": "3"
-                                  }
+                                  "allocationRule": {}
                                 }
                                 """))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.taskId").value(matchesPattern(
+                        "task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                                + "[0-9a-f]{4}-[0-9a-f]{12}"
+                )))
                 .andExpect(jsonPath("$.status").value("created"));
+
+        ArgumentCaptor<TaskDescriptor> descriptorCaptor =
+                ArgumentCaptor.forClass(TaskDescriptor.class);
+        verify(taskRuntime).createTask(descriptorCaptor.capture());
+        assertThat(descriptorCaptor.getValue().workerGroupId())
+                .isEqualTo("phone-tools");
+        assertThat(descriptorCaptor.getValue().config()).containsExactlyInAnyOrderEntriesOf(
+                Map.of(
+                        "priority", "50",
+                        "maximumCandidateWorkers", "10",
+                        "maxRetryTimes", "3"
+                )
+        );
 
         mockMvc.perform(post("/api/v1/tasks/task-1/approve"))
                 .andExpect(status().isOk())
@@ -419,8 +444,8 @@ class RuntimeApiControllerTest {
                                   "items": [{
                                     "messageId": "message-1",
                                     "eventCode": "telecom.phone.inspect",
-                                    "createdAtMillis": 1000,
-                                    "payload": {"phoneNumber": "+14155552671"}
+                                    "payload": {"phoneNumber": "+14155552671"},
+                                    "ttlMillis": 30000
                                   }]
                                 }
                                 """))
@@ -433,7 +458,13 @@ class RuntimeApiControllerTest {
                 ArgumentCaptor.forClass(List.class);
         verify(taskRuntime).appendItems(eq("task-1"), itemCaptor.capture());
         assertThat(itemCaptor.getValue()).singleElement()
-                .satisfies(item -> assertThat(item.priority()).isEqualTo(5));
+                .satisfies(item -> {
+                    assertThat(item.priority()).isEqualTo(5);
+                    assertThat(item.createdAtMillis()).isPositive();
+                    assertThat(item.expireAtMillis()).isEqualTo(
+                            item.createdAtMillis() + 30_000
+                    );
+                });
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -449,40 +480,67 @@ class RuntimeApiControllerTest {
     @Test
     void taskCreateSemanticErrorsReturnInvalidWithoutCallingOwner()
             throws Exception {
-        mockMvc.perform(post("/api/v1/tasks")
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/tasks"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/tasks"
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "taskId": "task-missing-rule",
-                                  "workerGroupId": "phone-tools",
-                                  "config": {
-                                    "priority": "0",
-                                    "maximumCandidateWorkers": "1",
-                                    "maxRetryTimes": "3"
-                                  }
+                                  "allocationRule": {},
+                                  "priority": 100
                                 }
                                 """))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.status").value("invalid"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
 
         mockMvc.perform(post("/api/v1/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "taskId": "task-invalid-config",
-                                  "workerGroupId": "phone-tools",
-                                  "allocationRule": {},
-                                  "config": {
-                                    "priority": "not-decimal",
-                                    "maximumCandidateWorkers": "1",
-                                    "maxRetryTimes": "3"
-                                  }
-                                }
-                                """))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.status").value("invalid"));
+                        .content("{}"))
+                .andExpect(status().isNotFound());
 
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+    }
+
+    @Test
+    void taskCreateRequiresAnExistingWorkerGroup() throws Exception {
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/missing/tasks"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"allocationRule\":{}}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(15001));
+
+        verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
+    }
+
+    @Test
+    void taskCreateFailureKeepsTheExistingCommandResponse() throws Exception {
+        when(taskRuntime.createTask(any())).thenReturn(
+                new TaskCreationResult(
+                        TaskCreationStatus.RETRYABLE,
+                        "Task owner is unavailable"
+                )
+        );
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/tasks"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"allocationRule\":{}}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("retryable"))
+                .andExpect(jsonPath("$.reason")
+                        .value("Task owner is unavailable"))
+                .andExpect(jsonPath("$.taskId").doesNotExist());
     }
 
     @Test
@@ -501,7 +559,6 @@ class RuntimeApiControllerTest {
                                 {"items":[{
                                   "messageId":"message-internal",
                                   "eventCode":"observe",
-                                  "createdAtMillis":1000,
                                   "payload":{},
                                   "allocationRule":{}
                                 }]}
@@ -547,13 +604,12 @@ class RuntimeApiControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
-                                          "item": {
+                                          "items": [{
                                             "messageId": "message-1",
                                             "eventCode": "telecom.phone.inspect",
-                                            "createdAtMillis": 1000,
                                             "payload": {"phoneNumber": "+14155552671"},
                                             "allocationRule": {}
-                                          },
+                                          }],
                                           "waitTimeoutMillis": 1000
                                         }
                                         """)
@@ -563,10 +619,15 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(asyncDispatch(async))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("succeeded"))
+                .andExpect(jsonPath("$.results.message-1.status")
+                        .value("succeeded"))
                 .andExpect(jsonPath("$.taskId").doesNotExist())
-                .andExpect(jsonPath("$.messageId").value("message-1"))
-                .andExpect(jsonPath("$.opaqueResultPayload")
+                .andExpect(jsonPath("$.workerId").doesNotExist())
+                .andExpect(jsonPath("$.batchId").doesNotExist())
+                .andExpect(jsonPath("$.messageId").doesNotExist())
+                .andExpect(jsonPath(
+                        "$.results.message-1.opaqueResultPayload"
+                )
                         .value("{\"valid\":true}"));
 
         mockMvc.perform(post(
@@ -592,13 +653,12 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "item": {
+                                  "items": [{
                                     "messageId": "message-2",
                                     "eventCode": "event",
-                                    "createdAtMillis": 1000,
                                     "payload": {},
                                     "allocationRule": {}
-                                  }
+                                  }]
                                 }
                                 """))
                 .andExpect(status().isNotFound())
@@ -634,13 +694,12 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "item": {
+                                  "items": [{
                                     "messageId": "message-unregistered",
                                     "eventCode": "event",
-                                    "createdAtMillis": 1000,
                                     "payload": {},
                                     "allocationRule": {}
-                                  }
+                                  }]
                                 }
                                 """))
                 .andExpect(status().isNotFound())
@@ -657,10 +716,12 @@ class RuntimeApiControllerTest {
 
     @Test
     void malformedInputUsesThePublicErrorContract() throws Exception {
-        mockMvc.perform(post("/api/v1/tasks")
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/tasks"
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "bad-request")
-                        .content("{\"taskId\":\"\"}"))
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001))
                 .andExpect(jsonPath("$.requestId").value("bad-request"));

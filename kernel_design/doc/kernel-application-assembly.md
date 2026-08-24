@@ -429,6 +429,7 @@ Delivery at port `18082`:
 POST /api/v1/worker-groups/{workerGroupId}:register
 POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
 POST /api/v1/runtime-view/worker-groups:preview
+POST /api/v1/worker-groups/{workerGroupId}/tasks
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/worker-groups/{workerGroupId}/items:call
 POST /api/v1/worker-groups/{workerGroupId}/item-results:load
@@ -453,17 +454,22 @@ drift conflicts. Group create, Task create and approval are separate owner
 operations rather than a cross-key transaction. A Task-side failure may leave
 the Group created; retrying the exact registration re-reads owner truth and
 converges.
-The Group call route resolves that descriptor and submits the standard Item
-through the bounded Task Call command. WorkerGroup is the URL coordinate; it is
-not copied into the Item, and the response exposes neither the internal Task ID
-nor a selected Worker. The request waits only for its bounded interval: HTTP
-`200` reports an observed success, while HTTP `202` reports `pending`; the
-Group result route supports a later bounded read by Message ID.
+The Group call route resolves that descriptor once and submits `1..100`
+standard Items through the bounded Task Call command. WorkerGroup is the URL
+coordinate; it is not copied into an Item, and the response exposes neither
+the internal Task ID nor a selected Worker. The request waits only for its
+bounded interval: HTTP `200` means every Message ID has an observed success,
+while HTTP `202` marks only the missing entries as `not_observed`; the Group
+result route supports a later bounded read by Message ID.
 
-Generic `/api/v1/tasks` creation always assembles
-`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE` and has no mechanism/profile field.
-Its lifecycle, Item and result routes hide internal Task Call Tasks as not
-found.
+Generic Task creation is scoped by an existing WorkerGroup. Server generates
+the `task-{UUID}` coordinate and always assembles
+`PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`; the request has no Task ID,
+WorkerGroup body field, mechanism or profile selector. Public Item requests
+retain caller-owned Message IDs while Server stamps creation time and derives
+optional absolute expiry from `ttlMillis`. Lifecycle, Item and result routes
+continue under `/api/v1/tasks/{taskId}/...` and hide internal Task Call Tasks as
+not found.
 
 WorkerGroup registration is create-only control-plane setup with attached Task
 Call provisioning: an equivalent complete registration is idempotent and a

@@ -25,7 +25,6 @@ import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.TaskControlController;
-import com.xa.mass.server.api.v1.model.TaskCreateRequest;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -467,18 +466,19 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
-                runtime,
                 lifecycle,
                 catalog
         );
-        var created = controller.createTask(new TaskCreateRequest(
+        var created = runtime.createTask(new TaskDescriptor(
                 "public-task",
                 "phone-tools",
+                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
+                TaskIdleDisposition.CLOSE_WHEN_IDLE,
                 Map.of(),
                 config(2)
         ));
 
-        assertThat(created.getStatusCode().value()).isEqualTo(201);
+        assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
         assertThat(controller.approveTask("public-task")
                 .getStatusCode().value()).isEqualTo(200);
         assertThat(controller.closeTask("public-task")

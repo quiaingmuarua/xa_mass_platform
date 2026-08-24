@@ -1,12 +1,18 @@
 package com.xa.mass.server.api.v1;
 
-import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
-import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
+import com.xa.mass.server.api.v1.model.CommandResultResponse;
+import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
+import com.xa.mass.server.api.v1.model.TaskCreateRequest;
+import com.xa.mass.server.api.v1.model.TaskCreateResponse;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
+import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
+import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
+import com.xa.mass.server.taskdata.TaskCreationService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,11 +28,41 @@ import org.springframework.web.context.request.async.DeferredResult;
 public class WorkerGroupTaskController {
 
     private final WorkerGroupTaskCallService taskCall;
+    private final TaskCreationService taskCreation;
 
     public WorkerGroupTaskController(
-            WorkerGroupTaskCallService taskCall
+            WorkerGroupTaskCallService taskCall,
+            TaskCreationService taskCreation
     ) {
         this.taskCall = taskCall;
+        this.taskCreation = taskCreation;
+    }
+
+    @PostMapping("/{workerGroupId}/tasks")
+    public ResponseEntity<?> createTask(
+            @PathVariable @NotBlank String workerGroupId,
+            @Valid @RequestBody TaskCreateRequest request
+    ) {
+        TaskCreateResponse response = taskCreation.create(
+                workerGroupId,
+                request
+        );
+        HttpStatus status = switch (response.status()) {
+            case CREATED -> HttpStatus.CREATED;
+            case CONFLICT -> HttpStatus.CONFLICT;
+            case INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
+            case RETRYABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            default -> throw new IllegalStateException(
+                    "Unexpected Task creation status: " + response.status()
+            );
+        };
+        Object body = response.status() == RuntimeCommandStatus.CREATED
+                ? response
+                : new CommandResultResponse(
+                        response.status(),
+                        response.reason()
+                );
+        return ResponseEntity.status(status).body(body);
     }
 
     @PostMapping("/{workerGroupId}/items:call")

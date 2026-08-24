@@ -445,9 +445,12 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
     def test_runtime_client_rejects_uncorrelated_task_response(self) -> None:
         response = FakeHttpResponse(
             {
-                "status": "succeeded",
-                "messageId": OTHER_WORKER_ID,
-                "opaqueResultPayload": "{}",
+                "results": {
+                    OTHER_WORKER_ID: {
+                        "status": "succeeded",
+                        "opaqueResultPayload": "{}",
+                    }
+                },
             }
         )
         with patch.object(
@@ -462,7 +465,7 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 acceptance.ProofFailure,
-                "requested item",
+                "Task Call result",
             ):
                 client.task_call(acceptance.STRING_DIGEST_EVENT, {})
 
