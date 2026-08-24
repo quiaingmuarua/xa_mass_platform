@@ -17,7 +17,6 @@ from typing import Any
 
 _MARKER_NAME = ".xa-mass-runtime.json"
 _SHUTDOWN_TIMEOUT_SECONDS = 15
-_OWNED_PROFILE = "scenario-workers"
 _PYTHON_REQUIREMENT_PATTERN = re.compile(
     r">=(\d+)\.(\d+)\.(\d+),<(\d+)\.(\d+)"
 )
@@ -61,8 +60,8 @@ def _load_manifest(root: Path) -> dict[str, Any]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise LauncherError(f"Runtime manifest is unreadable: {path}") from error
-    if not isinstance(document, dict) or document.get("schemaVersion") != 2:
-        raise LauncherError("Runtime manifest schemaVersion must be 2")
+    if not isinstance(document, dict) or document.get("schemaVersion") != 3:
+        raise LauncherError("Runtime manifest schemaVersion must be 3")
     required = {
         "version": str,
         "gitCommit": str,
@@ -70,7 +69,8 @@ def _load_manifest(root: Path) -> dict[str, Any]:
         "kernelWheel": str,
         "javaVersion": int,
         "pythonRequires": str,
-        "springProfile": str,
+        "defaultSpringProfile": str,
+        "springProfiles": list,
         "frontendIncluded": bool,
     }
     for name, value_type in required.items():
@@ -79,8 +79,14 @@ def _load_manifest(root: Path) -> dict[str, Any]:
             value_type is str and not value
         ):
             raise LauncherError(f"Runtime manifest field is invalid: {name}")
-    if document["springProfile"] != _OWNED_PROFILE:
-        raise LauncherError("Runtime manifest does not own scenario-workers")
+    profiles = document["springProfiles"]
+    if (
+        not profiles
+        or any(not isinstance(profile, str) or not profile for profile in profiles)
+        or len(profiles) != len(set(profiles))
+        or document["defaultSpringProfile"] not in profiles
+    ):
+        raise LauncherError("Runtime manifest Spring Profiles are invalid")
     worker_host = document.get("scenarioWorkerHost")
     if (
         not isinstance(worker_host, dict)
@@ -225,7 +231,7 @@ def _forwarded_arguments(arguments: list[str]) -> list[str]:
             "--spring.profiles.active="
         ):
             raise LauncherError(
-                "The Runtime distribution owns spring.profiles.active=scenario-workers"
+                "The Runtime distribution owns spring.profiles.active"
             )
         if any(
             argument == owned or argument.startswith(f"{owned}=")
@@ -235,6 +241,26 @@ def _forwarded_arguments(arguments: list[str]) -> list[str]:
                 f"The Runtime distribution owns Spring argument: {argument.split('=', 1)[0]}"
             )
     return forwarded
+
+
+def _launch_arguments(
+    arguments: list[str], manifest: dict[str, Any]
+) -> tuple[str, list[str]]:
+    profile = manifest["defaultSpringProfile"]
+    remaining = list(arguments)
+    if remaining and remaining[0] == "--profile":
+        if len(remaining) < 2 or not remaining[1]:
+            raise LauncherError("--profile requires one Runtime Profile name")
+        profile = remaining[1]
+        remaining = remaining[2:]
+    elif remaining and remaining[0].startswith("--profile="):
+        profile = remaining[0].split("=", 1)[1]
+        remaining = remaining[1:]
+        if not profile:
+            raise LauncherError("--profile requires one Runtime Profile name")
+    if profile not in manifest["springProfiles"]:
+        raise LauncherError(f"Runtime Profile is not published: {profile}")
+    return profile, _forwarded_arguments(remaining)
 
 
 def _resolve_pacer_config(runtime_root: Path) -> Path:
@@ -255,6 +281,7 @@ def _java_command(
     runtime_root: Path,
     manifest: dict[str, Any],
     pacer_python: Path,
+    profile: str,
     forwarded: list[str],
 ) -> list[str]:
     java = os.environ.get("XA_MASS_JAVA_EXECUTABLE", "java")
@@ -271,7 +298,7 @@ def _java_command(
         "-jar",
         str(server_jar),
         *forwarded,
-        f"--spring.profiles.active={_OWNED_PROFILE}",
+        f"--spring.profiles.active={profile}",
         f"--xa.mass.kernel-pacer.python-executable={pacer_python}",
         f"--xa.mass.kernel-pacer.working-directory={runtime_root}",
         f"--xa.mass.kernel-pacer.config-path={config}",
@@ -303,12 +330,13 @@ def main(arguments: list[str] | None = None) -> int:
         kernel_wheel = _safe_member(
             root, manifest["kernelWheel"], name="kernelWheel"
         )
-        forwarded = _forwarded_arguments(
-            list(sys.argv[1:] if arguments is None else arguments)
+        profile, forwarded = _launch_arguments(
+            list(sys.argv[1:] if arguments is None else arguments),
+            manifest,
         )
         pacer_python = _ensure_venv(root, manifest, kernel_wheel.parent)
         return _run_java(
-            _java_command(root, manifest, pacer_python, forwarded),
+            _java_command(root, manifest, pacer_python, profile, forwarded),
             root,
         )
     except LauncherError as error:

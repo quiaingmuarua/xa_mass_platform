@@ -343,6 +343,80 @@ def _prove_runtime(
             _stop_process(server_process)
 
 
+def _prove_agentforge_profile(
+    runtime_root: Path,
+    redis_url: str,
+    scope: str,
+    proof_root: Path,
+) -> None:
+    server_port = _free_port()
+    adapter_port = _free_port()
+    while adapter_port == server_port:
+        adapter_port = _free_port()
+    base_url = f"http://127.0.0.1:{server_port}"
+    log_path = proof_root / "agentforge-server.log"
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PYTHONNOUSERSITE"] = "1"
+    environment["XA_MASS_REDIS_URL"] = redis_url
+    environment["XA_MASS_REDIS_SCOPE"] = scope
+    environment["XA_MASS_AGENTFORGE_SERVER_PORT"] = str(server_port)
+    environment["XA_MASS_AGENTFORGE_ADAPTER_PORT"] = str(adapter_port)
+    flags: dict[str, Any] = {}
+    if os.name == "nt":
+        flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        flags["start_new_session"] = True
+    with log_path.open("wb") as log:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(runtime_root / "bin/run-server.py"),
+                "--profile",
+                "agentforge",
+            ],
+            cwd=proof_root,
+            env=environment,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            **flags,
+        )
+        try:
+            _wait_for_readiness(base_url, process)
+            status, configured_payload, _ = _request(
+                "GET", f"{base_url}/api/v1/runtime-view/configured-resources"
+            )
+            if status != 200 or json.loads(configured_payload).get("entries") != []:
+                raise RuntimeError(
+                    "AgentForge Profile must not seed configured resources"
+                )
+            status, preview_payload, _ = _request(
+                "POST",
+                f"{base_url}/api/v1/runtime-view/worker-groups:preview",
+                {"sampleLimit": 100},
+            )
+            preview = json.loads(preview_payload)
+            if (
+                status != 200
+                or preview.get("returnedCount") != 0
+                or preview.get("workerGroups") != []
+            ):
+                raise RuntimeError(
+                    "AgentForge Profile must start with an empty WorkerGroup catalog"
+                )
+            with socket.create_connection(
+                ("127.0.0.1", adapter_port), timeout=5
+            ):
+                pass
+            print(
+                "AgentForge Runtime Profile proof succeeded: "
+                f"scope={scope}, serverPort={server_port}, "
+                f"adapterPort={adapter_port}"
+            )
+        finally:
+            _stop_process(process)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", type=Path, required=True)
@@ -352,6 +426,7 @@ def main() -> int:
     scope = arguments.scope or f"test_distribution_{uuid.uuid4().hex}"
     if _SCOPE.fullmatch(scope) is None:
         parser.error("--scope must be an exact lowercase test_* scope")
+    agentforge_scope = f"{scope}_agentforge"
 
     repository_root = Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix="xa-mass-runtime-proof-") as temporary:
@@ -365,12 +440,22 @@ def main() -> int:
                 scope,
                 proof_root,
             )
+            _prove_agentforge_profile(
+                runtime_root,
+                arguments.redis_url,
+                agentforge_scope,
+                proof_root,
+            )
         except Exception:
             for label, log_path in (
                 ("Runtime Server", proof_root / "runtime-server.log"),
                 (
                     "Scenario Worker Host",
                     proof_root / "scenario-worker-host.log",
+                ),
+                (
+                    "AgentForge Server",
+                    proof_root / "agentforge-server.log",
                 ),
             ):
                 if log_path.is_file():
@@ -390,6 +475,12 @@ def main() -> int:
                 repository_root,
                 arguments.redis_url,
                 scope,
+            )
+            _clean_scope(
+                runtime_root,
+                repository_root,
+                arguments.redis_url,
+                agentforge_scope,
             )
             if os.name == "nt":
                 time.sleep(1)

@@ -48,7 +48,26 @@ class RuntimeLauncherTest(unittest.TestCase):
             (root / "Scripts").mkdir()
             (root / "Scripts/python.exe").write_bytes(b"python")
 
-    def test_profile_is_fixed_and_other_spring_arguments_are_forwarded(self) -> None:
+    def test_profile_defaults_and_explicit_selection_are_manifest_owned(self) -> None:
+        manifest = {
+            "defaultSpringProfile": "scenario-workers",
+            "springProfiles": ["scenario-workers", "agentforge"],
+        }
+        self.assertEqual(
+            ("scenario-workers", []),
+            launcher._launch_arguments([], manifest),
+        )
+        self.assertEqual(
+            ("agentforge", ["--server.port=19082"]),
+            launcher._launch_arguments(
+                ["--profile", "agentforge", "--", "--server.port=19082"],
+                manifest,
+            ),
+        )
+        with self.assertRaises(launcher.LauncherError):
+            launcher._launch_arguments(
+                ["--profile", "unknown"], manifest
+            )
         self.assertEqual(
             ["--server.port=19082"],
             launcher._forwarded_arguments(["--", "--server.port=19082"]),
@@ -115,9 +134,10 @@ class RuntimeLauncherTest(unittest.TestCase):
                 root,
                 manifest,
                 root / ".runtime/python-venv/bin/python",
+                "agentforge",
                 ["--server.port=19082"],
             )
-            self.assertIn("--spring.profiles.active=scenario-workers", command)
+            self.assertIn("--spring.profiles.active=agentforge", command)
             self.assertIn("--server.port=19082", command)
             self.assertTrue(
                 any(
@@ -137,14 +157,15 @@ class RuntimeLauncherTest(unittest.TestCase):
                 "# launcher\n", encoding="utf-8"
             )
             manifest = {
-                "schemaVersion": 2,
-                "version": "0.2.0",
+                "schemaVersion": 3,
+                "version": "0.3.0",
                 "gitCommit": "a" * 40,
                 "serverJar": "lib/server.jar",
                 "kernelWheel": "kernel/wheelhouse/kernel.whl",
                 "javaVersion": 21,
                 "pythonRequires": PYTHON_REQUIRES,
-                "springProfile": "scenario-workers",
+                "defaultSpringProfile": "scenario-workers",
+                "springProfiles": ["scenario-workers", "agentforge"],
                 "frontendIncluded": True,
                 "scenarioWorkerHost": {
                     "launcher": "bin/run-scenario-workers.py",

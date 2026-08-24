@@ -20,7 +20,7 @@ boundary named below.
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and finite Task create/append/approve/export flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
-| Runtime Distribution | One versioned ZIP contains matching Server JAR, production-only Pacer wheel, hash-locked offline dependency, frontend, optional standalone Worker Host and schema-v2 manifest; outside the repository the Server reaches readiness with zero JVM Workers, the separate Host closes a managed Task Call, and stopping Host leaves Server ready | Redis 7, Java 21, Python 3.11.3 (minimum supported), Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest -PxaMassVersion=0.2.0` |
+| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11.3 (minimum supported), Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.3.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Capability Task` command reads two local text fixtures, creates two
@@ -242,23 +242,27 @@ corepack pnpm test
 corepack pnpm build
 ```
 
-Runtime Distribution builds every publishable component, checks the archive
+Runtime Distribution builds every publishable component, checks the Runtime archive
 ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
 proof extracts the ZIP to a temporary directory outside the checkout, removes
 `PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
 packaged Server against one unique `test_*` scope, loads Scalar and Frontend,
 proves both JVM Worker previews are empty, starts the packaged Host separately,
 and closes one managed String Task Call. It then stops only the Host, proves
-Server readiness remains UP, stops Server, and cleans only that exact scope:
+Server readiness remains UP. It separately launches the clean `agentforge`
+Profile, proves its empty Group catalog and one Adapter listener, stops both
+Servers, and cleans only the two exact test scopes. The Worker SDK proof checks
+the four JAR/AAR publications, sources and POM relationships, then consumes the
+extracted Maven repository from an external Android build:
 
 ```powershell
-.\gradlew.bat :distribution:server:runtimeDistributionTest `
-  "-PxaMassVersion=0.2.0"
+.\gradlew.bat "-PxaMassVersion=0.3.0" `
+  :distribution:server:runtimeDistributionTest `
+  :distribution:worker-sdk:workerSdkDistributionTest
 ```
 
-This lane proves the deployable Server boundary and optional finite Lab Host
-packaging, not Worker SDK publication, an OCI image, Redis lifecycle, or an
-Android device.
+This lane proves the deployable Server and Worker SDK publication boundaries,
+not an OCI image, Redis lifecycle, or an Android device.
 
 Documentation contract:
 

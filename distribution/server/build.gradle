@@ -174,14 +174,18 @@ tasks.register('generateRuntimeManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion   : 2,
+                        schemaVersion   : 3,
                         version         : runtimeVersion,
                         gitCommit       : resolvedGitCommit,
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
                         kernelWheel     : "kernel/wheelhouse/${expectedKernelWheel}",
                         javaVersion     : 21,
                         pythonRequires  : '>=3.11.3,<3.14',
-                        springProfile   : 'scenario-workers',
+                        defaultSpringProfile: 'scenario-workers',
+                        springProfiles  : [
+                                'scenario-workers',
+                                'agentforge'
+                        ],
                         frontendIncluded: true,
                         scenarioWorkerHost: [
                                 launcher: 'bin/run-scenario-workers.py',

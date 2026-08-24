@@ -386,6 +386,12 @@ Task Calls. Server readiness does not depend on a Worker Host. The root
 after readiness. Its finite Capability Task proof is owned by
 [`integrations/worker-capability-task`](../integrations/worker-capability-task/README.md).
 
+The checked `agentforge` profile is a separate downstream deployment preset.
+It starts exactly one `agentforge-websocket` Adapter at 18183, exposes Server
+at 18182, uses `profile_agentforge`, and has an empty configured Group manifest.
+AgentForge registers its own Groups through the public API; this Profile does
+not start or embed AgentForge or Scenario capability code.
+
 ## Configuration
 
 Default coordinates:
@@ -457,11 +463,14 @@ Java 21, Python 3.11.3 through 3.13 and external Redis are the only machine
 prerequisites:
 
 ```text
-python bin/run-server.py -- --xa.mass.redis.url=redis://127.0.0.1:6379/15
+python bin/run-server.py --profile scenario-workers -- \
+  --xa.mass.redis.url=redis://127.0.0.1:6379/15
 ```
 
-The launcher owns `scenario-workers`, its private offline venv, the absolute
-Pacer policy path and compiled frontend path. It does not start Redis or own
+The launcher defaults to `scenario-workers` and accepts `agentforge` because
+both are listed in its schema-v3 manifest. It owns the selected Profile, its
+private offline venv, the absolute Pacer policy path and compiled frontend
+path. It does not start Redis or own
 the Pacer directly; the packaged Java Server still supervises that child. It
 also never starts the optional packaged Scenario Worker Host. Use
 `bin/run-scenario-workers.py` explicitly when that finite Lab is wanted. Source

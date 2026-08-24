@@ -786,7 +786,7 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
 
   runtime-distribution:
-    name: Runtime Distribution
+    name: Runtime And Worker SDK Distribution
     needs: changes
     if: >-
       needs.changes.outputs.runtime_distribution == 'true' ||
@@ -830,22 +830,31 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - name: Build and prove unpacked Runtime archive
+      - name: Build and prove Runtime and Worker SDK archives
         run: >-
           ./gradlew --no-daemon
           :distribution:server:runtimeDistributionTest
-          -PxaMassVersion=0.2.0
-      - name: Summarize Runtime Distribution proof
+          :distribution:worker-sdk:workerSdkDistributionTest
+          -PxaMassVersion=0.3.0
+      - name: Summarize Distribution proof
         if: always()
         run: |
-          echo "- **Runtime Distribution:** ${{ job.status }}" \
+          echo "- **Runtime and Worker SDK Distribution:** ${{ job.status }}" \
             >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Runtime archive
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-server-runtime-${{ github.run_attempt }}
-          path: distribution/server/build/distributions/xa-mass-server-runtime-0.2.0.zip
+          path: distribution/server/build/distributions/xa-mass-server-runtime-0.3.0.zip
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Worker SDK archive
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: xa-mass-worker-sdk-${{ github.run_attempt }}
+          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.3.0.zip
           if-no-files-found: ignore
           retention-days: 7
 

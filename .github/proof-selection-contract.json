@@ -69,14 +69,16 @@
       "path": "transport/android-worker/src/main/java/com/xa/mass/worker/android/AndroidWorker.java",
       "lanes": [
         "android_host",
-        "android_emulator"
+        "android_emulator",
+        "runtime_distribution"
       ],
       "reason": "Android production assembly requires deterministic and real-process proofs."
     },
     {
       "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
       "lanes": [
-        "android_host"
+        "android_host",
+        "runtime_distribution"
       ],
       "reason": "Android-only test changes do not consume the Emulator gate."
     },
@@ -222,6 +224,13 @@
         "runtime_distribution"
       ],
       "reason": "Distribution assembly changes are proved from the unpacked publishable archive."
+    },
+    {
+      "path": "distribution/worker-sdk/build.gradle",
+      "lanes": [
+        "runtime_distribution"
+      ],
+      "reason": "Worker SDK assembly changes are proved from the published Maven Repository archive."
     },
     {
       "path": ".github/workflows/release-server-runtime.yml",

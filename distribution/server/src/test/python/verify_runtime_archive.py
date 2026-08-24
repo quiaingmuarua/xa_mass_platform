@@ -52,7 +52,7 @@ def verify(archive: Path, version: str) -> None:
         _require(not missing, f"runtime archive is missing: {sorted(missing)}")
 
         manifest = json.loads(runtime.read(f"{root}/manifest.json"))
-        _require(manifest.get("schemaVersion") == 2, "manifest schema mismatch")
+        _require(manifest.get("schemaVersion") == 3, "manifest schema mismatch")
         _require(manifest.get("version") == version, "manifest version mismatch")
         _require(
             re.fullmatch(r"[0-9a-f]{40}", manifest.get("gitCommit", ""))
@@ -76,8 +76,13 @@ def verify(archive: Path, version: str) -> None:
             "Python requirement mismatch",
         )
         _require(
-            manifest.get("springProfile") == "scenario-workers",
-            "Spring profile mismatch",
+            manifest.get("defaultSpringProfile") == "scenario-workers",
+            "Default Spring Profile mismatch",
+        )
+        _require(
+            manifest.get("springProfiles")
+            == ["scenario-workers", "agentforge"],
+            "Spring Profiles mismatch",
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
         _require(

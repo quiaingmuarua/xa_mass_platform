@@ -141,6 +141,8 @@ through without an event whitelist; future API Session authorization remains a
 separate owner.
 
 The default profile declares no Adapter instances and no Scenario WorkerGroup.
+The built-in `agentforge` Profile is a finite downstream preset with one
+WebSocket Adapter and no configured WorkerGroup or capability implementation.
 
 ## Worker Delivery Contract
 

@@ -142,8 +142,10 @@ supervised Python child. Spring Profile selects assembly; Redis scope selects
 the persistent data boundary. The checked Pacer JSON contains policy only and
 cannot select a different Redis universe.
 
-The shared contracts and Transport modules are repository-local artifacts,
-not published SDKs. The superseded Java platform exists only at the annotated
+The shared Worker contracts are also published as one version-locked Worker
+SDK Maven Repository ZIP containing the Delivery Contract, Worker Core,
+Android Worker and Android Capability HTTP JAR/AAR artifacts. The superseded
+Java platform exists only at the annotated
 tag `legacy-java-platform-final-2026-07-24` and carries no compatibility
 obligation.
 
@@ -151,10 +153,11 @@ The Server deployment boundary is publishable independently from Worker SDKs:
 `xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
 production-only Python Pacer wheel and offline dependency, the compiled
 frontend, and the optional Scenario Worker Host. Its two launchers are
-independent: `run-server.py` always uses the checked `scenario-workers` profile
-and never starts Workers; `run-scenario-workers.py` starts only the finite JVM
-Lab Host. Consumers such as AgentForge use only the Server launcher and vary
-data and port coordinates through ordinary Spring arguments and public APIs.
+independent: `run-server.py` defaults to the checked `scenario-workers` profile,
+may select the built-in clean `agentforge` profile, and never starts Workers;
+`run-scenario-workers.py` starts only the finite JVM Lab Host. AgentForge uses
+the clean Profile plus public APIs and consumes the matching Worker SDK Release
+instead of copying XA Mass source modules.
 
 ## Reading Path
 

@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.library'
+    id 'maven-publish'
 }
 
 base {
@@ -23,6 +24,31 @@ android {
     testOptions {
         unitTests {
             includeAndroidResources = true
+        }
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            workerSdk(MavenPublication) {
+                from components.release
+                artifactId = 'xa-mass-android-capability-http'
+            }
+        }
+        repositories {
+            maven {
+                name = 'workerSdk'
+                url = rootProject.layout.projectDirectory.dir(
+                        'distribution/worker-sdk/build/repository'
+                )
+            }
         }
     }
 }

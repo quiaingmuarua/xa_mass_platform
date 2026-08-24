@@ -1,4 +1,4 @@
-name: Release Server Runtime
+name: Release XA Mass Runtime And Worker SDK
 
 on:
   push:
@@ -9,12 +9,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-server-runtime-${{ github.ref }}
+  group: release-xa-mass-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish immutable Server Runtime
+    name: Publish immutable Runtime and Worker SDK
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -72,27 +72,35 @@ jobs:
           node-version: 22.19.0
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - name: Build and prove release archive
+      - name: Build and prove release archives
         shell: bash
         run: |
           ./gradlew --no-daemon \
             :distribution:server:runtimeDistributionTest \
+            :distribution:worker-sdk:workerSdkDistributionTest \
             -PxaMassVersion="$XA_MASS_VERSION"
-      - name: Generate release checksum
+      - name: Generate release checksums
         id: asset
         shell: bash
         run: |
-          asset="distribution/server/build/distributions/xa-mass-server-runtime-${XA_MASS_VERSION}.zip"
-          test -f "$asset"
-          sha256sum "$asset" > "$asset.sha256"
-          echo "archive=$asset" >> "$GITHUB_OUTPUT"
-          echo "checksum=$asset.sha256" >> "$GITHUB_OUTPUT"
+          runtime="distribution/server/build/distributions/xa-mass-server-runtime-${XA_MASS_VERSION}.zip"
+          sdk="distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-${XA_MASS_VERSION}.zip"
+          test -f "$runtime"
+          test -f "$sdk"
+          sha256sum "$runtime" > "$runtime.sha256"
+          sha256sum "$sdk" > "$sdk.sha256"
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          echo "runtime_checksum=$runtime.sha256" >> "$GITHUB_OUTPUT"
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+          echo "sdk_checksum=$sdk.sha256" >> "$GITHUB_OUTPUT"
       - name: Publish immutable GitHub Release
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "${{ steps.asset.outputs.archive }}" \
-            "${{ steps.asset.outputs.checksum }}" \
+            "${{ steps.asset.outputs.runtime }}" \
+            "${{ steps.asset.outputs.runtime_checksum }}" \
+            "${{ steps.asset.outputs.sdk }}" \
+            "${{ steps.asset.outputs.sdk_checksum }}" \
             --verify-tag \
-            --title "XA Mass Server Runtime $GITHUB_REF_NAME" \
+            --title "XA Mass $GITHUB_REF_NAME" \
             --generate-notes

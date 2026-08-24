@@ -7,6 +7,6 @@ plugins {
 allprojects {
     group = 'com.xa.mass'
     version = providers.gradleProperty('xaMassVersion')
-            .orElse('0.2.0-SNAPSHOT')
+            .orElse('0.3.0-SNAPSHOT')
             .get()
 }
