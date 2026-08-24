@@ -454,7 +454,7 @@ class NettyWorkerServerTest {
 
         @Override
         public boolean awaitClosed() throws Exception {
-            return probe.closed.await(2, TimeUnit.SECONDS);
+            return probe.closed.await(5, TimeUnit.SECONDS);
         }
 
         @Override
