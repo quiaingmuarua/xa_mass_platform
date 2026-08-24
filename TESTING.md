@@ -20,7 +20,7 @@ boundary named below.
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The read-only Runtime views and finite Task create/append/approve/export flow remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
-| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11.3 (minimum supported), Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.3.0` |
+| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11 or newer, Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.3.1` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The `Capability Task` command reads two local text fixtures, creates two
@@ -256,7 +256,7 @@ the four JAR/AAR publications, sources and POM relationships, then consumes the
 extracted Maven repository from an external Android build:
 
 ```powershell
-.\gradlew.bat "-PxaMassVersion=0.3.0" `
+.\gradlew.bat "-PxaMassVersion=0.3.1" `
   :distribution:server:runtimeDistributionTest `
   :distribution:worker-sdk:workerSdkDistributionTest
 ```

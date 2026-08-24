@@ -32,7 +32,7 @@ WORKER_SPEC = importlib.util.spec_from_file_location(
 assert WORKER_SPEC is not None and WORKER_SPEC.loader is not None
 worker_launcher = importlib.util.module_from_spec(WORKER_SPEC)
 WORKER_SPEC.loader.exec_module(worker_launcher)
-PYTHON_REQUIRES = ">=3.11.3,<3.14"
+PYTHON_REQUIRES = ">=3.11"
 
 
 class RuntimeLauncherTest(unittest.TestCase):
@@ -84,15 +84,25 @@ class RuntimeLauncherTest(unittest.TestCase):
         with self.assertRaises(launcher.LauncherError):
             launcher._forwarded_arguments(["--server.port=19082"])
 
-    def test_python_requirement_has_explicit_supported_bounds(self) -> None:
+    def test_python_requirement_has_minimum_without_minor_ceiling(self) -> None:
         self.assertEqual(
-            ((3, 11, 3), (3, 14, 0)),
-            launcher._python_requirement_bounds(PYTHON_REQUIRES),
+            (3, 11, 0),
+            launcher._python_minimum_version(PYTHON_REQUIRES),
         )
-        for requirement in ("3.13", ">=3.11", ">=3.14.0,<3.14"):
+        self.assertGreaterEqual(
+            (3, 14, 0),
+            launcher._python_minimum_version(PYTHON_REQUIRES),
+        )
+        for requirement in (
+            "3.13",
+            ">=3",
+            ">=3.11.3",
+            ">=3.11,<3.14",
+            ">3.11",
+        ):
             with self.subTest(requirement=requirement):
                 with self.assertRaises(launcher.LauncherError):
-                    launcher._python_requirement_bounds(requirement)
+                    launcher._python_minimum_version(requirement)
 
     def test_distribution_owned_runtime_paths_cannot_be_overridden(self) -> None:
         for argument in launcher._OWNED_SPRING_ARGUMENTS:
@@ -158,7 +168,7 @@ class RuntimeLauncherTest(unittest.TestCase):
             )
             manifest = {
                 "schemaVersion": 3,
-                "version": "0.3.0",
+                "version": "0.3.1",
                 "gitCommit": "a" * 40,
                 "serverJar": "lib/server.jar",
                 "kernelWheel": "kernel/wheelhouse/kernel.whl",
@@ -229,6 +239,30 @@ class RuntimeLauncherTest(unittest.TestCase):
                 second = launcher._ensure_venv(root, manifest, wheelhouse)
             self.assertEqual(first, second)
             self.assertEqual(1, len(builder.created))
+            self.assertEqual(1, install.call_count)
+
+    def test_future_python_minor_is_not_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            wheelhouse = root / "kernel/wheelhouse"
+            wheelhouse.mkdir(parents=True)
+            (wheelhouse / "runtime.whl").write_bytes(b"wheel")
+            builder = self.FakeVenvBuilder()
+            with patch.object(
+                launcher.sys,
+                "version_info",
+                (3, 14, 0),
+            ), patch.object(
+                launcher.venv,
+                "EnvBuilder",
+                return_value=builder,
+            ), patch.object(launcher.subprocess, "run") as install:
+                python = launcher._ensure_venv(
+                    root,
+                    {"pythonRequires": PYTHON_REQUIRES, "version": "0.3.1"},
+                    wheelhouse,
+                )
+            self.assertTrue(python.is_file())
             self.assertEqual(1, install.call_count)
 
     def test_changed_runtime_version_rebuilds_only_owned_venv(self) -> None:

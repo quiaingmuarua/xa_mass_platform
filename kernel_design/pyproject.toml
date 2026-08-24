@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xa-mass-kernel-pacer"
-version = "0.3.0"
+version = "0.3.1"
 description = "XA Mass executable Kernel Pacer runtime"
-requires-python = ">=3.11.3,<3.14"
+requires-python = ">=3.11"
 dependencies = [
   "redis==8.0.0",
 ]

@@ -180,7 +180,7 @@ tasks.register('generateRuntimeManifest') {
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
                         kernelWheel     : "kernel/wheelhouse/${expectedKernelWheel}",
                         javaVersion     : 21,
-                        pythonRequires  : '>=3.11.3,<3.14',
+                        pythonRequires  : '>=3.11',
                         defaultSpringProfile: 'scenario-workers',
                         springProfiles  : [
                                 'scenario-workers',

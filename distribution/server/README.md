@@ -8,11 +8,11 @@ standalone Scenario Worker Host. Redis remains external.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=0.3.0"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=0.3.1"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
-extracting it on a machine with Java 21 and Python 3.11.3 through 3.13:
+extracting it on a machine with Java 21 and Python 3.11 or newer:
 
 ```powershell
 python .\bin\run-server.py --profile scenario-workers -- `

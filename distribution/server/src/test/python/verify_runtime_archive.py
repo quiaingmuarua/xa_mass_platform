@@ -72,7 +72,7 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(manifest.get("javaVersion") == 21, "Java version mismatch")
         _require(
-            manifest.get("pythonRequires") == ">=3.11.3,<3.14",
+            manifest.get("pythonRequires") == ">=3.11",
             "Python requirement mismatch",
         )
         _require(
@@ -144,6 +144,10 @@ def verify(archive: Path, version: str) -> None:
                 )
                 _require(metadata["Name"] == "xa-mass-kernel-pacer", "wheel name")
                 _require(metadata["Version"] == version, "wheel version")
+                _require(
+                    metadata["Requires-Python"] == ">=3.11",
+                    "wheel Python requirement mismatch",
+                )
                 _require(
                     "redis==8.0.0" in metadata.get_all("Requires-Dist", []),
                     "wheel Redis dependency is not pinned",

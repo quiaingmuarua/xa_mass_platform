@@ -17,9 +17,7 @@ from typing import Any
 
 _MARKER_NAME = ".xa-mass-runtime.json"
 _SHUTDOWN_TIMEOUT_SECONDS = 15
-_PYTHON_REQUIREMENT_PATTERN = re.compile(
-    r">=(\d+)\.(\d+)\.(\d+),<(\d+)\.(\d+)"
-)
+_PYTHON_REQUIREMENT_PATTERN = re.compile(r">=(\d+)\.(\d+)")
 _OWNED_SPRING_ARGUMENTS = (
     "--xa.mass.kernel-pacer.python-executable",
     "--xa.mass.kernel-pacer.working-directory",
@@ -33,20 +31,12 @@ class LauncherError(RuntimeError):
     """Safe launcher configuration or bootstrap failure."""
 
 
-def _python_requirement_bounds(
-    requirement: str,
-) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+def _python_minimum_version(requirement: str) -> tuple[int, int, int]:
     match = _PYTHON_REQUIREMENT_PATTERN.fullmatch(requirement)
     if match is None:
-        raise LauncherError(
-            "Runtime manifest pythonRequires must use >=X.Y.Z,<A.B"
-        )
-    values = tuple(int(value) for value in match.groups())
-    minimum = values[:3]
-    maximum_exclusive = (*values[3:], 0)
-    if minimum >= maximum_exclusive:
-        raise LauncherError("Runtime manifest pythonRequires range is empty")
-    return minimum, maximum_exclusive
+        raise LauncherError("Runtime manifest pythonRequires must use >=X.Y")
+    major, minor = (int(value) for value in match.groups())
+    return major, minor, 0
 
 
 def _runtime_root(script_path: Path | None = None) -> Path:
@@ -100,7 +90,7 @@ def _load_manifest(root: Path) -> dict[str, Any]:
         worker_host["launcher"],
         name="scenarioWorkerHost.launcher",
     )
-    _python_requirement_bounds(document["pythonRequires"])
+    _python_minimum_version(document["pythonRequires"])
     return document
 
 
@@ -170,11 +160,9 @@ def _ensure_venv(
     manifest: dict[str, Any],
     wheelhouse: Path,
 ) -> Path:
-    minimum_python, maximum_python = _python_requirement_bounds(
-        manifest["pythonRequires"]
-    )
+    minimum_python = _python_minimum_version(manifest["pythonRequires"])
     running_python = sys.version_info[:3]
-    if not minimum_python <= running_python < maximum_python:
+    if running_python < minimum_python:
         raise LauncherError(
             "XA Mass Runtime requires Python "
             f"{manifest['pythonRequires']}; running {sys.version_info.major}."

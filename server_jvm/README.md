@@ -459,7 +459,7 @@ Task Calls.
 
 For a repository-independent Server deployment, build or download the
 [`distribution/server`](../distribution/server/) Runtime ZIP. After extraction,
-Java 21, Python 3.11.3 through 3.13 and external Redis are the only machine
+Java 21, Python 3.11 or newer and external Redis are the only machine
 prerequisites:
 
 ```text
