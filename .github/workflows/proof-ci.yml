@@ -835,7 +835,7 @@ jobs:
           ./gradlew --no-daemon
           :distribution:server:runtimeDistributionTest
           :distribution:worker-sdk:workerSdkDistributionTest
-          -PxaMassVersion=0.3.1
+          -PxaMassVersion=0.4.0
       - name: Summarize Distribution proof
         if: always()
         run: |
@@ -846,7 +846,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-server-runtime-${{ github.run_attempt }}
-          path: distribution/server/build/distributions/xa-mass-server-runtime-0.3.1.zip
+          path: distribution/server/build/distributions/xa-mass-server-runtime-0.4.0.zip
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload Worker SDK archive
@@ -854,7 +854,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: xa-mass-worker-sdk-${{ github.run_attempt }}
-          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.3.1.zip
+          path: distribution/worker-sdk/build/distributions/xa-mass-worker-sdk-0.4.0.zip
           if-no-files-found: ignore
           retention-days: 7
 

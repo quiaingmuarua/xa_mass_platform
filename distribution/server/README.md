@@ -8,7 +8,7 @@ standalone Scenario Worker Host. Redis remains external.
 Build an explicit release version:
 
 ```powershell
-.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=0.3.1"
+.\gradlew.bat :distribution:server:distZip "-PxaMassVersion=0.4.0"
 ```
 
 The archive is written under `distribution/server/build/distributions`. After

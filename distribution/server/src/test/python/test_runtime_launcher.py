@@ -168,7 +168,7 @@ class RuntimeLauncherTest(unittest.TestCase):
             )
             manifest = {
                 "schemaVersion": 3,
-                "version": "0.3.1",
+                "version": "0.4.0",
                 "gitCommit": "a" * 40,
                 "serverJar": "lib/server.jar",
                 "kernelWheel": "kernel/wheelhouse/kernel.whl",
@@ -259,7 +259,7 @@ class RuntimeLauncherTest(unittest.TestCase):
             ), patch.object(launcher.subprocess, "run") as install:
                 python = launcher._ensure_venv(
                     root,
-                    {"pythonRequires": PYTHON_REQUIRES, "version": "0.3.1"},
+                    {"pythonRequires": PYTHON_REQUIRES, "version": "0.4.0"},
                     wheelhouse,
                 )
             self.assertTrue(python.is_file())
