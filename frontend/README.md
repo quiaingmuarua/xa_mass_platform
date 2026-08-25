@@ -47,6 +47,18 @@ axis refreshes independently and preserves only its own last successful value
 as stale evidence. Neither Group nor Worker preview promises totals,
 completeness, stable ordering, history, or complete matching.
 
+The Worker table and detail drawer expose a single-target `Direct Debug` action
+in API mode. Its searchable Event selector opens the current WorkerGroup Event
+catalog while still accepting a custom full Event Name; the catalog remains an
+input suggestion rather than an authorization list. Requests and responses are
+shown as a compact chat and the latest 20 calls per Worker live only in the
+current Pinia/browser memory. Closing the drawer or changing routes preserves
+that diagnostic history, while a browser refresh clears it; no browser or
+Server storage is used. Direct Debug remains best-effort, bypasses Kernel
+scheduling, creates no TaskItem or Worker lease, and never proves that a Worker
+is schedulable or executing. Mock mode disables this mutating action and does
+not fabricate a response.
+
 ## Task page
 
 `Configured Tasks` remains a read-only projection of Profile-owned long-lived

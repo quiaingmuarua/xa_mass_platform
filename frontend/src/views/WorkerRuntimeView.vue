@@ -14,6 +14,7 @@ import {
 
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
+import WorkerDirectDebug from "@/components/WorkerDirectDebug.vue";
 import {
   useRuntimeViewerConfig,
   useRuntimeViewerStore,
@@ -43,6 +44,8 @@ const schedulingIsMock = runtimeConfig.mode === "mock";
 const searchText = ref("");
 const selectedWorker = ref<WorkerView>();
 const detailsOpen = ref(false);
+type WorkerDetailTab = "overview" | "debug";
+const detailTab = ref<WorkerDetailTab>("overview");
 
 const activeWorkers = computed(() => store.activeSample?.workers ?? []);
 const filteredWorkers = computed(() =>
@@ -161,8 +164,9 @@ function observeCurrentSampleIfPresent(): void {
   }
 }
 
-function openDetails(worker: WorkerView): void {
+function openDetails(worker: WorkerView, tab: WorkerDetailTab = "overview"): void {
   selectedWorker.value = worker;
+  detailTab.value = tab;
   detailsOpen.value = true;
 }
 
@@ -618,16 +622,26 @@ function metricValue(value: number, observed: number): string {
                     }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column width="96" align="right">
+                <el-table-column width="138" align="right">
                   <template #default="{ row }">
-                    <el-button
-                      link
-                      type="primary"
-                      :aria-label="`查看 ${row.workerId} 详情`"
-                      @click="openDetails(row)"
-                    >
-                      详情
-                    </el-button>
+                    <div class="worker-row-actions">
+                      <el-button
+                        link
+                        type="primary"
+                        :aria-label="`查看 ${row.workerId} 详情`"
+                        @click="openDetails(row)"
+                      >
+                        详情
+                      </el-button>
+                      <el-button
+                        link
+                        type="warning"
+                        :aria-label="`调试 ${row.workerId}`"
+                        @click="openDetails(row, 'debug')"
+                      >
+                        调试
+                      </el-button>
+                    </div>
                   </template>
                 </el-table-column>
               </el-table>
@@ -641,9 +655,18 @@ function metricValue(value: number, observed: number): string {
               >
                 <div class="worker-mobile-card__heading">
                   <code>{{ worker.workerId }}</code>
-                  <el-button link type="primary" @click="openDetails(worker)"
-                    >详情</el-button
-                  >
+                  <div class="worker-row-actions">
+                    <el-button link type="primary" @click="openDetails(worker)">
+                      详情
+                    </el-button>
+                    <el-button
+                      link
+                      type="warning"
+                      @click="openDetails(worker, 'debug')"
+                    >
+                      调试
+                    </el-button>
+                  </div>
                 </div>
                 <dl>
                   <div>
@@ -694,7 +717,7 @@ function metricValue(value: number, observed: number): string {
     <el-drawer
       v-model="detailsOpen"
       class="worker-detail-drawer"
-      size="min(560px, 100%)"
+      size="min(680px, 100%)"
       destroy-on-close
       @closed="selectedWorker = undefined"
     >
@@ -704,173 +727,189 @@ function metricValue(value: number, observed: number): string {
           <strong>{{ selectedWorker.workerId }}</strong>
         </div>
       </template>
-      <div v-if="selectedWorker" class="worker-detail" data-testid="worker-detail">
-        <section>
-          <h2>Identity</h2>
-          <dl class="worker-detail__identity">
-            <div>
-              <dt>Worker ID</dt>
-              <dd>{{ selectedWorker.workerId }}</dd>
-            </div>
-            <div>
-              <dt>WorkerGroup</dt>
-              <dd>{{ selectedWorker.workerGroupId }}</dd>
-            </div>
-            <div>
-              <dt>Endpoint Manager</dt>
-              <dd>{{ selectedWorker.endpointManagerId }}</dd>
-            </div>
-          </dl>
-        </section>
+      <el-tabs
+        v-if="selectedWorker"
+        v-model="detailTab"
+        class="worker-detail-tabs"
+        data-testid="worker-detail"
+      >
+        <el-tab-pane label="Overview" name="overview">
+          <div class="worker-detail">
+            <section>
+              <h2>Identity</h2>
+              <dl class="worker-detail__identity">
+                <div>
+                  <dt>Worker ID</dt>
+                  <dd>{{ selectedWorker.workerId }}</dd>
+                </div>
+                <div>
+                  <dt>WorkerGroup</dt>
+                  <dd>{{ selectedWorker.workerGroupId }}</dd>
+                </div>
+                <div>
+                  <dt>Endpoint Manager</dt>
+                  <dd>{{ selectedWorker.endpointManagerId }}</dd>
+                </div>
+              </dl>
+            </section>
 
-        <section class="worker-status-detail">
-          <div class="worker-status-detail__heading">
-            <div>
-              <h2>Adapter Network</h2>
-              <p>Adapter Route 的独立观测投影</p>
-            </div>
-            <el-tag
-              effect="plain"
-              :type="networkIsMock ? 'warning' : 'success'"
-              size="small"
+            <section class="worker-status-detail">
+              <div class="worker-status-detail__heading">
+                <div>
+                  <h2>Adapter Network</h2>
+                  <p>Adapter Route 的独立观测投影</p>
+                </div>
+                <el-tag
+                  effect="plain"
+                  :type="networkIsMock ? 'warning' : 'success'"
+                  size="small"
+                >
+                  {{ networkIsMock ? "MOCK" : "LIVE" }}
+                </el-tag>
+              </div>
+              <div class="worker-status-card">
+                <div class="worker-status-card__state">
+                  <el-tag
+                    :type="
+                      axisTone(
+                        statusEntry(selectedWorker).network,
+                        networkPresentation(selectedWorker)
+                      )
+                    "
+                    effect="light"
+                  >
+                    {{
+                      axisLabel(
+                        statusEntry(selectedWorker).network,
+                        networkPresentation(selectedWorker)
+                      )
+                    }}
+                  </el-tag>
+                  <div>
+                    <strong>Network State</strong>
+                    <small>{{
+                      networkPresentation(selectedWorker)?.description ??
+                      "尚无可展示的 Adapter Network 观测。"
+                    }}</small>
+                  </div>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Endpoint Manager</dt>
+                    <dd>{{ selectedWorker.endpointManagerId }}</dd>
+                  </div>
+                  <div>
+                    <dt>Read At</dt>
+                    <dd>
+                      {{
+                        formattedTime(
+                          statusEntry(selectedWorker).network.observation?.readAt,
+                          "尚未观测"
+                        )
+                      }}
+                    </dd>
+                  </div>
+                  <div v-if="axisAuxiliary(statusEntry(selectedWorker).network)">
+                    <dt>Observation</dt>
+                    <dd>{{ axisAuxiliary(statusEntry(selectedWorker).network) }}</dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
+
+            <section class="worker-status-detail">
+              <div class="worker-status-detail__heading">
+                <div>
+                  <h2>Kernel Worker Score</h2>
+                  <p>Worker Score 的语义化投影，不暴露 raw Score</p>
+                </div>
+                <el-tag
+                  effect="plain"
+                  :type="schedulingIsMock ? 'warning' : 'success'"
+                  size="small"
+                >
+                  {{ schedulingIsMock ? "MOCK" : "LIVE" }}
+                </el-tag>
+              </div>
+              <div class="worker-status-card">
+                <div class="worker-status-card__state">
+                  <el-tag
+                    :type="
+                      axisTone(
+                        statusEntry(selectedWorker).scheduling,
+                        schedulingPresentation(selectedWorker)
+                      )
+                    "
+                    effect="light"
+                  >
+                    {{
+                      axisLabel(
+                        statusEntry(selectedWorker).scheduling,
+                        schedulingPresentation(selectedWorker)
+                      )
+                    }}
+                  </el-tag>
+                  <div>
+                    <strong>Scheduling State</strong>
+                    <small>{{
+                      schedulingPresentation(selectedWorker)?.description ??
+                      "尚无可展示的 Kernel Worker Score 观测。"
+                    }}</small>
+                  </div>
+                </div>
+                <dl>
+                  <div>
+                    <dt>Read At</dt>
+                    <dd>
+                      {{
+                        formattedTime(
+                          statusEntry(selectedWorker).scheduling.observation?.readAt,
+                          "尚未观测"
+                        )
+                      }}
+                    </dd>
+                  </div>
+                  <div v-if="axisAuxiliary(statusEntry(selectedWorker).scheduling)">
+                    <dt>Observation</dt>
+                    <dd>{{ axisAuxiliary(statusEntry(selectedWorker).scheduling) }}</dd>
+                  </div>
+                </dl>
+              </div>
+            </section>
+
+            <el-button
+              class="worker-status-refresh"
+              :icon="RefreshRight"
+              :loading="workerStatus.isLoading([selectedWorker])"
+              @click="refreshSelectedWorkerStatus"
             >
-              {{ networkIsMock ? "MOCK" : "LIVE" }}
-            </el-tag>
-          </div>
-          <div class="worker-status-card">
-            <div class="worker-status-card__state">
-              <el-tag
-                :type="
-                  axisTone(
-                    statusEntry(selectedWorker).network,
-                    networkPresentation(selectedWorker)
-                  )
-                "
-                effect="light"
-              >
-                {{
-                  axisLabel(
-                    statusEntry(selectedWorker).network,
-                    networkPresentation(selectedWorker)
-                  )
-                }}
-              </el-tag>
-              <div>
-                <strong>Network State</strong>
-                <small>{{
-                  networkPresentation(selectedWorker)?.description ??
-                  "尚无可展示的 Adapter Network 观测。"
-                }}</small>
-              </div>
-            </div>
-            <dl>
-              <div>
-                <dt>Endpoint Manager</dt>
-                <dd>{{ selectedWorker.endpointManagerId }}</dd>
-              </div>
-              <div>
-                <dt>Read At</dt>
-                <dd>
-                  {{
-                    formattedTime(
-                      statusEntry(selectedWorker).network.observation?.readAt,
-                      "尚未观测"
-                    )
-                  }}
-                </dd>
-              </div>
-              <div v-if="axisAuxiliary(statusEntry(selectedWorker).network)">
-                <dt>Observation</dt>
-                <dd>{{ axisAuxiliary(statusEntry(selectedWorker).network) }}</dd>
-              </div>
-            </dl>
-          </div>
-        </section>
+              刷新该 Worker 状态
+            </el-button>
 
-        <section class="worker-status-detail">
-          <div class="worker-status-detail__heading">
-            <div>
-              <h2>Kernel Worker Score</h2>
-              <p>Worker Score 的语义化投影，不暴露 raw Score</p>
-            </div>
-            <el-tag
-              effect="plain"
-              :type="schedulingIsMock ? 'warning' : 'success'"
-              size="small"
-            >
-              {{ schedulingIsMock ? "MOCK" : "LIVE" }}
-            </el-tag>
+            <section>
+              <h2>Worker properties</h2>
+              <JsonBlock :value="selectedWorker.workerProperties" />
+            </section>
+            <section>
+              <h2>Platform properties</h2>
+              <JsonBlock :value="selectedWorker.platformProperties" />
+            </section>
+            <el-alert type="info" :closable="false" show-icon>
+              <template #title>
+                Connected 不证明 Binding、Schedulable 或 Executing；HOT Held
+                不证明Worker 正在执行；HOT Score Overdue也不包含当前Kernel
+                epoch或匹配策略结论。
+              </template>
+            </el-alert>
           </div>
-          <div class="worker-status-card">
-            <div class="worker-status-card__state">
-              <el-tag
-                :type="
-                  axisTone(
-                    statusEntry(selectedWorker).scheduling,
-                    schedulingPresentation(selectedWorker)
-                  )
-                "
-                effect="light"
-              >
-                {{
-                  axisLabel(
-                    statusEntry(selectedWorker).scheduling,
-                    schedulingPresentation(selectedWorker)
-                  )
-                }}
-              </el-tag>
-              <div>
-                <strong>Scheduling State</strong>
-                <small>{{
-                  schedulingPresentation(selectedWorker)?.description ??
-                  "尚无可展示的 Kernel Worker Score 观测。"
-                }}</small>
-              </div>
-            </div>
-            <dl>
-              <div>
-                <dt>Read At</dt>
-                <dd>
-                  {{
-                    formattedTime(
-                      statusEntry(selectedWorker).scheduling.observation?.readAt,
-                      "尚未观测"
-                    )
-                  }}
-                </dd>
-              </div>
-              <div v-if="axisAuxiliary(statusEntry(selectedWorker).scheduling)">
-                <dt>Observation</dt>
-                <dd>{{ axisAuxiliary(statusEntry(selectedWorker).scheduling) }}</dd>
-              </div>
-            </dl>
-          </div>
-        </section>
-
-        <el-button
-          class="worker-status-refresh"
-          :icon="RefreshRight"
-          :loading="workerStatus.isLoading([selectedWorker])"
-          @click="refreshSelectedWorkerStatus"
-        >
-          刷新该 Worker 状态
-        </el-button>
-
-        <section>
-          <h2>Worker properties</h2>
-          <JsonBlock :value="selectedWorker.workerProperties" />
-        </section>
-        <section>
-          <h2>Platform properties</h2>
-          <JsonBlock :value="selectedWorker.platformProperties" />
-        </section>
-        <el-alert type="info" :closable="false" show-icon>
-          <template #title>
-            Connected 不证明 Binding、Schedulable 或 Executing；HOT Held 不证明Worker
-            正在执行；HOT Score Overdue也不包含当前Kernel epoch或匹配策略结论。
-          </template>
-        </el-alert>
-      </div>
+        </el-tab-pane>
+        <el-tab-pane label="Direct Debug" name="debug">
+          <WorkerDirectDebug
+            :worker="selectedWorker"
+            :event-codes="store.activeGroup?.eventCodes ?? []"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </el-drawer>
   </section>
 </template>

@@ -301,6 +301,10 @@ controls.
 - Frontend is read only for Runtime truth. Its finite Task file flow may create,
   append, approve, and export only through public Task APIs and must not infer
   scheduling state from elapsed time.
+  Its single-Worker Direct Debug action may invoke only the public
+  Adapter-scoped DIRECT_CALL API. That action remains caller-targeted and
+  best-effort; its response must not be promoted to schedulability, capability,
+  Worker identity or lifecycle truth.
   It must not create scheduling, Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.

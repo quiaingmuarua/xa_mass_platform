@@ -459,10 +459,11 @@ the configured Runtime projection rather than deriving the deterministic ID.
 The Task call route validates that descriptor once and submits `1..100`
 standard Items through the bounded Task Call command. WorkerGroup remains Task
 descriptor scope and is not copied into an Item; the call response exposes no
-selected Worker. The request waits only for its
-bounded interval: HTTP `200` means every Message ID has an observed success,
-while HTTP `202` marks only the missing entries as `not_observed`; the shared
-Task result route supports a later bounded read by Message ID.
+selected Worker. The request waits only for its bounded interval. Once
+submission is accepted, HTTP `200` returns one outcome per Message ID: observed
+successes are `succeeded`, while entries missing at the end of the bounded
+observation are `not_observed`. The shared Task result route supports a later
+bounded read by Message ID.
 
 Generic Task creation is scoped by an existing WorkerGroup. Server generates
 the `task-{UUID}` coordinate and always assembles

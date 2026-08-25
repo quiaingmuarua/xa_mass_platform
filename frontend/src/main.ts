@@ -9,8 +9,12 @@ import {
   ElDrawer,
   ElIcon,
   ElInput,
+  ElOption,
+  ElSelect,
   ElTable,
   ElTableColumn,
+  ElTabPane,
+  ElTabs,
   ElTag
 } from "element-plus";
 import App from "./App.vue";
@@ -19,6 +23,7 @@ import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
   taskManagementStoreKey,
+  workerDirectDebugStoreKey,
   workerStatusStoreKey
 } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
@@ -26,8 +31,10 @@ import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
 import { HttpFiniteTaskClient } from "./task-management/http-client";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
 import { createTaskManagementStore } from "./stores/task-management";
+import { createWorkerDirectDebugStore } from "./stores/worker-direct-debug";
 import { createWorkerStatusStore } from "./stores/worker-status";
 import { createWorkerStatusDataSource } from "./worker-status/data-source";
+import { HttpWorkerDirectCallClient } from "./worker-direct-call/http-client";
 import "element-plus/es/components/alert/style/css";
 import "element-plus/es/components/breadcrumb/style/css";
 import "element-plus/es/components/breadcrumb-item/style/css";
@@ -37,8 +44,12 @@ import "element-plus/es/components/drawer/style/css";
 import "element-plus/es/components/icon/style/css";
 import "element-plus/es/components/input/style/css";
 import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/option/style/css";
+import "element-plus/es/components/select/style/css";
 import "element-plus/es/components/table/style/css";
 import "element-plus/es/components/table-column/style/css";
+import "element-plus/es/components/tab-pane/style/css";
+import "element-plus/es/components/tabs/style/css";
 import "element-plus/es/components/tag/style/css";
 import "element-plus/theme-chalk/dark/css-vars.css";
 import "./styles/index.css";
@@ -58,8 +69,12 @@ app.use(router);
   ElDrawer,
   ElIcon,
   ElInput,
+  ElOption,
+  ElSelect,
   ElTable,
   ElTableColumn,
+  ElTabPane,
+  ElTabs,
   ElTag
 ].forEach((component) => app.use(component));
 
@@ -73,9 +88,14 @@ if (configResult.ok) {
   const workerStatusStore = createWorkerStatusStore(
     createWorkerStatusDataSource(configResult.value)
   );
+  const workerDirectDebugStore = createWorkerDirectDebugStore(
+    new HttpWorkerDirectCallClient(configResult.value.apiBaseUrl),
+    configResult.value.mode
+  );
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
   app.provide(taskManagementStoreKey, taskManagementStore);
+  app.provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   app.provide(workerStatusStoreKey, workerStatusStore);
 }
 

@@ -3,6 +3,7 @@ import { inject, type InjectionKey } from "vue";
 import type { RuntimeViewerConfig } from "@/runtime-viewer/types";
 import type { RuntimeViewerStore } from "@/stores/runtime-viewer";
 import type { TaskManagementStore } from "@/stores/task-management";
+import type { WorkerDirectDebugStore } from "@/stores/worker-direct-debug";
 import type { WorkerStatusStore } from "@/stores/worker-status";
 
 export const runtimeViewerConfigKey: InjectionKey<RuntimeViewerConfig> =
@@ -13,6 +14,9 @@ export const taskManagementStoreKey: InjectionKey<TaskManagementStore> =
   Symbol("taskManagementStore");
 export const workerStatusStoreKey: InjectionKey<WorkerStatusStore> =
   Symbol("workerStatusStore");
+export const workerDirectDebugStoreKey: InjectionKey<WorkerDirectDebugStore> = Symbol(
+  "workerDirectDebugStore"
+);
 
 export function useRuntimeViewerConfig(): RuntimeViewerConfig {
   const config = inject(runtimeViewerConfigKey);
@@ -42,6 +46,14 @@ export function useWorkerStatusStore(): WorkerStatusStore {
   const store = inject(workerStatusStoreKey);
   if (store === undefined) {
     throw new Error("Worker Status store was not provided");
+  }
+  return store;
+}
+
+export function useWorkerDirectDebugStore(): WorkerDirectDebugStore {
+  const store = inject(workerDirectDebugStoreKey);
+  if (store === undefined) {
+    throw new Error("Worker Direct Debug store was not provided");
   }
   return store;
 }

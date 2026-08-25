@@ -129,7 +129,9 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`integrations/`](integrations/) contains external acceptance clients; it
   owns no Kernel, Server or Transport mechanism.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
-  Task file client, Scalar link surface and architecture overview host.
+  Task file client, a best-effort single-Worker Direct Debug client over the
+  public DIRECT_CALL API, Scalar link surface and architecture overview host.
+  It owns no scheduling, Worker identity or lifecycle truth.
 - [`distribution/server/`](distribution/server/) packages those existing
   owners into one versioned Server Runtime ZIP. It adds no scheduling or
   Transport behavior and still requires external Redis.
