@@ -4,7 +4,7 @@ import { Delete, Position, RefreshRight, Warning } from "@element-plus/icons-vue
 
 import JsonBlock from "@/components/JsonBlock.vue";
 import { useRuntimeViewerConfig, useTaskCallDebugStore } from "@/runtime-context";
-import type { ConfiguredRuntimeResourceEntry } from "@/runtime-viewer/types";
+import type { TaskRuntimePreviewEntry } from "@/runtime-viewer/types";
 import type { TaskCallDebugHistoryItem } from "@/stores/task-call-debug";
 import {
   presentTaskCallDebugError,
@@ -17,7 +17,7 @@ import {
 } from "@/task-call-debug/model";
 
 const props = defineProps<{
-  entry: ConfiguredRuntimeResourceEntry;
+  entry: TaskRuntimePreviewEntry;
 }>();
 
 const config = useRuntimeViewerConfig();
@@ -64,7 +64,7 @@ async function send(): Promise<void> {
   try {
     await taskCallDebug.send({
       taskId: props.entry.taskId,
-      workerGroupId: props.entry.workerGroupId,
+      workerGroupId: props.entry.task?.workerGroupId ?? "",
       eventName: eventName.value,
       payloadText: payloadText.value,
       allocationRuleText: allocationRuleText.value,
@@ -138,7 +138,7 @@ async function scrollToLatest(): Promise<void> {
       </div>
       <div>
         <dt>WorkerGroup</dt>
-        <dd>{{ entry.workerGroupId }}</dd>
+        <dd>{{ entry.task?.workerGroupId ?? "—" }}</dd>
       </div>
       <div>
         <dt>Allocation</dt>

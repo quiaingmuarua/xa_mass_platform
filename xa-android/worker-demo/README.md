@@ -145,11 +145,16 @@ Wait for `RUNNING`, then call all three capabilities through the managed Task:
 .\gradlew.bat :xa-android:worker-demo:runDemoRpc
 ```
 
-The driver reads `GET /api/v1/runtime-view/configured-resources`, takes the
-Task ID associated with `android-demo-workers`, and sends three standard Items
-to `/api/v1/tasks/{taskId}/items:call` with `allocationRule: {}`. It prints the
+The driver reads the bounded Task Score window from
+`/api/v1/runtime-view/tasks:preview` and requires exactly one Task whose
+WorkerGroup is `android-demo-workers`, allocation mechanism is
+`DIRECT_ITEM_RULE`, and idle disposition is `PARK_WHEN_IDLE`. It then sends
+three standard Items to
+`/api/v1/tasks/{taskId}/items:call` with `allocationRule: {}`. It prints the
 State, Battery, and parameterized string digest results. It does not create or
-close a Task, derive the managed Task ID, or select a Worker ID.
+close a Task, derive the managed Task ID, enumerate Tasks, or select a Worker
+ID. The 100-entry window is an explicit Lab-scale acceptance assumption, not a
+complete Task directory.
 
 Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab

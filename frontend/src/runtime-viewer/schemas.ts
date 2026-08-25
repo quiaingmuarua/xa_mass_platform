@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import type {
-  ConfiguredRuntimeResourcesResponse,
   JsonValue,
+  TaskPreviewResponse,
   WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "./types";
@@ -35,65 +35,70 @@ const taskViewSchema = z
     workerAllocationMechanism: z.enum(["PRECOMPUTED_TASK_RULE", "DIRECT_ITEM_RULE"]),
     idleDisposition: z.enum(["CLOSE_WHEN_IDLE", "PARK_WHEN_IDLE"]),
     allocationRule: attributesSchema.nullable(),
-    config: z
-      .object({
-        priority: z.string().regex(/^\d+$/),
-        maximumCandidateWorkers: z.string().regex(/^\d+$/),
-        maxRetryTimes: z.string().regex(/^\d+$/)
-      })
-      .strict()
+    config: z.record(z.string(), z.string())
   })
   .strict();
 
-const configuredRuntimeResourceEntrySchema = z
+const taskRuntimePreviewEntrySchema = z
   .object({
-    workerGroupId: z.string().min(1),
     taskId: z.string().min(1),
-    workerGroup: workerGroupViewSchema.nullable(),
-    task: taskViewSchema.nullable()
+    scoreBand: z.enum([
+      "pre_review",
+      "admission_visible",
+      "running_visible",
+      "terminal"
+    ]),
+    task: taskViewSchema.nullable(),
+    workerGroup: workerGroupViewSchema.nullable()
   })
   .strict()
   .superRefine((entry, context) => {
-    if (
-      entry.workerGroup !== null &&
-      entry.workerGroup.workerGroupId !== entry.workerGroupId
-    ) {
+    if (entry.task === null && entry.workerGroup !== null) {
       context.addIssue({
         code: "custom",
-        message: "Configured WorkerGroup identity does not match its coordinate"
+        message: "A missing Task descriptor cannot expose a WorkerGroup descriptor"
+      });
+    }
+    if (entry.task !== null && entry.task.taskId !== entry.taskId) {
+      context.addIssue({
+        code: "custom",
+        message: "Task descriptor identity does not match the score coordinate"
       });
     }
     if (
+      entry.workerGroup !== null &&
       entry.task !== null &&
-      (entry.task.taskId !== entry.taskId ||
-        entry.task.workerGroupId !== entry.workerGroupId)
+      entry.workerGroup.workerGroupId !== entry.task.workerGroupId
     ) {
       context.addIssue({
         code: "custom",
-        message: "Configured Task identity does not match its coordinate"
+        message: "WorkerGroup descriptor identity does not match the Task"
       });
     }
   });
 
-export const configuredRuntimeResourcesResponseSchema: z.ZodType<ConfiguredRuntimeResourcesResponse> =
-  z
-    .object({
-      entries: z.array(configuredRuntimeResourceEntrySchema)
-    })
-    .strict()
-    .superRefine((response, context) => {
-      const groupIds = response.entries.map((entry) => entry.workerGroupId);
-      const taskIds = response.entries.map((entry) => entry.taskId);
-      if (
-        new Set(groupIds).size !== groupIds.length ||
-        new Set(taskIds).size !== taskIds.length
-      ) {
-        context.addIssue({
-          code: "custom",
-          message: "Configured resources contain duplicate coordinates"
-        });
-      }
-    });
+export const taskPreviewResponseSchema: z.ZodType<TaskPreviewResponse> = z
+  .object({
+    sampleLimit: z.number().int().min(1).max(100),
+    generatedAt: z.string().datetime({ offset: true }),
+    entries: z.array(taskRuntimePreviewEntrySchema)
+  })
+  .strict()
+  .superRefine((response, context) => {
+    const taskIds = response.entries.map((entry) => entry.taskId);
+    if (response.entries.length > response.sampleLimit) {
+      context.addIssue({
+        code: "custom",
+        message: "Task preview exceeds sampleLimit"
+      });
+    }
+    if (new Set(taskIds).size !== taskIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Task preview contains duplicate coordinates"
+      });
+    }
+  });
 
 export const workerGroupPreviewResponseSchema: z.ZodType<WorkerGroupPreviewResponse> = z
   .object({

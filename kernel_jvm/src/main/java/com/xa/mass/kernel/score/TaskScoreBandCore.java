@@ -31,10 +31,13 @@ public interface TaskScoreBandCore {
     long MAX_TIME_MILLIS = MAX_TIME_SLOT * SLOT_MILLIS;
     long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
     long DEFAULT_TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR;
+    int MAX_TASK_SCORE_PREVIEW_LIMIT = 100;
 
     Map<String, @Nullable TaskScoreState> getScoreStates(
             List<String> taskIds
     );
+
+    List<TaskScoreState> previewScoreStates(int limit);
 
     int countRunningCapacityTasks();
 

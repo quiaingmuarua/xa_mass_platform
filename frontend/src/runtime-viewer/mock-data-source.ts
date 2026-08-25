@@ -1,22 +1,23 @@
 import { RuntimeViewerError } from "./errors";
-import {
-  MOCK_CONFIGURED_RESOURCES,
-  MOCK_PREVIEWS,
-  MOCK_WORKER_GROUPS
-} from "./mock-data";
+import { MOCK_PREVIEWS, MOCK_TASK_PREVIEW, MOCK_WORKER_GROUPS } from "./mock-data";
 import type {
-  ConfiguredRuntimeResourcesResponse,
   RuntimeViewerDataSource,
+  TaskPreviewResponse,
   WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "./types";
 
 export class MockRuntimeViewerDataSource implements RuntimeViewerDataSource {
-  async loadConfiguredResources(
+  async previewTasks(
+    sampleLimit: number,
     signal?: AbortSignal
-  ): Promise<ConfiguredRuntimeResourcesResponse> {
+  ): Promise<TaskPreviewResponse> {
     throwIfAborted(signal);
-    return structuredClone(MOCK_CONFIGURED_RESOURCES);
+    return structuredClone({
+      ...MOCK_TASK_PREVIEW,
+      sampleLimit,
+      entries: MOCK_TASK_PREVIEW.entries.slice(0, sampleLimit)
+    });
   }
 
   async previewWorkerGroups(

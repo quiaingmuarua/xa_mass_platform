@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createRuntimeViewerDataSource } from "@/runtime-viewer/data-source";
 import { HttpRuntimeViewerDataSource } from "@/runtime-viewer/http-data-source";
 import { MockRuntimeViewerDataSource } from "@/runtime-viewer/mock-data-source";
-import { configuredEntry, groupPreview, preview, worker } from "./fixtures";
+import {
+  groupPreview,
+  preview,
+  taskPreview,
+  taskPreviewEntry,
+  worker
+} from "./fixtures";
 
 describe("RuntimeViewerDataSource selection", () => {
   it("uses HTTP in API mode and never installs a Mock fallback", () => {
@@ -28,6 +34,20 @@ describe("RuntimeViewerDataSource selection", () => {
 });
 
 describe("MockRuntimeViewerDataSource", () => {
+  it("returns a deterministic Task Preview with all four score bands", async () => {
+    const source = new MockRuntimeViewerDataSource();
+
+    await expect(source.previewTasks(100)).resolves.toMatchObject({
+      sampleLimit: 100,
+      entries: [
+        { scoreBand: "pre_review" },
+        { scoreBand: "admission_visible" },
+        { scoreBand: "running_visible" },
+        { scoreBand: "terminal" }
+      ]
+    });
+  });
+
   it("mirrors the Runtime View business-not-found response class", async () => {
     const source = new MockRuntimeViewerDataSource();
 
@@ -42,22 +62,21 @@ describe("MockRuntimeViewerDataSource", () => {
 });
 
 describe("HttpRuntimeViewerDataSource", () => {
-  it("loads the configured resource directory with one GET", async () => {
-    const get = vi.fn().mockResolvedValue({
-      data: {
-        entries: [configuredEntry("group-a")]
-      }
+  it("loads one ordered Task Score window with one bounded POST", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: taskPreview([taskPreviewEntry("group-a")])
     });
     const source = new HttpRuntimeViewerDataSource("/api", {
-      get
+      post
     } as unknown as AxiosInstance);
 
-    await expect(source.loadConfiguredResources()).resolves.toMatchObject({
-      entries: [{ workerGroupId: "group-a" }]
+    await expect(source.previewTasks(100)).resolves.toMatchObject({
+      entries: [{ taskId: "scenario-rpc-group-a" }]
     });
-    expect(get).toHaveBeenCalledTimes(1);
-    expect(get.mock.calls[0]?.[0]).toBe("/v1/runtime-view/configured-resources");
-    expect(get.mock.calls[0]?.[1].headers["X-Request-Id"]).toEqual(expect.any(String));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0]?.[0]).toBe("/v1/runtime-view/tasks:preview");
+    expect(post.mock.calls[0]?.[1]).toEqual({ sampleLimit: 100 });
+    expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 
   it("sends one request with a request ID and validates a preview", async () => {
@@ -83,7 +102,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 
-  it("loads a bounded WorkerGroup preview without using configured resources", async () => {
+  it("loads a bounded WorkerGroup preview independently from Tasks", async () => {
     const post = vi.fn().mockResolvedValue({
       data: groupPreview(["group-b", "group-a"])
     });
@@ -146,23 +165,36 @@ describe("HttpRuntimeViewerDataSource", () => {
     expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects configured descriptor identity drift", async () => {
-    const entry = configuredEntry("group-a");
+  it("rejects Task Preview descriptor identity drift", async () => {
+    const entry = taskPreviewEntry("group-a");
     entry.task = {
       ...entry.task!,
       taskId: "another-task"
     };
-    const get = vi.fn().mockResolvedValue({
+    const post = vi.fn().mockResolvedValue({
+      data: taskPreview([entry])
+    });
+    const source = new HttpRuntimeViewerDataSource("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await expect(source.previewTasks(100)).rejects.toMatchObject({
+      kind: "schema"
+    });
+  });
+
+  it("rejects raw Score fields and duplicate Task coordinates", async () => {
+    const entry = taskPreviewEntry("group-a");
+    const post = vi.fn().mockResolvedValue({
       data: {
-        entries: [entry]
+        ...taskPreview([entry, entry]),
+        score: 42
       }
     });
     const source = new HttpRuntimeViewerDataSource("/api", {
-      get
+      post
     } as unknown as AxiosInstance);
 
-    await expect(source.loadConfiguredResources()).rejects.toMatchObject({
-      kind: "schema"
-    });
+    await expect(source.previewTasks(100)).rejects.toMatchObject({ kind: "schema" });
   });
 });

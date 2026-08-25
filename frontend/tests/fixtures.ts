@@ -1,5 +1,7 @@
 import type {
-  ConfiguredRuntimeResourceEntry,
+  TaskPreviewResponse,
+  TaskRuntimePreviewEntry,
+  TaskScoreBand,
   TaskView,
   WorkerGroupPreviewResponse,
   WorkerGroupView,
@@ -32,16 +34,33 @@ export function task(taskId: string, workerGroupId: string): TaskView {
   };
 }
 
-export function configuredEntry(
+export function taskPreviewEntry(
   workerGroupId: string,
-  options: { missingGroup?: boolean; missingTask?: boolean } = {}
-): ConfiguredRuntimeResourceEntry {
-  const taskId = `scenario-rpc-${workerGroupId}`;
+  options: {
+    missingGroup?: boolean;
+    missingTask?: boolean;
+    taskId?: string;
+    scoreBand?: TaskScoreBand;
+  } = {}
+): TaskRuntimePreviewEntry {
+  const taskId = options.taskId ?? `scenario-rpc-${workerGroupId}`;
   return {
-    workerGroupId,
     taskId,
-    workerGroup: options.missingGroup ? null : workerGroup(workerGroupId),
-    task: options.missingTask ? null : task(taskId, workerGroupId)
+    scoreBand: options.scoreBand ?? "running_visible",
+    task: options.missingTask ? null : task(taskId, workerGroupId),
+    workerGroup:
+      options.missingTask || options.missingGroup ? null : workerGroup(workerGroupId)
+  };
+}
+
+export function taskPreview(
+  entries: TaskRuntimePreviewEntry[],
+  generatedAt = "2026-07-31T12:00:00.000Z"
+): TaskPreviewResponse {
+  return {
+    sampleLimit: 100,
+    generatedAt,
+    entries
   };
 }
 

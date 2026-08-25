@@ -1,19 +1,15 @@
 package com.xa.mass.server.workerassembly;
 
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-final class ServerWorkerAssemblyManifest
-        implements ConfiguredWorkerGroupTaskCallCatalog {
+final class ServerWorkerAssemblyManifest {
 
     private static final Set<String> GROUP_FIELDS = Set.of(
             "attributes",
@@ -21,23 +17,17 @@ final class ServerWorkerAssemblyManifest
     );
 
     private final List<WorkerGroupDescriptor> workerGroups;
-    private final Map<String, String> taskIds;
 
     private ServerWorkerAssemblyManifest(
-            List<WorkerGroupDescriptor> workerGroups,
-            Map<String, String> taskIds
+            List<WorkerGroupDescriptor> workerGroups
     ) {
         this.workerGroups = List.copyOf(workerGroups);
-        this.taskIds = Collections.unmodifiableMap(
-                new LinkedHashMap<>(taskIds)
-        );
     }
 
     static ServerWorkerAssemblyManifest fromJson(String configJson) {
         Map<String, Object> root = Jsons.parseObject(configJson);
         List<WorkerGroupDescriptor> descriptors =
                 new ArrayList<>(root.size());
-        Map<String, String> taskIds = new LinkedHashMap<>();
         root.forEach((workerGroupId, rawGroup) -> {
             requireNonBlank(workerGroupId, "workerGroupId");
             Map<String, Object> group = requireObject(
@@ -54,23 +44,12 @@ final class ServerWorkerAssemblyManifest
                     optionalObject(group, "attributes"),
                     new LinkedHashSet<>(requireEventCodes(group))
             ));
-            taskIds.put(
-                    workerGroupId,
-                    WorkerGroupTaskCallRegistrationService.taskId(
-                            workerGroupId
-                    )
-            );
         });
-        return new ServerWorkerAssemblyManifest(descriptors, taskIds);
+        return new ServerWorkerAssemblyManifest(descriptors);
     }
 
     List<WorkerGroupDescriptor> workerGroups() {
         return workerGroups;
-    }
-
-    @Override
-    public Map<String, String> configuredTaskIdsByWorkerGroup() {
-        return taskIds;
     }
 
     private static List<String> requireEventCodes(

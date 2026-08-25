@@ -3,12 +3,12 @@ import axios, { AxiosError, type AxiosInstance } from "axios";
 import { RuntimeViewerError } from "./errors";
 import {
   apiErrorResponseSchema,
-  configuredRuntimeResourcesResponseSchema,
+  taskPreviewResponseSchema,
   workerGroupPreviewResponseSchema,
   workerPreviewResponseSchema
 } from "./schemas";
 import type {
-  ConfiguredRuntimeResourcesResponse,
+  TaskPreviewResponse,
   RuntimeViewerDataSource,
   WorkerGroupPreviewResponse,
   WorkerPreviewResponse
@@ -36,20 +36,25 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
       });
   }
 
-  async loadConfiguredResources(
+  async previewTasks(
+    sampleLimit: number,
     signal?: AbortSignal
-  ): Promise<ConfiguredRuntimeResourcesResponse> {
+  ): Promise<TaskPreviewResponse> {
     const requestId = createRequestId();
     try {
-      const response = await this.client.get("/v1/runtime-view/configured-resources", {
-        signal,
-        headers: { "X-Request-Id": requestId }
-      });
-      return parseResponse(
-        configuredRuntimeResourcesResponseSchema,
-        response.data,
-        requestId
+      const response = await this.client.post(
+        "/v1/runtime-view/tasks:preview",
+        { sampleLimit },
+        {
+          signal,
+          headers: { "X-Request-Id": requestId }
+        }
       );
+      const parsed = parseResponse(taskPreviewResponseSchema, response.data, requestId);
+      if (parsed.sampleLimit !== sampleLimit) {
+        throw schemaError(requestId);
+      }
+      return parsed;
     } catch (error) {
       throw mapHttpError(error, requestId);
     }

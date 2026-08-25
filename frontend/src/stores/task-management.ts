@@ -226,9 +226,8 @@ export function createTaskManagementStore(
 
     function workerGroup(workerGroupId: string): { eventCodes: string[] } | undefined {
       return (
-        catalog.entries.find(
-          (entry) => entry.workerGroupId === workerGroupId && entry.workerGroup !== null
-        )?.workerGroup ?? undefined
+        catalog.workerGroups.find((group) => group.workerGroupId === workerGroupId) ??
+        undefined
       );
     }
 

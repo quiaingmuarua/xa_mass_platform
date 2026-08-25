@@ -1,5 +1,5 @@
 import type {
-  ConfiguredRuntimeResourcesResponse,
+  TaskPreviewResponse,
   TaskView,
   WorkerGroupView,
   WorkerPreviewResponse,
@@ -42,26 +42,80 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
   }
 ];
 
-const mockTasks: TaskView[] = MOCK_WORKER_GROUPS.map((group) => ({
-  taskId: `scenario-rpc-${group.workerGroupId}`,
-  workerGroupId: group.workerGroupId,
-  workerAllocationMechanism: "DIRECT_ITEM_RULE",
-  idleDisposition: "PARK_WHEN_IDLE",
-  allocationRule: null,
-  config: {
-    priority: "0",
-    maximumCandidateWorkers: "1",
-    maxRetryTimes: "3"
-  }
-}));
+const mockTasks: TaskView[] = [
+  mockTask(
+    "scenario-rpc-scenario-phone-number-workers",
+    "scenario-phone-number-workers"
+  ),
+  mockTask(
+    "scenario-rpc-scenario-string-utils-workers",
+    "scenario-string-utils-workers"
+  ),
+  mockTask("scenario-rpc-android-demo-workers", "android-demo-workers")
+];
 
-export const MOCK_CONFIGURED_RESOURCES: ConfiguredRuntimeResourcesResponse = {
-  entries: MOCK_WORKER_GROUPS.map((workerGroup, index) => ({
-    workerGroupId: workerGroup.workerGroupId,
-    taskId: mockTasks[index]!.taskId,
-    workerGroup,
-    task: mockTasks[index]!
-  }))
+function mockTask(taskId: string, workerGroupId: string): TaskView {
+  return {
+    taskId,
+    workerGroupId,
+    workerAllocationMechanism: "DIRECT_ITEM_RULE",
+    idleDisposition: "PARK_WHEN_IDLE",
+    allocationRule: null,
+    config: {
+      priority: "0",
+      maximumCandidateWorkers: "1",
+      maxRetryTimes: "3"
+    }
+  };
+}
+
+export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
+  sampleLimit: 100,
+  generatedAt: MOCK_GENERATED_AT,
+  entries: [
+    {
+      taskId: "mock-finite-awaiting-review",
+      scoreBand: "pre_review",
+      task: {
+        ...mockTasks[0]!,
+        taskId: "mock-finite-awaiting-review",
+        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
+        idleDisposition: "CLOSE_WHEN_IDLE",
+        allocationRule: {}
+      },
+      workerGroup: MOCK_WORKER_GROUPS[0]!
+    },
+    {
+      taskId: "mock-finite-admission",
+      scoreBand: "admission_visible",
+      task: {
+        ...mockTasks[1]!,
+        taskId: "mock-finite-admission",
+        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
+        idleDisposition: "CLOSE_WHEN_IDLE",
+        allocationRule: {}
+      },
+      workerGroup: MOCK_WORKER_GROUPS[1]!
+    },
+    {
+      taskId: mockTasks[2]!.taskId,
+      scoreBand: "running_visible",
+      task: mockTasks[2]!,
+      workerGroup: MOCK_WORKER_GROUPS[2]!
+    },
+    {
+      taskId: "mock-finite-closed",
+      scoreBand: "terminal",
+      task: {
+        ...mockTasks[1]!,
+        taskId: "mock-finite-closed",
+        workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
+        idleDisposition: "CLOSE_WHEN_IDLE",
+        allocationRule: {}
+      },
+      workerGroup: MOCK_WORKER_GROUPS[1]!
+    }
+  ]
 };
 
 const phoneWorkers = createWorkers(

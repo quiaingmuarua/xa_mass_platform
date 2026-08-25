@@ -1,7 +1,7 @@
 import type {
-  ConfiguredRuntimeResourceEntry,
   JsonValue,
-  RuntimeDataSourceMode
+  RuntimeDataSourceMode,
+  TaskRuntimePreviewEntry
 } from "@/runtime-viewer/types";
 
 import { taskCallDebugConfigurationError } from "./errors";
@@ -17,7 +17,7 @@ export interface TaskCallDebugAvailability {
 
 export function taskCallDebugAvailability(
   mode: RuntimeDataSourceMode,
-  entry: ConfiguredRuntimeResourceEntry
+  entry: TaskRuntimePreviewEntry
 ): TaskCallDebugAvailability {
   if (mode !== "api") {
     return {

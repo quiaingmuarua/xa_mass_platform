@@ -65,7 +65,7 @@ class ServerWorkerAssemblyPropertiesTest {
             ).groupConfigJson()).isEqualTo("{}");
             assertThat(context.getBean(
                     ServerWorkerAssemblyManifest.class
-            ).configuredTaskIdsByWorkerGroup()).isEmpty();
+            ).workerGroups()).isEmpty();
             assertThat(context).hasSingleBean(
                     ServerConfiguredRuntimeLifecycleHost.class
             );
@@ -99,19 +99,12 @@ class ServerWorkerAssemblyPropertiesTest {
                     .doesNotContain("\"workers\"");
             assertThat(context.getBean(
                     ServerWorkerAssemblyManifest.class
-            ).configuredTaskIdsByWorkerGroup()).containsExactly(
-                    Map.entry(
-                            "scenario-phone-number-workers",
-                            "scenario-rpc-scenario-phone-number-workers"
-                    ),
-                    Map.entry(
-                            "scenario-string-utils-workers",
-                            "scenario-rpc-scenario-string-utils-workers"
-                    ),
-                    Map.entry(
-                            "android-demo-workers",
-                            "scenario-rpc-android-demo-workers"
-                    )
+            ).workerGroups()).extracting(
+                    descriptor -> descriptor.workerGroupId()
+            ).containsExactly(
+                    "scenario-phone-number-workers",
+                    "scenario-string-utils-workers",
+                    "android-demo-workers"
             );
             Map<String, Object> groups = Jsons.parseObject(
                     properties.groupConfigJson()

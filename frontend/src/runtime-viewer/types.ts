@@ -43,15 +43,23 @@ export interface TaskView {
   config: Record<string, string>;
 }
 
-export interface ConfiguredRuntimeResourceEntry {
-  workerGroupId: string;
+export type TaskScoreBand =
+  | "pre_review"
+  | "admission_visible"
+  | "running_visible"
+  | "terminal";
+
+export interface TaskRuntimePreviewEntry {
   taskId: string;
-  workerGroup: WorkerGroupView | null;
+  scoreBand: TaskScoreBand;
   task: TaskView | null;
+  workerGroup: WorkerGroupView | null;
 }
 
-export interface ConfiguredRuntimeResourcesResponse {
-  entries: ConfiguredRuntimeResourceEntry[];
+export interface TaskPreviewResponse {
+  sampleLimit: number;
+  generatedAt: string;
+  entries: TaskRuntimePreviewEntry[];
 }
 
 export interface WorkerGroupPreviewResponse {
@@ -82,9 +90,7 @@ export interface WorkerPreviewResponse {
 }
 
 export interface RuntimeViewerDataSource {
-  loadConfiguredResources(
-    signal?: AbortSignal
-  ): Promise<ConfiguredRuntimeResourcesResponse>;
+  previewTasks(sampleLimit: number, signal?: AbortSignal): Promise<TaskPreviewResponse>;
 
   previewWorkerGroups(
     sampleLimit: number,

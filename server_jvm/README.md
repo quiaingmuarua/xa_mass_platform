@@ -12,7 +12,7 @@ configured Server runtime host.
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as finite Task Result export, managed
   Task Call and DIRECT_CALL correlation;
-- configured WorkerGroup/Task seed and Adapter startup order.
+- configured WorkerGroup seed and Adapter startup order.
 
 It does not own Kernel candidate selection, Worker lease, TaskItem claim,
 retry, recovery, Task finality, Adapter connection routing or Worker event
@@ -130,9 +130,20 @@ exact derived Task plus approval. It returns `already_registered` only when
 both already exist; repeating an exact legacy Group declaration backfills a
 missing Task Call and returns `registered`. Group descriptor drift or derived
 Task descriptor drift returns conflict. Re-registration always returns the
-same Task ID. Callers use that response value, or the value projected by
-`GET /api/v1/runtime-view/configured-resources`; they must not derive it from
-the current deterministic naming formula.
+same Task ID. Callers use that response value and must not derive the naming
+formula. A diagnostic caller that no longer has the registration response may
+inspect the bounded Task Runtime window:
+
+```text
+POST /api/v1/runtime-view/tasks:preview
+```
+
+The request selects the highest `1..100` Task Score coordinates. Runtime View
+then performs one bounded Task descriptor read and one bounded WorkerGroup
+descriptor read, preserving Task Score Owner order. A caller may select an
+expected Managed Task only by exact Group, allocation mechanism and idle
+disposition. The window is unstable and incomplete, so it is an observation
+surface rather than a guaranteed point lookup or registration repair path.
 Group create, Task create and approval remain separate owner operations, not
 one transaction. If Task provisioning fails after Group creation, the Group
 remains and the request fails; retrying the exact Group declaration re-reads
@@ -222,17 +233,24 @@ Task Call returns `already_registered`; a different Group declaration returns
 `400/15006` and never updates the stored Group. Attributes and Event Names are
 directory metadata, not Matcher, Dispatch, or per-Worker capability truth.
 
-Runtime View offers two intentionally different reads:
+Runtime View offers bounded explicit-coordinate and preview reads:
 
 ```text
 POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups:preview
+POST /api/v1/runtime-view/tasks:preview
 ```
 
 Batch-get reads at most 20 explicit IDs in request order. Preview performs one
 positive `HRANDFIELD ... WITHVALUES` for `1..100` random Groups. Preview has no
 cursor, total, stable order, or completeness meaning; unreadable sampled rows
-are counted and omitted from the returned views.
+are counted and omitted from the returned views. Task Preview performs one
+descending `ZREVRANGE ... WITHSCORES` for the highest `1..100` Task Score
+coordinates, then projects Task and WorkerGroup descriptors with two bounded
+batch reads. It exposes only the Owner-defined Score Band, never the raw Score.
+A missing descriptor remains a `null` projection; the read does not create,
+approve, close or repair a Task. It has no total, cursor, paging or completeness
+meaning, and its order is not business priority or execution evidence.
 
 One Worker start uses one public control call:
 

@@ -61,8 +61,18 @@ not fabricate a response.
 
 ## Task page
 
-`Configured Tasks` keeps its Profile-owned descriptor projection read-only and,
-in API mode, adds a single-Item `Task Call Debug` action. The debug composer
+`Task Runtime Preview` reads the highest `1..100` Task Score coordinates and
+displays their Task and WorkerGroup descriptor projections in Owner order. It
+has no total, cursor, paging, stable-window or completeness meaning. The page
+shows only `Awaiting Review`, `Admission Visible`, `Running Visible` and
+`Closed`; it never receives raw Score, and `Running Visible` does not prove a
+Task is executing. Search filters only the current browser window and does not
+issue another API request. Descriptor gaps remain visible and are never
+repaired or inferred by the browser.
+
+In API mode, each readable `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task with a
+WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
+debug composer
 accepts an advisory Event Name, a JSON Object Payload, and an Item-level JSON
 Object `allocationRule`, then calls the existing managed Task endpoint. Calls
 go through Kernel scheduling; the browser does not interpret the rule or infer
@@ -72,11 +82,13 @@ accepted without a Result in the bounded wait window, so the user may manually
 load that Message ID later; there is no automatic polling. Browser refresh
 clears this history, and Mock mode never fabricates Task Call results.
 
-`Finite Tasks` is a separate real API flow available only in API mode:
+`Finite Task Workbench` is a drawer layered over the preview and is available
+only in API mode:
 
 1. Validate a local UTF-8 `.txt` file (non-empty, at most 1 MiB and 10,000
    lines).
-2. Select a configured WorkerGroup, advisory Event Name, and Payload key.
+2. Lazily load the bounded WorkerGroup Preview, then select a Group, advisory
+   Event Name, and Payload key.
 3. Create one ordinary finite Task through `POST /api/v1/tasks`.
 4. Convert each line into one standard TaskItem and append chunks of at most
    100 Items.
@@ -85,7 +97,9 @@ clears this history, and Mock mode never fabricates Task Call results.
    `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not
    ready and never triggers automatic polling.
 
-The browser records only confirmed stages: `Created`, `Items Appended`,
+Create/append, approve and successful export each request a fresh Task Runtime
+Preview, but failure to refresh never rolls back the completed write. The
+browser records only confirmed stages: `Created`, `Items Appended`,
 `Approved`, and `Export Ready`. It never simulates `RUNNING` or `TERMINAL` from
 elapsed time. Append failure stops the flow before approval. Ordinary finite
 Task records live only in the current browser session, so a refresh cannot

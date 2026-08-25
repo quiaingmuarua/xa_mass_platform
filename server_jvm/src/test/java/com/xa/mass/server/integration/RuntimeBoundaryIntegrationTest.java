@@ -777,6 +777,37 @@ class RuntimeBoundaryIntegrationTest {
                 .get("taskId")
                 .asText();
         assertThat(taskId).isNotBlank();
+        HttpResponse<String> taskPreview = send(
+                "POST",
+                "/api/v1/runtime-view/tasks:preview",
+                "{\"sampleLimit\":100}"
+        );
+        assertThat(taskPreview.statusCode()).isEqualTo(200);
+        var matchingManagedTaskIds = new ArrayList<String>();
+        for (var entry : JSON.readTree(taskPreview.body()).get("entries")) {
+            var task = entry.get("task");
+            var workerGroup = entry.get("workerGroup");
+            if (task == null || task.isNull()
+                    || workerGroup == null || workerGroup.isNull()) {
+                continue;
+            }
+            if (workerGroupId.equals(task.get("workerGroupId").asText())
+                    && workerGroupId.equals(
+                            workerGroup.get("workerGroupId").asText()
+                    )
+                    && "DIRECT_ITEM_RULE".equals(task.get(
+                            "workerAllocationMechanism"
+                    ).asText())
+                    && "PARK_WHEN_IDLE".equals(
+                            task.get("idleDisposition").asText()
+                    )
+                    && entry.get("taskId").asText().equals(
+                            task.get("taskId").asText()
+                    )) {
+                matchingManagedTaskIds.add(entry.get("taskId").asText());
+            }
+        }
+        assertThat(matchingManagedTaskIds).containsExactly(taskId);
 
         PreparedCoordinate boundWorker = prepareWorker(
                 workerGroupId,

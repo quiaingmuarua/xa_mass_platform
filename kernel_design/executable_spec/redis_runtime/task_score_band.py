@@ -166,6 +166,36 @@ return {"invalid", stored_score}
             )
         return states
 
+    def preview_score_states(
+        self,
+        *,
+        limit: int,
+    ) -> Sequence[TaskScoreState]:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit < 1
+            or limit > self.MAX_TASK_SCORE_PREVIEW_LIMIT
+        ):
+            raise ValueError(
+                "limit must be between 1 and "
+                f"{self.MAX_TASK_SCORE_PREVIEW_LIMIT}"
+            )
+
+        raw_rows = self.redis.zrevrange(
+            self.score_key,
+            0,
+            limit - 1,
+            withscores=True,
+        )
+        return tuple(
+            self._decode_state(
+                self._decode_task_id(raw_task_id),
+                raw_score,
+            )
+            for raw_task_id, raw_score in raw_rows
+        )
+
     def count_running_capacity_tasks(self) -> int:
         tag = self.RUNNING_VISIBLE_TAG
         idle_park_score = self._idle_park_score()

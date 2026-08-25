@@ -4,6 +4,7 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.ScoredValue;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -171,6 +172,24 @@ public final class RedisTaskScoreBandCore
             );
         }
         return states;
+    }
+
+    @Override
+    public List<TaskScoreState> previewScoreStates(int limit) {
+        if (limit < 1 || limit > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+            throw new IllegalArgumentException(
+                    "limit must be between 1 and "
+                            + MAX_TASK_SCORE_PREVIEW_LIMIT
+            );
+        }
+        List<ScoredValue<String>> rows = commands().zrevrangeWithScores(
+                scoreKey(),
+                0,
+                limit - 1L
+        );
+        return rows.stream()
+                .map(row -> decodeState(row.getValue(), row.getScore()))
+                .toList();
     }
 
     @Override

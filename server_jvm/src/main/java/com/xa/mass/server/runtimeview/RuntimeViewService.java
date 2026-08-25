@@ -1,12 +1,14 @@
 package com.xa.mass.server.runtimeview;
 
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourceEntry;
-import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.TaskPreviewEntry;
+import com.xa.mass.server.api.v1.runtimeview.model.TaskPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.TaskView;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupPreviewResponse;
@@ -16,7 +18,6 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveRespon
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,8 +36,8 @@ public final class RuntimeViewService {
             System.getLogger(RuntimeViewService.class.getName());
     private static final String BATCH_GET_OPERATION =
             "runtimeView.batchGetWorkerGroups";
-    private static final String CONFIGURED_RESOURCES_OPERATION =
-            "runtimeView.configuredResources";
+    private static final String TASK_PREVIEW_OPERATION =
+            "runtimeView.previewTasks";
     private static final String PREVIEW_OPERATION =
             "runtimeView.previewWorkers";
     private static final String GROUP_PREVIEW_OPERATION =
@@ -46,63 +47,78 @@ public final class RuntimeViewService {
 
     private final WorkerResourceCatalog workerCatalog;
     private final TaskResourceCatalog taskCatalog;
-    private final ConfiguredWorkerGroupTaskCallCatalog configuredTasks;
+    private final TaskScoreBandCore taskScores;
     private final WorkerSchedulingService workerScheduling;
 
     public RuntimeViewService(
             WorkerResourceCatalog workerCatalog,
             TaskResourceCatalog taskCatalog,
-            ConfiguredWorkerGroupTaskCallCatalog configuredTasks,
+            TaskScoreBandCore taskScores,
             WorkerSchedulingService workerScheduling
     ) {
         this.workerCatalog = workerCatalog;
         this.taskCatalog = taskCatalog;
-        this.configuredTasks = configuredTasks;
+        this.taskScores = taskScores;
         this.workerScheduling = workerScheduling;
     }
 
-    public ConfiguredRuntimeResourcesResponse configuredResources(
+    public TaskPreviewResponse previewTasks(
+            int sampleLimit,
             String requestId
     ) {
-        Map<String, String> configured =
-                configuredTasks.configuredTaskIdsByWorkerGroup();
-        if (configured.isEmpty()) {
-            return new ConfiguredRuntimeResourcesResponse(List.of());
-        }
-
-        List<String> workerGroupIds = List.copyOf(configured.keySet());
-        List<String> taskIds = List.copyOf(configured.values());
         try {
-            Map<String, WorkerGroupDescriptor> groups = workerCatalog
-                    .getWorkerGroupDescriptors(workerGroupIds);
-            Map<String, TaskDescriptor> tasks = taskCatalog
-                    .loadTaskAllocationDescriptors(taskIds);
-            var entries = new ArrayList<ConfiguredRuntimeResourceEntry>();
-            configured.forEach((workerGroupId, taskId) -> {
-                WorkerGroupDescriptor group = groups.get(workerGroupId);
+            List<TaskScoreState> scoreStates =
+                    taskScores.previewScoreStates(sampleLimit);
+            List<String> taskIds = scoreStates.stream()
+                    .map(TaskScoreState::taskId)
+                    .toList();
+            validatePreviewTaskIds(taskIds);
+            Map<String, TaskDescriptor> tasks = taskIds.isEmpty()
+                    ? Map.of()
+                    : taskCatalog.loadTaskAllocationDescriptors(taskIds);
+            var workerGroupIds = new LinkedHashSet<String>();
+            for (String taskId : taskIds) {
                 TaskDescriptor task = tasks.get(taskId);
-                validateConfiguredIdentity(
-                        workerGroupId,
-                        taskId,
-                        group,
-                        task
-                );
-                entries.add(new ConfiguredRuntimeResourceEntry(
-                        workerGroupId,
-                        taskId,
-                        group == null ? null : toView(group),
-                        task == null ? null : toView(task)
+                validateTaskIdentity(taskId, task);
+                if (task != null) {
+                    workerGroupIds.add(task.workerGroupId());
+                }
+            }
+            Map<String, WorkerGroupDescriptor> groups = workerGroupIds.isEmpty()
+                    ? Map.of()
+                    : workerCatalog.getWorkerGroupDescriptors(
+                            List.copyOf(workerGroupIds)
+                    );
+            workerGroupIds.forEach(workerGroupId ->
+                    validateWorkerGroupIdentity(
+                            workerGroupId,
+                            groups.get(workerGroupId)
+                    ));
+
+            var entries = new ArrayList<TaskPreviewEntry>(scoreStates.size());
+            for (TaskScoreState scoreState : scoreStates) {
+                TaskDescriptor task = tasks.get(scoreState.taskId());
+                WorkerGroupDescriptor group = task == null
+                        ? null
+                        : groups.get(task.workerGroupId());
+                entries.add(new TaskPreviewEntry(
+                        scoreState.taskId(),
+                        scoreState.band().wireValue(),
+                        task == null ? null : toView(task),
+                        group == null ? null : toView(group)
                 ));
-            });
-            return new ConfiguredRuntimeResourcesResponse(
+            }
+            return new TaskPreviewResponse(
+                    sampleLimit,
+                    Instant.now(),
                     List.copyOf(entries)
             );
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
             throw unavailable(
-                    CONFIGURED_RESOURCES_OPERATION,
-                    String.join(",", workerGroupIds),
+                    TASK_PREVIEW_OPERATION,
+                    "tasks",
                     requestId,
                     error
             );
@@ -338,23 +354,35 @@ public final class RuntimeViewService {
         );
     }
 
-    private static void validateConfiguredIdentity(
-            String workerGroupId,
+    private static void validatePreviewTaskIds(List<String> taskIds) {
+        if (taskIds.stream().anyMatch(
+                taskId -> taskId == null || taskId.isBlank()
+        ) || new LinkedHashSet<>(taskIds).size() != taskIds.size()) {
+            throw new IllegalStateException(
+                    "Task Score preview identities are invalid"
+            );
+        }
+    }
+
+    private static void validateTaskIdentity(
             String taskId,
-            WorkerGroupDescriptor group,
             TaskDescriptor task
+    ) {
+        if (task != null && !taskId.equals(task.taskId())) {
+            throw new IllegalStateException(
+                    "Task preview identity mismatch"
+            );
+        }
+    }
+
+    private static void validateWorkerGroupIdentity(
+            String workerGroupId,
+            WorkerGroupDescriptor group
     ) {
         if (group != null
                 && !workerGroupId.equals(group.workerGroupId())) {
             throw new IllegalStateException(
-                    "Configured WorkerGroup identity mismatch"
-            );
-        }
-        if (task != null
-                && (!taskId.equals(task.taskId())
-                || !workerGroupId.equals(task.workerGroupId()))) {
-            throw new IllegalStateException(
-                    "Configured Task identity mismatch"
+                    "Task preview WorkerGroup identity mismatch"
             );
         }
     }

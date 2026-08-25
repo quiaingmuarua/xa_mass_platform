@@ -3,7 +3,8 @@ package com.xa.mass.server.api.v1.runtimeview;
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
-import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
+import com.xa.mass.server.api.v1.runtimeview.model.TaskPreviewRequest;
+import com.xa.mass.server.api.v1.runtimeview.model.TaskPreviewResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupPreviewRequest;
@@ -26,7 +27,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -51,14 +51,14 @@ public class RuntimeViewController {
         this.workerNetwork = workerNetwork;
     }
 
-    @GetMapping("/configured-resources")
-    @Operation(summary = "Load configured WorkerGroup and Task resources")
+    @PostMapping("/tasks:preview")
+    @Operation(summary = "Preview a bounded Task Score window")
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Configured runtime projections",
+                    description = "Bounded Task runtime projections",
                     content = @Content(schema = @Schema(
-                            implementation = ConfiguredRuntimeResourcesResponse.class
+                            implementation = TaskPreviewResponse.class
                     ))
             ),
             @ApiResponse(
@@ -76,10 +76,14 @@ public class RuntimeViewController {
                     ))
             )
     })
-    public ConfiguredRuntimeResourcesResponse configuredResources(
+    public TaskPreviewResponse previewTasks(
+            @Valid @RequestBody TaskPreviewRequest request,
             HttpServletRequest httpRequest
     ) {
-        return runtimeView.configuredResources(requestId(httpRequest));
+        return runtimeView.previewTasks(
+                request.sampleLimit(),
+                requestId(httpRequest)
+        );
     }
 
     @PostMapping("/worker-groups:batch-get")

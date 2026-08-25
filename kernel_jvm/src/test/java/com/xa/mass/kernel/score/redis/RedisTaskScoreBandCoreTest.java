@@ -60,6 +60,31 @@ class RedisTaskScoreBandCoreTest {
         }
     }
 
+    @Test
+    void previewLimitIsValidatedBeforeRedisAccess() {
+        RedisClient redisClient = RedisClient.create(
+                "redis://127.0.0.1:1"
+        );
+        try {
+            RedisTaskScoreBandCore scoreCore =
+                    new RedisTaskScoreBandCore(
+                            redisClient,
+                            new RedisKeyspace("test_task_score_preview_unit")
+                    );
+
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> scoreCore.previewScoreStates(0)
+            );
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> scoreCore.previewScoreStates(101)
+            );
+        } finally {
+            redisClient.shutdown();
+        }
+    }
+
     private static void assertOperation(
             String operation,
             Runnable invocation

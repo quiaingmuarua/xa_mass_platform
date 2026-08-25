@@ -7,15 +7,14 @@ import {
   type RuntimeViewerErrorPresentation
 } from "@/runtime-viewer/errors";
 import type {
-  ConfiguredRuntimeResourceEntry,
   RuntimeViewerConfig,
   RuntimeViewerDataSource,
+  TaskPreviewResponse,
   WorkerGroupPreviewResponse,
   WorkerPreviewResponse
 } from "@/runtime-viewer/types";
 
 export type SampleLoadStatus = "idle" | "loading" | "refreshing" | "ready" | "error";
-export type ResourceLoadStatus = "idle" | "loading" | "ready" | "error";
 
 export interface WorkerGroupSampleState {
   status: SampleLoadStatus;
@@ -31,14 +30,22 @@ export interface WorkerGroupPreviewState {
   error?: RuntimeViewerErrorPresentation;
 }
 
+export interface TaskPreviewState {
+  status: SampleLoadStatus;
+  preview?: TaskPreviewResponse;
+  stale: boolean;
+  error?: RuntimeViewerErrorPresentation;
+}
+
 export function createRuntimeViewerStore(
   config: RuntimeViewerConfig,
   dataSource: RuntimeViewerDataSource
 ) {
   return defineStore("runtimeViewer", () => {
-    const resourceLoadStatus = ref<ResourceLoadStatus>("idle");
-    const resourceLoadError = ref<RuntimeViewerErrorPresentation>();
-    const entries = ref<ConfiguredRuntimeResourceEntry[]>([]);
+    const taskPreviewState = reactive<TaskPreviewState>({
+      status: "idle",
+      stale: false
+    });
     const workerGroupPreviewState = reactive<WorkerGroupPreviewState>({
       status: "idle",
       stale: false
@@ -46,35 +53,29 @@ export function createRuntimeViewerStore(
     const activeWorkerGroupId = ref<string>();
     const samples = reactive<Record<string, WorkerGroupSampleState>>({});
 
-    let resourceLoadController: AbortController | undefined;
-    let resourceLoadPromise: Promise<void> | undefined;
+    let taskPreviewController: AbortController | undefined;
+    let taskPreviewPromise: Promise<void> | undefined;
+    let taskPreviewVersion = 0;
     let workerGroupLoadController: AbortController | undefined;
     let workerGroupLoadPromise: Promise<void> | undefined;
     let workerGroupLoadVersion = 0;
     const sampleControllers = new Map<string, AbortController>();
     const sampleVersions = new Map<string, number>();
 
-    const configuredWorkerGroupIds = computed(() =>
-      entries.value.map((entry) => entry.workerGroupId)
-    );
-    const groups = computed(() =>
-      entries.value.flatMap((entry) =>
-        entry.workerGroup === null ? [] : [entry.workerGroup]
-      )
-    );
     const workerGroups = computed(
       () => workerGroupPreviewState.preview?.workerGroups ?? []
     );
     const workerGroupIds = computed(() =>
       workerGroups.value.map((group) => group.workerGroupId)
     );
+    const entries = computed(() => taskPreviewState.preview?.entries ?? []);
     const tasks = computed(() =>
       entries.value.flatMap((entry) => (entry.task === null ? [] : [entry.task]))
     );
     const missingWorkerGroupIds = computed(() =>
       entries.value
-        .filter((entry) => entry.workerGroup === null)
-        .map((entry) => entry.workerGroupId)
+        .filter((entry) => entry.task !== null && entry.workerGroup === null)
+        .map((entry) => entry.task!.workerGroupId)
     );
     const missingTaskIds = computed(() =>
       entries.value.filter((entry) => entry.task === null).map((entry) => entry.taskId)
@@ -92,38 +93,62 @@ export function createRuntimeViewerStore(
     );
     const activeSample = computed(() => activeSampleState.value?.sample);
 
-    function initialize(): Promise<void> {
-      if (resourceLoadStatus.value === "ready") {
-        return Promise.resolve();
-      }
-      if (resourceLoadPromise !== undefined) {
-        return resourceLoadPromise;
-      }
-      resourceLoadPromise = loadResourceDirectory();
-      return resourceLoadPromise;
+    async function initializeTaskView(): Promise<void> {
+      await loadTaskPreview(false);
     }
 
-    async function loadResourceDirectory(): Promise<void> {
-      resourceLoadController?.abort();
-      resourceLoadController = new AbortController();
-      resourceLoadStatus.value = "loading";
-      resourceLoadError.value = undefined;
-      try {
-        const response = await dataSource.loadConfiguredResources(
-          resourceLoadController.signal
-        );
-        entries.value = response.entries;
-        resourceLoadStatus.value = "ready";
-      } catch (error) {
-        if (isRuntimeViewerCancellation(error)) {
-          return;
-        }
-        resourceLoadStatus.value = "error";
-        resourceLoadError.value = presentRuntimeViewerError(error);
-      } finally {
-        resourceLoadController = undefined;
-        resourceLoadPromise = undefined;
+    async function initializeWorkerGroups(): Promise<void> {
+      await loadWorkerGroupDirectory(false);
+    }
+
+    async function refreshTasks(): Promise<void> {
+      await loadTaskPreview(true);
+    }
+
+    function loadTaskPreview(force: boolean): Promise<void> {
+      if (!force && taskPreviewState.status === "ready" && !taskPreviewState.stale) {
+        return Promise.resolve();
       }
+      if (!force && taskPreviewPromise !== undefined) {
+        return taskPreviewPromise;
+      }
+
+      taskPreviewController?.abort();
+      const controller = new AbortController();
+      taskPreviewController = controller;
+      const version = ++taskPreviewVersion;
+      const previousPreview = taskPreviewState.preview;
+      taskPreviewState.status =
+        previousPreview === undefined ? "loading" : "refreshing";
+      taskPreviewState.error = undefined;
+
+      const request = (async () => {
+        try {
+          const response = await dataSource.previewTasks(100, controller.signal);
+          if (taskPreviewVersion !== version) {
+            return;
+          }
+          taskPreviewState.preview = response;
+          taskPreviewState.status = "ready";
+          taskPreviewState.error = undefined;
+          taskPreviewState.stale = false;
+        } catch (error) {
+          if (isRuntimeViewerCancellation(error) || taskPreviewVersion !== version) {
+            return;
+          }
+          taskPreviewState.preview = previousPreview;
+          taskPreviewState.status = "error";
+          taskPreviewState.error = presentRuntimeViewerError(error);
+          taskPreviewState.stale = previousPreview !== undefined;
+        } finally {
+          if (taskPreviewVersion === version) {
+            taskPreviewController = undefined;
+            taskPreviewPromise = undefined;
+          }
+        }
+      })();
+      taskPreviewPromise = request;
+      return request;
     }
 
     async function initializeWorkerView(): Promise<void> {
@@ -302,7 +327,7 @@ export function createRuntimeViewerStore(
     }
 
     function dispose(): void {
-      resourceLoadController?.abort();
+      taskPreviewController?.abort();
       workerGroupLoadController?.abort();
       sampleControllers.forEach((controller) => controller.abort());
       sampleControllers.clear();
@@ -310,11 +335,8 @@ export function createRuntimeViewerStore(
 
     return {
       mode: config.mode,
-      resourceLoadStatus,
-      resourceLoadError,
+      taskPreviewState,
       entries,
-      configuredWorkerGroupIds,
-      groups,
       workerGroupPreviewState,
       workerGroups,
       workerGroupIds,
@@ -326,7 +348,9 @@ export function createRuntimeViewerStore(
       activeSampleState,
       activeSample,
       samples,
-      initialize,
+      initializeTaskView,
+      initializeWorkerGroups,
+      refreshTasks,
       initializeWorkerView,
       refreshWorkerGroups,
       selectGroup,

@@ -403,33 +403,51 @@ class RuntimeApiClient:
         if self._managed_task_id is not None:
             return self._managed_task_id
         response = self._http.request(
-            "GET",
-            "/api/v1/runtime-view/configured-resources",
-            None,
-            "configuredResources.load",
+            "POST",
+            "/api/v1/runtime-view/tasks:preview",
+            {"sampleLimit": 100},
+            "tasks.preview",
         )
         entries = response.get("entries")
         if not isinstance(entries, list):
             raise ProofFailure(
-                "task-call.configured-resources",
-                "Configured Runtime resources are invalid",
+                "task-call.task-preview",
+                "Task Preview response is invalid",
             )
-        matches = [
-            entry
-            for entry in entries
-            if isinstance(entry, dict)
-            and entry.get("workerGroupId") == WORKER_GROUP_ID
-        ]
+        matches = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            task = entry.get("task")
+            worker_group = entry.get("workerGroup")
+            if (
+                isinstance(task, dict)
+                and isinstance(worker_group, dict)
+                and task.get("workerGroupId") == WORKER_GROUP_ID
+                and worker_group.get("workerGroupId") == WORKER_GROUP_ID
+                and task.get("workerAllocationMechanism") == "DIRECT_ITEM_RULE"
+                and task.get("idleDisposition") == "PARK_WHEN_IDLE"
+                and entry.get("taskId") == task.get("taskId")
+            ):
+                matches.append(entry)
         if len(matches) != 1:
             raise ProofFailure(
                 "task-call.task-id",
                 "Android WorkerGroup managed Task was not resolved",
             )
         task_id = matches[0].get("taskId")
+        task = matches[0].get("task")
         if not isinstance(task_id, str) or not task_id:
             raise ProofFailure(
                 "task-call.task-id",
                 "Android WorkerGroup managed Task ID is invalid",
+            )
+        if (
+            not isinstance(task, dict) or task.get("taskId") != task_id
+        ):
+            raise ProofFailure(
+                "task-call.task-id",
+                "Android WorkerGroup managed Task descriptor is missing",
             )
         self._managed_task_id = task_id
         return task_id

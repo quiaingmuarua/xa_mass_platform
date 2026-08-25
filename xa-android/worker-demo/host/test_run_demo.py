@@ -19,13 +19,22 @@ class FakeRuntimeApiClient:
 
     def send(self, method: str, path: str, body: object, operation: str):
         self.requests.append((method, path, body, operation))
-        if operation == "configuredResources.load":
+        if operation == "tasks.preview":
             return run_demo.ApiResponse(
                 200,
                 {
                     "entries": [{
-                        "workerGroupId": run_demo.WORKER_GROUP_ID,
                         "taskId": "managed-task",
+                        "scoreBand": "running_visible",
+                        "task": {
+                            "taskId": "managed-task",
+                            "workerGroupId": run_demo.WORKER_GROUP_ID,
+                            "workerAllocationMechanism": "DIRECT_ITEM_RULE",
+                            "idleDisposition": "PARK_WHEN_IDLE",
+                        },
+                        "workerGroup": {
+                            "workerGroupId": run_demo.WORKER_GROUP_ID,
+                        },
                     }]
                 },
             )
@@ -86,10 +95,10 @@ class RunDemoTest(unittest.TestCase):
         self.assertEqual(2, len(client.requests))
         self.assertEqual(
             (
-                "GET",
-                "/api/v1/runtime-view/configured-resources",
-                None,
-                "configuredResources.load",
+                "POST",
+                "/api/v1/runtime-view/tasks:preview",
+                {"sampleLimit": 100},
+                "tasks.preview",
             ),
             client.requests[0],
         )
@@ -151,7 +160,7 @@ class RunDemoTest(unittest.TestCase):
                 )
 
         self.assertEqual(
-            ["configuredResources.load", "taskItems.call"],
+            ["tasks.preview", "taskItems.call"],
             [
                 request[3]
                 for request in FakeRuntimeApiClient.last_instance.requests

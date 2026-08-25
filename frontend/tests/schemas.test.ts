@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  configuredRuntimeResourcesResponseSchema,
+  taskPreviewResponseSchema,
   workerGroupPreviewResponseSchema,
   workerPreviewResponseSchema
 } from "@/runtime-viewer/schemas";
-import { configuredEntry, groupPreview, preview, worker } from "./fixtures";
+import {
+  groupPreview,
+  preview,
+  taskPreview,
+  taskPreviewEntry,
+  worker
+} from "./fixtures";
 
 describe("Runtime View response schemas", () => {
   it("accepts the bounded public preview DTO", () => {
@@ -56,35 +62,49 @@ describe("Runtime View response schemas", () => {
     expect(workerPreviewResponseSchema.safeParse(mutate()).success).toBe(false);
   });
 
-  it("accepts ordered configured entries with missing descriptors", () => {
-    const value = {
-      entries: [
-        configuredEntry("group-a"),
-        configuredEntry("group-b", {
-          missingGroup: true,
-          missingTask: true
-        })
-      ]
-    };
+  it("accepts ordered Task Score entries with missing descriptors", () => {
+    const value = taskPreview([
+      taskPreviewEntry("group-a", { scoreBand: "pre_review" }),
+      taskPreviewEntry("group-b", {
+        missingTask: true,
+        scoreBand: "terminal"
+      })
+    ]);
 
-    expect(configuredRuntimeResourcesResponseSchema.parse(value)).toEqual(value);
+    expect(taskPreviewResponseSchema.parse(value)).toEqual(value);
   });
 
   it("rejects descriptor identity drift and duplicate coordinates", () => {
-    const drifted = configuredEntry("group-a");
+    const drifted = taskPreviewEntry("group-a");
     drifted.task = {
       ...drifted.task!,
       workerGroupId: "group-b"
     };
-    expect(
-      configuredRuntimeResourcesResponseSchema.safeParse({ entries: [drifted] }).success
-    ).toBe(false);
+    expect(taskPreviewResponseSchema.safeParse(taskPreview([drifted])).success).toBe(
+      false
+    );
 
-    const duplicate = configuredEntry("group-a");
-    const result = configuredRuntimeResourcesResponseSchema.safeParse({
-      entries: [duplicate, duplicate]
-    });
+    const duplicate = taskPreviewEntry("group-a");
+    const result = taskPreviewResponseSchema.safeParse(
+      taskPreview([duplicate, duplicate])
+    );
 
     expect(result.success).toBe(false);
+
+    const orphanedGroup = taskPreviewEntry("group-b", { missingGroup: true });
+    orphanedGroup.workerGroup = workerGroupPreviewResponseSchema.parse(
+      groupPreview(["group-b"])
+    ).workerGroups[0]!;
+    orphanedGroup.task = null;
+    expect(
+      taskPreviewResponseSchema.safeParse(taskPreview([orphanedGroup])).success
+    ).toBe(false);
+
+    expect(
+      taskPreviewResponseSchema.safeParse({
+        ...taskPreview([taskPreviewEntry("group-c")]),
+        rawScore: 42
+      }).success
+    ).toBe(false);
   });
 });

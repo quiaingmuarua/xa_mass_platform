@@ -41,6 +41,7 @@ class FakeRedis:
         self.zsets: dict[str, dict[str, int]] = {}
         self.now_millis = 100_000
         self.eval_count = 0
+        self.zrevrange_calls: list[tuple[str, int, int, bool]] = []
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         return FakePipeline(self, transaction)
@@ -181,6 +182,27 @@ class FakeRedis:
             return [(member, score) for score, member in selected]
         return [member for _, member in selected]
 
+    def zrevrange(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        withscores: bool = False,
+    ) -> list[object]:
+        self.zrevrange_calls.append((key, start, end, withscores))
+        rows = sorted(
+            (
+                (score, member)
+                for member, score in self.zsets.get(key, {}).items()
+            ),
+            reverse=True,
+        )
+        selected = rows[start : end + 1]
+        if withscores:
+            return [(member, score) for score, member in selected]
+        return [member for _, member in selected]
+
     def zcount(self, key: str, min_score: int, max_score: int) -> int:
         return sum(
             1
@@ -212,6 +234,51 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
 
     def store_score(self, task_id: str, score: int) -> None:
         self.redis.zadd(self.kernel.score_key, {task_id: score})
+
+    def test_preview_score_states_is_one_bounded_descending_read(self) -> None:
+        scores = {
+            "terminal": -1,
+            "running": self.score(self.kernel.RUNNING_VISIBLE_TAG, 1, 0),
+            "admission": self.score(
+                self.kernel.ADMISSION_VISIBLE_TAG,
+                2,
+                3,
+            ),
+            "review": self.score(self.kernel.PRE_REVIEW_TAG, 3, 4),
+        }
+        for task_id, score in scores.items():
+            self.store_score(task_id, score)
+
+        states = self.kernel.preview_score_states(limit=4)
+
+        self.assertEqual(
+            ["review", "admission", "running", "terminal"],
+            [state.task_id for state in states],
+        )
+        self.assertEqual(
+            [
+                TaskScoreBand.PRE_REVIEW,
+                TaskScoreBand.ADMISSION_VISIBLE,
+                TaskScoreBand.RUNNING_VISIBLE,
+                TaskScoreBand.TERMINAL,
+            ],
+            [state.band for state in states],
+        )
+        self.assertEqual(
+            [(self.kernel.score_key, 0, 3, True)],
+            self.redis.zrevrange_calls,
+        )
+
+    def test_preview_score_states_enforces_limit_and_decoding(self) -> None:
+        for limit in (0, 101, True, 1.5):
+            with self.subTest(limit=limit):
+                with self.assertRaises(ValueError):
+                    self.kernel.preview_score_states(limit=limit)  # type: ignore[arg-type]
+        self.assertEqual([], self.redis.zrevrange_calls)
+
+        self.store_score("invalid", 0)
+        with self.assertRaises(ValueError):
+            self.kernel.preview_score_states(limit=1)
 
     def test_running_capacity_count_excludes_only_private_idle_park(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)

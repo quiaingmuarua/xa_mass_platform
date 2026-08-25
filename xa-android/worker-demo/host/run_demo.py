@@ -104,7 +104,7 @@ def run_demo(
         raise ValueError("wait timeout must be in 1..60000 milliseconds")
 
     client = RuntimeApiClient(server_base_url, request_timeout_seconds)
-    task_id = configured_task_id(client)
+    task_id = managed_task_id(client)
     results = call_capabilities(
         client=client,
         task_id=task_id,
@@ -116,29 +116,44 @@ def run_demo(
     }
 
 
-def configured_task_id(client: RuntimeApiClient) -> str:
-    operation = "configuredResources.load"
+def managed_task_id(client: RuntimeApiClient) -> str:
+    operation = "tasks.preview"
     response = client.send(
-        "GET",
-        "/api/v1/runtime-view/configured-resources",
-        None,
+        "POST",
+        "/api/v1/runtime-view/tasks:preview",
+        {"sampleLimit": 100},
         operation,
     )
     body = require_status(response, 200, operation)
     entries = body.get("entries")
     if not isinstance(entries, list):
         raise RuntimeError(f"{operation} entries are missing")
-    matches = [
-        entry
-        for entry in entries
-        if isinstance(entry, dict)
-        and entry.get("workerGroupId") == WORKER_GROUP_ID
-    ]
+    matches = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        task = entry.get("task")
+        worker_group = entry.get("workerGroup")
+        if (
+            isinstance(task, dict)
+            and isinstance(worker_group, dict)
+            and task.get("workerGroupId") == WORKER_GROUP_ID
+            and worker_group.get("workerGroupId") == WORKER_GROUP_ID
+            and task.get("workerAllocationMechanism") == "DIRECT_ITEM_RULE"
+            and task.get("idleDisposition") == "PARK_WHEN_IDLE"
+            and entry.get("taskId") == task.get("taskId")
+        ):
+            matches.append(entry)
     if len(matches) != 1:
         raise RuntimeError(f"{operation} did not resolve exactly one Task")
     task_id = matches[0].get("taskId")
+    task = matches[0].get("task")
     if not isinstance(task_id, str) or not task_id:
         raise RuntimeError(f"{operation} taskId is missing")
+    if (
+        not isinstance(task, dict) or task.get("taskId") != task_id
+    ):
+        raise RuntimeError(f"{operation} Task descriptor is missing")
     return task_id
 
 

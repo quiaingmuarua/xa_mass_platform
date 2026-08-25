@@ -2,7 +2,7 @@ import { AxiosError, type AxiosInstance, type AxiosResponse } from "axios";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ConfiguredRuntimeResourceEntry } from "@/runtime-viewer/types";
+import type { TaskRuntimePreviewEntry } from "@/runtime-viewer/types";
 import {
   createTaskCallDebugStore,
   TASK_CALL_DEBUG_HISTORY_LIMIT
@@ -395,11 +395,11 @@ describe("Task Call Debug browser-memory store", () => {
 });
 
 function entry(
-  overrides: Partial<ConfiguredRuntimeResourceEntry> = {}
-): ConfiguredRuntimeResourceEntry {
+  overrides: Partial<TaskRuntimePreviewEntry> = {}
+): TaskRuntimePreviewEntry {
   return {
-    workerGroupId: "group-a",
     taskId: "task-1",
+    scoreBand: "running_visible",
     workerGroup: {
       workerGroupId: "group-a",
       attributes: {},

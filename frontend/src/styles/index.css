@@ -386,7 +386,7 @@ pre {
   margin-bottom: 14px;
 }
 
-.task-metric-grid--configured {
+.task-metric-grid--managed {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -402,6 +402,24 @@ pre {
   background: var(--rv-surface-raised);
   border: 1px solid var(--rv-border);
   border-radius: 10px;
+}
+
+.task-preview-heading__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-preview-search {
+  width: min(340px, 38vw);
+}
+
+.task-filter-empty {
+  border-top: 1px solid var(--rv-border);
+}
+
+.finite-task-workbench-drawer .el-drawer__body {
+  padding-top: 4px;
 }
 
 .task-page-tab {
@@ -1732,6 +1750,16 @@ pre {
   .task-page-tabs {
     display: flex;
     overflow-x: auto;
+  }
+
+  .task-preview-heading__actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-preview-search {
+    width: 100%;
   }
 
   .task-page-tab {

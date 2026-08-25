@@ -214,10 +214,10 @@ describe("finite Task management store", () => {
 function catalog(mode: "api" | "mock") {
   return {
     mode,
-    entries: [
+    workerGroups: [
       {
         workerGroupId: "scenario-string-utils-workers",
-        workerGroup: { eventCodes: ["extension.worker.string.md5"] }
+        eventCodes: ["extension.worker.string.md5"]
       }
     ]
   };

@@ -351,6 +351,11 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
+        public List<TaskScoreState> previewScoreStates(int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public TaskScoreTransitionResult rewriteScore(
                 String taskId,
                 TaskScoreBand expectedBand,

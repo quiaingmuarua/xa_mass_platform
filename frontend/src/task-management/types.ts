@@ -87,11 +87,9 @@ export interface FiniteTaskClient {
 
 export interface TaskManagementCatalog {
   readonly mode: RuntimeDataSourceMode;
-  readonly entries: Array<{
+  readonly workerGroups: Array<{
     workerGroupId: string;
-    workerGroup: {
-      eventCodes: string[];
-    } | null;
+    eventCodes: string[];
   }>;
 }
 

@@ -9,6 +9,7 @@ import type { FiniteTaskSession, FiniteTaskStage } from "@/task-management/types
 
 const runtimeStore = useRuntimeViewerStore();
 const taskStore = useTaskManagementStore();
+const emit = defineEmits<{ taskChanged: [] }>();
 const drawerOpen = ref(false);
 const drawerMode = ref<"draft" | "task">("draft");
 const selectedTaskId = ref<string>();
@@ -23,11 +24,7 @@ const draft = ref({
   maxRetryTimes: 3
 });
 
-const availableGroups = computed(() =>
-  runtimeStore.entries.flatMap((entry) =>
-    entry.workerGroup === null ? [] : [entry.workerGroup]
-  )
-);
+const availableGroups = computed(() => runtimeStore.workerGroups);
 const draftGroup = computed(() =>
   availableGroups.value.find(
     (group) => group.workerGroupId === draft.value.workerGroupId
@@ -37,7 +34,8 @@ const selectedTask = computed(() =>
   taskStore.tasks.find((task) => task.taskId === selectedTaskId.value)
 );
 
-function openCreate(): void {
+async function openCreate(): Promise<void> {
+  await runtimeStore.initializeWorkerGroups();
   taskStore.clearMessages();
   const group = availableGroups.value[0];
   draft.value = {
@@ -80,6 +78,7 @@ async function createAndAppend(): Promise<void> {
     selectedTaskId.value = task.taskId;
     reviewConfirmed.value = false;
     drawerMode.value = "task";
+    emit("taskChanged");
   }
 }
 
@@ -94,12 +93,15 @@ function openTask(task: FiniteTaskSession): void {
 async function approveSelected(): Promise<void> {
   const task = selectedTask.value;
   if (task === undefined || !reviewConfirmed.value) return;
-  await taskStore.approveTask(task.taskId);
+  if (await taskStore.approveTask(task.taskId)) {
+    emit("taskChanged");
+  }
 }
 
 async function exportTask(task: FiniteTaskSession): Promise<void> {
   const download = await taskStore.exportTask(task.taskId);
   if (download === undefined) return;
+  emit("taskChanged");
   const url = URL.createObjectURL(download.blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -107,6 +109,13 @@ async function exportTask(task: FiniteTaskSession): Promise<void> {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+function openTaskById(taskId: string): void {
+  const task = taskStore.tasks.find((candidate) => candidate.taskId === taskId);
+  if (task !== undefined) openTask(task);
+}
+
+defineExpose({ openTaskById });
 
 function tagType(stage: FiniteTaskStage): "info" | "primary" | "success" {
   if (stage === "EXPORT_READY") return "success";
@@ -216,8 +225,23 @@ function formatBytes(value: number): string {
         </el-button>
       </div>
 
-      <div v-if="runtimeStore.resourceLoadStatus === 'loading'" class="panel-state">
+      <div
+        v-if="
+          runtimeStore.workerGroupPreviewState.status === 'loading' ||
+          runtimeStore.workerGroupPreviewState.status === 'refreshing'
+        "
+        class="panel-state"
+      >
         正在读取 WorkerGroup 与 Event 目录…
+      </div>
+      <div
+        v-else-if="
+          runtimeStore.workerGroupPreviewState.status === 'error' &&
+          availableGroups.length === 0
+        "
+        class="panel-state panel-state--error"
+      >
+        WorkerGroup Preview 暂时不可用。
       </div>
       <div v-else-if="availableGroups.length === 0" class="panel-state">
         当前没有可用于有限 Task 的 WorkerGroup 描述符。

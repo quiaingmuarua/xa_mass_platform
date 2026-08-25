@@ -91,6 +91,7 @@ Read operations:
 
 ```python
 get_score_states(task_ids)
+preview_score_states(limit)
 count_running_capacity_tasks()
 acquire_band_task_candidates(band, before_time_millis, limit)
 acquire_dispatch_work_tasks(limit)
@@ -111,6 +112,13 @@ release_observed_score_hold(task_id, observed_hold_score)
 ```
 
 Callers never pass Redis ranges, tags, slots, score bases, or Lua arguments.
+
+`preview_score_states(limit)` is the bounded Runtime observation exception to
+caller-supplied Task identities. It accepts only `1..100`, reads the one Task
+score ZSET once in descending score order, and returns decoded owner states.
+It has no cursor, total, filter, or stability promise. Consumers may project
+the returned Task IDs through other owners, but raw score, time-slot, and
+suffix coordinates remain inside the Kernel/owner boundary.
 
 ## Creation And Approval
 
@@ -270,6 +278,10 @@ RUNNING dispatch scan
 
 RUNNING count
   complete RUNNING_VISIBLE band, including future holds
+
+Runtime preview
+  highest-score 1..100 members across positive bands and terminal records
+  one descending window; equal-score order and repeated membership are unstable
 ```
 
 Candidate warming uses its own disposable hint schedule. It may validate that
@@ -291,11 +303,12 @@ range membership mint
 No Task descriptor, Item payload, Worker state, candidate cache, or result key
 is read or written by Task score Lua.
 
-The Java Redis provider implements only the six caller-driven operations used
-by Task create, approve, close and Call submission: state read, initialize,
-generic rewrite, positive close, exact hold release and private idle-park
-release. Pacer-only candidate, pacing, observed park and observed close
-operations remain explicit JVM gaps; Python remains their production owner.
+The Java Redis provider implements the caller-driven operations used by Task
+create, approve, close and Call submission plus the bounded Runtime preview:
+state read, descending preview, initialize, generic rewrite, positive close,
+exact hold release and private idle-park release. Pacer-only candidate, pacing,
+observed park and observed close operations remain explicit JVM gaps; Python
+remains their production owner.
 
 ## Writer Matrix
 

@@ -446,8 +446,17 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
         configured = FakeHttpResponse(
             {
                 "entries": [{
-                    "workerGroupId": acceptance.WORKER_GROUP_ID,
                     "taskId": "managed-task",
+                    "scoreBand": "running_visible",
+                    "task": {
+                        "taskId": "managed-task",
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                        "workerAllocationMechanism": "DIRECT_ITEM_RULE",
+                        "idleDisposition": "PARK_WHEN_IDLE",
+                    },
+                    "workerGroup": {
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                    },
                 }]
             }
         )
@@ -480,8 +489,13 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
         requests = [call.args[0] for call in urlopen.call_args_list]
         self.assertEqual(
             acceptance.DEFAULT_SERVER_BASE_URL
-            + "/api/v1/runtime-view/configured-resources",
+            + "/api/v1/runtime-view/tasks:preview",
             requests[0].full_url,
+        )
+        self.assertEqual("POST", requests[0].method)
+        self.assertEqual(
+            {"sampleLimit": 100},
+            json.loads(requests[0].data),
         )
         self.assertEqual(
             acceptance.DEFAULT_SERVER_BASE_URL

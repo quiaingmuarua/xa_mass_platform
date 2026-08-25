@@ -8,13 +8,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
+import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -27,7 +29,6 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
-import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
 import com.xa.mass.server.workerscheduling.WorkerSchedulingService.SchedulingState;
 import java.time.Instant;
@@ -50,7 +51,7 @@ class RuntimeViewControllerTest {
 
     private WorkerResourceCatalog workerCatalog;
     private TaskResourceCatalog taskCatalog;
-    private ConfiguredWorkerGroupTaskCallCatalog configuredTasks;
+    private TaskScoreBandCore taskScores;
     private WorkerSchedulingService workerScheduling;
     private WorkerNetworkObservationService workerNetwork;
     private MockMvc mockMvc;
@@ -59,11 +60,9 @@ class RuntimeViewControllerTest {
     void setUp() {
         workerCatalog = mock(WorkerResourceCatalog.class);
         taskCatalog = mock(TaskResourceCatalog.class);
-        configuredTasks = mock(ConfiguredWorkerGroupTaskCallCatalog.class);
+        taskScores = mock(TaskScoreBandCore.class);
         workerScheduling = mock(WorkerSchedulingService.class);
         workerNetwork = mock(WorkerNetworkObservationService.class);
-        when(configuredTasks.configuredTaskIdsByWorkerGroup())
-                .thenReturn(Map.of());
         LocalValidatorFactoryBean validator =
                 new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -72,7 +71,7 @@ class RuntimeViewControllerTest {
                                 new RuntimeViewService(
                                         workerCatalog,
                                         taskCatalog,
-                                        configuredTasks,
+                                        taskScores,
                                         workerScheduling
                                 ),
                                 workerNetwork
@@ -85,14 +84,30 @@ class RuntimeViewControllerTest {
     }
 
     @Test
-    void configuredResourcesPreserveManifestOrderAndMissingDescriptors()
+    void taskPreviewPreservesScoreOrderAndMissingDescriptors()
             throws Exception {
-        var configured = new LinkedHashMap<String, String>();
-        configured.put("group-b", "task-b");
-        configured.put("missing", "task-missing");
-        configured.put("group-a", "task-a");
-        when(configuredTasks.configuredTaskIdsByWorkerGroup())
-                .thenReturn(configured);
+        when(taskScores.previewScoreStates(100)).thenReturn(List.of(
+                scoreState("task-review", TaskScoreBand.PRE_REVIEW),
+                scoreState("missing-task", TaskScoreBand.ADMISSION_VISIBLE),
+                scoreState("task-group-missing", TaskScoreBand.RUNNING_VISIBLE),
+                scoreState("task-terminal", TaskScoreBand.TERMINAL)
+        ));
+        List<String> taskIds = List.of(
+                "task-review",
+                "missing-task",
+                "task-group-missing",
+                "task-terminal"
+        );
+        var tasks = new LinkedHashMap<String, TaskDescriptor>();
+        tasks.put("task-review", task("task-review", "group-b"));
+        tasks.put("missing-task", null);
+        tasks.put(
+                "task-group-missing",
+                task("task-group-missing", "missing-group")
+        );
+        tasks.put("task-terminal", task("task-terminal", "group-a"));
+        when(taskCatalog.loadTaskAllocationDescriptors(taskIds))
+                .thenReturn(tasks);
 
         var groups = new LinkedHashMap<String, WorkerGroupDescriptor>();
         groups.put("group-b", group(
@@ -100,36 +115,32 @@ class RuntimeViewControllerTest {
                 Map.of("capability", "beta"),
                 Set.of("event.b")
         ));
-        groups.put("missing", null);
+        groups.put("missing-group", null);
         groups.put("group-a", group(
                 "group-a",
                 Map.of("capability", "alpha"),
                 Set.of("event.a")
         ));
         when(workerCatalog.getWorkerGroupDescriptors(
-                List.copyOf(configured.keySet())
+                List.of("group-b", "missing-group", "group-a")
         )).thenReturn(groups);
 
-        var tasks = new LinkedHashMap<String, TaskDescriptor>();
-        tasks.put("task-b", task("task-b", "group-b"));
-        tasks.put("task-missing", null);
-        tasks.put("task-a", task("task-a", "group-a"));
-        when(taskCatalog.loadTaskAllocationDescriptors(
-                List.copyOf(configured.values())
-        )).thenReturn(tasks);
-
-        mockMvc.perform(get(
-                        "/api/v1/runtime-view/configured-resources"
-                ).header("X-Request-Id", "configured-request"))
+        mockMvc.perform(post(
+                        "/api/v1/runtime-view/tasks:preview"
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "task-preview-request")
+                        .content("{\"sampleLimit\":100}"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
                         "X-Request-Id",
-                        "configured-request"
+                        "task-preview-request"
                 ))
-                .andExpect(jsonPath("$.entries[0].workerGroupId")
-                        .value("group-b"))
+                .andExpect(jsonPath("$.sampleLimit").value(100))
+                .andExpect(jsonPath("$.generatedAt").isString())
                 .andExpect(jsonPath("$.entries[0].taskId")
-                        .value("task-b"))
+                        .value("task-review"))
+                .andExpect(jsonPath("$.entries[0].scoreBand")
+                        .value("pre_review"))
                 .andExpect(jsonPath(
                         "$.entries[0].workerGroup.attributes.capability"
                 ).value("beta"))
@@ -141,54 +152,103 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath(
                         "$.entries[0].task.config.maxRetryTimes"
                 ).value("3"))
-                .andExpect(jsonPath("$.entries[1].workerGroup")
-                        .value(nullValue()))
                 .andExpect(jsonPath("$.entries[1].task")
                         .value(nullValue()))
-                .andExpect(jsonPath("$.entries[2].workerGroupId")
-                        .value("group-a"))
-                .andExpect(jsonPath("$.entries[0].task.score")
+                .andExpect(jsonPath("$.entries[1].workerGroup")
+                        .value(nullValue()))
+                .andExpect(jsonPath("$.entries[2].task.taskId")
+                        .value("task-group-missing"))
+                .andExpect(jsonPath("$.entries[2].workerGroup")
+                        .value(nullValue()))
+                .andExpect(jsonPath("$.entries[3].scoreBand")
+                        .value("terminal"))
+                .andExpect(jsonPath("$.entries[0].score")
                         .doesNotExist())
-                .andExpect(jsonPath("$.entries[0].task.status")
+                .andExpect(jsonPath("$.entries[0].timeMillis")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.entries[0].suffix")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.total").doesNotExist())
+                .andExpect(jsonPath("$.cursor").doesNotExist())
+                .andExpect(jsonPath("$.hasMore")
                         .doesNotExist());
+
+        var ordered = inOrder(taskScores, taskCatalog, workerCatalog);
+        ordered.verify(taskScores).previewScoreStates(100);
+        ordered.verify(taskCatalog).loadTaskAllocationDescriptors(taskIds);
+        ordered.verify(workerCatalog).getWorkerGroupDescriptors(
+                List.of("group-b", "missing-group", "group-a")
+        );
     }
 
     @Test
-    void configuredResourcesReturnEmptyWithoutOwnerReads()
+    void emptyTaskPreviewSkipsDescriptorOwners()
             throws Exception {
-        mockMvc.perform(get(
-                        "/api/v1/runtime-view/configured-resources"
-                ))
+        when(taskScores.previewScoreStates(25)).thenReturn(List.of());
+
+        mockMvc.perform(post(
+                        "/api/v1/runtime-view/tasks:preview"
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sampleLimit\":25}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries").isEmpty());
 
-        verifyNoInteractions(workerCatalog, taskCatalog);
+        verifyNoInteractions(taskCatalog, workerCatalog);
     }
 
     @Test
-    void configuredResourcesRejectIdentityDriftAsUnavailable()
+    void taskPreviewRejectsIdentityDriftAsUnavailable()
             throws Exception {
-        when(configuredTasks.configuredTaskIdsByWorkerGroup()).thenReturn(Map.of(
-                "group-a",
-                "task-a"
+        when(taskScores.previewScoreStates(100)).thenReturn(List.of(
+                scoreState("task-a", TaskScoreBand.RUNNING_VISIBLE)
         ));
-        when(workerCatalog.getWorkerGroupDescriptors(
-                List.of("group-a")
-        )).thenReturn(groupLookup("group-a"));
         when(taskCatalog.loadTaskAllocationDescriptors(
                 List.of("task-a")
         )).thenReturn(Map.of(
                 "task-a",
-                task("task-a", "another-group")
+                task("another-task", "group-a")
         ));
 
-        mockMvc.perform(get(
-                        "/api/v1/runtime-view/configured-resources"
-                ).header("X-Request-Id", "drift-request"))
+        mockMvc.perform(post(
+                        "/api/v1/runtime-view/tasks:preview"
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "drift-request")
+                        .content("{\"sampleLimit\":100}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
                         .value("drift-request"));
+    }
+
+    @Test
+    void taskPreviewMapsOwnerFailureToUnavailable()
+            throws Exception {
+        when(taskScores.previewScoreStates(100))
+                .thenThrow(new IllegalStateException("owner unavailable"));
+
+        mockMvc.perform(post(
+                        "/api/v1/runtime-view/tasks:preview"
+                ).contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Request-Id", "owner-failure-request")
+                        .content("{\"sampleLimit\":100}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(15002))
+                .andExpect(jsonPath("$.requestId")
+                        .value("owner-failure-request"));
+    }
+
+    @Test
+    void taskPreviewRejectsOutOfRangeLimitsBeforeOwnerReads()
+            throws Exception {
+        for (int limit : List.of(0, 101)) {
+            mockMvc.perform(post(
+                            "/api/v1/runtime-view/tasks:preview"
+                    ).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"sampleLimit\":" + limit + "}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(19001));
+        }
+        verifyNoInteractions(taskScores, workerCatalog, taskCatalog);
     }
 
     @Test
@@ -776,6 +836,20 @@ class RuntimeViewControllerTest {
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "3"
                 )
+        );
+    }
+
+    private static TaskScoreState scoreState(
+            String taskId,
+            TaskScoreBand band
+    ) {
+        boolean terminal = band == TaskScoreBand.TERMINAL;
+        return new TaskScoreState(
+                taskId,
+                terminal ? -1 : 1,
+                band,
+                terminal ? null : 0L,
+                terminal ? null : 0
         );
     }
 }

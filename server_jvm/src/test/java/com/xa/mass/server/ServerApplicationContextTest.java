@@ -31,7 +31,6 @@ import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
-import com.xa.mass.server.taskdata.ConfiguredWorkerGroupTaskCallCatalog;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
@@ -113,9 +112,6 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(
                 WorkerGroupTaskCallRegistrationService.class
-        )).isNotNull();
-        assertThat(applicationContext.getBean(
-                ConfiguredWorkerGroupTaskCallCatalog.class
         )).isNotNull();
         assertThat(applicationContext.getBean(RuntimeViewController.class))
                 .isNotNull();
@@ -411,6 +407,18 @@ class ServerApplicationContextTest {
         assertThat(document.path("paths").has(
                 "/api/v1/task-batches/runs"
         )).isFalse();
+        assertThat(document.path("paths").has(
+                "/api/v1/runtime-view/tasks:preview"
+        )).isTrue();
+        assertThat(document.path("paths").has(
+                "/api/v1/runtime-view/worker-groups/"
+                        + "managed-tasks:batch-get"
+        )).isFalse();
+        var runtimePaths = new ArrayList<>(
+                document.path("paths").propertyNames()
+        );
+        assertThat(runtimePaths)
+                .noneMatch(path -> path.contains("configured"));
         assertThat(document.path("paths").has(
                 "/api/v1/worker-groups/{workerGroupId}/tasks"
         )).isFalse();

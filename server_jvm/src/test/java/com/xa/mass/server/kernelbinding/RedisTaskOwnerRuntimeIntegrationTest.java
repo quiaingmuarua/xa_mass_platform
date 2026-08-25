@@ -2,6 +2,7 @@ package com.xa.mass.server.kernelbinding;
 
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -476,6 +477,63 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void taskScorePreviewIsBoundedAndPreservesDescendingOwnerOrder() {
+        String scoreKey = keyspace.base() + ":task:score";
+        redis.zadd(scoreKey, -1, "terminal");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                1,
+                0
+        ), "running");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.ADMISSION_VISIBLE_TAG,
+                2,
+                3
+        ), "admission");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.PRE_REVIEW_TAG,
+                3,
+                4
+        ), "review");
+
+        var fourBands = scoreCore.previewScoreStates(4);
+        assertThat(fourBands).extracting(
+                TaskScoreBandCore.TaskScoreState::taskId
+        ).containsExactly("review", "admission", "running", "terminal");
+        assertThat(fourBands).extracting(
+                TaskScoreBandCore.TaskScoreState::band
+        ).containsExactly(
+                TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
+                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE,
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
+                TaskScoreBandCore.TaskScoreBand.TERMINAL
+        );
+
+        redis.del(scoreKey);
+        for (int index = 1; index <= 101; index++) {
+            redis.zadd(
+                    scoreKey,
+                    taskScore(
+                            TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                            index,
+                            0
+                    ),
+                    "task-" + index
+            );
+        }
+        var bounded = scoreCore.previewScoreStates(100);
+        assertThat(bounded).hasSize(100);
+        assertThat(bounded.getFirst().taskId()).isEqualTo("task-101");
+        assertThat(bounded.getLast().taskId()).isEqualTo("task-2");
+
+        redis.del(scoreKey);
+        redis.zadd(scoreKey, 0.5, "corrupt");
+        assertThatThrownBy(() -> scoreCore.previewScoreStates(1))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("integer");
+    }
+
+    @Test
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
                 mock(TaskCreationService.class),
@@ -522,6 +580,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 + (TaskScoreBandCore.MAX_TIME_SLOT - 1)
                 * TaskScoreBandCore.SUFFIX_FACTOR
                 + TaskScoreBandCore.MAX_SUFFIX;
+    }
+
+    private static long taskScore(int tag, long timeSlot, int suffix) {
+        return (long) tag * TaskScoreBandCore.DEFAULT_TAG_FACTOR
+                + timeSlot * TaskScoreBandCore.SUFFIX_FACTOR
+                + suffix;
     }
 
     private void storeTask(String taskId, String allocationMechanism) {

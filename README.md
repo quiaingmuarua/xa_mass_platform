@@ -115,7 +115,8 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server also owns the
   lifecycle of the temporary Python Pacer CLI child, Worker Identity, Endpoint
-  Binding, bounded use cases, configured Group/Task seeds, and Adapter startup.
+  Binding, bounded use cases, configured WorkerGroup seeds, registration-owned
+  Managed Task assembly, and Adapter startup.
   Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
   business codes; framework routing/protocol failures remain ordinary HTTP
   concerns, and Worker Delivery additionally retains its machine-protocol

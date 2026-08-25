@@ -88,6 +88,7 @@ class TaskScoreBandCore(ABC):
     MAX_TIME_MILLIS: ClassVar[int] = MAX_TIME_SLOT * SLOT_MILLIS
     PAUSE_TIME_MILLIS: ClassVar[int] = MAX_TIME_MILLIS
     DEFAULT_TAG_FACTOR: ClassVar[int] = TIME_SLOT_FACTOR * SUFFIX_FACTOR
+    MAX_TASK_SCORE_PREVIEW_LIMIT: ClassVar[int] = 100
 
     def __init__(
         self,
@@ -107,6 +108,20 @@ class TaskScoreBandCore(ABC):
 
         This is intentionally batch-only to discourage N+1 point reads. Missing
         scores are represented by a present task id with None.
+        """
+        pass
+
+    @abstractmethod
+    def preview_score_states(
+        self,
+        *,
+        limit: int,
+    ) -> Sequence[TaskScoreState]:
+        """Return one bounded highest-score runtime preview window.
+
+        The owner preserves descending score order and decodes each member into
+        its semantic band. The operation exposes no cursor or raw range input;
+        repeated windows need not be stable when scores change.
         """
         pass
 
