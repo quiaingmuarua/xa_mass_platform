@@ -5,13 +5,21 @@ import { CircleCheck, InfoFilled, Tickets, Warning } from "@element-plus/icons-v
 import FiniteTaskManagement from "@/components/FiniteTaskManagement.vue";
 import JsonBlock from "@/components/JsonBlock.vue";
 import MetricCard from "@/components/MetricCard.vue";
-import { useRuntimeViewerStore } from "@/runtime-context";
+import TaskCallDebug from "@/components/TaskCallDebug.vue";
+import { useRuntimeViewerConfig, useRuntimeViewerStore } from "@/runtime-context";
 import type { ConfiguredRuntimeResourceEntry } from "@/runtime-viewer/types";
+import {
+  taskCallDebugAvailability,
+  type TaskCallDebugAvailability
+} from "@/task-call-debug/model";
 
 const store = useRuntimeViewerStore();
+const config = useRuntimeViewerConfig();
 const selectedEntry = ref<ConfiguredRuntimeResourceEntry>();
 const detailsOpen = ref(false);
 const activeTab = ref<"finite" | "configured">("finite");
+type ConfiguredTaskDetailTab = "overview" | "debug";
+const detailTab = ref<ConfiguredTaskDetailTab>("overview");
 
 const readableTaskCount = computed(
   () => store.entries.filter((entry) => entry.task !== null).length
@@ -24,9 +32,24 @@ onMounted(() => {
   void store.initialize();
 });
 
-function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
+function openDetails(
+  entry: ConfiguredRuntimeResourceEntry,
+  tab: ConfiguredTaskDetailTab = "overview"
+): void {
   selectedEntry.value = entry;
+  detailTab.value = tab;
   detailsOpen.value = true;
+}
+
+function debugAvailability(
+  entry: ConfiguredRuntimeResourceEntry
+): TaskCallDebugAvailability {
+  return taskCallDebugAvailability(config.mode, entry);
+}
+
+function closeDetails(): void {
+  selectedEntry.value = undefined;
+  detailTab.value = "overview";
 }
 </script>
 
@@ -36,7 +59,7 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
       <div>
         <p class="worker-page__eyebrow">RUNTIME / TASKS</p>
         <h1>Tasks</h1>
-        <p>真实有限 Task 文件执行与当前 Profile 长期 Task 只读目录</p>
+        <p>真实有限 Task 文件执行与当前 Profile Configured Task 调试</p>
       </div>
     </header>
 
@@ -55,7 +78,7 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
         :class="{ 'is-active': activeTab === 'configured' }"
         @click="activeTab = 'configured'"
       >
-        Configured Tasks <span>READ-ONLY</span>
+        Configured Tasks <span>TASK CALL</span>
       </button>
     </nav>
 
@@ -94,8 +117,8 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
 
       <el-alert class="runtime-semantics" type="info" :closable="false" show-icon>
         <template #title>
-          本页只展示 Profile 明确配置的长期 Task
-          及其资源描述符；不表示批准状态、运行状态、 Item 数量、成功率或调度进度。
+          Descriptor 仍是 Profile 配置的只读投影；Task Call Debug 只提交普通 Item 并观测
+          Result，不推断批准状态、运行状态、匹配 Worker 或调度进度。
         </template>
       </el-alert>
 
@@ -184,11 +207,23 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
                 <code>{{ row.task?.idleDisposition ?? "—" }}</code>
               </template>
             </el-table-column>
-            <el-table-column width="88" align="right">
+            <el-table-column width="142" align="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openDetails(row)">
-                  详情
-                </el-button>
+                <div class="task-row-actions">
+                  <el-button link type="primary" @click="openDetails(row)">
+                    详情
+                  </el-button>
+                  <span :title="debugAvailability(row).reason">
+                    <el-button
+                      link
+                      type="warning"
+                      :disabled="!debugAvailability(row).enabled"
+                      @click="openDetails(row, 'debug')"
+                    >
+                      调试
+                    </el-button>
+                  </span>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -198,59 +233,80 @@ function openDetails(entry: ConfiguredRuntimeResourceEntry): void {
       <el-drawer
         v-model="detailsOpen"
         class="worker-detail-drawer"
-        size="min(520px, 100%)"
+        size="min(680px, 100%)"
         destroy-on-close
-        @closed="selectedEntry = undefined"
+        @closed="closeDetails"
       >
         <template #header>
           <div v-if="selectedEntry" class="worker-drawer-heading">
-            <span>TASK DESCRIPTOR</span>
+            <span>CONFIGURED TASK</span>
             <strong>{{ selectedEntry.taskId }}</strong>
           </div>
         </template>
 
-        <div v-if="selectedEntry" class="worker-detail" data-testid="task-detail">
-          <section>
-            <h2>Identity</h2>
-            <dl class="worker-detail__identity">
-              <div>
-                <dt>Task ID</dt>
-                <dd>{{ selectedEntry.taskId }}</dd>
-              </div>
-              <div>
-                <dt>WorkerGroup</dt>
-                <dd>{{ selectedEntry.workerGroupId }}</dd>
-              </div>
-              <div>
-                <dt>Worker allocation</dt>
-                <dd>
-                  {{ selectedEntry.task?.workerAllocationMechanism ?? "描述符缺失" }}
-                </dd>
-              </div>
-              <div>
-                <dt>Idle disposition</dt>
-                <dd>{{ selectedEntry.task?.idleDisposition ?? "描述符缺失" }}</dd>
-              </div>
-            </dl>
-          </section>
+        <el-tabs
+          v-if="selectedEntry"
+          v-model="detailTab"
+          class="worker-detail-tabs"
+          data-testid="task-detail"
+        >
+          <el-tab-pane label="Overview" name="overview">
+            <div class="worker-detail">
+              <section class="task-descriptor-heading">
+                <h2>Identity</h2>
+                <el-tag effect="plain" type="info" size="small">
+                  READ-ONLY DESCRIPTOR
+                </el-tag>
+              </section>
+              <section>
+                <dl class="worker-detail__identity">
+                  <div>
+                    <dt>Task ID</dt>
+                    <dd>{{ selectedEntry.taskId }}</dd>
+                  </div>
+                  <div>
+                    <dt>WorkerGroup</dt>
+                    <dd>{{ selectedEntry.workerGroupId }}</dd>
+                  </div>
+                  <div>
+                    <dt>Worker allocation</dt>
+                    <dd>
+                      {{
+                        selectedEntry.task?.workerAllocationMechanism ?? "描述符缺失"
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Idle disposition</dt>
+                    <dd>
+                      {{ selectedEntry.task?.idleDisposition ?? "描述符缺失" }}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
 
-          <template v-if="selectedEntry.task">
-            <section>
-              <h2>Allocation rule</h2>
-              <JsonBlock :value="selectedEntry.task.allocationRule" />
-            </section>
-            <section>
-              <h2>Config</h2>
-              <JsonBlock :value="selectedEntry.task.config" />
-            </section>
-          </template>
+              <template v-if="selectedEntry.task">
+                <section>
+                  <h2>Task-level allocation rule</h2>
+                  <JsonBlock :value="selectedEntry.task.allocationRule" />
+                </section>
+                <section>
+                  <h2>Config</h2>
+                  <JsonBlock :value="selectedEntry.task.config" />
+                </section>
+              </template>
 
-          <el-alert v-else type="warning" :closable="false" show-icon>
-            <template #title>
-              Profile 保留了该 Task 坐标，但 Owner 当前没有返回描述符。
-            </template>
-          </el-alert>
-        </div>
+              <el-alert v-else type="warning" :closable="false" show-icon>
+                <template #title>
+                  Profile 保留了该 Task 坐标，但 Owner 当前没有返回描述符。
+                </template>
+              </el-alert>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="Task Call Debug" name="debug">
+            <TaskCallDebug :entry="selectedEntry" />
+          </el-tab-pane>
+        </el-tabs>
       </el-drawer>
     </template>
   </section>

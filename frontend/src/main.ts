@@ -22,14 +22,17 @@ import { router } from "./router";
 import {
   runtimeViewerConfigKey,
   runtimeViewerStoreKey,
+  taskCallDebugStoreKey,
   taskManagementStoreKey,
   workerDirectDebugStoreKey,
   workerStatusStoreKey
 } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
 import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
+import { HttpTaskCallDebugClient } from "./task-call-debug/http-client";
 import { HttpFiniteTaskClient } from "./task-management/http-client";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
+import { createTaskCallDebugStore } from "./stores/task-call-debug";
 import { createTaskManagementStore } from "./stores/task-management";
 import { createWorkerDirectDebugStore } from "./stores/worker-direct-debug";
 import { createWorkerStatusStore } from "./stores/worker-status";
@@ -85,6 +88,10 @@ if (configResult.ok) {
     runtimeViewerStore,
     new HttpFiniteTaskClient(configResult.value.apiBaseUrl)
   );
+  const taskCallDebugStore = createTaskCallDebugStore(
+    new HttpTaskCallDebugClient(configResult.value.apiBaseUrl),
+    configResult.value.mode
+  );
   const workerStatusStore = createWorkerStatusStore(
     createWorkerStatusDataSource(configResult.value)
   );
@@ -95,6 +102,7 @@ if (configResult.ok) {
   app.provide(runtimeViewerConfigKey, configResult.value);
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
   app.provide(taskManagementStoreKey, taskManagementStore);
+  app.provide(taskCallDebugStoreKey, taskCallDebugStore);
   app.provide(workerDirectDebugStoreKey, workerDirectDebugStore);
   app.provide(workerStatusStoreKey, workerStatusStore);
 }

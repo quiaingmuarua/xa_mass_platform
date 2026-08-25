@@ -863,6 +863,20 @@ pre {
   overflow-wrap: anywhere;
 }
 
+.task-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-row-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.task-row-actions > span {
+  display: inline-flex;
+}
+
 .worker-table {
   min-width: 1080px;
   --el-table-bg-color: var(--rv-surface);
@@ -1062,6 +1076,23 @@ pre {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+.task-descriptor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-descriptor-heading h2 {
+  margin: 0;
+}
+
+.task-descriptor-heading .el-tag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
 }
 
 .worker-detail__identity {
@@ -1507,6 +1538,30 @@ pre {
   flex: 0 0 auto;
   margin-top: 2px;
   color: var(--rv-warning);
+}
+
+.task-call-debug__load-error p {
+  margin: 0;
+  color: var(--rv-text-secondary);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.task-call-debug__load-error small {
+  color: var(--rv-text-muted);
+  font-size: 8px;
+}
+
+.task-call-debug__load-error {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--rv-warning-soft) 65%, transparent);
+  border-radius: 7px;
+}
+
+.task-call-debug__load-error strong {
+  color: var(--rv-warning);
+  font-size: 9px;
 }
 
 .json-block {

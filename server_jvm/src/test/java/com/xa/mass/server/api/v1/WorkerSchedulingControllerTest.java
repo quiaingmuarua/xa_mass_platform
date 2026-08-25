@@ -52,7 +52,7 @@ class WorkerSchedulingControllerTest {
     }
 
     @Test
-    void pauseReturnsGenericOkWithoutOpaqueScore() throws Exception {
+    void pauseReturnsANaturalSuccessResponse() throws Exception {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
@@ -65,12 +65,12 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.status").value("paused"))
                 .andExpect(jsonPath("$.score").doesNotExist());
     }
 
     @Test
-    void duplicatePauseReturnsNoop() throws Exception {
+    void duplicatePauseReturnsAlreadyPaused() throws Exception {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
@@ -83,11 +83,11 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("noop"));
+                .andExpect(jsonPath("$.status").value("already_paused"));
     }
 
     @Test
-    void missingAndInvalidTransitionsUseExistingHttpSemantics()
+    void missingAndInvalidTransitionsUseBusinessErrors()
             throws Exception {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
@@ -99,8 +99,11 @@ class WorkerSchedulingControllerTest {
                 result(WorkerScoreTransitionStatus.STALE, null)
         ));
         mockMvc.perform(post(PAUSE_PATH))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.status").value("stale"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(15008))
+                .andExpect(jsonPath("$.message").value(
+                        "Worker resource was not found"
+                ));
 
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
@@ -112,8 +115,11 @@ class WorkerSchedulingControllerTest {
                 result(WorkerScoreTransitionStatus.INVALID, null)
         ));
         mockMvc.perform(post(PAUSE_PATH))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.status").value("invalid"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(15009))
+                .andExpect(jsonPath("$.message").value(
+                        "Worker resource operation conflicts with current state"
+                ));
     }
 
     @Test
@@ -135,7 +141,7 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(RESUME_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("noop"))
+                .andExpect(jsonPath("$.status").value("already_resumed"))
                 .andExpect(jsonPath("$.score").doesNotExist());
     }
 

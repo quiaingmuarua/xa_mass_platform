@@ -75,8 +75,8 @@ onBeforeUnmount(() => store.dispose());
           Runtime API
         </span>
         <p>
-          Runtime truth remains read-only. Finite Task actions use public APIs and only
-          their browser-session coordinates are retained here.
+          Runtime truth remains read-only. Task actions use public APIs and retain only
+          browser-session diagnostic coordinates here.
         </p>
       </div>
     </aside>

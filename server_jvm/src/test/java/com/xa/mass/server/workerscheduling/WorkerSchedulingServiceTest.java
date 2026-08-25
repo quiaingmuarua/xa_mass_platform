@@ -15,6 +15,8 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.workerscheduling.WorkerSchedulingService.PauseStatus;
+import com.xa.mass.server.workerscheduling.WorkerSchedulingService.ResumeStatus;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +51,7 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+                .isEqualTo(PauseStatus.PAUSED);
     }
 
     @Test
@@ -65,11 +67,11 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.NOOP);
+                .isEqualTo(PauseStatus.ALREADY_PAUSED);
     }
 
     @Test
-    void pausePreservesMissingAndInvalidOwnerResults() {
+    void pauseMapsMissingAndInvalidOwnerResultsToBusinessErrors() {
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
                 List.of(WORKER_ID),
@@ -79,8 +81,11 @@ class WorkerSchedulingServiceTest {
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.STALE, null)
         ));
-        assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(
+                                ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
+                        ));
 
         when(workerScores.rewriteCurrentScores(
                 GROUP_ID,
@@ -91,8 +96,11 @@ class WorkerSchedulingServiceTest {
                 WORKER_ID,
                 result(WorkerScoreTransitionStatus.INVALID, null)
         ));
-        assertThat(service.pause(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.INVALID);
+        assertThatThrownBy(() -> service.pause(GROUP_ID, WORKER_ID))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(
+                                ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT
+                        ));
     }
 
     @Test
@@ -125,14 +133,14 @@ class WorkerSchedulingServiceTest {
         ));
         long before = System.currentTimeMillis();
 
-        WorkerScoreTransitionStatus status = service.resume(
+        ResumeStatus status = service.resume(
                 GROUP_ID,
                 WORKER_ID
         );
         long after = System.currentTimeMillis();
 
         assertThat(status)
-                .isEqualTo(WorkerScoreTransitionStatus.TRANSITIONED);
+                .isEqualTo(ResumeStatus.RESUMED);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Long>> observations =
                 ArgumentCaptor.forClass(Map.class);
@@ -165,7 +173,7 @@ class WorkerSchedulingServiceTest {
         ));
 
         assertThat(service.resume(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.NOOP);
+                .isEqualTo(ResumeStatus.ALREADY_RESUMED);
         verify(workerScores, never()).releaseScoreHolds(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyMap(),
@@ -174,7 +182,7 @@ class WorkerSchedulingServiceTest {
     }
 
     @Test
-    void resumeIsStaleWhenTheWorkerScoreIsMissing() {
+    void resumeRejectsAMissingWorkerResource() {
         Map<String, WorkerScoreState> states = new LinkedHashMap<>();
         states.put(WORKER_ID, null);
         when(workerScores.getScoreStates(
@@ -182,8 +190,11 @@ class WorkerSchedulingServiceTest {
                 List.of(WORKER_ID)
         )).thenReturn(states);
 
-        assertThat(service.resume(GROUP_ID, WORKER_ID))
-                .isEqualTo(WorkerScoreTransitionStatus.STALE);
+        assertThatThrownBy(() -> service.resume(GROUP_ID, WORKER_ID))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(
+                                ServerErrorCode.WORKER_RESOURCE_NOT_FOUND
+                        ));
     }
 
     @Test

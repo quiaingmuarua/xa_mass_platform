@@ -61,8 +61,18 @@ not fabricate a response.
 
 ## Task page
 
-`Configured Tasks` remains a read-only projection of Profile-owned long-lived
-Tasks. `Finite Tasks` is a real API flow available only in API mode:
+`Configured Tasks` keeps its Profile-owned descriptor projection read-only and,
+in API mode, adds a single-Item `Task Call Debug` action. The debug composer
+accepts an advisory Event Name, a JSON Object Payload, and an Item-level JSON
+Object `allocationRule`, then calls the existing managed Task endpoint. Calls
+go through Kernel scheduling; the browser does not interpret the rule or infer
+which Worker matched. Each Task retains at most 20 diagnostic exchanges in the
+current Pinia/browser memory. A `not_observed` response means submission was
+accepted without a Result in the bounded wait window, so the user may manually
+load that Message ID later; there is no automatic polling. Browser refresh
+clears this history, and Mock mode never fabricates Task Call results.
+
+`Finite Tasks` is a separate real API flow available only in API mode:
 
 1. Validate a local UTF-8 `.txt` file (non-empty, at most 1 MiB and 10,000
    lines).
