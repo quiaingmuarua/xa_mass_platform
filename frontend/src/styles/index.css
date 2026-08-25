@@ -1476,8 +1476,8 @@ pre {
   width: 100%;
 }
 
-.worker-direct-debug__composer input,
-.worker-direct-debug__composer textarea {
+.worker-direct-debug__composer label > input,
+.worker-direct-debug__composer label > textarea {
   width: 100%;
   padding: 9px 10px;
   color: var(--rv-text);
@@ -1489,8 +1489,8 @@ pre {
   outline: none;
 }
 
-.worker-direct-debug__composer input:focus,
-.worker-direct-debug__composer textarea:focus {
+.worker-direct-debug__composer label > input:focus,
+.worker-direct-debug__composer label > textarea:focus {
   border-color: var(--rv-primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-primary) 15%, transparent);
 }
