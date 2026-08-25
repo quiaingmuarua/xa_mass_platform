@@ -216,6 +216,22 @@ class DirectCallControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void missingAdapterIsABusinessRejection() throws Exception {
+        mockMvc.perform(post(
+                        "/api/v1/worker-delivery/endpoint-managers/"
+                                + "missing-adapter/direct-calls"
+                )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"messageType\":\"event\","
+                                + "\"opaquePayload\":\"{}\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(17002))
+                .andExpect(jsonPath("$.message")
+                        .value("Direct Call target was not found"))
+                .andExpect(jsonPath("$.requestId").isString());
+    }
+
     private static String workerBatchRequest(List<String> workerIds) {
         LinkedHashMap<String, String> payloads = new LinkedHashMap<>();
         workerIds.forEach(workerId -> payloads.put(workerId, "{}"));

@@ -23,6 +23,18 @@ boundary named below.
 | Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11 or newer, Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.3.1` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
+The deterministic Server proof owns the public response classification. Its
+OpenAPI guard requires the exact permitted success set for every public
+operation: ordinary Runtime use cases expose one `200`, while Worker Command
+Poll may expose `200/204` and the other Delivery operations retain their
+declared `200`, `202` or `204`. Every body-bearing success declares content
+whose media types each contain a schema distinct from `ApiErrorResponse`, while
+`204` remains bodyless. The same guard requires
+`400/503 + ApiErrorResponse` for application rejection and unavailability, and
+the Direct Call-only `429`. It also rejects declared business `404/409/422`
+responses; framework routing or protocol failures remain outside the XA
+business-code contract, and unknown routes retain framework `404` behavior.
+
 The `Capability Task` command reads two local text fixtures, creates two
 finite Tasks, appends 30 Items to each, approves them, downloads two successful
 JSONL exports, and validates exactly 60 results, ten per expected Group/Event

@@ -155,12 +155,10 @@ lifecycle and ordinary append remain non-public. Calling an operation with the
 wrong public Task type returns `400/12008`; a missing Task returns
 `400/12002`.
 
-The Tasks API uses HTTP as a coarse processing class and the numeric business
-code as the detailed reason. Completed use cases return `200`; request, Task
-resource, precondition and state rejection returns `400 + ApiErrorResponse`;
-a temporarily unavailable Task Owner returns `503 + ApiErrorResponse`.
-Successful DTOs remain use-case-specific and are not wrapped in a common
-envelope.
+The Tasks API follows the repository-wide HTTP response contract documented
+below: HTTP is the coarse processing class, while the numeric business code is
+the detailed rejection reason. Successful DTOs remain use-case-specific and
+are not wrapped in a common envelope.
 
 `results:export` supports only finite Tasks. It waits up to the caller's
 `1..300000` millisecond budget (30 seconds by default) for the Task score to
@@ -221,7 +219,7 @@ POST /api/v1/worker-groups/{workerGroupId}:register
 
 An equivalent `attributes + eventCodes` declaration with an exact approved
 Task Call returns `already_registered`; a different Group declaration returns
-conflict and never updates the stored Group. Attributes and Event Names are
+`400/15006` and never updates the stored Group. Attributes and Event Names are
 directory metadata, not Matcher, Dispatch, or per-Worker capability truth.
 
 Runtime View offers two intentionally different reads:
@@ -250,6 +248,22 @@ These are separate owners and Redis keys, not one transaction; a repeated
 Prepare converges interrupted stages. Workers persist only their Group/client
 key coordinate and never send a Worker ID hint. Transparent reconnect reuses
 the current in-memory identity and Endpoint without preparing again.
+
+Worker scheduling control and platform Properties changes use resource-shaped
+success responses:
+
+```text
+POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:pause-scheduling
+POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling
+PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
+```
+
+Pause returns `paused` or `already_paused`; resume returns `resumed` or
+`already_resumed`; a Properties patch returns `updated` or `unchanged`.
+Missing resources, invalid changes and state conflicts use the public
+`15008..15010` business codes and never expose the Kernel Owner reason.
+Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
+`503/15004`.
 
 Runtime View may request one bounded `1..100` Worker scheduling observation.
 The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
@@ -327,6 +341,35 @@ Scalar navigation uses four caller-facing API groups:
 These tags are documentation navigation, not Redis storage domains or runtime
 owners. Redis `scope`, `result` and `dispatch` boundaries do not become public
 API categories merely because they own physical keys.
+
+After routing has matched a public Runtime operation, application and use-case
+outcomes share one response convention:
+
+| HTTP status | Meaning |
+| --- | --- |
+| `200` | The use case completed, including idempotent no-op and bounded partial observation results |
+| `400 + ApiErrorResponse` | Input, business resource, precondition or current state rejected the request |
+| `429 + ApiErrorResponse` | Generic admission capacity was exhausted; currently only Direct Call uses it |
+| `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
+
+Business resource absence is `400` with its detailed numeric code. Successful
+responses keep their natural resource/use-case DTO; application rejection and
+unavailability errors use `code`, the stable public default `message`, and
+`requestId`. Owner reasons, Redis data and internal exception messages are not
+returned.
+
+Framework routing and protocol failures remain coarse HTTP concerns rather
+than XA business outcomes: an unknown URL may return `404`, an unsupported
+method `405`, an unsupported media type `415`, and an unexpected framework
+failure `500`. They are not assigned XA business codes by the application
+error mapping.
+
+Worker Delivery is the machine-protocol exception to the single `200` success
+rule. Command Poll returns `200` with a Command or `204` when empty; Worker and
+Adapter Report append returns `202`; Binding verification returns `204`; and
+Adapter Command consume returns `200`. Delivery rejection still uses the same
+`400/503 + ApiErrorResponse` contract. No public operation declares a business
+`404`, `409` or `422` response.
 
 ## Assembly Boundaries
 

@@ -15,9 +15,13 @@ import org.springframework.context.annotation.Configuration;
                         + "delivers and executes assigned work. HTTP status "
                         + "expresses a coarse request-processing class while "
                         + "ApiErrorResponse.code identifies the business "
-                        + "reason. Tasks currently use 200 for completed use "
-                        + "cases, 400 for business rejection and 503 for a "
-                        + "temporarily unavailable Owner."
+                        + "reason. Matched Runtime use cases return 200 when "
+                        + "completed, "
+                        + "400 for business rejection, 429 for explicit "
+                        + "admission capacity and 503 for a temporarily "
+                        + "unavailable Owner. Worker Delivery machine routes "
+                        + "also use 202 for accepted Reports and 204 for an "
+                        + "empty or bodyless successful protocol result."
         ),
         tags = {
                 @Tag(

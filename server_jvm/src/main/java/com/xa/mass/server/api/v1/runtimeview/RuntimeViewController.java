@@ -2,6 +2,7 @@ package com.xa.mass.server.api.v1.runtimeview;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.RequestIdFilter;
+import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.ConfiguredRuntimeResourcesResponse;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerGroupBatchGetResponse;
@@ -15,6 +16,11 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveReques
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -46,6 +52,30 @@ public class RuntimeViewController {
     }
 
     @GetMapping("/configured-resources")
+    @Operation(summary = "Load configured WorkerGroup and Task resources")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Configured runtime projections",
+                    content = @Content(schema = @Schema(
+                            implementation = ConfiguredRuntimeResourcesResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public ConfiguredRuntimeResourcesResponse configuredResources(
             HttpServletRequest httpRequest
     ) {
@@ -53,6 +83,30 @@ public class RuntimeViewController {
     }
 
     @PostMapping("/worker-groups:batch-get")
+    @Operation(summary = "Load known WorkerGroups by ID")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "WorkerGroup projections and missing IDs",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerGroupBatchGetResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public WorkerGroupBatchGetResponse batchGetWorkerGroups(
             @Valid @RequestBody WorkerGroupBatchGetRequest request,
             HttpServletRequest httpRequest
@@ -64,6 +118,30 @@ public class RuntimeViewController {
     }
 
     @PostMapping("/worker-groups:preview")
+    @Operation(summary = "Preview a bounded WorkerGroup sample")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Bounded WorkerGroup sample projection",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerGroupPreviewResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public WorkerGroupPreviewResponse previewWorkerGroups(
             @Valid @RequestBody WorkerGroupPreviewRequest request,
             HttpServletRequest httpRequest
@@ -77,6 +155,30 @@ public class RuntimeViewController {
     @PostMapping(
             "/worker-groups/{workerGroupId}/workers:preview"
     )
+    @Operation(summary = "Preview a bounded Worker sample")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Bounded Worker sample projection",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerPreviewResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public WorkerPreviewResponse previewWorkers(
             @PathVariable @NotBlank String workerGroupId,
             @Valid @RequestBody WorkerPreviewRequest request,
@@ -93,6 +195,30 @@ public class RuntimeViewController {
     @PostMapping(
             "/worker-groups/{workerGroupId}/workers:scheduling-observe"
     )
+    @Operation(summary = "Observe bounded Worker scheduling projections")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Worker scheduling projections",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerSchedulingObserveResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public WorkerSchedulingObserveResponse observeWorkerScheduling(
             @PathVariable @NotBlank String workerGroupId,
             @Valid @RequestBody WorkerSchedulingObserveRequest request,
@@ -108,6 +234,30 @@ public class RuntimeViewController {
     @PostMapping(
             "/endpoint-managers/{endpointManagerId}/workers:network-observe"
     )
+    @Operation(summary = "Observe bounded Worker network projections")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Worker network projections",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerNetworkObserveResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Runtime View request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Runtime View Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     public DeferredResult<WorkerNetworkObserveResponse> observeWorkerNetwork(
             @PathVariable @NotBlank String endpointManagerId,
             @Valid @RequestBody WorkerNetworkObserveRequest request,

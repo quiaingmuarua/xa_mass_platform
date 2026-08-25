@@ -310,6 +310,65 @@ class ServerApplicationContextTest {
                         .as("tag for %s %s", candidate.getKey(), path.getKey())
                         .isIn(allowedTags)
                         .doesNotEndWith("-controller");
+
+                var responses = candidate.getValue().path("responses");
+                var responseCodes = new ArrayList<>(responses.propertyNames());
+                assertThat(responseCodes)
+                        .as("responses for %s %s", candidate.getKey(), path.getKey())
+                        .containsExactlyInAnyOrderElementsOf(
+                                expectedResponseCodes(operationTag, path.getKey())
+                        )
+                        .doesNotContain("404", "409", "422");
+                var successCodes = responseCodes.stream()
+                        .filter(code -> code.length() == 3
+                                && code.charAt(0) == '2')
+                        .toList();
+                assertThat(successCodes)
+                        .as("success responses for %s %s",
+                                candidate.getKey(), path.getKey())
+                        .isNotEmpty();
+                for (String successCode : successCodes) {
+                    var successContent = responses.path(successCode)
+                            .path("content");
+                    if ("204".equals(successCode)) {
+                        assertThat(successContent.isMissingNode()
+                                || successContent.size() == 0)
+                                .as("bodyless 204 response for %s %s",
+                                        candidate.getKey(), path.getKey())
+                                .isTrue();
+                    } else {
+                        assertThat(successContent.size())
+                                .as("success content for %s %s %s",
+                                        candidate.getKey(), path.getKey(),
+                                        successCode)
+                                .isPositive();
+                        for (var mediaType : successContent.properties()) {
+                            var schema = mediaType.getValue().path("schema");
+                            assertThat(schema.isMissingNode()
+                                    || schema.isNull()
+                                    || schema.size() == 0)
+                                    .as("success schema for %s %s %s %s",
+                                            candidate.getKey(), path.getKey(),
+                                            successCode, mediaType.getKey())
+                                    .isFalse();
+                            assertThat(schema.toString())
+                                    .as("success schema for %s %s %s %s",
+                                            candidate.getKey(), path.getKey(),
+                                            successCode, mediaType.getKey())
+                                    .doesNotContain("ApiErrorResponse");
+                        }
+                    }
+                }
+                for (String errorCode : Set.of("400", "429", "503")) {
+                    if (responses.has(errorCode)) {
+                        assertThat(responses.path(errorCode)
+                                .path("content")
+                                .toString())
+                                .as("error schema for %s %s %s",
+                                        candidate.getKey(), path.getKey(), errorCode)
+                                .contains("ApiErrorResponse");
+                    }
+                }
             }
         }
         assertThat(operationCount).isPositive();
@@ -349,28 +408,6 @@ class ServerApplicationContextTest {
                 .path("200")
                 .path("content")
                 .has("application/x-ndjson")).isTrue();
-        for (var path : document.path("paths").properties()) {
-            if (!path.getKey().startsWith("/api/v1/tasks")) {
-                continue;
-            }
-            for (var candidate : path.getValue().properties()) {
-                if (!HTTP_METHODS.contains(candidate.getKey())) {
-                    continue;
-                }
-                var responses = candidate.getValue().path("responses");
-                var responseCodes = new ArrayList<>(
-                        responses.propertyNames()
-                );
-                assertThat(responseCodes)
-                        .as("Task responses for %s %s",
-                                candidate.getKey(), path.getKey())
-                        .containsExactlyInAnyOrder("200", "400", "503");
-                assertThat(responses.path("400").path("content").toString())
-                        .contains("ApiErrorResponse");
-                assertThat(responses.path("503").path("content").toString())
-                        .contains("ApiErrorResponse");
-            }
-        }
         assertThat(document.path("paths").has(
                 "/api/v1/task-batches/runs"
         )).isFalse();
@@ -383,6 +420,29 @@ class ServerApplicationContextTest {
         assertThat(document.path("paths").has(
                 "/api/v1/worker-groups/{workerGroupId}/item-results:load"
         )).isFalse();
+    }
+
+    private static Set<String> expectedResponseCodes(String tag, String path) {
+        if (!ApiTags.WORKER_DELIVERY.equals(tag)) {
+            return Set.of("200", "400", "503");
+        }
+        if (path.endsWith("/direct-calls")) {
+            return Set.of("200", "400", "429", "503");
+        }
+        if (path.endsWith("/commands:poll")) {
+            return Set.of("200", "204", "400", "503");
+        }
+        if (path.endsWith("/workers/{workerId}/results")
+                || path.endsWith("/results:append")) {
+            return Set.of("202", "400", "503");
+        }
+        if (path.endsWith(":verify-binding")) {
+            return Set.of("204", "400", "503");
+        }
+        if (path.endsWith("/commands:consume")) {
+            return Set.of("200", "400", "503");
+        }
+        throw new AssertionError("Unclassified Worker Delivery path: " + path);
     }
 
     private URI endpoint(String path) {

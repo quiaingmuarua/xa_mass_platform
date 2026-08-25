@@ -50,7 +50,7 @@ export class MockRuntimeViewerDataSource implements RuntimeViewerDataSource {
         message: "请求的 WorkerGroup 不存在。",
         requestId: "mock-request-15001",
         code: 15001,
-        status: 404
+        status: 400
       });
     }
 

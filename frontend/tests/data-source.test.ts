@@ -27,6 +27,20 @@ describe("RuntimeViewerDataSource selection", () => {
   });
 });
 
+describe("MockRuntimeViewerDataSource", () => {
+  it("mirrors the Runtime View business-not-found response class", async () => {
+    const source = new MockRuntimeViewerDataSource();
+
+    await expect(
+      source.previewWorkers("missing-group", 100, null)
+    ).rejects.toMatchObject({
+      kind: "http",
+      status: 400,
+      code: 15001
+    });
+  });
+});
+
 describe("HttpRuntimeViewerDataSource", () => {
   it("loads the configured resource directory with one GET", async () => {
     const get = vi.fn().mockResolvedValue({

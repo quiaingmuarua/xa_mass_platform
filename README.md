@@ -116,8 +116,11 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   provider assembly. Task business HTTP terminates here. Server also owns the
   lifecycle of the temporary Python Pacer CLI child, Worker Identity, Endpoint
   Binding, bounded use cases, configured Group/Task seeds, and Adapter startup.
-  It does not start Worker processes. Python exposes no production HTTP
-  surface.
+  Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
+  business codes; framework routing/protocol failures remain ordinary HTTP
+  concerns, and Worker Delivery additionally retains its machine-protocol
+  `202/204` successes. It does not start Worker processes. Python exposes no
+  production HTTP surface.
 - [`transport/`](transport/) contains the Java 11 delivery contract, Worker
   Core, Netty Adapter, Java Worker and Android Worker implementations.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) is the independently launched

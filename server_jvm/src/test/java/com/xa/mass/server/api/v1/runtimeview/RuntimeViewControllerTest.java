@@ -497,7 +497,7 @@ class RuntimeViewControllerTest {
                                   "filter":{"workerId":{"$eq":"worker-1"}}
                                 }
                                 """))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15001));
         verify(workerCatalog, never()).sampleWorkerDescriptors(
                 "missing",
@@ -518,7 +518,7 @@ class RuntimeViewControllerTest {
                                   "filter":{"workerId":{"$eq":"worker-1"}}
                                 }
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15003));
         verify(workerCatalog, never()).sampleWorkerDescriptors(
                 "group-a",

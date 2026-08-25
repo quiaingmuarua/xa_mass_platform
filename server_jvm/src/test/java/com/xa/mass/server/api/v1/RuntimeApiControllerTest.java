@@ -58,6 +58,7 @@ import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
 import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
 import com.xa.mass.server.workerpreparation.WorkerPreparationService;
+import com.xa.mass.server.workerresource.WorkerResourceCommandService;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -242,7 +243,9 @@ class RuntimeApiControllerTest {
                 new TaskIdGenerator()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceCommandController(workerCatalog),
+                        new ResourceCommandController(
+                                new WorkerResourceCommandService(workerCatalog)
+                        ),
                         new WorkerGroupRegistrationController(
                                 new WorkerGroupRegistrationService(
                                         workerCatalog,
@@ -369,7 +372,7 @@ class RuntimeApiControllerTest {
                         .content("{\"properties\":{\"pool\":\"batch\","
                                 + "\"removed\":null}}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"));
+                .andExpect(jsonPath("$.status").value("updated"));
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
@@ -406,6 +409,28 @@ class RuntimeApiControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15005));
+    }
+
+    @Test
+    void workerPropertiesPatchUsesResourceBusinessErrors() throws Exception {
+        when(workerCatalog.patchWorkerPlatformProperties(
+                "phone-tools", "missing-worker", Map.of("pool", "batch")
+        )).thenReturn(new WorkerRuntimeResult(
+                WorkerRuntimeStatus.NOT_FOUND,
+                "private owner detail"
+        ));
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "missing-worker/platform-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"properties\":{\"pool\":\"batch\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(15008))
+                .andExpect(jsonPath("$.message")
+                        .value("Worker resource was not found"))
+                .andExpect(jsonPath("$..reason").doesNotExist());
     }
 
     @Test

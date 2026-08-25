@@ -156,6 +156,49 @@ class WorkerSchedulingServiceTest {
     }
 
     @Test
+    void resumeMapsConcurrentReleaseChangesToAStateConflict() {
+        long pausedScore = 19_999_999_999_804L;
+        when(workerScores.getScoreStates(
+                GROUP_ID,
+                List.of(WORKER_ID)
+        )).thenReturn(Map.of(
+                WORKER_ID,
+                new WorkerScoreState(
+                        WORKER_ID,
+                        pausedScore,
+                        WorkerScorePolarity.HOT_ACQUIRE,
+                        WorkerScoreCore.PAUSE_TIME_MILLIS,
+                        2,
+                        0
+                )
+        ));
+
+        for (WorkerScoreTransitionStatus status : List.of(
+                WorkerScoreTransitionStatus.STALE,
+                WorkerScoreTransitionStatus.INVALID
+        )) {
+            when(workerScores.releaseScoreHolds(
+                    org.mockito.ArgumentMatchers.eq(GROUP_ID),
+                    org.mockito.ArgumentMatchers.eq(Map.of(
+                            WORKER_ID,
+                            pausedScore
+                    )),
+                    anyLong()
+            )).thenReturn(Map.of(
+                    WORKER_ID,
+                    result(status, pausedScore)
+            ));
+
+            assertThatThrownBy(() -> service.resume(GROUP_ID, WORKER_ID))
+                    .isInstanceOfSatisfying(ServerException.class, error ->
+                            assertThat(error.errorCode()).isEqualTo(
+                                    ServerErrorCode
+                                            .WORKER_RESOURCE_STATE_CONFLICT
+                            ));
+        }
+    }
+
+    @Test
     void resumeIsNoopWhenTheWorkerIsNotPaused() {
         when(workerScores.getScoreStates(
                 GROUP_ID,

@@ -117,6 +117,22 @@ public enum ServerErrorCode {
             15007,
             "WorkerGroup registration is unavailable"
     ),
+    WORKER_RESOURCE_NOT_FOUND(
+            15008,
+            "Worker resource was not found"
+    ),
+    WORKER_RESOURCE_STATE_CONFLICT(
+            15009,
+            "Worker resource operation conflicts with current state"
+    ),
+    INVALID_WORKER_RESOURCE_REQUEST(
+            15010,
+            "Worker resource request is invalid"
+    ),
+    WORKER_RESOURCE_UNAVAILABLE(
+            15011,
+            "Worker Resource Owner is unavailable"
+    ),
     INVALID_DIRECT_CALL_REQUEST(
             17001,
             "Direct Call request is invalid"

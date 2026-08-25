@@ -2,7 +2,6 @@ package com.xa.mass.server.workerscheduling;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.Collections;
@@ -33,7 +32,7 @@ public final class WorkerSchedulingService {
         );
     }
 
-    public WorkerScoreTransitionStatus pause(
+    public PauseStatus pause(
             String workerGroupId,
             String workerId
     ) {
@@ -49,12 +48,23 @@ public final class WorkerSchedulingService {
                     ),
                     workerId
             );
-            if (result.status()
-                    == WorkerScoreTransitionStatus.STALE
-                    && result.score() != null) {
-                return WorkerScoreTransitionStatus.NOOP;
-            }
-            return result.status();
+            return switch (result.status()) {
+                case TRANSITIONED -> PauseStatus.PAUSED;
+                case NOOP -> PauseStatus.ALREADY_PAUSED;
+                case STALE -> {
+                    if (result.score() != null) {
+                        yield PauseStatus.ALREADY_PAUSED;
+                    }
+                    throw failure(
+                            ServerErrorCode.WORKER_RESOURCE_NOT_FOUND,
+                            PAUSE_OPERATION
+                    );
+                }
+                case INVALID -> throw failure(
+                        ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT,
+                        PAUSE_OPERATION
+                );
+            };
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
@@ -62,7 +72,7 @@ public final class WorkerSchedulingService {
         }
     }
 
-    public WorkerScoreTransitionStatus resume(
+    public ResumeStatus resume(
             String workerGroupId,
             String workerId
     ) {
@@ -73,20 +83,31 @@ public final class WorkerSchedulingService {
                     .getScoreStates(workerGroupId, List.of(workerId))
                     .get(workerId);
             if (state == null) {
-                return WorkerScoreTransitionStatus.STALE;
+                throw failure(
+                        ServerErrorCode.WORKER_RESOURCE_NOT_FOUND,
+                        RESUME_OPERATION
+                );
             }
             if (state.timeMillis()
                     != WorkerScoreCore.PAUSE_TIME_MILLIS) {
-                return WorkerScoreTransitionStatus.NOOP;
+                return ResumeStatus.ALREADY_RESUMED;
             }
-            return requireResult(
+            WorkerScoreTransitionResult result = requireResult(
                     workerScores.releaseScoreHolds(
                             workerGroupId,
                             Map.of(workerId, state.score()),
                             System.currentTimeMillis()
                     ),
                     workerId
-            ).status();
+            );
+            return switch (result.status()) {
+                case TRANSITIONED -> ResumeStatus.RESUMED;
+                case NOOP -> ResumeStatus.ALREADY_RESUMED;
+                case STALE, INVALID -> throw failure(
+                        ServerErrorCode.WORKER_RESOURCE_STATE_CONFLICT,
+                        RESUME_OPERATION
+                );
+            };
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
@@ -188,6 +209,13 @@ public final class WorkerSchedulingService {
         );
     }
 
+    private static ServerException failure(
+            ServerErrorCode code,
+            String operation
+    ) {
+        return new ServerException(code, operation, null, null);
+    }
+
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(
@@ -223,6 +251,36 @@ public final class WorkerSchedulingService {
         private final String wireValue;
 
         SchedulingState(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
+    }
+
+    public enum PauseStatus {
+        PAUSED("paused"),
+        ALREADY_PAUSED("already_paused");
+
+        private final String wireValue;
+
+        PauseStatus(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
+    }
+
+    public enum ResumeStatus {
+        RESUMED("resumed"),
+        ALREADY_RESUMED("already_resumed");
+
+        private final String wireValue;
+
+        ResumeStatus(String wireValue) {
             this.wireValue = wireValue;
         }
 

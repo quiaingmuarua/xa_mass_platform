@@ -23,7 +23,7 @@ public final class ApiExceptionHandler {
         return ResponseEntity.status(statusFor(error.errorCode())).body(
                 new ApiErrorResponse(
                         error.errorCode().code(),
-                        error.getMessage(),
+                        error.errorCode().defaultMessage(),
                         requestId(request)
                 )
         );
@@ -58,34 +58,37 @@ public final class ApiExceptionHandler {
                     RUNTIME_VIEW_UNAVAILABLE,
                     WORKER_SCHEDULING_UNAVAILABLE,
                     WORKER_GROUP_REGISTRATION_UNAVAILABLE,
+                    WORKER_RESOURCE_UNAVAILABLE,
                     DIRECT_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
             case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
-            case TASK_NOT_FOUND,
+            case KERNEL_REJECTED_CONFLICT,
+                    TASK_NOT_FOUND,
                     TASK_OPERATION_NOT_SUPPORTED,
                     TASK_STATE_CONFLICT,
                     TASK_RESULTS_NOT_READY,
                     TASK_WORKER_GROUP_NOT_FOUND,
                     INVALID_TASK_DATA_REQUEST,
-                    MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
-            case TASK_CALL_NOT_REGISTERED,
-                    WORKER_IDENTITY_NOT_FOUND,
-                    WORKER_BINDING_NOT_FOUND,
-                    WORKER_GROUP_NOT_FOUND,
-                    DIRECT_CALL_TARGET_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case KERNEL_REJECTED_CONFLICT,
+                    TASK_CALL_NOT_REGISTERED,
                     TASK_CALL_REGISTRATION_CONFLICT,
-                    WORKER_IDENTITY_CONFLICT,
-                    WORKER_BINDING_CONFLICT,
-                    WORKER_GROUP_REGISTRATION_CONFLICT -> HttpStatus.CONFLICT;
-            case RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
-                    HttpStatus.UNPROCESSABLE_CONTENT;
-            case INVALID_WORKER_DELIVERY_REQUEST,
+                    INVALID_WORKER_DELIVERY_REQUEST,
                     INVALID_WORKER_IDENTITY_REQUEST,
+                    WORKER_IDENTITY_NOT_FOUND,
+                    WORKER_IDENTITY_CONFLICT,
                     INVALID_WORKER_BINDING_REQUEST,
+                    WORKER_BINDING_NOT_FOUND,
+                    WORKER_BINDING_CONFLICT,
+                    WORKER_GROUP_NOT_FOUND,
+                    RUNTIME_VIEW_FILTER_NOT_AVAILABLE,
                     INVALID_WORKER_GROUP_REQUEST,
-                    INVALID_DIRECT_CALL_REQUEST -> HttpStatus.BAD_REQUEST;
+                    WORKER_GROUP_REGISTRATION_CONFLICT,
+                    WORKER_RESOURCE_NOT_FOUND,
+                    WORKER_RESOURCE_STATE_CONFLICT,
+                    INVALID_WORKER_RESOURCE_REQUEST,
+                    INVALID_DIRECT_CALL_REQUEST,
+                    DIRECT_CALL_TARGET_NOT_FOUND,
+                    MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
         };
     }
 
