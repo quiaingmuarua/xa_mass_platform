@@ -115,6 +115,48 @@ def _preview_worker_count(base_url: str, worker_group_id: str) -> int:
     return len(workers)
 
 
+def _preview_tasks(base_url: str) -> list[dict[str, Any]]:
+    status, payload, _ = _request(
+        "POST",
+        f"{base_url}/api/v1/runtime-view/tasks:preview",
+        {"sampleLimit": 100},
+    )
+    if status != 200:
+        raise RuntimeError(f"Task preview returned HTTP {status}")
+    entries = json.loads(payload).get("entries")
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, dict) for entry in entries
+    ):
+        raise RuntimeError("Task preview entries are invalid")
+    return entries
+
+
+def _managed_task_id(base_url: str, worker_group_id: str) -> str:
+    matches: list[dict[str, Any]] = []
+    for entry in _preview_tasks(base_url):
+        task = entry.get("task")
+        worker_group = entry.get("workerGroup")
+        if (
+            isinstance(task, dict)
+            and isinstance(worker_group, dict)
+            and task.get("workerGroupId") == worker_group_id
+            and worker_group.get("workerGroupId") == worker_group_id
+            and task.get("workerAllocationMechanism") == "DIRECT_ITEM_RULE"
+            and task.get("idleDisposition") == "PARK_WHEN_IDLE"
+            and entry.get("taskId") == task.get("taskId")
+        ):
+            matches.append(entry)
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Task preview did not resolve one managed Task for "
+            f"{worker_group_id}"
+        )
+    task_id = matches[0].get("taskId")
+    if not isinstance(task_id, str) or not task_id:
+        raise RuntimeError("Managed Task ID was unavailable")
+    return task_id
+
+
 def _wait_for_worker_fleet(
     base_url: str,
     host_process: subprocess.Popen[Any],
@@ -287,21 +329,10 @@ def _prove_runtime(
             ):
                 raise RuntimeError("Frontend was not served by the Runtime archive")
 
-            status, configured_payload, _ = _request(
-                "GET", f"{base_url}/api/v1/runtime-view/configured-resources"
+            task_id = _managed_task_id(
+                base_url,
+                "scenario-string-utils-workers",
             )
-            if status != 200:
-                raise RuntimeError("Configured Runtime resources were unavailable")
-            configured = json.loads(configured_payload)
-            string_entry = next(
-                entry
-                for entry in configured.get("entries", [])
-                if entry.get("workerGroupId")
-                == "scenario-string-utils-workers"
-            )
-            task_id = string_entry.get("taskId")
-            if not isinstance(task_id, str) or not task_id:
-                raise RuntimeError("Scenario String Task ID was unavailable")
 
             message_id = f"distribution-proof-{uuid.uuid4().hex}"
             status, call_payload, _ = _request(
@@ -383,12 +414,9 @@ def _prove_agentforge_profile(
         )
         try:
             _wait_for_readiness(base_url, process)
-            status, configured_payload, _ = _request(
-                "GET", f"{base_url}/api/v1/runtime-view/configured-resources"
-            )
-            if status != 200 or json.loads(configured_payload).get("entries") != []:
+            if _preview_tasks(base_url) != []:
                 raise RuntimeError(
-                    "AgentForge Profile must not seed configured resources"
+                    "AgentForge Profile must not seed Tasks"
                 )
             status, preview_payload, _ = _request(
                 "POST",
