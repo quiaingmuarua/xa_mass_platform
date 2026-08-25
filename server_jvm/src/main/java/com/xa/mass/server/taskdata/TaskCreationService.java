@@ -6,7 +6,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
 import com.xa.mass.server.api.v1.model.TaskCreateResponse;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -64,13 +63,22 @@ public final class TaskCreationService {
         if (result == null) {
             throw unavailable(null);
         }
-        return new TaskCreateResponse(
-                taskId,
-                RuntimeCommandStatus.fromWireValue(
-                        result.status().wireValue()
-                ),
-                result.reason()
-        );
+        return switch (result.status()) {
+            case CREATED -> new TaskCreateResponse(taskId);
+            case CONFLICT -> throw new ServerException(
+                    ServerErrorCode.TASK_STATE_CONFLICT,
+                    OPERATION,
+                    null,
+                    null
+            );
+            case INVALID -> throw new ServerException(
+                    ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                    OPERATION,
+                    null,
+                    null
+            );
+            case RETRYABLE -> throw unavailable(null);
+        };
     }
 
     private void requireWorkerGroup(String workerGroupId) {
@@ -79,7 +87,7 @@ public final class TaskCreationService {
                     List.of(workerGroupId)
             ).get(workerGroupId) == null) {
                 throw new ServerException(
-                        ServerErrorCode.WORKER_GROUP_NOT_FOUND,
+                        ServerErrorCode.TASK_WORKER_GROUP_NOT_FOUND,
                         OPERATION,
                         null,
                         null

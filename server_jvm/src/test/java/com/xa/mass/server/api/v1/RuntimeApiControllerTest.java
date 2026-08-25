@@ -46,6 +46,7 @@ import com.xa.mass.server.taskdata.TaskDataService;
 import com.xa.mass.server.taskdata.TaskCreationService;
 import com.xa.mass.server.taskdata.TaskIdGenerator;
 import com.xa.mass.server.taskdata.TaskItemMapper;
+import com.xa.mass.server.taskdata.TaskLifecycleService;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
@@ -82,6 +83,7 @@ class RuntimeApiControllerTest {
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
     private TaskResultsExportService taskResultsExport;
+    private TaskRpcWaitRegistry taskRpcRegistry;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -218,11 +220,12 @@ class RuntimeApiControllerTest {
                 taskItems
         );
         TaskRpcProperties rpcProperties = rpcProperties();
+        taskRpcRegistry = new TaskRpcWaitRegistry(rpcProperties);
         TaskRpcCallService taskRpc = new TaskRpcCallService(
                 taskCallSubmission,
                 taskRuntime,
                 taskCatalog,
-                new TaskRpcWaitRegistry(rpcProperties),
+                taskRpcRegistry,
                 taskItems,
                 rpcProperties
         );
@@ -253,9 +256,11 @@ class RuntimeApiControllerTest {
                                 )
                         ),
                         new TaskControlController(
-                                taskLifecycle,
-                                taskCatalog,
-                                taskCreation
+                                taskCreation,
+                                new TaskLifecycleService(
+                                        taskLifecycle,
+                                        taskCatalog
+                                )
                         ),
                         new TaskDataController(
                                 taskData,
@@ -274,6 +279,8 @@ class RuntimeApiControllerTest {
                 30_000,
                 60_000,
                 10_000,
+                100_000,
+                256,
                 50,
                 100,
                 250
@@ -411,12 +418,12 @@ class RuntimeApiControllerTest {
                                   "allocationRule": {}
                                 }
                                 """))
-                .andExpect(status().isCreated())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.taskId").value(matchesPattern(
                         "task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
                                 + "[0-9a-f]{4}-[0-9a-f]{12}"
                 )))
-                .andExpect(jsonPath("$.status").value("created"));
+                .andExpect(jsonPath("$.status").doesNotExist());
 
         ArgumentCaptor<TaskDescriptor> descriptorCaptor =
                 ArgumentCaptor.forClass(TaskDescriptor.class);
@@ -453,7 +460,11 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.results.message-1.status")
-                        .value("appended"));
+                        .value("succeeded"))
+                .andExpect(jsonPath("$.results.message-1.code")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.results.message-1.message")
+                        .doesNotExist());
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<TaskItem>> itemCaptor =
@@ -477,6 +488,53 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.results.message-1")
                         .value("{\"valid\":true}"))
                 .andExpect(jsonPath("$.results.message-2").isEmpty());
+    }
+
+    @Test
+    void itemAppendUsesOnlySucceededOrFailedPublicOutcomes()
+            throws Exception {
+        when(taskRuntime.appendItems(eq("task-1"), anyList()))
+                .thenReturn(Map.of(
+                        "message-invalid",
+                        new TaskItemAppendResult(
+                                TaskItemAppendStatus.INVALID,
+                                "private invalid reason"
+                        ),
+                        "message-missing",
+                        new TaskItemAppendResult(
+                                TaskItemAppendStatus.NOT_FOUND,
+                                "private missing reason"
+                        ),
+                        "message-retry",
+                        new TaskItemAppendResult(
+                                TaskItemAppendStatus.RETRYABLE,
+                                "private retry reason"
+                        )
+                ));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[
+                                  {"messageId":"message-invalid","eventCode":"event","payload":{}},
+                                  {"messageId":"message-missing","eventCode":"event","payload":{}},
+                                  {"messageId":"message-retry","eventCode":"event","payload":{}}
+                                ]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-invalid.status")
+                        .value("failed"))
+                .andExpect(jsonPath("$.results.message-invalid.code")
+                        .value(12001))
+                .andExpect(jsonPath("$.results.message-missing.status")
+                        .value("failed"))
+                .andExpect(jsonPath("$.results.message-missing.code")
+                        .value(12002))
+                .andExpect(jsonPath("$.results.message-retry.status")
+                        .value("failed"))
+                .andExpect(jsonPath("$.results.message-retry.code")
+                        .value(12003))
+                .andExpect(jsonPath("$..reason").doesNotExist());
     }
 
     @Test
@@ -520,14 +578,14 @@ class RuntimeApiControllerTest {
                                   "allocationRule":{}
                                 }
                                 """))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(15001));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12011));
 
         verify(taskRuntime, org.mockito.Mockito.never()).createTask(any());
     }
 
     @Test
-    void taskCreateFailureKeepsTheExistingCommandResponse() throws Exception {
+    void taskCreateOwnerFailureUsesTheTaskErrorContract() throws Exception {
         when(taskRuntime.createTask(any())).thenReturn(
                 new TaskCreationResult(
                         TaskCreationStatus.RETRYABLE,
@@ -544,10 +602,44 @@ class RuntimeApiControllerTest {
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.status").value("retryable"))
-                .andExpect(jsonPath("$.reason")
-                        .value("Task owner is unavailable"))
+                .andExpect(jsonPath("$.code").value(12003))
+                .andExpect(jsonPath("$.message")
+                        .value("Task Owner is unavailable"))
                 .andExpect(jsonPath("$.taskId").doesNotExist());
+    }
+
+    @Test
+    void taskCreateAndLifecycleConflictsUseDetailedTaskCodes()
+            throws Exception {
+        when(taskRuntime.createTask(any())).thenReturn(
+                new TaskCreationResult(
+                        TaskCreationStatus.CONFLICT,
+                        "private owner reason"
+                )
+        );
+        mockMvc.perform(post("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "workerGroupId":"phone-tools",
+                                  "allocationRule":{}
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12009))
+                .andExpect(jsonPath("$.message")
+                        .value("Task operation conflicts with current state"));
+
+        when(taskLifecycle.approveTask("task-1")).thenReturn(
+                new TaskApprovalResult(
+                        TaskApprovalStatus.CONFLICT,
+                        "private lifecycle reason"
+                )
+        );
+        mockMvc.perform(post("/api/v1/tasks/task-1/approve"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12009))
+                .andExpect(jsonPath("$.reason").doesNotExist());
     }
 
     @Test
@@ -556,11 +648,11 @@ class RuntimeApiControllerTest {
         String taskId = "scenario-rpc-phone-tools";
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/approve", taskId))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.status").value("invalid"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12008));
         mockMvc.perform(post("/api/v1/tasks/{taskId}/close", taskId))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.status").value("invalid"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12008));
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -571,7 +663,7 @@ class RuntimeApiControllerTest {
                                   "allocationRule":{}
                                 }]}
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12008));
         mockMvc.perform(post("/api/v1/tasks/{taskId}/results:load", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -675,7 +767,7 @@ class RuntimeApiControllerTest {
                                   }]
                                 }
                                 """))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));
 
         mockMvc.perform(post("/api/v1/tasks/task-1/items:call")
@@ -690,8 +782,38 @@ class RuntimeApiControllerTest {
                                   }]
                                 }
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12008));
+    }
+
+    @Test
+    void acceptedTaskCallUsesHttp200ForNotObservedResults()
+            throws Exception {
+        MvcResult pending = mockMvc.perform(post(
+                                "/api/v1/tasks/"
+                                        + "scenario-rpc-phone-tools/items:call"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [{
+                                    "messageId": "message-2",
+                                    "eventCode": "event",
+                                    "payload": {},
+                                    "allocationRule": {}
+                                  }]
+                                }
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        taskRpcRegistry.shutdown();
+        mockMvc.perform(asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-2.status")
+                        .value("not_observed"))
+                .andExpect(jsonPath("$.results.message-2.code")
+                        .doesNotExist());
     }
 
     @Test
@@ -761,24 +883,24 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void finiteTaskExportReturnsNotReadyWithoutLeakingTaskCoordinates()
+    void finiteTaskExportNotReadyUsesTheTaskErrorContract()
             throws Exception {
         when(taskResultsExport.export("task-1", 30_000L))
-                .thenReturn(new TaskResultsExportService.TaskResultsExport(
-                        false,
+                .thenThrow(new com.xa.mass.server.error.ServerException(
+                        com.xa.mass.server.error.ServerErrorCode
+                                .TASK_RESULTS_NOT_READY,
+                        "taskResultsExport.awaitTerminal",
+                        null,
                         null
                 ));
 
-        var pending = mockMvc.perform(post("/api/v1/tasks/task-1/results:export")
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:export")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"waitTimeoutMillis\":30000}"))
-                .andExpect(request().asyncStarted())
-                .andReturn();
-        mockMvc.perform(asyncDispatch(pending))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("not_ready"))
-                .andExpect(jsonPath("$.taskId").doesNotExist())
-                .andExpect(jsonPath("$.workerGroupId").doesNotExist());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(12010))
+                .andExpect(jsonPath("$.message")
+                        .value("Task results are not ready"));
     }
 
     @Test
@@ -821,7 +943,8 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void missingTaskDataOperationsReturnNotFound() throws Exception {
+    void missingTaskDataOperationsReturnTaskBusinessErrors()
+            throws Exception {
         when(taskCatalog.loadTaskAllocationDescriptors(
                 List.of("missing")
         )).thenReturn(new LinkedHashMap<>(Map.of()));
@@ -829,7 +952,7 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/missing/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageIds\":[\"message-1\"]}"))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));
         mockMvc.perform(post("/api/v1/tasks/missing/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -840,12 +963,12 @@ class RuntimeApiControllerTest {
                                   "payload":{}
                                 }]}
                                 """))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));
     }
 
     @Test
-    void lifecycleRetryableResultUsesTheTaskCommandContract()
+    void lifecycleRetryableResultUsesTheTaskErrorContract()
             throws Exception {
         when(taskLifecycle.approveTask("task-1")).thenReturn(
                 new TaskApprovalResult(
@@ -857,9 +980,9 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/task-1/approve")
                         .header("X-Request-Id", "unavailable-request"))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.status").value("retryable"))
-                .andExpect(jsonPath("$.reason")
-                        .value("Task lifecycle owner is unavailable"));
+                .andExpect(jsonPath("$.code").value(12003))
+                .andExpect(jsonPath("$.message")
+                        .value("Task Owner is unavailable"));
     }
 
     private static TaskDescriptor descriptor(String taskId) {

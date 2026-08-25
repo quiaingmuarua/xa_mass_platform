@@ -176,7 +176,7 @@
       "reason": "Emulator orchestration changes select the Emulator; its job dependency selects Android Host."
     },
     {
-      "path": "run_scenario_workers.py",
+      "path": "run_local_runtime.py",
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
@@ -184,7 +184,7 @@
         "worker_fleet",
         "frontend"
       ],
-      "reason": "The local composition driver builds the Frontend and launches the Java-hosted Scenario runtime used by deterministic and acceptance proofs."
+      "reason": "The local composition driver builds the Frontend and launches one checked Server Profile; scenario-workers additionally owns the standalone JVM Lab Host lifecycle."
     },
     {
       "path": ".github/workflows/proof-ci.yml",

@@ -15,11 +15,7 @@ public enum ServerErrorCode {
     ),
     TASK_DATA_UNAVAILABLE(
             12003,
-            "Task data Redis is unavailable"
-    ),
-    TASK_RPC_CAPACITY_EXCEEDED(
-            12004,
-            "Task Call waiter capacity is exhausted"
+            "Task Owner is unavailable"
     ),
     TASK_CALL_NOT_REGISTERED(
             12005,
@@ -36,6 +32,18 @@ public enum ServerErrorCode {
     TASK_OPERATION_NOT_SUPPORTED(
             12008,
             "Task does not support this operation"
+    ),
+    TASK_STATE_CONFLICT(
+            12009,
+            "Task operation conflicts with current state"
+    ),
+    TASK_RESULTS_NOT_READY(
+            12010,
+            "Task results are not ready"
+    ),
+    TASK_WORKER_GROUP_NOT_FOUND(
+            12011,
+            "Task WorkerGroup was not found"
     ),
     INVALID_WORKER_DELIVERY_REQUEST(
             13001,

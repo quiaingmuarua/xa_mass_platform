@@ -47,7 +47,6 @@ export interface TaskCreateApiRequest extends FiniteTaskConfig {
 
 export interface TaskCreateApiResponse {
   taskId: string;
-  status: "created";
 }
 
 export interface TaskItemApiRequest {
@@ -57,14 +56,12 @@ export interface TaskItemApiRequest {
 }
 
 export interface TaskItemsAppendApiResponse {
-  results: Record<
-    string,
-    {
-      status: string;
-      reason: string | null;
-    }
-  >;
+  results: Record<string, TaskItemAppendOutcome>;
 }
+
+export type TaskItemAppendOutcome =
+  | { status: "succeeded" }
+  | { status: "failed"; code: number; message: string };
 
 export interface TaskExportDownload {
   ready: true;

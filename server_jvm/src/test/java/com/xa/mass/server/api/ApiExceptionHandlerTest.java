@@ -59,19 +59,27 @@ class ApiExceptionHandlerTest {
                 ),
                 Arguments.of(
                         ServerErrorCode.TASK_NOT_FOUND,
-                        HttpStatus.NOT_FOUND
+                        HttpStatus.BAD_REQUEST
                 ),
                 Arguments.of(
                         ServerErrorCode.TASK_DATA_UNAVAILABLE,
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
-                        ServerErrorCode.TASK_RPC_CAPACITY_EXCEEDED,
-                        HttpStatus.TOO_MANY_REQUESTS
+                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
+                        HttpStatus.BAD_REQUEST
                 ),
                 Arguments.of(
-                        ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                        HttpStatus.UNPROCESSABLE_CONTENT
+                        ServerErrorCode.TASK_STATE_CONFLICT,
+                        HttpStatus.BAD_REQUEST
+                ),
+                Arguments.of(
+                        ServerErrorCode.TASK_RESULTS_NOT_READY,
+                        HttpStatus.BAD_REQUEST
+                ),
+                Arguments.of(
+                        ServerErrorCode.TASK_WORKER_GROUP_NOT_FOUND,
+                        HttpStatus.BAD_REQUEST
                 ),
                 Arguments.of(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,

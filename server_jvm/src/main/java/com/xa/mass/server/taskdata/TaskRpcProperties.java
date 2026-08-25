@@ -11,6 +11,8 @@ public record TaskRpcProperties(
         @Min(1) @Max(60_000) long defaultWaitTimeoutMillis,
         @Min(1) @Max(60_000) long maxWaitTimeoutMillis,
         @Min(1) int maxWaiters,
+        @Min(1) int maxPendingObservations,
+        @Min(1) @Max(1_000) int maxProbeItemsPerRound,
         @Min(1) long initialProbeIntervalMillis,
         @Min(1) long normalProbeIntervalMillis,
         @Min(1) long longProbeIntervalMillis

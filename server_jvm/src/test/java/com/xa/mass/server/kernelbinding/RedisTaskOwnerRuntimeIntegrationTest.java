@@ -26,6 +26,7 @@ import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.taskdata.TaskCreationService;
+import com.xa.mass.server.taskdata.TaskLifecycleService;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -477,9 +478,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void publicFiniteTaskControlUsesJavaOwnersWithoutPythonHttp() {
         TaskControlController controller = new TaskControlController(
-                lifecycle,
-                catalog,
-                mock(TaskCreationService.class)
+                mock(TaskCreationService.class),
+                new TaskLifecycleService(lifecycle, catalog)
         );
         var created = runtime.createTask(new TaskDescriptor(
                 "public-task",
@@ -491,10 +491,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ));
 
         assertThat(created.status()).isEqualTo(TaskCreationStatus.CREATED);
-        assertThat(controller.approveTask("public-task")
-                .getStatusCode().value()).isEqualTo(200);
-        assertThat(controller.closeTask("public-task")
-                .getStatusCode().value()).isEqualTo(200);
+        assertThat(controller.approveTask("public-task").status()
+                .wireValue()).isEqualTo("approved");
+        assertThat(controller.closeTask("public-task").status()
+                .wireValue()).isEqualTo("closed");
     }
 
     private TaskDescriptor descriptor(String taskId, int priority) {

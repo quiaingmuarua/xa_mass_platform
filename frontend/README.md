@@ -60,8 +60,8 @@ Tasks. `Finite Tasks` is a real API flow available only in API mode:
    100 Items.
 5. Require explicit approval before calling the Task approve endpoint.
 6. Export successful Results manually through
-   `POST /api/v1/tasks/{taskId}/results:export`; HTTP 202 is shown as not ready
-   and never triggers automatic polling.
+   `POST /api/v1/tasks/{taskId}/results:export`; `400/12010` is shown as not
+   ready and never triggers automatic polling.
 
 The browser records only confirmed stages: `Created`, `Items Appended`,
 `Approved`, and `Export Ready`. It never simulates `RUNNING` or `TERMINAL` from

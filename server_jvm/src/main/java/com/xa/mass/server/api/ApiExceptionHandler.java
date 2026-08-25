@@ -60,11 +60,16 @@ public final class ApiExceptionHandler {
                     WORKER_GROUP_REGISTRATION_UNAVAILABLE,
                     DIRECT_CALL_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
-            case TASK_RPC_CAPACITY_EXCEEDED,
-                    DIRECT_CALL_CAPACITY_EXCEEDED ->
+            case DIRECT_CALL_CAPACITY_EXCEEDED ->
                     HttpStatus.TOO_MANY_REQUESTS;
             case TASK_NOT_FOUND,
-                    TASK_CALL_NOT_REGISTERED,
+                    TASK_OPERATION_NOT_SUPPORTED,
+                    TASK_STATE_CONFLICT,
+                    TASK_RESULTS_NOT_READY,
+                    TASK_WORKER_GROUP_NOT_FOUND,
+                    INVALID_TASK_DATA_REQUEST,
+                    MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
+            case TASK_CALL_NOT_REGISTERED,
                     WORKER_IDENTITY_NOT_FOUND,
                     WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND,
@@ -74,16 +79,13 @@ public final class ApiExceptionHandler {
                     WORKER_IDENTITY_CONFLICT,
                     WORKER_BINDING_CONFLICT,
                     WORKER_GROUP_REGISTRATION_CONFLICT -> HttpStatus.CONFLICT;
-            case TASK_OPERATION_NOT_SUPPORTED,
-                    RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
+            case RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
                     HttpStatus.UNPROCESSABLE_CONTENT;
-            case INVALID_TASK_DATA_REQUEST,
-                    INVALID_WORKER_DELIVERY_REQUEST,
+            case INVALID_WORKER_DELIVERY_REQUEST,
                     INVALID_WORKER_IDENTITY_REQUEST,
                     INVALID_WORKER_BINDING_REQUEST,
                     INVALID_WORKER_GROUP_REQUEST,
-                    INVALID_DIRECT_CALL_REQUEST,
-                    MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
+                    INVALID_DIRECT_CALL_REQUEST -> HttpStatus.BAD_REQUEST;
         };
     }
 

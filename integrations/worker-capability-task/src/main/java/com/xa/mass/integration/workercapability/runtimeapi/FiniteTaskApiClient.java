@@ -31,14 +31,10 @@ public final class FiniteTaskApiClient {
         );
         RuntimeApiHttpClient.requireStatus(
                 response,
-                201,
+                200,
                 "capabilityTask.create"
         );
-        String taskId = requiredString(response.body(), "taskId");
-        if (!"created".equals(requiredString(response.body(), "status"))) {
-            throw invalid("Task create status is not created");
-        }
-        return taskId;
+        return requiredString(response.body(), "taskId");
     }
 
     public void appendItems(String taskId, List<TaskItem> items) {
@@ -77,9 +73,12 @@ public final class FiniteTaskApiClient {
                     results,
                     item.messageId()
             );
-            if (!"appended".equals(requiredString(result, "status"))) {
+            if (!"succeeded".equals(requiredString(result, "status"))) {
                 throw invalid(
                         "Task Item was not appended: " + item.messageId()
+                                + " (code=" + requiredInteger(result, "code")
+                                + ", message="
+                                + requiredString(result, "message") + ")"
                 );
             }
         }
@@ -114,13 +113,13 @@ public final class FiniteTaskApiClient {
                         + "/results:export",
                 Map.of("waitTimeoutMillis", waitTimeoutMillis)
         );
-        if (response.statusCode() == 202) {
+        if (response.statusCode() == 400) {
             Map<String, Object> body = Jsons.parseObject(new String(
                     response.body(),
                     StandardCharsets.UTF_8
             ));
-            if (!"not_ready".equals(requiredString(body, "status"))) {
-                throw invalid("Task export 202 body is invalid");
+            if (requiredInteger(body, "code") != 12010) {
+                throw invalid("Task export business error is not 12010");
             }
             return new ExportResult(false, List.of());
         }
@@ -152,6 +151,17 @@ public final class FiniteTaskApiClient {
             throw invalid("Runtime API response requires " + name);
         }
         return text;
+    }
+
+    private static int requiredInteger(
+            Map<String, Object> body,
+            String name
+    ) {
+        Object value = body.get(name);
+        if (!(value instanceof Number number)) {
+            throw invalid("Runtime API response requires " + name);
+        }
+        return number.intValue();
     }
 
     @SuppressWarnings("unchecked")

@@ -12,7 +12,12 @@ import org.springframework.context.annotation.Configuration;
                 version = "v1",
                 description = "Kernel decides scheduling; Server exposes, "
                         + "validates and correlates Runtime APIs; Transport "
-                        + "delivers and executes assigned work."
+                        + "delivers and executes assigned work. HTTP status "
+                        + "expresses a coarse request-processing class while "
+                        + "ApiErrorResponse.code identifies the business "
+                        + "reason. Tasks currently use 200 for completed use "
+                        + "cases, 400 for business rejection and 503 for a "
+                        + "temporarily unavailable Owner."
         ),
         tags = {
                 @Tag(

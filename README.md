@@ -159,6 +159,11 @@ may select the built-in clean `agentforge` profile, and never starts Workers;
 the clean Profile plus public APIs and consumes the matching Worker SDK Release
 instead of copying XA Mass source modules.
 
+Inside the source checkout, `python run_local_runtime.py` builds the frontend
+and defaults to the complete `scenario-workers` Lab; `--profile agentforge`
+starts only that clean Server/Pacer/Adapter assembly and no Scenario Worker
+Host.
+
 ## Reading Path
 
 1. This cross-module authority contract.

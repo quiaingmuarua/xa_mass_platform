@@ -38,7 +38,7 @@ class ServerExceptionTest {
                 .isEqualTo(ServerErrorCode.TASK_DATA_UNAVAILABLE);
         assertThat(error.operation()).isEqualTo("taskData.appendItems");
         assertThat(error.getMessage())
-                .isEqualTo("Task data Redis is unavailable");
+                .isEqualTo("Task Owner is unavailable");
         assertThat(error.getCause()).isSameAs(cause);
     }
 

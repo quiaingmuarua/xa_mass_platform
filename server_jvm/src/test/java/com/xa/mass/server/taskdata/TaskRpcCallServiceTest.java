@@ -34,8 +34,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.context.request.async.DeferredResult;
 
 class TaskRpcCallServiceTest {
@@ -56,7 +54,7 @@ class TaskRpcCallServiceTest {
                 List.of("message-1", "message-2")
         )).thenReturn(loaded);
 
-        DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
+        DeferredResult<TaskRpcCallResponse> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -69,11 +67,10 @@ class TaskRpcCallServiceTest {
                 );
         registry.shutdown();
 
-        ResponseEntity<TaskRpcCallResponse> response = result(deferred);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(response.getBody().results().get("message-1").status()
+        TaskRpcCallResponse response = result(deferred);
+        assertThat(response.results().get("message-1").status()
                 .wireValue()).isEqualTo("succeeded");
-        assertThat(response.getBody().results().get("message-2").status()
+        assertThat(response.results().get("message-2").status()
                 .wireValue()).isEqualTo("not_observed");
         verify(taskRuntime, never()).loadTaskItems(anyString(), anyList());
     }
@@ -94,7 +91,7 @@ class TaskRpcCallServiceTest {
                 "message-2", "two"
         ));
 
-        DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
+        DeferredResult<TaskRpcCallResponse> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -106,7 +103,7 @@ class TaskRpcCallServiceTest {
                         )
                 );
 
-        assertThat(result(deferred).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result(deferred).results()).hasSize(2);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<TaskItem>> items = ArgumentCaptor.forClass(
                 List.class
@@ -157,7 +154,7 @@ class TaskRpcCallServiceTest {
     }
 
     @Test
-    void capacityFailureDoesNotUndoAcceptedAppend() {
+    void waiterCapacityReturnsAcceptedAfterSubmission() {
         TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(1);
@@ -178,25 +175,136 @@ class TaskRpcCallServiceTest {
                 properties
         );
 
-        service.call(
-                "task-1",
-                new TaskRpcCallRequest(
-                        List.of(item("message-1", Map.of())),
-                        1_000L
-                )
-        );
-        assertThatThrownBy(() -> service.call(
-                "task-2",
-                new TaskRpcCallRequest(
-                        List.of(item("message-2", Map.of())),
-                        1_000L
-                )
-        )).isInstanceOfSatisfying(ServerException.class, error ->
-                assertThat(error.errorCode()).isEqualTo(
-                        ServerErrorCode.TASK_RPC_CAPACITY_EXCEEDED
-                )
-        );
+        DeferredResult<TaskRpcCallResponse> first =
+                service.call(
+                        "task-1",
+                        new TaskRpcCallRequest(
+                                List.of(item("message-1", Map.of())),
+                                1_000L
+                        )
+                );
+        DeferredResult<TaskRpcCallResponse> second =
+                service.call(
+                        "task-2",
+                        new TaskRpcCallRequest(
+                                List.of(item("message-2", Map.of())),
+                                1_000L
+                        )
+                );
+
+        assertThat(first.hasResult()).isFalse();
+        assertThat(result(second).results().get("message-2").status()
+                .wireValue()).isEqualTo("not_observed");
+        assertThat(registry.waiterCount()).isOne();
+        assertThat(registry.pendingObservationCount()).isOne();
         verify(submission).submit(eq("task-2"), anyList());
+        registry.shutdown();
+    }
+
+    @Test
+    void pendingObservationCapacityPreservesImmediateSuccesses() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = properties(10, 1);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        assertThat(registry.tryRegister(
+                "capacity-task",
+                List.of("capacity-message"),
+                Map.of(),
+                new DeferredResult<>(1_000L)
+        )).isTrue();
+        when(submission.submit(eq("task-1"), anyList()))
+                .thenReturn(submitted("message-1", "message-2"));
+        var loaded = new LinkedHashMap<String, String>();
+        loaded.put("message-1", "observed");
+        loaded.put("message-2", null);
+        when(taskRuntime.loadTaskItemSuccessResults(
+                "task-1",
+                List.of("message-1", "message-2")
+        )).thenReturn(loaded);
+
+        DeferredResult<TaskRpcCallResponse> deferred =
+                service(submission, taskRuntime, registry, properties).call(
+                        "task-1",
+                        new TaskRpcCallRequest(
+                                List.of(
+                                        item("message-1", Map.of()),
+                                        item("message-2", Map.of())
+                                ),
+                                1_000L
+                        )
+                );
+
+        TaskRpcCallResponse response = result(deferred);
+        assertThat(response.results().get("message-1").status()
+                .wireValue()).isEqualTo("succeeded");
+        assertThat(response.results().get("message-2").status()
+                .wireValue()).isEqualTo("not_observed");
+        assertThat(registry.waiterCount()).isOne();
+        assertThat(registry.pendingObservationCount()).isOne();
+        registry.shutdown();
+    }
+
+    @Test
+    void stoppingRegistryReturnsAcceptedAfterSubmission() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = properties(10);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        registry.shutdown();
+        when(submission.submit(eq("task-1"), anyList()))
+                .thenReturn(submitted("message-1"));
+        when(taskRuntime.loadTaskItemSuccessResults(
+                "task-1",
+                List.of("message-1")
+        )).thenReturn(Map.of());
+
+        DeferredResult<TaskRpcCallResponse> deferred =
+                service(submission, taskRuntime, registry, properties).call(
+                        "task-1",
+                        new TaskRpcCallRequest(
+                                List.of(item("message-1", Map.of())),
+                                1_000L
+                        )
+                );
+
+        assertThat(result(deferred).results().get("message-1").status()
+                .wireValue()).isEqualTo("not_observed");
+        verify(submission).submit(eq("task-1"), anyList());
+    }
+
+    @Test
+    void immediateResultsReturnOkEvenWhenRegistryIsFull() {
+        TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskRpcProperties properties = properties(1);
+        TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
+        assertThat(registry.tryRegister(
+                "capacity-task",
+                List.of("capacity-message"),
+                Map.of(),
+                new DeferredResult<>(1_000L)
+        )).isTrue();
+        when(submission.submit(eq("task-1"), anyList()))
+                .thenReturn(submitted("message-1"));
+        when(taskRuntime.loadTaskItemSuccessResults(
+                "task-1",
+                List.of("message-1")
+        )).thenReturn(Map.of("message-1", "observed"));
+
+        DeferredResult<TaskRpcCallResponse> deferred =
+                service(submission, taskRuntime, registry, properties).call(
+                        "task-1",
+                        new TaskRpcCallRequest(
+                                List.of(item("message-1", Map.of())),
+                                1_000L
+                        )
+                );
+
+        assertThat(result(deferred).results().get("message-1").status()
+                .wireValue()).isEqualTo("succeeded");
+        assertThat(registry.waiterCount()).isOne();
+        assertThat(registry.pendingObservationCount()).isOne();
         registry.shutdown();
     }
 
@@ -206,9 +314,9 @@ class TaskRpcCallServiceTest {
                 TaskCallSubmissionStatus.NOT_FOUND,
                 ServerErrorCode.TASK_NOT_FOUND,
                 TaskCallSubmissionStatus.CLOSED,
-                ServerErrorCode.KERNEL_REJECTED_CONFLICT,
+                ServerErrorCode.TASK_STATE_CONFLICT,
                 TaskCallSubmissionStatus.STALE,
-                ServerErrorCode.KERNEL_REJECTED_CONFLICT,
+                ServerErrorCode.TASK_STATE_CONFLICT,
                 TaskCallSubmissionStatus.INVALID,
                 ServerErrorCode.INVALID_TASK_DATA_REQUEST,
                 TaskCallSubmissionStatus.RETRYABLE,
@@ -329,17 +437,26 @@ class TaskRpcCallServiceTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static ResponseEntity<TaskRpcCallResponse> result(
-            DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred
+    private static TaskRpcCallResponse result(
+            DeferredResult<TaskRpcCallResponse> deferred
     ) {
-        return (ResponseEntity<TaskRpcCallResponse>) deferred.getResult();
+        return (TaskRpcCallResponse) deferred.getResult();
     }
 
     private static TaskRpcProperties properties(int maxWaiters) {
+        return properties(maxWaiters, 100_000);
+    }
+
+    private static TaskRpcProperties properties(
+            int maxWaiters,
+            int maxPendingObservations
+    ) {
         return new TaskRpcProperties(
                 30_000,
                 60_000,
                 maxWaiters,
+                maxPendingObservations,
+                256,
                 50,
                 100,
                 250

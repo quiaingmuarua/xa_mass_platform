@@ -1,12 +1,11 @@
 package com.xa.mass.server.api.v1.model;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import org.jspecify.annotations.Nullable;
+import java.util.Objects;
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskCreateResponse(
-        String taskId,
-        RuntimeCommandStatus status,
-        @Nullable String reason
+        String taskId
 ) {
+    public TaskCreateResponse {
+        Objects.requireNonNull(taskId, "taskId");
+    }
 }

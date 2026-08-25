@@ -1,25 +1,21 @@
 package com.xa.mass.server.api.v1;
 
-import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
-import com.xa.mass.kernel.task.TaskLifecycleCommands;
-import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskApprovalResult;
-import com.xa.mass.kernel.task.TaskLifecycleCommands.TaskCloseResult;
 import com.xa.mass.server.api.ApiTags;
-import com.xa.mass.server.api.v1.model.CommandResultResponse;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
+import com.xa.mass.server.api.v1.model.ApiErrorResponse;
+import com.xa.mass.server.api.v1.model.TaskApprovalResponse;
+import com.xa.mass.server.api.v1.model.TaskCloseResponse;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
 import com.xa.mass.server.api.v1.model.TaskCreateResponse;
 import com.xa.mass.server.taskdata.TaskCreationService;
+import com.xa.mass.server.taskdata.TaskLifecycleService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,138 +29,108 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/tasks")
 public class TaskControlController {
 
-    private final TaskLifecycleCommands taskLifecycle;
-    private final TaskResourceCatalog taskCatalog;
     private final TaskCreationService taskCreation;
+    private final TaskLifecycleService taskLifecycle;
 
     public TaskControlController(
-            TaskLifecycleCommands taskLifecycle,
-            TaskResourceCatalog taskCatalog,
-            TaskCreationService taskCreation
+            TaskCreationService taskCreation,
+            TaskLifecycleService taskLifecycle
     ) {
-        this.taskLifecycle = taskLifecycle;
-        this.taskCatalog = taskCatalog;
         this.taskCreation = taskCreation;
+        this.taskLifecycle = taskLifecycle;
     }
 
     @Operation(summary = "Create a finite Task")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Task was created",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskCreateResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping
-    public ResponseEntity<?> createTask(
+    public TaskCreateResponse createTask(
             @Valid @RequestBody TaskCreateRequest request
     ) {
-        TaskCreateResponse response = taskCreation.create(request);
-        HttpStatus status = switch (response.status()) {
-            case CREATED -> HttpStatus.CREATED;
-            case CONFLICT -> HttpStatus.CONFLICT;
-            case INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
-            case RETRYABLE -> HttpStatus.SERVICE_UNAVAILABLE;
-            default -> throw new IllegalStateException(
-                    "Unexpected Task creation status: " + response.status()
-            );
-        };
-        Object body = response.status() == RuntimeCommandStatus.CREATED
-                ? response
-                : new CommandResultResponse(
-                        response.status(),
-                        response.reason()
-                );
-        return ResponseEntity.status(status).body(body);
+        return taskCreation.create(request);
     }
 
     @Operation(summary = "Approve a finite Task")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Task approval completed",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskApprovalResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping("/{taskId}/approve")
-    public ResponseEntity<CommandResultResponse> approveTask(
+    public TaskApprovalResponse approveTask(
             @PathVariable @NotBlank String taskId
     ) {
-        ResponseEntity<CommandResultResponse> rejected =
-                rejectNonPublicTask(taskId);
-        if (rejected != null) {
-            return rejected;
-        }
-        TaskApprovalResult result = taskLifecycle.approveTask(taskId);
-        HttpStatus status = switch (result.status()) {
-            case APPROVED, ALREADY_APPROVED -> HttpStatus.OK;
-            case NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case CONFLICT -> HttpStatus.CONFLICT;
-            case INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
-            case RETRYABLE -> HttpStatus.SERVICE_UNAVAILABLE;
-        };
-        return response(
-                status,
-                result.status().wireValue(),
-                result.reason()
-        );
+        return taskLifecycle.approve(taskId);
     }
 
     @Operation(summary = "Close a finite Task")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Task close completed",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskCloseResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping("/{taskId}/close")
-    public ResponseEntity<CommandResultResponse> closeTask(
+    public TaskCloseResponse closeTask(
             @PathVariable @NotBlank String taskId
     ) {
-        ResponseEntity<CommandResultResponse> rejected =
-                rejectNonPublicTask(taskId);
-        if (rejected != null) {
-            return rejected;
-        }
-        TaskCloseResult result = taskLifecycle.closeTask(taskId);
-        HttpStatus status = switch (result.status()) {
-            case CLOSED, ALREADY_CLOSED -> HttpStatus.OK;
-            case NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case INVALID -> HttpStatus.UNPROCESSABLE_CONTENT;
-            case RETRYABLE -> HttpStatus.SERVICE_UNAVAILABLE;
-        };
-        return response(
-                status,
-                result.status().wireValue(),
-                result.reason()
-        );
+        return taskLifecycle.close(taskId);
     }
 
-    private ResponseEntity<CommandResultResponse> rejectNonPublicTask(
-            String taskId
-    ) {
-        TaskDescriptor descriptor;
-        try {
-            descriptor = taskCatalog.loadTaskAllocationDescriptors(
-                    List.of(taskId)
-            ).get(taskId);
-        } catch (RuntimeException error) {
-            return response(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    RuntimeCommandStatus.RETRYABLE.wireValue(),
-                    "Task catalog is unavailable"
-            );
-        }
-        if (descriptor == null) {
-            return response(
-                    HttpStatus.NOT_FOUND,
-                    RuntimeCommandStatus.NOT_FOUND.wireValue(),
-                    null
-            );
-        }
-        if (descriptor.workerAllocationMechanism()
-                != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-                || descriptor.idleDisposition()
-                != TaskIdleDisposition.CLOSE_WHEN_IDLE) {
-            return response(
-                    HttpStatus.UNPROCESSABLE_CONTENT,
-                    RuntimeCommandStatus.INVALID.wireValue(),
-                    "Task does not support public lifecycle commands"
-            );
-        }
-        return null;
-    }
-
-    private static ResponseEntity<CommandResultResponse> response(
-            HttpStatus httpStatus,
-            String status,
-            String reason
-    ) {
-        return ResponseEntity.status(httpStatus).body(
-                new CommandResultResponse(
-                        RuntimeCommandStatus.fromWireValue(status),
-                        reason
-                )
-        );
-    }
 }

@@ -7,8 +7,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
-import com.xa.mass.server.api.v1.model.CommandResultResponse;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
+import com.xa.mass.server.api.v1.model.TaskItemAppendOutcome;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
@@ -217,16 +216,30 @@ public final class TaskDataService {
     private static TaskItemsAppendResponse appendResponse(
             Map<String, TaskItemAppendResult> appended
     ) {
-        var results = new LinkedHashMap<String, CommandResultResponse>();
-        appended.forEach((messageId, result) -> results.put(
-                messageId,
-                new CommandResultResponse(
-                        RuntimeCommandStatus.fromWireValue(
-                                result.status().wireValue()
-                        ),
-                        result.reason()
-                )
-        ));
+        var results = new LinkedHashMap<String, TaskItemAppendOutcome>();
+        appended.forEach((messageId, result) -> {
+            if (result == null) {
+                throw new ServerException(
+                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                        "taskData.appendItems",
+                        null,
+                        null
+                );
+            }
+            TaskItemAppendOutcome outcome = switch (result.status()) {
+                case APPENDED -> TaskItemAppendOutcome.succeeded();
+                case INVALID -> TaskItemAppendOutcome.failed(
+                        ServerErrorCode.INVALID_TASK_DATA_REQUEST
+                );
+                case NOT_FOUND -> TaskItemAppendOutcome.failed(
+                        ServerErrorCode.TASK_NOT_FOUND
+                );
+                case RETRYABLE -> TaskItemAppendOutcome.failed(
+                        ServerErrorCode.TASK_DATA_UNAVAILABLE
+                );
+            };
+            results.put(messageId, outcome);
+        });
         return new TaskItemsAppendResponse(results);
     }
 }

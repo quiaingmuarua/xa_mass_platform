@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 public record TaskItemsAppendResponse(
-        Map<String, CommandResultResponse> results
+        Map<String, TaskItemAppendOutcome> results
 ) {
     public TaskItemsAppendResponse {
         Objects.requireNonNull(results, "results");

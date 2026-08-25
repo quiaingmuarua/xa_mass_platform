@@ -834,11 +834,13 @@ class RuntimeBoundaryIntegrationTest {
             assertThat(JSON.readTree(repeatedRegistration.body())
                     .get("taskId")
                     .asText()).isEqualTo(taskId);
-            assertThat(send(
+            HttpResponse<String> managedClose = send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/close",
                     null
-            ).statusCode()).isEqualTo(422);
+            );
+            assertThat(managedClose.statusCode()).isEqualTo(400);
+            assertThat(managedClose.body()).contains("\"code\":12008");
         } finally {
             worker.close();
         }
@@ -963,7 +965,7 @@ class RuntimeBoundaryIntegrationTest {
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("\"status\":\"appended\"");
+        assertThat(response.body()).contains("\"status\":\"succeeded\"");
     }
 
     private RunningWorker startWorker(
@@ -1159,7 +1161,7 @@ class RuntimeBoundaryIntegrationTest {
                 allocationRule
                 )
         );
-        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(response.statusCode()).isEqualTo(200);
         String taskId = JSON.readTree(response.body())
                 .get("taskId")
                 .asText();

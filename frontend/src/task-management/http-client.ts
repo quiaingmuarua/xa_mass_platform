@@ -6,7 +6,6 @@ import {
   taskApiErrorResponseSchema,
   taskApprovalResponseSchema,
   taskCreateResponseSchema,
-  taskExportNotReadySchema,
   taskItemsAppendResponseSchema
 } from "./schemas";
 import type {
@@ -19,12 +18,13 @@ import type {
 } from "./types";
 
 const SAFE_ERROR_MESSAGES: Record<number, string> = {
-  11005: "The Task lifecycle conflicts with its current state.",
   12001: "The Task request is invalid.",
   12002: "The Task no longer exists.",
   12003: "Task data is temporarily unavailable.",
   12008: "This Task does not support the requested operation.",
-  15001: "The selected WorkerGroup no longer exists.",
+  12009: "The Task lifecycle conflicts with its current state.",
+  12010: "Task results are not ready.",
+  12011: "The selected WorkerGroup no longer exists.",
   19001: "The Task request body is invalid."
 };
 
@@ -41,6 +41,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
       const response = await this.client.post("/v1/tasks", request, {
         headers: requestHeaders(requestId)
       });
+      if (response.status !== 200) throw schemaError(requestId);
       return parseResponse(taskCreateResponseSchema, response.data, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
@@ -58,6 +59,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
         { items },
         { headers: requestHeaders(requestId) }
       );
+      if (response.status !== 200) throw schemaError(requestId);
       return parseResponse(taskItemsAppendResponseSchema, response.data, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
@@ -72,6 +74,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
         undefined,
         { headers: requestHeaders(requestId) }
       );
+      if (response.status !== 200) throw schemaError(requestId);
       parseResponse(taskApprovalResponseSchema, response.data, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
@@ -91,22 +94,20 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
           headers: requestHeaders(requestId),
           responseType: "blob",
           timeout: waitTimeoutMillis + 5_000,
-          validateStatus: (status) => status === 200 || status === 202
+          validateStatus: () => true
         }
       );
       if (!(response.data instanceof Blob)) throw schemaError(requestId);
-      if (response.status === 202) {
-        const parsed = taskExportNotReadySchema.safeParse(
-          JSON.parse(await response.data.text())
-        );
-        if (!parsed.success) throw schemaError(requestId);
-        return { ready: false };
-      }
-      return {
-        ready: true,
-        fileName: `${taskId}-results.jsonl`,
-        blob: response.data
-      };
+      if (response.status === 200)
+        return {
+          ready: true,
+          fileName: `${taskId}-results.jsonl`,
+          blob: response.data
+        };
+
+      const errorBody = await parseErrorBlob(response.data, requestId);
+      if (response.status === 400 && errorBody.code === 12010) return { ready: false };
+      throw apiError(errorBody, response.status, requestId);
     } catch (error) {
       throw mapHttpError(error, requestId);
     }
@@ -142,19 +143,46 @@ function mapHttpError(error: unknown, fallbackRequestId: string): FiniteTaskErro
     });
   }
 
-  const parsed = taskApiErrorResponseSchema.safeParse(error.response?.data);
-  const code = parsed.success ? parsed.data.code : undefined;
   const status = error.response?.status;
+  const parsed = taskApiErrorResponseSchema.safeParse(error.response?.data);
+  if (status !== undefined && parsed.success)
+    return apiError(parsed.data, status, fallbackRequestId, error);
   return new FiniteTaskError({
     kind: status === undefined ? "network" : "http",
     message:
-      code === undefined
-        ? "Task API returned an unrecognized error."
-        : (SAFE_ERROR_MESSAGES[code] ?? "Task API returned an unrecognized error."),
-    requestId: (parsed.success ? parsed.data.requestId : null) ?? fallbackRequestId,
-    code,
+      status === undefined
+        ? "Unable to connect to the Task API."
+        : "Task API returned an unrecognized error.",
+    requestId: fallbackRequestId,
     status,
     cause: error
+  });
+}
+
+async function parseErrorBlob(blob: Blob, requestId: string) {
+  try {
+    const parsed = taskApiErrorResponseSchema.safeParse(JSON.parse(await blob.text()));
+    if (parsed.success) return parsed.data;
+  } catch {
+    // Fall through to the stable schema error below.
+  }
+  throw schemaError(requestId);
+}
+
+function apiError(
+  body: { code: number; message: string; requestId: string | null },
+  status: number,
+  fallbackRequestId: string,
+  cause?: unknown
+): FiniteTaskError {
+  return new FiniteTaskError({
+    kind: "http",
+    message:
+      SAFE_ERROR_MESSAGES[body.code] ?? "Task API returned an unrecognized error.",
+    requestId: body.requestId ?? fallbackRequestId,
+    code: body.code,
+    status,
+    cause
   });
 }
 

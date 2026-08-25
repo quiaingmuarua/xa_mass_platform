@@ -1,8 +1,7 @@
 package com.xa.mass.server.taskdata;
 
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
-import com.xa.mass.server.error.ServerErrorCode;
-import com.xa.mass.server.error.ServerException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -11,7 +10,6 @@ import java.util.Set;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.TimeUnit;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.async.DeferredResult;
 
@@ -19,16 +17,21 @@ import org.springframework.web.context.request.async.DeferredResult;
 public final class TaskRpcWaitRegistry {
 
     private final int maxWaiters;
+    private final int maxPendingObservations;
     private final long initialProbeIntervalMillis;
     private final long normalProbeIntervalMillis;
     private final long longProbeIntervalMillis;
     private final DelayQueue<DueItem> dueItems = new DelayQueue<>();
     private final Map<ItemKey, ItemWaitGroup> groups = new LinkedHashMap<>();
     private int waiterCount;
+    private int pendingObservationCount;
+    private long nextGeneration;
     private boolean closed;
 
     public TaskRpcWaitRegistry(TaskRpcProperties properties) {
         this.maxWaiters = properties.maxWaiters();
+        this.maxPendingObservations =
+                properties.maxPendingObservations();
         this.initialProbeIntervalMillis =
                 properties.initialProbeIntervalMillis();
         this.normalProbeIntervalMillis =
@@ -37,43 +40,43 @@ public final class TaskRpcWaitRegistry {
                 properties.longProbeIntervalMillis();
     }
 
-    public BatchWaiter register(
+    public boolean tryRegister(
             String taskId,
             List<String> messageIds,
             Map<String, String> observedResults,
-            DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred
+            DeferredResult<TaskRpcCallResponse> deferred
     ) {
+        List<String> orderedIds = List.copyOf(messageIds);
+        var observed = new LinkedHashMap<String, String>();
+        orderedIds.forEach(messageId -> {
+            String payload = observedResults.get(messageId);
+            if (payload != null) {
+                observed.put(messageId, payload);
+            }
+        });
+        var pending = new LinkedHashSet<ItemKey>();
+        orderedIds.forEach(messageId -> {
+            if (!observed.containsKey(messageId)) {
+                pending.add(new ItemKey(taskId, messageId));
+            }
+        });
+        if (pending.isEmpty()) {
+            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+                    orderedIds,
+                    observed
+            ));
+            return true;
+        }
+
         BatchWaiter waiter;
         synchronized (this) {
             if (closed) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                        "taskRpc.register",
-                        "RPC wait registry is stopping",
-                        null
-                );
+                return false;
             }
-            List<String> orderedIds = List.copyOf(messageIds);
-            var observed = new LinkedHashMap<String, String>();
-            orderedIds.forEach(messageId -> {
-                String payload = observedResults.get(messageId);
-                if (payload != null) {
-                    observed.put(messageId, payload);
-                }
-            });
-            var pending = new LinkedHashSet<ItemKey>();
-            orderedIds.forEach(messageId -> {
-                if (!observed.containsKey(messageId)) {
-                    pending.add(new ItemKey(taskId, messageId));
-                }
-            });
-            if (waiterCount >= maxWaiters) {
-                throw new ServerException(
-                        ServerErrorCode.TASK_RPC_CAPACITY_EXCEEDED,
-                        "taskRpc.register",
-                        null,
-                        null
-                );
+            if (waiterCount >= maxWaiters
+                    || pending.size() > maxPendingObservations
+                            - pendingObservationCount) {
+                return false;
             }
             waiter = new BatchWaiter(
                     this,
@@ -94,33 +97,28 @@ public final class TaskRpcWaitRegistry {
                 }
             }
             waiterCount++;
+            pendingObservationCount += pending.size();
         }
         deferred.onTimeout(waiter::completeNotObserved);
         deferred.onError(ignored -> waiter.cancel());
         deferred.onCompletion(waiter::cancel);
-        return waiter;
+        return true;
     }
 
-    public ProbeRequest takeDue() throws InterruptedException {
+    public List<ProbeRequest> takeDueBatch(int maxItems)
+            throws InterruptedException {
+        if (maxItems <= 0) {
+            throw new IllegalArgumentException("maxItems must be positive");
+        }
         while (true) {
-            DueItem due = dueItems.take();
-            synchronized (this) {
-                ItemWaitGroup group = groups.get(due.key);
-                if (group == null
-                        || !group.scheduled
-                        || group.generation != due.generation) {
-                    continue;
-                }
-                group.scheduled = false;
-                if (group.waiters.isEmpty()) {
-                    groups.remove(group.key);
-                    continue;
-                }
-                group.inFlight = true;
-                return new ProbeRequest(
-                        group.key.taskId,
-                        group.key.messageId
-                );
+            var dueBatch = new ArrayList<DueItem>(maxItems);
+            dueBatch.add(dueItems.take());
+            if (maxItems > 1) {
+                dueItems.drainTo(dueBatch, maxItems - 1);
+            }
+            List<ProbeRequest> requests = activateDueItems(dueBatch);
+            if (!requests.isEmpty()) {
+                return requests;
             }
         }
     }
@@ -197,20 +195,52 @@ public final class TaskRpcWaitRegistry {
         return waiterCount;
     }
 
+    synchronized int pendingObservationCount() {
+        return pendingObservationCount;
+    }
+
+    private synchronized List<ProbeRequest> activateDueItems(
+            List<DueItem> dueBatch
+    ) {
+        var requests = new ArrayList<ProbeRequest>(dueBatch.size());
+        for (DueItem due : dueBatch) {
+            ItemWaitGroup group = groups.get(due.key);
+            if (group == null
+                    || !group.scheduled
+                    || group.generation != due.generation) {
+                continue;
+            }
+            group.scheduled = false;
+            if (group.waiters.isEmpty()) {
+                groups.remove(group.key);
+                continue;
+            }
+            group.inFlight = true;
+            requests.add(new ProbeRequest(
+                    group.key.taskId,
+                    group.key.messageId
+            ));
+        }
+        return List.copyOf(requests);
+    }
+
     private synchronized void remove(
             BatchWaiter waiter,
             Set<ItemKey> keys,
             boolean releaseWaiter
     ) {
+        int removedAssociations = 0;
         for (ItemKey key : keys) {
             ItemWaitGroup group = groups.get(key);
             if (group == null || !group.waiters.remove(waiter)) {
                 continue;
             }
+            removedAssociations++;
             if (group.waiters.isEmpty() && !group.inFlight) {
                 groups.remove(group.key);
             }
         }
+        pendingObservationCount -= removedAssociations;
         if (releaseWaiter) {
             waiterCount--;
         }
@@ -218,7 +248,7 @@ public final class TaskRpcWaitRegistry {
 
     private void schedule(ItemWaitGroup group, long delayMillis) {
         group.scheduled = true;
-        group.generation++;
+        group.generation = ++nextGeneration;
         dueItems.offer(new DueItem(
                 group.key,
                 group.generation,
@@ -238,21 +268,19 @@ public final class TaskRpcWaitRegistry {
         );
     }
 
-    public record ProbeRequest(
+    record ProbeRequest(
             String taskId,
             String messageId
     ) {
     }
 
-    public static final class BatchWaiter {
+    private static final class BatchWaiter {
 
         private final TaskRpcWaitRegistry registry;
         private final List<String> orderedMessageIds;
         private final Map<String, String> observedResults;
         private final Set<ItemKey> pending;
-        private final DeferredResult<
-                ResponseEntity<TaskRpcCallResponse>
-                > deferred;
+        private final DeferredResult<TaskRpcCallResponse> deferred;
         private final long registeredAtNanos;
         private boolean completed;
 
@@ -261,7 +289,7 @@ public final class TaskRpcWaitRegistry {
                 List<String> orderedMessageIds,
                 Map<String, String> observedResults,
                 Set<ItemKey> pending,
-                DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred,
+                DeferredResult<TaskRpcCallResponse> deferred,
                 long registeredAtNanos
         ) {
             this.registry = registry;
@@ -288,10 +316,10 @@ public final class TaskRpcWaitRegistry {
             if (!finished) {
                 return true;
             }
-            return deferred.setResult(ResponseEntity.ok(response()));
+            return deferred.setResult(response());
         }
 
-        public synchronized boolean completeNotObserved() {
+        private synchronized boolean completeNotObserved() {
             if (completed) {
                 return false;
             }
@@ -299,12 +327,10 @@ public final class TaskRpcWaitRegistry {
             Set<ItemKey> remaining = Set.copyOf(pending);
             pending.clear();
             registry.remove(this, remaining, true);
-            return deferred.setResult(ResponseEntity.accepted().body(
-                    response()
-            ));
+            return deferred.setResult(response());
         }
 
-        public synchronized void cancel() {
+        private synchronized void cancel() {
             if (completed) {
                 return;
             }

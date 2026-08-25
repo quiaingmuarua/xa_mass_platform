@@ -32,6 +32,8 @@ xa:
       default-wait-timeout-millis: 30000
       max-wait-timeout-millis: 60000
       max-waiters: 10000
+      max-pending-observations: 100000
+      max-probe-items-per-round: 256
       initial-probe-interval-millis: 50
       normal-probe-interval-millis: 100
       long-probe-interval-millis: 250

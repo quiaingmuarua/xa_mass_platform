@@ -164,6 +164,15 @@ remain Java-to-Redis:
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
 ```
 
+The deterministic Server Task Call proof separately checks that accepted
+submission remains HTTP `200` and reports `not_observed` when observation
+waiters, pending associations or Registry lifecycle cannot accept more
+synchronous work. It also proves one
+shared Item probe for coalesced waiters, bounded due batches, one Result-owner
+load per Task in a round, and exact capacity release. This observation proof
+does not reinterpret a submission-owner `503` as evidence that no Item was
+written.
+
 The same proof invokes an unpaused real WebSocket Worker through DIRECT_CALL,
 exercises a custom SYSTEM handler and the default probe/properties/events
 handlers, observes the current Adapter Channel through the public Runtime View,
@@ -278,7 +287,8 @@ or access the network.
 
 The frontend proof keeps UI testing deliberately small. It validates Runtime
 schemas and stores plus TXT validation, stable message IDs, 100-Item chunks,
-the public create/append/approve/export sequence, 202 retry behavior, and the
+the public create/append/approve/export sequence, `400/12010` export retry
+behavior, and the
 Mock-mode no-call boundary. It does not run visual regression or browser
 compatibility suites.
 

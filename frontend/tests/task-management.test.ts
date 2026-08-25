@@ -55,11 +55,12 @@ describe("HttpFiniteTaskClient", () => {
     const download = new Blob(["{}\n"], { type: "application/x-ndjson" });
     const post = vi
       .fn()
-      .mockResolvedValueOnce({ data: { taskId: "task-1", status: "created" } })
+      .mockResolvedValueOnce({ data: { taskId: "task-1" }, status: 200 })
       .mockResolvedValueOnce({
-        data: { results: { "task-1-00001": { status: "appended", reason: null } } }
+        data: { results: { "task-1-00001": { status: "succeeded" } } },
+        status: 200
       })
-      .mockResolvedValueOnce({ data: { status: "approved", reason: null } })
+      .mockResolvedValueOnce({ data: { status: "approved" }, status: 200 })
       .mockResolvedValueOnce({ data: download, status: 200, headers: {} });
     const client = new HttpFiniteTaskClient("/api", {
       post
@@ -89,6 +90,28 @@ describe("HttpFiniteTaskClient", () => {
     ]);
     expect(post.mock.calls[1]?.[1].items[0]).not.toHaveProperty("allocationRule");
   });
+
+  it("treats only 400/12010 as an export that can be retried", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: new Blob([
+        JSON.stringify({
+          code: 12010,
+          message: "Task results are not ready",
+          requestId: "request-1"
+        })
+      ]),
+      status: 400,
+      headers: {}
+    });
+    const client = new HttpFiniteTaskClient("/api", {
+      post
+    } as unknown as AxiosInstance);
+
+    await expect(client.exportResults("task-1", 30_000)).resolves.toEqual({
+      ready: false
+    });
+    expect(post.mock.calls[0]?.[2].validateStatus(503)).toBe(true);
+  });
 });
 
 describe("finite Task management store", () => {
@@ -99,7 +122,7 @@ describe("finite Task management store", () => {
     const client = fakeClient({
       createTask: vi.fn(async () => {
         order.push("create");
-        return { taskId: "task-1", status: "created" as const };
+        return { taskId: "task-1" };
       }),
       appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) => {
         order.push(`append-${items.length}`);
@@ -156,7 +179,13 @@ describe("finite Task management store", () => {
           )
         )
         .mockResolvedValueOnce({
-          results: { "task-1-00101": { status: "retryable", reason: "unavailable" } }
+          results: {
+            "task-1-00101": {
+              status: "failed",
+              code: 12003,
+              message: "Task data is temporarily unavailable."
+            }
+          }
         })
     });
     const store = createTaskManagementStore(catalog("api"), client);
@@ -167,7 +196,7 @@ describe("finite Task management store", () => {
 
     expect(store.tasks[0]).toMatchObject({ stage: "CREATED", appendedCount: 100 });
     expect(client.approveTask).not.toHaveBeenCalled();
-    expect(store.error?.message).toContain("unavailable");
+    expect(store.error?.message).toContain("temporarily unavailable");
   });
 
   it("disables every real operation in Mock mode without client fallback", async () => {
@@ -208,8 +237,7 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
   return {
     createTask: vi.fn(
       async (): Promise<TaskCreateApiResponse> => ({
-        taskId: "task-1",
-        status: "created"
+        taskId: "task-1"
       })
     ),
     appendItems: vi.fn(async (_taskId: string, items: TaskItemApiRequest[]) =>
@@ -224,7 +252,7 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
 function appended(messageIds: string[]): TaskItemsAppendApiResponse {
   return {
     results: Object.fromEntries(
-      messageIds.map((messageId) => [messageId, { status: "appended", reason: null }])
+      messageIds.map((messageId) => [messageId, { status: "succeeded" }])
     )
   };
 }

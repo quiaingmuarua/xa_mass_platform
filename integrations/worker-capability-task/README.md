@@ -28,6 +28,11 @@ The integration keeps the input files locally. Server sees only ordinary Task
 and TaskItem requests and creates only the temporary HTTP export file used for
 the response stream.
 
+Task creation, append and approval use HTTP `200`. Export returns the JSONL
+stream with `200`; `400/12010` means the finite Task has not yet reached its
+terminal export precondition. Other Task business rejection remains
+`400 + ApiErrorResponse`, while temporary Owner failure is `503`.
+
 ## Run
 
 Start Redis and one Java Server with the `scenario-workers` Profile. Server

@@ -4,8 +4,7 @@ import type { TaskCreateApiResponse, TaskItemsAppendApiResponse } from "./types"
 
 export const taskCreateResponseSchema: z.ZodType<TaskCreateApiResponse> = z
   .object({
-    taskId: z.string().min(1),
-    status: z.literal("created")
+    taskId: z.string().min(1)
   })
   .strict();
 
@@ -13,25 +12,24 @@ export const taskItemsAppendResponseSchema: z.ZodType<TaskItemsAppendApiResponse
   .object({
     results: z.record(
       z.string().min(1),
-      z
-        .object({
-          status: z.string().min(1),
-          reason: z.string().nullable()
-        })
-        .strict()
+      z.discriminatedUnion("status", [
+        z.object({ status: z.literal("succeeded") }).strict(),
+        z
+          .object({
+            status: z.literal("failed"),
+            code: z.number().int(),
+            message: z.string().min(1)
+          })
+          .strict()
+      ])
     )
   })
   .strict();
 
 export const taskApprovalResponseSchema = z
   .object({
-    status: z.enum(["approved", "already_approved"]),
-    reason: z.string().nullable()
+    status: z.enum(["approved", "already_approved"])
   })
-  .strict();
-
-export const taskExportNotReadySchema = z
-  .object({ status: z.literal("not_ready") })
   .strict();
 
 export const taskApiErrorResponseSchema = z

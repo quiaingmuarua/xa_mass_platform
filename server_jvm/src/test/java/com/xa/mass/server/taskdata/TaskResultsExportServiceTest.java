@@ -84,7 +84,6 @@ class TaskResultsExportServiceTest {
 
         var export = service.export("task-1", 30_000L);
 
-        assertThat(export.ready()).isTrue();
         assertThat(Files.readAllLines(export.file())).containsExactly(
                 "{\"messageId\":\"message-1\","
                         + "\"opaqueResultPayload\":"
@@ -104,17 +103,18 @@ class TaskResultsExportServiceTest {
     }
 
     @Test
-    void nonTerminalTaskReturnsNotReadyWithoutScanningResults() {
+    void nonTerminalTaskReturnsTheDetailedNotReadyError() {
         when(taskScores.getScoreStates(List.of("task-1")))
                 .thenReturn(Map.of(
                         "task-1",
                         score("task-1", TaskScoreBand.RUNNING_VISIBLE)
                 ));
 
-        var export = service.export("task-1", 1L);
-
-        assertThat(export.ready()).isFalse();
-        assertThat(export.file()).isNull();
+        assertThatThrownBy(() -> service.export("task-1", 1L))
+                .isInstanceOfSatisfying(ServerException.class, error ->
+                        assertThat(error.errorCode()).isEqualTo(
+                                ServerErrorCode.TASK_RESULTS_NOT_READY
+                        ));
         verifyNoInteractions(taskRuntime);
     }
 

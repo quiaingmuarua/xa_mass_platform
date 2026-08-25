@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.xa.mass.integration.workercapability.runtimeapi.FiniteTaskApiClient;
+import com.xa.mass.integration.workercapability.runtimeapi.RuntimeApiHttpClient;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -13,6 +15,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -102,6 +105,42 @@ class WorkerCapabilityTaskMainTest {
         assertTrue(encoded.contains("extension.worker.string.md5"));
     }
 
+    @Test
+    void exportNotReadyUsesTheTaskBusinessErrorCode() throws Exception {
+        HttpServer server = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", 0),
+                0
+        );
+        server.createContext(
+                "/api/v1/tasks/task-1/results:export",
+                exchange -> FakeFiniteTaskServer.respondJson(
+                        exchange,
+                        400,
+                        Map.of(
+                                "code", 12010,
+                                "message", "Task results are not ready",
+                                "requestId", "request-1"
+                        )
+                )
+        );
+        server.start();
+        try {
+            var client = new FiniteTaskApiClient(
+                    new RuntimeApiHttpClient(
+                            URI.create(
+                                    "http://127.0.0.1:"
+                                            + server.getAddress().getPort()
+                            ),
+                            Duration.ofSeconds(5)
+                    )
+            );
+
+            assertFalse(client.exportResults("task-1", 30_000).ready());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private Path writeLines(String name, List<String> lines)
             throws IOException {
         Path path = temporaryDirectory.resolve(name);
@@ -179,10 +218,7 @@ class WorkerCapabilityTaskMainTest {
             String taskId = "task-proof-" + taskSequence.incrementAndGet();
             taskItems.put(taskId, new ArrayList<>());
             creates.incrementAndGet();
-            respondJson(exchange, 201, Map.of(
-                    "taskId", taskId,
-                    "status", "created"
-            ));
+            respondJson(exchange, 200, Map.of("taskId", taskId));
         }
 
         private void handleAppend(HttpExchange exchange, String taskId)
@@ -199,7 +235,7 @@ class WorkerCapabilityTaskMainTest {
                 assertFalse(item.containsKey("allocationRule"));
                 results.put(
                         (String) item.get("messageId"),
-                        Map.of("status", "appended")
+                        Map.of("status", "succeeded")
                 );
             }
             respondJson(exchange, 200, Map.of("results", results));

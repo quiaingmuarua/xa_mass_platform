@@ -86,9 +86,14 @@ public final class TaskResultsExportService {
         long waitTimeoutMillis = waitTimeout(requestedWaitTimeoutMillis);
         validateFiniteTask(taskId);
         if (!awaitTerminal(taskId, waitTimeoutMillis)) {
-            return TaskResultsExport.notReady();
+            throw new ServerException(
+                    ServerErrorCode.TASK_RESULTS_NOT_READY,
+                    "taskResultsExport.awaitTerminal",
+                    null,
+                    null
+            );
         }
-        return TaskResultsExport.ready(writeExport(taskId));
+        return new TaskResultsExport(writeExport(taskId));
     }
 
     public void transferAndDelete(
@@ -259,24 +264,9 @@ public final class TaskResultsExportService {
         }
     }
 
-    public record TaskResultsExport(
-            boolean ready,
-            @Nullable Path file
-    ) {
+    public record TaskResultsExport(Path file) {
         public TaskResultsExport {
-            if (ready != (file != null)) {
-                throw new IllegalArgumentException(
-                        "ready export must have exactly one file"
-                );
-            }
-        }
-
-        static TaskResultsExport ready(Path file) {
-            return new TaskResultsExport(true, file);
-        }
-
-        static TaskResultsExport notReady() {
-            return new TaskResultsExport(false, null);
+            java.util.Objects.requireNonNull(file, "file");
         }
     }
 

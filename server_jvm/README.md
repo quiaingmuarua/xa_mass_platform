@@ -152,11 +152,19 @@ POST /api/v1/tasks/{taskId}/results:export
 Finite Tasks support explicit approval, close, ordinary Item append and result
 load. Managed Tasks support synchronous Item Call and result load; their
 lifecycle and ordinary append remain non-public. Calling an operation with the
-wrong public Task type returns `422`; a missing Task returns `404`.
+wrong public Task type returns `400/12008`; a missing Task returns
+`400/12002`.
+
+The Tasks API uses HTTP as a coarse processing class and the numeric business
+code as the detailed reason. Completed use cases return `200`; request, Task
+resource, precondition and state rejection returns `400 + ApiErrorResponse`;
+a temporarily unavailable Task Owner returns `503 + ApiErrorResponse`.
+Successful DTOs remain use-case-specific and are not wrapped in a common
+envelope.
 
 `results:export` supports only finite Tasks. It waits up to the caller's
 `1..300000` millisecond budget (30 seconds by default) for the Task score to
-become `TERMINAL`, returning `202 {"status":"not_ready"}` when that is not
+become `TERMINAL`, returning `400/12010` when that precondition is not
 observed. Once terminal, Server iterates the Task-scoped success Result Hash
 through bounded owner `HSCAN` pages, deduplicates message IDs, and streams
 `application/x-ndjson`. Each line contains only `messageId` and the unchanged
@@ -171,12 +179,21 @@ Worker restriction inside the Group.
 
 `items:call` accepts `1..100` Items, submits the bounded batch once and
 synchronously waits within the caller's `waitTimeoutMillis`. The response is a
-Message-ID-keyed result map. HTTP `200` means every entry is `succeeded`; HTTP
-`202` marks only unobserved entries as `not_observed`, without inferring their
-runtime state. Duplicate Message IDs in one request use the latest Item and
-produce one response entry. The caller can later read the same Message IDs
-through the same Task-ID-scoped result route. Neither route selects a Worker;
-the Item allocation rule remains Kernel scheduling input.
+Message-ID-keyed result map. Once submission is accepted it returns HTTP `200`;
+each observed entry is `succeeded`, while timeout, saturated observation
+capacity, or Registry shutdown marks only the remainder `not_observed` without
+inferring their runtime state. It preserves immediately observed successes.
+Observation saturation does not return `429`. Duplicate Message IDs in one
+request use the latest Item and produce one response entry. The caller can
+later read the same Message IDs through the same Task-ID-scoped result route.
+Neither route selects a Worker; the Item allocation rule remains Kernel
+scheduling input.
+
+Task Call remains at-least-once. Submission spans existing owner operations,
+so an Item write followed by an unconfirmed activation can still return `503`.
+Server does not retry or roll back that submission; callers should retain the
+original Message IDs and reconcile them through `results:load` rather than
+assuming every non-2xx response means no execution occurred.
 
 ```json
 {
@@ -382,8 +399,9 @@ The checked `scenario-workers` profile provides one WebSocket Adapter, two JVM
 Scenario WorkerGroup declarations and the advisory external Android demo
 Group. Registering those three declarations automatically provisions all three
 Task Calls. Server readiness does not depend on a Worker Host. The root
-`run_scenario_workers.py` starts Server first and the standalone JVM Host only
-after readiness. Its finite Capability Task proof is owned by
+`run_local_runtime.py` defaults to this Profile, starts Server first and starts
+the standalone JVM Host only after readiness. Its finite Capability Task proof
+is owned by
 [`integrations/worker-capability-task`](../integrations/worker-capability-task/README.md).
 
 The checked `agentforge` profile is a separate downstream deployment preset.
@@ -404,6 +422,9 @@ Pacer CLI config               kernel_design/config/pacer-default.json
 Pacer lifecycle state          data/kernel-pacer
 Adapter instances              none
 Managed Task Call wait         30s default / 60s maximum
+Task Call waiters              10000 maximum
+Task Call observations         100000 pending waiter-message associations
+Task Call Probe batch          256 due message IDs per round
 DIRECT_CALL wait               3s default / 10s maximum
 Adapter Direct FIFO capacity   1000 per Adapter
 Pending Direct targets         10000 per Server
@@ -445,10 +466,11 @@ Start the checked local Scenario profile from the repository root:
 ```
 
 This starts Group/Task seeds, Pacer and Adapter, but no JVM Worker. For the
-complete local Lab use the one-command process launcher:
+complete local Lab use the one-command process launcher. Omitting `--profile`
+defaults to `scenario-workers`:
 
 ```text
-python run_scenario_workers.py
+python run_local_runtime.py
 ```
 
 It builds and starts Server first, waits for readiness, then starts the
@@ -456,6 +478,16 @@ standalone Scenario Worker Host against `data/scenario-workers`. Existing
 Worker files remain persistent local state. Stopping Host closes its network
 resources without stopping Server or deleting Workers, WorkerGroups or managed
 Task Calls.
+
+The same source launcher can start the checked clean downstream Profile:
+
+```text
+python run_local_runtime.py --profile agentforge
+```
+
+That path builds and serves the same frontend, then starts Server, Pacer and the
+single AgentForge WebSocket Adapter. It does not build or start the Scenario
+Worker Host. Unknown Profiles are rejected.
 
 For a repository-independent Server deployment, build or download the
 [`distribution/server`](../distribution/server/) Runtime ZIP. After extraction,

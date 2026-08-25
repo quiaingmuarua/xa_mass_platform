@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.async.DeferredResult;
 
@@ -51,7 +50,7 @@ public final class TaskRpcCallService {
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<ResponseEntity<TaskRpcCallResponse>> call(
+    public DeferredResult<TaskRpcCallResponse> call(
             String taskId,
             TaskRpcCallRequest request
     ) {
@@ -76,29 +75,52 @@ public final class TaskRpcCallService {
             );
         }
 
-        TaskCallSubmissionResult submission = taskCallSubmission.submit(
-                taskId,
-                submittedItems
-        );
+        TaskCallSubmissionResult submission;
+        try {
+            submission = taskCallSubmission.submit(taskId, submittedItems);
+        } catch (RuntimeException error) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.submitItems",
+                    null,
+                    error
+            );
+        }
+        if (submission == null) {
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskRpc.submitItems",
+                    null,
+                    null
+            );
+        }
         requireAcceptedSubmission(submission, messageIds);
 
         Map<String, String> observed = loadImmediateResults(
                 taskId,
                 messageIds
         );
-        DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred =
+        DeferredResult<TaskRpcCallResponse> deferred =
                 new DeferredResult<>(timeoutMillis);
         if (allObserved(messageIds, observed)) {
-            deferred.setResult(ResponseEntity.ok(
-                    TaskRpcCallResponse.fromObservedResults(
-                            messageIds,
-                            observed
-                    )
+            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+                    messageIds,
+                    observed
             ));
             return deferred;
         }
 
-        registry.register(taskId, messageIds, observed, deferred);
+        if (!registry.tryRegister(
+                taskId,
+                messageIds,
+                observed,
+                deferred
+        )) {
+            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+                    messageIds,
+                    observed
+            ));
+        }
         return deferred;
     }
 
@@ -224,21 +246,21 @@ public final class TaskRpcCallService {
                     null
             );
             case CLOSED, STALE -> throw new ServerException(
-                    ServerErrorCode.KERNEL_REJECTED_CONFLICT,
+                    ServerErrorCode.TASK_STATE_CONFLICT,
                     "taskRpc.submitItems",
-                    submission.reason(),
+                    null,
                     null
             );
             case INVALID -> throw new ServerException(
                     ServerErrorCode.INVALID_TASK_DATA_REQUEST,
                     "taskRpc.submitItems",
-                    submission.reason(),
+                    null,
                     null
             );
             case RETRYABLE -> throw new ServerException(
                     ServerErrorCode.TASK_DATA_UNAVAILABLE,
                     "taskRpc.submitItems",
-                    submission.reason(),
+                    null,
                     null
             );
         }
@@ -261,19 +283,19 @@ public final class TaskRpcCallService {
                 case NOT_FOUND -> throw new ServerException(
                         ServerErrorCode.TASK_NOT_FOUND,
                         "taskRpc.appendItems",
-                        appended.reason(),
+                        null,
                         null
                 );
                 case INVALID -> throw new ServerException(
                         ServerErrorCode.INVALID_TASK_DATA_REQUEST,
                         "taskRpc.appendItems",
-                        appended.reason(),
+                        null,
                         null
                 );
                 case RETRYABLE -> throw new ServerException(
                         ServerErrorCode.TASK_DATA_UNAVAILABLE,
                         "taskRpc.appendItems",
-                        appended.reason(),
+                        null,
                         null
                 );
             }

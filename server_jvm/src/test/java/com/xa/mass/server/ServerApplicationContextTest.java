@@ -324,17 +324,15 @@ class ServerApplicationContextTest {
                 .path("post")
                 .path("summary")
                 .asText()).isEqualTo("Create a finite Task");
-        assertThat(document.path("paths")
+        var callOperation = document.path("paths")
                 .path("/api/v1/tasks/{taskId}/items:call")
-                .path("post")
-                .path("tags")
+                .path("post");
+        assertThat(callOperation.path("tags")
                 .get(0)
                 .asText()).isEqualTo(ApiTags.TASKS);
-        assertThat(document.path("paths")
-                .path("/api/v1/tasks/{taskId}/items:call")
-                .path("post")
-                .path("summary")
+        assertThat(callOperation.path("summary")
                 .asText()).isEqualTo("Call a managed Task");
+        assertThat(callOperation.path("responses").has("200")).isTrue();
         assertThat(document.path("paths")
                 .path("/api/v1/tasks/{taskId}/results:load")
                 .path("post")
@@ -351,10 +349,28 @@ class ServerApplicationContextTest {
                 .path("200")
                 .path("content")
                 .has("application/x-ndjson")).isTrue();
-        assertThat(exportOperation.path("responses")
-                .path("202")
-                .path("content")
-                .has("application/json")).isTrue();
+        for (var path : document.path("paths").properties()) {
+            if (!path.getKey().startsWith("/api/v1/tasks")) {
+                continue;
+            }
+            for (var candidate : path.getValue().properties()) {
+                if (!HTTP_METHODS.contains(candidate.getKey())) {
+                    continue;
+                }
+                var responses = candidate.getValue().path("responses");
+                var responseCodes = new ArrayList<>(
+                        responses.propertyNames()
+                );
+                assertThat(responseCodes)
+                        .as("Task responses for %s %s",
+                                candidate.getKey(), path.getKey())
+                        .containsExactlyInAnyOrder("200", "400", "503");
+                assertThat(responses.path("400").path("content").toString())
+                        .contains("ApiErrorResponse");
+                assertThat(responses.path("503").path("content").toString())
+                        .contains("ApiErrorResponse");
+            }
+        }
         assertThat(document.path("paths").has(
                 "/api/v1/task-batches/runs"
         )).isFalse();

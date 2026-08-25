@@ -6,7 +6,7 @@ kernel_oracle:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 jvm_contracts:
-  - 'run_scenario_workers.py'
+  - 'run_local_runtime.py'
   - 'kernel_design/config/**'
   - 'kernel_jvm/**'
   - 'scenario_workers_jvm/**'
@@ -45,7 +45,7 @@ redis_owner:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 runtime_boundary:
-  - 'run_scenario_workers.py'
+  - 'run_local_runtime.py'
   - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
@@ -66,7 +66,7 @@ runtime_boundary:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 capability_task:
-  - 'run_scenario_workers.py'
+  - 'run_local_runtime.py'
   - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
@@ -89,7 +89,7 @@ capability_task:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 worker_fleet:
-  - 'run_scenario_workers.py'
+  - 'run_local_runtime.py'
   - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
@@ -175,7 +175,7 @@ android_emulator:
   - '.github/workflows/proof-ci.yml'
   - '!**/*.md'
 frontend:
-  - 'run_scenario_workers.py'
+  - 'run_local_runtime.py'
   - 'frontend/**'
   - '.github/proof-paths.yml'
   - '.github/workflows/proof-ci.yml'

@@ -1,13 +1,13 @@
 package com.xa.mass.server.api.v1;
 
 import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
-import com.xa.mass.server.api.v1.model.TaskResultsExportNotReadyResponse;
 import com.xa.mass.server.api.v1.model.TaskResultsExportRequest;
 import com.xa.mass.server.taskdata.TaskDataService;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
@@ -20,7 +20,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import java.nio.charset.StandardCharsets;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -40,11 +39,6 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 @RequestMapping("/api/v1/tasks")
 public class TaskDataController {
 
-    private static final byte[] NOT_READY_RESPONSE =
-            ("{\"status\":\""
-                    + TaskResultsExportNotReadyResponse.STATUS
-                    + "\"}").getBytes(StandardCharsets.UTF_8);
-
     private final TaskDataService taskData;
     private final TaskRpcCallService taskCall;
     private final TaskResultsExportService taskResultsExport;
@@ -59,9 +53,40 @@ public class TaskDataController {
         this.taskResultsExport = taskResultsExport;
     }
 
-    @Operation(summary = "Call a managed Task")
+    @Operation(
+            summary = "Call a managed Task",
+            description = "Submission is accepted before synchronous Result "
+                    + "observation. Items not observed within the wait budget "
+                    + "or observation capacity are represented by the "
+                    + "not_observed outcome and can be loaded later by "
+                    + "messageId."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Submission was accepted; each Item is "
+                            + "succeeded or not_observed",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskRpcCallResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping("/{taskId}/items:call")
-    public DeferredResult<ResponseEntity<TaskRpcCallResponse>> callTaskItems(
+    public DeferredResult<TaskRpcCallResponse> callTaskItems(
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskRpcCallRequest request
     ) {
@@ -69,6 +94,29 @@ public class TaskDataController {
     }
 
     @Operation(summary = "Append Items to a finite Task")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Item append outcomes",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskItemsAppendResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping("/{taskId}/items")
     public ResponseEntity<TaskItemsAppendResponse> appendTaskItems(
             @PathVariable @NotBlank String taskId,
@@ -81,6 +129,29 @@ public class TaskDataController {
     }
 
     @Operation(summary = "Load successful Task results")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Successful Results keyed by messageId",
+                    content = @Content(schema = @Schema(
+                            implementation = TaskItemResultsLoadResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
     @PostMapping("/{taskId}/results:load")
     public ResponseEntity<TaskItemResultsLoadResponse> loadTaskItemResults(
             @PathVariable @NotBlank String taskId,
@@ -103,14 +174,18 @@ public class TaskDataController {
                     )
             ),
             @ApiResponse(
-                    responseCode = "202",
-                    description = "Task was not observed terminal within the wait budget",
-                    content = @Content(
-                            mediaType = "application/json",
-                            schema = @Schema(
-                                    implementation = TaskResultsExportNotReadyResponse.class
-                            )
-                    )
+                    responseCode = "400",
+                    description = "Task business request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Task Owner is temporarily unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
             )
     })
     @PostMapping("/{taskId}/results:export")
@@ -122,13 +197,6 @@ public class TaskDataController {
                 taskId,
                 request.waitTimeoutMillis()
         );
-        if (!export.ready()) {
-            StreamingResponseBody body = output ->
-                    output.write(NOT_READY_RESPONSE);
-            return ResponseEntity.accepted()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body);
-        }
         StreamingResponseBody body = output ->
                 taskResultsExport.transferAndDelete(export.file(), output);
         return ResponseEntity.ok()
