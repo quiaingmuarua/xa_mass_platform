@@ -99,7 +99,7 @@ public class AndroidWorkerTest {
                 new AtomicReference<>();
         AtomicReference<DeliveryReport> result = new AtomicReference<>();
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
                 if (identity.get() == null) {
@@ -171,7 +171,7 @@ public class AndroidWorkerTest {
     public void stopThenStartKeepsClientKeyAndPreparesAgain()
             throws Exception {
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
         }));
         worker = worker(context -> properties.get());
         worker.start();
@@ -186,7 +186,7 @@ public class AndroidWorkerTest {
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
         }));
         worker.start();
 
@@ -210,7 +210,7 @@ public class AndroidWorkerTest {
     public void changedPropertiesAreLoadedByTheNextExplicitStart()
             throws Exception {
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
         }));
         worker = worker(context -> properties.get());
         worker.start();
@@ -227,7 +227,7 @@ public class AndroidWorkerTest {
         await(() -> worker.snapshot().state()
                 == WorkerLifecycle.State.STOPPED);
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
         }));
         worker.start();
         RecordedRequest refreshed = takeRequest();
@@ -296,7 +296,7 @@ public class AndroidWorkerTest {
     @Test
     public void onlyOneActiveWorkerPerApplicationAndGroup() throws Exception {
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
         }));
         worker = worker(context -> properties.get());
         AndroidWorker duplicate = worker(context -> properties.get());
@@ -316,7 +316,7 @@ public class AndroidWorkerTest {
         CountDownLatch duplicateOpen = new CountDownLatch(1);
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         enqueuePrepare();
-        server.enqueue(webSocketSession(new WebSocketListener() {
+        server.enqueue(webSocketSession(new ClosingWebSocketListener() {
             @Override
             public void onMessage(WebSocket socket, String text) {
                 DeliveryReport identity = codec.decodeDeliveryReport(text);
@@ -330,14 +330,6 @@ public class AndroidWorkerTest {
                 }
             }
 
-            @Override
-            public void onClosing(
-                    WebSocket socket,
-                    int code,
-                    String reason
-            ) {
-                socket.close(code, reason);
-            }
         }));
         worker = worker(
                 context -> properties.get(),
@@ -367,7 +359,7 @@ public class AndroidWorkerTest {
                     == WorkerLifecycle.State.STOPPED);
 
             enqueuePrepare();
-            server.enqueue(webSocketSession(new WebSocketListener() {
+            server.enqueue(webSocketSession(new ClosingWebSocketListener() {
                 @Override
                 public void onOpen(
                         WebSocket socket,
@@ -376,14 +368,6 @@ public class AndroidWorkerTest {
                     duplicateOpen.countDown();
                 }
 
-                @Override
-                public void onClosing(
-                        WebSocket socket,
-                        int code,
-                        String reason
-                ) {
-                    socket.close(code, reason);
-                }
             }));
             await(() -> startWhenLeaseIsAvailable(duplicate));
             assertEquals(
@@ -503,5 +487,17 @@ public class AndroidWorkerTest {
     @FunctionalInterface
     private interface Check {
         boolean satisfied();
+    }
+
+    private static class ClosingWebSocketListener extends WebSocketListener {
+
+        @Override
+        public void onClosing(
+                WebSocket socket,
+                int code,
+                String reason
+        ) {
+            socket.close(code, reason);
+        }
     }
 }
