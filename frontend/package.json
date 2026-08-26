@@ -5,13 +5,14 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "engines": {
-    "node": "22.19.x",
-    "pnpm": "11.9.0"
+    "node": ">=22.19.0 <25",
+    "pnpm": ">=11.9.0 <12"
   },
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
     "build": "vue-tsc --noEmit && vite build",
+    "build:demo": "vue-tsc --noEmit && vite build --mode mock",
     "preview": "vite preview",
     "lint": "eslint . --max-warnings 0 && prettier --check .",
     "typecheck": "vue-tsc --noEmit",
@@ -47,9 +48,10 @@
     "vue-tsc": "3.1.2"
   },
   "license": "MIT",
-  "homepage": "https://github.com/pure-admin/pure-admin-thin",
+  "homepage": "https://frontend-kylerrun-s-projects.vercel.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pure-admin/pure-admin-thin.git"
+    "url": "git+https://github.com/quiaingmuarua/xa_mass_platform.git",
+    "directory": "frontend"
   }
 }

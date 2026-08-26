@@ -136,6 +136,9 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, Scalar link surface and architecture overview host.
   It owns no scheduling, Worker identity or lifecycle truth.
+  The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses the
+  explicit Mock data source; real Runtime data remains available only from a
+  running XA Mass Server on the same origin.
 - [`distribution/server/`](distribution/server/) packages those existing
   owners into one versioned Server Runtime ZIP. It adds no scheduling or
   Transport behavior and still requires external Redis.

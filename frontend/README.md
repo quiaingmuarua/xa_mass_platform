@@ -6,8 +6,12 @@ token, dynamic-permission, fake-user, or example-business path.
 
 ## Requirements and local run
 
-- Node 22.19.x
-- pnpm 11.9.0
+- Node 22.19 or newer, below Node 25
+- pnpm 11.9 or newer, below pnpm 12
+
+The checked `packageManager` and CI still execute pnpm 11.9.0; `engines` only
+describes the supported local and hosting range.
+
 - `server_jvm` on `127.0.0.1:18082` for API mode
 
 ```text
@@ -19,6 +23,12 @@ pnpm dev --host 127.0.0.1
 The default data source is the real API. Vite proxies relative `/api` requests
 to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. Explicit Mock mode
 is available through `pnpm dev:mock` and never activates as a fallback.
+
+The public Vercel deployment is built with `pnpm build:demo` and therefore uses
+that explicit Mock mode. It is a current UI and architecture demonstration, not
+a hosted XA Mass Runtime: mutating Task and Direct Debug actions remain disabled,
+and no request is proxied to a local or remote Server. Real Runtime data is
+served only by the frontend bundled with the Server Runtime on the same origin.
 
 Routes:
 
@@ -113,6 +123,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm build:demo
 ```
 
 The frontend owns no Task, Worker identity, scheduling, result, or file-storage
