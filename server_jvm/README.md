@@ -7,10 +7,9 @@ configured Server runtime host.
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
-- process health, the fixed Java Result Routing, Worker Serviceability Result,
-  and Worker Serviceability Dispatch applications plus Python Assignment CLI
-  lifecycle, and public
-  OpenAPI/Scalar surfaces;
+- process health and the fixed Java Result Routing, Worker Serviceability
+  Result, Worker Serviceability Dispatch and Assignment Dispatch application
+  lifecycle, plus public OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as finite Task Result export, managed
   Task Call and DIRECT_CALL correlation;
@@ -32,9 +31,8 @@ KernelPacerAssembly
   -> Java ResultRoutingApplication
   -> Java WorkerServiceabilityResultApplication (when configured)
   -> Java WorkerServiceabilityDispatchApplication (when configured)
-  -> fixed Python assembly CLI child with all three migrated applications disabled
-  -> exact ready token and one bounded reverse shutdown
-  -> Assignment Dispatch remains Python policy
+  -> Java AssignmentDispatchApplication
+  -> one bounded reverse shutdown
 
 Worker Identity / Binding
   -> Server-owned Redis boundary
@@ -49,13 +47,11 @@ Configured deployment
   -> become ready without starting any Worker process
 ```
 
-Task control, Task data, Worker resources, selected Worker scheduling and
-delivery operations use Java Redis providers. Java owns both production Result
-consumers, the Serviceability Dispatch producer, and the temporary Python
-child's process lifecycle; Python still implements Assignment Dispatch and
-exposes no HTTP surface.
-Missing JVM operations fail
-explicitly; there is no HTTP fallback or Server scheduler.
+Task control, Task data, Worker resources, scheduling and delivery operations
+use Java Redis providers. Java owns every production Pacer. Python remains the
+standalone executable mechanism Oracle and exposes no production HTTP or child
+process surface. Missing JVM operations outside the production caller closure
+fail explicitly; there is no HTTP fallback or Server scheduler.
 
 Provider ownership is deliberately mixed but explicit:
 
@@ -71,7 +67,8 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Other scheduling internals | Explicit JVM gaps |
+| Assignment Dispatch | Fixed Java allocation, activation and Task dispatch Pacers over bounded Kernel owners |
+| Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
 addition to the create-only Group declaration, it derives one internal Task
@@ -307,7 +304,7 @@ body: {"workerIds":["worker-1","worker-2"]}
 The response contains one shared `readAt` plus a complete
 `statesByWorkerId` map in request order. States are `hot-score-overdue`, `held-hot`,
 `paused`, `recovery`, `cold`, or `missing`. They do not expose raw Score and do
-not claim to know the active Python Kernel process's HOT eligibility epoch.
+not claim to know the active Java Kernel process's HOT eligibility epoch.
 `hot-score-overdue` means only that a positive HOT Score precedes the current
 100ms slot; it is weaker than the Kernel's floor-aware candidate range.
 Provider failure returns the existing Runtime View unavailable error rather
@@ -515,8 +512,7 @@ Default coordinates:
 Java Runtime API Server        http://127.0.0.1:18082
 Kernel Redis                   redis://localhost:6379/15
 Redis scope                    profile_default
-Pacer CLI config               kernel_design/config/pacer-default.json
-Pacer lifecycle state          data/kernel-pacer
+Kernel Pacer policy            kernel_design/config/pacer-default.json
 Adapter instances              none
 Managed Task Call wait         30s default / 60s maximum
 Task Call waiters              10000 maximum
@@ -548,11 +544,11 @@ matching Endpoint Binding entry.
 
 ## Run
 
-Start the Java Runtime API from the repository root. It validates and starts
-the configured Python Pacer CLI child before later lifecycle components:
+Start the Java Runtime API from the repository root. It validates the Kernel
+Pacer policy and starts all four Java Pacer applications before later lifecycle
+components:
 
 ```text
-python -m pip install -r kernel_design/requirements.txt
 ./gradlew :server_jvm:bootRun
 ```
 
@@ -587,24 +583,13 @@ That path builds and serves the same frontend, then starts Server, Pacer and the
 single AgentForge WebSocket Adapter. It does not build or start the Scenario
 Worker Host. Unknown Profiles are rejected.
 
-For a repository-independent Server deployment, build or download the
-[`distribution/server`](../distribution/server/) Runtime ZIP. After extraction,
-Java 21, Python 3.11 or newer and external Redis are the only machine
-prerequisites:
-
-```text
-python bin/run-server.py --profile scenario-workers -- \
-  --xa.mass.redis.url=redis://127.0.0.1:6379/15
-```
-
-The launcher defaults to `scenario-workers` and accepts `agentforge` because
-both are listed in its schema-v3 manifest. It owns the selected Profile, its
-private offline venv, the absolute Pacer policy path and compiled frontend
-path. It does not start Redis or own
-the Pacer directly; the packaged Java Server still supervises that child. It
-also never starts the optional packaged Scenario Worker Host. Use
-`bin/run-scenario-workers.py` explicitly when that finite Lab is wanted. Source
-`bootRun` remains unchanged for repository development.
+For a repository-independent deployment, extract the
+[`distribution/server`](../distribution/server/) Runtime ZIP and start its Boot
+JAR directly from the Runtime root with Java 21, external Redis and explicit
+Profile/Pacer/frontend arguments. The schema-v4 manifest lists the supported
+`scenario-workers` and `agentforge` Profiles. The optional Scenario Worker Host
+has independent Gradle-generated scripts under `scenario-workers/bin`; Server
+never starts it. Source `bootRun` remains available for repository development.
 
 Health endpoints:
 
@@ -613,11 +598,10 @@ GET /actuator/health/liveness
 GET /actuator/health/readiness
 ```
 
-Liveness covers the JVM process. Readiness requires Java Result Routing, both
-configured Java Worker Serviceability applications, the Python Assignment
-child, and Kernel Redis to remain available. The `kernel` health contributor
-exposes only aggregate lifecycle state, all three Java application states, and
-safe Python PID. Task business APIs do not call the Python process.
+Liveness covers the JVM process. Readiness requires Result Routing, both
+configured Worker Serviceability applications, Assignment Dispatch and Kernel
+Redis to remain available. The `kernel` health contributor exposes only the
+aggregate lifecycle and four Java application states.
 
 ## Verification
 
@@ -631,53 +615,31 @@ safe Python PID. Task business APIs do not call the Python process.
 
 The two integration tasks use the checked `integration-test` profile with
 Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary starts one Java Spring
-context, which starts all three Java applications and supervises the Python
-Assignment CLI using the checked Pacer config. The child is always passed
-`--without-result-routing`, `--without-worker-serviceability-result`,
-`--without-worker-serviceability-dispatch`, and the single Java-minted HOT
-floor when Serviceability is configured. Redis, Python and the `redis` package
-must be available, and no second host is started by the test operator.
+context and all four Java applications from the checked policy. No Python
+process or second host is started by the test operator.
 
 The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
-`python-executable`, `working-directory`, `config-path`, `state-directory`,
-`startup-timeout`, and `shutdown-timeout`. The Python module and arguments are
-fixed by the assembly and cannot be configured as a shell command. Normal JVM
-tests use the `test` profile with this lifecycle disabled.
+`config-path`, and `shutdown-timeout`. Relative config paths resolve from the
+JVM working directory. Normal JVM tests use the `test` profile with this
+lifecycle disabled.
 
 `xa.mass.redis` is the single production source for the Redis URL and scope.
-Java installs those exact values into the fixed child environment; managed
-Pacer policy JSON must not contain a `redis` object. `kernel_jvm` reads only
-`resultRouting.intervalMillis` plus the complete finite Worker Serviceability
-section; Server passes the file content without owning either policy. This keeps
-Java and Python Pacers in one Redis universe and one HOT epoch. The
-Runtime Boundary proof generates a unique `test_*` scope and
-injects it into both sides so the handoff is exercised rather than hidden by
-matching defaults. The default profile uses `profile_default`; the checked
+The policy JSON contains only `resultRouting`, `workerServiceability`,
+`assignmentDispatch` and `systemPolicy`; `kernel_jvm` parses it once and mints
+one shared HOT eligibility floor. Server passes configuration and owner
+dependencies without interpreting scheduling policy. Runtime Boundary uses a
+unique `test_*` scope. The default profile uses `profile_default`; the checked
 Scenario profile defaults to `profile_scenario_workers`.
 
 Exactly one Server instance per Redis scope may have the Pacer lifecycle
-enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`.
-There is no distributed leader election in this temporary host. Sharing a
-state directory is not a substitute: when its owner record still identifies a
-live process with the same start instant, the second Server fails startup and
-leaves that process untouched.
+enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
+there is no distributed leader election.
 
-Java Result Routing starts first, optional Java Worker Serviceability Result
-starts second, optional Java Worker Serviceability Dispatch starts third, and
-the Python child starts last. The aggregate reaches
-`RUNNING` only after the child's exact instance token appears in the ready
-file. Worker/Adapter assembly starts after that transition. Shutdown uses one
-shared deadline: it closes child stdin, stops Serviceability Dispatch and
-Serviceability Result when enabled, then stops Result Routing. A child that does not stop inside its
-remaining budget is forcibly terminated. Child stdout and stderr inherit the
-Java process streams.
-
-Historical-state handling is deliberately non-destructive. A missing/dead PID
-or PID-reuse mismatch removes stale owner and ready files. A matching live PID
-causes startup to fail; Java never kills a process recovered only from disk
-state. If the operating system cannot expose its start identity, startup also
-fails for explicit operator recovery. Forced termination is reserved for the
-exact child `Process` started and retained by the current Java lifecycle.
+Result Routing starts first, optional Serviceability Result starts second,
+optional Serviceability Dispatch starts third and Assignment Dispatch starts
+last. Worker/Adapter assembly starts after the aggregate reaches `RUNNING`.
+Shutdown uses one shared deadline in the exact reverse order. A failed start
+rolls back every already-started Java application.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a

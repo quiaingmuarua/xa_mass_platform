@@ -1,9 +1,8 @@
 # XA Mass Server Runtime distribution
 
 This module owns the publishable Server runtime archive. It packages the Java
-Server, the production-only Python Kernel Pacer wheel and pinned offline
-dependency, the compiled frontend, default Pacer policy, and an optional
-standalone Scenario Worker Host. It also generates and packages the
+Server and its production Pacers, the compiled frontend, default Pacer policy,
+and an optional standalone Scenario Worker Host. It also generates and packages the
 current-build Platform diagnostic code projection. Redis remains external.
 The compiled frontend also carries the committed, Server-verified OpenAPI
 snapshot at `frontend/dist/reference/openapi.json`; unlike the diagnostic
@@ -34,43 +33,44 @@ Build an explicit release version:
 ```
 
 The archive is written under `distribution/server/build/distributions`. After
-extracting it on a machine with Java 21 and Python 3.11 or newer:
+extracting it on a machine with Java 21, run from the extracted Runtime root:
 
 ```powershell
-python .\bin\run-server.py --profile scenario-workers -- `
+java -jar .\lib\xa-mass-server-jvm-0.4.0.jar `
+  --spring.profiles.active=scenario-workers `
+  --xa.mass.kernel-pacer.config-path=config/pacer-default.json `
+  --spring.web.resources.static-locations=file:frontend/dist/ `
   --xa.mass.redis.url=redis://127.0.0.1:6379/15
 ```
 
-The launcher defaults to `scenario-workers` and also accepts the built-in clean
-`agentforge` deployment preset:
+Select the built-in clean `agentforge` deployment preset explicitly:
 
 ```powershell
-python .\bin\run-server.py --profile agentforge
+java -jar .\lib\xa-mass-server-jvm-0.4.0.jar `
+  --spring.profiles.active=agentforge `
+  --xa.mass.kernel-pacer.config-path=config/pacer-default.json `
+  --spring.web.resources.static-locations=file:frontend/dist/
 ```
 
-Only Profiles listed in the schema-v3 Runtime manifest are accepted. The
+Only Profiles listed in the schema-v4 Runtime manifest are supported. The
 `agentforge` preset uses Server/Adapter ports 18182/18183, Redis scope
 `profile_agentforge`, Adapter ID `agentforge-websocket`, and no configured
 WorkerGroup. `scenario-workers` retains the 18082/18083 Lab assembly.
 
-`run-server.py` creates only the unpacked
-distribution's `.runtime/python-venv`, installs from the included wheelhouse
-with `--no-index`, and leaves Redis lifecycle to the caller. It never starts
-the packaged Worker Host. Start that optional local Lab separately:
+The Boot JAR leaves Redis lifecycle to the caller and never starts the packaged
+Worker Host. Start that optional local Lab separately with its generated script:
 
 ```powershell
-python .\bin\run-scenario-workers.py `
+.\scenario-workers\bin\xa-mass-scenario-workers.bat `
   --runtime-api-base-url=http://127.0.0.1:18082 `
   --sandbox-root=D:\proof\data\scenario-workers
 ```
 
-Stopping the Worker Host leaves Server, Adapter and Pacer available. Set
-`XA_MASS_JAVA_EXECUTABLE` to replace the `java` command. Set
-`XA_MASS_KERNEL_PACER_CONFIG` to an absolute policy JSON when the consuming
-repository needs different Pacer intervals; the Java Server remains the only
-Pacer process supervisor. Spring Boot arguments must follow `--`, and the
-launcher rejects forwarded `spring.profiles.active`, Pacer-process, and
-frontend-path overrides that it owns itself.
+Stopping the Worker Host leaves Server, Adapter and Pacers available. Set
+`XA_MASS_KERNEL_PACER_CONFIG` or pass an explicit config path when the
+deployment needs different Pacer intervals. Server remains the sole Java Pacer
+lifecycle owner. The archive contains no Python runtime, wheel or virtual
+environment.
 
 The archive verifier requires the diagnostic JSON and checks its version and
 full Git commit against `manifest.json`, plus the exact Server, Adapter and

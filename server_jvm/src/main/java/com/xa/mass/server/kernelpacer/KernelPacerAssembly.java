@@ -1,8 +1,8 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.kernel.assembly.KernelPacerPolicyConfig;
+import com.xa.mass.kernel.assignment.AssignmentDispatchApplication;
 import com.xa.mass.kernel.result.ResultRoutingApplication;
-import com.xa.mass.kernel.result.ResultRoutingApplicationConfig;
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityDispatchApplication;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityResultApplication;
 import java.time.Duration;
@@ -24,45 +24,35 @@ public final class KernelPacerAssembly
     public record Snapshot(
             boolean enabled,
             State state,
-            Long pid,
             String resultRoutingState,
             String workerServiceabilityResultState,
-            String workerServiceabilityDispatchState
+            String workerServiceabilityDispatchState,
+            String assignmentDispatchState
     ) {
     }
 
     private final KernelPacerProperties properties;
-    private final PythonKernelPacerProcess pythonProcess;
+    private final KernelPacerPolicyConfig policy;
     private final ResultRoutingApplication resultRouting;
-    private final ResultRoutingApplicationConfig resultRoutingConfig;
     private final WorkerServiceabilityResultApplication serviceabilityResult;
     private final WorkerServiceabilityDispatchApplication
             serviceabilityDispatch;
-    private final WorkerServiceabilityAssemblyConfig
-            serviceabilityConfig;
+    private final AssignmentDispatchApplication assignmentDispatch;
     private State state = State.STOPPED;
 
     KernelPacerAssembly(
             KernelPacerProperties properties,
-            PythonKernelPacerProcess pythonProcess,
+            KernelPacerPolicyConfig policy,
             ResultRoutingApplication resultRouting,
-            ResultRoutingApplicationConfig resultRoutingConfig,
             WorkerServiceabilityResultApplication serviceabilityResult,
             WorkerServiceabilityDispatchApplication serviceabilityDispatch,
-            WorkerServiceabilityAssemblyConfig serviceabilityConfig
+            AssignmentDispatchApplication assignmentDispatch
     ) {
         this.properties = Objects.requireNonNull(properties, "properties");
-        this.pythonProcess = Objects.requireNonNull(
-                pythonProcess,
-                "pythonProcess"
-        );
+        this.policy = Objects.requireNonNull(policy, "policy");
         this.resultRouting = Objects.requireNonNull(
                 resultRouting,
                 "resultRouting"
-        );
-        this.resultRoutingConfig = Objects.requireNonNull(
-                resultRoutingConfig,
-                "resultRoutingConfig"
         );
         this.serviceabilityResult = Objects.requireNonNull(
                 serviceabilityResult,
@@ -72,9 +62,9 @@ public final class KernelPacerAssembly
                 serviceabilityDispatch,
                 "serviceabilityDispatch"
         );
-        this.serviceabilityConfig = Objects.requireNonNull(
-                serviceabilityConfig,
-                "serviceabilityConfig"
+        this.assignmentDispatch = Objects.requireNonNull(
+                assignmentDispatch,
+                "assignmentDispatch"
         );
     }
 
@@ -89,32 +79,37 @@ public final class KernelPacerAssembly
             );
         }
         state = State.STARTING;
-        boolean resultRoutingStarted = false;
+        boolean resultStarted = false;
         boolean serviceabilityResultStarted = false;
         boolean serviceabilityDispatchStarted = false;
+        boolean assignmentStarted = false;
         try {
-            resultRouting.start(resultRoutingConfig);
-            resultRoutingStarted = true;
-            if (serviceabilityConfig.enabled()) {
+            resultRouting.start(policy.resultRouting());
+            resultStarted = true;
+            if (policy.workerServiceability().enabled()) {
+                long floor = policy.workerServiceability()
+                        .hotEligibilityFloorMillis();
                 serviceabilityResult.start(
-                        serviceabilityConfig.result(),
-                        serviceabilityConfig.hotEligibilityFloorMillis()
+                        policy.workerServiceability().result(),
+                        floor
                 );
                 serviceabilityResultStarted = true;
                 serviceabilityDispatch.start(
-                        serviceabilityConfig.dispatch(),
-                        serviceabilityConfig.hotEligibilityFloorMillis()
+                        policy.workerServiceability().dispatch(),
+                        floor
                 );
                 serviceabilityDispatchStarted = true;
             }
-            pythonProcess.start();
+            assignmentDispatch.start(policy.assignmentDispatch());
+            assignmentStarted = true;
             state = State.RUNNING;
         } catch (RuntimeException failure) {
             rollbackStarted(
                     failure,
-                    resultRoutingStarted,
+                    resultStarted,
                     serviceabilityResultStarted,
-                    serviceabilityDispatchStarted
+                    serviceabilityDispatchStarted,
+                    assignmentStarted
             );
             state = State.FAILED;
             throw failure;
@@ -131,11 +126,11 @@ public final class KernelPacerAssembly
         long deadline = System.nanoTime()
                 + properties.shutdownTimeout().toNanos();
         try {
-            pythonProcess.stop(remaining(deadline));
+            assignmentDispatch.stop(remainingMillis(deadline));
         } catch (RuntimeException failure) {
             firstFailure = failure;
         }
-        if (serviceabilityConfig.enabled()) {
+        if (policy.workerServiceability().enabled()) {
             try {
                 serviceabilityDispatch.stop(remainingMillis(deadline));
             } catch (RuntimeException failure) {
@@ -178,33 +173,32 @@ public final class KernelPacerAssembly
 
     public synchronized Snapshot snapshot() {
         refreshUnexpectedExit();
+        boolean serviceabilityEnabled = policy.workerServiceability()
+                .enabled();
         return new Snapshot(
                 properties.enabled(),
                 state,
-                properties.enabled() ? pythonProcess.pid() : null,
                 resultRouting.state(),
-                serviceabilityConfig.enabled()
+                serviceabilityEnabled
                         ? serviceabilityResult.state()
                         : "DISABLED",
-                serviceabilityConfig.enabled()
+                serviceabilityEnabled
                         ? serviceabilityDispatch.state()
-                        : "DISABLED"
+                        : "DISABLED",
+                assignmentDispatch.state()
         );
     }
 
     @Override
     public void destroy() {
-        // DefaultLifecycleProcessor may skip stop() after an unexpected child
-        // exit because isRunning() is then false. Bean destruction remains an
-        // unconditional cleanup boundary for the current child's state files.
         stop();
     }
 
     private void refreshUnexpectedExit() {
         if (state == State.RUNNING
-                && (!pythonProcess.isAlive()
-                || !resultRouting.isRunning()
-                || serviceabilityConfig.enabled()
+                && (!resultRouting.isRunning()
+                || !assignmentDispatch.isRunning()
+                || policy.workerServiceability().enabled()
                 && (!serviceabilityResult.isRunning()
                 || !serviceabilityDispatch.isRunning()))) {
             state = State.FAILED;
@@ -213,12 +207,20 @@ public final class KernelPacerAssembly
 
     private void rollbackStarted(
             RuntimeException startFailure,
-            boolean resultRoutingStarted,
+            boolean resultStarted,
             boolean serviceabilityResultStarted,
-            boolean serviceabilityDispatchStarted
+            boolean serviceabilityDispatchStarted,
+            boolean assignmentStarted
     ) {
         long deadline = System.nanoTime()
                 + properties.shutdownTimeout().toNanos();
+        if (assignmentStarted) {
+            try {
+                assignmentDispatch.stop(remainingMillis(deadline));
+            } catch (RuntimeException rollbackFailure) {
+                startFailure.addSuppressed(rollbackFailure);
+            }
+        }
         if (serviceabilityDispatchStarted) {
             try {
                 serviceabilityDispatch.stop(remainingMillis(deadline));
@@ -233,7 +235,7 @@ public final class KernelPacerAssembly
                 startFailure.addSuppressed(rollbackFailure);
             }
         }
-        if (resultRoutingStarted) {
+        if (resultStarted) {
             try {
                 resultRouting.stop(remainingMillis(deadline));
             } catch (RuntimeException rollbackFailure) {
@@ -251,13 +253,6 @@ public final class KernelPacerAssembly
         }
         first.addSuppressed(next);
         return first;
-    }
-
-    private static Duration remaining(long deadlineNanos) {
-        return Duration.ofNanos(Math.max(
-                1,
-                deadlineNanos - System.nanoTime()
-        ));
     }
 
     private static long remainingMillis(long deadlineNanos) {

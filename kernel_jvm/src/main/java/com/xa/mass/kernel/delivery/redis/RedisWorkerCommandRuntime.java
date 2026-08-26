@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.delivery.redis;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
@@ -90,10 +89,48 @@ public final class RedisWorkerCommandRuntime
             String endpointManagerId,
             Map<String, DeliveryCommand> workerCommandsByWorkerId
     ) {
-        throw new KernelOperationNotImplementedException(
-                "WorkerCommandRuntime",
-                "append_worker_commands"
-        );
+        requireNonBlank(endpointManagerId, "endpointManagerId");
+        if (workerCommandsByWorkerId == null) {
+            throw new IllegalArgumentException(
+                    "workerCommandsByWorkerId must be present"
+            );
+        }
+        if (workerCommandsByWorkerId.isEmpty()) {
+            return Map.of();
+        }
+        long nowMillis = redisTimeMillis();
+        String key = commandKey(endpointManagerId);
+        LinkedHashMap<String, String> encoded = new LinkedHashMap<>();
+        workerCommandsByWorkerId.forEach((workerId, command) -> {
+            requireNonBlank(workerId, "workerId");
+            if (command == null
+                    || command.executeBeforeMillis() <= nowMillis) {
+                throw new IllegalArgumentException(
+                        "Worker commands must have future deadlines"
+                );
+            }
+            encoded.put(workerId, codec.encodeDeliveryCommand(command));
+        });
+
+        LinkedHashMap<String, WorkerCommandAppendStatus> results =
+                new LinkedHashMap<>();
+        LinkedHashMap<String, String> replacements = new LinkedHashMap<>();
+        encoded.forEach((workerId, command) -> {
+            boolean inserted = commands().hsetnx(key, workerId, command);
+            results.put(
+                    workerId,
+                    inserted
+                            ? WorkerCommandAppendStatus.APPENDED
+                            : WorkerCommandAppendStatus.REPLACED
+            );
+            if (!inserted) {
+                replacements.put(workerId, command);
+            }
+        });
+        if (!replacements.isEmpty()) {
+            commands().hset(key, replacements);
+        }
+        return Collections.unmodifiableMap(results);
     }
 
     @Override

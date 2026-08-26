@@ -33,8 +33,8 @@ stale-score scan may offer the Worker again.
 
 The Java Kernel Dispatch Pacer implements offer. The Java Server provider
 implements request consumption because it is the bounded Adapter HTTP bridge.
-Standalone Python implements both as the mechanism oracle. Managed Python
-disables its Dispatch producer; there is no fallback or dual-producer mode.
+Standalone Python implements both as the mechanism oracle. Production has no
+Python producer, fallback or dual-producer mode.
 
 ## Result LIST
 
@@ -49,8 +49,8 @@ batch, lease, replay, or result HASH.
 
 The Java provider implements append for Server ingress and destructive consume
 for the fixed Java production Result Pacer. Standalone Python implements both
-as the mechanism oracle. Managed Python disables its Result consumer; there is
-no fallback or dual-consumer mode.
+as the mechanism oracle. Production has no Python consumer, fallback or
+dual-consumer mode.
 
 ## Failure Model
 

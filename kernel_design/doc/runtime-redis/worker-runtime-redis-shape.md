@@ -156,10 +156,10 @@ Time, lane rank, dirty fence, exact compare-and-set, lease, hold, recovery, and
 release semantics are defined in
 [Worker Score Band Scheduling](../scheduling/worker-score-band-scheduling.md).
 
-Java currently implements score get, fixed-zero-lane initialization,
-same-polarity rewrite, and release operations. Worker upsert calls only
-get/initialize. Python remains owner of scheduling score operations, Pacers,
-recovery, and ResultRouting disposition.
+Java implements the complete production caller closure for candidate reads,
+exact lease acquisition/renewal, Serviceability polarity/recovery operations,
+and Result release. Worker upsert still calls only get/initialize. Python
+retains the complete Oracle implementation and independent Redis proof.
 
 Resource writes do not require a Worker lease and do not mutate an existing
 score. A future explicit lifecycle operation must own any

@@ -685,7 +685,14 @@ class RuntimeBoundaryIntegrationTest {
 
     @Test
     void javaServerOwnsPacerLifecycleAndReadiness() throws Exception {
-        assertThat(kernelPacerAssembly.snapshot().enabled()).isTrue();
+        KernelPacerAssembly.Snapshot snapshot = kernelPacerAssembly.snapshot();
+        assertThat(snapshot.enabled()).isTrue();
+        assertThat(snapshot.resultRoutingState()).isEqualTo("RUNNING");
+        assertThat(snapshot.workerServiceabilityResultState())
+                .isEqualTo("RUNNING");
+        assertThat(snapshot.workerServiceabilityDispatchState())
+                .isEqualTo("RUNNING");
+        assertThat(snapshot.assignmentDispatchState()).isEqualTo("RUNNING");
         assertThat(kernelPacerAssembly.isRunning()).isTrue();
         HttpResponse<String> readiness = send(
                 "GET",

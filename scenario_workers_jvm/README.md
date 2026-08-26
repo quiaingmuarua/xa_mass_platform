@@ -159,8 +159,8 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 ```
 
 Repository-level acceptance starts Redis, one Java Server and one independent
-Scenario Worker Host. Server supervises only the temporary Python Pacer CLI and
-its configured Adapter; the proof launcher owns the Worker Host process. Two
+Scenario Worker Host. Server owns the Java Kernel Pacer applications and its
+configured Adapter; the proof launcher owns the Worker Host process. Two
 independent clients then prove the boundary:
 
 - [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves

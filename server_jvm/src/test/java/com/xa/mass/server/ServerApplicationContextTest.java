@@ -84,7 +84,8 @@ class ServerApplicationContextTest {
     private int port;
 
     @Test
-    void assemblesTheRuntimeApiWithoutStartingThePacerChild() throws Exception {
+    void assemblesTheRuntimeApiWithoutStartingDisabledJavaPacers()
+            throws Exception {
         assertThat(applicationContext.getBean(TaskRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskResourceCatalog.class))
@@ -153,10 +154,10 @@ class ServerApplicationContextTest {
                 .isInstanceOf(RedisWorkerScoreCore.class);
         assertThat(applicationContext.getBeansOfType(
                 CandidateWorkerCache.class
-        )).isEmpty();
+        )).hasSize(1);
         assertThat(applicationContext.getBeansOfType(
                 CandidateWarmupSchedule.class
-        )).isEmpty();
+        )).hasSize(1);
         assertThat(applicationContext.getBean(
                 ServerWorkerDeliveryAdapterProperties.class
         ).instanceConfigs()).isEmpty();

@@ -185,8 +185,6 @@ runtime_distribution:
   - 'distribution/server/**'
   - 'distribution/worker-sdk/**'
   - 'kernel_design/config/**'
-  - 'kernel_design/pyproject.toml'
-  - 'kernel_design/requirements-runtime.lock'
   - 'kernel_design/executable_spec/__init__.py'
   - 'kernel_design/executable_spec/assembly/**'
   - 'kernel_design/executable_spec/constraint_dsl/**'

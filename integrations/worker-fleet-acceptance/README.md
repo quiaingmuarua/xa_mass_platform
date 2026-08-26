@@ -43,8 +43,8 @@ timestamps. Failure attempts to write partial evidence before exiting nonzero.
 ## Run
 
 Start Redis and one Java Server with the `scenario-workers` profile. Server
-supervises the configured Python Pacer CLI child and Adapter but starts no
-Workers. Start the standalone Host against a Scenario Lab root ending in
+owns the four Java Kernel Pacer applications and its configured Adapter, but
+starts no Workers. Start the standalone Host against a Scenario Lab root ending in
 `data/scenario-workers`, then run:
 
 ```powershell

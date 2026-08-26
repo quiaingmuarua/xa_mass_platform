@@ -36,21 +36,20 @@ The executable specification currently proves:
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
 - optional Adapter-route Worker serviceability discovery and score convergence;
-- Kernel application assembly and its supervised, no-network Python CLI entry.
+- Kernel application assembly and its standalone, no-network Python Oracle CLI.
 
 The authoritative implementation-status table lives in
 [Kernel Core Scheduling](doc/scheduling/README.md). This README deliberately
 does not maintain a second status matrix.
 
-## Published Pacer Cut
+## Oracle Boundary
 
-`pyproject.toml` builds `xa-mass-kernel-pacer`. The wheel preserves the fixed
-`python -m kernel_design.executable_spec.assembly` entrypoint and contains only
-the production assembly, Kernel, scheduling, Redis runtime and Constraint DSL
-packages. Tests, `test_support`, documents and policy configuration are not
-wheel contents. `distribution/server` supplies the checked policy file next to
-the wheel and pins `redis==8.0.0` in an offline, hash-locked wheelhouse. Java
-Server remains the sole production Pacer process supervisor.
+`python -m kernel_design.executable_spec.assembly` starts the complete
+standalone Python mechanism for Oracle and Redis parity work. It is not built
+into the Server Runtime, has no managed or selectively disabled production
+mode, and exposes no HTTP surface. The fixed Java applications in `kernel_jvm`
+are the only production Pacers; the Python implementation remains the trust
+source for mechanism review and independent proof.
 
 ## Core Axioms
 
@@ -183,20 +182,18 @@ unless an owner contract explicitly says so.
 
 ## Runtime And JVM Boundaries
 
-- `python -m kernel_design.executable_spec.assembly` is the temporary
-  production Pacer implementation. Java Server starts it with an exact
-  readiness token and owns its process lifecycle; Python exposes no HTTP API.
-- `kernel_jvm/` mirrors public contracts and selected Redis providers; it has no
-  scheduling, Pacer or Kernel application lifecycle.
-- `server_jvm/` composes current providers, supervises that fixed CLI child,
-  and may orchestrate use cases through owner contracts. Process supervision
-  must not become scheduling policy or a local implementation of missing
-  Kernel behavior.
+- `python -m kernel_design.executable_spec.assembly` starts the complete
+  standalone mechanism Oracle. It is never embedded in or supervised by the
+  production Server and exposes no HTTP API.
+- `kernel_jvm/` mirrors the production-call closure of public contracts and
+  Redis providers, and owns the four fixed production Pacer applications.
+- `server_jvm/` composes those Java owners and owns their finite lifecycle. It
+  does not interpret scheduling policy or implement missing Kernel operations.
 - Transport modules receive already-targeted delivery evidence and do not read
   score or scheduling policy.
 
-The future production-language Kernel runtime remains deferred. Incremental JVM
-parity is added only for an explicit production caller and scoped parity proof.
+Further JVM parity remains caller-driven: missing operations stay explicit
+until a production mechanism needs them and supplies scoped parity proof.
 
 ## Verification
 

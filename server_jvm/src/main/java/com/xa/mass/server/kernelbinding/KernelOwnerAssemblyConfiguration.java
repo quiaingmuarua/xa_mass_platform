@@ -1,5 +1,7 @@
 package com.xa.mass.server.kernelbinding;
 
+import com.xa.mass.kernel.assignment.redis.RedisCandidateWarmupSchedule;
+import com.xa.mass.kernel.assignment.redis.RedisCandidateWorkerCache;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
@@ -22,6 +24,28 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 public class KernelOwnerAssemblyConfiguration {
+
+    @Bean(destroyMethod = "close")
+    RedisCandidateWorkerCache redisCandidateWorkerCache(
+            RedisClient redisClient,
+            XaMassRedisProperties properties
+    ) {
+        return new RedisCandidateWorkerCache(
+                redisClient,
+                properties.keyspace()
+        );
+    }
+
+    @Bean(destroyMethod = "close")
+    RedisCandidateWarmupSchedule redisCandidateWarmupSchedule(
+            RedisClient redisClient,
+            XaMassRedisProperties properties
+    ) {
+        return new RedisCandidateWarmupSchedule(
+                redisClient,
+                properties.keyspace()
+        );
+    }
 
     @Bean(destroyMethod = "close")
     RedisTaskScoreBandCore redisTaskScoreBandCore(

@@ -10,19 +10,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 )
 public record KernelPacerProperties(
         boolean enabled,
-        String pythonExecutable,
-        String workingDirectory,
         String configPath,
-        String stateDirectory,
-        Duration startupTimeout,
         Duration shutdownTimeout
 ) {
     public KernelPacerProperties {
-        requireText(pythonExecutable, "pythonExecutable");
-        requireText(workingDirectory, "workingDirectory");
         requireText(configPath, "configPath");
-        requireText(stateDirectory, "stateDirectory");
-        requirePositive(startupTimeout, "startupTimeout");
         requirePositive(shutdownTimeout, "shutdownTimeout");
     }
 

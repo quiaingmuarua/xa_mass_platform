@@ -45,11 +45,10 @@ a Kernel mechanism decision.
 - Assignment Dispatch may orchestrate bounded owner reads and transitions; it
   does not merge owner truth.
 - Result Routing owns retry/finality policy and accepted evidence disposition.
-- Python Result Routing, Worker Serviceability Result and Worker
-  Serviceability Dispatch remain mechanism oracles, while managed production
-  disables all three and runs their fixed Java implementations. Managed Python
-  owns only Assignment Dispatch. Do not add fallback, dual-consumer or
-  dual-producer modes.
+- Python Result Routing, Worker Serviceability and Assignment Dispatch remain
+  mechanism oracles. Their fixed Java implementations are the only production
+  Pacers. Do not add a managed Python mode, fallback, dual-consumer or
+  dual-producer path.
 - Worker Delivery carries already-assigned work and never selects a Worker or
   claims a TaskItem.
 - DIRECT_CALL is a Server use case. Its generic non-overwriting Worker Command
@@ -124,18 +123,16 @@ record merely to make a mechanical signature look smaller.
 - Keep storage implementation details out of public contracts.
 - Do not preserve superseded names with aliases unless an external compatibility
   obligation is explicitly approved.
-- The assembly CLI is the only temporary production Pacer entry and exposes no
-  network surface. Java Server may supervise its process lifecycle but must not
-  interpret Pacer policy. In managed mode Java owns and injects the Redis URL
-  and scope; the Pacer JSON contains policy only. Task commands remain
-  directly testable through the executable application and are not Python HTTP
-  routes.
+- The assembly CLI is a standalone Oracle entrypoint and exposes no network
+  surface. It always assembles the complete Python mechanism and is not a
+  production artifact or Java-managed child. Task commands remain directly
+  testable through the executable application and are not Python HTTP routes.
 
 ## JVM Parity
 
 - JVM parity is incremental and caller-driven.
-- Do not implement Kotlin or Java scheduling simply because the Python
-  mechanism exists.
+- Do not widen Java scheduling merely because the Python mechanism exposes a
+  broader test surface; Java parity remains production-caller-driven.
 - A parity slice names the Python interface/DTO/enum, current caller, Java
   provider and proof it replaces or enables.
 - Missing JVM operations remain explicit gaps; no remote fallback or default

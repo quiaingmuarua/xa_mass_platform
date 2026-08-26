@@ -111,15 +111,14 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   current Kernel documentation and Redis proof surface.
 - [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
   Redis providers, including the caller-driven Task commands used by Server
-  plus the fixed production Result Routing, Worker Serviceability Result and
-  Worker Serviceability Dispatch applications. Assignment Dispatch is the only
-  remaining Python production Pacer.
+  plus all fixed production Pacer applications: Result Routing, Worker
+  Serviceability Result, Worker Serviceability Dispatch and Assignment
+  Dispatch.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server also owns the
-  mixed lifecycle of three Java Pacer applications plus the temporary Python
-  Assignment CLI child, Worker Identity, Endpoint Binding, bounded use cases,
-  configured WorkerGroup seeds, registration-owned Managed Task assembly, and
-  Adapter startup.
+  finite lifecycle of the four Java Pacer applications, Worker Identity,
+  Endpoint Binding, bounded use cases, configured WorkerGroup seeds,
+  registration-owned Managed Task assembly, and Adapter startup.
   Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
   business codes; framework routing/protocol failures remain ordinary HTTP
   concerns, and Worker Delivery additionally retains its machine-protocol
@@ -155,9 +154,9 @@ Exactly one Java Server instance per Kernel Redis scope may run with
 `xa.mass.kernel-pacer.enabled=true`. Additional API replicas must disable that
 lifecycle; there is no distributed Pacer leader election. The enabled Server
 owns the `xa.mass.redis` URL and scope used by its Java Result consumers and
-supervised Python child. Spring Profile selects assembly; Redis scope selects
-the persistent data boundary. The checked Pacer JSON contains policy only and
-cannot select a different Redis universe.
+the Java Assignment and Serviceability owners. Spring Profile selects
+assembly; Redis scope selects the persistent data boundary. The checked Pacer
+JSON contains policy only and cannot select a different Redis universe.
 
 The shared Worker contracts are also published as one version-locked Worker
 SDK Maven Repository ZIP containing the Delivery Contract, Worker Core,
@@ -168,12 +167,11 @@ obligation.
 
 The Server deployment boundary is publishable independently from Worker SDKs:
 `xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
-production-only Python Pacer wheel and offline dependency, the compiled
-frontend, and the optional Scenario Worker Host. Its two launchers are
-independent: `run-server.py` defaults to the checked `scenario-workers` profile,
-may select the built-in clean `agentforge` profile, and never starts Workers;
-`run-scenario-workers.py` starts only the finite JVM Lab Host. AgentForge uses
-the clean Profile plus public APIs and consumes the matching Worker SDK Release
+compiled frontend, default Pacer policy, and the optional Scenario Worker
+Host. Start the Boot JAR directly with Java 21 and an explicit Spring Profile,
+Pacer config and frontend path. The packaged Gradle start scripts launch only
+the finite JVM Lab Host; they are independent from Server. AgentForge uses the
+clean Profile plus public APIs and consumes the matching Worker SDK Release
 instead of copying XA Mass source modules.
 
 Inside the source checkout, `python run_local_runtime.py` builds the frontend

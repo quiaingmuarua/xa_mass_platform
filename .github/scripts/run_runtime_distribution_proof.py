@@ -212,32 +212,66 @@ def _stop_process(process: subprocess.Popen[Any]) -> None:
         process.wait(timeout=5)
 
 
-def _venv_python(runtime_root: Path) -> Path:
-    return runtime_root / ".runtime/python-venv" / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
-
-
 def _clean_scope(
-    runtime_root: Path,
     repository_root: Path,
     redis_url: str,
     scope: str,
 ) -> None:
-    python = _venv_python(runtime_root)
     cleanup = repository_root / ".github/scripts/cleanup_redis_test_scope.py"
-    if python.is_file():
-        subprocess.run(
-            [
-                str(python),
-                str(cleanup),
-                "--redis-url",
-                redis_url,
-                "--scope",
-                scope,
-            ],
-            check=True,
-        )
+    subprocess.run(
+        [
+            sys.executable,
+            str(cleanup),
+            "--redis-url",
+            redis_url,
+            "--scope",
+            scope,
+        ],
+        check=True,
+    )
+
+
+def _server_command(
+    runtime_root: Path,
+    profile: str,
+    arguments: list[str],
+) -> list[str]:
+    manifest = json.loads(
+        (runtime_root / "manifest.json").read_text(encoding="utf-8")
+    )
+    jar = (runtime_root / manifest["serverJar"]).resolve()
+    return [
+        os.environ.get("XA_MASS_JAVA_EXECUTABLE", "java"),
+        "-jar",
+        str(jar),
+        f"--spring.profiles.active={profile}",
+        "--xa.mass.kernel-pacer.config-path="
+        f"{(runtime_root / 'config/pacer-default.json').resolve()}",
+        "--spring.web.resources.static-locations="
+        f"{(runtime_root / 'frontend/dist').resolve().as_uri()}/",
+        *arguments,
+    ]
+
+
+def _scenario_worker_command(
+    runtime_root: Path,
+    base_url: str,
+    sandbox_root: Path,
+) -> list[str]:
+    relative = (
+        "scenario-workers/bin/xa-mass-scenario-workers.bat"
+        if os.name == "nt"
+        else "scenario-workers/bin/xa-mass-scenario-workers"
+    )
+    launcher = (runtime_root / relative).resolve()
+    arguments = [
+        f"--runtime-api-base-url={base_url}",
+        f"--sandbox-root={sandbox_root.resolve()}",
+    ]
+    if os.name == "nt":
+        return ["cmd.exe", "/d", "/c", str(launcher), *arguments]
+    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
+    return [str(launcher), *arguments]
 
 
 def _prove_runtime(
@@ -252,25 +286,22 @@ def _prove_runtime(
     while adapter_port == server_port:
         adapter_port = _free_port()
     base_url = f"http://127.0.0.1:{server_port}"
-    server_launcher = runtime_root / "bin/run-server.py"
-    worker_launcher = runtime_root / "bin/run-scenario-workers.py"
     server_log_path = proof_root / "runtime-server.log"
     worker_log_path = proof_root / "scenario-worker-host.log"
     environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment["PYTHONNOUSERSITE"] = "1"
     environment["XA_MASS_REDIS_URL"] = redis_url
     environment["XA_MASS_REDIS_SCOPE"] = scope
-    command = [
-        sys.executable,
-        str(server_launcher),
-        "--",
-        f"--server.port={server_port}",
-        "--xa.mass.worker-delivery.adapter.instances."
-        f"scenario-websocket.listen-port={adapter_port}",
-        "--xa.mass.worker-binding.endpoints.scenario-websocket.public-uri="
-        f"ws://127.0.0.1:{adapter_port}/api/v1/worker-delivery/websocket",
-    ]
+    command = _server_command(
+        runtime_root,
+        "scenario-workers",
+        [
+            f"--server.port={server_port}",
+            "--xa.mass.worker-delivery.adapter.instances."
+            f"scenario-websocket.listen-port={adapter_port}",
+            "--xa.mass.worker-binding.endpoints.scenario-websocket.public-uri="
+            f"ws://127.0.0.1:{adapter_port}/api/v1/worker-delivery/websocket",
+        ],
+    )
     flags: dict[str, Any] = {}
     if os.name == "nt":
         flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -282,7 +313,7 @@ def _prove_runtime(
     ) as worker_log:
         server_process = subprocess.Popen(
             command,
-            cwd=proof_root,
+            cwd=runtime_root,
             env=environment,
             stdout=server_log,
             stderr=subprocess.STDOUT,
@@ -301,14 +332,12 @@ def _prove_runtime(
                     )
 
             worker_process = subprocess.Popen(
-                [
-                    sys.executable,
-                    str(worker_launcher),
-                    f"--runtime-api-base-url={base_url}",
-                    "--sandbox-root="
-                    f"{proof_root / 'data/scenario-workers'}",
-                ],
-                cwd=proof_root,
+                _scenario_worker_command(
+                    runtime_root,
+                    base_url,
+                    proof_root / "data/scenario-workers",
+                ),
+                cwd=runtime_root,
                 env=environment,
                 stdout=worker_log,
                 stderr=subprocess.STDOUT,
@@ -429,9 +458,8 @@ def _prove_runtime(
             if not isinstance(result, dict) or result.get("status") != "succeeded":
                 raise RuntimeError("Packaged Task Call was not observed")
 
-            marker = runtime_root / ".runtime/python-venv/.xa-mass-runtime.json"
-            if not marker.is_file():
-                raise RuntimeError("Offline Runtime venv marker was not created")
+            if (runtime_root / ".runtime/python-venv").exists():
+                raise RuntimeError("Java-only Runtime created a Python venv")
             print(
                 "Runtime distribution proof succeeded: "
                 f"scope={scope}, taskId={task_id}, messageId={message_id}"
@@ -459,8 +487,6 @@ def _prove_agentforge_profile(
     base_url = f"http://127.0.0.1:{server_port}"
     log_path = proof_root / "agentforge-server.log"
     environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment["PYTHONNOUSERSITE"] = "1"
     environment["XA_MASS_REDIS_URL"] = redis_url
     environment["XA_MASS_REDIS_SCOPE"] = scope
     environment["XA_MASS_AGENTFORGE_SERVER_PORT"] = str(server_port)
@@ -472,13 +498,8 @@ def _prove_agentforge_profile(
         flags["start_new_session"] = True
     with log_path.open("wb") as log:
         process = subprocess.Popen(
-            [
-                sys.executable,
-                str(runtime_root / "bin/run-server.py"),
-                "--profile",
-                "agentforge",
-            ],
-            cwd=proof_root,
+            _server_command(runtime_root, "agentforge", []),
+            cwd=runtime_root,
             env=environment,
             stdout=log,
             stderr=subprocess.STDOUT,
@@ -571,13 +592,11 @@ def main() -> int:
             raise
         finally:
             _clean_scope(
-                runtime_root,
                 repository_root,
                 arguments.redis_url,
                 scope,
             )
             _clean_scope(
-                runtime_root,
                 repository_root,
                 arguments.redis_url,
                 agentforge_scope,

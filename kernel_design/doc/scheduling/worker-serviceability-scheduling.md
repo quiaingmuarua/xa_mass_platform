@@ -206,26 +206,24 @@ second Report. Queue pressure drops both without closing a Worker Channel.
 
 When Serviceability is absent, no floor or Serviceability Pacer thread exists;
 the Server bridge owner may still be assembled but has no production result
-consumer. Standalone Python keeps the complete oracle order. Managed production
-mints the floor once in Java, passes it to both Java Serviceability applications
-and Python Assignment, and uses this mixed order:
+consumer. Standalone Python keeps the complete Oracle order. Production mints
+the floor once in Java, shares it with Serviceability and Assignment, and uses:
 
 ```text
 start: Java Result Routing
     -> Java Serviceability Result
     -> Java Serviceability Dispatch
-    -> Python child (Assignment Dispatch)
+    -> Java Assignment Dispatch
 
-stop: Python child
+stop: Java Assignment Dispatch
    -> Java Serviceability Dispatch
    -> Java Serviceability Result
    -> Java Result Routing
 ```
 
-The two Java Serviceability loops and Python Assignment use the same floor. The
-managed child explicitly disables Python Result Routing, Serviceability Result,
-and Serviceability Dispatch, so one Redis scope cannot have duplicate consumers
-or Probe Request producers through this assembly.
+The two Java Serviceability loops and Java Assignment use the same floor.
+Python has no production process, so this assembly has no duplicate consumers
+or Probe Request producers.
 
 - Do not generalize the Runtime into an event bus.
 - Do not send Adapter Route probes to Workers.

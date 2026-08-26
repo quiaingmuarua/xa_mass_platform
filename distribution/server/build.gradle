@@ -1,5 +1,4 @@
 import groovy.json.JsonOutput
-import java.util.regex.Pattern
 
 plugins {
     id 'base'
@@ -16,15 +15,10 @@ def isWindows = System.getProperty('os.name')
         .toLowerCase(Locale.ROOT)
         .contains('windows')
 def frontendDirectory = rootProject.file('frontend')
-def kernelDirectory = rootProject.file('kernel_design')
-def kernelWheelDirectory = layout.buildDirectory.dir('python/kernel-wheel')
-def dependencyWheelDirectory = layout.buildDirectory.dir('python/dependencies')
 def stagedDirectory = layout.buildDirectory.dir("runtime/${runtimeVersion}")
 def generatedDirectory = layout.buildDirectory.dir('generated/runtime')
 def runtimeBaseName = 'xa-mass-server-runtime'
 def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
-def expectedKernelWheel = "xa_mass_kernel_pacer-${runtimeVersion}-py3-none-any.whl"
-def expectedRedisWheel = 'redis-8.0.0-py3-none-any.whl'
 def serverBootJar = project(':server_jvm').tasks.named('bootJar')
 def scenarioWorkerInstall = project(':scenario_workers_jvm').tasks.named(
         'installDist'
@@ -45,8 +39,7 @@ def pnpmCommand = { List<String> arguments ->
 
 tasks.register('validateRuntimeVersion') {
     group = 'verification'
-    description = 'Requires one explicit SemVer shared by the JAR, wheel, and archive.'
-    inputs.file(kernelDirectory.toPath().resolve('pyproject.toml'))
+    description = 'Requires one explicit SemVer shared by the JAR and archive.'
     doLast {
         if (!requestedVersion.isPresent()) {
             throw new GradleException(
@@ -58,65 +51,6 @@ tasks.register('validateRuntimeVersion') {
                     "Runtime distribution version must be release SemVer: ${runtimeVersion}"
             )
         }
-        String pyproject = kernelDirectory.toPath()
-                .resolve('pyproject.toml')
-                .toFile()
-                .getText('UTF-8')
-        def matcher = Pattern.compile('(?m)^version = "([^"]+)"$')
-                .matcher(pyproject)
-        if (!matcher.find() || matcher.group(1) != runtimeVersion) {
-            throw new GradleException(
-                    "kernel_design/pyproject.toml version must equal ${runtimeVersion}"
-            )
-        }
-    }
-}
-
-tasks.register('buildKernelWheel', Exec) {
-    group = 'distribution'
-    description = 'Builds the production-only XA Mass Kernel Pacer wheel.'
-    dependsOn tasks.named('validateRuntimeVersion')
-    workingDir repositoryRoot
-    inputs.file(rootProject.file('kernel_design/pyproject.toml'))
-    inputs.files(fileTree(rootProject.file('kernel_design/executable_spec')) {
-        include '**/*.py'
-        exclude 'tests/**', 'test_support/**'
-    })
-    outputs.file(kernelWheelDirectory.map { it.file(expectedKernelWheel) })
-    doFirst {
-        delete(kernelWheelDirectory)
-        kernelWheelDirectory.get().asFile.mkdirs()
-        commandLine(
-                pythonExecutable.get(),
-                '-m', 'pip', 'wheel',
-                '--disable-pip-version-check',
-                '--no-deps',
-                '--wheel-dir', kernelWheelDirectory.get().asFile.absolutePath,
-                kernelDirectory.absolutePath
-        )
-    }
-}
-
-tasks.register('downloadRuntimeDependencies', Exec) {
-    group = 'distribution'
-    description = 'Downloads hash-locked Python runtime dependencies.'
-    workingDir repositoryRoot
-    inputs.file(rootProject.file('kernel_design/requirements-runtime.lock'))
-    outputs.file(dependencyWheelDirectory.map { it.file(expectedRedisWheel) })
-    doFirst {
-        delete(dependencyWheelDirectory)
-        dependencyWheelDirectory.get().asFile.mkdirs()
-        commandLine(
-                pythonExecutable.get(),
-                '-m', 'pip', 'download',
-                '--disable-pip-version-check',
-                '--require-hashes',
-                '--only-binary=:all:',
-                '--no-deps',
-                '--dest', dependencyWheelDirectory.get().asFile.absolutePath,
-                '--requirement',
-                rootProject.file('kernel_design/requirements-runtime.lock').absolutePath
-        )
     }
 }
 
@@ -159,13 +93,11 @@ tasks.register('generateRuntimeManifest') {
     description = 'Generates the checked runtime archive manifest.'
     dependsOn(
             serverBootJar,
-            scenarioWorkerInstall,
-            tasks.named('buildKernelWheel')
+            scenarioWorkerInstall
     )
     inputs.property('runtimeVersion', runtimeVersion)
     inputs.property('gitCommit', gitCommit)
     inputs.file(serverBootJar.flatMap { it.archiveFile })
-    inputs.file(kernelWheelDirectory.map { it.file(expectedKernelWheel) })
     outputs.file(generatedDirectory.map { it.file('manifest.json') })
     doLast {
         String resolvedGitCommit = gitCommit.get()
@@ -176,13 +108,11 @@ tasks.register('generateRuntimeManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion   : 3,
+                        schemaVersion   : 4,
                         version         : runtimeVersion,
                         gitCommit       : resolvedGitCommit,
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
-                        kernelWheel     : "kernel/wheelhouse/${expectedKernelWheel}",
                         javaVersion     : 21,
-                        pythonRequires  : '>=3.11',
                         defaultSpringProfile: 'scenario-workers',
                         springProfiles  : [
                                 'scenario-workers',
@@ -190,7 +120,8 @@ tasks.register('generateRuntimeManifest') {
                         ],
                         frontendIncluded: true,
                         scenarioWorkerHost: [
-                                launcher: 'bin/run-scenario-workers.py',
+                                posixLauncher: 'scenario-workers/bin/xa-mass-scenario-workers',
+                                windowsLauncher: 'scenario-workers/bin/xa-mass-scenario-workers.bat',
                                 autoStart: false
                         ]
                 ])) + System.lineSeparator(),
@@ -206,8 +137,6 @@ tasks.register('stageRuntime', Sync) {
             tasks.named('validateRuntimeVersion'),
             serverBootJar,
             scenarioWorkerInstall,
-            tasks.named('buildKernelWheel'),
-            tasks.named('downloadRuntimeDependencies'),
             tasks.named('buildFrontend'),
             tasks.named('generateRuntimeManifest'),
             tasks.named('generatePlatformDiagnosticCodes')
@@ -216,14 +145,8 @@ tasks.register('stageRuntime', Sync) {
     from(serverBootJar.flatMap { it.archiveFile }) {
         into 'lib'
     }
-    from(scenarioWorkerInstallDirectory.map { it.dir('lib') }) {
-        into 'scenario-workers/lib'
-    }
-    from(kernelWheelDirectory) {
-        into 'kernel/wheelhouse'
-    }
-    from(dependencyWheelDirectory) {
-        into 'kernel/wheelhouse'
+    from(scenarioWorkerInstallDirectory) {
+        into 'scenario-workers'
     }
     from(rootProject.file('kernel_design/config/pacer-default.json')) {
         into 'config'
@@ -259,20 +182,6 @@ tasks.register('distZip', Zip) {
     }
 }
 
-tasks.register('launcherTest', Exec) {
-    group = 'verification'
-    description = 'Runs standard-library tests for the Runtime launcher.'
-    workingDir repositoryRoot
-    inputs.files(fileTree('src/test/python') { include '**/*.py' })
-    inputs.file('src/main/dist/bin/run-server.py')
-    inputs.file('src/main/dist/bin/run-scenario-workers.py')
-    commandLine(
-            pythonExecutable.get(), '-m', 'unittest', 'discover',
-            '-s', file('src/test/python').absolutePath,
-            '-p', 'test_*.py', '-v'
-    )
-}
-
 tasks.register('sourceLauncherTest', Exec) {
     group = 'verification'
     description = 'Runs standard-library tests for the source local Runtime launcher.'
@@ -287,13 +196,9 @@ tasks.register('sourceLauncherTest', Exec) {
     )
 }
 
-tasks.named('launcherTest') {
-    dependsOn tasks.named('sourceLauncherTest')
-}
-
 tasks.register('verifyRuntimeArchive', Exec) {
     group = 'verification'
-    description = 'Verifies the publishable ZIP ABI and production-only wheel.'
+    description = 'Verifies the Java-only publishable Runtime ZIP ABI.'
     dependsOn tasks.named('distZip')
     workingDir repositoryRoot
     inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
@@ -310,7 +215,7 @@ tasks.register('verifyRuntimeArchive', Exec) {
 tasks.register('runtimeDistributionTest', Exec) {
     group = 'verification'
     description = 'Unpacks and proves the published Runtime against real Redis.'
-    dependsOn tasks.named('launcherTest'), tasks.named('verifyRuntimeArchive')
+    dependsOn tasks.named('sourceLauncherTest'), tasks.named('verifyRuntimeArchive')
     workingDir repositoryRoot
     inputs.file(tasks.named('distZip', Zip).flatMap { it.archiveFile })
     inputs.file(rootProject.file('.github/scripts/run_runtime_distribution_proof.py'))
@@ -328,7 +233,7 @@ tasks.register('runtimeDistributionTest', Exec) {
 }
 
 tasks.named('check') {
-    dependsOn tasks.named('launcherTest'), tasks.named('verifyRuntimeArchive')
+    dependsOn tasks.named('sourceLauncherTest'), tasks.named('verifyRuntimeArchive')
 }
 
 tasks.named('assemble') {

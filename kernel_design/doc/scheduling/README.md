@@ -191,26 +191,24 @@ Worker Delivery Dispatch
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
 | Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
-| TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
+| TaskItem score-band | Implemented with Python Oracle plus Java production Redis operations for append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; PRECOMPUTED_TASK_RULE has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, immediate idle close or private idle park, and DeliveryCommand append; both allocation mechanisms have deterministic Redis proof and DIRECT_ITEM_RULE proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
-| Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
+| Result routing | Fixed Java production policy and Python Oracle implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
-Both WorkerAllocationMechanisms also have cross-process Redis E2E proof from Java control and
-Task data APIs through Python scheduling and the Java Server Worker Delivery
-API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transport;
+Both WorkerAllocationMechanisms also have Runtime Boundary Redis E2E proof from
+Java control and Task data APIs through Java scheduling and the Java Server
+Worker Delivery API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transport;
 `DIRECT_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
 the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
-lease release. Java controllers use the same Kernel owner contracts as the
-Python executable spec. Task business commands use Java Redis providers.
-Managed production uses Java for Result Routing, Worker Serviceability Result,
-and Worker Serviceability Dispatch while Python temporarily owns Assignment
-Dispatch; standalone Python retains the complete oracle and exposes no Task
-HTTP fallback.
+lease release. Java controllers and Pacers use the same Kernel owner contracts
+as the Python executable specification. Task business commands use Java Redis
+providers. Production uses Java for every Pacer; standalone Python retains the
+complete Oracle and exposes no Task HTTP or managed-process fallback.
 Additional Redis proofs cover immediate idle close, private idle park followed
 by scheduling-aware Task Call submission, RUNNING capacity exclusion, and an
 external explicit close request.

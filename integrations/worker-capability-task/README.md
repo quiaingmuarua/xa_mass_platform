@@ -36,8 +36,8 @@ terminal export precondition. Other Task business rejection remains
 ## Run
 
 Start Redis and one Java Server with the `scenario-workers` Profile. Server
-supervises the configured Python Pacer CLI child and Adapter but starts no
-Workers. Start the standalone `scenario_workers_jvm` Host, then run:
+owns the four Java Kernel Pacer applications and its configured Adapter, but
+starts no Workers. Start the standalone `scenario_workers_jvm` Host, then run:
 
 ```powershell
 .\gradlew.bat :scenario_workers_jvm:runScenarioWorkers

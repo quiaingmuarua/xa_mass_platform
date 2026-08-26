@@ -14,11 +14,7 @@ xa:
   mass:
     kernel-pacer:
       enabled: ${XA_MASS_KERNEL_PACER_ENABLED:true}
-      python-executable: ${XA_MASS_PYTHON_EXECUTABLE:python}
-      working-directory: ${XA_MASS_KERNEL_PACER_WORKING_DIRECTORY:.}
       config-path: ${XA_MASS_KERNEL_PACER_CONFIG:kernel_design/config/pacer-default.json}
-      state-directory: ${XA_MASS_KERNEL_PACER_STATE_DIRECTORY:data/kernel-pacer}
-      startup-timeout: 10s
       shutdown-timeout: 5s
     redis:
       url: ${XA_MASS_REDIS_URL:redis://localhost:6379/15}

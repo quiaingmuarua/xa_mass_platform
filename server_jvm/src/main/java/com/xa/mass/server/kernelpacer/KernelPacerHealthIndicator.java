@@ -20,7 +20,7 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
                 : Health.down();
         health.withDetail(
                 "mode",
-                "java-result-routing+java-serviceability+python-assignment-cli"
+                "java-kernel-pacers"
         );
         health.withDetail("state", snapshot.state().name());
         health.withDetail(
@@ -35,9 +35,10 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
                 "javaWorkerServiceabilityDispatchState",
                 snapshot.workerServiceabilityDispatchState()
         );
-        if (snapshot.pid() != null) {
-            health.withDetail("pid", snapshot.pid());
-        }
+        health.withDetail(
+                "javaAssignmentDispatchState",
+                snapshot.assignmentDispatchState()
+        );
         return health.build();
     }
 }

@@ -826,8 +826,8 @@ DeliveryReport
             <h2>一个机制oracle，增量生产装配</h2>
           </div>
           <p>
-            当前不是“Python版”和“Java版”两个Kernel。Python保存完整scheduling/application
-            oracle；JVM只迁移有明确生产caller和parity proof的owner操作。
+            当前不是“Python版”和“Java版”两个生产Kernel。Python保存完整机制
+            oracle；JVM拥有全部生产Pacer及其明确调用闭包，缺失操作继续显式失败。
           </p>
         </div>
 
@@ -835,17 +835,17 @@ DeliveryReport
           <article class="card kernel">
             <span class="owner">KERNEL_DESIGN</span>
             <h3>Mechanism oracle</h3>
-            <p>Python executable spec、owner Redis provider、Pacers、Result Routing与Kernel application lifecycle。</p>
+            <p>Python executable spec、完整Pacers与Redis机制proof；仅用于独立Oracle验证，不进入生产发行物。</p>
           </article>
           <article class="card kernel">
             <span class="owner">KERNEL_JVM</span>
-            <h3>Selected parity</h3>
-            <p>Java 21 owner contracts与选定Redis providers。缺失operation显式失败，不提供scheduler fallback。</p>
+            <h3>Production Kernel</h3>
+            <p>Java 21 owner contracts、生产Redis providers与四个固定Pacer应用。未被生产调用的operation仍显式失败。</p>
           </article>
           <article class="card server">
             <span class="owner">SERVER_JVM</span>
-            <h3>Hybrid assembly</h3>
-            <p>Spring API把已迁移Task/resource/data/delivery owner绑定到Java provider，并统一托管临时Python Pacer CLI的生命周期。</p>
+            <h3>Java production assembly</h3>
+            <p>Spring API把Task、resource、data、delivery owner绑定到Java provider，并统一托管四个Java Kernel Pacer应用。</p>
           </article>
           <article class="card transport">
             <span class="owner">TRANSPORT</span>
@@ -923,7 +923,7 @@ DeliveryReport
         <div class="grid-4" style="margin-top: 14px">
           <article class="card"><h3>Kernel Oracle</h3><p>Python executable spec与真实Redis机制proof。</p></article>
           <article class="card"><h3>JVM / Redis Owner</h3><p>contract、architecture guard与Java Redis owner proof。</p></article>
-          <article class="card"><h3>Runtime Boundary</h3><p>单一Java Server宿主、受管Python Pacer CLI、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
+          <article class="card"><h3>Runtime Boundary</h3><p>单一Java Server宿主、四个Java Pacer、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
           <article class="card"><h3>Capability Task / Android / Frontend</h3><p>普通有限Task、真实文件、Host assembly与read-only UI proof。</p></article>
         </div>
 

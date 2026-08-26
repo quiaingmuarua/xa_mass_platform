@@ -78,14 +78,13 @@ specification, owner Redis providers and Kernel application assembly.
 - Task Result Routing may exact-release the correlated Worker lease but must
   not infer connection polarity. Adapter Route/delivery-expiry evidence is
   consumed only by the optional Worker Serviceability policy.
-- Python production Pacer code runs only as the fixed CLI child supervised by
-  Java Server. Do not restore a Python HTTP host, Task business routes, or a
-  Server fallback through that child.
-- Managed production disables Python Result Routing, Worker Serviceability
-  Result and Worker Serviceability Dispatch explicitly; their fixed Java
-  applications are the only production consumers or Probe producer. Managed
-  Python owns only Assignment Dispatch. Never run an old and new Pacer for the
-  same function together in one Redis scope.
+- All production Pacers run in Java under the Server-owned finite lifecycle.
+  Python is the standalone executable mechanism oracle only. Do not restore a
+  Python HTTP host, managed child process, Task business route, production
+  launcher, or Server fallback through Python.
+- Result Routing, Worker Serviceability Result, Worker Serviceability Dispatch
+  and Assignment Dispatch each have one fixed Java production application.
+  Never run the Python Oracle against the same Redis scope as production.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 
 Read [kernel_design/AGENTS.md](kernel_design/AGENTS.md) before changing this
@@ -315,9 +314,9 @@ controls.
   in executable and owner documents.
 - `distribution/server` is a packaging owner only. It may assemble the current
   Server, production Pacer, frontend, configuration and optional standalone
-  Scenario Worker Host, but `run-server.py` must never auto-start that Host. It
-  must not add a fallback runtime owner, a second Spring Profile, or scheduling
-  behavior.
+  Scenario Worker Host. The Boot JAR and packaged Scenario Host launchers remain
+  independent. Distribution must not add a fallback runtime owner, a second
+  Spring Profile, or scheduling behavior.
 
 ## Verification
 

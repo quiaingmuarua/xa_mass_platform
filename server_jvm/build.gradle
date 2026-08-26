@@ -64,13 +64,6 @@ tasks.register('exportOpenApiSnapshot', JavaExec) {
     outputs.upToDateWhen { false }
 }
 
-tasks.named('bootRun') {
-    systemProperty(
-            'xa.mass.kernel-pacer.working-directory',
-            rootProject.projectDir.absolutePath
-    )
-}
-
 def registerStrictIntegrationTest = {
     String taskName,
     String descriptionText,

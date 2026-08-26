@@ -10,6 +10,8 @@ import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -194,7 +196,21 @@ public final class RedisTaskScoreBandCore
 
     @Override
     public int countRunningCapacityTasks() {
-        throw notImplemented("count_running_capacity_tasks");
+        long parked = idleParkScore();
+        long beforePark = commands().zcount(
+                scoreKey(),
+                score(RUNNING_VISIBLE_TAG, MIN_TIME_SLOT, MIN_SUFFIX),
+                parked - 1
+        );
+        long afterPark = commands().zcount(
+                scoreKey(),
+                parked + 1,
+                score(RUNNING_VISIBLE_TAG, MAX_TIME_SLOT, MAX_SUFFIX)
+        );
+        return (int) Math.min(
+                Integer.MAX_VALUE,
+                Math.addExact(beforePark, afterPark)
+        );
     }
 
     @Override
@@ -203,7 +219,68 @@ public final class RedisTaskScoreBandCore
             long beforeTimeMillis,
             int limit
     ) {
-        throw notImplemented("acquire_band_task_candidates");
+        if (limit <= 0) {
+            return List.of();
+        }
+        if (band == null || band == TaskScoreBand.TERMINAL) {
+            throw new IllegalArgumentException(
+                    "terminal band is not a positive score range"
+            );
+        }
+        if (beforeTimeMillis < MIN_TIME_MILLIS
+                || beforeTimeMillis > MAX_TIME_MILLIS) {
+            return List.of();
+        }
+        long maximumTimeSlot = beforeTimeMillis / SLOT_MILLIS - 1;
+        if (maximumTimeSlot < MIN_TIME_SLOT) {
+            return List.of();
+        }
+        int bandTag = tag(band);
+        long minimumScore = score(
+                bandTag,
+                MIN_TIME_SLOT,
+                MIN_SUFFIX
+        );
+        long maximumScore = score(
+                bandTag,
+                maximumTimeSlot,
+                MAX_SUFFIX
+        );
+        if (band != TaskScoreBand.ADMISSION_VISIBLE) {
+            return List.copyOf(commands().zrangebyscore(
+                    scoreKey(),
+                    minimumScore,
+                    maximumScore,
+                    0,
+                    limit
+            ));
+        }
+        List<ScoredValue<String>> rows = commands().zrangebyscoreWithScores(
+                scoreKey(),
+                minimumScore,
+                maximumScore,
+                0,
+                limit
+        );
+        List<AdmissionCandidate> candidates = new ArrayList<>(rows.size());
+        for (ScoredValue<String> row : rows) {
+            DecodedPositive decoded = decodePositive(
+                    scoreToLong(row.getScore())
+            );
+            if (decoded != null
+                    && decoded.tag() == ADMISSION_VISIBLE_TAG) {
+                candidates.add(new AdmissionCandidate(
+                        row.getValue(),
+                        decoded.suffix(),
+                        decoded.timeSlot()
+                ));
+            }
+        }
+        candidates.sort(Comparator
+                .comparingInt(AdmissionCandidate::priority)
+                .thenComparingLong(AdmissionCandidate::timeSlot)
+                .thenComparing(AdmissionCandidate::taskId));
+        return candidates.stream().map(AdmissionCandidate::taskId).toList();
     }
 
     @Override
@@ -348,7 +425,36 @@ public final class RedisTaskScoreBandCore
             TaskScoreBand expectedBand,
             long targetTimeMillis
     ) {
-        throw notImplemented("rewrite_same_band_time_millis");
+        requireNonBlank(taskId, "taskId");
+        if (expectedBand == null
+                || expectedBand == TaskScoreBand.TERMINAL
+                || !validPublicTargetTimeMillis(targetTimeMillis)) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
+        long targetTimeSlot = targetTimeMillis / SLOT_MILLIS;
+        if (targetTimeSlot <= MIN_TIME_SLOT) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
+        int expectedTag = tag(expectedBand);
+        return scriptResult(commands().eval(
+                MINT_FROM_RANGE_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                taskId,
+                Long.toString(score(expectedTag, MIN_TIME_SLOT, MIN_SUFFIX)),
+                Long.toString(score(
+                        expectedTag,
+                        targetTimeSlot - 1,
+                        MAX_SUFFIX
+                )),
+                Long.toString(score(
+                        expectedTag,
+                        targetTimeSlot,
+                        MIN_SUFFIX
+                )),
+                "-1",
+                Long.toString(SUFFIX_FACTOR)
+        ));
     }
 
     @Override
@@ -356,7 +462,22 @@ public final class RedisTaskScoreBandCore
             String taskId,
             long observedScore
     ) {
-        throw notImplemented("park_observed_idle_task");
+        requireNonBlank(taskId, "taskId");
+        DecodedPositive observed = decodePositive(observedScore);
+        if (observed == null
+                || observed.tag() != RUNNING_VISIBLE_TAG
+                || observed.suffix() != MIN_SUFFIX
+                || observed.timeSlot() >= IDLE_PARK_TIME_SLOT) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
+        return scriptResult(commands().eval(
+                CAS_UPDATE_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                taskId,
+                Long.toString(observedScore),
+                Long.toString(idleParkScore())
+        ));
     }
 
     @Override
@@ -407,7 +528,19 @@ public final class RedisTaskScoreBandCore
             long observedScore,
             long terminalScore
     ) {
-        throw notImplemented("close_observed_score");
+        requireNonBlank(taskId, "taskId");
+        if (terminalScore > TERMINAL_SCORE_MAX
+                || decodePositive(observedScore) == null) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
+        return scriptResult(commands().eval(
+                CAS_UPDATE_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                taskId,
+                Long.toString(observedScore),
+                Long.toString(terminalScore)
+        ));
     }
 
     @Override
@@ -644,5 +777,12 @@ public final class RedisTaskScoreBandCore
     }
 
     private record DecodedPositive(int tag, long timeSlot, int suffix) {
+    }
+
+    private record AdmissionCandidate(
+            String taskId,
+            int priority,
+            long timeSlot
+    ) {
     }
 }

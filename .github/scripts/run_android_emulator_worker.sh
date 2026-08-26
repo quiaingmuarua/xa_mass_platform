@@ -97,9 +97,7 @@ start_server() {
     test -n "$server_jar"
     java -jar "$server_jar" \
         --spring.profiles.active=scenario-workers \
-        --xa.mass.kernel-pacer.working-directory="$workspace" \
         --xa.mass.kernel-pacer.config-path="$kernel_config" \
-        --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
         > "$log_root/server-$phase.log" 2>&1 &
     server_pid=$!
     if ! wait_for_url \

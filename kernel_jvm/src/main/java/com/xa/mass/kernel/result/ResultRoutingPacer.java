@@ -3,7 +3,8 @@ package com.xa.mass.kernel.result;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
-import com.xa.mass.kernel.result.ResultContextCodec.ResultContext;
+import com.xa.mass.kernel.delivery.ResultContextCodec;
+import com.xa.mass.kernel.delivery.ResultContextCodec.ResultContext;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;

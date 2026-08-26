@@ -109,11 +109,11 @@ pacing, observed idle park/close and other Pacer operations fail explicitly.
 `tryReleaseIdlePark -> appendItems -> tryReleaseIdlePark` composition without
 inspecting Task policy or implementing scheduling.
 
-`RedisTaskItemScoreBandCore` owns the two Java production operations required
-by Task append and Result Routing: NX initialization and cross-band outcome
+`RedisTaskItemScoreBandCore` owns Java production initialization, bounded ACTIVE
+observation, due/active checks, exact Item claim and cross-band outcome
 promotion. `RedisTaskRuntime` owns Item records and success payloads but no
-longer constructs TaskItem score keys or encoding. Candidate, retry and due
-Item operations remain explicit provider gaps.
+longer constructs TaskItem score keys or encoding. Operations outside the
+current production caller closure remain explicit provider gaps.
 
 `RedisWorkerServiceabilityRuntime` implements Probe Request offer for Java
 Serviceability Dispatch, the two Java Server bridge operations (destructive
@@ -128,19 +128,16 @@ not an external protocol.
 
 The external Runtime API belongs to [`server_jvm/`](../server_jvm/). Its
 controllers and services depend on these owner contracts. Task business
-commands use the Java Redis owners directly. `kernel_jvm` now contains the
-fixed production Result Routing, Worker Serviceability Result, and Worker
-Serviceability Dispatch Pacers, each with one single-threaded application
-lifecycle. Java Server composes all three beside the fixed temporary Python
-child; managed mode disables all three Python counterparts and passes the
-single Java-minted HOT eligibility floor to both Java Serviceability Pacers and
-Python Assignment. Python remains the Assignment implementation and complete
-mechanism oracle, with no Task HTTP fallback. Provider selection never appears
-in HTTP controllers or business services.
+commands use the Java Redis owners directly. `kernel_jvm` contains fixed
+production Result Routing, Worker Serviceability Result, Worker Serviceability
+Dispatch and Assignment Dispatch applications. Java Server composes all four
+and passes the single Java-minted HOT eligibility floor to Serviceability and
+Assignment. Python remains the complete standalone mechanism Oracle, with no
+production process or Task HTTP fallback. Provider selection never appears in
+HTTP controllers or business services.
 
-There is no general Pacer registry, replaceable Result Handler map, combined
-WorkerDelivery runtime, or full Kernel application lifecycle in this module.
-Remaining Pacers must be migrated through separate vertical parity slices.
+There is no general Pacer registry, replaceable production Result Handler map,
+combined WorkerDelivery runtime, or fallback scheduling path in this module.
 
 `kernel_jvm` targets JDK 21 and is not an Android module. A future
 Android-compatible Worker SDK belongs in a separate Gradle module with its own

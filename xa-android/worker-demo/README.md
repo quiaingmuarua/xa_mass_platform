@@ -114,8 +114,8 @@ adb forward --remove tcp:18084
 ## Real device run
 
 Redis must be available at `redis://localhost:6379/15`. Start the shared Lab
-profile; Java Server supervises the Python Pacer CLI with the Android proof
-configuration:
+profile; Java Server starts the four Java Kernel Pacer applications with the
+Android proof configuration:
 
 ```powershell
 .\gradlew.bat :server_jvm:bootRun `

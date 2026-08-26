@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.result;
 
+import com.xa.mass.kernel.delivery.ResultContextCodec;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

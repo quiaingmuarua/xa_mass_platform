@@ -307,23 +307,20 @@ jobs:
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
             --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
-            --xa.mass.kernel-pacer.state-directory="$proof_root/kernel-pacer" \
             > fleet-server.log 2>&1 &
           echo $! > fleet-server.pid
           for _ in $(seq 1 90); do
             if python -c \
               "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
               >/dev/null 2>&1; then
-              cp "$proof_root/kernel-pacer/owner.json" \
-                "$proof_root/initial-pacer-owner.json"
-              break
+              exit 0
             fi
             sleep 1
           done
-          test -f "$proof_root/initial-pacer-owner.json" || {
-            cat fleet-server.log
-            exit 1
-          }
+          cat fleet-server.log
+          exit 1
+      - name: Prove Server starts no Scenario Workers
+        run: |
           python - <<'PY'
           import json
           import urllib.request
@@ -367,9 +364,6 @@ jobs:
           --request-timeout-millis=120000"
       - name: Stop initial Host gracefully
         run: |
-          proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
-          child_pid=$(python -c \
-            "import json; print(json.load(open('$proof_root/kernel-pacer/owner.json'))['pid'])")
           server_pid=$(cat fleet-server.pid)
           pid=$(cat fleet-host.pid)
           kill "$pid"
@@ -389,7 +383,6 @@ jobs:
           fi
           rm -f fleet-host.pid
           kill -0 "$server_pid"
-          kill -0 "$child_pid"
           python -c \
             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')"
       - name: Restart the same Scenario Worker Host
@@ -820,10 +813,6 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.11.3"
-          cache: pip
-          cache-dependency-path: |
-            kernel_design/pyproject.toml
-            kernel_design/requirements-runtime.lock
       - uses: pnpm/action-setup@v6.0.10
         with:
           version: 11.9.0

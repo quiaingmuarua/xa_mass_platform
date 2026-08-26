@@ -14,13 +14,13 @@ boundary named below.
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
 | JVM Contracts | JVM modules compile and their owner, codec, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, evidence append/consume, polarity toggle and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | One Java Server context starts Java Result Routing plus Java Worker Serviceability Result and Dispatch, then a managed Python Assignment child with all three migrated Pacers disabled; a finite polling Task closes and exports its success Results, and WorkerGroup registration returns a managed Task ID that the bounded Task Score Runtime Preview resolves again before Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and the Java Dispatch-to-Result Serviceability loop | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacer stay up | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
+| Runtime Boundary | One Java Server context starts all four Java Pacer applications; without a Python child, a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
-| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
+| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Java Server, API 33 x86_64 Emulator; Python is only the checked acceptance driver | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
 | Frontend | The bounded Runtime previews, Task/Worker diagnostic calls, finite Task workbench, and lazy read-only Scalar snapshot page remain lint-clean, type-safe, unit-tested, and buildable in API and public-demo modes | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` |
-| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles and its static OpenAPI Reference outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11 or newer, Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.4.0` |
+| Runtime Distribution | The schema-v4 Java-only Server Runtime proves both built-in Profiles and its static OpenAPI Reference outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Android SDK 36, Node 22.19 and pnpm 11.9; Python is only the archive proof driver | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.4.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The deterministic Server proof owns the public response classification. Its
@@ -92,7 +92,7 @@ isolated, initially absent Lab root. Its initial phase relates the exact configu
 client keys to 20 unique Worker IDs read through Runtime Preview, connected
 Adapter routes, one probe
 Result per target, and same-round Worker/Adapter Properties observations. CI
-then terminates the Host, requires Server and its Pacer child to remain ready,
+then terminates the Host, requires Server and its Java Pacers to remain ready,
 restarts the same Host with Redis, Kernel, Server and Lab retained, and requires
 the complete client-key-to-Worker-ID mapping and all live relationships to
 close again.
@@ -118,16 +118,13 @@ Redis scope     test_runtime_boundary_<unique run token>
 ```
 
 The test starts one Java Spring context. Its `KernelPacerAssembly` starts Java
-Result Routing, Java Worker Serviceability Result and Java Worker
-Serviceability Dispatch, then starts the checked Python CLI with all three
-migrated Pacers disabled and the Java-owned HOT floor. It waits for the exact
-readiness token. Redis remains an external
-dependency; failure to start any member or connect to Redis fails the proof.
+Result Routing, Java Worker Serviceability Result, Java Worker Serviceability
+Dispatch and Java Assignment Dispatch. Redis remains an external dependency;
+failure to start any required application or connect to Redis fails the proof.
 Each run generates one
-unique `test_*` scope and injects that exact scope into the child, so the
-cross-process proof cannot pass through matching defaults. It plants a sentinel
-in a different scope and proves the sentinel survives. After the Spring context
-and its Pacer child stop, cleanup uses cursor `SCAN` plus bounded `UNLINK` only
+unique `test_*` scope. It plants a sentinel in a different scope and proves the
+sentinel survives. After the Spring context and its Pacers stop, cleanup uses
+cursor `SCAN` plus bounded `UNLINK` only
 for the exact run-owned scope; it never clears Redis DB 15.
 
 Redis Owner tests and Python Redis proofs generate the same kind of exact scope
@@ -138,14 +135,11 @@ that scope after all writers stop. A proof may share the URL and DB with a
 running `profile_*` environment; neither side can see or delete the other's
 data.
 
-The same lane also runs a controlled no-network Python child to prove exact
-ready-token startup, exit-before-ready, readiness timeout, stdin-EOF shutdown,
-forced shutdown, idempotent cleanup, and removal of owner/ready files. Unit
-proofs keep disk-state recovery non-destructive: dead or PID-reused owner state
-is cleaned, while a matching live process blocks startup and remains untouched.
-The configured Group/Task and Adapter assembly has an explicit higher lifecycle
-phase, so it starts after the child and closes before it. The standalone
-Scenario Worker Host is outside the Spring lifecycle.
+Deterministic lifecycle tests prove four-stage startup, reverse rollback,
+thread-death readiness failure, idempotent stop and one shared bounded shutdown
+deadline. The configured Group/Task and Adapter assembly has an explicit higher
+lifecycle phase, so it starts after all Pacers and closes before them. The
+standalone Scenario Worker Host is outside the Spring lifecycle.
 
 The Python Kernel Oracle is a separate proof owner and still uses its explicit
 Redis test switch:
@@ -180,8 +174,8 @@ Redis Owner:
 
 Runtime Boundary starts only the Java test context. Java consumes the three
 Task Result LISTs, consumes Adapter Evidence and produces Serviceability Probe
-requests; its configured child runs Assignment Dispatch only. Task business
-calls remain Java-to-Redis:
+requests, and runs Assignment Dispatch. Task business calls remain
+Java-to-Redis:
 
 ```powershell
 .\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
@@ -277,15 +271,15 @@ corepack pnpm build
 corepack pnpm build:demo
 ```
 
-Runtime Distribution builds every publishable component, checks the Runtime archive
-ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
-proof extracts the ZIP to a temporary directory outside the checkout, removes
-`PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
-packaged Server against one unique `test_*` scope, loads Scalar, Frontend and
+Runtime Distribution builds every publishable component and checks the
+schema-v4 Java-only Runtime archive ABI. Its real proof extracts the ZIP to a
+temporary directory outside the checkout, starts the Boot JAR against one
+unique `test_*` scope, loads Scalar, Frontend and
 the diagnostic dictionary UI/JSON, loads the static API Reference and validates
 its OpenAPI snapshot, checks the diagnostic JSON build coordinates and
 three-owner allowlist,
-proves both JVM Worker previews are empty, starts the packaged Host separately,
+proves no Python artifact or private runtime environment is present, proves
+both JVM Worker previews are empty, starts the packaged Host separately,
 and closes one managed String Task Call. It then stops only the Host, proves
 Server readiness remains UP. It separately launches the clean `agentforge`
 Profile, proves its empty Group catalog and one Adapter listener, stops both

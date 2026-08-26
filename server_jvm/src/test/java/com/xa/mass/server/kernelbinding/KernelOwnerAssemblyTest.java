@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class KernelOwnerAssemblyTest {
 
     @Test
-    void schedulingWorkerScoreOperationsRemainExplicitGaps() {
+    void assignmentUnneededWorkerScoreOperationsRemainExplicitGaps() {
         RedisClient redisClient = mock(RedisClient.class);
         RedisWorkerScoreCore scoreCore =
                 new RedisWorkerScoreCore(
@@ -25,7 +25,7 @@ class KernelOwnerAssemblyTest {
                 );
 
         assertThatThrownBy(() ->
-                scoreCore.acquireHotAcquireCandidates("group-1", null, 1))
+                scoreCore.markCurrentLeaseDirty("group-1", "worker-1"))
                 .isInstanceOf(KernelOperationNotImplementedException.class)
                 .satisfies(error -> {
                     var notImplemented =
@@ -33,15 +33,13 @@ class KernelOwnerAssemblyTest {
                     assertThat(notImplemented.contractName())
                             .isEqualTo("WorkerScoreCore");
                     assertThat(notImplemented.operationName())
-                            .isEqualTo(
-                                    "acquire_hot_acquire_candidates"
-                            );
+                            .isEqualTo("mark_current_lease_dirty");
                 });
         org.mockito.Mockito.verifyNoInteractions(redisClient);
     }
 
     @Test
-    void authoritativeWorkerCommandAppendRemainsAnExplicitJvmGap() {
+    void authoritativeWorkerCommandAppendShortCircuitsAnEmptyBatch() {
         RedisClient redisClient = mock(RedisClient.class);
         RedisWorkerCommandRuntime commands = new RedisWorkerCommandRuntime(
                 redisClient,
@@ -49,19 +47,8 @@ class KernelOwnerAssemblyTest {
                 new RedisKeyspace("test_kernel_owner_unit")
         );
 
-        assertThatThrownBy(() -> commands.appendWorkerCommands(
-                "adapter-1",
-                Map.of()
-        ))
-                .isInstanceOf(KernelOperationNotImplementedException.class)
-                .satisfies(error -> {
-                    var notImplemented =
-                            (KernelOperationNotImplementedException) error;
-                    assertThat(notImplemented.contractName())
-                            .isEqualTo("WorkerCommandRuntime");
-                    assertThat(notImplemented.operationName())
-                            .isEqualTo("append_worker_commands");
-                });
+        assertThat(commands.appendWorkerCommands("adapter-1", Map.of()))
+                .isEmpty();
         org.mockito.Mockito.verifyNoInteractions(redisClient);
     }
 }

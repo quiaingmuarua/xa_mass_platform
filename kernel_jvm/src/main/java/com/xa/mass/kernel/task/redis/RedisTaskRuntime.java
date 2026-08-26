@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -370,7 +371,41 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             String taskId,
             List<String> messageIds
     ) {
-        throw notImplemented("load_task_items");
+        requireNonBlank(taskId, "taskId");
+        if (messageIds == null) {
+            throw new IllegalArgumentException(
+                    "messageIds must be present"
+            );
+        }
+        List<String> uniqueIds = new ArrayList<>(
+                new LinkedHashSet<>(messageIds)
+        );
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+        if (uniqueIds.stream().anyMatch(RedisTaskRuntime::isBlank)) {
+            throw new IllegalArgumentException(
+                    "messageIds must be non-blank"
+            );
+        }
+        List<KeyValue<String, String>> loaded = commands().hmget(
+                itemsKey(taskId),
+                uniqueIds.toArray(String[]::new)
+        );
+        LinkedHashMap<String, TaskItem> results = new LinkedHashMap<>();
+        for (int index = 0; index < uniqueIds.size(); index++) {
+            KeyValue<String, String> value = loaded.get(index);
+            results.put(
+                    uniqueIds.get(index),
+                    value.hasValue()
+                            ? decodeTaskItem(
+                                    uniqueIds.get(index),
+                                    value.getValue()
+                            )
+                            : null
+            );
+        }
+        return results;
     }
 
     @Override
@@ -531,6 +566,55 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 normalizeJsonValue(record.allocationRule())
         );
         return mapper.writeValueAsString(payload);
+    }
+
+    private TaskItem decodeTaskItem(String messageId, String encoded) {
+        try {
+            JsonNode item = mapper.readTree(encoded);
+            if (item == null || !item.isObject()) {
+                return null;
+            }
+            JsonNode eventCode = item.get("eventCode");
+            JsonNode payload = item.get("payload");
+            JsonNode priority = item.get("priority");
+            JsonNode createdAt = item.get("createdAtMillis");
+            JsonNode expireAt = item.get("expireAtMillis");
+            JsonNode allocation = item.get("allocationRule");
+            if (eventCode == null || !eventCode.isTextual()
+                    || payload == null || !payload.isObject()
+                    || priority == null || !priority.isIntegralNumber()
+                    || createdAt == null || !createdAt.isIntegralNumber()
+                    || expireAt == null || !expireAt.isIntegralNumber()
+                    || allocation != null
+                    && !allocation.isNull()
+                    && !allocation.isObject()) {
+                return null;
+            }
+            Map<String, Object> payloadMap = mapper.convertValue(
+                    payload,
+                    new TypeReference<>() {
+                    }
+            );
+            Map<String, Object> allocationRule = allocation == null
+                    || allocation.isNull()
+                    ? null
+                    : mapper.convertValue(
+                            allocation,
+                            new TypeReference<>() {
+                            }
+                    );
+            return new TaskItem(
+                    messageId,
+                    eventCode.textValue(),
+                    createdAt.longValue(),
+                    payloadMap,
+                    priority.intValue(),
+                    expireAt.longValue(),
+                    allocationRule
+            );
+        } catch (JacksonException | IllegalArgumentException error) {
+            return null;
+        }
     }
 
     private static long initialDueMillis(MaterializedItem item) {

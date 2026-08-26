@@ -503,7 +503,7 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void taskControlUsesLocalKernelOwnersAndPacerHostOwnsOnlyLifecycle()
+    void taskControlAndJavaPacersUseOnlyLocalKernelOwners()
             throws IOException {
         assertThat(readSources(KERNEL_BINDING))
                 .contains("RedisTaskScoreBandCore")
@@ -529,23 +529,19 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("\"/workers");
 
         assertThat(readSources(KERNEL_PACER))
-                .contains("ProcessBuilder")
                 .contains("SmartLifecycle")
-                .contains("kernel_design.executable_spec.assembly")
                 .contains("ResultRoutingApplication")
                 .contains("WorkerServiceabilityResultApplication")
                 .contains("WorkerServiceabilityDispatchApplication")
-                .contains("--without-result-routing")
-                .contains("--without-worker-serviceability-result")
-                .contains("--without-worker-serviceability-dispatch")
-                .contains("--hot-eligibility-floor-millis")
-                .doesNotContain("WorkerRuntime")
-                .doesNotContain("RedisClient")
+                .contains("AssignmentDispatchApplication")
+                .doesNotContain("ProcessBuilder")
+                .doesNotContain("kernel_design.executable_spec.assembly")
                 .doesNotContain("RestClient");
         assertThat(readSources(KERNEL_PACER_ASSEMBLY))
                 .contains("ResultRoutingApplication")
                 .contains("WorkerServiceabilityResultApplication")
                 .contains("WorkerServiceabilityDispatchApplication")
+                .contains("AssignmentDispatchApplication")
                 .doesNotContain("ScoreCore")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("RedisClient")

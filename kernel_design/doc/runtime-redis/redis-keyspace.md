@@ -20,8 +20,9 @@ test_[a-z0-9_]+
 
 Spring Profile selects application assembly. Redis scope selects persistent
 data. Redis URL and DB number are connection coordinates and do not distinguish
-tests from profiles. A Java-supervised Python Pacer receives the exact same URL
-and scope as the Java providers; it does not derive either value.
+tests from profiles. All Java production Pacers use the same configured URL and
+scope. A standalone Python Oracle must use a separate scope unless production
+is fully stopped.
 
 `RedisKeyspace` validates the scope and produces only `xa_mass:<scope>`. Each
 Redis owner appends its own domain and business coordinates. There is no
