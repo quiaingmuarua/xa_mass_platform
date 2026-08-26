@@ -3,7 +3,26 @@
 This module owns the publishable Server runtime archive. It packages the Java
 Server, the production-only Python Kernel Pacer wheel and pinned offline
 dependency, the compiled frontend, default Pacer policy, and an optional
-standalone Scenario Worker Host. Redis remains external.
+standalone Scenario Worker Host. It also generates and packages the
+current-build Platform diagnostic code projection. Redis remains external.
+
+The projection is produced from an explicit three-owner allowlist rather than
+a repository-wide scan:
+
+```powershell
+.\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
+.\gradlew.bat :distribution:server:verifyPlatformDiagnosticCodes
+```
+
+The build reads compiled `ServerErrorCode`,
+`WorkerDeliveryAdapterErrorCode`, and `WorkerErrorCode` enums through an
+isolated ClassLoader. It writes only under
+`distribution/server/build/generated/reference` and adds the JSON to
+`frontend/dist/reference` during local or archive assembly. Scenario Workers,
+Integrations, Android Capabilities, Frontend/Distribution-local exceptions and
+downstream Extensions are deliberately outside this lookup. Kernel currently
+has no unified numeric ErrorCode catalog and is not represented. The generated
+file is not committed and is not a compatibility contract.
 
 Build an explicit release version:
 
@@ -49,3 +68,7 @@ repository needs different Pacer intervals; the Java Server remains the only
 Pacer process supervisor. Spring Boot arguments must follow `--`, and the
 launcher rejects forwarded `spring.profiles.active`, Pacer-process, and
 frontend-path overrides that it owns itself.
+
+The archive verifier requires the diagnostic JSON and checks its version and
+full Git commit against `manifest.json`, plus the exact Server, Adapter and
+Worker Core owner order.

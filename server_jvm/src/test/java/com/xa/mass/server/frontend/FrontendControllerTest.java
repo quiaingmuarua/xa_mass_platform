@@ -11,7 +11,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class FrontendControllerTest {
 
     @Test
-    void forwardsRuntimeRoutesToTheVueEntryPoint() throws Exception {
+    void forwardsFrontendRoutesToTheVueEntryPoint() throws Exception {
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
                 new FrontendController()
         ).build();
@@ -21,7 +21,9 @@ class FrontendControllerTest {
                 "/runtime/workers",
                 "/runtime/workers/",
                 "/runtime/tasks",
-                "/runtime/tasks/"
+                "/runtime/tasks/",
+                "/reference/error-codes",
+                "/reference/error-codes/"
         }) {
             mockMvc.perform(get(path))
                     .andExpect(status().isOk())

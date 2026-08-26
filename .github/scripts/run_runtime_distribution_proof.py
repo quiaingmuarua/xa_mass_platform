@@ -329,6 +329,48 @@ def _prove_runtime(
             ):
                 raise RuntimeError("Frontend was not served by the Runtime archive")
 
+            status, reference_page, reference_type = _request(
+                "GET", f"{base_url}/reference/error-codes"
+            )
+            if (
+                status != 200
+                or reference_type != "text/html"
+                or b'id="app"' not in reference_page
+            ):
+                raise RuntimeError(
+                    "Diagnostic Code Dictionary UI was not served by the Runtime archive"
+                )
+            status, dictionary_payload, dictionary_type = _request(
+                "GET",
+                f"{base_url}/reference/platform-diagnostic-codes.json",
+            )
+            if status != 200 or dictionary_type != "application/json":
+                raise RuntimeError(
+                    "Diagnostic Code Dictionary JSON was not served by the Runtime archive"
+                )
+            dictionary = json.loads(dictionary_payload)
+            manifest = json.loads(
+                (runtime_root / "manifest.json").read_text(encoding="utf-8")
+            )
+            if (
+                dictionary.get("schemaVersion") != 1
+                or dictionary.get("version") != manifest.get("version")
+                or dictionary.get("gitCommit") != manifest.get("gitCommit")
+                or [
+                    owner.get("owner")
+                    for owner in dictionary.get("owners", [])
+                    if isinstance(owner, dict)
+                ]
+                != [
+                    "server_jvm",
+                    "transport:netty-adapter",
+                    "transport:worker-core",
+                ]
+            ):
+                raise RuntimeError(
+                    "Packaged Diagnostic Code Dictionary metadata is invalid"
+                )
+
             task_id = _managed_task_id(
                 base_url,
                 "scenario-string-utils-workers",

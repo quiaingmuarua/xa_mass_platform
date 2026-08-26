@@ -277,6 +277,13 @@ class ServerApplicationContextTest {
                 .isEqualTo("v1");
         assertThat(document.path("info").path("description").asText())
                 .contains("Kernel decides scheduling")
+                .contains("[Code Dictionary](/reference/error-codes)")
+                .contains("[current-build JSON]"
+                        + "(/reference/platform-diagnostic-codes.json)")
+                .contains("`ApiErrorResponse.code` belongs to the "
+                        + "`server_jvm` namespace")
+                .contains("producer-local namespaces")
+                .contains("does not bind API operations to diagnostic codes")
                 .doesNotContain("Task Batch Lab");
 
         var tagNames = new ArrayList<String>();

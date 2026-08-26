@@ -19,11 +19,13 @@ const config = useRuntimeViewerConfig();
 const store = useRuntimeViewerStore();
 const theme = useThemeStore();
 const route = useRoute();
-const sourceLabel = computed(() =>
-  config.mode === "api" ? "API source" : "Mock source"
-);
+const referencePage = computed(() => route.meta.section === "Reference");
+const sourceLabel = computed(() => {
+  if (referencePage.value) return "Build reference";
+  return config.mode === "api" ? "API source" : "Mock source";
+});
 const pageTitle = computed(() => String(route.meta.title ?? "Runtime"));
-const pageSection = computed(() => "Runtime");
+const pageSection = computed(() => String(route.meta.section ?? "Runtime"));
 
 onMounted(() => theme.apply());
 onBeforeUnmount(() => store.dispose());
@@ -67,6 +69,10 @@ onBeforeUnmount(() => store.dispose());
           <el-icon><Document /></el-icon>
           <span>Architecture</span>
         </a>
+        <router-link class="runtime-navigation__link" to="/reference/error-codes">
+          <el-icon><Collection /></el-icon>
+          <span>Code Dictionary</span>
+        </router-link>
       </nav>
 
       <div class="runtime-sidebar__note">
@@ -94,7 +100,9 @@ onBeforeUnmount(() => store.dispose());
         <div class="runtime-topbar__actions">
           <span
             class="source-badge"
-            :class="{ 'source-badge--mock': config.mode === 'mock' }"
+            :class="{
+              'source-badge--mock': !referencePage && config.mode === 'mock'
+            }"
             data-testid="source-badge"
           >
             <el-icon aria-hidden="true"><Connection /></el-icon>

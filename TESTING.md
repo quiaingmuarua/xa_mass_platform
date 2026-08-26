@@ -159,7 +159,8 @@ Non-Android JVM contracts:
   :scenario_workers_jvm:build `
   :server_jvm:build `
   :integrations:worker-capability-task:build `
-  :integrations:worker-fleet-acceptance:build
+  :integrations:worker-fleet-acceptance:build `
+  :distribution:server:verifyPlatformDiagnosticCodes
 ```
 
 Redis Owner:
@@ -255,6 +256,7 @@ acceptance driver is
 Frontend:
 
 ```powershell
+.\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
 Set-Location frontend
 corepack pnpm install --frozen-lockfile
 corepack pnpm lint
@@ -267,7 +269,9 @@ Runtime Distribution builds every publishable component, checks the Runtime arch
 ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
 proof extracts the ZIP to a temporary directory outside the checkout, removes
 `PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
-packaged Server against one unique `test_*` scope, loads Scalar and Frontend,
+packaged Server against one unique `test_*` scope, loads Scalar, Frontend and
+the diagnostic dictionary UI/JSON, checks the JSON build coordinates and
+three-owner allowlist,
 proves both JVM Worker previews are empty, starts the packaged Host separately,
 and closes one managed String Task Call. It then stops only the Host, proves
 Server readiness remains UP. It separately launches the clean `agentforge`
@@ -298,10 +302,11 @@ excludes historical `doc/archive` content and does not generate documentation
 or access the network.
 
 The frontend proof keeps UI testing deliberately small. It validates Runtime
-schemas and stores plus TXT validation, stable message IDs, 100-Item chunks,
-the public create/append/approve/export sequence, `400/12010` export retry
-behavior, and the
-Mock-mode no-call boundary. It does not run visual regression or browser
+schemas and stores plus the strict diagnostic dictionary v1 schema, owner and
+text filtering, duplicate-number preservation, missing/incompatible JSON
+handling, TXT validation, stable message IDs, 100-Item chunks, the public
+create/append/approve/export sequence, `400/12010` export retry behavior, and
+the Mock-mode no-call boundary. It does not run visual regression or browser
 compatibility suites.
 
 ## CI Selection and Gate

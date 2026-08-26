@@ -21,7 +21,17 @@ import org.springframework.context.annotation.Configuration;
                         + "admission capacity and 503 for a temporarily "
                         + "unavailable Owner. Worker Delivery machine routes "
                         + "also use 202 for accepted Reports and 204 for an "
-                        + "empty or bodyless successful protocol result."
+                        + "empty or bodyless successful protocol result.\n\n"
+                        + "Diagnostic lookup: [Code Dictionary]"
+                        + "(/reference/error-codes) for people and "
+                        + "[current-build JSON]"
+                        + "(/reference/platform-diagnostic-codes.json) for "
+                        + "Agents. `ApiErrorResponse.code` belongs to the "
+                        + "`server_jvm` namespace. Adapter and Worker codes "
+                        + "use their producer-local namespaces. The "
+                        + "dictionary is a current-build lookup; it does not "
+                        + "bind API operations to diagnostic codes or promise "
+                        + "cross-version compatibility."
         ),
         tags = {
                 @Tag(

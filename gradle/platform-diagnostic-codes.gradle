@@ -1,0 +1,337 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.net.URLClassLoader
+import org.gradle.api.tasks.SourceSetContainer
+
+def diagnosticCodeNotice =
+        'Current-build diagnostic lookup only. This is not a compatibility contract.'
+def diagnosticCodeOwners = [
+        [
+                owner      : 'server_jvm',
+                module     : 'server_jvm',
+                projectPath: ':server_jvm',
+                definition : 'com.xa.mass.server.error.ServerErrorCode',
+                surface    : 'Server Runtime API ApiErrorResponse'
+        ],
+        [
+                owner      : 'transport:netty-adapter',
+                module     : 'transport:netty-adapter',
+                projectPath: ':transport:netty-adapter',
+                definition : 'com.xa.mass.workerdelivery.adapter.application.'
+                        + 'WorkerDeliveryAdapterErrorCode',
+                surface    : 'Netty Worker Delivery Adapter diagnostics'
+        ],
+        [
+                owner      : 'transport:worker-core',
+                module     : 'transport:worker-core',
+                projectPath: ':transport:worker-core',
+                definition : 'com.xa.mass.worker.error.WorkerErrorCode',
+                surface    : 'Shared Platform Worker runtime diagnostics'
+        ]
+].asImmutable()
+def generatedDiagnosticCodeFile = layout.buildDirectory.file(
+        'generated/reference/platform-diagnostic-codes.json'
+)
+def currentGitCommit = providers.exec {
+    workingDir rootProject.projectDir
+    commandLine 'git', 'rev-parse', 'HEAD'
+}.standardOutput.asText.map { it.trim() }
+
+def validateOwnerRows = { String owner, List<Map<String, Object>> rows ->
+    if (rows.isEmpty()) {
+        throw new GradleException(
+                "${owner} must declare at least one diagnostic code"
+        )
+    }
+    Set<Integer> codes = new LinkedHashSet<>()
+    Set<String> names = new LinkedHashSet<>()
+    rows.eachWithIndex { Map<String, Object> row, int index ->
+        Object rawCode = row.code
+        if (!(rawCode instanceof Integer) || (rawCode as int) <= 0) {
+            throw new GradleException(
+                    "${owner} diagnostic code at index ${index} must be a positive int"
+            )
+        }
+        String name = row.name as String
+        if (name == null || !(name ==~ /[A-Z][A-Z0-9_]*/)) {
+            throw new GradleException(
+                    "${owner} diagnostic name at index ${index} is invalid"
+            )
+        }
+        String meaning = row.meaning as String
+        if (meaning == null || meaning.isBlank() || meaning != meaning.trim()) {
+            throw new GradleException(
+                    "${owner} diagnostic meaning for ${name} is invalid"
+            )
+        }
+        if (!codes.add(rawCode as int)) {
+            throw new GradleException(
+                    "${owner} contains duplicate diagnostic code ${rawCode}"
+            )
+        }
+        if (!names.add(name)) {
+            throw new GradleException(
+                    "${owner} contains duplicate diagnostic name ${name}"
+            )
+        }
+    }
+    rows
+}
+
+def classDirectories = { Map<String, String> owner ->
+    Project ownerProject = project(owner.projectPath)
+    SourceSetContainer sourceSets = ownerProject.extensions.findByType(
+            SourceSetContainer
+    )
+    if (sourceSets == null) {
+        throw new GradleException(
+                "${owner.projectPath} does not expose Java source sets"
+        )
+    }
+    Set<File> directories = sourceSets.named('main').get()
+            .output.classesDirs.files
+            .findAll { it.isDirectory() }
+    if (directories.isEmpty()) {
+        throw new GradleException(
+                "${owner.projectPath} main classes output is missing"
+        )
+    }
+    directories
+}
+
+def readOwnerProjection = { Map<String, String> owner ->
+    URL[] urls = classDirectories(owner)
+            .collect { it.toURI().toURL() }
+            .toArray(URL[]::new)
+    URLClassLoader loader = new URLClassLoader(
+            urls,
+            ClassLoader.getPlatformClassLoader()
+    )
+    try {
+        Class<?> definition = Class.forName(owner.definition, true, loader)
+        if (!definition.isEnum()) {
+            throw new GradleException(
+                    "${owner.definition} must be an enum"
+            )
+        }
+        def codeMethod = definition.getMethod('code')
+        def messageMethod = definition.getMethod('defaultMessage')
+        List<Map<String, Object>> rows = definition.enumConstants.collect {
+            Object rawCode = codeMethod.invoke(it)
+            Object rawMeaning = messageMethod.invoke(it)
+            if (!(rawCode instanceof Integer)) {
+                throw new GradleException(
+                        "${owner.definition}.code() must return int"
+                )
+            }
+            if (!(rawMeaning instanceof String)) {
+                throw new GradleException(
+                        "${owner.definition}.defaultMessage() must return String"
+                )
+            }
+            [
+                    code   : rawCode,
+                    name   : (it as Enum<?>).name(),
+                    meaning: rawMeaning
+            ] as LinkedHashMap<String, Object>
+        }
+        validateOwnerRows(owner.owner, rows)
+        rows.sort { left, right ->
+            (left.code as int) <=> (right.code as int)
+        }
+        [
+                owner     : owner.owner,
+                module    : owner.module,
+                definition: owner.definition,
+                surface   : owner.surface,
+                codes     : rows
+        ] as LinkedHashMap<String, Object>
+    } catch (ReflectiveOperationException exception) {
+        throw new GradleException(
+                "Could not read diagnostic enum ${owner.definition}",
+                exception
+        )
+    } finally {
+        loader.close()
+    }
+}
+
+def buildProjection = {
+    String commit = currentGitCommit.get()
+    if (!(commit ==~ /[0-9a-f]{40}/)) {
+        throw new GradleException(
+                'git rev-parse HEAD did not return a full commit'
+        )
+    }
+    [
+            schemaVersion: 1,
+            version      : project.version.toString(),
+            gitCommit    : commit,
+            notice       : diagnosticCodeNotice,
+            owners       : diagnosticCodeOwners.collect(readOwnerProjection)
+    ] as LinkedHashMap<String, Object>
+}
+
+def renderProjection = { Map<String, Object> projection ->
+    return JsonOutput.prettyPrint(JsonOutput.toJson(projection)) + "\n"
+}
+
+def ownerClassOutputs = files(diagnosticCodeOwners.collect { owner ->
+    project(owner.projectPath).layout.buildDirectory.dir('classes/java/main')
+})
+def ownerClassTasks = diagnosticCodeOwners.collect {
+    "${it.projectPath}:classes"
+}
+
+tasks.register('generatePlatformDiagnosticCodes') {
+    group = 'documentation'
+    description = 'Generates the current-build Platform diagnostic code lookup.'
+    dependsOn ownerClassTasks
+    inputs.property('schemaVersion', 1)
+    inputs.property('version', project.version.toString())
+    inputs.property('gitCommit', currentGitCommit)
+    inputs.property('notice', diagnosticCodeNotice)
+    inputs.property('owners', diagnosticCodeOwners.collect { owner ->
+        owner.findAll { key, _ -> key != 'projectPath' }
+    })
+    inputs.files(ownerClassOutputs)
+    outputs.file(generatedDiagnosticCodeFile)
+    doLast {
+        File output = generatedDiagnosticCodeFile.get().asFile
+        output.parentFile.mkdirs()
+        output.setText(renderProjection(buildProjection()), 'UTF-8')
+    }
+}
+
+tasks.register('verifyPlatformDiagnosticCodes') {
+    group = 'verification'
+    description = 'Verifies the generated Platform diagnostic code projection.'
+    dependsOn tasks.named('generatePlatformDiagnosticCodes')
+    inputs.file(generatedDiagnosticCodeFile)
+    doLast {
+        File output = generatedDiagnosticCodeFile.get().asFile
+        String raw = output.getText('UTF-8')
+        Map<String, Object> parsed = new JsonSlurper().parseText(raw) as Map
+        Set<String> expectedRootFields = [
+                'schemaVersion',
+                'version',
+                'gitCommit',
+                'notice',
+                'owners'
+        ] as LinkedHashSet
+        if (parsed.keySet() != expectedRootFields) {
+            throw new GradleException(
+                    "Diagnostic dictionary fields are invalid: ${parsed.keySet()}"
+            )
+        }
+        if (parsed.schemaVersion != 1) {
+            throw new GradleException('Diagnostic dictionary schema must be v1')
+        }
+        if (raw.toLowerCase(Locale.ROOT).contains('"timestamp"')
+                || raw.toLowerCase(Locale.ROOT).contains('"generatedat"')) {
+            throw new GradleException(
+                    'Diagnostic dictionary must not contain generation time'
+            )
+        }
+        List<Map<String, Object>> owners = parsed.owners as List
+        List<String> actualOwnerOrder = owners.collect { it.owner as String }
+        List<String> expectedOwnerOrder = diagnosticCodeOwners.collect {
+            it.owner
+        }
+        if (actualOwnerOrder != expectedOwnerOrder) {
+            throw new GradleException(
+                    "Diagnostic owner allowlist drifted: ${actualOwnerOrder}"
+            )
+        }
+        owners.each { owner ->
+            Set<String> expectedOwnerFields = [
+                    'owner', 'module', 'definition', 'surface', 'codes'
+            ] as LinkedHashSet
+            if (owner.keySet() != expectedOwnerFields) {
+                throw new GradleException(
+                        "Diagnostic owner fields are invalid for ${owner.owner}"
+                )
+            }
+            List<Map<String, Object>> rows = owner.codes as List
+            rows.each { row ->
+                if (row.keySet() != (['code', 'name', 'meaning'] as LinkedHashSet)) {
+                    throw new GradleException(
+                            "Diagnostic fields are invalid for ${owner.owner}"
+                    )
+                }
+            }
+            validateOwnerRows(owner.owner as String, rows)
+            List<Integer> codes = rows.collect { it.code as int }
+            if (codes != codes.toSorted()) {
+                throw new GradleException(
+                        "Diagnostic codes are not sorted for ${owner.owner}"
+                )
+            }
+            String coordinates = [
+                    owner.owner,
+                    owner.module,
+                    owner.definition
+            ].join(' ').toLowerCase(Locale.ROOT)
+            if (['scenario', 'integration', 'capability', 'android',
+                 'frontend', 'distribution'].any { coordinates.contains(it) }) {
+                throw new GradleException(
+                        "Non-Platform diagnostic owner was included: ${owner.owner}"
+                )
+            }
+        }
+
+        boolean duplicateCodeRejected = false
+        try {
+            validateOwnerRows('owner-local-test', [
+                    [code: 1, name: 'FIRST', meaning: 'First'],
+                    [code: 1, name: 'SECOND', meaning: 'Second']
+            ])
+        } catch (GradleException ignored) {
+            duplicateCodeRejected = true
+        }
+        if (!duplicateCodeRejected) {
+            throw new GradleException('Owner-local duplicate code was accepted')
+        }
+        boolean duplicateNameRejected = false
+        try {
+            validateOwnerRows('owner-local-test', [
+                    [code: 1, name: 'SAME', meaning: 'First'],
+                    [code: 2, name: 'SAME', meaning: 'Second']
+            ])
+        } catch (GradleException ignored) {
+            duplicateNameRejected = true
+        }
+        if (!duplicateNameRejected) {
+            throw new GradleException('Owner-local duplicate name was accepted')
+        }
+        List<Map<String, Object>> crossOwnerA = validateOwnerRows('cross-owner-a', [
+                [code: 7, name: 'FIRST', meaning: 'First']
+        ])
+        List<Map<String, Object>> crossOwnerB = validateOwnerRows('cross-owner-b', [
+                [code: 7, name: 'SECOND', meaning: 'Second']
+        ])
+        if ((crossOwnerA + crossOwnerB).count { it.code == 7 } != 2) {
+            throw new GradleException('Cross-owner duplicate code was collapsed')
+        }
+
+        String expected = renderProjection(buildProjection())
+        if (raw != expected) {
+            throw new GradleException(
+                    'Diagnostic dictionary does not match the current enum projection'
+            )
+        }
+    }
+}
+
+tasks.register('installLocalPlatformDiagnosticCodes', Copy) {
+    group = 'distribution'
+    description = 'Installs the diagnostic lookup into the local frontend dist.'
+    dependsOn tasks.named('generatePlatformDiagnosticCodes')
+    from(generatedDiagnosticCodeFile)
+    into(rootProject.layout.projectDirectory.dir('frontend/dist/reference'))
+}
+
+extensions.extraProperties.set(
+        'platformDiagnosticCodesFile',
+        generatedDiagnosticCodeFile
+)

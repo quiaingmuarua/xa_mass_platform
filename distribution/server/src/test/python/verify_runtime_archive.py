@@ -44,6 +44,8 @@ def verify(archive: Path, version: str) -> None:
             f"{root}/kernel/wheelhouse/redis-8.0.0-py3-none-any.whl",
             f"{root}/config/pacer-default.json",
             f"{root}/frontend/dist/index.html",
+            f"{root}/frontend/dist/reference/"
+            "platform-diagnostic-codes.json",
             f"{root}/manifest.json",
             f"{root}/THIRD_PARTY_NOTICES.md",
             f"{root}/LICENSE.pure-admin-thin",
@@ -92,6 +94,62 @@ def verify(archive: Path, version: str) -> None:
                 "autoStart": False,
             },
             "Scenario Worker Host manifest mismatch",
+        )
+
+        diagnostic_codes = json.loads(
+            runtime.read(
+                f"{root}/frontend/dist/reference/"
+                "platform-diagnostic-codes.json"
+            )
+        )
+        _require(
+            diagnostic_codes.get("schemaVersion") == 1,
+            "diagnostic dictionary schema mismatch",
+        )
+        _require(
+            diagnostic_codes.get("version") == manifest.get("version"),
+            "diagnostic dictionary version mismatch",
+        )
+        _require(
+            diagnostic_codes.get("gitCommit") == manifest.get("gitCommit"),
+            "diagnostic dictionary gitCommit mismatch",
+        )
+        diagnostic_owners = diagnostic_codes.get("owners")
+        _require(
+            isinstance(diagnostic_owners, list),
+            "diagnostic dictionary owners are invalid",
+        )
+        _require(
+            all(isinstance(owner, dict) for owner in diagnostic_owners),
+            "diagnostic dictionary owner entry is invalid",
+        )
+        _require(
+            [owner.get("owner") for owner in diagnostic_owners]
+            == [
+                "server_jvm",
+                "transport:netty-adapter",
+                "transport:worker-core",
+            ],
+            "diagnostic dictionary owner allowlist mismatch",
+        )
+        diagnostic_owner_coordinates = " ".join(
+            str(owner.get(field, ""))
+            for owner in diagnostic_owners
+            for field in ("owner", "module", "definition")
+        ).lower()
+        _require(
+            all(
+                excluded not in diagnostic_owner_coordinates
+                for excluded in (
+                    "scenario",
+                    "integration",
+                    "capability",
+                    "android",
+                    "frontend",
+                    "distribution",
+                )
+            ),
+            "diagnostic dictionary contains a non-Platform owner",
         )
 
         server_jar_name = f"{root}/lib/xa-mass-server-jvm-{version}.jar"

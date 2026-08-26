@@ -342,10 +342,19 @@ Exact route schemas are available from the running Server:
 Scalar API Reference  http://127.0.0.1:18082/scalar
 OpenAPI JSON          http://127.0.0.1:18082/v3/api-docs
 Architecture Overview http://127.0.0.1:18082/overview.htm
+Diagnostic Code UI    http://127.0.0.1:18082/reference/error-codes
+Diagnostic Code JSON  http://127.0.0.1:18082/reference/platform-diagnostic-codes.json
 ```
 
 Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external
 fonts are disabled.
+
+OpenAPI Introduction links to the two diagnostic reference paths without
+embedding the dictionary or binding codes to operations. Public
+`ApiErrorResponse.code` values belong to `server_jvm`; Netty Adapter and Worker
+Core codes remain in producer-local namespaces. The packaged JSON is generated
+by `distribution/server` from the current compiled enums, excludes Scenario
+and downstream capability errors, and makes no cross-version stability claim.
 
 Scalar navigation uses four caller-facing API groups:
 

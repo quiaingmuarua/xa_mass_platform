@@ -28,6 +28,15 @@ export const router = createRouter({
           meta: {
             title: "Tasks"
           }
+        },
+        {
+          path: "reference/error-codes",
+          name: "reference-error-codes",
+          component: () => import("@/views/ErrorCodeReferenceView.vue"),
+          meta: {
+            section: "Reference",
+            title: "Diagnostic Codes"
+          }
         }
       ]
     },

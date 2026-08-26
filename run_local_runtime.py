@@ -64,6 +64,7 @@ def gradle_tasks(profile: str) -> list[str]:
     tasks = [":server_jvm:bootJar"]
     if profile == DEFAULT_PROFILE:
         tasks.append(":scenario_workers_jvm:installDist")
+    tasks.append(":distribution:server:installLocalPlatformDiagnosticCodes")
     return tasks
 
 

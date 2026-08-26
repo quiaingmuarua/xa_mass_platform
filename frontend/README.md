@@ -24,6 +24,20 @@ The default data source is the real API. Vite proxies relative `/api` requests
 to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. Explicit Mock mode
 is available through `pnpm dev:mock` and never activates as a fallback.
 
+The Code Dictionary is a current-build projection, so generate it before a
+local Vite session:
+
+```powershell
+.\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
+Set-Location frontend
+corepack pnpm dev
+```
+
+Vite serves only the exact
+`/reference/platform-diagnostic-codes.json` path from that build output. It
+returns `404` when the projection is missing and never exposes the surrounding
+Gradle build directory. Mock mode does not fabricate a dictionary.
+
 The public Vercel deployment is built with `pnpm build:demo` and therefore uses
 that explicit Mock mode. It is a current UI and architecture demonstration, not
 a hosted XA Mass Runtime: mutating Task and Direct Debug actions remain disabled,
@@ -35,10 +49,23 @@ Routes:
 ```text
 /runtime/workers
 /runtime/tasks
+/reference/error-codes
 ```
 
-The sidebar also links to `/scalar` and `/overview.htm`. The overview source is
-`frontend/public/overview.htm`; generated `dist` content is not committed.
+The sidebar also links to `/scalar` and `/overview.htm`. The dictionary JSON is
+available at `/reference/platform-diagnostic-codes.json`. The overview source
+is `frontend/public/overview.htm`; generated `dist` and dictionary content are
+not committed.
+
+## Diagnostic Code Dictionary
+
+The page validates schema v1 with Zod and then searches the current Server,
+Netty Adapter and Worker Core enum projection by code, symbol, meaning or
+owner. Owner namespaces remain independent, so the same number may appear on
+multiple rows. This reference does not bind an API operation to a code and is
+not a cross-version compatibility promise. Loading, missing-file,
+schema-incompatible and empty-search states remain explicit; no Pinia or
+Runtime truth is created.
 
 ## Worker observation
 

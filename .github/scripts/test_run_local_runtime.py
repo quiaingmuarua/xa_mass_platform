@@ -30,11 +30,18 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
     def test_only_scenario_profile_builds_the_worker_host(self) -> None:
         self.assertEqual(
             launcher.gradle_tasks("scenario-workers"),
-            [":server_jvm:bootJar", ":scenario_workers_jvm:installDist"],
+            [
+                ":server_jvm:bootJar",
+                ":scenario_workers_jvm:installDist",
+                ":distribution:server:installLocalPlatformDiagnosticCodes",
+            ],
         )
         self.assertEqual(
             launcher.gradle_tasks("agentforge"),
-            [":server_jvm:bootJar"],
+            [
+                ":server_jvm:bootJar",
+                ":distribution:server:installLocalPlatformDiagnosticCodes",
+            ],
         )
 
     def test_profile_coordinates_follow_the_checked_configuration(self) -> None:

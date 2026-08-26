@@ -132,6 +132,7 @@ jobs:
           :server_jvm:build
           :integrations:worker-capability-task:build
           :integrations:worker-fleet-acceptance:build
+          :distribution:server:verifyPlatformDiagnosticCodes
       - name: Summarize JVM proof
         if: always()
         run: >-

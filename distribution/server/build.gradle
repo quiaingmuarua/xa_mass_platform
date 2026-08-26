@@ -5,6 +5,8 @@ plugins {
     id 'base'
 }
 
+apply from: rootProject.file('gradle/platform-diagnostic-codes.gradle')
+
 def runtimeVersion = project.version.toString()
 def requestedVersion = providers.gradleProperty('xaMassVersion')
 def repositoryRoot = rootProject.projectDir
@@ -207,7 +209,8 @@ tasks.register('stageRuntime', Sync) {
             tasks.named('buildKernelWheel'),
             tasks.named('downloadRuntimeDependencies'),
             tasks.named('buildFrontend'),
-            tasks.named('generateRuntimeManifest')
+            tasks.named('generateRuntimeManifest'),
+            tasks.named('generatePlatformDiagnosticCodes')
     )
     into stagedDirectory
     from(serverBootJar.flatMap { it.archiveFile }) {
@@ -227,6 +230,10 @@ tasks.register('stageRuntime', Sync) {
     }
     from(rootProject.file('frontend/dist')) {
         into 'frontend/dist'
+        exclude 'reference/platform-diagnostic-codes.json'
+    }
+    from(platformDiagnosticCodesFile) {
+        into 'frontend/dist/reference'
     }
     from('src/main/dist') {
         exclude '**/__pycache__/**', '**/*.pyc'
@@ -264,6 +271,24 @@ tasks.register('launcherTest', Exec) {
             '-s', file('src/test/python').absolutePath,
             '-p', 'test_*.py', '-v'
     )
+}
+
+tasks.register('sourceLauncherTest', Exec) {
+    group = 'verification'
+    description = 'Runs standard-library tests for the source local Runtime launcher.'
+    workingDir repositoryRoot
+    inputs.file(rootProject.file('run_local_runtime.py'))
+    inputs.file(rootProject.file('.github/scripts/test_run_local_runtime.py'))
+    commandLine(
+            pythonExecutable.get(),
+            rootProject.file('.github/scripts/test_run_local_runtime.py')
+                    .absolutePath,
+            '-v'
+    )
+}
+
+tasks.named('launcherTest') {
+    dependsOn tasks.named('sourceLauncherTest')
 }
 
 tasks.register('verifyRuntimeArchive', Exec) {
