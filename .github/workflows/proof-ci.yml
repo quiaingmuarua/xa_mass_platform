@@ -780,6 +780,8 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm build
+      - name: Build Vercel demo
+        run: pnpm build:demo
       - name: Summarize Frontend proof
         if: always()
         run: |

@@ -6,4 +6,5 @@ test-results
 pnpm-lock.yaml
 docs/*.png
 public/overview.htm
+public/reference/openapi.json
 LICENSE.pure-admin-thin

@@ -42,6 +42,28 @@ tasks.named('test') {
     }
 }
 
+tasks.withType(Test).configureEach {
+    systemProperty(
+            'xa.mass.repository.root',
+            rootProject.projectDir.absolutePath
+    )
+}
+
+tasks.register('exportOpenApiSnapshot', JavaExec) {
+    group = 'documentation'
+    description = 'Exports the deterministic public OpenAPI snapshot.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass.set('com.xa.mass.server.openapi.OpenApiSnapshotExporter')
+    args rootProject.file(
+            'frontend/public/reference/openapi.json'
+    ).absolutePath
+    outputs.file(rootProject.file(
+            'frontend/public/reference/openapi.json'
+    ))
+    outputs.upToDateWhen { false }
+}
+
 tasks.named('bootRun') {
     systemProperty(
             'xa.mass.kernel-pacer.working-directory',

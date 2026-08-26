@@ -134,11 +134,16 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   owns no Kernel, Server or Transport mechanism.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
-  public DIRECT_CALL API, Scalar link surface and architecture overview host.
+  public DIRECT_CALL API, a build-time Scalar API Reference and architecture
+  overview host.
   It owns no scheduling, Worker identity or lifecycle truth.
   The [public UI demo](https://frontend-kylerrun-s-projects.vercel.app) uses the
   explicit Mock data source; real Runtime data remains available only from a
-  running XA Mass Server on the same origin.
+  running XA Mass Server on the same origin. Its
+  [API Reference](https://frontend-kylerrun-s-projects.vercel.app/api-reference)
+  renders the committed, CI-verified OpenAPI snapshot and cannot execute
+  requests. A running Server continues to expose its live reference at
+  `/scalar`.
 - [`distribution/server/`](distribution/server/) packages those existing
   owners into one versioned Server Runtime ZIP. It adds no scheduling or
   Transport behavior and still requires external Redis.

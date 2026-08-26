@@ -11,6 +11,8 @@ upstream licenses continue to apply.
 - Pure Admin Thin: MIT License. Its preserved license is shipped as
   `LICENSE.pure-admin-thin` and its source notice as
   `THIRD_PARTY_NOTICES.frontend.md`.
+- Scalar API Reference: MIT License. Its source notice is included in
+  `THIRD_PARTY_NOTICES.frontend.md`.
 
 This notice does not replace or broaden any license applicable to XA Mass
 source code. The repository currently has no root project license file, so the

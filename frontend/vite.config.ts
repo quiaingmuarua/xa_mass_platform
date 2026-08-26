@@ -65,7 +65,7 @@ function platformDiagnosticCodesPlugin(): Plugin {
 
 function proxyFor(target: string) {
   return {
-    "/api": {
+    "^/api(?:/|$)": {
       target,
       changeOrigin: false
     }

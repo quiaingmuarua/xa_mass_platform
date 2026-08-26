@@ -329,6 +329,36 @@ def _prove_runtime(
             ):
                 raise RuntimeError("Frontend was not served by the Runtime archive")
 
+            status, api_reference, api_reference_type = _request(
+                "GET", f"{base_url}/api-reference"
+            )
+            if (
+                status != 200
+                or api_reference_type != "text/html"
+                or b'id="app"' not in api_reference
+            ):
+                raise RuntimeError(
+                    "Static API Reference was not served by the Runtime archive"
+                )
+            status, openapi_payload, openapi_type = _request(
+                "GET", f"{base_url}/reference/openapi.json"
+            )
+            if status != 200 or openapi_type != "application/json":
+                raise RuntimeError(
+                    "OpenAPI snapshot was not served by the Runtime archive"
+                )
+            openapi = json.loads(openapi_payload)
+            if (
+                openapi.get("openapi") != "3.1.0"
+                or "servers" in openapi
+                or not openapi.get("paths")
+                or not all(
+                    path.startswith("/api/v1/")
+                    for path in openapi.get("paths", {})
+                )
+            ):
+                raise RuntimeError("Packaged OpenAPI snapshot is invalid")
+
             status, reference_page, reference_type = _request(
                 "GET", f"{base_url}/reference/error-codes"
             )

@@ -46,6 +46,7 @@ def verify(archive: Path, version: str) -> None:
             f"{root}/frontend/dist/index.html",
             f"{root}/frontend/dist/reference/"
             "platform-diagnostic-codes.json",
+            f"{root}/frontend/dist/reference/openapi.json",
             f"{root}/manifest.json",
             f"{root}/THIRD_PARTY_NOTICES.md",
             f"{root}/LICENSE.pure-admin-thin",
@@ -150,6 +151,38 @@ def verify(archive: Path, version: str) -> None:
                 )
             ),
             "diagnostic dictionary contains a non-Platform owner",
+        )
+
+        openapi = json.loads(
+            runtime.read(f"{root}/frontend/dist/reference/openapi.json")
+        )
+        _require(openapi.get("openapi") == "3.1.0", "OpenAPI version mismatch")
+        _require(
+            "servers" not in openapi,
+            "OpenAPI snapshot contains a runtime URL",
+        )
+        _require(
+            openapi.get("info", {}).get("title") == "XA Mass Runtime API",
+            "OpenAPI title mismatch",
+        )
+        openapi_paths = openapi.get("paths")
+        _require(
+            isinstance(openapi_paths, dict) and bool(openapi_paths),
+            "OpenAPI paths are invalid",
+        )
+        _require(
+            all(path.startswith("/api/v1/") for path in openapi_paths),
+            "OpenAPI snapshot contains a non-public path",
+        )
+        _require(
+            [tag.get("name") for tag in openapi.get("tags", [])]
+            == [
+                "Worker Resources",
+                "Tasks",
+                "Runtime View",
+                "Worker Delivery",
+            ],
+            "OpenAPI tag order mismatch",
         )
 
         server_jar_name = f"{root}/lib/xa-mass-server-jvm-{version}.jar"

@@ -41,6 +41,15 @@ export const router = createRouter({
       ]
     },
     {
+      path: "/api-reference",
+      alias: "/scalar",
+      name: "api-reference",
+      component: () => import("@/views/ApiReferenceView.vue"),
+      meta: {
+        title: "API Reference"
+      }
+    },
+    {
       path: "/:pathMatch(.*)*",
       name: "not-found",
       component: () => import("@/views/NotFoundView.vue")

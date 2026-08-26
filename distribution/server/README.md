@@ -5,6 +5,9 @@ Server, the production-only Python Kernel Pacer wheel and pinned offline
 dependency, the compiled frontend, default Pacer policy, and an optional
 standalone Scenario Worker Host. It also generates and packages the
 current-build Platform diagnostic code projection. Redis remains external.
+The compiled frontend also carries the committed, Server-verified OpenAPI
+snapshot at `frontend/dist/reference/openapi.json`; unlike the diagnostic
+dictionary, that snapshot is generated explicitly and tracked in source.
 
 The projection is produced from an explicit three-owner allowlist rather than
 a repository-wide scan:
@@ -71,4 +74,6 @@ frontend-path overrides that it owns itself.
 
 The archive verifier requires the diagnostic JSON and checks its version and
 full Git commit against `manifest.json`, plus the exact Server, Adapter and
-Worker Core owner order.
+Worker Core owner order. It also requires the OpenAPI 3.1 snapshot, rejects a
+request-derived `servers` field or non-`/api/v1/**` paths, and checks the stable
+four-Tag navigation order.

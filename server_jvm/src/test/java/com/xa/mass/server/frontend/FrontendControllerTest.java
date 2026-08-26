@@ -22,6 +22,8 @@ class FrontendControllerTest {
                 "/runtime/workers/",
                 "/runtime/tasks",
                 "/runtime/tasks/",
+                "/api-reference",
+                "/api-reference/",
                 "/reference/error-codes",
                 "/reference/error-codes/"
         }) {

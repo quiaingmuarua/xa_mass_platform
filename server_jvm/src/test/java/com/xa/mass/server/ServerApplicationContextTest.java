@@ -29,6 +29,7 @@ import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
+import com.xa.mass.server.openapi.OpenApiSnapshotSupport;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
@@ -43,6 +44,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -435,6 +438,24 @@ class ServerApplicationContextTest {
         assertThat(document.path("paths").has(
                 "/api/v1/worker-groups/{workerGroupId}/item-results:load"
         )).isFalse();
+
+        Path snapshot = Path.of(
+                System.getProperty("xa.mass.repository.root")
+        ).resolve("frontend/public/reference/openapi.json");
+        assertThat(snapshot)
+                .withFailMessage(
+                        "OpenAPI snapshot is missing; run "
+                                + ".\\gradlew.bat "
+                                + ":server_jvm:exportOpenApiSnapshot"
+                )
+                .exists();
+        assertThat(Files.readString(snapshot, StandardCharsets.UTF_8))
+                .withFailMessage(
+                        "OpenAPI snapshot drifted; run "
+                                + ".\\gradlew.bat "
+                                + ":server_jvm:exportOpenApiSnapshot"
+                )
+                .isEqualTo(OpenApiSnapshotSupport.canonicalize(response.body()));
     }
 
     private static Set<String> expectedResponseCodes(String tag, String path) {

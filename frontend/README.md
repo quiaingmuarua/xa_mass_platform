@@ -25,10 +25,12 @@ to `VITE_RUNTIME_PROXY_TARGET`; Server CORS is not enabled. Explicit Mock mode
 is available through `pnpm dev:mock` and never activates as a fallback.
 
 The Code Dictionary is a current-build projection, so generate it before a
-local Vite session:
+local Vite session. The OpenAPI Reference is a committed build-time projection;
+regenerate it whenever the public Server API changes:
 
 ```powershell
 .\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
+.\gradlew.bat :server_jvm:exportOpenApiSnapshot
 Set-Location frontend
 corepack pnpm dev
 ```
@@ -43,19 +45,36 @@ that explicit Mock mode. It is a current UI and architecture demonstration, not
 a hosted XA Mass Runtime: mutating Task and Direct Debug actions remain disabled,
 and no request is proxied to a local or remote Server. Real Runtime data is
 served only by the frontend bundled with the Server Runtime on the same origin.
+The public `/api-reference` (and Vercel-only `/scalar` alias) renders the
+committed `/reference/openapi.json` snapshot with request execution disabled.
+The live Server continues to own `/scalar` and `/v3/api-docs`.
 
 Routes:
 
 ```text
 /runtime/workers
 /runtime/tasks
+/api-reference
 /reference/error-codes
 ```
 
-The sidebar also links to `/scalar` and `/overview.htm`. The dictionary JSON is
-available at `/reference/platform-diagnostic-codes.json`. The overview source
-is `frontend/public/overview.htm`; generated `dist` and dictionary content are
-not committed.
+The sidebar also links to the current origin's `/scalar` and `/overview.htm`.
+On Vercel, the SPA maps `/scalar` to the same static API Reference; on the Java
+Server, its MVC Scalar route takes precedence and stays live. The OpenAPI
+snapshot is committed at `frontend/public/reference/openapi.json`. The
+dictionary JSON is available at
+`/reference/platform-diagnostic-codes.json`. The overview source is
+`frontend/public/overview.htm`; generated `dist` and dictionary content are not
+committed.
+
+## API Reference
+
+The API Reference uses the official Scalar Vue component in a top-level lazy
+route, outside the Runtime Viewer layout. It loads only
+`/reference/openapi.json`, hides request execution and developer tools, and
+does not load with the Worker Runtime first screen. The snapshot is a checked
+documentation projection rather than Runtime truth: use a running Server's
+`/scalar` when the current live schema or request debugger is required.
 
 ## Diagnostic Code Dictionary
 

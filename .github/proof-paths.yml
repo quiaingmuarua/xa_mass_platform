@@ -7,6 +7,7 @@ kernel_oracle:
   - '!**/*.md'
 jvm_contracts:
   - 'run_local_runtime.py'
+  - 'frontend/public/reference/openapi.json'
   - 'kernel_design/config/**'
   - 'kernel_jvm/**'
   - 'scenario_workers_jvm/**'

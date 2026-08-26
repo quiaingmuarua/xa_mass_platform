@@ -12,15 +12,15 @@ boundary named below.
 | Lane | Invariant | External dependencies | Primary command |
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
-| JVM Contracts | JVM modules compile and their owner, codec, architecture, and unit proofs pass | None | Explicit non-Android Gradle module `build` tasks |
+| JVM Contracts | JVM modules compile and their owner, codec, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission and the one-read descending Task Score Preview prove the Java Task Score slice, while the Serviceability bridge proves Adapter request consume and evidence append | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context owns the temporary Python Pacer CLI child while a finite polling Task closes and exports its success Results, and WorkerGroup registration returns a managed Task ID that the bounded Task Score Runtime Preview resolves again before Task-addressed Calls synchronously return through WebSocket and Socket; WebSocket also proves DIRECT_CALL, Adapter Network observation and Serviceability convergence | Redis 7, Python plus `redis` dependency | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacer stay up | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Python plus `redis` dependency, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Python plus `redis` dependency, Java Server, API 33 x86_64 Emulator | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
-| Frontend | The bounded WorkerGroup and Task Score Runtime previews, Task/Worker diagnostic calls, and finite Task create/append/approve/export workbench remain lint-clean, type-safe, unit-tested, and buildable | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build` |
-| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11 or newer, Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.4.0` |
+| Frontend | The bounded Runtime previews, Task/Worker diagnostic calls, finite Task workbench, and lazy read-only Scalar snapshot page remain lint-clean, type-safe, unit-tested, and buildable in API and public-demo modes | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` |
+| Runtime Distribution | The schema-v3 Server Runtime proves both built-in Profiles and its static OpenAPI Reference outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Python 3.11 or newer, Android SDK 36, Node 22.19 and pnpm 11.9 | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.4.0` |
 | Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
 
 The deterministic Server proof owns the public response classification. Its
@@ -34,6 +34,12 @@ whose media types each contain a schema distinct from `ApiErrorResponse`, while
 the Direct Call-only `429`. It also rejects declared business `404/409/422`
 responses; framework routing or protocol failures remain outside the XA
 business-code contract, and unknown routes retain framework `404` behavior.
+The same proof canonicalizes the real `/v3/api-docs`, removes only its
+request-derived `servers` field, and compares it byte-for-byte with
+`frontend/public/reference/openapi.json`. Object fields are recursively sorted,
+arrays retain declaration order, and only `/api/v1/**` paths are accepted. API
+changes therefore fail JVM Contracts until the snapshot is deliberately
+regenerated with `:server_jvm:exportOpenApiSnapshot`.
 
 The `Capability Task` command reads two local text fixtures, creates two
 finite Tasks, appends 30 Items to each, approves them, downloads two successful
@@ -257,12 +263,14 @@ Frontend:
 
 ```powershell
 .\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
+.\gradlew.bat :server_jvm:exportOpenApiSnapshot
 Set-Location frontend
 corepack pnpm install --frozen-lockfile
 corepack pnpm lint
 corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm build
+corepack pnpm build:demo
 ```
 
 Runtime Distribution builds every publishable component, checks the Runtime archive
@@ -270,7 +278,8 @@ ABI and opens the Kernel wheel to reject `tests` and `test_support`. Its real
 proof extracts the ZIP to a temporary directory outside the checkout, removes
 `PYTHONPATH`, creates the archive-owned venv with `--no-index`, starts the
 packaged Server against one unique `test_*` scope, loads Scalar, Frontend and
-the diagnostic dictionary UI/JSON, checks the JSON build coordinates and
+the diagnostic dictionary UI/JSON, loads the static API Reference and validates
+its OpenAPI snapshot, checks the diagnostic JSON build coordinates and
 three-owner allowlist,
 proves both JVM Worker previews are empty, starts the packaged Host separately,
 and closes one managed String Task Call. It then stops only the Host, proves
@@ -306,8 +315,9 @@ schemas and stores plus the strict diagnostic dictionary v1 schema, owner and
 text filtering, duplicate-number preservation, missing/incompatible JSON
 handling, TXT validation, stable message IDs, 100-Item chunks, the public
 create/append/approve/export sequence, `400/12010` export retry behavior, and
-the Mock-mode no-call boundary. It does not run visual regression or browser
-compatibility suites.
+the Mock-mode no-call boundary. It also fixes the Scalar snapshot URL and
+read-only configuration without browser automation. It does not run visual
+regression or browser compatibility suites.
 
 ## CI Selection and Gate
 
@@ -349,6 +359,9 @@ Representative selection rules:
   Runtime, Worker Fleet, Capability Task, and Runtime Distribution proofs;
 - production inputs embedded in the Server archive run Runtime Distribution;
   test-only changes in those modules do not select it.
+- the committed OpenAPI snapshot selects JVM Contracts for drift, Frontend for
+  the static Reference build, and Runtime Distribution because the snapshot is
+  part of the archive ABI.
 
 CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
 Capability Task, and Android Emulator upload only schema-versioned safe evidence:

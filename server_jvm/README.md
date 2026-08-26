@@ -339,15 +339,33 @@ Adapter and Kernel Command keys are response-local and opaque.
 Exact route schemas are available from the running Server:
 
 ```text
-Scalar API Reference  http://127.0.0.1:18082/scalar
-OpenAPI JSON          http://127.0.0.1:18082/v3/api-docs
-Architecture Overview http://127.0.0.1:18082/overview.htm
-Diagnostic Code UI    http://127.0.0.1:18082/reference/error-codes
-Diagnostic Code JSON  http://127.0.0.1:18082/reference/platform-diagnostic-codes.json
+Live Scalar Reference   http://127.0.0.1:18082/scalar
+Live OpenAPI JSON       http://127.0.0.1:18082/v3/api-docs
+Static API Snapshot UI  http://127.0.0.1:18082/api-reference
+Static OpenAPI Snapshot http://127.0.0.1:18082/reference/openapi.json
+Architecture Overview  http://127.0.0.1:18082/overview.htm
+Diagnostic Code UI      http://127.0.0.1:18082/reference/error-codes
+Diagnostic Code JSON    http://127.0.0.1:18082/reference/platform-diagnostic-codes.json
 ```
 
 Only `/api/v1/**` enters OpenAPI. Scalar telemetry, Agent Scalar and external
-fonts are disabled.
+fonts are disabled. `/scalar` and `/v3/api-docs` are generated from the current
+running Server. `/api-reference` reads the committed deterministic snapshot
+used by the frontend and Vercel, so it is intentionally read only and can lag
+until the snapshot is regenerated.
+
+Regenerate the snapshot after changing a public Controller, DTO, Tag or
+OpenAPI description:
+
+```powershell
+.\gradlew.bat :server_jvm:exportOpenApiSnapshot
+```
+
+The exporter starts an isolated `test` Profile context on a random loopback
+port, reads the real `/v3/api-docs`, removes the request-derived `servers`
+field, canonicalizes JSON object order, and writes
+`frontend/public/reference/openapi.json`. Server tests compare the generated
+contract with that committed file and report drift without rewriting it.
 
 OpenAPI Introduction links to the two diagnostic reference paths without
 embedding the dictionary or binding codes to operations. Public

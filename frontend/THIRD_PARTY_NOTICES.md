@@ -10,3 +10,7 @@ preserved in [`LICENSE.pure-admin-thin`](LICENSE.pure-admin-thin).
 The imported template was converted to ordinary repository source. Login,
 token handling, dynamic permissions, mock users, example pages, and unused
 template plugins were removed for this read-only Runtime Viewer.
+
+The API Reference uses
+[`@scalar/api-reference`](https://github.com/scalar/scalar), distributed under
+the MIT License.
