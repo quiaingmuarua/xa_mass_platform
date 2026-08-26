@@ -18,8 +18,23 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
                 && snapshot.state() == KernelPacerAssembly.State.RUNNING
                 ? Health.up()
                 : Health.down();
-        health.withDetail("mode", "python-cli");
+        health.withDetail(
+                "mode",
+                "java-result-routing+java-serviceability+python-assignment-cli"
+        );
         health.withDetail("state", snapshot.state().name());
+        health.withDetail(
+                "javaResultRoutingState",
+                snapshot.resultRoutingState()
+        );
+        health.withDetail(
+                "javaWorkerServiceabilityResultState",
+                snapshot.workerServiceabilityResultState()
+        );
+        health.withDetail(
+                "javaWorkerServiceabilityDispatchState",
+                snapshot.workerServiceabilityDispatchState()
+        );
         if (snapshot.pid() != null) {
             health.withDetail("pid", snapshot.pid());
         }

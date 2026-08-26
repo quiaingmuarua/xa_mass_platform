@@ -20,6 +20,9 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityResultApplication;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityDispatchApplication;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -98,6 +101,15 @@ class ServerApplicationContextTest {
                 WorkerServiceabilityRuntime.class
         )).isInstanceOf(RedisWorkerServiceabilityRuntime.class);
         assertThat(applicationContext.getBean(
+                WorkerServiceabilityResultApplication.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerServiceabilityDispatchApplication.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerServiceabilityAssemblyConfig.class
+        ).enabled()).isFalse();
+        assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class
         )).isNotNull();
         assertThat(applicationContext.getBean(KernelPacerAssembly.class)
@@ -136,7 +148,7 @@ class ServerApplicationContextTest {
                 .isInstanceOf(RedisTaskScoreBandCore.class);
         assertThat(applicationContext.getBeansOfType(
                 TaskItemScoreBandCore.class
-        )).isEmpty();
+        )).hasSize(1);
         assertThat(applicationContext.getBean(WorkerScoreCore.class))
                 .isInstanceOf(RedisWorkerScoreCore.class);
         assertThat(applicationContext.getBeansOfType(

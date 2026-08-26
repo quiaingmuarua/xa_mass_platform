@@ -57,7 +57,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                 input_stream=_ReadyObservingInput(ready, token),
                 managed_redis_url="redis://example:6380/3",
                 managed_redis_scope="profile_managed",
-                application_factory=lambda _config: application,
+                application_factory=lambda _config, **_kwargs: application,
             )
 
             self.assertFalse(ready.exists())
@@ -77,7 +77,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                     input_stream=io.BytesIO(),
                     managed_redis_url="redis://example:6380/3",
                     managed_redis_scope="profile_managed",
-                    application_factory=lambda _config: application,
+                    application_factory=lambda _config, **_kwargs: application,
                 )
             self.assertFalse(ready.exists())
         application.stop.assert_not_called()
@@ -89,7 +89,7 @@ class KernelApplicationCliTest(unittest.TestCase):
             instance_token=None,
             ready_file=None,
             input_stream=io.BytesIO(),
-            application_factory=lambda _config: application,
+            application_factory=lambda _config, **_kwargs: application,
         )
         application.start.assert_called_once_with()
         application.stop.assert_called_once_with()
@@ -122,7 +122,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                 input_stream=io.BytesIO(),
                 managed_redis_url="redis://example:6380/3",
                 managed_redis_scope="profile_managed",
-                application_factory=lambda parsed: (
+                application_factory=lambda parsed, **_kwargs: (
                     observed_configs.append(parsed) or application
                 ),
             )
@@ -156,7 +156,7 @@ class KernelApplicationCliTest(unittest.TestCase):
                     input_stream=io.BytesIO(),
                     managed_redis_url="redis://example:6380/3",
                     managed_redis_scope="profile_managed",
-                    application_factory=lambda _config: application,
+                    application_factory=lambda _config, **_kwargs: application,
                 )
 
         application.start.assert_not_called()
@@ -172,6 +172,139 @@ class KernelApplicationCliTest(unittest.TestCase):
                 ready_file=Path("ready"),
                 input_stream=io.BytesIO(),
             )
+
+    def test_managed_migration_mode_disables_migrated_result_pacers(self) -> None:
+        application = Mock(spec=KernelApplication)
+        observed = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "kernel.json"
+            config.write_text(
+                '{"workerServiceability":{}}',
+                encoding="utf-8",
+            )
+            _run_application(
+                config_path=config,
+                instance_token="instance-7",
+                ready_file=root / "ready",
+                input_stream=io.BytesIO(),
+                managed_redis_url="redis://example:6380/3",
+                managed_redis_scope="profile_managed",
+                without_result_routing=True,
+                without_worker_serviceability_result=True,
+                without_worker_serviceability_dispatch=True,
+                hot_eligibility_floor_millis=12_300,
+                application_factory=lambda _config, **kwargs: (
+                    observed.append(kwargs)
+                    or application
+                ),
+            )
+
+        self.assertEqual(
+            [{
+                "result_routing_enabled": False,
+                "worker_serviceability_result_enabled": False,
+                "worker_serviceability_dispatch_enabled": False,
+                "hot_eligibility_floor_millis": 12_300,
+            }],
+            observed,
+        )
+        application.start.assert_called_once_with()
+        application.stop.assert_called_once_with()
+
+    def test_direct_mode_rejects_result_routing_disable(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "requires the managed parent protocol",
+        ):
+            _run_application(
+                config_path=None,
+                instance_token=None,
+                ready_file=None,
+                input_stream=io.BytesIO(),
+                without_result_routing=True,
+            )
+
+    def test_direct_mode_rejects_serviceability_result_migration_flags(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "requires the managed parent protocol",
+        ):
+            _run_application(
+                config_path=None,
+                instance_token=None,
+                ready_file=None,
+                input_stream=io.BytesIO(),
+                without_worker_serviceability_result=True,
+            )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "requires the managed parent protocol",
+        ):
+            _run_application(
+                config_path=None,
+                instance_token=None,
+                ready_file=None,
+                input_stream=io.BytesIO(),
+                without_worker_serviceability_dispatch=True,
+            )
+
+    def test_managed_serviceability_requires_valid_parent_floor(self) -> None:
+        application = Mock(spec=KernelApplication)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "kernel.json"
+            config.write_text(
+                '{"workerServiceability":{}}',
+                encoding="utf-8",
+            )
+            common = {
+                "config_path": config,
+                "instance_token": "instance-8",
+                "ready_file": root / "ready",
+                "input_stream": io.BytesIO(),
+                "managed_redis_url": "redis://example:6380/3",
+                "managed_redis_scope": "profile_managed",
+                "application_factory": (
+                    lambda _config, **_kwargs: application
+                ),
+            }
+            with self.assertRaisesRegex(
+                ValueError,
+                "requires the parent HOT floor",
+            ):
+                _run_application(**common)
+            for floor in (0, -100, 1_001, True):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "must be score-slot aligned",
+                ):
+                    _run_application(
+                        **common,
+                        hot_eligibility_floor_millis=floor,
+                    )
+
+        application.start.assert_not_called()
+
+    def test_managed_floor_is_rejected_without_serviceability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(
+                ValueError,
+                "requires Worker Serviceability",
+            ):
+                _run_application(
+                    config_path=None,
+                    instance_token="instance-9",
+                    ready_file=root / "ready",
+                    input_stream=io.BytesIO(),
+                    managed_redis_url="redis://example:6380/3",
+                    managed_redis_scope="profile_managed",
+                    hot_eligibility_floor_millis=12_300,
+                )
 
 
 if __name__ == "__main__":

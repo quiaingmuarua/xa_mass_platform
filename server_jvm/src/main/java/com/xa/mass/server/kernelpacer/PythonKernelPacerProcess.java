@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
 import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +35,8 @@ final class PythonKernelPacerProcess {
 
     private final KernelPacerProperties properties;
     private final XaMassRedisProperties redisProperties;
+    private final WorkerServiceabilityAssemblyConfig
+            serviceabilityConfig;
     private final JsonMapper json;
     private final Path workingDirectory;
     private final Path configPath;
@@ -47,7 +50,8 @@ final class PythonKernelPacerProcess {
     PythonKernelPacerProcess(
             KernelPacerProperties properties,
             XaMassRedisProperties redisProperties,
-            JsonMapper json
+            JsonMapper json,
+            WorkerServiceabilityAssemblyConfig serviceabilityConfig
     ) {
         this.properties = Objects.requireNonNull(properties, "properties");
         this.redisProperties = Objects.requireNonNull(
@@ -55,6 +59,10 @@ final class PythonKernelPacerProcess {
                 "redisProperties"
         );
         this.json = Objects.requireNonNull(json, "json");
+        this.serviceabilityConfig = Objects.requireNonNull(
+                serviceabilityConfig,
+                "serviceabilityConfig"
+        );
         this.workingDirectory = Path.of(properties.workingDirectory())
                 .toAbsolutePath()
                 .normalize();
@@ -97,15 +105,23 @@ final class PythonKernelPacerProcess {
     }
 
     synchronized void stop() {
+        stop(properties.shutdownTimeout());
+    }
+
+    synchronized void stop(Duration timeout) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("timeout must be positive");
+        }
         Process owned = process;
         if (owned == null) {
             return;
         }
+        long deadline = System.nanoTime() + timeout.toNanos();
         String token = instanceToken;
         closeInput(owned);
-        if (!awaitExit(owned, properties.shutdownTimeout())) {
+        if (!awaitExit(owned, remaining(deadline))) {
             owned.destroyForcibly();
-            if (!awaitExit(owned, Duration.ofSeconds(1))
+            if (!awaitExit(owned, remaining(deadline))
                     && owned.isAlive()) {
                 throw new IllegalStateException(
                         "operation=kernelPacer.stop child did not exit"
@@ -138,6 +154,15 @@ final class PythonKernelPacerProcess {
         command.add(token);
         command.add("--ready-file");
         command.add(readyFile.toString());
+        command.add("--without-result-routing");
+        command.add("--without-worker-serviceability-result");
+        command.add("--without-worker-serviceability-dispatch");
+        if (serviceabilityConfig.enabled()) {
+            command.add("--hot-eligibility-floor-millis");
+            command.add(Long.toString(
+                    serviceabilityConfig.hotEligibilityFloorMillis()
+            ));
+        }
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
                 .redirectOutput(ProcessBuilder.Redirect.INHERIT)
@@ -352,6 +377,11 @@ final class PythonKernelPacerProcess {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    private static Duration remaining(long deadlineNanos) {
+        long remaining = Math.max(1, deadlineNanos - System.nanoTime());
+        return Duration.ofNanos(remaining);
     }
 
     private static void deleteQuietly(Path path) {

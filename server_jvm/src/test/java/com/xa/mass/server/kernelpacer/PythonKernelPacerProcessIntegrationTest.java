@@ -3,6 +3,7 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
 import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +32,19 @@ class PythonKernelPacerProcessIntegrationTest {
             parser.add_argument("--config", required=True, type=Path)
             parser.add_argument("--instance-token", required=True)
             parser.add_argument("--ready-file", required=True, type=Path)
+            parser.add_argument("--without-result-routing", action="store_true")
+            parser.add_argument(
+                "--without-worker-serviceability-result",
+                action="store_true",
+            )
+            parser.add_argument(
+                "--without-worker-serviceability-dispatch",
+                action="store_true",
+            )
+            parser.add_argument(
+                "--hot-eligibility-floor-millis",
+                type=int,
+            )
             args = parser.parse_args()
 
             config = json.loads(args.config.read_text(encoding="utf-8"))
@@ -38,6 +52,16 @@ class PythonKernelPacerProcessIntegrationTest {
             Path(config["environmentFile"]).write_text(json.dumps({
                 "redisUrl": os.environ["XA_MASS_KERNEL_PACER_REDIS_URL"],
                 "redisScope": os.environ["XA_MASS_KERNEL_PACER_REDIS_SCOPE"],
+                "withoutResultRouting": args.without_result_routing,
+                "withoutWorkerServiceabilityResult": (
+                    args.without_worker_serviceability_result
+                ),
+                "withoutWorkerServiceabilityDispatch": (
+                    args.without_worker_serviceability_dispatch
+                ),
+                "hotEligibilityFloorMillis": (
+                    args.hot_eligibility_floor_millis
+                ),
             }), encoding="utf-8")
             mode = config["mode"]
             if mode == "exit":
@@ -108,12 +132,45 @@ class PythonKernelPacerProcessIntegrationTest {
         assertThat(owner.pid()).isEqualTo(pid);
         assertThat(Files.readString(environmentFile, StandardCharsets.UTF_8))
                 .contains("\"redisUrl\": \"redis://example:6380/3\"")
-                .contains("\"redisScope\": \"profile_managed\"");
+                .contains("\"redisScope\": \"profile_managed\"")
+                .contains("\"withoutResultRouting\": true")
+                .contains("\"withoutWorkerServiceabilityResult\": true")
+                .contains("\"withoutWorkerServiceabilityDispatch\": true")
+                .contains("\"hotEligibilityFloorMillis\": null");
 
         owner.stop();
         owner.stop();
 
         assertProcessExited(pid);
+        assertStateFilesAbsent();
+    }
+
+    @Test
+    void enabledServiceabilityReceivesTheJavaOwnedHotFloor()
+            throws Exception {
+        writeConfig("normal");
+        WorkerServiceabilityAssemblyConfig serviceability =
+                WorkerServiceabilityAssemblyConfig
+                        .fromKernelConfigJson(
+                                "{\"workerServiceability\":{}}"
+                        );
+        PythonKernelPacerProcess owner = owner(
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(2),
+                serviceability
+        );
+
+        owner.start();
+
+        assertThat(Files.readString(
+                environmentFile,
+                StandardCharsets.UTF_8
+        )).contains("\"withoutWorkerServiceabilityResult\": true")
+                .contains("\"withoutWorkerServiceabilityDispatch\": true")
+                .contains("\"hotEligibilityFloorMillis\": "
+                        + serviceability.hotEligibilityFloorMillis());
+
+        owner.stop();
         assertStateFilesAbsent();
     }
 
@@ -170,6 +227,19 @@ class PythonKernelPacerProcessIntegrationTest {
             Duration startupTimeout,
             Duration shutdownTimeout
     ) {
+        return owner(
+                startupTimeout,
+                shutdownTimeout,
+                WorkerServiceabilityAssemblyConfig
+                        .fromKernelConfigJson("{}")
+        );
+    }
+
+    private PythonKernelPacerProcess owner(
+            Duration startupTimeout,
+            Duration shutdownTimeout,
+            WorkerServiceabilityAssemblyConfig serviceability
+    ) {
         String executable = System.getenv().getOrDefault(
                 "XA_MASS_PYTHON_EXECUTABLE",
                 "python"
@@ -188,7 +258,8 @@ class PythonKernelPacerProcessIntegrationTest {
                         URI.create("redis://example:6380/3"),
                         "profile_managed"
                 ),
-                JsonMapper.builder().build()
+                JsonMapper.builder().build(),
+                serviceability
         );
     }
 

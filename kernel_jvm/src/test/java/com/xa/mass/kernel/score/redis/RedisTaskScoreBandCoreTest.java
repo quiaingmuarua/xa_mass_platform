@@ -7,6 +7,7 @@ import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import io.lettuce.core.RedisClient;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class RedisTaskScoreBandCoreTest {
@@ -35,10 +36,7 @@ class RedisTaskScoreBandCoreTest {
                             1
                     )
             );
-            assertOperation(
-                    "acquire_dispatch_work_tasks",
-                    () -> scoreCore.acquireDispatchWorkTasks(1)
-            );
+            assertEquals(List.of(), scoreCore.acquireDispatchWorkTasks(0));
             assertOperation(
                     "rewrite_same_band_time_millis",
                     () -> scoreCore.rewriteSameBandTimeMillis(

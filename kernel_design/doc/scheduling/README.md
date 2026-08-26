@@ -159,8 +159,8 @@ WorkerServiceabilityRuntime
   Report handoff; neither structure is current connection or score truth
 
 WorkerServiceabilityDispatchPacer / ResultPacer
-  discover old configured-Group score coordinates and translate valid Adapter
-  route snapshots into one bounded WorkerScore owner call
+  derive demanded Groups from due Tasks, discover old score coordinates, and
+  translate valid Adapter route snapshots into bounded WorkerScore operations
 
 ResultRoutingBuiltinPolicies or replacement handlers
   compose Task and Worker owner operations without owning their truth
@@ -206,8 +206,11 @@ the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
 lease release. Java controllers use the same Kernel owner contracts as the
-Python executable spec. Task business commands use Java Redis providers;
-Python continues to own the Pacers and exposes no Task HTTP fallback.
+Python executable spec. Task business commands use Java Redis providers.
+Managed production uses Java for Result Routing, Worker Serviceability Result,
+and Worker Serviceability Dispatch while Python temporarily owns Assignment
+Dispatch; standalone Python retains the complete oracle and exposes no Task
+HTTP fallback.
 Additional Redis proofs cover immediate idle close, private idle park followed
 by scheduling-aware Task Call submission, RUNNING capacity exclusion, and an
 external explicit close request.

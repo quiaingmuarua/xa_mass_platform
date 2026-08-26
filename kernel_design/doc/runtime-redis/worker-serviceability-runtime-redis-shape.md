@@ -1,6 +1,7 @@
 # Worker Serviceability Runtime Redis Shape
 
-Status: active Kernel Redis ABI for the optional Worker Serviceability policy.
+Status: active Kernel Redis ABI for the optional Worker Serviceability policy;
+Java production and Python oracle share this shape.
 
 ## Keys
 
@@ -30,8 +31,10 @@ Lua call. Consumption is unordered and destructive. A consumed request has no
 in-flight record, deadline, retry, generation, or acknowledgement. A later
 stale-score scan may offer the Worker again.
 
-The Python Kernel implements offer and consumption. The Java Server provider
-implements consumption only, because it is the bounded Adapter HTTP bridge.
+The Java Kernel Dispatch Pacer implements offer. The Java Server provider
+implements request consumption because it is the bounded Adapter HTTP bridge.
+Standalone Python implements both as the mechanism oracle. Managed Python
+disables its Dispatch producer; there is no fallback or dual-producer mode.
 
 ## Result LIST
 
@@ -44,8 +47,10 @@ the prefix that fits under the 10,000-item limit and reports its count.
 the head. Corrupt or wrong-endpoint entries are discarded. There is no pending
 batch, lease, replay, or result HASH.
 
-The Java Server provider implements append only. Python Kernel owns destructive
-result consumption and all interpretation or score policy.
+The Java provider implements append for Server ingress and destructive consume
+for the fixed Java production Result Pacer. Standalone Python implements both
+as the mechanism oracle. Managed Python disables its Result consumer; there is
+no fallback or dual-consumer mode.
 
 ## Failure Model
 

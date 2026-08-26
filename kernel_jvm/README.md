@@ -19,7 +19,7 @@ Package responsibilities:
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
 | `delivery` | DeliveryCommand and DeliveryReport runtime contracts |
-| `serviceability` | Adapter probe request/result handoff contract only |
+| `serviceability` | Adapter probe handoff plus fixed production Result Pacer |
 | owner-local `redis` packages | Selected Redis implementations |
 
 The current implemented provider subset is:
@@ -64,35 +64,39 @@ WorkerScoreCore
   getScoreStates
   initializeHotAcquireScore
   rewriteCurrentScores
+  toggleCurrentPolarity
+  exhaustRecoveryRecheck
   releaseScoreHolds
+  releaseCompletedHotScoreHolds
 
 WorkerCommandRuntime
   non-overwriting bounded offer plus point and bounded random batch consume;
   authoritative append remains an explicit JVM gap
 
 WorkerResultRuntime
-  append
+  append and bounded FIFO consume
 
 WorkerServiceabilityRuntime
+  offerProbeRequests
   consumeProbeRequests
   appendAdapterEvidenceResults
+  consumeAdapterEvidenceResults
 ```
 
-Worker score initialization fixes laneRank at zero. Candidate acquisition,
-observed lease acquisition/renewal, dirty marking, polarity changes, and
-recovery exhaustion remain explicit gaps in the JVM provider.
-The Serviceability-only pre-epoch HOT read is also an explicit JVM provider gap
-because no Java production caller owns that Pacer.
+Worker score initialization fixes laneRank at zero. General Assignment
+candidate acquisition, observed lease acquisition/renewal, and dirty marking
+remain explicit gaps in the JVM provider. The bounded pre-epoch HOT and due
+RECOVERY reads required by Java Serviceability Dispatch are implemented without
+claiming or leasing Workers.
 `rewriteCurrentScores` preserves polarity,
 lane rank, and dirty while moving the time coordinate forward;
 `releaseScoreHolds` preserves the same fields and uses the complete observed
-score as an exact CAS fence. `releaseCompletedHotScoreHolds` is mirrored in the
-public contract but remains an explicit provider gap because only Python Result
-Routing calls it. TaskItem record reads,
-success-result writes, DeliveryCommand append, and DeliveryReport consume
-likewise remain Python-owned or unimplemented on this provider surface.
-Implementing these two transitions does not imply that Worker scheduling or
-the complete owner has migrated.
+score as an exact CAS fence. Java production Result Routing also implements
+`releaseCompletedHotScoreHolds`: its per-Worker Lua accepts only the original
+positive lease or the exact Serviceability RECOVERY counterpart derived by the
+score owner. TaskItem record reads and DeliveryCommand authoritative append
+remain explicit gaps. Implementing this result closure does not imply that
+Worker scheduling or the complete owner has migrated.
 
 Every other translated operation is explicit and throws
 `KernelOperationNotImplementedException` when invoked by a partial provider.
@@ -105,11 +109,16 @@ pacing, observed idle park/close and other Pacer operations fail explicitly.
 `tryReleaseIdlePark -> appendItems -> tryReleaseIdlePark` composition without
 inspecting Task policy or implementing scheduling.
 
-`RedisWorkerServiceabilityRuntime` implements only the two operations required
-by the Java Server bridge: destructive Adapter request consume and bounded
-Kernel-result append. Request offer, Result consume, both Pacers, and all score
-policy remain Python Kernel responsibilities; invoking either unimplemented JVM
-operation fails explicitly.
+`RedisTaskItemScoreBandCore` owns the two Java production operations required
+by Task append and Result Routing: NX initialization and cross-band outcome
+promotion. `RedisTaskRuntime` owns Item records and success payloads but no
+longer constructs TaskItem score keys or encoding. Candidate, retry and due
+Item operations remain explicit provider gaps.
+
+`RedisWorkerServiceabilityRuntime` implements Probe Request offer for Java
+Serviceability Dispatch, the two Java Server bridge operations (destructive
+Adapter request consume and bounded Kernel-result append), and the Java Result
+Pacer's bounded FIFO evidence consume.
 
 The shared
 [`kernel_owner_contract_manifest.json`](../kernel_design/executable_spec/kernel_owner_contract_manifest.json)
@@ -119,14 +128,19 @@ not an external protocol.
 
 The external Runtime API belongs to [`server_jvm/`](../server_jvm/). Its
 controllers and services depend on these owner contracts. Task business
-commands use the Java Redis owners directly. Java Server hosts the fixed
-temporary Python Pacer child; Python remains the Pacer implementation and
+commands use the Java Redis owners directly. `kernel_jvm` now contains the
+fixed production Result Routing, Worker Serviceability Result, and Worker
+Serviceability Dispatch Pacers, each with one single-threaded application
+lifecycle. Java Server composes all three beside the fixed temporary Python
+child; managed mode disables all three Python counterparts and passes the
+single Java-minted HOT eligibility floor to both Java Serviceability Pacers and
+Python Assignment. Python remains the Assignment implementation and complete
 mechanism oracle, with no Task HTTP fallback. Provider selection never appears
 in HTTP controllers or business services.
 
-There is no combined WorkerDelivery runtime, Pacer, scheduling policy, or
-Kernel application lifecycle in this module. Those boundaries must be
-migrated through separate parity slices.
+There is no general Pacer registry, replaceable Result Handler map, combined
+WorkerDelivery runtime, or full Kernel application lifecycle in this module.
+Remaining Pacers must be migrated through separate vertical parity slices.
 
 `kernel_jvm` targets JDK 21 and is not an Android module. A future
 Android-compatible Worker SDK belongs in a separate Gradle module with its own

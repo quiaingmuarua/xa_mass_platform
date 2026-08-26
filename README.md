@@ -110,13 +110,16 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`kernel_design/`](kernel_design/) is the Python executable mechanism oracle,
   current Kernel documentation and Redis proof surface.
 - [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
-  Redis providers, including the caller-driven Task commands used by Server.
-  It does not implement Kernel scheduling or application lifecycle.
+  Redis providers, including the caller-driven Task commands used by Server
+  plus the fixed production Result Routing, Worker Serviceability Result and
+  Worker Serviceability Dispatch applications. Assignment Dispatch is the only
+  remaining Python production Pacer.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server also owns the
-  lifecycle of the temporary Python Pacer CLI child, Worker Identity, Endpoint
-  Binding, bounded use cases, configured WorkerGroup seeds, registration-owned
-  Managed Task assembly, and Adapter startup.
+  mixed lifecycle of three Java Pacer applications plus the temporary Python
+  Assignment CLI child, Worker Identity, Endpoint Binding, bounded use cases,
+  configured WorkerGroup seeds, registration-owned Managed Task assembly, and
+  Adapter startup.
   Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
   business codes; framework routing/protocol failures remain ordinary HTTP
   concerns, and Worker Delivery additionally retains its machine-protocol
@@ -151,7 +154,7 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 Exactly one Java Server instance per Kernel Redis scope may run with
 `xa.mass.kernel-pacer.enabled=true`. Additional API replicas must disable that
 lifecycle; there is no distributed Pacer leader election. The enabled Server
-owns the `xa.mass.redis` URL and scope used by both its Java providers and its
+owns the `xa.mass.redis` URL and scope used by its Java Result consumers and
 supervised Python child. Spring Profile selects assembly; Redis scope selects
 the persistent data boundary. The checked Pacer JSON contains policy only and
 cannot select a different Redis universe.

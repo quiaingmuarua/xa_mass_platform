@@ -1,7 +1,9 @@
 # Worker Serviceability Scheduling
 
-Status: active optional Kernel policy. Transport evidence is stable; score
-thresholds and retry policy remain tunable.
+Status: active optional Kernel policy. Python remains the mechanism oracle;
+both Result and Dispatch Pacers are Java production.
+Transport evidence is stable; score thresholds and retry policy remain
+tunable.
 
 ## Purpose
 
@@ -117,7 +119,8 @@ such Workers.
 
 ## Evidence Forms
 
-The Result Pacer accepts three strict `ADAPTER -> KERNEL` forms:
+The fixed Java production Result Pacer and standalone Python oracle accept the
+same three strict `ADAPTER -> KERNEL` forms:
 
 ```text
 platform.adapter.worker-connection.changed
@@ -201,14 +204,28 @@ second Report. Queue pressure drops both without closing a Worker Channel.
 
 ## Lifecycle And Guardrails
 
-When Serviceability is absent, no floor, Runtime, or Pacer thread exists. When
-enabled, Result and Dispatch each own one non-daemon loop:
+When Serviceability is absent, no floor or Serviceability Pacer thread exists;
+the Server bridge owner may still be assembled but has no production result
+consumer. Standalone Python keeps the complete oracle order. Managed production
+mints the floor once in Java, passes it to both Java Serviceability applications
+and Python Assignment, and uses this mixed order:
 
 ```text
-start: Result Routing -> Serviceability Result -> Serviceability Dispatch
-      -> Assignment Dispatch
-stop: reverse order
+start: Java Result Routing
+    -> Java Serviceability Result
+    -> Java Serviceability Dispatch
+    -> Python child (Assignment Dispatch)
+
+stop: Python child
+   -> Java Serviceability Dispatch
+   -> Java Serviceability Result
+   -> Java Result Routing
 ```
+
+The two Java Serviceability loops and Python Assignment use the same floor. The
+managed child explicitly disables Python Result Routing, Serviceability Result,
+and Serviceability Dispatch, so one Redis scope cannot have duplicate consumers
+or Probe Request producers through this assembly.
 
 - Do not generalize the Runtime into an event bus.
 - Do not send Adapter Route probes to Workers.

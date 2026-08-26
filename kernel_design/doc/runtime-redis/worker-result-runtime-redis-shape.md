@@ -1,7 +1,8 @@
 # Worker Result Runtime Redis Shape
 
-Status: active new-kernel Redis shape; Java ingress append and Python
-executable-spec consume/routing implemented.
+Status: active new-kernel Redis shape; Java production append/consume and
+Result Routing implemented; Python executable-spec remains the mechanism
+oracle.
 
 ## Keys
 

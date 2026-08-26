@@ -3,6 +3,7 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
 import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -96,7 +97,8 @@ class PythonKernelPacerProcessTest {
                         Duration.ofSeconds(1)
                 ),
                 redisProperties(),
-                JsonMapper.builder().build()
+                JsonMapper.builder().build(),
+                serviceabilityConfig()
         );
 
         assertThatThrownBy(owner::start)
@@ -121,7 +123,8 @@ class PythonKernelPacerProcessTest {
                         Duration.ofSeconds(1)
                 ),
                 redisProperties(),
-                JsonMapper.builder().build()
+                JsonMapper.builder().build(),
+                serviceabilityConfig()
         );
     }
 
@@ -194,5 +197,11 @@ class PythonKernelPacerProcessTest {
                 URI.create("redis://example:6380/3"),
                 "profile_managed"
         );
+    }
+
+    private static WorkerServiceabilityAssemblyConfig
+            serviceabilityConfig() {
+        return WorkerServiceabilityAssemblyConfig
+                .fromKernelConfigJson("{}");
     }
 }

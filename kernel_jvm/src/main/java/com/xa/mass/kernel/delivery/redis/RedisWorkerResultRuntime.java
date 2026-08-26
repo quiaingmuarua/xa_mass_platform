@@ -2,7 +2,6 @@ package com.xa.mass.kernel.delivery.redis;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
 
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -80,10 +79,29 @@ public final class RedisWorkerResultRuntime
             DeliveryReportOutcomeClass outcomeClass,
             int limit
     ) {
-        throw new KernelOperationNotImplementedException(
-                "WorkerResultRuntime",
-                "consume_worker_results"
+        if (outcomeClass == null) {
+            throw new IllegalArgumentException(
+                    "outcomeClass must be present"
+            );
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        List<String> encoded = commands().lpop(
+                resultKey(outcomeClass),
+                limit
         );
+        if (encoded == null || encoded.isEmpty()) {
+            return List.of();
+        }
+        List<DeliveryReport> results = new ArrayList<>(encoded.size());
+        for (String value : encoded) {
+            DeliveryReport result = codec.decodeDeliveryReport(value);
+            if (result != null) {
+                results.add(result);
+            }
+        }
+        return List.copyOf(results);
     }
 
     private RedisCommands<String, String> commands() {

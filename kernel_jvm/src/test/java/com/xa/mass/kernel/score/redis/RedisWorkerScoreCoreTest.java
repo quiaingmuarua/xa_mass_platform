@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import io.lettuce.core.RedisClient;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class RedisWorkerScoreCoreTest {
 
     @Test
-    void recoveryTransitionGapsRemainExplicit() {
+    void recoveryTransitionsValidateInvalidInputBeforeRedisAccess() {
         RedisClient redisClient = RedisClient.create(
                 "redis://127.0.0.1:1"
         );
@@ -22,12 +23,38 @@ class RedisWorkerScoreCoreTest {
                     new RedisKeyspace("test_worker_score_unit")
             );
 
+            assertEquals(
+                    WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.toggleCurrentPolarity(
+                            "group-1", "worker-1", 0L
+                    ).status()
+            );
+            assertEquals(
+                    WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.exhaustRecoveryRecheck(
+                            "group-1", "worker-1", -200L, 0
+                    ).status()
+            );
+        } finally {
+            redisClient.shutdown();
+        }
+    }
+
+    @Test
+    void unrelatedProductionGapsRemainExplicit() {
+        RedisClient redisClient = RedisClient.create(
+                "redis://127.0.0.1:1"
+        );
+        try {
+            RedisWorkerScoreCore scoreCore = new RedisWorkerScoreCore(
+                    redisClient,
+                    new RedisKeyspace("test_worker_score_unit")
+            );
             assertOperation(
-                    "toggle_current_polarity",
-                    () -> scoreCore.toggleCurrentPolarity(
+                    "mark_current_lease_dirty",
+                    () -> scoreCore.markCurrentLeaseDirty(
                             "group-1",
-                            "worker-1",
-                            1L
+                            "worker-1"
                     )
             );
         } finally {

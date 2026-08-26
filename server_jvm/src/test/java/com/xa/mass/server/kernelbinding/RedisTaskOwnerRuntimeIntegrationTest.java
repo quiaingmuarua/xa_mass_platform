@@ -12,6 +12,7 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
+import com.xa.mass.kernel.score.redis.RedisTaskItemScoreBandCore;
 import com.xa.mass.kernel.task.DefaultTaskCallItemSubmission;
 import com.xa.mass.kernel.task.DefaultTaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskCallItemSubmission;
@@ -49,6 +50,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisTaskScoreBandCore scoreCore;
+    private RedisTaskItemScoreBandCore itemScoreCore;
     private RedisTaskRuntime runtime;
     private RedisTaskResourceCatalog catalog;
     private TaskLifecycleCommands lifecycle;
@@ -62,7 +64,16 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
         scoreCore = new RedisTaskScoreBandCore(redisClient, keyspace);
-        runtime = new RedisTaskRuntime(redisClient, scoreCore, keyspace);
+        itemScoreCore = new RedisTaskItemScoreBandCore(
+                redisClient,
+                keyspace
+        );
+        runtime = new RedisTaskRuntime(
+                redisClient,
+                scoreCore,
+                itemScoreCore,
+                keyspace
+        );
         catalog = new RedisTaskResourceCatalog(redisClient, keyspace);
         lifecycle = new DefaultTaskLifecycleCommands(scoreCore, catalog);
         callSubmission = new DefaultTaskCallItemSubmission(
@@ -81,6 +92,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
         if (scoreCore != null) {
             scoreCore.close();
+        }
+        if (itemScoreCore != null) {
+            itemScoreCore.close();
         }
         if (catalog != null) {
             catalog.close();
@@ -135,11 +149,25 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 + 4;
         assertThat((long) score).isEqualTo(expected);
 
-        redis.hset(
-                keyspace.base() + ":task:task-1:results",
-                "message-1",
-                "{\"valid\":true}"
+        runtime.storeTaskItemSuccessResults(
+                "task-1",
+                Map.of("message-1", "{\"valid\":true}")
         );
+        assertThat(itemScoreCore.promoteItemOutcomes(
+                "task-1",
+                List.of("message-1"),
+                TaskItemScoreBandCore.TaskItemScoreBand.FINAL_SUCCESS,
+                redisTimeMillis()
+        ).get("message-1").status()).isEqualTo(
+                TaskItemScoreBandCore.TaskItemScoreTransitionStatus
+                        .TRANSITIONED
+        );
+        long finalScore = redis.zscore(
+                keyspace.base() + ":task:task-1:item_score",
+                "message-1"
+        ).longValue();
+        assertThat(finalScore / TaskItemScoreBandCore.TAG_FACTOR)
+                .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
         var loaded = runtime.loadTaskItemSuccessResults(
                 "task-1",
                 List.of("message-1", "missing")
@@ -350,6 +378,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         try (RedisTaskRuntime interrupted = new RedisTaskRuntime(
                 redisClient,
                 releaseFailure,
+                itemScoreCore,
                 keyspace
         )) {
             assertThat(interrupted.createTask(
@@ -474,6 +503,46 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ).status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
+    }
+
+    @Test
+    void dispatchTaskScanReadsOnlyDueRunningScoresInAscendingOrder() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot - 2,
+                0
+        ), "running-old");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot - 1,
+                0
+        ), "running-new");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot + 100,
+                0
+        ), "running-future");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.ADMISSION_VISIBLE_TAG,
+                nowSlot - 2,
+                0
+        ), "admission");
+        Map<String, Double> before = redis.zrangeWithScores(scoreKey, 0, -1)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        io.lettuce.core.ScoredValue::getValue,
+                        io.lettuce.core.ScoredValue::getScore
+                ));
+
+        assertThat(scoreCore.acquireDispatchWorkTasks(100))
+                .containsExactly("running-old", "running-new");
+        assertThat(redis.zrangeWithScores(scoreKey, 0, -1).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        io.lettuce.core.ScoredValue::getValue,
+                        io.lettuce.core.ScoredValue::getScore
+                ))).isEqualTo(before);
     }
 
     @Test

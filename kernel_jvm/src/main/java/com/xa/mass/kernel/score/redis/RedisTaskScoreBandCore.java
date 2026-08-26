@@ -208,7 +208,31 @@ public final class RedisTaskScoreBandCore
 
     @Override
     public List<String> acquireDispatchWorkTasks(int limit) {
-        throw notImplemented("acquire_dispatch_work_tasks");
+        if (limit <= 0) {
+            return List.of();
+        }
+        long currentTimeSlot = redisTimeMillis() / SLOT_MILLIS;
+        long maximumTimeSlot = currentTimeSlot - 1;
+        if (maximumTimeSlot < MIN_TIME_SLOT) {
+            return List.of();
+        }
+        long minimumScore = score(
+                RUNNING_VISIBLE_TAG,
+                MIN_TIME_SLOT,
+                MIN_SUFFIX
+        );
+        long maximumScore = score(
+                RUNNING_VISIBLE_TAG,
+                maximumTimeSlot,
+                MAX_SUFFIX
+        );
+        return List.copyOf(commands().zrangebyscore(
+                scoreKey(),
+                minimumScore,
+                maximumScore,
+                0,
+                limit
+        ));
     }
 
     @Override

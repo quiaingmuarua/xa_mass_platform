@@ -674,6 +674,219 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void completedHotReleaseRepairsOnlyTheExactRecoveryCounterpart() {
+        long leaseSlot = redisTimeMillis()
+                / WorkerScoreCore.SLOT_MILLIS
+                + 100;
+        long observedHot = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                leaseSlot,
+                7,
+                1
+        );
+        long recoveryCounterpart = -(
+                observedHot - 7L * WorkerScoreCore.DIRTY_FACTOR
+        );
+        redis.zadd(scoreKey("group-1"), observedHot, "positive-worker");
+        redis.zadd(
+                scoreKey("group-1"),
+                recoveryCounterpart,
+                "recovery-worker"
+        );
+        redis.zadd(
+                scoreKey("group-1"),
+                recoveryCounterpart - WorkerScoreCore.SLOT_FACTOR,
+                "drifted-worker"
+        );
+
+        long releaseTime = redisTimeMillis()
+                + WorkerScoreCore.SLOT_MILLIS;
+        var results = scoreCore.releaseCompletedHotScoreHolds(
+                "group-1",
+                Map.of(
+                        "positive-worker", observedHot,
+                        "recovery-worker", observedHot,
+                        "drifted-worker", observedHot
+                ),
+                releaseTime
+        );
+
+        assertThat(results.get("positive-worker").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(results.get("recovery-worker").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(results.get("drifted-worker").status()).isEqualTo(
+                WorkerScoreTransitionStatus.STALE
+        );
+        Map<String, WorkerScoreState> states = scoreCore.getScoreStates(
+                "group-1",
+                List.of("positive-worker", "recovery-worker")
+        );
+        assertThat(states.get("positive-worker").polarity()).isEqualTo(
+                WorkerScorePolarity.HOT_ACQUIRE
+        );
+        assertThat(states.get("positive-worker").laneRank()).isEqualTo(7);
+        assertThat(states.get("recovery-worker").polarity()).isEqualTo(
+                WorkerScorePolarity.HOT_ACQUIRE
+        );
+        assertThat(states.get("recovery-worker").laneRank()).isZero();
+        assertThat(states.get("recovery-worker").dirty()).isEqualTo(1);
+    }
+
+    @Test
+    void serviceabilityRangesAreDescendingExclusiveAndExcludeColdScores() {
+        long nowSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long floorMillis = (nowSlot - 20) * WorkerScoreCore.SLOT_MILLIS;
+        long floorSlot = floorMillis / WorkerScoreCore.SLOT_MILLIS;
+        long hotHigher = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                floorSlot - 1,
+                0,
+                0
+        );
+        long hotLower = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                floorSlot - 2,
+                0,
+                0
+        );
+        redis.zadd(scoreKey("group-range"), hotHigher, "hot-higher");
+        redis.zadd(scoreKey("group-range"), hotLower, "hot-lower");
+        redis.zadd(scoreKey("group-range"), workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                floorSlot,
+                0,
+                0
+        ), "hot-at-floor");
+
+        var firstHot = scoreCore.acquirePreEpochHotCandidates(
+                "group-range", floorMillis, 0, 1
+        );
+        var secondHot = scoreCore.acquirePreEpochHotCandidates(
+                "group-range", floorMillis, firstHot.getFirst().score(), 2
+        );
+        assertThat(firstHot).extracting(
+                WorkerScoreCore.WorkerScoreObservation::workerId
+        ).containsExactly("hot-higher");
+        assertThat(secondHot).extracting(
+                WorkerScoreCore.WorkerScoreObservation::workerId
+        ).containsExactly("hot-lower");
+
+        long recoveryOlder = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                nowSlot - 100,
+                0,
+                0
+        );
+        long recoveryNewer = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                nowSlot - 50,
+                0,
+                0
+        );
+        redis.zadd(
+                scoreKey("group-range"),
+                recoveryOlder,
+                "recovery-older"
+        );
+        redis.zadd(
+                scoreKey("group-range"),
+                recoveryNewer,
+                "recovery-newer"
+        );
+        redis.zadd(scoreKey("group-range"), workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                1,
+                5,
+                0
+        ), "cold");
+
+        var firstRecovery = scoreCore.acquireRecoveryRecheckCandidates(
+                "group-range", 0, 1
+        );
+        var secondRecovery = scoreCore.acquireRecoveryRecheckCandidates(
+                "group-range", firstRecovery.getFirst().score(), 2
+        );
+        assertThat(firstRecovery).extracting(
+                WorkerScoreCore.WorkerScoreObservation::workerId
+        ).containsExactly("recovery-older");
+        assertThat(secondRecovery).extracting(
+                WorkerScoreCore.WorkerScoreObservation::workerId
+        ).containsExactly("recovery-newer");
+    }
+
+    @Test
+    void polarityToggleAndColdParkUseExactObservedScoreCas() {
+        long timeSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long hot = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                timeSlot,
+                7,
+                1
+        );
+        long recovery = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                timeSlot,
+                3,
+                1
+        );
+        redis.zadd(scoreKey("group-1"), hot, "toggle-worker");
+        redis.zadd(scoreKey("group-1"), recovery, "cold-worker");
+
+        var toggled = scoreCore.toggleCurrentPolarity(
+                "group-1",
+                "toggle-worker",
+                hot
+        );
+        assertThat(toggled.status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertScoreShape(
+                scoreCore.getScoreStates(
+                        "group-1",
+                        List.of("toggle-worker")
+                ).get("toggle-worker"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                timeSlot * WorkerScoreCore.SLOT_MILLIS,
+                0,
+                1
+        );
+        assertThat(scoreCore.toggleCurrentPolarity(
+                "group-1",
+                "toggle-worker",
+                hot
+        ).status()).isEqualTo(WorkerScoreTransitionStatus.STALE);
+
+        var exhausted = scoreCore.exhaustRecoveryRecheck(
+                "group-1",
+                "cold-worker",
+                recovery,
+                5
+        );
+        assertThat(exhausted.status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertScoreShape(
+                scoreCore.getScoreStates(
+                        "group-1",
+                        List.of("cold-worker")
+                ).get("cold-worker"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                WorkerScoreCore.SLOT_MILLIS,
+                5,
+                1
+        );
+        assertThat(scoreCore.exhaustRecoveryRecheck(
+                "group-1",
+                "toggle-worker",
+                toggled.score(),
+                0
+        ).status()).isEqualTo(WorkerScoreTransitionStatus.INVALID);
+    }
+
+    @Test
     void workerAndPlatformPropertiesRemainIndependentAndScoreNeutral() {
         catalog.registerWorkerGroup(group("group-1", Map.of(), Set.of("event")));
         runtime.upsertWorker(worker(

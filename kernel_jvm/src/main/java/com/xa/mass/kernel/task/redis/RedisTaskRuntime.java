@@ -6,6 +6,8 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore
+        .TaskItemScoreTransitionStatus;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
@@ -17,13 +19,10 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemSuccessResultPage;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisFuture;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
 import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.ArrayList;
@@ -33,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ExecutionException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -65,6 +63,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private final RedisClient redisClient;
     private final TaskScoreBandCore scoreBand;
+    private final TaskItemScoreBandCore itemScoreBand;
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final RedisKeyspace keyspace;
     private volatile StatefulRedisConnection<String, String> connection;
@@ -72,6 +71,7 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     public RedisTaskRuntime(
             RedisClient redisClient,
             TaskScoreBandCore scoreBand,
+            TaskItemScoreBandCore itemScoreBand,
             RedisKeyspace keyspace
     ) {
         if (redisClient == null) {
@@ -81,6 +81,10 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         this.scoreBand = java.util.Objects.requireNonNull(
                 scoreBand,
                 "scoreBand"
+        );
+        this.itemScoreBand = java.util.Objects.requireNonNull(
+                itemScoreBand,
+                "itemScoreBand"
         );
         this.keyspace = java.util.Objects.requireNonNull(
                 keyspace,
@@ -333,10 +337,24 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         }
 
         try {
-            results.putAll(initializeItemScores(
+            itemScoreBand.initializeItemScores(
                     taskId,
                     dueMillis,
                     maxRetryTimes
+            ).forEach((messageId, result) -> results.put(
+                    messageId,
+                    switch (result.status()) {
+                        case TRANSITIONED, NOOP ->
+                                new TaskItemAppendResult(
+                                        TaskItemAppendStatus.APPENDED
+                                );
+                        case INVALID -> new TaskItemAppendResult(
+                                TaskItemAppendStatus.INVALID
+                        );
+                        default -> new TaskItemAppendResult(
+                                TaskItemAppendStatus.RETRYABLE
+                        );
+                    }
             ));
         } catch (RuntimeException error) {
             records.keySet().forEach(messageId -> results.put(
@@ -360,7 +378,20 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             String taskId,
             Map<String, String> results
     ) {
-        throw notImplemented("store_task_item_success_results");
+        requireNonBlank(taskId, "taskId");
+        if (results == null) {
+            throw new IllegalArgumentException("results must be present");
+        }
+        if (results.isEmpty()) {
+            return;
+        }
+        LinkedHashMap<String, String> validated = new LinkedHashMap<>();
+        results.forEach((messageId, payload) -> {
+            requireNonBlank(messageId, "messageId");
+            requireNonBlank(payload, "payload");
+            validated.put(messageId, payload);
+        });
+        commands().hset(resultsKey(taskId), validated);
     }
 
     @Override
@@ -486,74 +517,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         return new MaterializedItem(item, expiry);
     }
 
-    private Map<String, TaskItemAppendResult> initializeItemScores(
-            String taskId,
-            Map<String, Long> dueMillisByMessageId,
-            int maxRetryTimes
-    ) {
-        int remainingBudget = 1 + maxRetryTimes;
-        var results = new LinkedHashMap<String, TaskItemAppendResult>();
-        var pending = new LinkedHashMap<String, Long>();
-        dueMillisByMessageId.forEach((messageId, dueMillis) -> {
-            if (dueMillis < TaskItemScoreBandCore.MIN_TIME_MILLIS
-                    || dueMillis > TaskItemScoreBandCore.MAX_TIME_MILLIS) {
-                results.put(
-                        messageId,
-                        new TaskItemAppendResult(TaskItemAppendStatus.INVALID)
-                );
-            } else {
-                long timeSlot = dueMillis
-                        / TaskItemScoreBandCore.SLOT_MILLIS;
-                pending.put(
-                        messageId,
-                        TaskItemScoreBandCore.ACTIVE_TAG
-                                * TaskItemScoreBandCore.TAG_FACTOR
-                                + timeSlot
-                                * TaskItemScoreBandCore.SUFFIX_FACTOR
-                                + remainingBudget
-                );
-            }
-        });
-        if (pending.isEmpty()) {
-            return results;
-        }
-
-        RedisAsyncCommands<String, String> async = connection().async();
-        var futures = new LinkedHashMap<String, RedisFuture<Long>>();
-        pending.forEach((messageId, score) -> futures.put(
-                messageId,
-                async.zadd(
-                        itemScoreKey(taskId),
-                        ZAddArgs.Builder.nx(),
-                        score.doubleValue(),
-                        messageId
-                )
-        ));
-        for (Map.Entry<String, RedisFuture<Long>> entry : futures.entrySet()) {
-            try {
-                entry.getValue().get();
-                results.put(
-                        entry.getKey(),
-                        new TaskItemAppendResult(
-                                TaskItemAppendStatus.APPENDED
-                        )
-                );
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(
-                        "Item score initialization was interrupted",
-                        error
-                );
-            } catch (ExecutionException error) {
-                throw new IllegalStateException(
-                        "Item score initialization failed",
-                        error.getCause()
-                );
-            }
-        }
-        return results;
-    }
-
     private String encodeItem(MaterializedItem item)
             throws JacksonException {
         TaskItem record = item.record();
@@ -656,10 +619,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private String itemsKey(String taskId) {
         return keyspace.base() + ":task:" + taskId + ":items";
-    }
-
-    private String itemScoreKey(String taskId) {
-        return keyspace.base() + ":task:" + taskId + ":item_score";
     }
 
     private String resultsKey(String taskId) {

@@ -8,11 +8,15 @@ import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime
+        .ProbeRequestOfferStatus;
 import com.xa.mass.server.testsupport.RedisTestScope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
+        .DeliveryReportOutcomeClass;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -61,6 +65,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 redisClient,
                 codec,
                 keyspace,
+                2,
                 2
         );
     }
@@ -135,6 +140,38 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         assertThat(redis.llen(resultKey("success"))).isEqualTo(1);
         assertThat(redis.llen(resultKey("worker-failure"))).isEqualTo(1);
         assertThat(redis.llen(resultKey("adapter-rejection"))).isEqualTo(1);
+
+        assertThat(resultRuntime.consumeWorkerResults(
+                DeliveryReportOutcomeClass.SUCCESS,
+                100
+        )).containsExactly(results.get(0));
+        assertThat(resultRuntime.consumeWorkerResults(
+                DeliveryReportOutcomeClass.WORKER_FAILURE,
+                100
+        )).containsExactly(results.get(1));
+        assertThat(resultRuntime.consumeWorkerResults(
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+                100
+        )).containsExactly(results.get(2));
+        assertThat(redis.llen(resultKey("success"))).isZero();
+    }
+
+    @Test
+    void resultConsumeIsFifoAndDropsConsumedMalformedMembers() {
+        DeliveryReport first = result("first", "200");
+        DeliveryReport second = result("second", "200");
+        redis.rpush(
+                resultKey("success"),
+                codec.encodeDeliveryReport(first),
+                "{bad-json",
+                codec.encodeDeliveryReport(second)
+        );
+
+        assertThat(resultRuntime.consumeWorkerResults(
+                DeliveryReportOutcomeClass.SUCCESS,
+                100
+        )).containsExactly(first, second);
+        assertThat(redis.llen(resultKey("success"))).isZero();
     }
 
     @Test
@@ -251,16 +288,34 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     @Test
     void serviceabilityBridgeConsumesRequestsAndAppendsTheRemainingPrefix() {
         String requestKey = serviceabilityRequestKey("endpoint-1");
-        redis.hset(requestKey, "worker-1", "1");
-        redis.hset(requestKey, "worker-2", "1");
-        redis.hset(requestKey, "worker-3", "1");
+        assertThat(serviceabilityRuntime.offerProbeRequests(
+                "endpoint-1",
+                List.of("worker-1", "worker-2")
+        )).containsExactly(
+                Map.entry("worker-1", ProbeRequestOfferStatus.OFFERED),
+                Map.entry("worker-2", ProbeRequestOfferStatus.OFFERED)
+        );
+        assertThat(serviceabilityRuntime.offerProbeRequests(
+                "endpoint-1",
+                List.of("worker-1", "worker-3")
+        )).containsExactly(
+                Map.entry(
+                        "worker-1",
+                        ProbeRequestOfferStatus.ALREADY_REQUESTED
+                ),
+                Map.entry("worker-3", ProbeRequestOfferStatus.CAPACITY)
+        );
+        assertThat(serviceabilityRuntime.offerProbeRequests(
+                "endpoint-2",
+                List.of("worker-3")
+        )).containsEntry("worker-3", ProbeRequestOfferStatus.OFFERED);
 
         List<String> consumed = serviceabilityRuntime.consumeProbeRequests(
                 "endpoint-1",
                 2
         );
         assertThat(consumed).hasSize(2).doesNotHaveDuplicates();
-        assertThat(redis.hlen(requestKey)).isEqualTo(1);
+        assertThat(redis.hlen(requestKey)).isZero();
 
         DeliveryReport first = serviceabilityResult("worker-1", "CONNECTED");
         DeliveryReport second = serviceabilityResult("worker-2", "UNKNOWN");
@@ -279,6 +334,29 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         assertThat(serviceabilityRuntime.appendAdapterEvidenceResults(
                 List.of(rejected)
         )).isZero();
+
+        assertThat(serviceabilityRuntime.consumeAdapterEvidenceResults(2))
+                .containsExactly(first, second);
+        assertThat(redis.llen(serviceabilityResultKey())).isZero();
+
+        DeliveryReport wrongEndpoint = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.SYSTEM,
+                "platform.adapter.worker-connections.snapshot",
+                "200",
+                "{}",
+                "worker-serviceability:v1:1"
+        );
+        redis.rpush(
+                serviceabilityResultKey(),
+                "{bad-json",
+                codec.encodeDeliveryReport(wrongEndpoint),
+                codec.encodeDeliveryReport(first)
+        );
+        assertThat(serviceabilityRuntime.consumeAdapterEvidenceResults(100))
+                .containsExactly(first);
+        assertThat(redis.llen(serviceabilityResultKey())).isZero();
     }
 
     private String commandKey(String endpointManagerId) {

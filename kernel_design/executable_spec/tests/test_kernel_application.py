@@ -359,6 +359,25 @@ class KernelApplicationTest(unittest.TestCase):
             internal.worker_serviceability_result.interval_millis,
         )
 
+    def test_managed_serviceability_uses_parent_floor_without_result_loop(
+        self,
+    ) -> None:
+        config = KernelApplicationConfig.from_json(
+            '{"workerServiceability":{"taskScanLimit":37}}'
+        )
+
+        KernelApplication(
+            config,
+            _worker_serviceability_result_enabled=False,
+            _worker_serviceability_dispatch_enabled=False,
+            _hot_eligibility_floor_millis=12_300,
+        )
+
+        internal = self.from_url.call_args.kwargs["config"]
+        self.assertEqual(12_300, internal.hot_eligibility_floor_millis)
+        self.assertIsNone(internal.worker_serviceability_result)
+        self.assertIsNone(internal.worker_serviceability_dispatch)
+
     def test_task_call_submission_is_a_bounded_application_command(self) -> None:
         expected = TaskCallSubmissionResult(
             TaskCallSubmissionStatus.SUBMITTED,
@@ -671,6 +690,7 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
         process._config = Mock(
             assignment_dispatch="assignment-config",
             result_routing="result-config",
+            result_routing_enabled=True,
             worker_serviceability_dispatch=None,
             worker_serviceability_result=None,
             stop_timeout_millis=123,
@@ -709,6 +729,20 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
             ],
             order,
         )
+
+    def test_managed_migration_mode_never_starts_result_loop(self) -> None:
+        process, order = self.process()
+        process._config.result_routing_enabled = False
+
+        process.start()
+        process.stop()
+
+        self.assertEqual(
+            ["assignment-start", "assignment-stop"],
+            order,
+        )
+        process._result_routing_application.start.assert_not_called()
+        process._result_routing_application.stop.assert_not_called()
 
     def test_assignment_start_failure_rolls_back_result_loop(self) -> None:
         process, order = self.process()
@@ -762,6 +796,37 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
             ],
             order,
         )
+
+    def test_managed_result_migration_keeps_only_serviceability_dispatch(
+        self,
+    ) -> None:
+        process, order = self.process()
+        process._config.result_routing_enabled = False
+        process._config.worker_serviceability_result = None
+        process._config.worker_serviceability_dispatch = "service-dispatch-config"
+        process._worker_serviceability_result_application = None
+        process._worker_serviceability_dispatch_application = Mock()
+        process._worker_serviceability_dispatch_application.start.side_effect = (
+            lambda **_kwargs: order.append("service-dispatch-start")
+        )
+        process._worker_serviceability_dispatch_application.stop.side_effect = (
+            lambda **_kwargs: order.append("service-dispatch-stop")
+        )
+
+        process.start()
+        process.stop()
+
+        self.assertEqual(
+            [
+                "service-dispatch-start",
+                "assignment-start",
+                "assignment-stop",
+                "service-dispatch-stop",
+            ],
+            order,
+        )
+        process._result_routing_application.start.assert_not_called()
+        process._result_routing_application.stop.assert_not_called()
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")

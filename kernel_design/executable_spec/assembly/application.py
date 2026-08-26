@@ -554,18 +554,41 @@ class KernelApplication:
     def __init__(
         self,
         config: KernelApplicationConfig | None = None,
+        *,
+        _result_routing_enabled: bool = True,
+        _worker_serviceability_result_enabled: bool = True,
+        _worker_serviceability_dispatch_enabled: bool = True,
+        _hot_eligibility_floor_millis: int | None = None,
     ) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
             raise TypeError("config must be KernelApplicationConfig or None")
         self._config = config or _DEFAULT_KERNEL_APPLICATION_CONFIG
-        self._hot_eligibility_floor_millis = (
-            None
-            if self._config.worker_serviceability is None
-            else (
+        if not isinstance(_result_routing_enabled, bool):
+            raise TypeError("_result_routing_enabled must be bool")
+        if not isinstance(_worker_serviceability_result_enabled, bool):
+            raise TypeError(
+                "_worker_serviceability_result_enabled must be bool"
+            )
+        if not isinstance(_worker_serviceability_dispatch_enabled, bool):
+            raise TypeError(
+                "_worker_serviceability_dispatch_enabled must be bool"
+            )
+        if self._config.worker_serviceability is None:
+            if _hot_eligibility_floor_millis is not None:
+                raise ValueError(
+                    "HOT eligibility floor requires Worker Serviceability"
+                )
+            hot_eligibility_floor_millis = None
+        elif _hot_eligibility_floor_millis is None:
+            hot_eligibility_floor_millis = (
                 (time_ns() // 1_000_000)
                 // WorkerScoreCore.SLOT_MILLIS
                 * WorkerScoreCore.SLOT_MILLIS
             )
+        else:
+            hot_eligibility_floor_millis = _hot_eligibility_floor_millis
+        self._hot_eligibility_floor_millis = (
+            hot_eligibility_floor_millis
         )
         self._process = _RedisKernelProcess.from_url(
             redis_url=self._config.redis_url,
@@ -573,6 +596,13 @@ class KernelApplication:
                 self._config,
                 hot_eligibility_floor_millis=(
                     self._hot_eligibility_floor_millis
+                ),
+                result_routing_enabled=_result_routing_enabled,
+                worker_serviceability_result_enabled=(
+                    _worker_serviceability_result_enabled
+                ),
+                worker_serviceability_dispatch_enabled=(
+                    _worker_serviceability_dispatch_enabled
                 ),
             ),
         )
@@ -645,6 +675,9 @@ class KernelApplication:
         config: KernelApplicationConfig,
         *,
         hot_eligibility_floor_millis: int | None = None,
+        result_routing_enabled: bool = True,
+        worker_serviceability_result_enabled: bool = True,
+        worker_serviceability_dispatch_enabled: bool = True,
     ) -> _RedisKernelProcessConfig:
         if (
             config.worker_serviceability is not None
@@ -696,9 +729,11 @@ class KernelApplication:
                 ),
                 interval_millis=config.result_routing_interval_millis,
             ),
+            result_routing_enabled=result_routing_enabled,
             worker_serviceability_dispatch=(
                 None
                 if config.worker_serviceability is None
+                or not worker_serviceability_dispatch_enabled
                 else WorkerServiceabilityDispatchApplicationConfig(
                     dispatch=WorkerServiceabilityDispatchConfig(
                         task_scan_limit=(
@@ -734,6 +769,7 @@ class KernelApplication:
             worker_serviceability_result=(
                 None
                 if config.worker_serviceability is None
+                or not worker_serviceability_result_enabled
                 else WorkerServiceabilityResultApplicationConfig(
                     result=WorkerServiceabilityResultConfig(
                         max_recovery_attempts=(

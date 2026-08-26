@@ -25,6 +25,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_PACER = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelpacer"
     );
+    private static final Path KERNEL_PACER_ASSEMBLY = KERNEL_PACER.resolve(
+            "KernelPacerAssembly.java"
+    );
     private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/"
                     + "WorkerDeliveryOwnerAssemblyConfiguration.java"
@@ -41,6 +44,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path TASK_SCORE_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/score/redis/RedisTaskScoreBandCore.java"
     );
+    private static final Path TASK_ITEM_SCORE_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/score/redis/RedisTaskItemScoreBandCore.java"
+    );
     private static final Path WORKER_SCORE_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/score/redis/RedisWorkerScoreCore.java"
     );
@@ -49,6 +55,9 @@ class ServerArchitectureBoundaryTest {
     );
     private static final Path SERVICEABILITY_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/serviceability/redis"
+    );
+    private static final Path SERVICEABILITY = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/serviceability"
     );
     private static final Path HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/workerdelivery"
@@ -133,6 +142,13 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("\"rr:")
                 .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:")
+                .doesNotContain(
+                        "platform.adapter.worker-connection.changed"
+                )
+                .doesNotContain(
+                        "platform.adapter.worker-delivery.expired"
+                )
+                .doesNotContain("worker-serviceability-evidence:v1")
                 .doesNotContain("KernelCommandClient")
                 .doesNotContain("TaskDataRuntime")
                 .doesNotContain("WorkerDeliveryRuntime");
@@ -159,6 +175,14 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerScoreCore")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("Pacer");
+        assertThat(readSources(SERVICEABILITY))
+                .contains("WorkerServiceabilityResultPacer")
+                .contains("WorkerServiceabilityDispatchPacer")
+                .doesNotContain("WorkerServiceabilityResultHandler")
+                .doesNotContain("WorkerServiceabilityDispatchHandler")
+                .doesNotContain("ServiceLoader")
+                .doesNotContain("ExecutorService")
+                .doesNotContain("ScheduledExecutor");
     }
 
     @Test
@@ -168,7 +192,6 @@ class ServerArchitectureBoundaryTest {
                 .contains("RedisKeyspace")
                 .contains(":task:")
                 .contains(":items")
-                .contains(":item_score")
                 .contains(":results")
                 .doesNotContain("worker-commands")
                 .doesNotContain("seed-results")
@@ -184,6 +207,12 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("\"wr:")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:");
+        assertThat(readSources(TASK_ITEM_SCORE_REDIS))
+                .contains("RedisKeyspace")
+                .contains(":task:")
+                .contains(":item_score")
+                .doesNotContain(":items")
+                .doesNotContain(":results");
         assertThat(readSources(WORKER_SCORE_REDIS))
                 .contains("RedisKeyspace")
                 .contains(":worker:score:")
@@ -503,9 +532,22 @@ class ServerArchitectureBoundaryTest {
                 .contains("ProcessBuilder")
                 .contains("SmartLifecycle")
                 .contains("kernel_design.executable_spec.assembly")
+                .contains("ResultRoutingApplication")
+                .contains("WorkerServiceabilityResultApplication")
+                .contains("WorkerServiceabilityDispatchApplication")
+                .contains("--without-result-routing")
+                .contains("--without-worker-serviceability-result")
+                .contains("--without-worker-serviceability-dispatch")
+                .contains("--hot-eligibility-floor-millis")
+                .doesNotContain("WorkerRuntime")
+                .doesNotContain("RedisClient")
+                .doesNotContain("RestClient");
+        assertThat(readSources(KERNEL_PACER_ASSEMBLY))
+                .contains("ResultRoutingApplication")
+                .contains("WorkerServiceabilityResultApplication")
+                .contains("WorkerServiceabilityDispatchApplication")
                 .doesNotContain("ScoreCore")
                 .doesNotContain("TaskRuntime")
-                .doesNotContain("WorkerRuntime")
                 .doesNotContain("RedisClient")
                 .doesNotContain("RestClient");
     }

@@ -81,6 +81,11 @@ specification, owner Redis providers and Kernel application assembly.
 - Python production Pacer code runs only as the fixed CLI child supervised by
   Java Server. Do not restore a Python HTTP host, Task business routes, or a
   Server fallback through that child.
+- Managed production disables Python Result Routing, Worker Serviceability
+  Result and Worker Serviceability Dispatch explicitly; their fixed Java
+  applications are the only production consumers or Probe producer. Managed
+  Python owns only Assignment Dispatch. Never run an old and new Pacer for the
+  same function together in one Redis scope.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 
 Read [kernel_design/AGENTS.md](kernel_design/AGENTS.md) before changing this

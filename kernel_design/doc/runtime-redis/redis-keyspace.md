@@ -46,7 +46,7 @@ Worker score          xa_mass:<scope>:worker:score:<workerGroupId>
 Worker identity       xa_mass:<scope>:worker:identity:<workerGroupId>
 Worker binding        xa_mass:<scope>:worker:binding:<bucket>
 Probe requests        xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
-Probe results         xa_mass:<scope>:worker:serviceability:evidence_results
+Adapter evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>
 Result routing        xa_mass:<scope>:result:routing:<outcomeClass>

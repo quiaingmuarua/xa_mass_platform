@@ -45,6 +45,11 @@ a Kernel mechanism decision.
 - Assignment Dispatch may orchestrate bounded owner reads and transitions; it
   does not merge owner truth.
 - Result Routing owns retry/finality policy and accepted evidence disposition.
+- Python Result Routing, Worker Serviceability Result and Worker
+  Serviceability Dispatch remain mechanism oracles, while managed production
+  disables all three and runs their fixed Java implementations. Managed Python
+  owns only Assignment Dispatch. Do not add fallback, dual-consumer or
+  dual-producer modes.
 - Worker Delivery carries already-assigned work and never selects a Worker or
   claims a TaskItem.
 - DIRECT_CALL is a Server use case. Its generic non-overwriting Worker Command

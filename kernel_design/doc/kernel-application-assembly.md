@@ -14,8 +14,10 @@ Direct Python SDK / executable-spec support
 Java-supervised Python Pacer CLI
   -> KernelApplication
      -> private Redis composition root
-     -> assignment-dispatch and result-routing background applications
+     -> assignment-dispatch and serviceability background applications
+     -> Result Routing and Serviceability Result are explicitly disabled
   -> Redis URL and scope injected by the Java parent
+  -> Java-minted HOT eligibility floor injected for the remaining Pacers
   -> policy JSON cannot declare Redis coordinates in managed mode
   -> exact ready-file token after all Pacers start
   -> stdin EOF stops the application
@@ -24,17 +26,22 @@ Java Runtime API Server
   -> controllers/services depend on Kernel owner contracts
   -> assembly binds Task control, Task data, Worker resource, and delivery
      operations to Java Redis providers
-  -> owns Python child lifecycle and Kernel readiness
+  -> starts fixed Java Result Routing and Serviceability Result before Python
+  -> owns their aggregate lifecycle and Kernel readiness
 ```
 
 External callers see commands, not runtime objects. Inside the Java process,
 controllers and services depend on owner contracts rather than route-shaped
 clients or Redis implementations. Callers cannot obtain Task/Worker score
 cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
-Only `KernelApplication` starts background scheduling. Java's direct Redis
+Standalone `KernelApplication` starts the complete Python oracle scheduling
+set. Managed production starts fixed Java Result Routing and Worker
+Serviceability Result, then uses Python only for Assignment and Serviceability
+Dispatch. Java's direct Redis
 providers implement caller-driven Task commands, Worker resource changes,
 Task Item append/result read, and Worker Delivery bridge operations. Java does
-not implement Pacers or their candidate/dispatch Score operations.
+not implement Assignment or Serviceability candidate/dispatch Score
+operations.
 
 ## Application And Executable-Spec Commands
 
@@ -108,6 +115,8 @@ ordinary TaskItem append / result load -> Java Redis TaskRuntime provider
 Task Call Item submission       -> Java bounded command over Java owners
 DeliveryCommand offer / consume   -> Java Redis WorkerCommandRuntime provider
 DeliveryReport append               -> Java Redis WorkerResultRuntime provider
+Adapter evidence append / consume   -> Java Redis WorkerServiceability provider
+Result Routing / Serviceability Result -> fixed Java Pacers over owner contracts
 other score/candidate/scheduling -> no Server provider
 ```
 
@@ -285,9 +294,10 @@ public Worker Delivery HTTP operations.
 
 ## Background Loop Contract
 
-`KernelApplication` always composes Assignment Dispatch and Result Routing. It
-also composes two independent Worker Serviceability applications only when the
-optional configuration is present:
+`KernelApplication` constructs Assignment Dispatch and Result Routing. The
+standalone Oracle starts the complete set. Managed CLI mode receives fixed
+switches for all three migrated applications and starts only Python Assignment
+Dispatch:
 
 ```text
 AssignmentDispatchApplication
@@ -305,7 +315,7 @@ WorkerServiceabilityDispatchApplication
   -> due-Task-derived Group stale-score discovery loop
 ```
 
-The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
+The Python composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
 default Task and Worker handler mappings, and injects them into
 `ResultRoutingPacer`. The Pacer itself depends only on `WorkerResultRuntime` and
 the stable handler contracts; Task runtime, TaskItem score, and Worker score
@@ -339,6 +349,17 @@ startup orders Result Routing, Serviceability Result, Serviceability Dispatch,
 then Assignment Dispatch; shutdown reverses that order. Partial startup rolls
 back any already-started internal application. The Serviceability Runtime is
 not constructed when the optional configuration is absent.
+
+Production replaces both Result loops and Serviceability Dispatch with Java.
+`KernelPacerAssembly` starts Java `ResultRoutingApplication`, optional Java
+`WorkerServiceabilityResultApplication`, optional Java
+`WorkerServiceabilityDispatchApplication`, then the managed Python Assignment
+child. Shutdown closes the child and stops the three Java applications in
+reverse order using one shared deadline. Java mints the one process-local HOT
+eligibility floor and passes it to Java Serviceability Result, Java
+Serviceability Dispatch, and the remaining Python Assignment Pacer.
+The Python Oracle keeps its complete standalone order and self-minted floor for
+parity tests.
 
 `stopTimeoutMillis` is one shared deadline for joining all internal threads.
 Stop signals interrupt loop waits but do not cancel an in-flight Redis call or
@@ -409,16 +430,24 @@ module with a config path, instance token, and ready-file path:
 python -u -m kernel_design.executable_spec.assembly \
   --config kernel.json \
   --instance-token <java-generated-uuid> \
-  --ready-file <java-owned-state-directory>/ready
+  --ready-file <java-owned-state-directory>/ready \
+  --without-result-routing \
+  --without-worker-serviceability-result \
+  --without-worker-serviceability-dispatch \
+  --hot-eligibility-floor-millis <java-owned-floor>
 ```
 
-The CLI constructs one `KernelApplication`, writes the exact token only after
-all Pacers start, and then blocks on stdin. EOF or interruption stops the
-application and removes its owned ready file. Java owns startup timeout,
+The managed-only switches and floor are rejected without the token/ready-file
+protocol and do not bypass normal config validation. The floor is present only
+when Worker Serviceability is configured. The CLI writes the exact token only
+after all remaining Python Pacers start, then blocks on stdin. EOF or
+interruption stops the application and removes its owned ready file. Java owns
+startup timeout,
 bounded shutdown, non-destructive historical-state checks, readiness, and final
-termination of the exact child it started. It does not parse the Pacer JSON or
-call score policy. Worker/Adapter assembly starts only after the child is ready
-and closes before the child. A dead or PID-reused historical owner record is
+termination of the exact child it started. The process owner does not interpret
+Pacer policy; fixed `kernel_jvm` config decoders read the fields owned by the
+three Java applications. Worker/Adapter assembly starts only after the child is
+ready and closes before the child. A dead or PID-reused owner record is
 cleaned. A record matching a live PID and start instant blocks startup; Java
 never kills a process recovered only from disk state. If the operating system
 cannot expose the start instant, the live process is left untouched and Server
@@ -533,13 +562,14 @@ identity Report carries WorkerId in `sourceId` and exact `null` payload; the
 Adapter asks Server only whether that WorkerId's persisted
 Binding points to the receiving Endpoint Manager before activating the Channel
 without an ACK. Effective route changes return through the existing Adapter
-Result API into a Server-owned bounded inbox, where Server separately validates
-the Adapter source and current Binding. Kernel has no
-contract, provider, consumer or score policy for that evidence in this slice.
+Result API into the Kernel-owned bounded evidence LIST. Server validates and
+appends but does not interpret the event. The fixed Java Worker Serviceability
+Result Pacer consumes the evidence and composes Worker score owner operations.
 
-Python remains the scheduling mechanism oracle and the temporary Pacer
-implementation, while Java Server is the only production process entry and
-supervises that fixed CLI child. Java owns the external Task commands, Worker
+Python remains the scheduling mechanism oracle and the temporary production
+implementation of Assignment Dispatch. Java owns production Result Routing,
+Serviceability Result, and Serviceability Dispatch, is the only production
+process entry, and supervises the fixed CLI child. Java also owns the external Task commands, Worker
 resource ingress, TaskData, and Worker Delivery operations, without becoming a
 second scheduler. The Java
 Worker is the only external Worker demonstration mainline. Authentication,
@@ -559,13 +589,15 @@ API compatibility remain out of scope.
   lifecycle handoff and must never compete with a policy value.
 - Do not let HTTP handlers perform score reads or transitions.
 - Do not restore any Python production HTTP host or Task business route.
-- Do not let Java process supervision interpret Pacer JSON, score, candidate,
-  dispatch, retry, recovery, or result policy.
+- Server process supervision passes the Pacer JSON through; only the Java
+  Result Routing and Worker Serviceability Result config decoders read their
+  finite owned fields. Server must not interpret score, candidate, dispatch,
+  retry, recovery, or result policy.
 - Do not expose Worker Delivery methods on `KernelApplication`.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.
-- Do not let Java Worker Delivery Redis code append DeliveryCommand, consume
-  DeliveryReport, or access score/Pacer state.
+- Java Worker Delivery Redis code may append and consume its Result LISTs, but
+  must not decode Result Context or access score/Pacer state.
 - Do not let Java TaskData Redis code access Task score, Worker score,
   candidate cache, DeliveryCommand mailbox, DeliveryReport queues, or Pacer state.
 - Do not expose batch mailbox acquisition through the polling Worker endpoint.

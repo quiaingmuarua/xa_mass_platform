@@ -7,6 +7,8 @@ import com.xa.mass.kernel.task.DefaultTaskCallItemSubmission;
 import com.xa.mass.kernel.task.DefaultTaskLifecycleCommands;
 import com.xa.mass.kernel.task.TaskLifecycleCommands;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.redis.RedisTaskItemScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
@@ -33,14 +35,27 @@ public class KernelOwnerAssemblyConfiguration {
     }
 
     @Bean(destroyMethod = "close")
+    RedisTaskItemScoreBandCore redisTaskItemScoreBandCore(
+            RedisClient redisClient,
+            XaMassRedisProperties properties
+    ) {
+        return new RedisTaskItemScoreBandCore(
+                redisClient,
+                properties.keyspace()
+        );
+    }
+
+    @Bean(destroyMethod = "close")
     RedisTaskRuntime redisTaskRuntime(
             RedisClient redisClient,
             TaskScoreBandCore taskScore,
+            TaskItemScoreBandCore taskItemScore,
             XaMassRedisProperties properties
     ) {
         return new RedisTaskRuntime(
                 redisClient,
                 taskScore,
+                taskItemScore,
                 properties.keyspace()
         );
     }

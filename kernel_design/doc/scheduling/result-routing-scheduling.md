@@ -1,7 +1,7 @@
 # Result-Routing Scheduling
 
-Status: active new-kernel mechanism contract; Python executable spec
-implemented; policy coverage partial.
+Status: active new-kernel mechanism contract; fixed Java production Pacer and
+Python executable-spec oracle implemented; policy coverage partial.
 
 Parent contracts:
 [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md) and
@@ -125,29 +125,15 @@ for one Worker in that outcome batch only when preparing the exact score-owner
 call. Each WorkerGroup therefore produces at most one batch call to
 WorkerScoreCore.
 
-`TaskResultEvidence`, `WorkerResultEvidence`, `TaskResultHandler`, and
-`WorkerResultHandler` are stable scheduling-policy contracts. Task handlers
-receive one `taskId`, its immutable result tuple, and `resultTimeMillis`.
-Worker handlers receive one `workerGroupId`, its immutable evidence tuple, and
-the same action-neutral `resultTimeMillis`; the time parameter does not imply
-that the replacement policy must release the Worker, and it is not a safe
-Worker release coordinate after arbitrary handler work. Each built-in Worker
-release policy reads a fresh clock value immediately before calling its Score
-Owner release operation; Task success promotion continues to use the stable
-round time. `ResultRoutingPacer`
-accepts owner-local outcome-to-handler mappings, copies them during
-construction, and requires Task SUCCESS coverage plus Worker coverage for all
-three outcome classes. It depends only on `WorkerResultRuntime` plus those two
-handler mappings; TaskItem score, Worker score, and Task runtime dependencies
-belong to policy construction. `ResultRoutingBuiltinPolicies` is the single
-container for built-in result-routing policies. It owns the default policy
-dependencies and exposes each policy as a named callable method.
-`default_task_result_handlers()` and `default_worker_result_handlers()` only
-compose those methods into the standard mappings: SUCCESS stores/promotes Task
-results and uses completed-HOT release, while WORKER_FAILURE and
-ADAPTER_REJECTION use ordinary exact release. Assembly chooses
-these defaults explicitly; callers may replace a whole mapping or compose a
-custom mapping from individual built-in methods and custom handlers.
+The Python oracle retains its explicit Handler mappings for mechanism tests.
+They are not a production extension surface. Java production keeps
+`TaskResultEvidence`, `WorkerResultEvidence`, `ResultContextCodec`, and
+`ResultRoutingBuiltinPolicies` package-private and installs exactly the three
+policies above. It exposes no Handler interface, runtime registry, reflection,
+or replacement map. Each built-in Worker release reads a fresh clock value
+immediately before calling its Score Owner; Task success promotion uses the
+single round time. Server only composes the Java Pacer with its owner
+dependencies and never selects or interprets a policy.
 
 ### Success
 

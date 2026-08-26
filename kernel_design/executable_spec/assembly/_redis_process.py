@@ -59,6 +59,7 @@ class _RedisKernelProcessConfig:
     hot_eligibility_floor_millis: int | None
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
+    result_routing_enabled: bool
     worker_serviceability_dispatch: (
         WorkerServiceabilityDispatchApplicationConfig | None
     )
@@ -84,15 +85,12 @@ class _RedisKernelProcessConfig:
             raise ValueError("HOT eligibility floor must be score-slot aligned")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
-        if (self.worker_serviceability_dispatch is None) != (
-            self.worker_serviceability_result is None
-        ):
-            raise ValueError(
-                "serviceability dispatch and result must be configured together"
-            )
-        if (self.hot_eligibility_floor_millis is None) != (
-            self.worker_serviceability_dispatch is None
-        ):
+        if not isinstance(self.result_routing_enabled, bool):
+            raise TypeError("result_routing_enabled must be bool")
+        if (
+            self.worker_serviceability_result is not None
+            or self.worker_serviceability_dispatch is not None
+        ) and self.hot_eligibility_floor_millis is None:
             raise ValueError(
                 "HOT eligibility floor belongs to enabled serviceability"
             )
@@ -223,37 +221,42 @@ class _RedisKernelProcess:
         self._worker_serviceability_result_application: (
             WorkerServiceabilityResultApplication | None
         ) = None
-        if config.worker_serviceability_dispatch is not None:
+        if (
+            config.worker_serviceability_dispatch is not None
+            or config.worker_serviceability_result is not None
+        ):
             serviceability_runtime = RedisWorkerServiceabilityRuntime(
                 redis_client,
                 keyspace=config.keyspace,
             )
-            self._worker_serviceability_result_application = (
-                WorkerServiceabilityResultApplication(
-                    WorkerServiceabilityResultPacer(
-                        serviceability_runtime,
-                        self._worker_resource_catalog,
-                        self._worker_score,
-                        hot_eligibility_floor_millis=(
-                            config.hot_eligibility_floor_millis
-                        ),
+            if config.worker_serviceability_result is not None:
+                self._worker_serviceability_result_application = (
+                    WorkerServiceabilityResultApplication(
+                        WorkerServiceabilityResultPacer(
+                            serviceability_runtime,
+                            self._worker_resource_catalog,
+                            self._worker_score,
+                            hot_eligibility_floor_millis=(
+                                config.hot_eligibility_floor_millis
+                            ),
+                        )
                     )
                 )
-            )
-            self._worker_serviceability_dispatch_application = (
-                WorkerServiceabilityDispatchApplication(
-                    WorkerServiceabilityDispatchPacer(
-                        self._task_score,
-                        self._task_resource_catalog,
-                        self._worker_score,
-                        self._worker_resource_catalog,
-                        serviceability_runtime,
-                        hot_eligibility_floor_millis=(
-                            config.hot_eligibility_floor_millis
-                        ),
+            if config.worker_serviceability_dispatch is not None:
+                self._worker_serviceability_dispatch_application = (
+                    WorkerServiceabilityDispatchApplication(
+                        WorkerServiceabilityDispatchPacer(
+                            self._task_score,
+                            self._task_resource_catalog,
+                            self._worker_score,
+                            self._worker_resource_catalog,
+                            serviceability_runtime,
+                            hot_eligibility_floor_millis=(
+                                config.hot_eligibility_floor_millis
+                            ),
+                        )
                     )
                 )
-            )
 
     @classmethod
     def from_url(
@@ -275,7 +278,10 @@ class _RedisKernelProcess:
 
     def start(self) -> None:
         self._redis.ping()
-        self._result_routing_application.start(config=self._config.result_routing)
+        if self._config.result_routing_enabled:
+            self._result_routing_application.start(
+                config=self._config.result_routing
+            )
         started_serviceability_result = False
         started_serviceability_dispatch = False
         try:
@@ -308,7 +314,10 @@ class _RedisKernelProcess:
                     started_serviceability_result,
                     self._worker_serviceability_result_application,
                 ),
-                (True, self._result_routing_application),
+                (
+                    self._config.result_routing_enabled,
+                    self._result_routing_application,
+                ),
             ):
                 if not started or application is None:
                     continue
@@ -331,7 +340,11 @@ class _RedisKernelProcess:
             self._assignment_dispatch_application,
             self._worker_serviceability_dispatch_application,
             self._worker_serviceability_result_application,
-            self._result_routing_application,
+            (
+                self._result_routing_application
+                if self._config.result_routing_enabled
+                else None
+            ),
         ):
             if application is None:
                 continue
