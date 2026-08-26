@@ -8,14 +8,15 @@ Production is Java-only:
 
 ```text
 Java Server
-  -> KernelPacerAssembly
-     -> ResultRoutingApplication
-     -> WorkerServiceabilityResultApplication       optional
-     -> WorkerServiceabilityDispatchApplication     optional
-     -> AssignmentDispatchApplication
-        -> TaskWorkerAllocationPacer
-        -> TaskRunningActivationPacer
-        -> TaskDispatchPacer
+  -> KernelPacerAssembly                  Spring lifecycle adapter
+     -> KernelPacerRuntime                kernel_pacer_jvm
+        -> ResultRoutingApplication
+        -> WorkerServiceabilityResultApplication       optional
+        -> WorkerServiceabilityDispatchApplication     optional
+        -> AssignmentDispatchApplication
+           -> TaskWorkerAllocationPacer
+           -> TaskRunningActivationPacer
+           -> TaskDispatchPacer
 ```
 
 The Python executable specification remains the standalone mechanism Oracle:
@@ -42,8 +43,8 @@ xa.mass.kernel-pacer:
 ```
 
 Relative config paths resolve from the JVM working directory. Server reads the
-file and passes its content to the Kernel JVM aggregate parser; Server does not
-interpret scheduling policy.
+file and passes its content to `KernelPacerRuntime.assemble(...)`; the Pacer
+module parses policy once. Server does not interpret scheduling policy.
 
 The production policy JSON accepts only:
 
@@ -60,7 +61,7 @@ Unknown root fields and unknown fields inside a known section fail startup.
 The Redis URL and scope remain exclusively in `xa.mass.redis`; policy cannot
 select a second Redis universe.
 
-When `workerServiceability` is present, the Kernel JVM parser mints one
+When `workerServiceability` is present, the Kernel Pacer parser mints one
 100-millisecond-aligned `hotEligibilityFloorMillis`. The same immutable floor
 is injected into Serviceability Result, Serviceability Dispatch and Assignment
 candidate acquisition. It is not written to Redis or exposed through health or
@@ -83,6 +84,19 @@ WorkerServiceabilityRuntime
 Each Redis provider owns only its documented keys and operations. Pacers
 compose bounded owner calls; they do not bypass owners, decode opaque scores,
 or merge Task, TaskItem, Worker, Candidate and Delivery truth.
+
+The module boundary is:
+
+```text
+kernel_jvm
+  mechanical owner contracts, Redis providers, Candidate hints and codecs
+
+kernel_pacer_jvm
+  policy, matching, Pacer loops, configuration and finite thread lifecycle
+
+server_jvm
+  config-file I/O, owner wiring, Spring lifecycle delegation and Health
+```
 
 Java implements the production caller closure. Operations without a Java
 production caller remain explicit `KernelOperationNotImplementedException`
@@ -138,13 +152,15 @@ Startup failure rolls back every already-started Application in reverse order.
 
 Shutdown signals every loop and uses one shared deadline in exact reverse
 startup order. An Application must not reset the remaining budget for each
-thread. `KernelPacerAssembly` reaches `RUNNING` only after every required Java
-Application starts. Any required loop death moves aggregate state to `FAILED`.
+thread. `KernelPacerRuntime` reaches `RUNNING` only after every required Java
+Application starts. Any required loop death moves its aggregate state to
+`FAILED`; `KernelPacerAssembly` exposes that existing state to Spring without
+maintaining a second lifecycle state machine.
 
 Spring readiness requires:
 
 ```text
-KernelPacerAssembly RUNNING
+KernelPacerRuntime RUNNING through KernelPacerAssembly
 + Kernel Redis UP
 ```
 
@@ -196,11 +212,18 @@ Java Serviceability applications and the shared HOT floor. Redis Owner tests
 prove Java/Python shape compatibility, exact CAS and range ordering. The Python
 suite remains the independent Oracle proof.
 
+Deterministic policy and four-stage lifecycle tests live in
+`kernel_pacer_jvm`; `kernel_jvm` tests remain focused on owner contracts,
+providers, Candidate hints and codecs. Server tests prove only Spring
+delegation, Health projection and absence of individual Pacer beans.
+
 ## Guardrails
 
 - Do not restore a Python HTTP host, managed child, ready/owner file protocol,
   production wheel, venv or launcher.
 - Do not add a dynamic Pacer registry, public policy SPI or fallback owner.
+- Do not expose package-private Pacer/Application types or assemble them from
+  Server; `KernelPacerRuntime` is the only public Pacer-module entry.
 - Do not allow two Pacer implementations for the same function in one Redis
   scope.
 - Do not move candidate selection, Worker lease, TaskItem claim, retry,

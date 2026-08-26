@@ -125,6 +125,7 @@ jobs:
           ./gradlew --no-daemon --continue
           :transport:worker-delivery-contract:build
           :kernel_jvm:build
+          :kernel_pacer_jvm:build
           :transport:worker-core:build
           :transport:java-worker:build
           :transport:netty-adapter:build

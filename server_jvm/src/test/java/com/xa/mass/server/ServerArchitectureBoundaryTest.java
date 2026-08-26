@@ -13,6 +13,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_SOURCE = Path.of(
             "../kernel_jvm/src/main/java"
     );
+    private static final Path PACER_SOURCE = Path.of(
+            "../kernel_pacer_jvm/src/main/java"
+    );
     private static final Path SHARED_REDIS = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelredis"
     );
@@ -176,8 +179,9 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("Pacer");
         assertThat(readSources(SERVICEABILITY))
-                .contains("WorkerServiceabilityResultPacer")
-                .contains("WorkerServiceabilityDispatchPacer")
+                .contains("WorkerServiceabilityRuntime")
+                .doesNotContain("WorkerServiceabilityResultPacer")
+                .doesNotContain("WorkerServiceabilityDispatchPacer")
                 .doesNotContain("WorkerServiceabilityResultHandler")
                 .doesNotContain("WorkerServiceabilityDispatchHandler")
                 .doesNotContain("ServiceLoader")
@@ -530,22 +534,27 @@ class ServerArchitectureBoundaryTest {
 
         assertThat(readSources(KERNEL_PACER))
                 .contains("SmartLifecycle")
-                .contains("ResultRoutingApplication")
-                .contains("WorkerServiceabilityResultApplication")
-                .contains("WorkerServiceabilityDispatchApplication")
-                .contains("AssignmentDispatchApplication")
+                .contains("KernelPacerRuntime")
+                .doesNotContain("ResultRoutingApplication")
+                .doesNotContain("WorkerServiceabilityResultApplication")
+                .doesNotContain("WorkerServiceabilityDispatchApplication")
+                .doesNotContain("AssignmentDispatchApplication")
                 .doesNotContain("ProcessBuilder")
                 .doesNotContain("kernel_design.executable_spec.assembly")
                 .doesNotContain("RestClient");
         assertThat(readSources(KERNEL_PACER_ASSEMBLY))
-                .contains("ResultRoutingApplication")
-                .contains("WorkerServiceabilityResultApplication")
-                .contains("WorkerServiceabilityDispatchApplication")
-                .contains("AssignmentDispatchApplication")
+                .contains("KernelPacerRuntime")
                 .doesNotContain("ScoreCore")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("RedisClient")
                 .doesNotContain("RestClient");
+        assertThat(readSources(PACER_SOURCE))
+                .contains("ResultRoutingApplication")
+                .contains("WorkerServiceabilityResultApplication")
+                .contains("WorkerServiceabilityDispatchApplication")
+                .contains("AssignmentDispatchApplication")
+                .doesNotContain("org.springframework")
+                .doesNotContain("RedisClient");
     }
 
     private static String readSources(Path root) throws IOException {

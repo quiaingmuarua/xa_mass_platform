@@ -99,8 +99,10 @@ record merely to make a mechanical signature look smaller.
 
 ## Application And Policy
 
-- Kernel application assembly may own Pacer threads, startup order and bounded
-  shutdown. Owner contracts do not create background threads.
+- `kernel_pacer_jvm` application assembly owns production Pacer threads,
+  startup order and bounded shutdown. Stable `kernel_jvm` owner contracts do
+  not create background threads, and Server only adapts the aggregate runtime
+  to Spring.
 - Policies choose bounded inputs and legal owner operations; they do not become
   new truth owners.
 - Task admission limits and fairness are best-effort policy unless a stronger

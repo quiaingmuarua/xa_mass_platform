@@ -12,7 +12,7 @@ boundary named below.
 | Lane | Invariant | External dependencies | Primary command |
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
-| JVM Contracts | JVM modules compile and their owner, codec, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
+| JVM Contracts | JVM modules compile and their owner, codec, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, evidence append/consume, polarity toggle and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context starts all four Java Pacer applications; without a Python child, a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
@@ -117,9 +117,10 @@ Redis           redis://127.0.0.1:6379/15
 Redis scope     test_runtime_boundary_<unique run token>
 ```
 
-The test starts one Java Spring context. Its `KernelPacerAssembly` starts Java
-Result Routing, Java Worker Serviceability Result, Java Worker Serviceability
-Dispatch and Java Assignment Dispatch. Redis remains an external dependency;
+The test starts one Java Spring context. Its `KernelPacerAssembly` delegates to
+the `kernel_pacer_jvm` Runtime, which starts Java Result Routing, Java Worker
+Serviceability Result, Java Worker Serviceability Dispatch and Java Assignment
+Dispatch. Redis remains an external dependency;
 failure to start any required application or connect to Redis fails the proof.
 Each run generates one
 unique `test_*` scope. It plants a sentinel in a different scope and proves the
@@ -135,9 +136,10 @@ that scope after all writers stop. A proof may share the URL and DB with a
 running `profile_*` environment; neither side can see or delete the other's
 data.
 
-Deterministic lifecycle tests prove four-stage startup, reverse rollback,
-thread-death readiness failure, idempotent stop and one shared bounded shutdown
-deadline. The configured Group/Task and Adapter assembly has an explicit higher
+Deterministic `kernel_pacer_jvm` lifecycle tests prove four-stage startup,
+reverse rollback, thread-death failure, idempotent stop and one shared bounded
+shutdown deadline. Server tests prove Spring delegation and Health projection.
+The configured Group/Task and Adapter assembly has an explicit higher
 lifecycle phase, so it starts after all Pacers and closes before them. The
 standalone Scenario Worker Host is outside the Spring lifecycle.
 
@@ -156,6 +158,7 @@ Non-Android JVM contracts:
 .\gradlew.bat --continue `
   :transport:worker-delivery-contract:build `
   :kernel_jvm:build `
+  :kernel_pacer_jvm:build `
   :transport:worker-core:build `
   :transport:java-worker:build `
   :transport:netty-adapter:build `

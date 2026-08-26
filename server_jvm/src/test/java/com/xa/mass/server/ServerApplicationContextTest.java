@@ -14,15 +14,13 @@ import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.RedisTaskScoreBandCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityResultApplication;
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityAssemblyConfig;
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityDispatchApplication;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -101,15 +99,26 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 WorkerServiceabilityRuntime.class
         )).isInstanceOf(RedisWorkerServiceabilityRuntime.class);
-        assertThat(applicationContext.getBean(
-                WorkerServiceabilityResultApplication.class
-        )).isNotNull();
-        assertThat(applicationContext.getBean(
-                WorkerServiceabilityDispatchApplication.class
-        )).isNotNull();
-        assertThat(applicationContext.getBean(
-                WorkerServiceabilityAssemblyConfig.class
-        ).enabled()).isFalse();
+        assertThat(applicationContext.getBean(KernelPacerRuntime.class))
+                .isNotNull();
+        assertThat(applicationContext.containsBean(
+                "workerServiceabilityResultApplication"
+        )).isFalse();
+        assertThat(applicationContext.containsBean(
+                "workerServiceabilityDispatchApplication"
+        )).isFalse();
+        assertThat(applicationContext.containsBean(
+                "kernelPacerPolicyConfig"
+        )).isFalse();
+        assertThat(applicationContext.containsBean(
+                "resultRoutingApplication"
+        )).isFalse();
+        assertThat(applicationContext.containsBean(
+                "assignmentDispatchApplication"
+        )).isFalse();
+        assertThat(applicationContext.containsBean(
+                "workerCandidateMatcher"
+        )).isFalse();
         assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class
         )).isNotNull();

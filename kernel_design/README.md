@@ -47,9 +47,9 @@ does not maintain a second status matrix.
 `python -m kernel_design.executable_spec.assembly` starts the complete
 standalone Python mechanism for Oracle and Redis parity work. It is not built
 into the Server Runtime, has no managed or selectively disabled production
-mode, and exposes no HTTP surface. The fixed Java applications in `kernel_jvm`
-are the only production Pacers; the Python implementation remains the trust
-source for mechanism review and independent proof.
+mode, and exposes no HTTP surface. The fixed Java applications in
+`kernel_pacer_jvm` are the only production Pacers; the Python implementation
+remains the trust source for mechanism review and independent proof.
 
 ## Core Axioms
 
@@ -186,9 +186,11 @@ unless an owner contract explicitly says so.
   standalone mechanism Oracle. It is never embedded in or supervised by the
   production Server and exposes no HTTP API.
 - `kernel_jvm/` mirrors the production-call closure of public contracts and
-  Redis providers, and owns the four fixed production Pacer applications.
-- `server_jvm/` composes those Java owners and owns their finite lifecycle. It
-  does not interpret scheduling policy or implement missing Kernel operations.
+  Redis providers, including stable Candidate Cache/Warmup owners.
+- `kernel_pacer_jvm/` owns the four fixed production Pacer applications,
+  policy interpretation and their finite lifecycle behind one runtime entry.
+- `server_jvm/` composes Java owners and adapts that runtime to Spring. It does
+  not interpret scheduling policy or implement missing Kernel operations.
 - Transport modules receive already-targeted delivery evidence and do not read
   score or scheduling policy.
 

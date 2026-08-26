@@ -132,8 +132,8 @@ They are not a production extension surface. Java production keeps
 policies above. It exposes no Handler interface, runtime registry, reflection,
 or replacement map. Each built-in Worker release reads a fresh clock value
 immediately before calling its Score Owner; Task success promotion uses the
-single round time. Server only composes the Java Pacer with its owner
-dependencies and never selects or interprets a policy.
+single round time. `KernelPacerRuntime` composes the Java Pacer; Server only
+supplies owner dependencies and never selects or interprets a policy.
 
 ### Success
 

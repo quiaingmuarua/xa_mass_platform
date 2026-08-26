@@ -30,6 +30,20 @@
       "reason": "Kernel mechanism changes require the oracle and every current JVM/runtime parity consumer."
     },
     {
+      "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java",
+      "lanes": [
+        "kernel_oracle",
+        "jvm_contracts",
+        "redis_owner",
+        "runtime_boundary",
+        "capability_task",
+        "worker_fleet",
+        "android_emulator",
+        "runtime_distribution"
+      ],
+      "reason": "Kernel Pacer policy or lifecycle changes reach the Oracle parity and every Java-hosted runtime proof."
+    },
+    {
       "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
       "lanes": [
         "jvm_contracts",

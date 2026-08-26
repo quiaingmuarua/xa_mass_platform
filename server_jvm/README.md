@@ -7,9 +7,8 @@ configured Server runtime host.
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
-- process health and the fixed Java Result Routing, Worker Serviceability
-  Result, Worker Serviceability Dispatch and Assignment Dispatch application
-  lifecycle, plus public OpenAPI/Scalar surfaces;
+- config-file I/O, Spring lifecycle delegation and Health projection for the
+  single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as finite Task Result export, managed
   Task Call and DIRECT_CALL correlation;
@@ -28,11 +27,12 @@ Public API
   -> owner-local Java Redis provider
 
 KernelPacerAssembly
-  -> Java ResultRoutingApplication
-  -> Java WorkerServiceabilityResultApplication (when configured)
-  -> Java WorkerServiceabilityDispatchApplication (when configured)
-  -> Java AssignmentDispatchApplication
-  -> one bounded reverse shutdown
+  -> kernel_pacer_jvm KernelPacerRuntime
+     -> Java ResultRoutingApplication
+     -> Java WorkerServiceabilityResultApplication (when configured)
+     -> Java WorkerServiceabilityDispatchApplication (when configured)
+     -> Java AssignmentDispatchApplication
+     -> one bounded reverse shutdown
 
 Worker Identity / Binding
   -> Server-owned Redis boundary
@@ -60,14 +60,14 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and Task Call Item submission | JVM owner contracts with Java Redis Task providers |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Task Result Routing | Fixed Java Pacer over Java Task, TaskItem score and Worker score owners |
-| Worker Serviceability Result | Fixed Java Pacer over Java evidence, Worker resource and Worker score owners |
-| Worker Serviceability Dispatch bridge | Fixed Java request producer plus lowest-priority Server Adapter snapshot construction |
+| Task Result Routing | `kernel_pacer_jvm` fixed policy over Java Task, TaskItem score and Worker score owners |
+| Worker Serviceability Result | `kernel_pacer_jvm` fixed policy over Java evidence, Worker resource and Worker score owners |
+| Worker Serviceability Dispatch bridge | `kernel_pacer_jvm` request producer plus lowest-priority Server Adapter snapshot construction |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | Fixed Java allocation, activation and Task dispatch Pacers over bounded Kernel owners |
+| Assignment Dispatch | `kernel_pacer_jvm` allocation, activation and Task dispatch over bounded Kernel owners |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -544,9 +544,9 @@ matching Endpoint Binding entry.
 
 ## Run
 
-Start the Java Runtime API from the repository root. It validates the Kernel
-Pacer policy and starts all four Java Pacer applications before later lifecycle
-components:
+Start the Java Runtime API from the repository root. Server reads the checked
+policy, constructs the one `KernelPacerRuntime`, and its Spring adapter starts
+that Runtime before later lifecycle components:
 
 ```text
 ./gradlew :server_jvm:bootRun
@@ -625,8 +625,8 @@ lifecycle disabled.
 
 `xa.mass.redis` is the single production source for the Redis URL and scope.
 The policy JSON contains only `resultRouting`, `workerServiceability`,
-`assignmentDispatch` and `systemPolicy`; `kernel_jvm` parses it once and mints
-one shared HOT eligibility floor. Server passes configuration and owner
+`assignmentDispatch` and `systemPolicy`; `kernel_pacer_jvm` parses it once and
+mints one shared HOT eligibility floor. Server passes configuration and owner
 dependencies without interpreting scheduling policy. Runtime Boundary uses a
 unique `test_*` scope. The default profile uses `profile_default`; the checked
 Scenario profile defaults to `profile_scenario_workers`.

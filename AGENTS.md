@@ -10,6 +10,8 @@ agents change the repository; it is not the canonical mechanism narrative.
 
 - `kernel_design/` is the mechanism oracle.
 - `kernel_jvm/` is incremental contract/provider parity, not a second Kernel.
+- `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
+  over `kernel_jvm` owners.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
 - `transport/` delivers already-decided Commands and executes endpoint-local
   handlers.
@@ -78,10 +80,11 @@ specification, owner Redis providers and Kernel application assembly.
 - Task Result Routing may exact-release the correlated Worker lease but must
   not infer connection polarity. Adapter Route/delivery-expiry evidence is
   consumed only by the optional Worker Serviceability policy.
-- All production Pacers run in Java under the Server-owned finite lifecycle.
-  Python is the standalone executable mechanism oracle only. Do not restore a
-  Python HTTP host, managed child process, Task business route, production
-  launcher, or Server fallback through Python.
+- All production Pacers run in `kernel_pacer_jvm` behind its finite
+  `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Python is
+  the standalone executable mechanism oracle only. Do not restore a Python
+  HTTP host, managed child process, Task business route, production launcher,
+  or Server fallback through Python.
 - Result Routing, Worker Serviceability Result, Worker Serviceability Dispatch
   and Assignment Dispatch each have one fixed Java production application.
   Never run the Python Oracle against the same Redis scope as production.
@@ -92,22 +95,39 @@ workspace.
 
 ## Kernel JVM
 
-`kernel_jvm/` remains one Java 21 Gradle module unless a real publication,
-dependency or lifecycle boundary appears.
+`kernel_jvm/` is the more stable Java 21 mechanical-owner module.
 
 - Mirror only public contracts exported by the Python Kernel package.
 - Missing operations fail with `KernelOperationNotImplementedException`.
 - Java Redis operations live in the matching owner package.
 - Server connection/health packages must not own Redis keys.
-- Do not add Task score, candidate, Pacer or Result Routing behavior merely to
-  improve parity percentage.
+- Candidate Cache and Warmup Schedule remain stable mechanical owners here;
+  Pacer policy and loop code do not.
+- Do not add Task score or owner behavior merely to improve parity percentage.
 - Add a provider operation only with an explicit production caller and scoped
   parity proof.
 
+## Kernel Pacer JVM
+
+`kernel_pacer_jvm/` is the Kernel-owned, faster-moving policy and lifecycle
+module. Its dependency direction is `server_jvm -> kernel_pacer_jvm ->
+kernel_jvm`.
+
+- `KernelPacerRuntime` is its only public production entry.
+- It owns fixed Assignment, Result Routing and Worker Serviceability policy,
+  configuration interpretation, Pacer loops and their finite lifecycle.
+- It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
+  deployment.
+- Do not add a Pacer SPI, dynamic registry, public internal Pacer type,
+  reflection, ServiceLoader or a second runtime entry.
+- Keep Java policy behavior aligned with the Python executable mechanism
+  Oracle and prove Redis-sensitive behavior through the stable owner ports.
+
 ## Server JVM
 
-`server_jvm/` controllers and services depend on `kernel_jvm` owner contracts.
-Provider selection belongs only to assembly.
+`server_jvm/` controllers and services depend on `kernel_jvm` owner contracts;
+Spring assembly additionally depends only on the public
+`kernel_pacer_jvm` runtime entry. Provider selection belongs only to assembly.
 
 Server may own:
 

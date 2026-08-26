@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 
@@ -15,29 +16,30 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
     public Health health() {
         KernelPacerAssembly.Snapshot snapshot = assembly.snapshot();
         Health.Builder health = snapshot.enabled()
-                && snapshot.state() == KernelPacerAssembly.State.RUNNING
+                && snapshot.runtime().state()
+                == KernelPacerRuntime.State.RUNNING
                 ? Health.up()
                 : Health.down();
         health.withDetail(
                 "mode",
                 "java-kernel-pacers"
         );
-        health.withDetail("state", snapshot.state().name());
+        health.withDetail("state", snapshot.runtime().state().name());
         health.withDetail(
                 "javaResultRoutingState",
-                snapshot.resultRoutingState()
+                snapshot.runtime().resultRoutingState()
         );
         health.withDetail(
                 "javaWorkerServiceabilityResultState",
-                snapshot.workerServiceabilityResultState()
+                snapshot.runtime().workerServiceabilityResultState()
         );
         health.withDetail(
                 "javaWorkerServiceabilityDispatchState",
-                snapshot.workerServiceabilityDispatchState()
+                snapshot.runtime().workerServiceabilityDispatchState()
         );
         health.withDetail(
                 "javaAssignmentDispatchState",
-                snapshot.assignmentDispatchState()
+                snapshot.runtime().assignmentDispatchState()
         );
         return health.build();
     }

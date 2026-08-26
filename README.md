@@ -110,13 +110,15 @@ cases and concrete endpoint handlers may evolve without moving those owners.
 - [`kernel_design/`](kernel_design/) is the Python executable mechanism oracle,
   current Kernel documentation and Redis proof surface.
 - [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
-  Redis providers, including the caller-driven Task commands used by Server
-  plus all fixed production Pacer applications: Result Routing, Worker
-  Serviceability Result, Worker Serviceability Dispatch and Assignment
-  Dispatch.
+  Redis providers, including the caller-driven Task commands used by Server,
+  Worker delivery owners and the Candidate Cache/Warmup hint owners.
+- [`kernel_pacer_jvm/`](kernel_pacer_jvm/) is the Kernel-owned policy and
+  lifecycle module. Its sole public entry assembles Result Routing, Worker
+  Serviceability Result/Dispatch and Assignment Dispatch over `kernel_jvm`
+  owners. The stability order is `kernel_jvm > kernel_pacer_jvm > server_jvm`.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
-  provider assembly. Task business HTTP terminates here. Server also owns the
-  finite lifecycle of the four Java Pacer applications, Worker Identity,
+  provider assembly. Task business HTTP terminates here. Server adapts the one
+  Kernel Pacer Runtime lifecycle to Spring and owns Worker Identity,
   Endpoint Binding, bounded use cases, configured WorkerGroup seeds,
   registration-owned Managed Task assembly, and Adapter startup.
   Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
@@ -203,6 +205,7 @@ python -m compileall -q kernel_design/executable_spec
 ./gradlew --continue \
   :transport:worker-delivery-contract:build \
   :kernel_jvm:build \
+  :kernel_pacer_jvm:build \
   :transport:worker-core:build \
   :transport:java-worker:build \
   :transport:netty-adapter:build \
