@@ -12,7 +12,7 @@ import java.util.function.LongSupplier;
  * remain package-private and cannot be assembled dynamically by Server.</p>
  */
 record KernelPacerPolicyConfig(
-        ResultRoutingApplicationConfig resultRouting,
+        ResultConvergenceConfig resultConvergence,
         WorkerServiceabilityAssemblyConfig workerServiceability,
         AssignmentDispatchApplicationConfig assignmentDispatch
 ) {
@@ -22,7 +22,7 @@ record KernelPacerPolicyConfig(
     private static final int BOUNDARY_RESULT_REPORT_LIMIT = 100;
 
     public KernelPacerPolicyConfig {
-        Objects.requireNonNull(resultRouting, "resultRouting");
+        Objects.requireNonNull(resultConvergence, "resultConvergence");
         Objects.requireNonNull(workerServiceability, "workerServiceability");
         Objects.requireNonNull(assignmentDispatch, "assignmentDispatch");
     }
@@ -51,9 +51,7 @@ record KernelPacerPolicyConfig(
 
     private static KernelPacerPolicyConfig defaultPolicy() {
         return new KernelPacerPolicyConfig(
-                new ResultRoutingApplicationConfig(
-                        ResultRoutingApplicationConfig.DEFAULT_INTERVAL_MILLIS
-                ),
+                ResultConvergenceConfig.defaults(),
                 WorkerServiceabilityAssemblyConfig.disabled(),
                 AssignmentDispatchApplicationConfig.defaults()
         );
@@ -63,12 +61,13 @@ record KernelPacerPolicyConfig(
             LongSupplier currentTimeMillis
     ) {
         return new KernelPacerPolicyConfig(
-                new ResultRoutingApplicationConfig(
-                        ResultRoutingApplicationConfig.DEFAULT_INTERVAL_MILLIS
+                new ResultConvergenceConfig(
+                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS,
+                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS
                 ),
                 enabledServiceability(
                         currentTimeMillis,
-                        WorkerServiceabilityResultApplicationConfig.defaults(),
+                        WorkerServiceabilityResultConfig.defaults(),
                         WorkerServiceabilityDispatchApplicationConfig.defaults()
                 ),
                 AssignmentDispatchApplicationConfig.defaults()
@@ -79,10 +78,13 @@ record KernelPacerPolicyConfig(
             LongSupplier currentTimeMillis
     ) {
         return new KernelPacerPolicyConfig(
-                new ResultRoutingApplicationConfig(LAB_INTERVAL_MILLIS),
+                new ResultConvergenceConfig(
+                        LAB_INTERVAL_MILLIS,
+                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS
+                ),
                 enabledServiceability(
                         currentTimeMillis,
-                        WorkerServiceabilityResultApplicationConfig.defaults(),
+                        WorkerServiceabilityResultConfig.defaults(),
                         WorkerServiceabilityDispatchApplicationConfig.defaults()
                 ),
                 AssignmentDispatchApplicationConfig.create(
@@ -123,15 +125,13 @@ record KernelPacerPolicyConfig(
                                 .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
                 );
         return new KernelPacerPolicyConfig(
-                new ResultRoutingApplicationConfig(
-                        ResultRoutingApplicationConfig.DEFAULT_INTERVAL_MILLIS
+                new ResultConvergenceConfig(
+                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS,
+                        LAB_INTERVAL_MILLIS
                 ),
                 enabledServiceability(
                         currentTimeMillis,
-                        new WorkerServiceabilityResultApplicationConfig(
-                                LAB_INTERVAL_MILLIS,
-                                result
-                        ),
+                        result,
                         new WorkerServiceabilityDispatchApplicationConfig(
                                 WorkerServiceabilityDispatchApplicationConfig
                                         .DEFAULT_INTERVAL_MILLIS,
@@ -144,7 +144,7 @@ record KernelPacerPolicyConfig(
 
     private static WorkerServiceabilityAssemblyConfig enabledServiceability(
             LongSupplier currentTimeMillis,
-            WorkerServiceabilityResultApplicationConfig result,
+            WorkerServiceabilityResultConfig result,
             WorkerServiceabilityDispatchApplicationConfig dispatch
     ) {
         long current = currentTimeMillis.getAsLong();

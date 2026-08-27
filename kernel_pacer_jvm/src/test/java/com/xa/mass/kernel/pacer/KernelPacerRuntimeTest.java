@@ -20,12 +20,10 @@ import org.mockito.InOrder;
 class KernelPacerRuntimeTest {
 
     @Test
-    void startsFourStagesAndStopsInStrictReverseOrder() {
+    void startsThreeStagesAndStopsInStrictReverseOrder() {
         Fixture fixture = fixture(enabledServiceability());
-        when(fixture.resultRouting.isRunning()).thenReturn(true);
-        when(fixture.resultRouting.state()).thenReturn("RUNNING");
-        when(fixture.serviceabilityResult.isRunning()).thenReturn(true);
-        when(fixture.serviceabilityResult.state()).thenReturn("RUNNING");
+        when(fixture.resultConvergence.isRunning()).thenReturn(true);
+        when(fixture.resultConvergence.state()).thenReturn("RUNNING");
         when(fixture.serviceabilityDispatch.isRunning()).thenReturn(true);
         when(fixture.serviceabilityDispatch.state()).thenReturn("RUNNING");
         when(fixture.assignmentDispatch.isRunning()).thenReturn(true);
@@ -40,18 +38,11 @@ class KernelPacerRuntimeTest {
         fixture.runtime.stop();
 
         InOrder order = inOrder(
-                fixture.resultRouting,
-                fixture.serviceabilityResult,
+                fixture.resultConvergence,
                 fixture.serviceabilityDispatch,
                 fixture.assignmentDispatch
         );
-        order.verify(fixture.resultRouting).start(
-                fixture.policy.resultRouting()
-        );
-        order.verify(fixture.serviceabilityResult).start(
-                fixture.serviceability.result(),
-                1_000L
-        );
+        order.verify(fixture.resultConvergence).start();
         order.verify(fixture.serviceabilityDispatch).start(
                 fixture.serviceability.dispatch(),
                 1_000L
@@ -61,8 +52,7 @@ class KernelPacerRuntimeTest {
         );
         order.verify(fixture.assignmentDispatch).stop(anyLong());
         order.verify(fixture.serviceabilityDispatch).stop(anyLong());
-        order.verify(fixture.serviceabilityResult).stop(anyLong());
-        order.verify(fixture.resultRouting).stop(anyLong());
+        order.verify(fixture.resultConvergence).stop(anyLong());
         assertEquals(
                 KernelPacerRuntime.State.STOPPED,
                 fixture.runtime.snapshot().state()
@@ -84,12 +74,10 @@ class KernelPacerRuntimeTest {
 
         InOrder order = inOrder(
                 fixture.serviceabilityDispatch,
-                fixture.serviceabilityResult,
-                fixture.resultRouting
+                fixture.resultConvergence
         );
         order.verify(fixture.serviceabilityDispatch).stop(anyLong());
-        order.verify(fixture.serviceabilityResult).stop(anyLong());
-        order.verify(fixture.resultRouting).stop(anyLong());
+        order.verify(fixture.resultConvergence).stop(anyLong());
         assertEquals(
                 KernelPacerRuntime.State.FAILED,
                 fixture.runtime.snapshot().state()
@@ -122,8 +110,7 @@ class KernelPacerRuntimeTest {
     @Test
     void unexpectedApplicationExitMakesRuntimeFailed() {
         Fixture fixture = fixture(enabledServiceability());
-        when(fixture.resultRouting.isRunning()).thenReturn(true);
-        when(fixture.serviceabilityResult.isRunning()).thenReturn(true);
+        when(fixture.resultConvergence.isRunning()).thenReturn(true);
         when(fixture.serviceabilityDispatch.isRunning()).thenReturn(true);
         when(fixture.assignmentDispatch.isRunning()).thenReturn(true, false);
         when(fixture.assignmentDispatch.state()).thenReturn("FAILED");
@@ -143,22 +130,13 @@ class KernelPacerRuntimeTest {
     @Test
     void absentServiceabilityStartsOnlyRequiredStages() {
         Fixture fixture = fixture(disabledServiceability());
-        when(fixture.resultRouting.isRunning()).thenReturn(true);
+        when(fixture.resultConvergence.isRunning()).thenReturn(true);
         when(fixture.assignmentDispatch.isRunning()).thenReturn(true);
         fixture.runtime.start();
 
-        verify(fixture.serviceabilityResult, never()).start(
-                org.mockito.ArgumentMatchers.any(),
-                anyLong()
-        );
         verify(fixture.serviceabilityDispatch, never()).start(
                 org.mockito.ArgumentMatchers.any(),
                 anyLong()
-        );
-        assertEquals(
-                "DISABLED",
-                fixture.runtime.snapshot()
-                        .workerServiceabilityResultState()
         );
         assertEquals(
                 "DISABLED",
@@ -177,8 +155,7 @@ class KernelPacerRuntimeTest {
                 () -> new KernelPacerRuntime(
                         Duration.ZERO,
                         fixture.policy,
-                        fixture.resultRouting,
-                        fixture.serviceabilityResult,
+                        fixture.resultConvergence,
                         fixture.serviceabilityDispatch,
                         fixture.assignmentDispatch
                 )
@@ -188,11 +165,8 @@ class KernelPacerRuntimeTest {
     private static Fixture fixture(
             WorkerServiceabilityAssemblyConfig serviceability
     ) {
-        ResultRoutingApplication resultRouting = mock(
-                ResultRoutingApplication.class
-        );
-        WorkerServiceabilityResultApplication result = mock(
-                WorkerServiceabilityResultApplication.class
+        ResultConvergenceApplication convergence = mock(
+                ResultConvergenceApplication.class
         );
         WorkerServiceabilityDispatchApplication dispatch = mock(
                 WorkerServiceabilityDispatchApplication.class
@@ -200,27 +174,24 @@ class KernelPacerRuntimeTest {
         AssignmentDispatchApplication assignment = mock(
                 AssignmentDispatchApplication.class
         );
-        when(resultRouting.state()).thenReturn("STOPPED");
-        when(result.state()).thenReturn("STOPPED");
+        when(convergence.state()).thenReturn("STOPPED");
         when(dispatch.state()).thenReturn("STOPPED");
         when(assignment.state()).thenReturn("STOPPED");
         KernelPacerPolicyConfig policy = new KernelPacerPolicyConfig(
-                new ResultRoutingApplicationConfig(100),
+                ResultConvergenceConfig.defaults(),
                 serviceability,
                 AssignmentDispatchApplicationConfig.defaults()
         );
         KernelPacerRuntime runtime = new KernelPacerRuntime(
                 Duration.ofSeconds(1),
                 policy,
-                resultRouting,
-                result,
+                convergence,
                 dispatch,
                 assignment
         );
         return new Fixture(
                 runtime,
-                resultRouting,
-                result,
+                convergence,
                 dispatch,
                 assignment,
                 policy,
@@ -232,7 +203,7 @@ class KernelPacerRuntimeTest {
         return new WorkerServiceabilityAssemblyConfig(
                 true,
                 1_000,
-                WorkerServiceabilityResultApplicationConfig.defaults(),
+                WorkerServiceabilityResultConfig.defaults(),
                 WorkerServiceabilityDispatchApplicationConfig.defaults()
         );
     }
@@ -241,15 +212,14 @@ class KernelPacerRuntimeTest {
         return new WorkerServiceabilityAssemblyConfig(
                 false,
                 0,
-                WorkerServiceabilityResultApplicationConfig.defaults(),
+                WorkerServiceabilityResultConfig.defaults(),
                 WorkerServiceabilityDispatchApplicationConfig.defaults()
         );
     }
 
     private record Fixture(
             KernelPacerRuntime runtime,
-            ResultRoutingApplication resultRouting,
-            WorkerServiceabilityResultApplication serviceabilityResult,
+            ResultConvergenceApplication resultConvergence,
             WorkerServiceabilityDispatchApplication serviceabilityDispatch,
             AssignmentDispatchApplication assignmentDispatch,
             KernelPacerPolicyConfig policy,

@@ -14,13 +14,14 @@ network state and does not call a Worker:
 ```text
 exact Route change or expired Worker delivery
   -> ADAPTER -> KERNEL DeliveryReport
-  -> Serviceability Result Pacer
+  -> Result Convergence ADAPTER_EVIDENCE lane
+  -> Worker Serviceability Result Policy
   -> explicit WorkerScore primitives
 
 or pre-epoch HOT / due RECOVERY score
   -> Adapter-scoped snapshot request
   -> platform.adapter.worker-connections.snapshot
-  -> the same Result Pacer
+  -> the same Adapter Evidence policy
 ```
 
 `CONNECTED` means the Adapter observed a verified active route. It does not
@@ -119,8 +120,8 @@ such Workers.
 
 ## Evidence Forms
 
-The fixed Java production Result Pacer and standalone Python oracle accept the
-same three strict `ADAPTER -> KERNEL` forms:
+The fixed Java production Adapter Evidence batch policy and standalone Python
+oracle accept the same three strict `ADAPTER -> KERNEL` forms:
 
 ```text
 platform.adapter.worker-connection.changed
@@ -204,24 +205,24 @@ second Report. Queue pressure drops both without closing a Worker Channel.
 
 ## Lifecycle And Guardrails
 
-When Serviceability is absent, no floor or Serviceability Pacer thread exists;
-the Server bridge owner may still be assembled but has no production result
-consumer. Standalone Python keeps the complete Oracle order. Production mints
-the floor once in Java, shares it with Serviceability and Assignment, and uses:
+When Serviceability is absent, no floor, Adapter Evidence lane, or
+Serviceability Dispatch thread exists. The Server bridge owner may still be
+assembled but has no production Evidence consumer. Standalone Python keeps the
+complete Oracle order. Production mints the floor once in Java, shares it with
+the Evidence policy, Serviceability Dispatch and Assignment, and uses:
 
 ```text
-start: Java Result Routing
-    -> Java Serviceability Result
+start: Java Result Convergence
     -> Java Serviceability Dispatch
     -> Java Assignment Dispatch
 
 stop: Java Assignment Dispatch
    -> Java Serviceability Dispatch
-   -> Java Serviceability Result
-   -> Java Result Routing
+   -> Java Result Convergence
 ```
 
-The two Java Serviceability loops and Java Assignment use the same floor.
+The Adapter Evidence policy, Java Serviceability Dispatch and Java Assignment
+use the same floor.
 Python has no production process, so this assembly has no duplicate consumers
 or Probe Request producers.
 

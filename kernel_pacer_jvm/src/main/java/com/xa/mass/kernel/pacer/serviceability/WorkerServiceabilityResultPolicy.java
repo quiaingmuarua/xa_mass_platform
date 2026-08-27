@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
@@ -19,7 +18,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-final class WorkerServiceabilityResultPacer {
+final class WorkerServiceabilityResultPolicy {
 
     private static final String CONNECTION_CHANGED_EVENT =
             "platform.adapter.worker-connection.changed";
@@ -33,34 +32,37 @@ final class WorkerServiceabilityResultPacer {
             "worker-serviceability:v1:";
     private static final String CONNECTED = "CONNECTED";
 
-    private final WorkerServiceabilityRuntime runtime;
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerScoreCore workerScore;
+    private final WorkerServiceabilityResultConfig config;
+    private final long hotEligibilityFloorMillis;
     private final LongSupplier currentTimeMillis;
     private final JsonMapper json;
 
-    public WorkerServiceabilityResultPacer(
-            WorkerServiceabilityRuntime runtime,
+    WorkerServiceabilityResultPolicy(
             WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScore
+            WorkerScoreCore workerScore,
+            WorkerServiceabilityResultConfig config,
+            long hotEligibilityFloorMillis
     ) {
         this(
-                runtime,
                 workerCatalog,
                 workerScore,
+                config,
+                hotEligibilityFloorMillis,
                 System::currentTimeMillis,
                 JsonMapper.builder().build()
         );
     }
 
-    WorkerServiceabilityResultPacer(
-            WorkerServiceabilityRuntime runtime,
+    WorkerServiceabilityResultPolicy(
             WorkerResourceCatalog workerCatalog,
             WorkerScoreCore workerScore,
+            WorkerServiceabilityResultConfig config,
+            long hotEligibilityFloorMillis,
             LongSupplier currentTimeMillis,
             JsonMapper json
     ) {
-        this.runtime = java.util.Objects.requireNonNull(runtime, "runtime");
         this.workerCatalog = java.util.Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
@@ -69,6 +71,11 @@ final class WorkerServiceabilityResultPacer {
                 workerScore,
                 "workerScore"
         );
+        this.config = java.util.Objects.requireNonNull(config, "config");
+        WorkerServiceabilityAssemblyConfig.requireFloor(
+                hotEligibilityFloorMillis
+        );
+        this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
         this.currentTimeMillis = java.util.Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
@@ -76,24 +83,8 @@ final class WorkerServiceabilityResultPacer {
         this.json = java.util.Objects.requireNonNull(json, "json");
     }
 
-    int routeAdapterEvidence(
-            WorkerServiceabilityResultConfig config,
-            long hotEligibilityFloorMillis
-    ) {
-        java.util.Objects.requireNonNull(config, "config");
-        if (hotEligibilityFloorMillis < WorkerScoreCore.SLOT_MILLIS
-                || hotEligibilityFloorMillis % WorkerScoreCore.SLOT_MILLIS
-                != 0
-                || hotEligibilityFloorMillis
-                > WorkerScoreCore.MAX_TIME_MILLIS) {
-            throw new IllegalArgumentException(
-                    "hotEligibilityFloorMillis must be a valid "
-                            + "score-slot-aligned time"
-            );
-        }
-        List<DeliveryReport> reports = runtime.consumeAdapterEvidenceResults(
-                config.resultReportLimit()
-        );
+    void handle(List<DeliveryReport> reports) {
+        java.util.Objects.requireNonNull(reports, "reports");
         long nowMillis = currentTimeMillis.getAsLong();
         LinkedHashMap<String, WorkerEvidence> latestEvidence =
                 new LinkedHashMap<>();
@@ -116,7 +107,7 @@ final class WorkerServiceabilityResultPacer {
             });
         }
         if (latestEvidence.isEmpty()) {
-            return 0;
+            return;
         }
 
         LinkedHashMap<String, String> groupIds = new LinkedHashMap<>();
@@ -146,7 +137,6 @@ final class WorkerServiceabilityResultPacer {
             }
         });
 
-        int applied = 0;
         for (Map.Entry<String, LinkedHashMap<String, WorkerEvidence>> group
                 : evidenceByGroup.entrySet()) {
             Map<String, WorkerScoreState> states = workerScore.getScoreStates(
@@ -167,10 +157,8 @@ final class WorkerServiceabilityResultPacer {
                         config.maxRecoveryAttempts(),
                         hotEligibilityFloorMillis
                 );
-                applied++;
             }
         }
-        return applied;
     }
 
     private void applyEvidence(

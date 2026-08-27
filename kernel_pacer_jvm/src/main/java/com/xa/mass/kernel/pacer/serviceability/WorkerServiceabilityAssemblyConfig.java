@@ -6,7 +6,7 @@ import java.util.Objects;
 record WorkerServiceabilityAssemblyConfig(
         boolean enabled,
         long hotEligibilityFloorMillis,
-        WorkerServiceabilityResultApplicationConfig result,
+        WorkerServiceabilityResultConfig result,
         WorkerServiceabilityDispatchApplicationConfig dispatch
 ) {
 
@@ -26,7 +26,7 @@ record WorkerServiceabilityAssemblyConfig(
         return new WorkerServiceabilityAssemblyConfig(
                 false,
                 0,
-                WorkerServiceabilityResultApplicationConfig.defaults(),
+                WorkerServiceabilityResultConfig.defaults(),
                 WorkerServiceabilityDispatchApplicationConfig.defaults()
         );
     }

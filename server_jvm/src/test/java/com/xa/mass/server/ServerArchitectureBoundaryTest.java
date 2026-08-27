@@ -180,7 +180,6 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("Pacer");
         assertThat(readSources(SERVICEABILITY))
                 .contains("WorkerServiceabilityRuntime")
-                .doesNotContain("WorkerServiceabilityResultPacer")
                 .doesNotContain("WorkerServiceabilityDispatchPacer")
                 .doesNotContain("WorkerServiceabilityResultHandler")
                 .doesNotContain("WorkerServiceabilityDispatchHandler")
@@ -535,8 +534,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSources(KERNEL_PACER))
                 .contains("SmartLifecycle")
                 .contains("KernelPacerRuntime")
-                .doesNotContain("ResultRoutingApplication")
-                .doesNotContain("WorkerServiceabilityResultApplication")
+                .doesNotContain("ResultConvergenceApplication")
                 .doesNotContain("WorkerServiceabilityDispatchApplication")
                 .doesNotContain("AssignmentDispatchApplication")
                 .doesNotContain("ProcessBuilder")
@@ -549,8 +547,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("RedisClient")
                 .doesNotContain("RestClient");
         assertThat(readSources(PACER_SOURCE))
-                .contains("ResultRoutingApplication")
-                .contains("WorkerServiceabilityResultApplication")
+                .contains("ResultConvergenceApplication")
                 .contains("WorkerServiceabilityDispatchApplication")
                 .contains("AssignmentDispatchApplication")
                 .doesNotContain("org.springframework")

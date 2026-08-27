@@ -10,8 +10,10 @@ Production is Java-only:
 Java Server
   -> KernelPacerAssembly                  Spring lifecycle adapter
      -> KernelPacerRuntime                kernel_pacer_jvm
-        -> ResultRoutingApplication
-        -> WorkerServiceabilityResultApplication       optional
+        -> ResultConvergenceApplication
+           -> TASK_SUCCESS virtual batch
+           -> TASK_FAILURE virtual batch
+           -> ADAPTER_EVIDENCE virtual batch            optional
         -> WorkerServiceabilityDispatchApplication     optional
         -> AssignmentDispatchApplication
            -> TaskWorkerAllocationPacer
@@ -75,7 +77,7 @@ and an isolated `test_*` scope; that format is not a Java production contract.
 
 When a selected preset enables Serviceability, Runtime assembly mints one
 Worker-Score-slot-aligned `hotEligibilityFloorMillis`. The same immutable floor
-is injected into Serviceability Result, Serviceability Dispatch and Assignment
+is injected into the Adapter Evidence policy, Serviceability Dispatch and Assignment
 candidate acquisition. It is not written to Redis or exposed through health or
 Runtime APIs. When Serviceability is disabled, no floor exists and Assignment
 uses the full HOT due range.
@@ -153,14 +155,19 @@ provide recovery.
 With Serviceability enabled, startup order is:
 
 ```text
-Result Routing
--> Worker Serviceability Result
+Result Convergence
 -> Worker Serviceability Dispatch
 -> Assignment Dispatch
 ```
 
-Without Serviceability, only Result Routing and Assignment Dispatch start.
+Without Serviceability, Result Convergence contains only the two Task lanes;
+only it and Assignment Dispatch start.
 Startup failure rolls back every already-started Application in reverse order.
+
+Result Convergence uses one coordinator and ten shared Batch slots. Fixed
+weighted-fair target/max values keep Task SUCCESS and Adapter Evidence serial,
+while Task FAILURE may run concurrent exact-release Batches. The capacity and
+weights are Kernel-internal policy, not lifecycle or Server configuration.
 
 Shutdown signals every loop and uses one shared deadline in exact reverse
 startup order. An Application must not reset the remaining budget for each
@@ -219,12 +226,13 @@ Task API
 -> TaskItem finality + result + exact Worker release
 ```
 
-The same lane proves the Adapter snapshot request/evidence path through the two
-Java Serviceability applications and the shared HOT floor. Redis Owner tests
+The same lane proves the Adapter snapshot request/evidence path through Java
+Serviceability Dispatch, the Adapter Evidence lane and the shared HOT floor.
+Redis Owner tests
 prove Java/Python shape compatibility, exact CAS and range ordering. The Python
 suite remains the independent Oracle proof.
 
-Deterministic policy and four-stage lifecycle tests live in
+Deterministic policy and three-stage lifecycle tests live in
 `kernel_pacer_jvm`; `kernel_jvm` tests remain focused on owner contracts,
 providers, Candidate hints and codecs. Server tests prove only Spring
 delegation, Health projection and absence of individual Pacer beans.

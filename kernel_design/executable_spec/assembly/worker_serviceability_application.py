@@ -9,8 +9,6 @@ from threading import Event, Lock, Thread
 from ..scheduling import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
-    WorkerServiceabilityResultConfig,
-    WorkerServiceabilityResultPacer,
 )
 
 
@@ -41,16 +39,6 @@ class WorkerServiceabilityDispatchApplicationConfig:
     def __post_init__(self) -> None:
         if self.interval_millis <= 0:
             raise ValueError("serviceability dispatch interval must be positive")
-
-
-@dataclass(frozen=True, slots=True)
-class WorkerServiceabilityResultApplicationConfig:
-    result: WorkerServiceabilityResultConfig
-    interval_millis: int
-
-    def __post_init__(self) -> None:
-        if self.interval_millis <= 0:
-            raise ValueError("serviceability result interval must be positive")
 
 
 class WorkerServiceabilityDispatchApplication:
@@ -101,59 +89,6 @@ class WorkerServiceabilityDispatchApplication:
         thread.join(timeout=timeout_millis / 1_000)
         if thread.is_alive():
             raise TimeoutError("serviceability dispatch loop did not stop")
-        with self._lifecycle_lock:
-            if self._thread is thread:
-                self._thread = None
-                self._stop_event = None
-
-class WorkerServiceabilityResultApplication:
-    """Lifecycle for the single serviceability result loop."""
-
-    def __init__(self, pacer: WorkerServiceabilityResultPacer) -> None:
-        self.pacer = pacer
-        self._lifecycle_lock = Lock()
-        self._stop_event: Event | None = None
-        self._thread: Thread | None = None
-
-    def start(
-        self,
-        *,
-        config: WorkerServiceabilityResultApplicationConfig,
-    ) -> None:
-        with self._lifecycle_lock:
-            if self._thread is not None:
-                raise RuntimeError("serviceability result is already started")
-            stop_event = Event()
-            thread = Thread(
-                name="worker-serviceability-result",
-                target=_run_loop,
-                kwargs={
-                    "stop_event": stop_event,
-                    "interval_millis": config.interval_millis,
-                    "operation": partial(
-                        self.pacer.route_adapter_evidence,
-                        config=config.result,
-                    ),
-                    "loop_name": "result",
-                },
-                daemon=False,
-            )
-            thread.start()
-            self._stop_event = stop_event
-            self._thread = thread
-
-    def stop(self, *, timeout_millis: int) -> None:
-        if timeout_millis <= 0:
-            raise ValueError("stop timeout must be positive")
-        with self._lifecycle_lock:
-            thread = self._thread
-            stop_event = self._stop_event
-            if thread is None or stop_event is None:
-                return
-            stop_event.set()
-        thread.join(timeout=timeout_millis / 1_000)
-        if thread.is_alive():
-            raise TimeoutError("serviceability result loop did not stop")
         with self._lifecycle_lock:
             if self._thread is thread:
                 self._thread = None

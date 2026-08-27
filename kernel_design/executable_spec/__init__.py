@@ -72,9 +72,7 @@ from .kernel import (
 )
 from .scheduling import (
     CandidateId,
-    ResultRoutingConfig,
-    ResultRoutingBuiltinPolicies,
-    ResultRoutingPacer,
+    TaskResultBatchPolicy,
     TaskResultEvidence,
     TaskDispatchConfig,
     TaskDispatchPacer,
@@ -96,7 +94,7 @@ from .scheduling import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    WorkerServiceabilityResultPacer,
+    WorkerServiceabilityResultPolicy,
 )
 from .redis_runtime import (
     RedisKeyspace,
@@ -204,9 +202,7 @@ __all__ = [
     "TaskRunningActivationPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
-    "ResultRoutingConfig",
-    "ResultRoutingBuiltinPolicies",
-    "ResultRoutingPacer",
+    "TaskResultBatchPolicy",
     "TaskResultEvidence",
     "DeliveryReport",
     "DeliveryReportOutcomeClass",
@@ -219,6 +215,6 @@ __all__ = [
     "WorkerServiceabilityDispatchConfig",
     "WorkerServiceabilityDispatchPacer",
     "WorkerServiceabilityResultConfig",
-    "WorkerServiceabilityResultPacer",
+    "WorkerServiceabilityResultPolicy",
     "classify_delivery_report_outcome_code",
 ]

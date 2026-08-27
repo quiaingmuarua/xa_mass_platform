@@ -29,14 +29,11 @@ from ..kernel import (
     TaskScoreTransitionStatus,
     WorkerScoreCore,
 )
-from ..scheduling import ResultRoutingConfig
 from ..redis_runtime.keyspace import RedisKeyspace
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
-from .result_routing_application import ResultRoutingApplicationConfig
 from .worker_serviceability_application import (
     WorkerServiceabilityDispatchApplicationConfig,
-    WorkerServiceabilityResultApplicationConfig,
 )
 
 
@@ -555,24 +552,11 @@ class KernelApplication:
         self,
         config: KernelApplicationConfig | None = None,
         *,
-        _result_routing_enabled: bool = True,
-        _worker_serviceability_result_enabled: bool = True,
-        _worker_serviceability_dispatch_enabled: bool = True,
         _hot_eligibility_floor_millis: int | None = None,
     ) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
             raise TypeError("config must be KernelApplicationConfig or None")
         self._config = config or _DEFAULT_KERNEL_APPLICATION_CONFIG
-        if not isinstance(_result_routing_enabled, bool):
-            raise TypeError("_result_routing_enabled must be bool")
-        if not isinstance(_worker_serviceability_result_enabled, bool):
-            raise TypeError(
-                "_worker_serviceability_result_enabled must be bool"
-            )
-        if not isinstance(_worker_serviceability_dispatch_enabled, bool):
-            raise TypeError(
-                "_worker_serviceability_dispatch_enabled must be bool"
-            )
         if self._config.worker_serviceability is None:
             if _hot_eligibility_floor_millis is not None:
                 raise ValueError(
@@ -596,13 +580,6 @@ class KernelApplication:
                 self._config,
                 hot_eligibility_floor_millis=(
                     self._hot_eligibility_floor_millis
-                ),
-                result_routing_enabled=_result_routing_enabled,
-                worker_serviceability_result_enabled=(
-                    _worker_serviceability_result_enabled
-                ),
-                worker_serviceability_dispatch_enabled=(
-                    _worker_serviceability_dispatch_enabled
                 ),
             ),
         )
@@ -675,9 +652,6 @@ class KernelApplication:
         config: KernelApplicationConfig,
         *,
         hot_eligibility_floor_millis: int | None = None,
-        result_routing_enabled: bool = True,
-        worker_serviceability_result_enabled: bool = True,
-        worker_serviceability_dispatch_enabled: bool = True,
     ) -> _RedisKernelProcessConfig:
         if (
             config.worker_serviceability is not None
@@ -721,19 +695,15 @@ class KernelApplication:
                     config.task_dispatch_interval_millis
                 ),
             ),
-            result_routing=ResultRoutingApplicationConfig(
-                routing=ResultRoutingConfig(
-                    per_result_class_batch_limit=(
-                        _RESULT_ROUTING_PER_RESULT_CLASS_BATCH_LIMIT
-                    ),
-                ),
-                interval_millis=config.result_routing_interval_millis,
+            task_result_batch_limit=(
+                _RESULT_ROUTING_PER_RESULT_CLASS_BATCH_LIMIT
             ),
-            result_routing_enabled=result_routing_enabled,
+            task_result_idle_interval_millis=(
+                config.result_routing_interval_millis
+            ),
             worker_serviceability_dispatch=(
                 None
                 if config.worker_serviceability is None
-                or not worker_serviceability_dispatch_enabled
                 else WorkerServiceabilityDispatchApplicationConfig(
                     dispatch=WorkerServiceabilityDispatchConfig(
                         task_scan_limit=(
@@ -769,23 +739,22 @@ class KernelApplication:
             worker_serviceability_result=(
                 None
                 if config.worker_serviceability is None
-                or not worker_serviceability_result_enabled
-                else WorkerServiceabilityResultApplicationConfig(
-                    result=WorkerServiceabilityResultConfig(
-                        max_recovery_attempts=(
-                            config.worker_serviceability.max_recovery_attempts
-                        ),
-                        result_report_limit=(
-                            config.worker_serviceability.result_report_limit
-                        ),
-                        evidence_max_age_millis=(
-                            config.worker_serviceability.evidence_max_age_millis
-                        ),
+                else WorkerServiceabilityResultConfig(
+                    max_recovery_attempts=(
+                        config.worker_serviceability.max_recovery_attempts
                     ),
-                    interval_millis=(
-                        config.worker_serviceability.result_interval_millis
+                    result_report_limit=(
+                        config.worker_serviceability.result_report_limit
+                    ),
+                    evidence_max_age_millis=(
+                        config.worker_serviceability.evidence_max_age_millis
                     ),
                 )
+            ),
+            worker_serviceability_result_idle_interval_millis=(
+                None
+                if config.worker_serviceability is None
+                else config.worker_serviceability.result_interval_millis
             ),
             stop_timeout_millis=config.stop_timeout_millis,
         )

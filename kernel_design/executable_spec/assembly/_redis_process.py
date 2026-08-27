@@ -9,7 +9,7 @@ from ..kernel.worker_score import WorkerScoreCore
 from ..scheduling import (
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
-    ResultRoutingPacer,
+    TaskResultBatchPolicy,
     TaskCallItemSubmission,
     TaskDispatchPacer,
     TaskItemDispatcher,
@@ -17,8 +17,10 @@ from ..scheduling import (
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
     WorkerServiceabilityDispatchPacer,
-    WorkerServiceabilityResultPacer,
+    WorkerServiceabilityResultConfig,
+    WorkerServiceabilityResultPolicy,
 )
+from ..kernel.task_result_runtime import TaskResultClass
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
     RedisKeyspace,
@@ -38,16 +40,24 @@ from .assignment_dispatch_application import (
     AssignmentDispatchApplication,
     AssignmentDispatchApplicationConfig,
 )
-from .result_routing_application import (
-    ResultRoutingApplication,
-    ResultRoutingApplicationConfig,
+from .result_convergence_application import (
+    ResultConvergenceApplication,
+    _ResultLane,
+    _ResultLaneId,
 )
 from .worker_serviceability_application import (
     WorkerServiceabilityDispatchApplication,
     WorkerServiceabilityDispatchApplicationConfig,
-    WorkerServiceabilityResultApplication,
-    WorkerServiceabilityResultApplicationConfig,
 )
+
+
+_RESULT_CONVERGENCE_GLOBAL_MAX_CONCURRENCY = 10
+_TASK_SUCCESS_TARGET_CONCURRENCY = 1
+_TASK_SUCCESS_MAX_CONCURRENCY = 1
+_TASK_FAILURE_TARGET_CONCURRENCY = 3
+_TASK_FAILURE_MAX_CONCURRENCY = 10
+_ADAPTER_EVIDENCE_TARGET_CONCURRENCY = 1
+_ADAPTER_EVIDENCE_MAX_CONCURRENCY = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,14 +67,13 @@ class _RedisKernelProcessConfig:
     worker_candidate_scan_limit: int
     hot_eligibility_floor_millis: int | None
     assignment_dispatch: AssignmentDispatchApplicationConfig
-    result_routing: ResultRoutingApplicationConfig
-    result_routing_enabled: bool
+    task_result_batch_limit: int
+    task_result_idle_interval_millis: int
     worker_serviceability_dispatch: (
         WorkerServiceabilityDispatchApplicationConfig | None
     )
-    worker_serviceability_result: (
-        WorkerServiceabilityResultApplicationConfig | None
-    )
+    worker_serviceability_result: WorkerServiceabilityResultConfig | None
+    worker_serviceability_result_idle_interval_millis: int | None
     stop_timeout_millis: int
 
     def __post_init__(self) -> None:
@@ -84,8 +93,20 @@ class _RedisKernelProcessConfig:
             raise ValueError("HOT eligibility floor must be score-slot aligned")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
-        if not isinstance(self.result_routing_enabled, bool):
-            raise TypeError("result_routing_enabled must be bool")
+        if not 1 <= self.task_result_batch_limit <= 100:
+            raise ValueError("Task result batch limit must be between 1 and 100")
+        if self.task_result_idle_interval_millis <= 0:
+            raise ValueError("Task result idle interval must be positive")
+        if self.worker_serviceability_result is None:
+            if self.worker_serviceability_result_idle_interval_millis is not None:
+                raise ValueError(
+                    "Adapter evidence idle interval requires result policy"
+                )
+        elif (
+            self.worker_serviceability_result_idle_interval_millis is None
+            or self.worker_serviceability_result_idle_interval_millis <= 0
+        ):
+            raise ValueError("Adapter evidence idle interval must be positive")
         if (
             self.worker_serviceability_result is not None
             or self.worker_serviceability_dispatch is not None
@@ -202,19 +223,47 @@ class _RedisKernelProcess:
             redis_client,
             keyspace=config.keyspace,
         )
-        self._result_routing_application = ResultRoutingApplication(
-            ResultRoutingPacer(
-                self._task_result_runtime,
-                task_runtime=self._task_runtime,
-                item_score=self._task_item_score,
-                worker_score=self._worker_score,
-            )
+        task_result_policy = TaskResultBatchPolicy(
+            task_runtime=self._task_runtime,
+            item_score=self._task_item_score,
+            worker_score=self._worker_score,
         )
+        result_lanes = [
+            _ResultLane(
+                lane_id=_ResultLaneId.TASK_SUCCESS,
+                batch_limit=config.task_result_batch_limit,
+                idle_poll_interval_millis=(
+                    config.task_result_idle_interval_millis
+                ),
+                target_concurrency=_TASK_SUCCESS_TARGET_CONCURRENCY,
+                max_concurrency=_TASK_SUCCESS_MAX_CONCURRENCY,
+                consumer=lambda limit: (
+                    self._task_result_runtime.consume_task_results(
+                        result_class=TaskResultClass.SUCCESS,
+                        limit=limit,
+                    )
+                ),
+                policy=task_result_policy.handle_success,
+            ),
+            _ResultLane(
+                lane_id=_ResultLaneId.TASK_FAILURE,
+                batch_limit=config.task_result_batch_limit,
+                idle_poll_interval_millis=(
+                    config.task_result_idle_interval_millis
+                ),
+                target_concurrency=_TASK_FAILURE_TARGET_CONCURRENCY,
+                max_concurrency=_TASK_FAILURE_MAX_CONCURRENCY,
+                consumer=lambda limit: (
+                    self._task_result_runtime.consume_task_results(
+                        result_class=TaskResultClass.FAILURE,
+                        limit=limit,
+                    )
+                ),
+                policy=task_result_policy.handle_failure,
+            ),
+        ]
         self._worker_serviceability_dispatch_application: (
             WorkerServiceabilityDispatchApplication | None
-        ) = None
-        self._worker_serviceability_result_application: (
-            WorkerServiceabilityResultApplication | None
         ) = None
         if (
             config.worker_serviceability_dispatch is not None
@@ -225,18 +274,38 @@ class _RedisKernelProcess:
                 keyspace=config.keyspace,
             )
             if config.worker_serviceability_result is not None:
-                self._worker_serviceability_result_application = (
-                    WorkerServiceabilityResultApplication(
-                        WorkerServiceabilityResultPacer(
-                            serviceability_runtime,
-                            self._worker_resource_catalog,
-                            self._worker_score,
-                            hot_eligibility_floor_millis=(
-                                config.hot_eligibility_floor_millis
-                            ),
-                        )
-                    )
+                assert config.hot_eligibility_floor_millis is not None
+                assert (
+                    config.worker_serviceability_result_idle_interval_millis
+                    is not None
                 )
+                evidence_policy = WorkerServiceabilityResultPolicy(
+                    self._worker_resource_catalog,
+                    self._worker_score,
+                    config=config.worker_serviceability_result,
+                    hot_eligibility_floor_millis=(
+                        config.hot_eligibility_floor_millis
+                    ),
+                )
+                result_lanes.append(_ResultLane(
+                    lane_id=_ResultLaneId.ADAPTER_EVIDENCE,
+                    batch_limit=(
+                        config.worker_serviceability_result.result_report_limit
+                    ),
+                    idle_poll_interval_millis=(
+                        config
+                        .worker_serviceability_result_idle_interval_millis
+                    ),
+                    target_concurrency=(
+                        _ADAPTER_EVIDENCE_TARGET_CONCURRENCY
+                    ),
+                    max_concurrency=_ADAPTER_EVIDENCE_MAX_CONCURRENCY,
+                    consumer=lambda limit: (
+                        serviceability_runtime
+                        .consume_adapter_evidence_results(limit=limit)
+                    ),
+                    policy=evidence_policy.handle,
+                ))
             if config.worker_serviceability_dispatch is not None:
                 self._worker_serviceability_dispatch_application = (
                     WorkerServiceabilityDispatchApplication(
@@ -252,6 +321,12 @@ class _RedisKernelProcess:
                         )
                     )
                 )
+        self._result_convergence_application = ResultConvergenceApplication(
+            result_lanes,
+            global_max_concurrency=(
+                _RESULT_CONVERGENCE_GLOBAL_MAX_CONCURRENCY
+            ),
+        )
 
     @classmethod
     def from_url(
@@ -273,19 +348,11 @@ class _RedisKernelProcess:
 
     def start(self) -> None:
         self._redis.ping()
-        if self._config.result_routing_enabled:
-            self._result_routing_application.start(
-                config=self._config.result_routing
-            )
-        started_serviceability_result = False
+        result_convergence_started = False
         started_serviceability_dispatch = False
         try:
-            if self._worker_serviceability_result_application is not None:
-                assert self._config.worker_serviceability_result is not None
-                self._worker_serviceability_result_application.start(
-                    config=self._config.worker_serviceability_result,
-                )
-                started_serviceability_result = True
+            self._result_convergence_application.start()
+            result_convergence_started = True
             if self._worker_serviceability_dispatch_application is not None:
                 assert self._config.worker_serviceability_dispatch is not None
                 self._worker_serviceability_dispatch_application.start(
@@ -306,12 +373,8 @@ class _RedisKernelProcess:
                     self._worker_serviceability_dispatch_application,
                 ),
                 (
-                    started_serviceability_result,
-                    self._worker_serviceability_result_application,
-                ),
-                (
-                    self._config.result_routing_enabled,
-                    self._result_routing_application,
+                    result_convergence_started,
+                    self._result_convergence_application,
                 ),
             ):
                 if not started or application is None:
@@ -334,12 +397,7 @@ class _RedisKernelProcess:
         for application in (
             self._assignment_dispatch_application,
             self._worker_serviceability_dispatch_application,
-            self._worker_serviceability_result_application,
-            (
-                self._result_routing_application
-                if self._config.result_routing_enabled
-                else None
-            ),
+            self._result_convergence_application,
         ):
             if application is None:
                 continue

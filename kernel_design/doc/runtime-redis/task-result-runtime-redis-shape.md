@@ -54,7 +54,11 @@ Server Worker Delivery ingress
 RedisTaskResultRuntime
   owns selected-lane encoding, append and bounded consume
 
-ResultRoutingPacer
+ResultConvergenceApplication
+  owns fixed SUCCESS/FAILURE lane consumption and shared-capacity asynchronous
+  Batch dispatch; FAILURE may execute concurrently while SUCCESS remains serial
+
+TaskResultBatchPolicy
   owns ResultContext decode, bounded grouping and fixed SUCCESS/FAILURE policy
 
 TaskRuntime

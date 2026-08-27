@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from time import time_ns
@@ -423,15 +423,15 @@ class _WorkerEvidence:
     kind: _EvidenceKind
 
 
-class WorkerServiceabilityResultPacer:
+class WorkerServiceabilityResultPolicy:
     """Converge Adapter route evidence through explicit Score primitives."""
 
     def __init__(
         self,
-        runtime: WorkerServiceabilityRuntime,
         worker_catalog: WorkerResourceCatalog,
         worker_score: WorkerScoreCore,
         *,
+        config: WorkerServiceabilityResultConfig,
         hot_eligibility_floor_millis: int,
         clock_millis: Callable[[], int] = _current_time_millis,
     ) -> None:
@@ -442,27 +442,20 @@ class WorkerServiceabilityResultPacer:
             or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
         ):
             raise ValueError("HOT eligibility floor must be score-slot aligned")
-        self.runtime = runtime
         self.worker_catalog = worker_catalog
         self.worker_score = worker_score
+        self.config = config
         self.hot_eligibility_floor_millis = hot_eligibility_floor_millis
         self._clock_millis = clock_millis
 
-    def route_adapter_evidence(
-        self,
-        *,
-        config: WorkerServiceabilityResultConfig,
-    ) -> int:
-        reports = self.runtime.consume_adapter_evidence_results(
-            limit=config.result_report_limit,
-        )
+    def handle(self, reports: Sequence[DeliveryReport]) -> None:
         now_millis = self._clock_millis()
         latest_evidence: dict[str, _WorkerEvidence] = {}
         for report in reports:
             decoded = self._decode_report(
                 report,
                 now_millis=now_millis,
-                evidence_max_age_millis=config.evidence_max_age_millis,
+                evidence_max_age_millis=self.config.evidence_max_age_millis,
             )
             if decoded is None:
                 continue
@@ -475,7 +468,7 @@ class WorkerServiceabilityResultPacer:
                 ):
                     latest_evidence[worker_id] = evidence
         if not latest_evidence:
-            return 0
+            return
 
         group_ids: dict[str, str | None] = {}
         worker_ids = tuple(latest_evidence)
@@ -492,7 +485,6 @@ class WorkerServiceabilityResultPacer:
             if worker_group_id is not None:
                 evidence_by_group[worker_group_id][worker_id] = evidence
 
-        applied = 0
         for worker_group_id, evidence_by_worker_id in evidence_by_group.items():
             states = self.worker_score.get_score_states(
                 home_bucket_id=worker_group_id,
@@ -507,10 +499,8 @@ class WorkerServiceabilityResultPacer:
                     worker_id=worker_id,
                     state=state,
                     evidence=evidence,
-                    max_recovery_attempts=config.max_recovery_attempts,
+                    max_recovery_attempts=self.config.max_recovery_attempts,
                 )
-                applied += 1
-        return applied
 
     def _apply_evidence(
         self,
@@ -624,15 +614,15 @@ class WorkerServiceabilityResultPacer:
         ):
             return None
         if report.message_type == _CONNECTION_CHANGED_EVENT:
-            decoded = WorkerServiceabilityResultPacer._decode_connection_change(
+            decoded = WorkerServiceabilityResultPolicy._decode_connection_change(
                 report
             )
         elif report.message_type == _DELIVERY_EXPIRED_EVENT:
-            decoded = WorkerServiceabilityResultPacer._decode_delivery_expired(
+            decoded = WorkerServiceabilityResultPolicy._decode_delivery_expired(
                 report
             )
         elif report.message_type == _PROBE_EVENT:
-            decoded = WorkerServiceabilityResultPacer._decode_probe_snapshot(
+            decoded = WorkerServiceabilityResultPolicy._decode_probe_snapshot(
                 report
             )
         else:

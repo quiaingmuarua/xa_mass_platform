@@ -31,8 +31,9 @@ Worker scheduling-serviceability truth.
 `DeliveryReport.outcomeCode` remains an endpoint-owned Wire fact. Transport and
 Server validate the producer and code namespace, then Server maps accepted
 Task evidence to `TaskResultClass.SUCCESS` or `TaskResultClass.FAILURE`.
-Kernel `TaskResultRuntime` and `ResultRoutingPacer` receive only that class;
-they never classify or branch on the raw code.
+Kernel `TaskResultRuntime`, the fixed Result lane consumer, and
+`TaskResultBatchPolicy` receive only that class; they never classify or branch
+on the raw code.
 
 The accepted mappings are:
 
@@ -61,19 +62,43 @@ TaskItem identity and the Worker lease fence are decoded only by Result
 Routing. Queue members are destructive best-effort evidence, not pending/ack
 truth.
 
-## Routing Round
+## Fixed Lanes And Shared Batch Capacity
 
-One round consumes the lanes in fixed order:
+`ResultConvergenceApplication` owns three finite lane definitions; the two Task
+lanes are always present and the Adapter Evidence lane exists only when Worker
+Serviceability is enabled:
 
-```text
-SUCCESS -> FAILURE
-```
+| Priority | Lane | Owner source | Batch limit | Target | Max |
+| ---: | --- | --- | ---: | ---: | ---: |
+| 0 | `TASK_SUCCESS` | `TaskResultRuntime.SUCCESS` | 100 | 1 | 1 |
+| 1 | `TASK_FAILURE` | `TaskResultRuntime.FAILURE` | 100 | 3 | 10 |
+| 2 | `ADAPTER_EVIDENCE` | `WorkerServiceabilityRuntime` | configured | 1 | 1 |
 
-Each lane may consume up to `perResultClassBatchLimit` (currently 100), so one
-round handles at most 200 reports. The queue lane is the only result-class
+Each Redis key is one homogeneous lane: the whole consumed batch is handed to
+one fixed policy function. Homogeneity does not require every Report in the
+Adapter Evidence batch to have the same `messageType`; that policy owns its
+finite event interpretation. The Task queue lane remains the only result-class
 evidence visible to Kernel. A report whose raw `outcomeCode` contradicts its
-lane is still processed according to the lane; preventing that contradiction
-is the Server ingress invariant.
+Task lane is still processed according to the lane; preventing that
+contradiction is the Server ingress invariant.
+
+One non-daemon coordinator owns all dynamic lane counters and schedules at most
+ten in-flight batches globally. Among eligible lanes below their maximum, it
+selects the smallest `inflight / target` ratio by integer cross multiplication;
+the fixed priority is only the tie-breaker. It directly attempts the existing
+bounded destructive consume, without `LLEN`, peek or a second queue state. An
+empty read or consumer exception delays only that lane by its existing idle
+interval, leaving unused capacity available to the others.
+
+Every non-empty batch runs on its own named JVM virtual thread. SUCCESS and
+Adapter Evidence retain `max=1`, preserving consumed-Batch processing order.
+FAILURE may borrow every otherwise unused slot up to ten because its policy is
+only exact Worker-lease release; its Batch completion order is deliberately
+unspecified. Redis FIFO therefore guarantees consumption order, not concurrent
+FAILURE completion order. Successful completion releases capacity immediately.
+A policy `RuntimeException` loses that best-effort Batch and delays future
+consumption for the affected lane without cancelling its other in-flight
+Batches.
 
 For each consumed report, Result Routing validates only:
 
@@ -92,8 +117,9 @@ workerGroupId -> ordered WorkerResultEvidence(workerId, workerLeaseScore)
 
 Within one lane batch, repeated Task message IDs and Worker IDs use the last
 queue occurrence. This is bounded collapse, not cross-lane winner selection.
-Exact score-owner fencing decides whether a selected Worker observation still
-applies.
+SUCCESS remains single-flight so its last-payload behavior is not reordered
+across Batches. Exact score-owner fencing makes concurrent FAILURE release
+safe and decides whether a selected Worker observation still applies.
 
 Python Oracle and Java production both install exactly the two built-in
 strategies. There is no public Handler map, dynamic registry, reflection,
@@ -156,15 +182,21 @@ duplicate evidence
      decides whether it changes truth
 ```
 
-An Owner exception stops the current round. Already popped evidence is not
-replayed; the Application records a safe operation-level failure and attempts
-the next round.
+An Owner `RuntimeException` loses the already-popped batch under the existing
+best-effort contract, records only safe lane/operation/batch-size metadata, and
+backs off future consumption for that lane. Other lanes and already-running
+FAILURE Batches remain independent. A JVM `Error` or executor rejection fails
+the unified Application and therefore Kernel readiness.
 
 ## Application And Guardrails
 
-`ResultRoutingApplication` owns one non-daemon loop with a 100ms default
-cadence. Lifecycle is composed by `KernelPacerRuntime`; Server supplies owners
-but never selects result policy.
+`ResultConvergenceApplication` is the only Result lifecycle. It owns one
+non-daemon coordinator platform thread, a virtual-thread-per-batch executor,
+ten global Batch slots, and only coordinator-owned per-lane `inflight` and
+backoff state. Lifecycle is composed by `KernelPacerRuntime`; Server supplies
+owners but never observes or assembles a lane or policy. Target and maximum
+concurrency are fixed Kernel policy constants, not Server/Pacer configuration
+or Health state.
 
 - Do not let Adapter or Worker mutate score directly.
 - Do not parse exact Worker or Adapter subcodes in Kernel Result Routing.

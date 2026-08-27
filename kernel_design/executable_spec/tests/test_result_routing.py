@@ -4,17 +4,15 @@ import inspect
 import json
 import unittest
 from dataclasses import fields
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, call
 
 from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
     DeliveryEndpoint,
     DeliveryReport,
-    ResultRoutingBuiltinPolicies,
-    ResultRoutingConfig,
-    ResultRoutingPacer,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
+    TaskResultBatchPolicy,
     TaskResultClass,
     TaskResultEvidence,
     TaskResultRuntime,
@@ -80,42 +78,20 @@ class ResultContextCodecTest(unittest.TestCase):
                 self.assertIsNone(decode_result_context(invalid))
 
 
-class ResultRoutingPacerTest(unittest.TestCase):
+class TaskResultBatchPolicyTest(unittest.TestCase):
     NOW_MILLIS = 100_000
 
     def setUp(self) -> None:
-        self.runtime = Mock(spec=TaskResultRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.task_runtime = Mock(spec=TaskRuntime)
-        self.queues: dict[
-            TaskResultClass, tuple[DeliveryReport, ...]
-        ] = {}
-        self.runtime.consume_task_results.side_effect = (
-            lambda *, result_class, limit: self.queues.get(
-                result_class,
-                (),
-            )
-        )
-        self.pacer = ResultRoutingPacer(
-            self.runtime,
+        self.clock_values = iter((self.NOW_MILLIS,) * 20)
+        self.policy = TaskResultBatchPolicy(
             task_runtime=self.task_runtime,
             item_score=self.item_score,
             worker_score=self.worker_score,
+            clock_millis=lambda: next(self.clock_values),
         )
-        self.config = ResultRoutingConfig(per_result_class_batch_limit=100)
-
-    def route(self) -> int:
-        with patch.object(
-            ResultRoutingPacer,
-            "_current_time_millis",
-            return_value=self.NOW_MILLIS,
-        ), patch.object(
-            ResultRoutingBuiltinPolicies,
-            "_current_time_millis",
-            return_value=self.NOW_MILLIS,
-        ):
-            return self.pacer.route_worker_results(config=self.config)
 
     @staticmethod
     def result(
@@ -148,35 +124,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ),
         )
 
-    def test_public_contract_is_fixed_to_two_result_lanes(self) -> None:
+    def test_public_contract_is_pure_fixed_batch_policy(self) -> None:
         self.assertIs(kernel.TaskResultRuntime, TaskResultRuntime)
         self.assertIs(kernel.TaskResultClass, TaskResultClass)
-        self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
+        self.assertIs(scheduling.TaskResultBatchPolicy, TaskResultBatchPolicy)
         self.assertIs(scheduling.TaskResultEvidence, TaskResultEvidence)
         self.assertIs(scheduling.WorkerResultEvidence, WorkerResultEvidence)
-        self.assertFalse(hasattr(scheduling, "TaskResultHandler"))
-        self.assertFalse(hasattr(scheduling, "WorkerResultHandler"))
-        self.assertEqual(
-            [
-                "self",
-                "task_result_runtime",
-                "task_runtime",
-                "item_score",
-                "worker_score",
-            ],
-            list(inspect.signature(ResultRoutingPacer.__init__).parameters),
-        )
         self.assertEqual(
             {"append_task_results", "consume_task_results"},
             TaskResultRuntime.__abstractmethods__,
-        )
-        self.assertEqual(
-            ["self", "result_class", "limit"],
-            list(
-                inspect.signature(
-                    TaskResultRuntime.consume_task_results
-                ).parameters
-            ),
         )
         self.assertEqual(
             ["SUCCESS", "FAILURE"],
@@ -194,13 +150,20 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ],
             [field.name for field in fields(DeliveryReport)],
         )
-        with self.assertRaises(ValueError):
-            ResultRoutingConfig(0)
 
-    def test_success_lane_trusts_lane_and_preserves_store_promote_release_order(
-        self,
-    ) -> None:
-        self.queues[TaskResultClass.SUCCESS] = (
+    def test_success_preserves_store_promote_release_and_last_semantics(self) -> None:
+        owner_order: list[str] = []
+        self.task_runtime.store_task_item_success_results.side_effect = (
+            lambda **_kwargs: owner_order.append("store")
+        )
+        self.item_score.promote_item_outcomes.side_effect = (
+            lambda **_kwargs: owner_order.append("promote") or {}
+        )
+        self.worker_score.release_completed_hot_score_holds.side_effect = (
+            lambda **_kwargs: owner_order.append("completed-release") or {}
+        )
+
+        self.policy.handle_success((
             self.result(payload='{"version":1}'),
             self.result(
                 outcome_code="3500",
@@ -214,28 +177,10 @@ class ResultRoutingPacerTest(unittest.TestCase):
                 worker_lease_score=203,
                 payload="null",
             ),
-        )
-        owner_order: list[str] = []
-        self.task_runtime.store_task_item_success_results.side_effect = (
-            lambda **_kwargs: owner_order.append("store")
-        )
-        self.item_score.promote_item_outcomes.side_effect = (
-            lambda **_kwargs: owner_order.append("promote") or {}
-        )
-        self.worker_score.release_completed_hot_score_holds.side_effect = (
-            lambda **_kwargs: owner_order.append("completed-release") or {}
-        )
-
-        self.assertEqual(3, self.route())
+        ))
 
         self.assertEqual(
-            [
-                "store",
-                "promote",
-                "store",
-                "promote",
-                "completed-release",
-            ],
+            ["store", "promote", "store", "promote", "completed-release"],
             owner_order,
         )
         self.assertEqual(
@@ -253,15 +198,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
             observed_hot_scores={"worker-1": 202, "worker-2": 203},
             release_time_millis=self.NOW_MILLIS,
         )
-        self.worker_score.release_score_holds.assert_not_called()
 
-    def test_failure_lane_only_releases_and_does_not_read_outcome_code(self) -> None:
-        self.queues[TaskResultClass.FAILURE] = (
+    def test_failure_only_releases_and_does_not_read_outcome_code(self) -> None:
+        self.policy.handle_failure((
             self.result(outcome_code="200", payload="unexpected"),
             self.result(outcome_code="23002", worker_lease_score=202),
-        )
-
-        self.assertEqual(2, self.route())
+        ))
 
         self.worker_score.release_score_holds.assert_called_once_with(
             home_bucket_id="image-workers",
@@ -272,61 +214,19 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
-    def test_each_lane_uses_its_own_bounded_consume_in_fixed_order(self) -> None:
-        self.assertEqual(0, self.route())
-
-        self.assertEqual(
-            [
-                call(result_class=TaskResultClass.SUCCESS, limit=100),
-                call(result_class=TaskResultClass.FAILURE, limit=100),
-            ],
-            self.runtime.consume_task_results.call_args_list,
-        )
-
-    def test_corrupt_context_and_non_task_result_are_consumed_without_writes(
-        self,
-    ) -> None:
-        self.queues[TaskResultClass.SUCCESS] = (
+    def test_corrupt_context_and_non_task_result_do_not_write_owners(self) -> None:
+        invalid = (
             self.result(forward="{bad-json"),
             self.result(dst=DeliveryEndpoint.SYSTEM),
         )
 
-        self.assertEqual(0, self.route())
+        self.policy.handle_success(invalid)
+        self.policy.handle_failure(invalid)
 
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_score_holds.assert_not_called()
         self.worker_score.release_completed_hot_score_holds.assert_not_called()
-
-    def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
-        self.queues[TaskResultClass.SUCCESS] = (self.result(),)
-        release_time_millis = self.NOW_MILLIS + WorkerScoreCore.SLOT_MILLIS
-
-        with patch.object(
-            ResultRoutingPacer,
-            "_current_time_millis",
-            return_value=self.NOW_MILLIS,
-        ), patch.object(
-            ResultRoutingBuiltinPolicies,
-            "_current_time_millis",
-            return_value=release_time_millis,
-        ):
-            self.assertEqual(
-                1,
-                self.pacer.route_worker_results(config=self.config),
-            )
-
-        self.item_score.promote_item_outcomes.assert_called_once_with(
-            task_id="task-1",
-            message_ids=("message-1",),
-            target_band=TaskItemScoreBand.FINAL_SUCCESS,
-            target_time_millis=self.NOW_MILLIS,
-        )
-        self.worker_score.release_completed_hot_score_holds.assert_called_once_with(
-            home_bucket_id="image-workers",
-            observed_hot_scores={"worker-1": 201},
-            release_time_millis=release_time_millis,
-        )
 
 
 if __name__ == "__main__":

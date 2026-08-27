@@ -9,9 +9,7 @@ from .task_call_submission import (
     TaskCallSubmissionStatus,
 )
 from .result_routing import (
-    ResultRoutingConfig,
-    ResultRoutingBuiltinPolicies,
-    ResultRoutingPacer,
+    TaskResultBatchPolicy,
     TaskResultEvidence,
     WorkerResultEvidence,
 )
@@ -36,15 +34,13 @@ from .worker_serviceability import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    WorkerServiceabilityResultPacer,
+    WorkerServiceabilityResultPolicy,
 )
 from ..kernel.assignment_dispatch_runtime import CandidateId
 
 __all__ = [
     "CandidateId",
-    "ResultRoutingConfig",
-    "ResultRoutingBuiltinPolicies",
-    "ResultRoutingPacer",
+    "TaskResultBatchPolicy",
     "TaskResultEvidence",
     "TaskDispatchConfig",
     "TaskDispatchPacer",
@@ -67,5 +63,5 @@ __all__ = [
     "WorkerServiceabilityDispatchConfig",
     "WorkerServiceabilityDispatchPacer",
     "WorkerServiceabilityResultConfig",
-    "WorkerServiceabilityResultPacer",
+    "WorkerServiceabilityResultPolicy",
 ]

@@ -21,7 +21,7 @@ from kernel_design.executable_spec import (
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityDispatchPacer,
     WorkerServiceabilityResultConfig,
-    WorkerServiceabilityResultPacer,
+    WorkerServiceabilityResultPolicy,
 )
 
 
@@ -613,19 +613,19 @@ class WorkerServiceabilityDispatchPacerTest(unittest.TestCase):
         self.assertEqual(1, self.pacer.dispatch_probes(config=config))
 
 
-class WorkerServiceabilityResultPacerTest(unittest.TestCase):
+class WorkerServiceabilityResultPolicyTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.runtime = FakeRuntime()
+        self.reports: list[DeliveryReport] = []
         self.catalog = FakeCatalog()
         self.score = FakeScore()
-        self.pacer = WorkerServiceabilityResultPacer(
-            self.runtime,
+        self.config = WorkerServiceabilityResultConfig()
+        self.policy = WorkerServiceabilityResultPolicy(
             self.catalog,
             self.score,
+            config=self.config,
             hot_eligibility_floor_millis=_FLOOR,
             clock_millis=lambda: 100_000,
         )
-        self.config = WorkerServiceabilityResultConfig()
 
     def _own(self, worker_ids: tuple[str, ...]) -> None:
         self.catalog.group_by_worker.update(
@@ -633,7 +633,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         )
 
     def test_connected_recovery_toggles_then_rewrites_to_hot_floor(self) -> None:
-        self.runtime.reports.append(connection_report("worker", "CONNECTED"))
+        self.reports.append(connection_report("worker", "CONNECTED"))
         self._own(("worker",))
         self.score.states_by_group["group-a"] = {
             "worker": score_state(
@@ -641,7 +641,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             )
         }
 
-        self.assertEqual(1, self.pacer.route_adapter_evidence(config=self.config))
+        self.policy.handle(self.reports)
         self.assertEqual([("group-a", "worker", -100)], self.score.toggles)
         self.assertEqual(
             [("group-a", ("worker",), _FLOOR, 0)],
@@ -649,7 +649,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         )
 
     def test_disconnect_and_delivery_expiry_only_toggle_hot_scores(self) -> None:
-        self.runtime.reports.extend(
+        self.reports.extend(
             (
                 connection_report("disconnected", "DISCONNECTED"),
                 expired_report("expired"),
@@ -671,7 +671,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             ),
         }
 
-        self.assertEqual(3, self.pacer.route_adapter_evidence(config=self.config))
+        self.policy.handle(self.reports)
         self.assertEqual(
             {
                 ("group-a", "disconnected", 100),
@@ -682,7 +682,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         self.assertEqual([], self.score.rewrites)
 
     def test_probe_failure_retries_linearly_then_cold_parks(self) -> None:
-        self.runtime.reports.append(
+        self.reports.append(
             probe_report(
                 {
                     "hot": "UNKNOWN",
@@ -702,7 +702,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             ),
         }
 
-        self.assertEqual(3, self.pacer.route_adapter_evidence(config=self.config))
+        self.policy.handle(self.reports)
         self.assertIn(("group-a", "hot", 100), self.score.toggles)
         self.assertIn(("group-a", ("hot",), 95_000, 0), self.score.rewrites)
         self.assertIn(("group-a", ("retry",), 95_000, 4), self.score.rewrites)
@@ -712,7 +712,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         )
 
     def test_equal_timestamp_uses_later_report(self) -> None:
-        self.runtime.reports.extend(
+        self.reports.extend(
             (
                 connection_report(
                     "worker", "CONNECTED", observed_at_millis=99_000
@@ -727,12 +727,12 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
             )
         }
 
-        self.pacer.route_adapter_evidence(config=self.config)
+        self.policy.handle(self.reports)
         self.assertEqual([("group-a", "worker", 100)], self.score.toggles)
         self.assertEqual([], self.score.rewrites)
 
     def test_future_expired_and_unknown_worker_are_dropped(self) -> None:
-        self.runtime.reports.extend(
+        self.reports.extend(
             (
                 connection_report(
                     "old", "DISCONNECTED", observed_at_millis=69_999
@@ -743,7 +743,7 @@ class WorkerServiceabilityResultPacerTest(unittest.TestCase):
         )
         self.catalog.group_by_worker["missing"] = None
 
-        self.assertEqual(0, self.pacer.route_adapter_evidence(config=self.config))
+        self.policy.handle(self.reports)
         self.assertEqual([], self.score.toggles)
 
     def test_configs_reject_invalid_bounds_and_exclusions(self) -> None:

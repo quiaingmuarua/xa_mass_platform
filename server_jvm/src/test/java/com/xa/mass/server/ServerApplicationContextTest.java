@@ -107,16 +107,13 @@ class ServerApplicationContextTest {
                         KernelPacerRuntime.PolicyPreset.DEFAULT
                 );
         assertThat(applicationContext.containsBean(
-                "workerServiceabilityResultApplication"
+                "resultConvergenceApplication"
         )).isFalse();
         assertThat(applicationContext.containsBean(
                 "workerServiceabilityDispatchApplication"
         )).isFalse();
         assertThat(applicationContext.containsBean(
                 "kernelPacerPolicyConfig"
-        )).isFalse();
-        assertThat(applicationContext.containsBean(
-                "resultRoutingApplication"
         )).isFalse();
         assertThat(applicationContext.containsBean(
                 "assignmentDispatchApplication"

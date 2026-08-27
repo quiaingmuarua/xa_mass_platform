@@ -513,11 +513,14 @@ Worker-owned 3...             -> FAILURE
 Adapter-owned Task rejection  -> FAILURE
 ```
 
-`ResultRoutingPacer` consumes `SUCCESS` then `FAILURE`, requires `dst=TASK`,
-decodes `forward` as ResultContext and never reads `outcomeCode`. SUCCESS stores
-and promotes the Item before using the completed-HOT exact release; FAILURE
-only releases the assignment lease. Adapter connection and delivery-expiry
-evidence remains on the separate KERNEL result path.
+The Result Convergence coordinator consumes the `SUCCESS` and `FAILURE` keys as
+separate fixed lanes. `TaskResultBatchPolicy` requires `dst=TASK`, decodes
+`forward` as ResultContext and never reads `outcomeCode`. SUCCESS stores and
+promotes the Item before using the completed-HOT exact release; FAILURE only
+releases the assignment lease. FAILURE may therefore execute several Batches
+out of completion order under the shared Result capacity; SUCCESS remains
+single-flight. Adapter connection and delivery-expiry evidence remains on the
+separate KERNEL result key and runs as the optional single-flight third lane.
 
 The Report `messageType` is not used as truth or a fence. Task and Worker owner
 coordinates from `forward`, together with exact score/lease operations, decide

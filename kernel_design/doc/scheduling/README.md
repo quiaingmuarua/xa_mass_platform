@@ -151,19 +151,27 @@ WorkerCommandRuntime
 TaskResultRuntime
   owns two bounded best-effort Task result-class queues, not Item or Worker truth
 
-ResultRoutingPacer
-  bounded-consumes, decodes, groups, and delegates owner-local evidence
+ResultConvergenceApplication
+  owns one weighted-fair coordinator and ten shared asynchronous Batch slots;
+  fixed per-lane target/max policy keeps Task SUCCESS and optional Adapter
+  Evidence single-flight while Task FAILURE may borrow capacity; it owns no
+  Redis key or result policy
+
+TaskResultBatchPolicy
+  decodes and groups one already-classified homogeneous Task result Batch and
+  delegates owner-local evidence
 
 WorkerServiceabilityRuntime
   owns Adapter-partitioned coalesced probe requests and one bounded batch
   Report handoff; neither structure is current connection or score truth
 
-WorkerServiceabilityDispatchPacer / ResultPacer
+WorkerServiceabilityDispatchPacer / ResultPolicy
   derive demanded Groups from due Tasks, discover old score coordinates, and
   translate valid Adapter route snapshots into bounded WorkerScore operations
 
-ResultRoutingBuiltinPolicies or replacement handlers
-  compose Task and Worker owner operations without owning their truth
+Fixed Result Batch policies
+  compose Task and Worker owner operations without owning their truth; they are
+  not a registry, SPI or replacement-handler surface
 
 Other scheduling pacers
   compose declared owner operations in bounded rounds; they do not copy truth
@@ -337,7 +345,7 @@ kernel_design/executable_spec/
   assembly/
     application.py
     assignment_dispatch_application.py
-    result_routing_application.py
+    result_convergence_application.py
     worker_serviceability_application.py
 ```
 

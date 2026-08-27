@@ -687,9 +687,7 @@ class RuntimeBoundaryIntegrationTest {
     void javaServerOwnsPacerLifecycleAndReadiness() throws Exception {
         KernelPacerAssembly.Snapshot snapshot = kernelPacerAssembly.snapshot();
         assertThat(snapshot.enabled()).isTrue();
-        assertThat(snapshot.runtime().resultRoutingState())
-                .isEqualTo("RUNNING");
-        assertThat(snapshot.runtime().workerServiceabilityResultState())
+        assertThat(snapshot.runtime().resultConvergenceState())
                 .isEqualTo("RUNNING");
         assertThat(snapshot.runtime().workerServiceabilityDispatchState())
                 .isEqualTo("RUNNING");

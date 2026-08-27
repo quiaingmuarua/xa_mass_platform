@@ -318,9 +318,9 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.assertEqual(
             100,
-            internal.result_routing.routing.per_result_class_batch_limit,
+            internal.task_result_batch_limit,
         )
-        self.assertEqual(100, internal.result_routing.interval_millis)
+        self.assertEqual(100, internal.task_result_idle_interval_millis)
         self.assertIsNone(internal.worker_serviceability_dispatch)
         self.assertIsNone(internal.worker_serviceability_result)
 
@@ -348,18 +348,18 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.assertEqual(
             5,
-            internal.worker_serviceability_result.result.max_recovery_attempts,
+            internal.worker_serviceability_result.max_recovery_attempts,
         )
         self.assertEqual(
             30_000,
-            internal.worker_serviceability_result.result.evidence_max_age_millis,
+            internal.worker_serviceability_result.evidence_max_age_millis,
         )
         self.assertEqual(
             100,
-            internal.worker_serviceability_result.interval_millis,
+            internal.worker_serviceability_result_idle_interval_millis,
         )
 
-    def test_managed_serviceability_uses_parent_floor_without_result_loop(
+    def test_explicit_floor_is_shared_by_complete_serviceability(
         self,
     ) -> None:
         config = KernelApplicationConfig.from_json(
@@ -368,15 +368,13 @@ class KernelApplicationTest(unittest.TestCase):
 
         KernelApplication(
             config,
-            _worker_serviceability_result_enabled=False,
-            _worker_serviceability_dispatch_enabled=False,
             _hot_eligibility_floor_millis=12_300,
         )
 
         internal = self.from_url.call_args.kwargs["config"]
         self.assertEqual(12_300, internal.hot_eligibility_floor_millis)
-        self.assertIsNone(internal.worker_serviceability_result)
-        self.assertIsNone(internal.worker_serviceability_dispatch)
+        self.assertIsNotNone(internal.worker_serviceability_result)
+        self.assertIsNotNone(internal.worker_serviceability_dispatch)
 
     def test_task_call_submission_is_a_bounded_application_command(self) -> None:
         expected = TaskCallSubmissionResult(
@@ -689,19 +687,15 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
         process._redis = Mock()
         process._config = Mock(
             assignment_dispatch="assignment-config",
-            result_routing="result-config",
-            result_routing_enabled=True,
             worker_serviceability_dispatch=None,
-            worker_serviceability_result=None,
             stop_timeout_millis=123,
         )
         process._assignment_dispatch_application = Mock()
-        process._result_routing_application = Mock()
+        process._result_convergence_application = Mock()
         process._worker_serviceability_dispatch_application = None
-        process._worker_serviceability_result_application = None
         order: list[str] = []
-        process._result_routing_application.start.side_effect = (
-            lambda **_kwargs: order.append("result-start")
+        process._result_convergence_application.start.side_effect = (
+            lambda **_kwargs: order.append("convergence-start")
         )
         process._assignment_dispatch_application.start.side_effect = (
             lambda **_kwargs: order.append("assignment-start")
@@ -709,12 +703,12 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
         process._assignment_dispatch_application.stop.side_effect = (
             lambda **_kwargs: order.append("assignment-stop")
         )
-        process._result_routing_application.stop.side_effect = (
-            lambda **_kwargs: order.append("result-stop")
+        process._result_convergence_application.stop.side_effect = (
+            lambda **_kwargs: order.append("convergence-stop")
         )
         return process, order
 
-    def test_result_loop_starts_first_and_stops_last(self) -> None:
+    def test_convergence_starts_first_and_stops_last(self) -> None:
         process, order = self.process()
 
         process.start()
@@ -722,29 +716,15 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                "result-start",
+                "convergence-start",
                 "assignment-start",
                 "assignment-stop",
-                "result-stop",
+                "convergence-stop",
             ],
             order,
         )
 
-    def test_managed_migration_mode_never_starts_result_loop(self) -> None:
-        process, order = self.process()
-        process._config.result_routing_enabled = False
-
-        process.start()
-        process.stop()
-
-        self.assertEqual(
-            ["assignment-start", "assignment-stop"],
-            order,
-        )
-        process._result_routing_application.start.assert_not_called()
-        process._result_routing_application.stop.assert_not_called()
-
-    def test_assignment_start_failure_rolls_back_result_loop(self) -> None:
+    def test_assignment_start_failure_rolls_back_convergence(self) -> None:
         process, order = self.process()
 
         def fail_assignment(**_kwargs: object) -> None:
@@ -757,54 +737,15 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
             process.start()
 
         self.assertEqual(
-            ["result-start", "assignment-start", "result-stop"],
+            ["convergence-start", "assignment-start", "convergence-stop"],
             order,
         )
 
-    def test_serviceability_lifecycle_sits_between_result_and_assignment(self) -> None:
-        process, order = self.process()
-        process._config.worker_serviceability_result = "service-result-config"
-        process._config.worker_serviceability_dispatch = "service-dispatch-config"
-        process._worker_serviceability_result_application = Mock()
-        process._worker_serviceability_dispatch_application = Mock()
-        process._worker_serviceability_result_application.start.side_effect = (
-            lambda **_kwargs: order.append("service-result-start")
-        )
-        process._worker_serviceability_dispatch_application.start.side_effect = (
-            lambda **_kwargs: order.append("service-dispatch-start")
-        )
-        process._worker_serviceability_dispatch_application.stop.side_effect = (
-            lambda **_kwargs: order.append("service-dispatch-stop")
-        )
-        process._worker_serviceability_result_application.stop.side_effect = (
-            lambda **_kwargs: order.append("service-result-stop")
-        )
-
-        process.start()
-        process.stop()
-
-        self.assertEqual(
-            [
-                "result-start",
-                "service-result-start",
-                "service-dispatch-start",
-                "assignment-start",
-                "assignment-stop",
-                "service-dispatch-stop",
-                "service-result-stop",
-                "result-stop",
-            ],
-            order,
-        )
-
-    def test_managed_result_migration_keeps_only_serviceability_dispatch(
+    def test_serviceability_dispatch_sits_between_convergence_and_assignment(
         self,
     ) -> None:
         process, order = self.process()
-        process._config.result_routing_enabled = False
-        process._config.worker_serviceability_result = None
         process._config.worker_serviceability_dispatch = "service-dispatch-config"
-        process._worker_serviceability_result_application = None
         process._worker_serviceability_dispatch_application = Mock()
         process._worker_serviceability_dispatch_application.start.side_effect = (
             lambda **_kwargs: order.append("service-dispatch-start")
@@ -812,21 +753,20 @@ class RedisKernelProcessLifecycleTest(unittest.TestCase):
         process._worker_serviceability_dispatch_application.stop.side_effect = (
             lambda **_kwargs: order.append("service-dispatch-stop")
         )
-
         process.start()
         process.stop()
 
         self.assertEqual(
             [
+                "convergence-start",
                 "service-dispatch-start",
                 "assignment-start",
                 "assignment-stop",
                 "service-dispatch-stop",
+                "convergence-stop",
             ],
             order,
         )
-        process._result_routing_application.start.assert_not_called()
-        process._result_routing_application.stop.assert_not_called()
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")

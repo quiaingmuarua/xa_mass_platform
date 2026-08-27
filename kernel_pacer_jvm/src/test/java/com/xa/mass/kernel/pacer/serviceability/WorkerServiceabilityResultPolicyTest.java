@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -22,7 +21,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
-class WorkerServiceabilityResultPacerTest {
+class WorkerServiceabilityResultPolicyTest {
 
     private static final long NOW = 50_000;
     private static final long FLOOR = 10_000;
@@ -79,16 +78,12 @@ class WorkerServiceabilityResultPacerTest {
                 0
         ));
         List<String> calls = new ArrayList<>();
-        WorkerServiceabilityResultPacer pacer = pacer(
-                reports,
+        WorkerServiceabilityResultPolicy policy = policy(
                 catalogFor(states.keySet().stream().toList(), null),
                 recordingScore(states, calls)
         );
 
-        assertEquals(8, pacer.routeAdapterEvidence(
-                WorkerServiceabilityResultConfig.defaults(),
-                FLOOR
-        ));
+        policy.handle(reports);
 
         assertTrue(calls.contains("toggle:connected-recovery:-101"));
         assertTrue(calls.contains("rewrite:connected-recovery:10000:0"));
@@ -129,16 +124,12 @@ class WorkerServiceabilityResultPacerTest {
                 connection("worker-1", "DISCONNECTED", 49_000),
                 connection("future", "CONNECTED", NOW + 1)
         );
-        WorkerServiceabilityResultPacer pacer = pacer(
-                reports,
+        WorkerServiceabilityResultPolicy policy = policy(
                 catalogFor(List.of("worker-1"), null),
                 recordingScore(states, calls)
         );
 
-        assertEquals(1, pacer.routeAdapterEvidence(
-                WorkerServiceabilityResultConfig.defaults(),
-                FLOOR
-        ));
+        policy.handle(reports);
         assertTrue(calls.isEmpty());
     }
 
@@ -149,62 +140,27 @@ class WorkerServiceabilityResultPacerTest {
             states.put("worker-" + index, "CONNECTED");
         }
         List<Integer> chunkSizes = new ArrayList<>();
-        WorkerServiceabilityResultPacer pacer = pacer(
-                List.of(
-                        snapshot(49_000, states),
-                        connection("worker-100", "CONNECTED", 49_001)
-                ),
+        WorkerServiceabilityResultPolicy policy = policy(
                 catalogFor(List.of(), chunkSizes),
                 recordingScore(Map.of(), new ArrayList<>())
         );
 
-        assertEquals(0, pacer.routeAdapterEvidence(
-                WorkerServiceabilityResultConfig.defaults(),
-                FLOOR
+        policy.handle(List.of(
+                snapshot(49_000, states),
+                connection("worker-100", "CONNECTED", 49_001)
         ));
         assertEquals(List.of(100, 1), chunkSizes);
     }
 
-    private static WorkerServiceabilityResultPacer pacer(
-            List<DeliveryReport> reports,
+    private static WorkerServiceabilityResultPolicy policy(
             WorkerResourceCatalog catalog,
             WorkerScoreCore score
     ) {
-        WorkerServiceabilityRuntime runtime = new WorkerServiceabilityRuntime() {
-            @Override
-            public Map<String, ProbeRequestOfferStatus> offerProbeRequests(
-                    String adapterId,
-                    List<String> workerIds
-            ) {
-                throw new AssertionError("offer is not used");
-            }
-
-            @Override
-            public List<String> consumeProbeRequests(
-                    String adapterId,
-                    int limit
-            ) {
-                throw new AssertionError("probe consume is not used");
-            }
-
-            @Override
-            public int appendAdapterEvidenceResults(
-                    List<DeliveryReport> values
-            ) {
-                throw new AssertionError("append is not used");
-            }
-
-            @Override
-            public List<DeliveryReport> consumeAdapterEvidenceResults(
-                    int limit
-            ) {
-                return reports;
-            }
-        };
-        return new WorkerServiceabilityResultPacer(
-                runtime,
+        return new WorkerServiceabilityResultPolicy(
                 catalog,
                 score,
+                WorkerServiceabilityResultConfig.defaults(),
+                FLOOR,
                 () -> NOW,
                 JsonMapper.builder().build()
         );

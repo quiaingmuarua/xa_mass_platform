@@ -85,8 +85,12 @@ specification, owner Redis providers and Kernel application assembly.
   the standalone executable mechanism oracle only. Do not restore a Python
   HTTP host, managed child process, Task business route, production launcher,
   or Server fallback through Python.
-- Result Routing, Worker Serviceability Result, Worker Serviceability Dispatch
-  and Assignment Dispatch each have one fixed Java production application.
+- Result Convergence, Worker Serviceability Dispatch and Assignment Dispatch
+  each have one fixed Java production application. Result Convergence owns the
+  two Task lanes and optional Adapter Evidence lane. Its one coordinator owns
+  shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
+  and Adapter Evidence remain single-flight while Task FAILURE may borrow idle
+  capacity for concurrent exact-release Batches.
   Never run the Python Oracle against the same Redis scope as production.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 

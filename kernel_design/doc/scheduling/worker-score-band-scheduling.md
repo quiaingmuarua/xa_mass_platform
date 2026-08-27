@@ -543,7 +543,7 @@ Raw socket, heartbeat, keepalive, session, latency observation, and
 `WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
 Upsert initializes only a missing score and preserves every existing score
 exactly while replacing the Worker Properties snapshot. Only normalized
-Adapter Route evidence interpreted by the Kernel Serviceability Result Pacer
+Adapter Route evidence interpreted by the Kernel Serviceability Result Policy
 may compose exact toggle and monotonic rewrite; Transport never calls the score
 owner.
 
@@ -631,7 +631,7 @@ future recovery retry -> RECOVERY_RECHECK with later time and retryCount + 1
 ```
 
 This primitive cannot change HOT_ACQUIRE to RECOVERY_RECHECK or
-RECOVERY_RECHECK to HOT_ACQUIRE. The optional Serviceability Result Pacer uses
+RECOVERY_RECHECK to HOT_ACQUIRE. The optional Serviceability Result Policy uses
 it only after an exact polarity transition or while advancing one observed
 RECOVERY retry; it does not turn rewrite into a cross-polarity operation.
 
@@ -1043,7 +1043,7 @@ assignment-dispatch worker selection path.
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | trusted Adapter evidence that execution was not entered | yes | exact release of the correlated Worker lease fence; no online inference |
-| bounded-age Adapter Route evidence | yes | Serviceability Result Pacer orders within one round, then uses current-score read plus exact CAS; there is no cross-batch evidence fence |
+| bounded-age Adapter Route evidence | yes | Adapter Evidence Batch policy orders within one batch, then uses current-score read plus exact CAS; there is no cross-batch evidence fence |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw socket/session observation | no | local observation only; only the Adapter's exact verified Route transition becomes scheduling evidence |

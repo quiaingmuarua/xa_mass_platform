@@ -52,8 +52,10 @@ class KernelPacerAssemblyTest {
 
         verify(runtime).start();
         assertThat(assembly.isRunning()).isTrue();
-        assertThat(new KernelPacerHealthIndicator(assembly)
-                .health().getStatus().getCode()).isEqualTo("UP");
+        var health = new KernelPacerHealthIndicator(assembly).health();
+        assertThat(health.getStatus().getCode()).isEqualTo("UP");
+        assertThat(health.getDetails())
+                .containsEntry("javaResultConvergenceState", "RUNNING");
 
         assembly.destroy();
         verify(runtime).stop();
@@ -86,7 +88,6 @@ class KernelPacerAssemblyTest {
     ) {
         return new KernelPacerRuntime.Snapshot(
                 state,
-                state.name(),
                 state.name(),
                 state.name(),
                 state.name()

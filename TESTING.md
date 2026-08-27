@@ -118,8 +118,8 @@ Redis scope     test_runtime_boundary_<unique run token>
 ```
 
 The test starts one Java Spring context. Its `KernelPacerAssembly` delegates to
-the `kernel_pacer_jvm` Runtime, which starts Java Result Routing, Java Worker
-Serviceability Result, Java Worker Serviceability Dispatch and Java Assignment
+the `kernel_pacer_jvm` Runtime, which starts Java Result Convergence, Java
+Worker Serviceability Dispatch and Java Assignment
 Dispatch from the fixed `RUNTIME_BOUNDARY_PROOF` preset. Scenario, Capability
 Task, Worker Fleet and Android Emulator proofs use `SCENARIO_LAB`; default and
 AgentForge runtime assembly use `DEFAULT`. No Java proof reads a Pacer policy
@@ -140,9 +140,12 @@ that scope after all writers stop. A proof may share the URL and DB with a
 running `profile_*` environment; neither side can see or delete the other's
 data.
 
-Deterministic `kernel_pacer_jvm` lifecycle tests prove four-stage startup,
+Deterministic `kernel_pacer_jvm` lifecycle tests prove three-stage startup,
 reverse rollback, thread-death failure, idempotent stop and one shared bounded
-shutdown deadline. Server tests prove Spring delegation and Health projection.
+shutdown deadline. Result convergence tests additionally prove the global
+Batch cap, weighted fair `4/3/3` allocation, production per-lane maxima,
+FAILURE capacity borrowing, order-sensitive lane single-flight and JVM virtual
+thread use. Server tests prove Spring delegation and Health projection.
 The configured Group/Task and Adapter assembly has an explicit higher
 lifecycle phase, so it starts after all Pacers and closes before them. The
 standalone Scenario Worker Host is outside the Spring lifecycle.

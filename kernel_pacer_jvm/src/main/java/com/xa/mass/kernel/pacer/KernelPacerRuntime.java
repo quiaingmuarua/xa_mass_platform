@@ -4,6 +4,7 @@ import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -13,6 +14,8 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -41,20 +44,15 @@ public final class KernelPacerRuntime {
 
     public record Snapshot(
             State state,
-            String resultRoutingState,
-            String workerServiceabilityResultState,
+            String resultConvergenceState,
             String workerServiceabilityDispatchState,
             String assignmentDispatchState
     ) {
         public Snapshot {
             Objects.requireNonNull(state, "state");
             Objects.requireNonNull(
-                    resultRoutingState,
-                    "resultRoutingState"
-            );
-            Objects.requireNonNull(
-                    workerServiceabilityResultState,
-                    "workerServiceabilityResultState"
+                    resultConvergenceState,
+                    "resultConvergenceState"
             );
             Objects.requireNonNull(
                     workerServiceabilityDispatchState,
@@ -69,8 +67,7 @@ public final class KernelPacerRuntime {
 
     private final Duration shutdownTimeout;
     private final KernelPacerPolicyConfig policy;
-    private final ResultRoutingApplication resultRouting;
-    private final WorkerServiceabilityResultApplication serviceabilityResult;
+    private final ResultConvergenceApplication resultConvergence;
     private final WorkerServiceabilityDispatchApplication
             serviceabilityDispatch;
     private final AssignmentDispatchApplication assignmentDispatch;
@@ -79,8 +76,7 @@ public final class KernelPacerRuntime {
     KernelPacerRuntime(
             Duration shutdownTimeout,
             KernelPacerPolicyConfig policy,
-            ResultRoutingApplication resultRouting,
-            WorkerServiceabilityResultApplication serviceabilityResult,
+            ResultConvergenceApplication resultConvergence,
             WorkerServiceabilityDispatchApplication serviceabilityDispatch,
             AssignmentDispatchApplication assignmentDispatch
     ) {
@@ -89,13 +85,9 @@ public final class KernelPacerRuntime {
                 "shutdownTimeout"
         );
         this.policy = Objects.requireNonNull(policy, "policy");
-        this.resultRouting = Objects.requireNonNull(
-                resultRouting,
-                "resultRouting"
-        );
-        this.serviceabilityResult = Objects.requireNonNull(
-                serviceabilityResult,
-                "serviceabilityResult"
+        this.resultConvergence = Objects.requireNonNull(
+                resultConvergence,
+                "resultConvergence"
         );
         this.serviceabilityDispatch = Objects.requireNonNull(
                 serviceabilityDispatch,
@@ -125,26 +117,76 @@ public final class KernelPacerRuntime {
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
         );
-        ResultRoutingApplication resultRouting =
-                new ResultRoutingApplication(new ResultRoutingPacer(
-                        Objects.requireNonNull(taskResults, "taskResults"),
-                        Objects.requireNonNull(taskRuntime, "taskRuntime"),
-                        Objects.requireNonNull(itemScores, "itemScores"),
-                        Objects.requireNonNull(workerScores, "workerScores")
-                ));
-        WorkerServiceabilityResultApplication serviceabilityResult =
-                new WorkerServiceabilityResultApplication(
-                        new WorkerServiceabilityResultPacer(
-                                Objects.requireNonNull(
-                                        serviceability,
-                                        "serviceability"
-                                ),
-                                Objects.requireNonNull(
-                                        workerCatalog,
-                                        "workerCatalog"
-                                ),
-                                workerScores
-                        )
+        Objects.requireNonNull(taskResults, "taskResults");
+        Objects.requireNonNull(taskRuntime, "taskRuntime");
+        Objects.requireNonNull(itemScores, "itemScores");
+        Objects.requireNonNull(workerScores, "workerScores");
+        Objects.requireNonNull(serviceability, "serviceability");
+        Objects.requireNonNull(workerCatalog, "workerCatalog");
+        ResultConvergenceConfig convergencePolicy =
+                policy.resultConvergence();
+        TaskResultBatchPolicy taskResultPolicy = new TaskResultBatchPolicy(
+                taskRuntime,
+                itemScores,
+                workerScores
+        );
+        List<ResultLane> resultLanes = new ArrayList<>();
+        resultLanes.add(new ResultLane(
+                ResultLaneId.TASK_SUCCESS,
+                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
+                convergencePolicy.taskResultIdleIntervalMillis(),
+                ResultConvergenceConfig
+                        .TASK_SUCCESS_TARGET_CONCURRENCY,
+                ResultConvergenceConfig
+                        .TASK_SUCCESS_MAX_CONCURRENCY,
+                limit -> taskResults.consumeTaskResults(
+                        TaskResultClass.SUCCESS,
+                        limit
+                ),
+                taskResultPolicy::handleSuccess
+        ));
+        resultLanes.add(new ResultLane(
+                ResultLaneId.TASK_FAILURE,
+                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
+                convergencePolicy.taskResultIdleIntervalMillis(),
+                ResultConvergenceConfig
+                        .TASK_FAILURE_TARGET_CONCURRENCY,
+                ResultConvergenceConfig
+                        .TASK_FAILURE_MAX_CONCURRENCY,
+                limit -> taskResults.consumeTaskResults(
+                        TaskResultClass.FAILURE,
+                        limit
+                ),
+                taskResultPolicy::handleFailure
+        ));
+        WorkerServiceabilityAssemblyConfig serviceabilityPolicy =
+                policy.workerServiceability();
+        if (serviceabilityPolicy.enabled()) {
+            WorkerServiceabilityResultConfig resultPolicy =
+                    serviceabilityPolicy.result();
+            WorkerServiceabilityResultPolicy evidencePolicy =
+                    new WorkerServiceabilityResultPolicy(
+                            workerCatalog,
+                            workerScores,
+                            resultPolicy,
+                            serviceabilityPolicy.hotEligibilityFloorMillis()
+                    );
+            resultLanes.add(new ResultLane(
+                    ResultLaneId.ADAPTER_EVIDENCE,
+                    resultPolicy.resultReportLimit(),
+                    convergencePolicy.adapterEvidenceIdleIntervalMillis(),
+                    ResultConvergenceConfig
+                            .ADAPTER_EVIDENCE_TARGET_CONCURRENCY,
+                    ResultConvergenceConfig
+                            .ADAPTER_EVIDENCE_MAX_CONCURRENCY,
+                    serviceability::consumeAdapterEvidenceResults,
+                    evidencePolicy::handle
+            ));
+        }
+        ResultConvergenceApplication resultConvergence =
+                new ResultConvergenceApplication(
+                        resultLanes,
+                        ResultConvergenceConfig.GLOBAL_MAX_CONCURRENCY
                 );
         WorkerServiceabilityDispatchApplication serviceabilityDispatch =
                 new WorkerServiceabilityDispatchApplication(
@@ -166,8 +208,6 @@ public final class KernelPacerRuntime {
         WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(
                 workerCatalog
         );
-        WorkerServiceabilityAssemblyConfig serviceabilityPolicy =
-                policy.workerServiceability();
         WorkerCandidateAcquirer candidateAcquirer =
                 new WorkerCandidateAcquirer(
                         Objects.requireNonNull(
@@ -220,8 +260,7 @@ public final class KernelPacerRuntime {
         return new KernelPacerRuntime(
                 shutdownTimeout,
                 policy,
-                resultRouting,
-                serviceabilityResult,
+                resultConvergence,
                 serviceabilityDispatch,
                 assignmentDispatch
         );
@@ -235,20 +274,14 @@ public final class KernelPacerRuntime {
         }
         state = State.STARTING;
         boolean resultStarted = false;
-        boolean serviceabilityResultStarted = false;
         boolean serviceabilityDispatchStarted = false;
         boolean assignmentStarted = false;
         try {
-            resultRouting.start(policy.resultRouting());
+            resultConvergence.start();
             resultStarted = true;
             if (policy.workerServiceability().enabled()) {
                 long floor = policy.workerServiceability()
                         .hotEligibilityFloorMillis();
-                serviceabilityResult.start(
-                        policy.workerServiceability().result(),
-                        floor
-                );
-                serviceabilityResultStarted = true;
                 serviceabilityDispatch.start(
                         policy.workerServiceability().dispatch(),
                         floor
@@ -262,7 +295,6 @@ public final class KernelPacerRuntime {
             rollbackStarted(
                     failure,
                     resultStarted,
-                    serviceabilityResultStarted,
                     serviceabilityDispatchStarted,
                     assignmentStarted
             );
@@ -289,14 +321,9 @@ public final class KernelPacerRuntime {
             } catch (RuntimeException failure) {
                 firstFailure = accumulate(firstFailure, failure);
             }
-            try {
-                serviceabilityResult.stop(remainingMillis(deadline));
-            } catch (RuntimeException failure) {
-                firstFailure = accumulate(firstFailure, failure);
-            }
         }
         try {
-            resultRouting.stop(remainingMillis(deadline));
+            resultConvergence.stop(remainingMillis(deadline));
         } catch (RuntimeException failure) {
             firstFailure = accumulate(firstFailure, failure);
         }
@@ -319,10 +346,7 @@ public final class KernelPacerRuntime {
                 .enabled();
         return new Snapshot(
                 state,
-                resultRouting.state(),
-                serviceabilityEnabled
-                        ? serviceabilityResult.state()
-                        : "DISABLED",
+                resultConvergence.state(),
                 serviceabilityEnabled
                         ? serviceabilityDispatch.state()
                         : "DISABLED",
@@ -332,11 +356,10 @@ public final class KernelPacerRuntime {
 
     private void refreshUnexpectedExit() {
         if (state == State.RUNNING
-                && (!resultRouting.isRunning()
+                && (!resultConvergence.isRunning()
                 || !assignmentDispatch.isRunning()
                 || policy.workerServiceability().enabled()
-                && (!serviceabilityResult.isRunning()
-                || !serviceabilityDispatch.isRunning()))) {
+                && !serviceabilityDispatch.isRunning())) {
             state = State.FAILED;
         }
     }
@@ -344,7 +367,6 @@ public final class KernelPacerRuntime {
     private void rollbackStarted(
             RuntimeException startFailure,
             boolean resultStarted,
-            boolean serviceabilityResultStarted,
             boolean serviceabilityDispatchStarted,
             boolean assignmentStarted
     ) {
@@ -363,18 +385,10 @@ public final class KernelPacerRuntime {
                     )
             );
         }
-        if (serviceabilityResultStarted) {
-            stopForRollback(
-                    startFailure,
-                    () -> serviceabilityResult.stop(
-                            remainingMillis(deadline)
-                    )
-            );
-        }
         if (resultStarted) {
             stopForRollback(
                     startFailure,
-                    () -> resultRouting.stop(remainingMillis(deadline))
+                    () -> resultConvergence.stop(remainingMillis(deadline))
             );
         }
     }

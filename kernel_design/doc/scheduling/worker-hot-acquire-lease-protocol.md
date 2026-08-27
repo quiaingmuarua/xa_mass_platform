@@ -203,7 +203,7 @@ RECOVERY_RECHECK
 
 This is not a physical connection or socket state. Adapter Route changes and
 periodic Adapter snapshots are evidence interpreted by the independent Worker
-Serviceability Result Pacer. Task results only release their correlated lease;
+Serviceability Result Policy in the Adapter Evidence lane. Task results only release their correlated lease;
 they do not change polarity. With no demand or fresh evidence, bounded
 classification lag is allowed.
 
@@ -242,8 +242,8 @@ cross-owner transaction.
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
-| ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
-| Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
+| ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; order-sensitive lanes remain single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
+| TaskResultBatchPolicy | context decode, bounded owner-key grouping, Task finality and Worker lease disposition | no queue ownership, score decoding or cross-owner truth |
 
 ## Deferred Policy
 

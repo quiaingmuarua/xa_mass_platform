@@ -20,10 +20,13 @@ class KernelPacerPolicyConfigTest {
         );
 
         assertEquals(0, clockReads.get());
-        assertEquals(100, config.resultRouting().intervalMillis());
         assertEquals(
                 100,
-                config.resultRouting().routing().perResultClassBatchLimit()
+                config.resultConvergence().taskResultIdleIntervalMillis()
+        );
+        assertEquals(
+                100,
+                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT
         );
         assertFalse(config.workerServiceability().enabled());
         assertEquals(0, config.workerServiceability()
@@ -38,11 +41,18 @@ class KernelPacerPolicyConfigTest {
                 () -> 12_345L
         );
 
-        assertEquals(100, config.resultRouting().intervalMillis());
+        assertEquals(
+                100,
+                config.resultConvergence().taskResultIdleIntervalMillis()
+        );
+        assertEquals(
+                100,
+                config.resultConvergence()
+                        .adapterEvidenceIdleIntervalMillis()
+        );
         assertAssignmentIntervals(config, 100);
         assertServiceability(
                 config.workerServiceability(),
-                100,
                 1_000,
                 60_000,
                 10
@@ -56,11 +66,18 @@ class KernelPacerPolicyConfigTest {
                 () -> 12_345L
         );
 
-        assertEquals(20, config.resultRouting().intervalMillis());
+        assertEquals(
+                20,
+                config.resultConvergence().taskResultIdleIntervalMillis()
+        );
+        assertEquals(
+                100,
+                config.resultConvergence()
+                        .adapterEvidenceIdleIntervalMillis()
+        );
         assertAssignmentIntervals(config, 20);
         assertServiceability(
                 config.workerServiceability(),
-                100,
                 1_000,
                 60_000,
                 10
@@ -74,11 +91,18 @@ class KernelPacerPolicyConfigTest {
                 () -> 12_345L
         );
 
-        assertEquals(100, config.resultRouting().intervalMillis());
+        assertEquals(
+                100,
+                config.resultConvergence().taskResultIdleIntervalMillis()
+        );
+        assertEquals(
+                20,
+                config.resultConvergence()
+                        .adapterEvidenceIdleIntervalMillis()
+        );
         assertAssignmentIntervals(config, 100);
         assertServiceability(
                 config.workerServiceability(),
-                20,
                 1_000,
                 10,
                 100
@@ -127,22 +151,20 @@ class KernelPacerPolicyConfigTest {
 
     private static void assertServiceability(
             WorkerServiceabilityAssemblyConfig config,
-            long resultInterval,
             long dispatchInterval,
             long recoveryRetryInterval,
             int resultReportLimit
     ) {
         assertTrue(config.enabled());
         assertEquals(12_300, config.hotEligibilityFloorMillis());
-        assertEquals(resultInterval, config.result().intervalMillis());
-        assertEquals(5, config.result().result().maxRecoveryAttempts());
+        assertEquals(5, config.result().maxRecoveryAttempts());
         assertEquals(
                 resultReportLimit,
-                config.result().result().resultReportLimit()
+                config.result().resultReportLimit()
         );
         assertEquals(
                 30_000,
-                config.result().result().evidenceMaxAgeMillis()
+                config.result().evidenceMaxAgeMillis()
         );
         assertEquals(dispatchInterval, config.dispatch().intervalMillis());
         assertEquals(100, config.dispatch().dispatch().taskScanLimit());

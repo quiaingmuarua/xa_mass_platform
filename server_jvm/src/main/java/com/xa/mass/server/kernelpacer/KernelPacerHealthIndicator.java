@@ -26,12 +26,8 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
         );
         health.withDetail("state", snapshot.runtime().state().name());
         health.withDetail(
-                "javaResultRoutingState",
-                snapshot.runtime().resultRoutingState()
-        );
-        health.withDetail(
-                "javaWorkerServiceabilityResultState",
-                snapshot.runtime().workerServiceabilityResultState()
+                "javaResultConvergenceState",
+                snapshot.runtime().resultConvergenceState()
         );
         health.withDetail(
                 "javaWorkerServiceabilityDispatchState",

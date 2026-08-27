@@ -17,7 +17,7 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 `com.xa.mass.kernel.pacer.KernelPacerRuntime` is the only public top-level
 type. Its `assemble(...)` method accepts the bounded mechanical owners needed by
-the four production applications plus one of its four checked `PolicyPreset`
+the three production applications plus one of its four checked `PolicyPreset`
 values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
 `RUNTIME_BOUNDARY_PROOF`. The Runtime
 owns fixed policy selection, one immutable HOT eligibility floor when
@@ -35,17 +35,25 @@ or public factory types.
 Startup order:
 
 ```text
-Result Routing
--> Worker Serviceability Result       optional
+Result Convergence
 -> Worker Serviceability Dispatch     optional
 -> Assignment Dispatch
 ```
 
-Result Routing consumes exactly two Task result lanes in order: `SUCCESS`,
-then `FAILURE`. Server validates endpoint-owned outcome codes and selects the
-lane; the Pacer does not read `DeliveryReport.outcomeCode`. SUCCESS stores and
-promotes the Item before its narrow completed-HOT release, while FAILURE only
-releases the exact assignment lease and never changes Worker polarity.
+Result Convergence owns exactly three fixed lane definitions:
+`TASK_SUCCESS`, `TASK_FAILURE`, and optional `ADAPTER_EVIDENCE`. One platform
+coordinator schedules at most ten bounded Batches by the smallest
+`inflight / targetConcurrency` ratio; priority only breaks equal ratios. Every
+non-empty Batch runs on a named virtual thread. Production target/max values
+are SUCCESS `1/1`, FAILURE `3/10`, and Evidence `1/1`, so FAILURE may borrow
+idle capacity while the two order-sensitive policies remain single-flight.
+These values are internal constants, not configuration or a public lane model.
+Server validates endpoint-owned outcome codes and selects the Task lane; Task
+policy does not read `DeliveryReport.outcomeCode`. SUCCESS stores and promotes
+the Item before its narrow completed-HOT release, while FAILURE only releases
+the exact assignment lease and never changes Worker polarity. Adapter Evidence
+retains its finite Serviceability event policy and shares the same lifecycle
+without becoming a general EventBus.
 
 Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
 Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal

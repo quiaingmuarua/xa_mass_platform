@@ -29,8 +29,8 @@ Public API
 
 KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
-     -> Java ResultRoutingApplication
-     -> Java WorkerServiceabilityResultApplication (when configured)
+     -> Java ResultConvergenceApplication
+        -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE lanes
      -> Java WorkerServiceabilityDispatchApplication (when configured)
      -> Java AssignmentDispatchApplication
      -> one bounded reverse shutdown
@@ -61,8 +61,7 @@ Provider ownership is deliberately mixed but explicit:
 | Task create, approve, close and Task Call Item submission | JVM owner contracts with Java Redis Task providers |
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
-| Task Result Routing | `kernel_pacer_jvm` fixed policy over Java Task, TaskItem score and Worker score owners |
-| Worker Serviceability Result | `kernel_pacer_jvm` fixed policy over Java evidence, Worker resource and Worker score owners |
+| Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and optional Adapter Evidence lanes over Java owners |
 | Worker Serviceability Dispatch bridge | `kernel_pacer_jvm` request producer plus lowest-priority Server Adapter snapshot construction |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
@@ -607,10 +606,10 @@ GET /actuator/health/liveness
 GET /actuator/health/readiness
 ```
 
-Liveness covers the JVM process. Readiness requires Result Routing, both
-configured Worker Serviceability applications, Assignment Dispatch and Kernel
+Liveness covers the JVM process. Readiness requires Result Convergence,
+configured Worker Serviceability Dispatch, Assignment Dispatch and Kernel
 Redis to remain available. The `kernel` health contributor exposes only the
-aggregate lifecycle and four Java application states.
+aggregate lifecycle and three Java application states.
 
 ## Verification
 
@@ -648,11 +647,11 @@ Exactly one Server instance per Redis scope may have the Pacer lifecycle
 enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
 there is no distributed leader election.
 
-Result Routing starts first, optional Serviceability Result starts second,
-optional Serviceability Dispatch starts third and Assignment Dispatch starts
-last. Worker/Adapter assembly starts after the aggregate reaches `RUNNING`.
-Shutdown uses one shared deadline in the exact reverse order. A failed start
-rolls back every already-started Java application.
+Result Convergence starts first, optional Serviceability Dispatch starts
+second and Assignment Dispatch starts last. Worker/Adapter assembly starts
+after the aggregate reaches `RUNNING`. Shutdown uses one shared deadline in
+the exact reverse order. A failed start rolls back every already-started Java
+application.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task
 paths. It also calls an unpaused real WebSocket Worker directly, executes a
