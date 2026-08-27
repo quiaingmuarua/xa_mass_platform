@@ -58,7 +58,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             redis_url="redis://redis:6379/9",
             redis_scope="test_resources_client",
             worker_allocation_interval_millis=11,
-            running_activation_interval_millis=12,
+            task_initialization_interval_millis=12,
             task_dispatch_interval_millis=13,
             stop_timeout_millis=14,
         )

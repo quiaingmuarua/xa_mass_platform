@@ -12,7 +12,6 @@ from typing import Any
 from ..scheduling import (
     TaskCallSubmissionResult,
     TaskDispatchConfig,
-    TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
     WorkerServiceabilityDispatchConfig,
     WorkerServiceabilityResultConfig,
@@ -45,7 +44,6 @@ _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS = 1_000
 _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS = 100
 _DEFAULT_SERVICEABILITY_PROBE_SWEEP_RESTART_DELAY_MILLIS = 10_000
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
-_DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
 
@@ -53,7 +51,6 @@ _WORKER_SCAN_LIMIT = 100
 _WORKER_LEASE_DURATION_MILLIS = 5_000
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
-_ADMISSION_PRIORITY_RECHECK_STEP_MILLIS = 1_000
 _RESULT_ROUTING_PER_RESULT_CLASS_BATCH_LIMIT = 100
 _LOGGER = logging.getLogger(__name__)
 
@@ -157,10 +154,9 @@ class KernelApplicationConfig:
     redis_url: str = _DEFAULT_REDIS_URL
     redis_scope: str = _DEFAULT_REDIS_SCOPE
     worker_allocation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
-    running_activation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
+    task_initialization_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     task_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
-    running_task_soft_limit: int = _DEFAULT_RUNNING_TASK_SOFT_LIMIT
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
     worker_serviceability: WorkerServiceabilityConfig | None = None
 
@@ -172,8 +168,8 @@ class KernelApplicationConfig:
             name="worker allocation interval",
         )
         _positive_integer(
-            self.running_activation_interval_millis,
-            name="running activation interval",
+            self.task_initialization_interval_millis,
+            name="Task initialization interval",
         )
         _positive_integer(
             self.task_dispatch_interval_millis,
@@ -182,10 +178,6 @@ class KernelApplicationConfig:
         _positive_integer(
             self.result_routing_interval_millis,
             name="result-routing interval",
-        )
-        _positive_integer(
-            self.running_task_soft_limit,
-            name="running Task soft limit",
         )
         _positive_integer(self.stop_timeout_millis, name="stop timeout")
         if self.worker_serviceability is not None and not isinstance(
@@ -216,7 +208,6 @@ class KernelApplicationConfig:
                 {
                     "redis",
                     "assignmentDispatch",
-                    "systemPolicy",
                     "resultRouting",
                     "workerServiceability",
                     "stopTimeoutMillis",
@@ -240,7 +231,7 @@ class KernelApplicationConfig:
             allowed=frozenset(
                 {
                     "workerAllocationIntervalMillis",
-                    "runningActivationIntervalMillis",
+                    "taskInitializationIntervalMillis",
                     "taskDispatchIntervalMillis",
                 }
             ),
@@ -255,16 +246,6 @@ class KernelApplicationConfig:
             allowed=frozenset({"intervalMillis"}),
             name="resultRouting config",
         )
-        system_policy_config = _mapping(
-            config.get("systemPolicy", {}),
-            name="systemPolicy config",
-        )
-        _reject_unknown(
-            system_policy_config,
-            allowed=frozenset({"runningTaskSoftLimit"}),
-            name="systemPolicy config",
-        )
-
         serviceability_config: WorkerServiceabilityConfig | None = None
         if "workerServiceability" in config:
             raw_serviceability = _mapping(
@@ -364,12 +345,12 @@ class KernelApplicationConfig:
                 ),
                 name="worker allocation interval",
             ),
-            running_activation_interval_millis=_positive_integer(
+            task_initialization_interval_millis=_positive_integer(
                 scheduling_config.get(
-                    "runningActivationIntervalMillis",
-                    defaults.running_activation_interval_millis,
+                    "taskInitializationIntervalMillis",
+                    defaults.task_initialization_interval_millis,
                 ),
-                name="running activation interval",
+                name="Task initialization interval",
             ),
             task_dispatch_interval_millis=_positive_integer(
                 scheduling_config.get(
@@ -384,13 +365,6 @@ class KernelApplicationConfig:
                     defaults.result_routing_interval_millis,
                 ),
                 name="result-routing interval",
-            ),
-            running_task_soft_limit=_positive_integer(
-                system_policy_config.get(
-                    "runningTaskSoftLimit",
-                    defaults.running_task_soft_limit,
-                ),
-                name="running Task soft limit",
             ),
             stop_timeout_millis=_positive_integer(
                 config.get("stopTimeoutMillis", defaults.stop_timeout_millis),
@@ -433,6 +407,8 @@ class TaskCloseResult:
 
 
 class _TaskLifecycleManager:
+    _RUNNING_TASK_SOFT_LIMIT = 100
+
     def __init__(
         self,
         task_score: TaskScoreBandCore,
@@ -455,18 +431,16 @@ class _TaskLifecycleManager:
         classified = self._classify_state(state)
         if classified is not None:
             return classified
-        assert state is not None and state.time_millis is not None
-        approval_time_millis = time_ns() // 1_000_000
-
-        transition = self._task_score.rewrite_score(
+        assert state is not None
+        if self._task_score.count_running_tasks() >= self._RUNNING_TASK_SOFT_LIMIT:
+            return TaskApprovalResult(
+                TaskApprovalStatus.RETRYABLE,
+                "RUNNING Task soft limit is full",
+            )
+        transition = self._task_score.start_observed_pre_review_task(
             task_id=task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=max(
-                approval_time_millis,
-                state.time_millis + TaskScoreBandCore.SLOT_MILLIS,
-            ),
-            target_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_suffix=int(descriptor.config["priority"]),
+            observed_pre_review_score=state.score,
+            priority=int(descriptor.config["priority"]),
         )
         if transition.status == TaskScoreTransitionStatus.TRANSITIONED:
             return TaskApprovalResult(TaskApprovalStatus.APPROVED)
@@ -475,7 +449,6 @@ class _TaskLifecycleManager:
                 TaskApprovalStatus.INVALID,
                 "task approval transition was rejected",
             )
-
         current = self._task_score.get_score_states(task_ids=(task_id,)).get(task_id)
         reclassified = self._classify_state(current)
         if reclassified is not None:
@@ -517,10 +490,7 @@ class _TaskLifecycleManager:
     def _classify_state(state: TaskScoreState | None) -> TaskApprovalResult | None:
         if state is None:
             return TaskApprovalResult(TaskApprovalStatus.NOT_FOUND)
-        if state.band in {
-            TaskScoreBand.ADMISSION_VISIBLE,
-            TaskScoreBand.RUNNING_VISIBLE,
-        }:
+        if state.band is TaskScoreBand.RUNNING_VISIBLE:
             return TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED)
         if state.band == TaskScoreBand.TERMINAL:
             return TaskApprovalResult(
@@ -654,17 +624,11 @@ class KernelApplication:
             )
         return _RedisKernelProcessConfig(
             keyspace=RedisKeyspace(config.redis_scope),
-            running_task_soft_limit=config.running_task_soft_limit,
             worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
             hot_eligibility_floor_millis=hot_eligibility_floor_millis,
             assignment_dispatch=AssignmentDispatchConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
                     worker_lease_duration_millis=_WORKER_LEASE_DURATION_MILLIS,
-                ),
-                running_activation=TaskRunningActivationConfig(
-                    priority_recheck_step_millis=(
-                        _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS
-                    ),
                 ),
                 task_dispatch=TaskDispatchConfig(
                     per_task_dispatch_limit=_PER_TASK_DISPATCH_LIMIT,
@@ -675,8 +639,8 @@ class KernelApplication:
                 worker_allocation_interval_millis=(
                     config.worker_allocation_interval_millis
                 ),
-                running_activation_interval_millis=(
-                    config.running_activation_interval_millis
+                task_initialization_interval_millis=(
+                    config.task_initialization_interval_millis
                 ),
                 task_dispatch_interval_millis=(
                     config.task_dispatch_interval_millis

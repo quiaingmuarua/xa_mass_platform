@@ -45,7 +45,7 @@ export interface TaskView {
 
 export type TaskScoreBand =
   | "pre_review"
-  | "admission_visible"
+  | "running-initial"
   | "running_visible"
   | "terminal";
 

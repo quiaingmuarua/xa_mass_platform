@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -32,16 +34,19 @@ class DispatchConvergenceApplicationTest {
             throws Exception {
         Fixture fixture = fixture();
         List<DueTaskObservation> batch = List.of(observation());
-        when(fixture.source.acquireRunningTasks(100)).thenReturn(batch);
-        when(fixture.source.acquireAdmissionTasks(100)).thenReturn(batch);
+        when(fixture.source.acquireTasks(anyInt(), anyBoolean(), anyBoolean()))
+                .thenReturn(new TaskSchedulingBatchSource.TaskSchedulingBatch(
+                        batch,
+                        batch
+                ));
         CountDownLatch rounds = new CountDownLatch(4);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
         doAnswer(ignored -> complete(rounds, allVirtual))
                 .when(fixture.allocation)
                 .allocateCandidateWorkers(any(), any());
         doAnswer(ignored -> complete(rounds, allVirtual))
-                .when(fixture.activation)
-                .activateRunningVisibleTasks(any(), any());
+                .when(fixture.initialization)
+                .initializeTasks(any());
         doAnswer(ignored -> complete(rounds, allVirtual))
                 .when(fixture.dispatch)
                 .dispatchTasks(any(), any());
@@ -53,7 +58,7 @@ class DispatchConvergenceApplicationTest {
 
         assertTrue(rounds.await(2, TimeUnit.SECONDS));
         assertTrue(allVirtual.get());
-        verify(fixture.source).acquireRunningTasks(100);
+        verify(fixture.source).acquireTasks(100, true, true);
         assertTrue(fixture.application.isRunning());
         assertThrows(IllegalStateException.class, () ->
                 fixture.application.start(
@@ -71,10 +76,7 @@ class DispatchConvergenceApplicationTest {
     void runtimeFailureIsLaneLocalAndLaterRoundsContinue()
             throws Exception {
         Fixture fixture = fixture();
-        when(fixture.source.acquireRunningTasks(100)).thenReturn(List.of(
-                observation()
-        ));
-        when(fixture.source.acquireAdmissionTasks(100)).thenReturn(List.of());
+        stubNormalBatch(fixture);
         AtomicInteger rounds = new AtomicInteger();
         doAnswer(ignored -> {
             if (rounds.incrementAndGet() == 1) {
@@ -97,10 +99,7 @@ class DispatchConvergenceApplicationTest {
     void blockedAllocationDoesNotBlockOtherRunningLanesOrConsumeItselfAgain()
             throws Exception {
         Fixture fixture = fixture();
-        when(fixture.source.acquireRunningTasks(100)).thenReturn(List.of(
-                observation()
-        ));
-        when(fixture.source.acquireAdmissionTasks(100)).thenReturn(List.of());
+        stubNormalBatch(fixture);
         CountDownLatch allocationStarted = new CountDownLatch(1);
         CountDownLatch releaseAllocation = new CountDownLatch(1);
         CountDownLatch otherLanes = new CountDownLatch(2);
@@ -135,10 +134,7 @@ class DispatchConvergenceApplicationTest {
     @Test
     void jvmErrorFromPolicyFailsTheApplication() throws Exception {
         Fixture fixture = fixture();
-        when(fixture.source.acquireRunningTasks(100)).thenReturn(List.of(
-                observation()
-        ));
-        when(fixture.source.acquireAdmissionTasks(100)).thenReturn(List.of());
+        stubNormalBatch(fixture);
         doAnswer(ignored -> {
             throw new AssertionError("fatal policy failure");
         }).when(fixture.dispatch).dispatchTasks(any(), any());
@@ -166,15 +162,14 @@ class DispatchConvergenceApplicationTest {
     }
 
     private static AssignmentDispatchConfig fastAssignment() {
-        return AssignmentDispatchConfig.create(5, 5, 5, 100);
+        return AssignmentDispatchConfig.create(5, 5, 5);
     }
 
     private static AssignmentDispatchConfig oneShotAssignment() {
         return AssignmentDispatchConfig.create(
                 10_000,
                 10_000,
-                10_000,
-                100
+                10_000
         );
     }
 
@@ -221,8 +216,8 @@ class DispatchConvergenceApplicationTest {
         TaskSchedulingBatchSource source = mock(
                 TaskSchedulingBatchSource.class
         );
-        TaskRunningActivationPolicy activation = mock(
-                TaskRunningActivationPolicy.class
+        TaskInitializationPolicy initialization = mock(
+                TaskInitializationPolicy.class
         );
         TaskWorkerAllocationPolicy allocation = mock(
                 TaskWorkerAllocationPolicy.class
@@ -234,17 +229,25 @@ class DispatchConvergenceApplicationTest {
         return new Fixture(
                 new DispatchConvergenceApplication(
                         source,
-                        activation,
+                        initialization,
                         allocation,
                         dispatch,
                         serviceability
                 ),
                 source,
-                activation,
+                initialization,
                 allocation,
                 dispatch,
                 serviceability
         );
+    }
+
+    private static void stubNormalBatch(Fixture fixture) {
+        when(fixture.source.acquireTasks(anyInt(), anyBoolean(), anyBoolean()))
+                .thenReturn(new TaskSchedulingBatchSource.TaskSchedulingBatch(
+                        List.of(observation()),
+                        List.of()
+                ));
     }
 
     private static void await(
@@ -261,7 +264,7 @@ class DispatchConvergenceApplicationTest {
     private record Fixture(
             DispatchConvergenceApplication application,
             TaskSchedulingBatchSource source,
-            TaskRunningActivationPolicy activation,
+            TaskInitializationPolicy initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability

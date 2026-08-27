@@ -7,13 +7,11 @@ from typing import Any
 from ..kernel.worker_score import WorkerScoreCore
 
 from ..scheduling import (
-    DueTaskItemAdmissionPolicy,
-    RunningSoftLimitSystemAdmissionPolicy,
     TaskResultBatchPolicy,
     TaskCallItemSubmission,
     TaskDispatchPolicy,
     TaskItemDispatcher,
-    TaskRunningActivationPolicy,
+    TaskInitializationPolicy,
     TaskSchedulingBatchSource,
     TaskWorkerAllocationPolicy,
     WorkerCandidateMatcher,
@@ -60,7 +58,6 @@ _ADAPTER_EVIDENCE_MAX_CONCURRENCY = 1
 @dataclass(frozen=True, slots=True)
 class _RedisKernelProcessConfig:
     keyspace: RedisKeyspace
-    running_task_soft_limit: int
     worker_candidate_scan_limit: int
     hot_eligibility_floor_millis: int | None
     assignment_dispatch: AssignmentDispatchConfig
@@ -76,8 +73,6 @@ class _RedisKernelProcessConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.keyspace, RedisKeyspace):
             raise TypeError("Redis keyspace must be RedisKeyspace")
-        if self.running_task_soft_limit <= 0:
-            raise ValueError("running Task soft limit must be positive")
         if self.worker_candidate_scan_limit <= 0:
             raise ValueError("Worker candidate scan limit must be positive")
         if self.hot_eligibility_floor_millis is not None and (
@@ -177,13 +172,9 @@ class _RedisKernelProcess:
             candidate_acquirer,
             candidate_cache,
         )
-        running_activation_policy = TaskRunningActivationPolicy(
+        task_initialization_policy = TaskInitializationPolicy(
             self._task_score,
-            DueTaskItemAdmissionPolicy(self._task_item_score),
-            RunningSoftLimitSystemAdmissionPolicy(
-                self._task_score,
-                running_task_soft_limit=config.running_task_soft_limit,
-            ),
+            self._task_item_score,
         )
         task_item_dispatcher = TaskItemDispatcher(
             self._task_item_score,
@@ -304,7 +295,7 @@ class _RedisKernelProcess:
                     self._task_score,
                     self._task_resource_catalog,
                 ),
-                running_activation_policy,
+                task_initialization_policy,
                 worker_allocation_policy,
                 task_dispatch_policy,
                 serviceability_dispatch_policy,

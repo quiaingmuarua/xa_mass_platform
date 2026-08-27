@@ -9,11 +9,9 @@ import org.jspecify.annotations.Nullable;
 public interface TaskScoreBandCore {
 
     int RUNNING_VISIBLE_TAG = 1;
-    int ADMISSION_VISIBLE_TAG = 2;
-    int PRE_REVIEW_TAG = 3;
+    int PRE_REVIEW_TAG = 2;
     Set<Integer> VALID_POSITIVE_TAGS = Set.of(
             RUNNING_VISIBLE_TAG,
-            ADMISSION_VISIBLE_TAG,
             PRE_REVIEW_TAG
     );
     long TERMINAL_SCORE_MAX = -1;
@@ -32,6 +30,10 @@ public interface TaskScoreBandCore {
     long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
     long DEFAULT_TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR;
     int MAX_TASK_SCORE_PREVIEW_LIMIT = 100;
+    long INITIAL_TIME_CEILING_MILLIS = 10_000;
+    long INITIAL_PRIORITY_STEP_MILLIS = SLOT_MILLIS;
+    long NORMAL_TIME_MIN_MILLIS = INITIAL_TIME_CEILING_MILLIS
+            + SLOT_MILLIS;
 
     Map<String, @Nullable TaskScoreState> getScoreStates(
             List<String> taskIds
@@ -39,15 +41,11 @@ public interface TaskScoreBandCore {
 
     List<TaskScoreState> previewScoreStates(int limit);
 
-    int countRunningCapacityTasks();
-
-    List<String> acquireBandTaskCandidates(
-            TaskScoreBand band,
-            long beforeTimeMillis,
-            int limit
-    );
+    int countRunningTasks();
 
     List<String> acquireDispatchWorkTasks(int limit);
+
+    List<String> acquireInitialRunningTasks(int limit);
 
     TaskScoreTransitionResult initializeScore(
             String taskId,
@@ -55,12 +53,15 @@ public interface TaskScoreBandCore {
             long leaseDurationMillis
     );
 
-    TaskScoreTransitionResult rewriteScore(
+    TaskScoreTransitionResult startObservedPreReviewTask(
             String taskId,
-            TaskScoreBand expectedBand,
-            long targetTimeMillis,
-            @Nullable TaskScoreBand targetBand,
-            @Nullable Integer targetSuffix
+            long observedPreReviewScore,
+            int priority
+    );
+
+    TaskScoreTransitionResult promoteObservedInitialTask(
+            String taskId,
+            long observedInitialScore
     );
 
     TaskScoreTransitionResult rewriteSameBandTimeMillis(
@@ -95,7 +96,6 @@ public interface TaskScoreBandCore {
     enum TaskScoreBand {
         PRE_REVIEW("pre_review"),
         RUNNING_VISIBLE("running_visible"),
-        ADMISSION_VISIBLE("admission_visible"),
         TERMINAL("terminal");
 
         private final String wireValue;
@@ -136,6 +136,28 @@ public interface TaskScoreBandCore {
         public TaskScoreState {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(band, "band");
+        }
+
+        public boolean isInitial() {
+            return band == TaskScoreBand.RUNNING_VISIBLE
+                    && timeMillis != null
+                    && suffix != null
+                    && suffix == MIN_SUFFIX
+                    && timeMillis <= INITIAL_TIME_CEILING_MILLIS;
+        }
+
+        public boolean isDueNormal(long currentTimeMillis) {
+            if (currentTimeMillis < MIN_TIME_MILLIS) {
+                return false;
+            }
+            long currentSlotMillis = currentTimeMillis / SLOT_MILLIS
+                    * SLOT_MILLIS;
+            return band == TaskScoreBand.RUNNING_VISIBLE
+                    && timeMillis != null
+                    && suffix != null
+                    && suffix == MIN_SUFFIX
+                    && timeMillis >= NORMAL_TIME_MIN_MILLIS
+                    && timeMillis < currentSlotMillis;
         }
     }
 

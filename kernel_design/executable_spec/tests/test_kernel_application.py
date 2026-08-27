@@ -64,10 +64,9 @@ class KernelApplicationConfigTest(unittest.TestCase):
             redis_url="redis://localhost:6379/15",
             redis_scope="profile_default",
             worker_allocation_interval_millis=100,
-            running_activation_interval_millis=100,
+            task_initialization_interval_millis=100,
             task_dispatch_interval_millis=100,
             result_routing_interval_millis=100,
-            running_task_soft_limit=100,
             stop_timeout_millis=5_000,
         )
 
@@ -86,7 +85,6 @@ class KernelApplicationConfigTest(unittest.TestCase):
                     "assignmentDispatch": {
                         "taskDispatchIntervalMillis": 250,
                     },
-                    "systemPolicy": {"runningTaskSoftLimit": 50},
                     "resultRouting": {"intervalMillis": 300},
                     "stopTimeoutMillis": 2_000,
                 }
@@ -96,10 +94,9 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual("redis://redis:6379/1", config.redis_url)
         self.assertEqual("profile_demo", config.redis_scope)
         self.assertEqual(100, config.worker_allocation_interval_millis)
-        self.assertEqual(100, config.running_activation_interval_millis)
+        self.assertEqual(100, config.task_initialization_interval_millis)
         self.assertEqual(250, config.task_dispatch_interval_millis)
         self.assertEqual(300, config.result_routing_interval_millis)
-        self.assertEqual(50, config.running_task_soft_limit)
         self.assertEqual(2_000, config.stop_timeout_millis)
 
     def test_serviceability_is_optional_and_strictly_bounded(self) -> None:
@@ -206,13 +203,11 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"redis": {"scope": "default"}}',
             '{"stopTimeoutMillis": 0}',
             '{"assignmentDispatch": {"workerAllocationIntervalMillis": -1}}',
-            '{"assignmentDispatch": {"runningActivationIntervalMillis": true}}',
+            '{"assignmentDispatch": {"taskInitializationIntervalMillis": true}}',
             '{"assignmentDispatch": {"task'
             'ItemDispatchIntervalMillis": 100}}',
             '{"resultRouting": {"intervalMillis": 0}}',
             '{"resultRouting": {"batchLimit": 100}}',
-            '{"systemPolicy": {"runningTaskSoftLimit": 0}}',
-            '{"systemPolicy": {"runningTaskSoftLimit": true}}',
             '{"systemPolicy": {"fairness": "weighted"}}',
             '{"workerPropertyIndexes": {}}',
         )
@@ -220,16 +215,15 @@ class KernelApplicationConfigTest(unittest.TestCase):
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):
                 KernelApplicationConfig.from_json(config_json)
 
-    def test_public_config_exposes_only_process_and_system_policy_fields(self) -> None:
+    def test_public_config_exposes_only_process_coordinates(self) -> None:
         self.assertEqual(
             [
                 "redis_url",
                 "redis_scope",
                 "worker_allocation_interval_millis",
-                "running_activation_interval_millis",
+                "task_initialization_interval_millis",
                 "task_dispatch_interval_millis",
                 "result_routing_interval_millis",
-                "running_task_soft_limit",
                 "stop_timeout_millis",
                 "worker_serviceability",
             ],
@@ -309,8 +303,8 @@ class KernelApplicationTest(unittest.TestCase):
             .item_claim_lease_duration_millis,
         )
         self.assertEqual(
-            1_000,
-            internal.assignment_dispatch.running_activation.priority_recheck_step_millis,
+            100,
+            internal.assignment_dispatch.task_initialization_interval_millis,
         )
         self.assertEqual(
             100,
@@ -456,29 +450,24 @@ class KernelApplicationTest(unittest.TestCase):
         self.process._task_score.get_score_states.return_value = {
             task_id: pre_review
         }
-        self.process._task_score.rewrite_score.return_value = TaskScoreTransitionResult(
+        self.process._task_score.start_observed_pre_review_task.return_value = TaskScoreTransitionResult(
             TaskScoreTransitionStatus.TRANSITIONED,
             200,
         )
         self.application.start()
 
-        with patch(
-            "kernel_design.executable_spec.assembly.application.time_ns",
-            return_value=2_000_000_000,
-        ):
-            result = self.application.approve_task(task_id=task_id)
+        result = self.application.approve_task(task_id=task_id)
 
         self.assertEqual(TaskApprovalResult(TaskApprovalStatus.APPROVED), result)
         self.assertEqual(["status", "reason"], [field.name for field in fields(result)])
-        self.process._task_score.rewrite_score.assert_called_once_with(
+        self.process._task_score.start_observed_pre_review_task.assert_called_once_with(
             task_id=task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=2_000,
-            target_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_suffix=80,
+            observed_pre_review_score=300,
+            priority=80,
         )
+        self.process._task_score.count_running_tasks.assert_called_once_with()
 
-    def test_approval_time_remains_newer_than_future_pre_review_coordinate(self) -> None:
+    def test_approval_uses_fixed_initial_coordinate_independent_of_review_time(self) -> None:
         task_id = "task-future-review"
         descriptor = self._task_descriptor(task_id)
         self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
@@ -493,25 +482,41 @@ class KernelApplicationTest(unittest.TestCase):
                 suffix=1,
             )
         }
-        self.process._task_score.rewrite_score.return_value = TaskScoreTransitionResult(
+        self.process._task_score.start_observed_pre_review_task.return_value = TaskScoreTransitionResult(
             TaskScoreTransitionStatus.TRANSITIONED
         )
         self.application.start()
 
-        with patch(
-            "kernel_design.executable_spec.assembly.application.time_ns",
-            return_value=2_000_000_000,
-        ):
-            result = self.application.approve_task(task_id=task_id)
+        result = self.application.approve_task(task_id=task_id)
 
         self.assertEqual(TaskApprovalStatus.APPROVED, result.status)
-        self.process._task_score.rewrite_score.assert_called_once_with(
+        self.process._task_score.start_observed_pre_review_task.assert_called_once_with(
             task_id=task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=3_000 + TaskScoreBandCore.SLOT_MILLIS,
-            target_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_suffix=80,
+            observed_pre_review_score=300,
+            priority=80,
         )
+
+    def test_approval_uses_running_count_as_a_soft_limit(self) -> None:
+        task_id = "task-at-soft-limit"
+        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
+            task_id: self._task_descriptor(task_id)
+        }
+        self.process._task_score.get_score_states.return_value = {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=300,
+                band=TaskScoreBand.PRE_REVIEW,
+                time_millis=3_000,
+                suffix=1,
+            )
+        }
+        self.process._task_score.count_running_tasks.return_value = 100
+        self.application.start()
+
+        result = self.application.approve_task(task_id=task_id)
+
+        self.assertEqual(TaskApprovalStatus.RETRYABLE, result.status)
+        self.process._task_score.start_observed_pre_review_task.assert_not_called()
 
     def test_approval_is_idempotent_and_terminal_is_conflict(self) -> None:
         task_id = "task-1"
@@ -520,7 +525,6 @@ class KernelApplicationTest(unittest.TestCase):
         }
         self.application.start()
         for band, expected in (
-            (TaskScoreBand.ADMISSION_VISIBLE, TaskApprovalStatus.ALREADY_APPROVED),
             (TaskScoreBand.RUNNING_VISIBLE, TaskApprovalStatus.ALREADY_APPROVED),
             (TaskScoreBand.TERMINAL, TaskApprovalStatus.CONFLICT),
         ):
@@ -537,7 +541,7 @@ class KernelApplicationTest(unittest.TestCase):
                 result = self.application.approve_task(task_id=task_id)
                 self.assertEqual(expected, result.status)
 
-        self.process._task_score.rewrite_score.assert_not_called()
+        self.process._task_score.start_observed_pre_review_task.assert_not_called()
 
     def test_approval_rejects_invalid_and_missing_tasks(self) -> None:
         self.application.start()
@@ -550,7 +554,7 @@ class KernelApplicationTest(unittest.TestCase):
 
         self.assertEqual(TaskApprovalStatus.INVALID, invalid.status)
         self.assertEqual(TaskApprovalStatus.NOT_FOUND, missing.status)
-        self.process._task_score.rewrite_score.assert_not_called()
+        self.process._task_score.start_observed_pre_review_task.assert_not_called()
 
     def test_stale_approval_reclassifies_concurrent_transition(self) -> None:
         task_id = "task-1"
@@ -577,7 +581,7 @@ class KernelApplicationTest(unittest.TestCase):
                 )
             },
         )
-        self.process._task_score.rewrite_score.return_value = TaskScoreTransitionResult(
+        self.process._task_score.start_observed_pre_review_task.return_value = TaskScoreTransitionResult(
             TaskScoreTransitionStatus.STALE
         )
         self.application.start()
@@ -590,7 +594,6 @@ class KernelApplicationTest(unittest.TestCase):
         self.application.start()
         for band in (
             TaskScoreBand.PRE_REVIEW,
-            TaskScoreBand.ADMISSION_VISIBLE,
             TaskScoreBand.RUNNING_VISIBLE,
         ):
             with self.subTest(band=band):
@@ -666,6 +669,7 @@ class KernelApplicationTest(unittest.TestCase):
     def _process_mock() -> Mock:
         process = Mock()
         process._task_score = Mock(spec=TaskScoreBandCore)
+        process._task_score.count_running_tasks.return_value = 0
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
         process._task_call_item_submission = Mock()
@@ -778,7 +782,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             redis_url=_REDIS_URL,
             redis_scope=self.scope,
             worker_allocation_interval_millis=10,
-            running_activation_interval_millis=10,
+            task_initialization_interval_millis=10,
             task_dispatch_interval_millis=10,
             stop_timeout_millis=1_000,
         )

@@ -1,7 +1,6 @@
 package com.xa.mass.kernel.score.redis;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScoredValue;
@@ -10,8 +9,6 @@ import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +81,69 @@ public final class RedisTaskScoreBandCore
             end
 
             local next_score = target_score_base + target_suffix
+            redis.call("ZADD", key, next_score, task_id)
+            return {"transitioned", next_score}
+            """;
+
+    private static final String START_PRE_REVIEW_SCRIPT = """
+            local key = KEYS[1]
+            local task_id = ARGV[1]
+            local observed_score = tonumber(ARGV[2])
+            local pre_review_min = tonumber(ARGV[3])
+            local pre_review_max = tonumber(ARGV[4])
+            local initial_score = tonumber(ARGV[5])
+
+            local stored = redis.call("ZSCORE", key, task_id)
+            if not stored then
+              return {"stale"}
+            end
+
+            local stored_score = tonumber(stored)
+            if stored_score ~= observed_score then
+              return {"stale", stored_score}
+            end
+            if stored_score < pre_review_min
+                or stored_score > pre_review_max then
+              return {"invalid", stored_score}
+            end
+
+            redis.call("ZADD", key, initial_score, task_id)
+            return {"transitioned", initial_score}
+            """;
+
+    private static final String PROMOTE_INITIAL_SCRIPT = """
+            local key = KEYS[1]
+            local task_id = ARGV[1]
+            local observed_score = tonumber(ARGV[2])
+            local normal_min_score = tonumber(ARGV[3])
+            local running_min_score = tonumber(ARGV[4])
+            local idle_park_score = tonumber(ARGV[5])
+            local slot_millis = tonumber(ARGV[6])
+            local suffix_factor = tonumber(ARGV[7])
+
+            local stored = redis.call("ZSCORE", key, task_id)
+            if not stored then
+              return {"stale"}
+            end
+
+            local stored_score = tonumber(stored)
+            if stored_score ~= observed_score then
+              return {"stale", stored_score}
+            end
+
+            local redis_time = redis.call("TIME")
+            local now_millis = tonumber(redis_time[1]) * 1000
+                + math.floor(tonumber(redis_time[2]) / 1000)
+            local now_time_slot = math.floor(now_millis / slot_millis)
+            local next_score = running_min_score
+                + now_time_slot * suffix_factor
+            if next_score < normal_min_score then
+              next_score = normal_min_score
+            end
+            if next_score >= idle_park_score then
+              return {"invalid", stored_score}
+            end
+
             redis.call("ZADD", key, next_score, task_id)
             return {"transitioned", next_score}
             """;
@@ -195,92 +255,13 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public int countRunningCapacityTasks() {
-        long parked = idleParkScore();
-        long beforePark = commands().zcount(
+    public int countRunningTasks() {
+        long count = commands().zcount(
                 scoreKey(),
                 score(RUNNING_VISIBLE_TAG, MIN_TIME_SLOT, MIN_SUFFIX),
-                parked - 1
-        );
-        long afterPark = commands().zcount(
-                scoreKey(),
-                parked + 1,
                 score(RUNNING_VISIBLE_TAG, MAX_TIME_SLOT, MAX_SUFFIX)
         );
-        return (int) Math.min(
-                Integer.MAX_VALUE,
-                Math.addExact(beforePark, afterPark)
-        );
-    }
-
-    @Override
-    public List<String> acquireBandTaskCandidates(
-            TaskScoreBand band,
-            long beforeTimeMillis,
-            int limit
-    ) {
-        if (limit <= 0) {
-            return List.of();
-        }
-        if (band == null || band == TaskScoreBand.TERMINAL) {
-            throw new IllegalArgumentException(
-                    "terminal band is not a positive score range"
-            );
-        }
-        if (beforeTimeMillis < MIN_TIME_MILLIS
-                || beforeTimeMillis > MAX_TIME_MILLIS) {
-            return List.of();
-        }
-        long maximumTimeSlot = beforeTimeMillis / SLOT_MILLIS - 1;
-        if (maximumTimeSlot < MIN_TIME_SLOT) {
-            return List.of();
-        }
-        int bandTag = tag(band);
-        long minimumScore = score(
-                bandTag,
-                MIN_TIME_SLOT,
-                MIN_SUFFIX
-        );
-        long maximumScore = score(
-                bandTag,
-                maximumTimeSlot,
-                MAX_SUFFIX
-        );
-        if (band != TaskScoreBand.ADMISSION_VISIBLE) {
-            return List.copyOf(commands().zrangebyscore(
-                    scoreKey(),
-                    minimumScore,
-                    maximumScore,
-                    0,
-                    limit
-            ));
-        }
-        List<ScoredValue<String>> rows = commands().zrangebyscoreWithScores(
-                scoreKey(),
-                minimumScore,
-                maximumScore,
-                0,
-                limit
-        );
-        List<AdmissionCandidate> candidates = new ArrayList<>(rows.size());
-        for (ScoredValue<String> row : rows) {
-            DecodedPositive decoded = decodePositive(
-                    scoreToLong(row.getScore())
-            );
-            if (decoded != null
-                    && decoded.tag() == ADMISSION_VISIBLE_TAG) {
-                candidates.add(new AdmissionCandidate(
-                        row.getValue(),
-                        decoded.suffix(),
-                        decoded.timeSlot()
-                ));
-            }
-        }
-        candidates.sort(Comparator
-                .comparingInt(AdmissionCandidate::priority)
-                .thenComparingLong(AdmissionCandidate::timeSlot)
-                .thenComparing(AdmissionCandidate::taskId));
-        return candidates.stream().map(AdmissionCandidate::taskId).toList();
+        return (int) Math.min(Integer.MAX_VALUE, count);
     }
 
     @Override
@@ -295,7 +276,7 @@ public final class RedisTaskScoreBandCore
         }
         long minimumScore = score(
                 RUNNING_VISIBLE_TAG,
-                MIN_TIME_SLOT,
+                NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS,
                 MIN_SUFFIX
         );
         long maximumScore = score(
@@ -310,6 +291,42 @@ public final class RedisTaskScoreBandCore
                 0,
                 limit
         ));
+    }
+
+    @Override
+    public List<String> acquireInitialRunningTasks(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        long minimumScore = score(
+                RUNNING_VISIBLE_TAG,
+                MIN_TIME_SLOT,
+                MIN_SUFFIX
+        );
+        long maximumScore = score(
+                RUNNING_VISIBLE_TAG,
+                INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS,
+                MAX_SUFFIX
+        );
+        return commands().zrevrangebyscoreWithScores(
+                scoreKey(),
+                maximumScore,
+                minimumScore,
+                0,
+                limit
+        ).stream()
+                .filter(row -> {
+                    DecodedPositive decoded = decodePositive(
+                            scoreToLong(row.getScore())
+                    );
+                    return decoded != null
+                            && decoded.tag() == RUNNING_VISIBLE_TAG
+                            && decoded.suffix() == MIN_SUFFIX
+                            && decoded.timeSlot()
+                            <= INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS;
+                })
+                .map(ScoredValue::getValue)
+                .toList();
     }
 
     @Override
@@ -370,51 +387,79 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public TaskScoreTransitionResult rewriteScore(
+    public TaskScoreTransitionResult startObservedPreReviewTask(
             String taskId,
-            TaskScoreBand expectedBand,
-            long targetTimeMillis,
-            TaskScoreBand targetBand,
-            Integer targetSuffix
+            long observedPreReviewScore,
+            int priority
     ) {
         requireNonBlank(taskId, "taskId");
-        if (expectedBand == null
-                || expectedBand == TaskScoreBand.TERMINAL
-                || targetBand == TaskScoreBand.TERMINAL
-                || !validPublicTargetTimeMillis(targetTimeMillis)
-                || targetSuffix != null && !validSuffix(targetSuffix)) {
+        DecodedPositive observed = decodePositive(observedPreReviewScore);
+        if (observed == null
+                || observed.tag() != PRE_REVIEW_TAG
+                || !validSuffix(priority)) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-
-        int expectedTag = tag(expectedBand);
-        int targetTag = tag(targetBand == null ? expectedBand : targetBand);
-        long targetTimeSlot = targetTimeMillis / SLOT_MILLIS;
-        if (targetTag > expectedTag || targetTimeSlot <= MIN_TIME_SLOT) {
-            return transition(TaskScoreTransitionStatus.INVALID);
-        }
+        long initialTimeMillis = Math.max(
+                MIN_TIME_MILLIS,
+                INITIAL_TIME_CEILING_MILLIS
+                        - priority * INITIAL_PRIORITY_STEP_MILLIS
+        );
         return scriptResult(commands().eval(
-                MINT_FROM_RANGE_SCRIPT,
+                START_PRE_REVIEW_SCRIPT,
                 ScriptOutputType.MULTI,
                 new String[]{scoreKey()},
                 taskId,
+                Long.toString(observedPreReviewScore),
                 Long.toString(score(
-                        expectedTag,
+                        PRE_REVIEW_TAG,
                         MIN_TIME_SLOT,
                         MIN_SUFFIX
                 )),
                 Long.toString(score(
-                        expectedTag,
-                        targetTimeSlot - 1,
+                        PRE_REVIEW_TAG,
+                        MAX_TIME_SLOT,
                         MAX_SUFFIX
                 )),
                 Long.toString(score(
-                        targetTag,
-                        targetTimeSlot,
+                        RUNNING_VISIBLE_TAG,
+                        initialTimeMillis / SLOT_MILLIS,
+                        MIN_SUFFIX
+                ))
+        ));
+    }
+
+    @Override
+    public TaskScoreTransitionResult promoteObservedInitialTask(
+            String taskId,
+            long observedInitialScore
+    ) {
+        requireNonBlank(taskId, "taskId");
+        DecodedPositive observed = decodePositive(observedInitialScore);
+        if (observed == null
+                || observed.tag() != RUNNING_VISIBLE_TAG
+                || observed.suffix() != MIN_SUFFIX
+                || observed.timeSlot()
+                > INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
+        return scriptResult(commands().eval(
+                PROMOTE_INITIAL_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                taskId,
+                Long.toString(observedInitialScore),
+                Long.toString(score(
+                        RUNNING_VISIBLE_TAG,
+                        NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS,
                         MIN_SUFFIX
                 )),
-                Integer.toString(
-                        targetSuffix == null ? -1 : targetSuffix
-                ),
+                Long.toString(score(
+                        RUNNING_VISIBLE_TAG,
+                        MIN_TIME_SLOT,
+                        MIN_SUFFIX
+                )),
+                Long.toString(idleParkScore()),
+                Long.toString(SLOT_MILLIS),
                 Long.toString(SUFFIX_FACTOR)
         ));
     }
@@ -435,13 +480,24 @@ public final class RedisTaskScoreBandCore
         if (targetTimeSlot <= MIN_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
+        long minimumExpectedTimeSlot = expectedBand
+                == TaskScoreBand.RUNNING_VISIBLE
+                ? NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS
+                : MIN_TIME_SLOT;
+        if (targetTimeSlot < minimumExpectedTimeSlot) {
+            return transition(TaskScoreTransitionStatus.INVALID);
+        }
         int expectedTag = tag(expectedBand);
         return scriptResult(commands().eval(
                 MINT_FROM_RANGE_SCRIPT,
                 ScriptOutputType.MULTI,
                 new String[]{scoreKey()},
                 taskId,
-                Long.toString(score(expectedTag, MIN_TIME_SLOT, MIN_SUFFIX)),
+                Long.toString(score(
+                        expectedTag,
+                        minimumExpectedTimeSlot,
+                        MIN_SUFFIX
+                )),
                 Long.toString(score(
                         expectedTag,
                         targetTimeSlot - 1,
@@ -467,6 +523,8 @@ public final class RedisTaskScoreBandCore
         if (observed == null
                 || observed.tag() != RUNNING_VISIBLE_TAG
                 || observed.suffix() != MIN_SUFFIX
+                || observed.timeSlot()
+                < NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS
                 || observed.timeSlot() >= IDLE_PARK_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
@@ -625,7 +683,6 @@ public final class RedisTaskScoreBandCore
     private static int tag(TaskScoreBand band) {
         return switch (band) {
             case RUNNING_VISIBLE -> RUNNING_VISIBLE_TAG;
-            case ADMISSION_VISIBLE -> ADMISSION_VISIBLE_TAG;
             case PRE_REVIEW -> PRE_REVIEW_TAG;
             case TERMINAL -> throw new IllegalArgumentException(
                     "terminal band is not positive"
@@ -636,7 +693,6 @@ public final class RedisTaskScoreBandCore
     private static TaskScoreBand band(int tag) {
         return switch (tag) {
             case RUNNING_VISIBLE_TAG -> TaskScoreBand.RUNNING_VISIBLE;
-            case ADMISSION_VISIBLE_TAG -> TaskScoreBand.ADMISSION_VISIBLE;
             case PRE_REVIEW_TAG -> TaskScoreBand.PRE_REVIEW;
             default -> throw new IllegalStateException(
                     "Task score tag is invalid"
@@ -761,15 +817,6 @@ public final class RedisTaskScoreBandCore
         }
     }
 
-    private static KernelOperationNotImplementedException notImplemented(
-            String operation
-    ) {
-        return new KernelOperationNotImplementedException(
-                "TaskScoreBandCore",
-                operation
-        );
-    }
-
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must be non-blank");
@@ -779,10 +826,4 @@ public final class RedisTaskScoreBandCore
     private record DecodedPositive(int tag, long timeSlot, int suffix) {
     }
 
-    private record AdmissionCandidate(
-            String taskId,
-            int priority,
-            long timeSlot
-    ) {
-    }
 }

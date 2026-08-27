@@ -21,7 +21,6 @@ class TaskScoreBand(Enum):
 
     PRE_REVIEW = "pre_review"
     RUNNING_VISIBLE = "running_visible"
-    ADMISSION_VISIBLE = "admission_visible"
     TERMINAL = "terminal"
 
 
@@ -39,6 +38,33 @@ class TaskScoreState:
     band: TaskScoreBand
     time_millis: TimeMillis | None
     suffix: Suffix | None
+
+    def is_initial(self) -> bool:
+        """Return whether this RUNNING state uses the fixed INITIAL range."""
+        return (
+            self.band is TaskScoreBand.RUNNING_VISIBLE
+            and self.time_millis is not None
+            and self.suffix == TaskScoreBandCore.MIN_SUFFIX
+            and self.time_millis
+            <= TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS
+        )
+
+    def is_due_normal(self, current_time_millis: TimeMillis) -> bool:
+        """Return whether this state is due in the NORMAL RUNNING range."""
+        if current_time_millis < TaskScoreBandCore.MIN_TIME_MILLIS:
+            return False
+        current_slot_millis = (
+            current_time_millis
+            // TaskScoreBandCore.SLOT_MILLIS
+            * TaskScoreBandCore.SLOT_MILLIS
+        )
+        return (
+            self.band is TaskScoreBand.RUNNING_VISIBLE
+            and self.time_millis is not None
+            and self.suffix == TaskScoreBandCore.MIN_SUFFIX
+            and self.time_millis >= TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS
+            and self.time_millis < current_slot_millis
+        )
 
 
 @dataclass(frozen=True)
@@ -67,10 +93,9 @@ class TaskScoreBandCore(ABC):
     """
 
     RUNNING_VISIBLE_TAG: ClassVar[int] = 1
-    ADMISSION_VISIBLE_TAG: ClassVar[int] = 2
-    PRE_REVIEW_TAG: ClassVar[int] = 3
+    PRE_REVIEW_TAG: ClassVar[int] = 2
     VALID_POSITIVE_TAGS: ClassVar[frozenset[int]] = frozenset(
-        {RUNNING_VISIBLE_TAG, ADMISSION_VISIBLE_TAG, PRE_REVIEW_TAG}
+        {RUNNING_VISIBLE_TAG, PRE_REVIEW_TAG}
     )
 
     TERMINAL_SCORE_MAX: ClassVar[int] = -1
@@ -89,6 +114,11 @@ class TaskScoreBandCore(ABC):
     PAUSE_TIME_MILLIS: ClassVar[int] = MAX_TIME_MILLIS
     DEFAULT_TAG_FACTOR: ClassVar[int] = TIME_SLOT_FACTOR * SUFFIX_FACTOR
     MAX_TASK_SCORE_PREVIEW_LIMIT: ClassVar[int] = 100
+    INITIAL_TIME_CEILING_MILLIS: ClassVar[int] = 10_000
+    INITIAL_PRIORITY_STEP_MILLIS: ClassVar[int] = SLOT_MILLIS
+    NORMAL_TIME_MIN_MILLIS: ClassVar[int] = (
+        INITIAL_TIME_CEILING_MILLIS + SLOT_MILLIS
+    )
 
     def __init__(
         self,
@@ -126,26 +156,8 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def count_running_capacity_tasks(self) -> int:
-        """Count RUNNING_VISIBLE members except the private idle park."""
-        pass
-
-    @abstractmethod
-    def acquire_band_task_candidates(
-        self,
-        *,
-        band: TaskScoreBand,
-        before_time_millis: TimeMillis,
-        limit: int,
-    ) -> Sequence[TaskId]:
-        """Acquire one non-terminal band before an exclusive time horizon.
-
-        Public callers select a semantic band and millisecond horizon. The
-        implementation owns time-slot conversion, score-range construction,
-        ordering, and limit enforcement. ADMISSION uses time order to select
-        the bounded window, then priority suffix order inside that window. It
-        never returns TERMINAL members.
-        """
+    def count_running_tasks(self) -> int:
+        """Return the current number of scores in the RUNNING band."""
         pass
 
     @abstractmethod
@@ -154,7 +166,16 @@ class TaskScoreBandCore(ABC):
         *,
         limit: int,
     ) -> Sequence[TaskId]:
-        """Acquire due RUNNING_VISIBLE task ids for dispatch-work rounds."""
+        """Acquire due NORMAL RUNNING task ids for dispatch-work rounds."""
+        pass
+
+    @abstractmethod
+    def acquire_initial_running_tasks(
+        self,
+        *,
+        limit: int,
+    ) -> Sequence[TaskId]:
+        """Acquire INITIAL RUNNING ids in descending startup priority."""
         pass
 
     @abstractmethod
@@ -175,25 +196,24 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def rewrite_score(
+    def start_observed_pre_review_task(
         self,
         *,
         task_id: TaskId,
-        expected_band: TaskScoreBand,
-        target_time_millis: TimeMillis,
-        target_band: TaskScoreBand | None = None,
-        target_suffix: Suffix | None = None,
+        observed_pre_review_score: Score,
+        priority: int,
     ) -> TaskScoreTransitionResult:
-        """Rewrite a positive score after reading the stored score.
+        """Start the exact observed PRE_REVIEW Task at its INITIAL coordinate."""
+        pass
 
-        Ordinary positive rewrites do not trust a caller-supplied full
-        expected score. The implementation reads the stored score, checks the
-        expected band, then writes a target score only when:
-
-        - target tag keeps or lowers lifecycle direction;
-        - target time is newer than the stored score coordinate;
-        - suffix is preserved unless target_suffix is supplied.
-        """
+    @abstractmethod
+    def promote_observed_initial_task(
+        self,
+        *,
+        task_id: TaskId,
+        observed_initial_score: Score,
+    ) -> TaskScoreTransitionResult:
+        """Promote the exact INITIAL RUNNING score to current NORMAL time."""
         pass
 
     @abstractmethod
@@ -210,7 +230,8 @@ class TaskScoreBandCore(ABC):
         internal slot coordinate and does not expose a stable delta API. Owners
         that need delay-based behavior compute the target time before calling
         this method. This operation is a same-band range mint and does not
-        consume scheduling-round suffix budget.
+        consume scheduling-round suffix budget. RUNNING rewrites are confined
+        to NORMAL coordinates and cannot promote INITIAL Tasks.
         """
         pass
 
@@ -221,7 +242,7 @@ class TaskScoreBandCore(ABC):
         task_id: TaskId,
         observed_score: Score,
     ) -> TaskScoreTransitionResult:
-        """Move the exact observed RUNNING score to the idle park.
+        """Move the exact observed NORMAL RUNNING score to the idle park.
 
         The private park coordinate belongs to the score owner. Callers cannot
         choose it or use this operation as an arbitrary future hold.

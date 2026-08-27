@@ -23,7 +23,7 @@ final class DispatchConvergenceApplication {
 
     private final Object lifecycleLock = new Object();
     private final TaskSchedulingBatchSource source;
-    private final TaskRunningActivationPolicy activation;
+    private final TaskInitializationPolicy initialization;
     private final TaskWorkerAllocationPolicy allocation;
     private final TaskDispatchPolicy dispatch;
     private final WorkerServiceabilityDispatchPolicy serviceability;
@@ -34,13 +34,16 @@ final class DispatchConvergenceApplication {
 
     DispatchConvergenceApplication(
             TaskSchedulingBatchSource source,
-            TaskRunningActivationPolicy activation,
+            TaskInitializationPolicy initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability
     ) {
         this.source = Objects.requireNonNull(source, "source");
-        this.activation = Objects.requireNonNull(activation, "activation");
+        this.initialization = Objects.requireNonNull(
+                initialization,
+                "initialization"
+        );
         this.allocation = Objects.requireNonNull(allocation, "allocation");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
         this.serviceability = serviceability;
@@ -157,12 +160,9 @@ final class DispatchConvergenceApplication {
     ) {
         List<LaneDefinition> definitions = new ArrayList<>();
         definitions.add(LaneDefinition.fromMillis(
-                DispatchLaneId.RUNNING_ACTIVATION,
-                assignmentConfig.runningActivationIntervalMillis(),
-                batch -> activation.activateRunningVisibleTasks(
-                        batch,
-                        assignmentConfig.runningActivation()
-                )
+                DispatchLaneId.TASK_INITIALIZATION,
+                assignmentConfig.taskInitializationIntervalMillis(),
+                initialization::initializeTasks
         ));
         definitions.add(LaneDefinition.fromMillis(
                 DispatchLaneId.WORKER_ALLOCATION,
@@ -216,13 +216,7 @@ final class DispatchConvergenceApplication {
         try {
             while (signal.getCount() > 0) {
                 drainCompletions(runtimes, completions);
-                dispatchRunningBatch(
-                        runtimes,
-                        completions,
-                        executor,
-                        signal
-                );
-                dispatchAdmissionBatch(
+                dispatchTaskBatches(
                         runtimes,
                         completions,
                         executor,
@@ -266,72 +260,66 @@ final class DispatchConvergenceApplication {
         }
     }
 
-    private void dispatchRunningBatch(
+    private void dispatchTaskBatches(
             Map<DispatchLaneId, LaneRuntime> runtimes,
             BlockingQueue<LaneCompletion> completions,
             ExecutorService executor,
             CountDownLatch signal
     ) {
         long now = System.nanoTime();
-        List<LaneRuntime> eligible = runtimes.values().stream()
+        List<LaneRuntime> normalEligible = runtimes.values().stream()
                 .filter(runtime -> runtime.lane.id()
-                        != DispatchLaneId.RUNNING_ACTIVATION)
+                        != DispatchLaneId.TASK_INITIALIZATION)
                 .filter(runtime -> runtime.idleAndEligible(now))
                 .toList();
-        if (eligible.isEmpty() || signal.getCount() == 0) {
-            return;
-        }
-        List<DueTaskObservation> batch;
-        try {
-            batch = source.acquireRunningTasks(
-                    AssignmentDispatchConfig.TASK_BATCH_LIMIT
-            );
-        } catch (RuntimeException failure) {
-            eligible.forEach(this::deferLane);
-            logFailure("runningSource", null, 0, failure);
-            return;
-        }
-        if (batch.isEmpty()) {
-            eligible.forEach(this::deferLane);
-            return;
-        }
-        eligible.forEach(runtime -> submit(
-                runtime,
-                batch,
-                completions,
-                executor
-        ));
-    }
-
-    private void dispatchAdmissionBatch(
-            Map<DispatchLaneId, LaneRuntime> runtimes,
-            BlockingQueue<LaneCompletion> completions,
-            ExecutorService executor,
-            CountDownLatch signal
-    ) {
-        LaneRuntime runtime = runtimes.get(
-                DispatchLaneId.RUNNING_ACTIVATION
+        LaneRuntime initial = Objects.requireNonNull(
+                runtimes.get(DispatchLaneId.TASK_INITIALIZATION),
+                "TASK_INITIALIZATION lane"
         );
-        if (runtime == null
-                || !runtime.idleAndEligible(System.nanoTime())
+        boolean initialEligible = initial.idleAndEligible(now);
+        if ((normalEligible.isEmpty() && !initialEligible)
                 || signal.getCount() == 0) {
             return;
         }
-        List<DueTaskObservation> batch;
+        TaskSchedulingBatchSource.TaskSchedulingBatch batch;
         try {
-            batch = source.acquireAdmissionTasks(
-                    AssignmentDispatchConfig.TASK_BATCH_LIMIT
+            batch = source.acquireTasks(
+                    AssignmentDispatchConfig.TASK_BATCH_LIMIT,
+                    !normalEligible.isEmpty(),
+                    initialEligible
             );
         } catch (RuntimeException failure) {
-            deferLane(runtime);
-            logFailure("admissionSource", runtime.lane.id(), 0, failure);
+            normalEligible.forEach(this::deferLane);
+            if (initialEligible) {
+                deferLane(initial);
+            }
+            logFailure("taskSource", null, 0, failure);
             return;
         }
-        if (batch.isEmpty()) {
-            deferLane(runtime);
-            return;
+        if (!normalEligible.isEmpty()) {
+            if (batch.normalTasks().isEmpty()) {
+                normalEligible.forEach(this::deferLane);
+            } else {
+                normalEligible.forEach(runtime -> submit(
+                        runtime,
+                        batch.normalTasks(),
+                        completions,
+                        executor
+                ));
+            }
         }
-        submit(runtime, batch, completions, executor);
+        if (initialEligible) {
+            if (batch.initialTasks().isEmpty()) {
+                deferLane(initial);
+            } else {
+                submit(
+                        initial,
+                        batch.initialTasks(),
+                        completions,
+                        executor
+                );
+            }
+        }
     }
 
     private void submit(
@@ -528,7 +516,7 @@ final class DispatchConvergenceApplication {
     }
 
     private enum DispatchLaneId {
-        RUNNING_ACTIVATION,
+        TASK_INITIALIZATION,
         WORKER_ALLOCATION,
         TASK_DISPATCH,
         WORKER_SERVICEABILITY

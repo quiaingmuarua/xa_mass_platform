@@ -34,8 +34,11 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -279,9 +282,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ).get("task-commands");
         assertThat(approved).isNotNull();
         assertThat(approved.band()).isEqualTo(
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
         );
-        assertThat(approved.suffix()).isEqualTo(7);
+        assertThat(approved.timeMillis()).isEqualTo(9_300L);
+        assertThat(approved.suffix()).isZero();
 
         redis.zadd(
                 keyspace.base() + ":task:score",
@@ -445,7 +449,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void genericRewritePreservesSuffixAndRejectsBackwardBandMovement() {
+    void preReviewStartAndInitialPromotionUseExactObservedScores() {
         var initialized = scoreCore.initializeScore("rewrite-task", 8, 3_000);
         assertThat(initialized.status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
@@ -462,40 +466,34 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 List.of("rewrite-task", "missing")
         );
         assertThat(releasedState.get("missing")).isNull();
-        long nextTime = releasedState.get("rewrite-task").timeMillis()
-                + TaskScoreBandCore.SLOT_MILLIS;
-
-        var sameBand = scoreCore.rewriteScore(
+        var started = scoreCore.startObservedPreReviewTask(
                 "rewrite-task",
-                TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
-                nextTime,
-                null,
-                null
-        );
-        assertThat(sameBand.status()).isEqualTo(
-                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
-        );
-        assertThat(scoreCore.getScoreStates(List.of("rewrite-task"))
-                .get("rewrite-task").suffix()).isEqualTo(8);
-
-        var admission = scoreCore.rewriteScore(
-                "rewrite-task",
-                TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
-                nextTime + TaskScoreBandCore.SLOT_MILLIS,
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE,
+                released.score(),
                 4
         );
-        assertThat(admission.status()).isEqualTo(
+        assertThat(started.status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
         );
-        assertThat(scoreCore.rewriteScore(
+        var initial = scoreCore.getScoreStates(List.of("rewrite-task"))
+                .get("rewrite-task");
+        assertThat(initial.band()).isEqualTo(
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
+        );
+        assertThat(initial.timeMillis()).isEqualTo(9_600L);
+        assertThat(initial.suffix()).isZero();
+
+        var promoted = scoreCore.promoteObservedInitialTask(
                 "rewrite-task",
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE,
-                nextTime + 2 * TaskScoreBandCore.SLOT_MILLIS,
-                TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
-                1
+                initial.score()
+        );
+        assertThat(promoted.status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(scoreCore.promoteObservedInitialTask(
+                "rewrite-task",
+                initial.score()
         ).status()).isEqualTo(
-                TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
+                TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
         assertThat(scoreCore.releaseObservedScoreHold(
                 "rewrite-task",
@@ -503,6 +501,145 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ).status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
+    }
+
+    @Test
+    void initialCoordinatesPreservePriorityOrder() {
+        Map<String, Integer> priorities = Map.of(
+                "priority-0", 0,
+                "priority-1", 1,
+                "priority-99", 99
+        );
+        for (var entry : priorities.entrySet()) {
+            var initialized = scoreCore.initializeScore(
+                    entry.getKey(),
+                    1,
+                    3_000
+            );
+            var released = scoreCore.releaseObservedScoreHold(
+                    entry.getKey(),
+                    initialized.score()
+            );
+            assertThat(scoreCore.startObservedPreReviewTask(
+                    entry.getKey(),
+                    released.score(),
+                    entry.getValue()
+            ).status()).isEqualTo(
+                    TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+            );
+        }
+
+        var states = scoreCore.getScoreStates(List.copyOf(priorities.keySet()));
+        assertThat(states.get("priority-0").timeMillis()).isEqualTo(10_000L);
+        assertThat(states.get("priority-1").timeMillis()).isEqualTo(9_900L);
+        assertThat(states.get("priority-99").timeMillis()).isEqualTo(100L);
+        assertThat(scoreCore.acquireInitialRunningTasks(3))
+                .containsExactly("priority-0", "priority-1", "priority-99");
+        assertThat(scoreCore.rewriteSameBandTimeMillis(
+                "priority-0",
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
+                redisTimeMillis() + 1_000
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.STALE
+        );
+        assertThat(scoreCore.parkObservedIdleTask(
+                "priority-0",
+                states.get("priority-0").score()
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
+        );
+    }
+
+    @Test
+    void runningCountIncludesInitialNormalHoldParkAndPause() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long normalStartSlot = TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS
+                / TaskScoreBandCore.SLOT_MILLIS;
+        for (int index = 0; index < 97; index++) {
+            redis.zadd(scoreKey, taskScore(
+                    TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                    normalStartSlot + index,
+                    0
+            ), "running-" + index);
+        }
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS + 600,
+                0
+        ), "future-hold");
+        redis.zadd(scoreKey, idleParkScore(), "idle-park");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.PAUSE_TIME_SLOT,
+                TaskScoreBandCore.MAX_SUFFIX
+        ), "pause");
+
+        var initialized = scoreCore.initializeScore(
+                "waiting-review",
+                1,
+                3_000
+        );
+        var released = scoreCore.releaseObservedScoreHold(
+                "waiting-review",
+                initialized.score()
+        );
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
+        assertThat(scoreCore.startObservedPreReviewTask(
+                "waiting-review",
+                released.score(),
+                0
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(scoreCore.getScoreStates(List.of("waiting-review"))
+                .get("waiting-review").band()).isEqualTo(
+                        TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
+                );
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(101);
+
+        assertThat(scoreCore.closeScore(
+                "running-0",
+                TaskScoreBandCore.TERMINAL_SCORE_MAX
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(100);
+    }
+
+    @Test
+    void concurrentPreReviewStartsUseIndependentExactCas() throws Exception {
+        int taskCount = 120;
+        Map<String, Long> observations = new java.util.LinkedHashMap<>();
+        for (int index = 0; index < taskCount; index++) {
+            String taskId = "concurrent-" + index;
+            var initialized = scoreCore.initializeScore(taskId, 1, 3_000);
+            var released = scoreCore.releaseObservedScoreHold(
+                    taskId,
+                    initialized.score()
+            );
+            observations.put(taskId, released.score());
+        }
+
+        List<Callable<TaskScoreBandCore.TaskScoreTransitionResult>> calls =
+                new ArrayList<>();
+        observations.forEach((taskId, observedScore) -> calls.add(() ->
+                scoreCore.startObservedPreReviewTask(
+                        taskId,
+                        observedScore,
+                        0
+                )));
+        List<TaskScoreBandCore.TaskScoreTransitionResult> results =
+                new ArrayList<>();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (var future : executor.invokeAll(calls)) {
+                results.add(future.get());
+            }
+        }
+
+        assertThat(results).filteredOn(result -> result.status()
+                == TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED)
+                .hasSize(taskCount);
+        assertThat(scoreCore.countRunningTasks()).isEqualTo(taskCount);
     }
 
     @Test
@@ -525,10 +662,11 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 0
         ), "running-future");
         redis.zadd(scoreKey, taskScore(
-                TaskScoreBandCore.ADMISSION_VISIBLE_TAG,
-                nowSlot - 2,
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS
+                        / TaskScoreBandCore.SLOT_MILLIS,
                 0
-        ), "admission");
+        ), "initial");
         Map<String, Double> before = redis.zrangeWithScores(scoreKey, 0, -1)
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -553,12 +691,13 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
                 1,
                 0
-        ), "running");
+        ), "initial");
         redis.zadd(scoreKey, taskScore(
-                TaskScoreBandCore.ADMISSION_VISIBLE_TAG,
-                2,
-                3
-        ), "admission");
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS
+                        / TaskScoreBandCore.SLOT_MILLIS,
+                0
+        ), "normal");
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.PRE_REVIEW_TAG,
                 3,
@@ -568,12 +707,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         var fourBands = scoreCore.previewScoreStates(4);
         assertThat(fourBands).extracting(
                 TaskScoreBandCore.TaskScoreState::taskId
-        ).containsExactly("review", "admission", "running", "terminal");
+        ).containsExactly("review", "normal", "initial", "terminal");
         assertThat(fourBands).extracting(
                 TaskScoreBandCore.TaskScoreState::band
         ).containsExactly(
                 TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE,
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
                 TaskScoreBandCore.TaskScoreBand.TERMINAL
         );

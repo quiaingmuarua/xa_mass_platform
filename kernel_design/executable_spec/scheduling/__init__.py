@@ -13,20 +13,14 @@ from .result_routing import (
     TaskResultEvidence,
     WorkerResultEvidence,
 )
-from .task_running_activation import (
-    DueTaskItemAdmissionPolicy,
-    RunningSoftLimitSystemAdmissionPolicy,
-    SystemAdmissionPolicy,
-    TaskAdmissionPolicy,
-    TaskRunningActivationConfig,
-    TaskRunningActivationPolicy,
-)
+from .task_initialization import TaskInitializationPolicy
 from .task_worker_allocation import (
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPolicy,
 )
 from .task_scheduling_batch_source import (
     DueTaskObservation,
+    TaskSchedulingBatch,
     TaskSchedulingBatchSource,
 )
 from .worker_candidate import (
@@ -52,15 +46,11 @@ __all__ = [
     "TaskCallItemSubmission",
     "TaskCallSubmissionResult",
     "TaskCallSubmissionStatus",
-    "DueTaskItemAdmissionPolicy",
-    "RunningSoftLimitSystemAdmissionPolicy",
-    "SystemAdmissionPolicy",
-    "TaskAdmissionPolicy",
-    "TaskRunningActivationConfig",
-    "TaskRunningActivationPolicy",
+    "TaskInitializationPolicy",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPolicy",
     "DueTaskObservation",
+    "TaskSchedulingBatch",
     "TaskSchedulingBatchSource",
     "WorkerCandidateConstraint",
     "WorkerCandidateAcquisition",

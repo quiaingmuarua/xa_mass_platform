@@ -15,9 +15,8 @@ Java Server
            -> TASK_FAILURE virtual batches
            -> ADAPTER_EVIDENCE virtual batch             optional
         -> DispatchConvergenceApplication
-           -> ADMISSION Task Source
-              -> RUNNING_ACTIVATION virtual batch
-           -> shared due RUNNING Task Source
+           -> one RUNNING Task Source
+              -> TASK_INITIALIZATION virtual batch
               -> WORKER_ALLOCATION virtual batch
               -> TASK_DISPATCH virtual batch
               -> WORKER_SERVICEABILITY virtual batch     optional
@@ -88,18 +87,20 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 ## Dispatch Convergence
 
-`TaskSchedulingBatchSource` has two bounded views:
+`TaskSchedulingBatchSource` has two projections of one RUNNING lifecycle
+surface:
 
 ```text
-ADMISSION Source
-  -> acquire at most 100 due ADMISSION_VISIBLE Tasks
+NORMAL projection
+  -> acquire due RUNNING scores at or above 10,100ms
 
-RUNNING Source
-  -> acquire at most 100 due RUNNING_VISIBLE suffix-zero Tasks
+INITIAL projection
+  -> fill the remaining batch from fixed RUNNING scores at or below 10,000ms
 ```
 
-Each Source call point-reads Task Score and Descriptor once, preserves Score
-order, and emits immutable `DueTaskObservation` values. These observations are
+One Source call reads NORMAL first, lets INITIAL use the remaining part of the
+100-Task budget, and point-reads Task Score and Descriptor once. It preserves
+each projection's Score order and emits immutable `DueTaskObservation` values. These observations are
 round evidence, not locks; every later mutation still uses exact owner fences.
 
 `DispatchConvergenceApplication` owns one non-daemon coordinator and one
@@ -113,10 +114,10 @@ The fixed lanes are:
 
 | Lane | Source | Responsibility |
 | --- | --- | --- |
-| RUNNING_ACTIVATION | ADMISSION | due-Item and soft-limit admission, exact transition, priority recheck |
-| WORKER_ALLOCATION | RUNNING | PRECOMPUTED Candidate deficit acquisition and cache publication |
-| TASK_DISPATCH | RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
-| WORKER_SERVICEABILITY | RUNNING | derive demanded WorkerGroups and offer Adapter route probes |
+| TASK_INITIALIZATION | INITIAL RUNNING | due ACTIVE Item check and exact promotion to NORMAL |
+| WORKER_ALLOCATION | NORMAL RUNNING | PRECOMPUTED Candidate deficit acquisition and cache publication |
+| TASK_DISPATCH | NORMAL RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
+| WORKER_SERVICEABILITY | NORMAL RUNNING | derive demanded WorkerGroups and offer Adapter route probes |
 
 Allocation and Task Dispatch may run concurrently. A Candidate produced during
 one batch is not guaranteed to be consumed in the same batch; later RUNNING

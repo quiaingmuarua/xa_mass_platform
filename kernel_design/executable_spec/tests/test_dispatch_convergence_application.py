@@ -11,6 +11,7 @@ from kernel_design.executable_spec import (
     TaskIdleDisposition,
     TaskSchedulingBatchSource,
     TaskScoreBand,
+    TaskScoreBandCore,
     TaskScoreState,
     WorkerAllocationMechanism,
 )
@@ -22,8 +23,7 @@ from kernel_design.executable_spec.assembly.dispatch_convergence_application imp
 from kernel_design.executable_spec.scheduling import (
     TaskDispatchConfig,
     TaskDispatchPolicy,
-    TaskRunningActivationConfig,
-    TaskRunningActivationPolicy,
+    TaskInitializationPolicy,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPolicy,
     WorkerServiceabilityDispatchConfig,
@@ -34,13 +34,13 @@ from kernel_design.executable_spec.scheduling import (
 class DispatchConvergenceApplicationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.source = Mock(spec=TaskSchedulingBatchSource)
-        self.activation = Mock(spec=TaskRunningActivationPolicy)
+        self.initialization = Mock(spec=TaskInitializationPolicy)
         self.allocation = Mock(spec=TaskWorkerAllocationPolicy)
         self.dispatch = Mock(spec=TaskDispatchPolicy)
         self.serviceability = Mock(spec=WorkerServiceabilityDispatchPolicy)
         self.application = DispatchConvergenceApplication(
             self.source,
-            self.activation,
+            self.initialization,
             self.allocation,
             self.dispatch,
             self.serviceability,
@@ -52,9 +52,11 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
 
     def test_one_running_read_is_shared_across_three_parallel_lanes(self) -> None:
         running = (observation("running"),)
-        admission = (observation("admission", admission=True),)
-        self.source.acquire_running_tasks.return_value = running
-        self.source.acquire_admission_tasks.return_value = admission
+        initial = (observation("initial", initial=True),)
+        self.source.acquire_tasks.return_value = Mock(
+            normal_tasks=running,
+            initial_tasks=initial,
+        )
         completed = Event()
         seen: list[tuple[str, object]] = []
 
@@ -66,8 +68,8 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
                 return 0
             return action
 
-        self.activation.activate_running_visible_tasks.side_effect = record(
-            "activation"
+        self.initialization.initialize_tasks.side_effect = record(
+            "initialization"
         )
         self.allocation.allocate_candidate_workers.side_effect = record(
             "allocation"
@@ -84,20 +86,26 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
 
         self.assertTrue(completed.wait(2))
         running_batches = [
-            batch for name, batch in seen if name != "activation"
+            batch for name, batch in seen if name != "initialization"
         ]
         self.assertEqual(3, len(running_batches))
         self.assertTrue(all(batch is running for batch in running_batches))
         self.assertIs(
-            admission,
-            next(batch for name, batch in seen if name == "activation"),
+            initial,
+            next(batch for name, batch in seen if name == "initialization"),
         )
-        self.assertEqual(1, self.source.acquire_running_tasks.call_count)
+        self.source.acquire_tasks.assert_called_once_with(
+            limit=100,
+            include_normal=True,
+            include_initial=True,
+        )
 
     def test_blocked_allocation_does_not_block_other_running_lanes(self) -> None:
         running = (observation("running"),)
-        self.source.acquire_running_tasks.return_value = running
-        self.source.acquire_admission_tasks.return_value = ()
+        self.source.acquire_tasks.return_value = Mock(
+            normal_tasks=running,
+            initial_tasks=(),
+        )
         allocation_started = Event()
         release_allocation = Event()
         dispatch_completed = Event()
@@ -133,8 +141,10 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
         release_allocation.set()
 
     def test_runtime_exception_is_lane_local_and_later_rounds_continue(self) -> None:
-        self.source.acquire_running_tasks.return_value = (observation("task"),)
-        self.source.acquire_admission_tasks.return_value = ()
+        self.source.acquire_tasks.return_value = Mock(
+            normal_tasks=(observation("task"),),
+            initial_tasks=(),
+        )
         recovered = Event()
         calls = 0
 
@@ -156,8 +166,10 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
         self.assertTrue(self.application.is_running())
 
     def test_duplicate_start_fails_and_stop_is_idempotent(self) -> None:
-        self.source.acquire_running_tasks.return_value = ()
-        self.source.acquire_admission_tasks.return_value = ()
+        self.source.acquire_tasks.return_value = Mock(
+            normal_tasks=(),
+            initial_tasks=(),
+        )
         config = assignment_config(interval_millis=10)
         self.application.start(assignment=config, serviceability=None)
 
@@ -172,10 +184,9 @@ class DispatchConvergenceApplicationTest(unittest.TestCase):
 def assignment_config(*, interval_millis: int) -> AssignmentDispatchConfig:
     return AssignmentDispatchConfig(
         worker_allocation=TaskWorkerAllocationConfig(5_000),
-        running_activation=TaskRunningActivationConfig(1_000),
         task_dispatch=TaskDispatchConfig(100, 5_000),
         worker_allocation_interval_millis=interval_millis,
-        running_activation_interval_millis=interval_millis,
+        task_initialization_interval_millis=interval_millis,
         task_dispatch_interval_millis=interval_millis,
     )
 
@@ -193,20 +204,19 @@ def serviceability_config(
 def observation(
     task_id: str,
     *,
-    admission: bool = False,
+    initial: bool = False,
 ) -> DueTaskObservation:
-    band = (
-        TaskScoreBand.ADMISSION_VISIBLE
-        if admission
-        else TaskScoreBand.RUNNING_VISIBLE
-    )
     return DueTaskObservation(
         task_id=task_id,
         score_state=TaskScoreState(
             task_id=task_id,
             score=1,
-            band=band,
-            time_millis=100,
+            band=TaskScoreBand.RUNNING_VISIBLE,
+            time_millis=(
+                100
+                if initial
+                else TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS
+            ),
             suffix=0,
         ),
         descriptor=TaskDescriptor(

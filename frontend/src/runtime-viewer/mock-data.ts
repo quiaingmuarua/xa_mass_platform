@@ -86,11 +86,11 @@ export const MOCK_TASK_PREVIEW: TaskPreviewResponse = {
       workerGroup: MOCK_WORKER_GROUPS[0]!
     },
     {
-      taskId: "mock-finite-admission",
-      scoreBand: "admission_visible",
+      taskId: "mock-finite-initial",
+      scoreBand: "running-initial",
       task: {
         ...mockTasks[1]!,
-        taskId: "mock-finite-admission",
+        taskId: "mock-finite-initial",
         workerAllocationMechanism: "PRECOMPUTED_TASK_RULE",
         idleDisposition: "CLOSE_WHEN_IDLE",
         allocationRule: {}

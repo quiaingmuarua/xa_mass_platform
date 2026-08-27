@@ -105,7 +105,10 @@ record merely to make a mechanical signature look smaller.
   to Spring.
 - Policies choose bounded inputs and legal owner operations; they do not become
   new truth owners.
-- Task admission limits and fairness are best-effort policy unless a stronger
+- Task approval uses the Task score owner's complete RUNNING count as a
+  best-effort soft-limit precheck, then performs one exact PRE_REVIEW-to-INITIAL
+  transition. Concurrent approvals may overshoot the limit; INITIAL ordering
+  and all later fairness remain bounded scheduling policy unless a stronger
   invariant is explicitly approved.
 - `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` are Worker allocation
   mechanisms. `CLOSE_WHEN_IDLE` and `PARK_WHEN_IDLE` are independent idle

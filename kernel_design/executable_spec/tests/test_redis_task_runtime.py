@@ -430,12 +430,12 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(first.score, current_score)
 
     def test_existing_non_pre_review_score_conflicts_without_descriptor(self) -> None:
-        admission_score = self.score_band._score(
-            self.score_band.ADMISSION_VISIBLE_TAG,
+        running_score = self.score_band._score(
+            self.score_band.RUNNING_VISIBLE_TAG,
             self.score_band._current_time_slot(),
             0,
         )
-        self.redis.zadd(self.score_band.score_key, {"task-1": admission_score})
+        self.redis.zadd(self.score_band.score_key, {"task-1": running_score})
 
         result = self.runtime.create_task(
             descriptor=self.descriptor("task-1"),

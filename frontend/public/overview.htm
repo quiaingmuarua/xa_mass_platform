@@ -665,8 +665,8 @@
 
         <div class="flow">
           <div class="flow-row kernel">
-            <div class="flow-label">Kernel admission</div>
-            <div class="flow-body"><strong>Task score</strong> 提供调度域、时间坐标和lane状态；policy在bounded running limit与Task条件下执行合法transition。</div>
+            <div class="flow-label">Task initialization</div>
+            <div class="flow-body"><strong>Task score</strong> 在approve时原子检查固定RUNNING容量，先进入INITIAL排序坐标；满足启动条件后才精确推进到NORMAL调度范围。</div>
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Worker acquisition</div>

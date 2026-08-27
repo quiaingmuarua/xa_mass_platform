@@ -19,7 +19,7 @@ recommendation. They may lag the definitions currently running in Workers and
 are not Kernel scheduling truth. A WorkerGroup is not an Adapter identity,
 tenant, or transport connection.
 
-Task admission fixes one `workerGroupId`. Candidate rules only narrow Workers
+Task creation fixes one `workerGroupId`. Candidate rules only narrow Workers
 inside that group. `eventCode` is delivered to the chosen Worker and resolved
 there; Kernel dispatch does not validate it against WorkerGroup catalog
 metadata.

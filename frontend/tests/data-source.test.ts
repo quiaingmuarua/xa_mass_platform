@@ -41,7 +41,7 @@ describe("MockRuntimeViewerDataSource", () => {
       sampleLimit: 100,
       entries: [
         { scoreBand: "pre_review" },
-        { scoreBand: "admission_visible" },
+        { scoreBand: "running-initial" },
         { scoreBand: "running_visible" },
         { scoreBand: "terminal" }
       ]

@@ -355,7 +355,7 @@ acquire_item_score_candidates(
 
 has_due_active_items(taskIds)
   -> taskId -> bool
-  -> activation policy read; current due ACTIVE only
+  -> Task Initialization policy read; current due ACTIVE only
 
 has_active_items(taskIds)
   -> taskId -> bool

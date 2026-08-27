@@ -10,8 +10,7 @@ from time import monotonic
 from ..scheduling import (
     TaskDispatchConfig,
     TaskDispatchPolicy,
-    TaskRunningActivationConfig,
-    TaskRunningActivationPolicy,
+    TaskInitializationPolicy,
     TaskSchedulingBatchSource,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPolicy,
@@ -28,10 +27,9 @@ _TASK_BATCH_LIMIT = 100
 @dataclass(frozen=True, slots=True)
 class AssignmentDispatchConfig:
     worker_allocation: TaskWorkerAllocationConfig
-    running_activation: TaskRunningActivationConfig
     task_dispatch: TaskDispatchConfig
     worker_allocation_interval_millis: int
-    running_activation_interval_millis: int
+    task_initialization_interval_millis: int
     task_dispatch_interval_millis: int
 
     def __post_init__(self) -> None:
@@ -39,7 +37,7 @@ class AssignmentDispatchConfig:
             value <= 0
             for value in (
                 self.worker_allocation_interval_millis,
-                self.running_activation_interval_millis,
+                self.task_initialization_interval_millis,
                 self.task_dispatch_interval_millis,
             )
         ):
@@ -57,7 +55,7 @@ class WorkerServiceabilityDispatchLaneConfig:
 
 
 class _LaneId(Enum):
-    RUNNING_ACTIVATION = "running-activation"
+    TASK_INITIALIZATION = "task-initialization"
     WORKER_ALLOCATION = "worker-allocation"
     TASK_DISPATCH = "task-dispatch"
     WORKER_SERVICEABILITY = "worker-serviceability"
@@ -89,13 +87,13 @@ class DispatchConvergenceApplication:
     def __init__(
         self,
         source: TaskSchedulingBatchSource,
-        activation: TaskRunningActivationPolicy,
+        initialization: TaskInitializationPolicy,
         allocation: TaskWorkerAllocationPolicy,
         dispatch: TaskDispatchPolicy,
         serviceability: WorkerServiceabilityDispatchPolicy | None,
     ) -> None:
         self.source = source
-        self.activation = activation
+        self.initialization = initialization
         self.allocation = allocation
         self.dispatch = dispatch
         self.serviceability = serviceability
@@ -179,12 +177,9 @@ class DispatchConvergenceApplication:
     ) -> tuple[_Lane, ...]:
         lanes = [
             _Lane(
-                _LaneId.RUNNING_ACTIVATION,
-                assignment.running_activation_interval_millis,
-                lambda batch: self.activation.activate_running_visible_tasks(
-                    batch,
-                    config=assignment.running_activation,
-                ),
+                _LaneId.TASK_INITIALIZATION,
+                assignment.task_initialization_interval_millis,
+                self.initialization.initialize_tasks,
             ),
             _Lane(
                 _LaneId.WORKER_ALLOCATION,
@@ -233,12 +228,7 @@ class DispatchConvergenceApplication:
         try:
             while not stop_event.is_set():
                 self._drain_completions(runtimes, completions)
-                self._dispatch_running(
-                    runtimes,
-                    completions,
-                    stop_event,
-                )
-                self._dispatch_admission(
+                self._dispatch_tasks(
                     runtimes,
                     completions,
                     stop_event,
@@ -256,7 +246,7 @@ class DispatchConvergenceApplication:
                     if failed and self._state != "STOPPING":
                         self._state = "FAILED"
 
-    def _dispatch_running(
+    def _dispatch_tasks(
         self,
         runtimes: dict[_LaneId, _LaneRuntime],
         completions: Queue[_Completion],
@@ -266,49 +256,41 @@ class DispatchConvergenceApplication:
         eligible = tuple(
             runtime
             for lane_id, runtime in runtimes.items()
-            if lane_id is not _LaneId.RUNNING_ACTIVATION
+            if lane_id is not _LaneId.TASK_INITIALIZATION
             and not runtime.inflight
             and now >= runtime.next_eligible
         )
-        if not eligible or stop_event.is_set():
+        initial = runtimes[_LaneId.TASK_INITIALIZATION]
+        initial_eligible = (
+            not initial.inflight and now >= initial.next_eligible
+        )
+        if (not eligible and not initial_eligible) or stop_event.is_set():
             return
         try:
-            batch = self.source.acquire_running_tasks(limit=_TASK_BATCH_LIMIT)
+            batch = self.source.acquire_tasks(
+                limit=_TASK_BATCH_LIMIT,
+                include_normal=bool(eligible),
+                include_initial=initial_eligible,
+            )
         except Exception:
-            _LOGGER.exception("Dispatch Convergence RUNNING source failed")
+            _LOGGER.exception("Dispatch Convergence Task source failed")
             for runtime in eligible:
                 self._defer(runtime)
+            if initial_eligible:
+                self._defer(initial)
             return
-        if not batch:
-            for runtime in eligible:
-                self._defer(runtime)
-            return
-        for runtime in eligible:
-            self._submit(runtime, batch, completions)
-
-    def _dispatch_admission(
-        self,
-        runtimes: dict[_LaneId, _LaneRuntime],
-        completions: Queue[_Completion],
-        stop_event: Event,
-    ) -> None:
-        runtime = runtimes[_LaneId.RUNNING_ACTIVATION]
-        if (
-            runtime.inflight
-            or monotonic() < runtime.next_eligible
-            or stop_event.is_set()
-        ):
-            return
-        try:
-            batch = self.source.acquire_admission_tasks(limit=_TASK_BATCH_LIMIT)
-        except Exception:
-            _LOGGER.exception("Dispatch Convergence ADMISSION source failed")
-            self._defer(runtime)
-            return
-        if not batch:
-            self._defer(runtime)
-            return
-        self._submit(runtime, batch, completions)
+        if eligible:
+            if batch.normal_tasks:
+                for runtime in eligible:
+                    self._submit(runtime, batch.normal_tasks, completions)
+            else:
+                for runtime in eligible:
+                    self._defer(runtime)
+        if initial_eligible:
+            if batch.initial_tasks:
+                self._submit(initial, batch.initial_tasks, completions)
+            else:
+                self._defer(initial)
 
     def _submit(
         self,

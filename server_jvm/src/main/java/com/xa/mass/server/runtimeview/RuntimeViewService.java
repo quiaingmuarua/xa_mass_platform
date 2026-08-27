@@ -103,7 +103,7 @@ public final class RuntimeViewService {
                         : groups.get(task.workerGroupId());
                 entries.add(new TaskPreviewEntry(
                         scoreState.taskId(),
-                        scoreState.band().wireValue(),
+                        taskScoreView(scoreState),
                         task == null ? null : toView(task),
                         group == null ? null : toView(group)
                 ));
@@ -123,6 +123,13 @@ public final class RuntimeViewService {
                     error
             );
         }
+    }
+
+    private static String taskScoreView(TaskScoreState state) {
+        if (state.isInitial()) {
+            return "running-initial";
+        }
+        return state.band().wireValue();
     }
 
     public WorkerGroupBatchGetResponse batchGetWorkerGroups(

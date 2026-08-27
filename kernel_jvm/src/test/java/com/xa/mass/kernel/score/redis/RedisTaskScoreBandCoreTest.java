@@ -3,7 +3,6 @@ package com.xa.mass.kernel.score.redis;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.redis.RedisKeyspace;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import io.lettuce.core.RedisClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -28,11 +27,7 @@ class RedisTaskScoreBandCoreTest {
             );
             org.junit.jupiter.api.Assertions.assertEquals(
                     List.of(),
-                    scoreCore.acquireBandTaskCandidates(
-                            TaskScoreBand.RUNNING_VISIBLE,
-                            1,
-                            0
-                    )
+                    scoreCore.acquireInitialRunningTasks(0)
             );
         } finally {
             redisClient.shutdown();

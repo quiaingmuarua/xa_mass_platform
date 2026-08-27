@@ -90,9 +90,7 @@ record KernelPacerPolicyConfig(
                 AssignmentDispatchConfig.create(
                         LAB_INTERVAL_MILLIS,
                         LAB_INTERVAL_MILLIS,
-                        LAB_INTERVAL_MILLIS,
-                        AssignmentDispatchConfig
-                                .DEFAULT_RUNNING_TASK_SOFT_LIMIT
+                        LAB_INTERVAL_MILLIS
                 )
         );
     }

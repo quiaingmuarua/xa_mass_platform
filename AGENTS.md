@@ -90,9 +90,10 @@ specification, owner Redis providers and Kernel application assembly.
   two Task lanes and optional Adapter Evidence lane. Its one coordinator owns
   shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
   and Task FAILURE may borrow idle capacity for concurrent owner-fenced Batches,
-  while Adapter Evidence remains single-flight. Dispatch Convergence owns a
-  bounded ADMISSION Source plus one shared due RUNNING Source for fixed
-  Activation, Allocation, Task Dispatch and optional Serviceability lanes.
+  while Adapter Evidence remains single-flight. Dispatch Convergence owns one
+  bounded RUNNING Task source with NORMAL and INITIAL projections. NORMAL feeds
+  Allocation, Task Dispatch and optional Serviceability; INITIAL feeds only
+  Task Initialization.
   Never run the Python Oracle against the same Redis scope as production.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 

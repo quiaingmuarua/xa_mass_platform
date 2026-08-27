@@ -183,7 +183,7 @@ Redis Owner:
 
 Runtime Boundary starts only the Java test context. Java consumes the two
 Task Result LISTs, consumes Adapter Evidence, and uses shared due Task Sources
-to run Activation, Allocation, Task Dispatch and Serviceability lanes. Task business calls remain
+to run Task Initialization, Allocation, Task Dispatch and Serviceability lanes. Task business calls remain
 Java-to-Redis:
 
 ```powershell

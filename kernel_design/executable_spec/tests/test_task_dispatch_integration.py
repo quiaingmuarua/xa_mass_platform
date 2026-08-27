@@ -18,8 +18,6 @@ from kernel_design.executable_spec import (
     WorkerCommandAppendStatus,
     WorkerCommandOfferStatus,
     DeliveryEndpoint,
-    DueTaskItemAdmissionPolicy,
-    RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
     RedisTaskRuntime,
@@ -40,8 +38,7 @@ from kernel_design.executable_spec import (
     TaskDispatchPolicy,
     TaskCallItemSubmission,
     TaskCallSubmissionStatus,
-    TaskRunningActivationConfig,
-    TaskRunningActivationPolicy,
+    TaskInitializationPolicy,
     TaskSchedulingBatchSource,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPolicy,
@@ -140,13 +137,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             candidate_acquirer,
             self.candidate_cache,
         )
-        self.activation_policy = TaskRunningActivationPolicy(
+        self.initialization_policy = TaskInitializationPolicy(
             self.task_score,
-            DueTaskItemAdmissionPolicy(self.item_score),
-            RunningSoftLimitSystemAdmissionPolicy(
-                self.task_score,
-                running_task_soft_limit=100,
-            ),
+            self.item_score,
         )
         self.task_lifecycle = _TaskLifecycleManager(
             self.task_score,
@@ -173,9 +166,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
     def _activate(self, *, limit: int = 100) -> int:
-        return self.activation_policy.activate_running_visible_tasks(
-            self.task_source.acquire_admission_tasks(limit=limit),
-            config=TaskRunningActivationConfig(),
+        return self.initialization_policy.initialize_tasks(
+            self.task_source.acquire_tasks(
+                limit=limit,
+                include_normal=False,
+                include_initial=True,
+            ).initial_tasks,
         )
 
     def _allocate(
@@ -185,7 +181,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         worker_lease_duration_millis: int = 5_000,
     ) -> int:
         return self.allocation_policy.allocate_candidate_workers(
-            self.task_source.acquire_running_tasks(limit=limit),
+            self.task_source.acquire_tasks(
+                limit=limit,
+                include_normal=True,
+                include_initial=False,
+            ).normal_tasks,
             config=TaskWorkerAllocationConfig(
                 worker_lease_duration_millis=worker_lease_duration_millis,
             ),
@@ -193,7 +193,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
 
     def _dispatch(self, config: TaskDispatchConfig) -> int:
         return self.dispatch_policy.dispatch_tasks(
-            self.task_source.acquire_running_tasks(limit=100),
+            self.task_source.acquire_tasks(
+                limit=100,
+                include_normal=True,
+                include_initial=False,
+            ).normal_tasks,
             config=config,
         )
 
@@ -524,7 +528,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        running_observations = self.task_source.acquire_running_tasks(limit=10)
+        running_observations = self.task_source.acquire_tasks(
+            limit=10,
+            include_normal=True,
+            include_initial=False,
+        ).normal_tasks
         dispatched_without_precomputation = self.dispatch_policy.dispatch_tasks(
             running_observations,
             config=TaskDispatchConfig(
@@ -578,7 +586,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(0, activation_without_item)
-        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, state_without_item.band)
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state_without_item.band)
+        self.assertLessEqual(
+            state_without_item.time_millis,
+            TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS,
+        )
         self.assertEqual(
             TaskItemAppendStatus.APPENDED,
             appended[self.message_id].status,
@@ -657,7 +669,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             ),
         )
 
-    def test_admission_recheck_exposes_task_behind_blocked_window(self) -> None:
+    def test_initial_scan_observes_due_task_within_bounded_running_window(
+        self,
+    ) -> None:
         blocker_ids = ("blocked-1", "blocked-2")
         task_ids = (*blocker_ids, self.task_id)
 
@@ -719,14 +733,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
             time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
 
-            first_round = self._activate(limit=2)
-            second_round = self._activate(limit=2)
+            first_round = self._activate(limit=3)
             state = self.task_score.get_score_states(
                 task_ids=(self.task_id,)
             )[self.task_id]
 
-            self.assertEqual(0, first_round)
-            self.assertEqual(1, second_round)
+            self.assertEqual(1, first_round)
             self.assertIsNotNone(state)
             self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
         finally:
@@ -1001,7 +1013,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             ),
         )
         self.assertEqual(TaskScoreBand.TERMINAL, closed.band)
-        self.assertEqual(0, self.task_score.count_running_capacity_tasks())
 
     def test_park_when_idle_task_resumes_through_call_submission(self) -> None:
         self.worker_catalog.register_worker_group(
@@ -1098,7 +1109,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             json.loads(command.forward)["messageId"],
         )
 
-    def test_empty_admission_task_accepts_first_call_and_activates(self) -> None:
+    def test_empty_initial_task_accepts_first_call_and_initializes(self) -> None:
         descriptor = TaskDescriptor(
             task_id=self.task_id,
             worker_group_id="image-workers",
@@ -1115,7 +1126,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         created = self.task_runtime.create_task(descriptor=descriptor, suffix=5)
         approved = self.task_lifecycle.approve_task(task_id=self.task_id)
-        admission = self.task_score.get_score_states(task_ids=(self.task_id,))[
+        initial = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
         ]
         submitted = self.task_call_submission.submit(
@@ -1139,7 +1150,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
 
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
-        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, admission.band)
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, initial.band)
+        self.assertLessEqual(
+            initial.time_millis,
+            TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS,
+        )
         self.assertEqual(TaskCallSubmissionStatus.SUBMITTED, submitted.status)
         self.assertEqual(
             TaskItemAppendStatus.APPENDED,

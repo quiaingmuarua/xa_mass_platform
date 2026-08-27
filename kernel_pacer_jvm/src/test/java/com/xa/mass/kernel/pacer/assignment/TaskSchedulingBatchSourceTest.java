@@ -22,93 +22,45 @@ import org.junit.jupiter.api.Test;
 class TaskSchedulingBatchSourceTest {
 
     @Test
-    void runningSourceReadsOwnersOnceAndPreservesScoreOrder() {
+    void normalAndInitialShareOneOwnerReloadAndRemainSeparated() {
         TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
         TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
-        List<String> ids = List.of(
-                "first",
-                "future",
-                "wrong-band",
-                "nonzero-suffix",
-                "missing-descriptor",
-                "last"
+        List<String> normalIds = List.of("normal", "future", "missing");
+        List<String> initialIds = List.of("initial", "wrong-initial");
+        List<String> allIds = List.of(
+                "normal", "future", "missing", "initial", "wrong-initial"
         );
-        when(scores.acquireDispatchWorkTasks(100)).thenReturn(ids);
-        when(scores.getScoreStates(ids)).thenReturn(Map.of(
-                "first", running("first", 9_900, 0),
-                "future", running("future", 10_000, 0),
-                "wrong-band", admission("wrong-band", 9_900, 0),
-                "nonzero-suffix", running("nonzero-suffix", 9_900, 1),
-                "missing-descriptor", running(
-                        "missing-descriptor", 9_900, 0
-                ),
-                "last", running("last", 9_800, 0)
+        when(scores.acquireDispatchWorkTasks(100)).thenReturn(normalIds);
+        when(scores.acquireInitialRunningTasks(97)).thenReturn(initialIds);
+        when(scores.getScoreStates(allIds)).thenReturn(Map.of(
+                "normal", running("normal", 19_900, 0),
+                "future", running("future", 20_000, 0),
+                "missing", running("missing", 19_800, 0),
+                "initial", running("initial", 10_000, 0),
+                "wrong-initial", running("wrong-initial", 10_100, 0)
         ));
-        when(catalog.loadTaskAllocationDescriptors(ids)).thenReturn(Map.of(
-                "first", descriptor("first"),
+        when(catalog.loadTaskAllocationDescriptors(allIds)).thenReturn(Map.of(
+                "normal", descriptor("normal"),
                 "future", descriptor("future"),
-                "wrong-band", descriptor("wrong-band"),
-                "nonzero-suffix", descriptor("nonzero-suffix"),
-                "last", descriptor("last")
+                "initial", descriptor("initial"),
+                "wrong-initial", descriptor("wrong-initial")
         ));
         TaskSchedulingBatchSource source = new TaskSchedulingBatchSource(
                 scores,
                 catalog,
-                () -> 10_000
+                () -> 20_000
         );
 
-        assertEquals(
-                List.of("first", "last"),
-                source.acquireRunningTasks(100).stream()
-                        .map(DueTaskObservation::taskId)
-                        .toList()
-        );
-        verify(scores).getScoreStates(ids);
-        verify(catalog).loadTaskAllocationDescriptors(ids);
+        var batch = source.acquireTasks(100, true, true);
+
+        assertEquals(List.of("normal"), ids(batch.normalTasks()));
+        assertEquals(List.of("initial"), ids(batch.initialTasks()));
+        verify(scores).getScoreStates(allIds);
+        verify(catalog).loadTaskAllocationDescriptors(allIds);
     }
 
     @Test
-    void admissionAcceptsPrioritySuffixAndEmptyPageStopsEarly() {
-        TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
-        TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
-        when(scores.acquireBandTaskCandidates(
-                TaskScoreBand.ADMISSION_VISIBLE,
-                10_000,
-                100
-        )).thenReturn(List.of("task-1"));
-        when(scores.getScoreStates(List.of("task-1"))).thenReturn(Map.of(
-                "task-1", admission("task-1", 9_900, 90)
-        ));
-        when(catalog.loadTaskAllocationDescriptors(List.of("task-1")))
-                .thenReturn(Map.of("task-1", descriptor("task-1")));
-        TaskSchedulingBatchSource source = new TaskSchedulingBatchSource(
-                scores,
-                catalog,
-                () -> 10_000
-        );
-
-        assertEquals(
-                List.of("task-1"),
-                source.acquireAdmissionTasks(100).stream()
-                        .map(DueTaskObservation::taskId)
-                        .toList()
-        );
-
-        TaskScoreBandCore emptyScores = mock(TaskScoreBandCore.class);
-        TaskResourceCatalog unusedCatalog = mock(TaskResourceCatalog.class);
-        when(emptyScores.acquireDispatchWorkTasks(100)).thenReturn(List.of());
-        TaskSchedulingBatchSource empty = new TaskSchedulingBatchSource(
-                emptyScores,
-                unusedCatalog,
-                () -> 10_000
-        );
-        assertEquals(List.of(), empty.acquireRunningTasks(100));
-        verify(emptyScores, never()).getScoreStates(List.of());
-        verify(unusedCatalog, never()).loadTaskAllocationDescriptors(List.of());
-    }
-
-    @Test
-    void completeRunningPageProducesOneObservationPerSupportedTask() {
+    void normalPageConsumesTheBudgetBeforeInitialRead() {
         TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
         TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
         List<String> ids = IntStream.range(0, 100)
@@ -117,7 +69,7 @@ class TaskSchedulingBatchSourceTest {
         Map<String, TaskScoreState> states = new LinkedHashMap<>();
         Map<String, TaskDescriptor> descriptors = new LinkedHashMap<>();
         for (String taskId : ids) {
-            states.put(taskId, running(taskId, 9_900, 0));
+            states.put(taskId, running(taskId, 19_900, 0));
             descriptors.put(taskId, descriptor(taskId));
         }
         when(scores.acquireDispatchWorkTasks(100)).thenReturn(ids);
@@ -126,15 +78,38 @@ class TaskSchedulingBatchSourceTest {
         TaskSchedulingBatchSource source = new TaskSchedulingBatchSource(
                 scores,
                 catalog,
-                () -> 10_000
+                () -> 20_000
         );
 
-        List<DueTaskObservation> observations = source.acquireRunningTasks(100);
+        var batch = source.acquireTasks(100, true, true);
 
-        assertEquals(ids, observations.stream()
-                .map(DueTaskObservation::taskId)
-                .toList());
-        assertEquals(100, observations.size());
+        assertEquals(ids, ids(batch.normalTasks()));
+        assertEquals(List.of(), batch.initialTasks());
+        verify(scores, never()).acquireInitialRunningTasks(0);
+    }
+
+    @Test
+    void emptyOwnerPagesDoNotLoadStatesOrDescriptors() {
+        TaskScoreBandCore scores = mock(TaskScoreBandCore.class);
+        TaskResourceCatalog catalog = mock(TaskResourceCatalog.class);
+        when(scores.acquireDispatchWorkTasks(100)).thenReturn(List.of());
+        when(scores.acquireInitialRunningTasks(100)).thenReturn(List.of());
+        TaskSchedulingBatchSource source = new TaskSchedulingBatchSource(
+                scores,
+                catalog,
+                () -> 20_000
+        );
+
+        var batch = source.acquireTasks(100, true, true);
+
+        assertEquals(List.of(), batch.normalTasks());
+        assertEquals(List.of(), batch.initialTasks());
+        verify(scores, never()).getScoreStates(List.of());
+        verify(catalog, never()).loadTaskAllocationDescriptors(List.of());
+    }
+
+    private static List<String> ids(List<DueTaskObservation> observations) {
+        return observations.stream().map(DueTaskObservation::taskId).toList();
     }
 
     private static TaskScoreState running(
@@ -146,20 +121,6 @@ class TaskSchedulingBatchSourceTest {
                 taskId,
                 1,
                 TaskScoreBand.RUNNING_VISIBLE,
-                timeMillis,
-                suffix
-        );
-    }
-
-    private static TaskScoreState admission(
-            String taskId,
-            long timeMillis,
-            int suffix
-    ) {
-        return new TaskScoreState(
-                taskId,
-                1,
-                TaskScoreBand.ADMISSION_VISIBLE,
                 timeMillis,
                 suffix
         );

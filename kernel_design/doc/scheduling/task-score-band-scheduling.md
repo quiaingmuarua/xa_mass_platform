@@ -1,351 +1,233 @@
 # Task Score-Band Scheduling
 
-Status: active new-kernel mechanism contract; Python executable spec
-implemented; policy coverage partial.
+Status: current Kernel owner contract; Python Oracle and Java production owner
+implemented.
 
-## Purpose
+## Lifecycle
 
-Task score is the ordered lifecycle and scheduling coordinate for one Task:
+Task score has two positive lifecycle bands and one terminal region:
 
 ```text
-PRE_REVIEW -> ADMISSION_VISIBLE -> RUNNING_VISIBLE -> TERMINAL
+PRE_REVIEW
+  -> approve
+RUNNING_VISIBLE / INITIAL
+  -> due ACTIVE Item observed
+RUNNING_VISIBLE / NORMAL
+  -> explicit close or idle close
+TERMINAL
 ```
 
-It tells the kernel which scheduling domain the Task occupies and where it is
-ordered inside that domain. It does not tell the kernel why the Task should be
-admitted, which Worker should run an Item, or how business results are stored.
+`INITIAL` is not a band. It is a fixed coordinate range inside RUNNING used
+only for the first start-condition check.
 
 ## Encoding
 
-Positive mutable scores use:
+Positive scores use:
 
 ```text
 score = tag * TAG_FACTOR + timeSlot * SUFFIX_FACTOR + suffix
 ```
 
-Current tags:
+Current tags and fixed coordinates are:
 
 ```text
-RUNNING_VISIBLE    = 1
-ADMISSION_VISIBLE  = 2
-PRE_REVIEW         = 3
-TERMINAL           = any negative score
+RUNNING_VISIBLE = 1
+PRE_REVIEW      = 2
+TERMINAL        = any negative score
+
+INITIAL_TIME_CEILING_MILLIS = 10_000
+INITIAL_PRIORITY_STEP_MILLIS = 100
+NORMAL_TIME_MIN_MILLIS       = 10_100
 ```
 
-The lifecycle direction is numerically downward. Positive cross-band writes
-may keep or lower the tag; terminal close changes the score negative. Terminal
-score cannot return to a positive band.
+Score encoding, Redis range construction, and complete-score comparison stay
+inside `TaskScoreBandCore`. Pacer code receives opaque score observations.
 
-External callers pass millisecond timestamps. The score core converts them to
-the current 100 ms `timeSlot`; slot width and mint rules are private and may
-change. A returned score is an opaque fence token, never an externally decoded
-contract.
+## INITIAL Coordinate
 
-## Coordinates
-
-### Band
+Approve computes:
 
 ```text
-PRE_REVIEW
-  metadata exists but approval has not admitted the Task
-
-ADMISSION_VISIBLE
-  approved and eligible for Task/System admission policy
-
-RUNNING_VISIBLE
-  admitted to periodic dispatch, explicitly paused, or privately idle-parked
-
-TERMINAL
-  permanently closed
+initialDueMillis = max(0, 10_000 - priority * 100)
 ```
 
-### Time
+Priority remains `0..99`; smaller values are higher priority. INITIAL reads
+are descending, so priority `0` at `10_000` is observed before priority `99`
+at `100`. Equal scores have no FIFO promise.
 
-For positive bands, `timeSlot` is the next time the lane may act. Ordinary
-writes must increase it. A future coordinate is a hold/pause/recheck delay.
-Only exact hold release may move time earlier.
+The fixed coordinate is only an ordering value. It is not a Unix timestamp,
+deadline, approval time, or process-start time. It remains stable across
+Kernel restarts.
 
-### Suffix
+## NORMAL Coordinate
 
-Suffix is a bounded two-digit owner-local coordinate. Its meaning is per band:
+An INITIAL Task is promoted only when it has a due ACTIVE Item. Promotion uses
+Redis TIME and writes:
 
 ```text
-PRE_REVIEW
-  review owner code, opaque to score core
-
-ADMISSION_VISIBLE
-  Task priority in 0..99; lower values run first inside one bounded due window
-
-RUNNING_VISIBLE
-  ordinary scheduling uses 0; the private idle-park boundary uses MAX_SUFFIX
+band   = RUNNING_VISIBLE
+time   = max(redisNowAligned, NORMAL_TIME_MIN_MILLIS)
+suffix = 0
 ```
 
-RUNNING suffix has no retry, capacity, fairness, or pause meaning. The private
-idle park uses the maximum theoretical suffix only so its raw score is the
-upper boundary of the reserved time slot; Lua does not interpret that suffix.
-TaskItem retry truth belongs to TaskItem score.
+NORMAL dispatch reads only due RUNNING scores in
+`[NORMAL_TIME_MIN_MILLIS, current slot)`, ascending by score. INITIAL scores
+therefore cannot enter Worker allocation, Task dispatch, or Worker
+serviceability policy.
 
-## Core Surface
+## Owner Surface
 
 Read operations:
 
 ```python
 get_score_states(task_ids)
 preview_score_states(limit)
-count_running_capacity_tasks()
-acquire_band_task_candidates(band, before_time_millis, limit)
+count_running_tasks()
 acquire_dispatch_work_tasks(limit)
+acquire_initial_running_tasks(limit)
 ```
 
-Mutation operations:
+Lifecycle operations:
 
 ```python
 initialize_score(task_id, suffix, lease_duration_millis)
-rewrite_score(task_id, expected_band, target_time_millis,
-              target_band=None, target_suffix=None)
+start_observed_pre_review_task(
+    task_id,
+    observed_pre_review_score,
+    priority,
+)
+promote_observed_initial_task(task_id, observed_initial_score)
+close_score(task_id, terminal_score)
+close_observed_score(task_id, observed_score, terminal_score)
+```
+
+RUNNING pacing operations:
+
+```python
 rewrite_same_band_time_millis(task_id, expected_band, target_time_millis)
 park_observed_idle_task(task_id, observed_score)
 try_release_idle_park(task_id)
-close_score(task_id, terminal_score)
-close_observed_score(task_id, observed_score, terminal_score)
 release_observed_score_hold(task_id, observed_hold_score)
 ```
 
-Callers never pass Redis ranges, tags, slots, score bases, or Lua arguments.
+There is no generic cross-band rewrite or arbitrary band scan. Lifecycle
+transitions use narrow owner operations with exact observed-score fences.
+RUNNING pacing and idle park reject INITIAL coordinates, so only the exact
+initialization operation can enter NORMAL.
 
-`preview_score_states(limit)` is the bounded Runtime observation exception to
-caller-supplied Task identities. It accepts only `1..100`, reads the one Task
-score ZSET once in descending score order, and returns decoded owner states.
-It has no cursor, total, filter, or stability promise. Consumers may project
-the returned Task IDs through other owners, but raw score, time-slot, and
-suffix coordinates remain inside the Kernel/owner boundary.
+## Create And Approve
 
-## Creation And Approval
-
-Task creation is score-first:
+Task creation remains score-first:
 
 ```text
-reject an existing descriptor without touching score
--> initialize a missing score with a short PRE_REVIEW lease
--> create the complete Task descriptor without overwriting an existing HASH
--> release only the exact creation hold minted by this call
+initialize a short PRE_REVIEW lease
+-> create-only Descriptor fields
+-> exact release of the creation lease
 ```
 
-Creation is create-only. An existing descriptor always returns `CONFLICT` and
-is never compared, merged, or overwritten. A score-only interruption residue
-may be completed only when the score is still `PRE_REVIEW` and the descriptor
-key is absent:
+Approve first performs a read-only soft-limit precheck:
 
 ```text
-initialize missing score with a short PRE_REVIEW lease
-  process stops before descriptor write
--> retry observes PRE_REVIEW score and absent descriptor
--> create descriptor with HSETNX semantics
--> preserve the existing score unchanged
+count_running_tasks()
+-> count >= 100: return the existing retryable approval result
+-> count < 100: continue
 ```
 
-Descriptor fields are installed through one Redis transaction of per-field
-`HSETNX` operations. This keeps descriptor creation atomic without a cross-key
-Lua script. Existing non-PRE_REVIEW scores and descriptor-only residue return
-`CONFLICT`.
+The count covers INITIAL, NORMAL due scores, future holds, pause, and idle
+park. It is a policy observation rather than a reservation or capacity fence.
+Only terminal close removes a Task from that count.
 
-Approval validates metadata and requests:
+Approval then calls `start_observed_pre_review_task`. Its same-key Lua requires
+the complete stored score to equal the observed PRE_REVIEW score and writes the
+fixed RUNNING INITIAL coordinate. It does not count other Tasks. Concurrent
+approvals that observed a count below 100 may all succeed, so RUNNING may
+temporarily exceed the soft limit. This is accepted drift, not a scheduling
+safety violation.
+
+## Initialization
+
+`TaskInitializationPolicy` receives only verified INITIAL observations:
 
 ```text
-PRE_REVIEW -> ADMISSION_VISIBLE
-target suffix = Task priority, where 0 is highest and 99 is lowest
-target time = max(approvalNow, previousTime + oneSlot)
+hasDueActiveItems(initial task ids)
+-> due true: promoteObservedInitialTask(exact score)
+-> due false: keep the fixed INITIAL coordinate
 ```
 
-Approval is idempotent for ADMISSION/RUNNING and rejects terminal Tasks. The
-new lane coordinate comes from approval evidence rather than Task creation age.
+There is no Task admission SPI, System admission policy, capacity reservation,
+or priority recheck. A Task without a due Item is rediscovered on a later
+INITIAL scan.
 
-## Running Admission
+## Dispatch And Idle Lifecycle
 
-`TaskRunningActivationPolicy` is the only normal assignment mechanism that
-changes ADMISSION to RUNNING:
-
-```text
-bounded time-major ADMISSION observation window
--> priority-order observed window members
--> TaskAdmissionPolicy
--> SystemAdmissionPolicy
--> rewrite_score(... RUNNING_VISIBLE, target_suffix=0)
--> same-band recheck every observed Task not transitioned
-```
-
-No Worker is reserved during admission. All Tasks enter RUNNING with suffix
-zero. The default Task policy requires one due ACTIVE Item. The score owner
-uses timeSlot to select bounded window membership, then priority suffix to order
-that window. The default System policy only applies the soft RUNNING count
-limit.
-
-Observed Tasks that do not enter RUNNING retain their priority and move to a
-future ADMISSION coordinate:
-
-```text
-priorityBucket = priority // 10
-nextTime = roundNow + oneSlot + priorityBucket * 1000ms
-```
-
-This reason-independent rotation prevents rejected due heads from permanently
-hiding later Tasks without lowering priority or promising global fairness.
-
-## Running Dispatch And Idle Disposition
-
-`TaskSchedulingBatchSource` acquires due RUNNING suffix-zero Tasks, and
-`TaskDispatchPolicy` observes due
-Items. When no claimable Item remains, it queries the complete ACTIVE Item band:
+Only NORMAL observations enter ordinary scheduling. When Task dispatch finds
+no claimable Item, it checks the complete ACTIVE Item band:
 
 ```text
 ACTIVE exists
-  -> ordinary same-band pacing, suffix remains 0
+  -> normal same-band pacing
 
-no ACTIVE and CLOSE_WHEN_IDLE
+no ACTIVE + CLOSE_WHEN_IDLE
   -> exact observed-score terminal close
 
-no ACTIVE and PARK_WHEN_IDLE
-  -> exact observed-score move to the private idle park
+no ACTIVE + PARK_WHEN_IDLE
+  -> exact move to the private idle park
+  -> one ACTIVE post-check
+  -> exact park release if append raced with park
 ```
 
-The idle park is RUNNING at `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`. It is excluded
-from due scans and from `count_running_capacity_tasks()`, but remains distinct
-from the public pause coordinate at `MAX_TIME_SLOT`. A successful park receives
-one bounded post-check; if a concurrent Task Call append created an ACTIVE
-Item, the exact park is released. Neither path creates a cross-owner
-transaction.
+Idle park remains RUNNING at `MAX_TIME_SLOT - 1` with the maximum theoretical
+suffix. Pause remains RUNNING at `MAX_TIME_SLOT`. Both stay outside due scans
+but both consume a RUNNING seat until explicit close.
 
-## Transition Rules
-
-### Positive rewrite
-
-`rewrite_score` reads the stored score, requires the expected band, requires a
-larger target time, and allows only lifecycle-forward tag movement. It
-preserves suffix unless the owner supplies a target suffix.
-
-### Same-Band Time Rewrite
-
-`rewrite_same_band_time_millis` derives the accepted score range internally.
-It preserves stored suffix. It is appropriate for routine pacing where a newer
-same-band score should win by monotonic time.
-
-### Private Idle Park
-
-`park_observed_idle_task` requires the complete observed ordinary RUNNING
-suffix-zero score and derives the private park coordinate internally.
-`try_release_idle_park` atomically reads the current score. It releases the
-exact private park to a due RUNNING suffix-zero score using Redis time, returns
-`NOOP` for a positive score below the park or above the RUNNING band, returns
-`STALE` for a missing score, and returns `INVALID` for a terminal or RUNNING
-pause score. The owner precomputes the idle-park and RUNNING-band maximum raw
-boundaries with `MAX_SUFFIX`; Lua only compares those complete scores and does
-not decode tags, time slots, or suffixes. Generic rewrites and generic hold
-release cannot mint or release the private park.
-
-### Terminal Close
-
-`close_score` changes any positive band to a negative terminal score. Existing
-terminal score is an idempotent no-op. The public `KernelApplication.close_task`
-chooses the terminal score internally and returns only `TaskCloseResult`.
-
-`close_observed_score` additionally requires complete observed-score equality.
-Task Dispatch uses this narrower operation when idle evidence belongs
-to one bounded round; manual close continues to use `close_score`.
-
-Explicit close applies to both Worker allocation mechanisms and every positive
-band. It does not
-roll back Items, claims, DeliveryCommands, or late results. Those facts cannot
-reopen Task score.
-
-### Hold Release
-
-`release_observed_score_hold` accepts only the exact observed positive score,
-preserves band and suffix, and may move time to the current slot. A stale
-opaque fence cannot release a newer hold.
-
-## Scan Ranges
-
-Band scans are separate and bounded:
+Task Call submission remains:
 
 ```text
-ADMISSION scan
-  only ADMISSION_VISIBLE before the exclusive time horizon
-  timeSlot order determines the bounded window members
-  returned window members are priority suffix ascending
-  equal priority is timeSlot then taskId ascending
-
-RUNNING dispatch scan
-  only RUNNING_VISIBLE due before current time
-
-RUNNING count
-  complete RUNNING_VISIBLE band, including future holds
-
-Runtime preview
-  highest-score 1..100 members across positive bands and terminal records
-  one descending window; equal-score order and repeated membership are unstable
+tryReleaseIdlePark
+-> appendItems
+-> tryReleaseIdlePark
 ```
 
-Candidate allocation consumes verified observations from the shared due
-RUNNING Task Source. It has no second scheduling cursor and never mutates Task
-score.
+INITIAL lies below the private park coordinate, so both release calls are
+owner no-ops for an INITIAL Task. Its new Item is discovered by Initialization.
 
-## Redis And Lua Boundary
+## Runtime Preview
 
-Redis ZSET is the score-axis truth. Python derives semantic target coordinates;
-Lua is limited to one key and the smallest required atomic check:
+`preview_score_states(1..100)` performs one descending ZSET read. It is a
+bounded operational window, not pagination or full inventory. Server projects
+an INITIAL score as `running-initial` and does not expose its fixed coordinate
+as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.
 
-```text
-initialize if absent
-exact score CAS
-close positive score
-range membership mint
-```
+## Failure And Concurrency
 
-No Task descriptor, Item payload, Worker state, candidate cache, or result key
-is read or written by Task score Lua.
-
-The Java Redis provider implements the caller-driven operations used by Task
-create, approve, close and Call submission plus the bounded Runtime preview:
-state read, descending preview, initialize, generic rewrite, positive close,
-exact hold release and private idle-park release. Pacer-only candidate, pacing,
-observed park and observed close operations remain explicit JVM gaps; Python
-remains their production owner.
+- Exact INITIAL start or promotion loses with `STALE` after pause, close, a
+  newer transition, or any score drift.
+- A soft-limit rejection leaves PRE_REVIEW unchanged and is safe to retry;
+  concurrent approval or close may make the observed count immediately stale.
+- Initialization observations may become stale before execution; exact CAS
+  discards them without repair writes.
+- Terminal scores never reopen.
+- Score and Descriptor/Item owners remain independent; no cross-key Lua is
+  introduced.
+- Existing ADMISSION data is not decoded or migrated. Deployment must clear
+  old Task score data before enabling this contract.
 
 ## Writer Matrix
 
 | Owner | Allowed Task score write |
 | --- | --- |
-| Task creation | initialize PRE_REVIEW and exact release of creation hold |
-| Task approval | PRE_REVIEW -> ADMISSION_VISIBLE, suffix = Task priority |
-| Running activation | ADMISSION_VISIBLE -> RUNNING_VISIBLE, suffix 0; reason-independent same-band recheck for every observed non-transitioned Task |
-| Task dispatch | RUNNING same-band pacing, exact idle park or exact idle close |
-| Task Call submission | idempotent private-park release before and after bounded Item append; other valid nearer positive coordinates are no-ops |
-| Explicit lifecycle command | close any positive band; exact hold release when authorized |
-| Candidate allocation policy | none |
-| Worker/runtime/transport/result routing | none |
-
-## Failure And Concurrency
-
-- Range rewrites lose when band/time no longer matches.
-- Observed park and close lose when the full score fence changed. Idle release
-  classifies and updates one current Task score atomically.
-- Terminal close is irreversible and takes precedence over later scheduling
-  rounds.
-- A Task discovered before pause/close may finish its already-bounded Item and
-  DeliveryCommand work; the later score rewrite cannot reopen terminal state.
-- A parked Task remains RUNNING but stays outside the due dispatch range and
-  does not consume RUNNING admission soft-limit capacity. Explicit close may
-  still terminate it.
+| Task creation | initialize and exact-release PRE_REVIEW lease |
+| Task approval | RUNNING soft-limit read, then exact PRE_REVIEW to INITIAL |
+| Task initialization | exact INITIAL to NORMAL |
+| Task dispatch | NORMAL pacing, exact idle park, or exact idle close |
+| Task Call submission | idempotent private-park release before/after append |
+| Explicit lifecycle command | close any positive score |
+| Allocation, serviceability, result, transport | none |
 
 ## Guardrails
 
-- Do not expose score encoding or accept caller-minted score coordinates.
-- Do not use Task score for Item retry, Worker lease, candidate cache, or
-  result truth.
-- Do not make candidate allocation a Task score writer.
-- Keep ordinary RUNNING scheduling suffix fixed at zero. The private idle-park
-  boundary alone uses `MAX_SUFFIX` as a range sentinel.
-- Do not classify only-due absence as Task emptiness; query the full ACTIVE Item
-  band.
-- Do not reopen terminal Tasks after append or late result evidence.
-- Do not add cross-key Lua for lifecycle convenience.
+- Do not restore an ADMISSION band or generic cross-band rewrite.
+- Do not interpret fixed INITIAL coordinates as wall-clock evidence.
+- Do not admit INITIAL Tasks into allocation, dispatch, or serviceability.
+- Do not treat the RUNNING soft-limit read as a reservation or hard invariant.
+- Do not move TaskItem retry or Worker lease truth into Task score.

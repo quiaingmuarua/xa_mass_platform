@@ -49,8 +49,9 @@ may differ by lane, but smaller numeric values always mean earlier priority.
 
 ```text
 Task score acquire
-  -> ADMISSION Task/System policy evaluation
-  -> RUNNING transition
+  -> approve soft-limit precheck, then exact RUNNING INITIAL transition
+  -> due-Item initialization check
+  -> exact transition to RUNNING NORMAL
   -> optional RUNNING candidate cache warming through HOT-pool acquisition
   -> Task Dispatch
      -> TaskItem observation
@@ -116,9 +117,10 @@ TaskScoreBandCore
   owns Task acquisition visibility, encoding, bounded queries, holds,
   lifecycle-direction validation, and terminal score
 
-TaskAdmissionPolicy and SystemAdmissionPolicy
-  decide which bounded ADMISSION Tasks may request RUNNING; they own no
-  score, Item, Worker, or candidate truth
+TaskInitializationPolicy
+  checks which bounded RUNNING INITIAL Tasks have a due ACTIVE Item and may
+  request exact promotion to RUNNING NORMAL; it owns no score, Item, Worker,
+  or candidate truth
 
 TaskRuntime
   owns Task descriptors, canonical TaskItem records, and Task-scoped
@@ -136,8 +138,8 @@ CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
 TaskSchedulingBatchSource
-  owns bounded ADMISSION and RUNNING Task discovery and emits immutable
-  DueTaskObservation batches; it owns no persistent state
+  owns bounded RUNNING NORMAL-first and INITIAL-remainder discovery and emits
+  immutable DueTaskObservation projections; it owns no persistent state
 
 TaskItemDispatcher
   owns one suffix-zero Task's bounded Item observation, Worker acquisition,
@@ -201,7 +203,7 @@ Worker Delivery Dispatch
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
 | Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Implemented with Python Oracle plus Java production Redis operations for append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
-| Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
+| Task initialization | Implemented inside RUNNING with fixed priority coordinates, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
 | Worker allocation | Implemented as a shared-RUNNING-source Policy that fills PRECOMPUTED Task candidate deficits through HOT-pool acquisition; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
 | Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
@@ -219,8 +221,8 @@ as the Python executable specification. Task business commands use Java Redis
 providers. Production uses Java for every Pacer; standalone Python retains the
 complete Oracle and exposes no Task HTTP or managed-process fallback.
 Additional Redis proofs cover immediate idle close, private idle park followed
-by scheduling-aware Task Call submission, RUNNING capacity exclusion, and an
-external explicit close request.
+by scheduling-aware Task Call submission, complete RUNNING soft-limit
+observation, and an external explicit close request.
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second
@@ -292,8 +294,8 @@ Read owner details only when changing that owner:
 - Score axes: [Task](task-score-band-scheduling.md),
   [Worker](worker-score-band-scheduling.md), and
   [TaskItem](task-item-score-band-scheduling.md).
-- Admission and cache warming:
-  [Task Running Activation](task-running-activation-pacer.md) and
+- Initialization and candidate preparation:
+  [Task Initialization](task-initialization-policy.md) and
   [Task-Worker Allocation](task-worker-allocation-pacer.md).
 - Process and transport:
   [Kernel Application Assembly](../kernel-application-assembly.md),
@@ -328,7 +330,7 @@ kernel_design/executable_spec/
     worker_candidate/
       acquisition.py
       matching.py
-    task_running_activation.py
+    task_initialization.py
     task_worker_allocation.py
     task_dispatch.py
     result_routing.py

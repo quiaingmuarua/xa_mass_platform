@@ -32,8 +32,8 @@ KernelPacerAssembly
      -> Java ResultConvergenceApplication
         -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE lanes
      -> Java DispatchConvergenceApplication
-        -> ADMISSION activation lane
-        -> shared RUNNING allocation / dispatch / optional serviceability lanes
+        -> RUNNING INITIAL initialization lane
+        -> RUNNING NORMAL allocation / dispatch / optional serviceability lanes
      -> one bounded reverse shutdown
 
 Worker Identity / Binding
@@ -68,7 +68,7 @@ Provider ownership is deliberately mixed but explicit:
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
 | Adapter Direct FIFO, waiter and correlation | Server instance memory |
-| Assignment Dispatch | `kernel_pacer_jvm` allocation, activation and Task dispatch over bounded Kernel owners |
+| Assignment Dispatch | `kernel_pacer_jvm` allocation, Task initialization and Task dispatch over bounded Kernel owners |
 | Operations outside current production callers | Explicit JVM gaps |
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
@@ -206,7 +206,7 @@ Neither route selects a Worker; the Item allocation rule remains Kernel
 scheduling input.
 
 Task Call remains at-least-once. Submission spans existing owner operations,
-so an Item write followed by an unconfirmed activation can still return `503`.
+so an Item write followed by an unconfirmed idle-park release repair can still return `503`.
 Server does not retry or roll back that submission; callers should retain the
 original Message IDs and reconcile them through `results:load` rather than
 assuming every non-2xx response means no execution occurred.
@@ -651,7 +651,7 @@ enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
 there is no distributed leader election.
 
 Result Convergence starts first and Dispatch Convergence starts second.
-Dispatch Convergence owns the fixed Activation, Allocation, Task Dispatch and
+Dispatch Convergence owns the fixed Task Initialization, Allocation, Task Dispatch and
 optional Serviceability lanes. Worker/Adapter assembly starts after the
 aggregate reaches `RUNNING`. Shutdown uses one shared deadline in the exact
 reverse order. A failed start rolls back every already-started Java

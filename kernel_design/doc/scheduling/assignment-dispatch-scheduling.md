@@ -5,7 +5,7 @@ implemented; policy coverage partial.
 
 Detailed mechanisms:
 
-- [Task Running Activation Policy](task-running-activation-pacer.md)
+- [Task Initialization Policy](task-initialization-policy.md)
 - [Task Worker Allocation Policy](task-worker-allocation-pacer.md)
 - [Task Dispatch Policy](task-dispatch-pacer.md)
 - [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
@@ -16,23 +16,24 @@ Process lifecycle is defined by
 
 ## Core Decision
 
-Dispatch Convergence keeps two Task Sources and four fixed single-flight
-policy lanes:
+Dispatch Convergence derives two projections from one RUNNING Task source and
+keeps four fixed single-flight policy lanes:
 
 | Lane | Source | Decision | Output |
 | --- | --- | --- | --- |
-| RUNNING activation | due ADMISSION | Which Tasks pass Task and System admission policy? | `ADMISSION_VISIBLE -> RUNNING_VISIBLE` transition |
-| Worker allocation | due RUNNING | Which stable Task rules have Candidate deficits? | Expiring CandidateWorker cache evidence |
-| Task dispatch | due RUNNING | Does a Task dispatch Items, idle-park, or close? | Claimed Items, Commands, or exact Task score transition |
-| Worker serviceability | due RUNNING | Which demanded WorkerGroups need Adapter Route probes? | best-effort Probe Request evidence |
+| Task initialization | INITIAL RUNNING | Which Tasks have a due ACTIVE Item? | exact INITIAL to NORMAL transition |
+| Worker allocation | NORMAL RUNNING | Which stable Task rules have Candidate deficits? | Expiring CandidateWorker cache evidence |
+| Task dispatch | NORMAL RUNNING | Does a Task dispatch Items, idle-park, or close? | Claimed Items, Commands, or exact Task score transition |
+| Worker serviceability | NORMAL RUNNING | Which demanded WorkerGroups need Adapter Route probes? | best-effort Probe Request evidence |
 
 The RUNNING lanes share one immutable `DueTaskObservation` batch whenever they
 are simultaneously eligible. They have independent cadence and completion;
 there is no transaction or assignment lifecycle object. A busy lane skips the
 batch, and Task score remains the only persistent demand surface.
 
-The supported Task command path commits the `TaskDescriptor` before the Task
-can enter ADMISSION or RUNNING, and RUNNING activation writes suffix zero.
+The supported Task command path commits the `TaskDescriptor` before approval
+can enter RUNNING INITIAL. Initialization writes the NORMAL time coordinate
+with suffix zero.
 `TaskSchedulingBatchSource` therefore revalidates concurrent observations; it
 is not a legacy-data repair or migration surface. A Task that changed band,
 moved into the future, or disappeared between the range read and the owner
@@ -248,8 +249,8 @@ the dispatch round does not infer type or strategy from Item contents.
 
 ## Owner And Failure Boundaries
 
-- `TaskRunningActivationPolicy` is the only assignment mechanism that changes a
-  Task band.
+- `TaskInitializationPolicy` is the only assignment mechanism that promotes a
+  RUNNING INITIAL coordinate into the NORMAL scheduling range.
 - `TaskWorkerAllocationPolicy` receives validated Task evidence and never reads
   or mutates Task score.
 - Candidate acquisition owns Worker observation, exact lease, and rematch; it
@@ -305,5 +306,5 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not add a cross-CandidateId requested count or cross-WorkerGroup call.
 - Do not treat an index result as final matching or Worker availability truth.
 - Do not expose scan limits, Redis keys, score fields, or score decoding.
-- Do not allocate Workers for ADMISSION Tasks.
+- Do not allocate Workers for RUNNING INITIAL Tasks.
 - Do not introduce a second Candidate-demand cursor beside due RUNNING Task score.

@@ -32,7 +32,7 @@ The executable specification currently proves:
 - Task and TaskItem record persistence with owner-local Redis shapes;
 - WorkerGroup and Worker resource truth plus bounded property reads;
 - `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` Worker-acquisition profiles;
-- Task admission, Task-source candidate allocation, Task dispatch and Result Routing;
+- Task initialization, Task-source candidate allocation, Task dispatch and Result Routing;
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
 - optional Adapter-route Worker serviceability discovery and score convergence;
@@ -104,15 +104,18 @@ are fenced through the owner score and delivery correlation contracts.
 
 ### Policy Is Not Kernel Truth
 
-Kernel exposes conservative owner operations. Admission limits, fairness,
-idle-disposition application, candidate policy and retry classification are policies
-that call those operations. Policy richness does not justify broad cross-key or
-cross-owner Kernel APIs.
+Kernel exposes conservative owner operations. Approval uses an owner-local
+RUNNING count as a soft-limit hint before the exact single-Task start
+transition; it is not a strict capacity invariant. Initialization order, later
+fairness, idle-disposition application, candidate policy and retry
+classification are policies that call those operations. Policy richness does
+not justify broad cross-key or cross-owner Kernel APIs.
 
 ## Scheduling Mainline
 
 ```text
-Task admission
+Task approve -> RUNNING INITIAL
+  -> initialization check -> RUNNING NORMAL
   -> shared due RUNNING Task source
   -> optional PRECOMPUTED_TASK_RULE candidate allocation
   -> Task dispatch acquisition

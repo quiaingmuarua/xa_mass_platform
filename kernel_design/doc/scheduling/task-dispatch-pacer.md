@@ -113,7 +113,7 @@ no ACTIVE and PARK_WHEN_IDLE
 ```
 
 `park_observed_idle_task` and `close_observed_score` lose if
-pause, explicit close, submission activation, or a newer scheduling round has
+pause, explicit close, submission idle-park release, or a newer scheduling round has
 changed the observed score. The post-park ACTIVE recheck repairs the common
 park/append interleaving without creating a cross-owner transaction. The park
 coordinate is `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`; only the score owner can mint
@@ -133,8 +133,8 @@ try_release_idle_park
 
 The first call gates append and releases an existing park. The second repairs a
 park installed between the first call and append. Submission does not read the
-Task descriptor, Task score state, or ACTIVE band. PRE_REVIEW, ADMISSION, and
-ordinary nearer positive scores are accepted as score no-ops; terminal,
+Task descriptor, Task score state, or ACTIVE band. PRE_REVIEW, RUNNING INITIAL,
+and ordinary nearer positive scores are accepted as score no-ops; terminal,
 missing, and RUNNING pause coordinates fail before append. Released
 Tasks re-enter the ordinary due scan; there is no urgent set or second Task
 selection path.

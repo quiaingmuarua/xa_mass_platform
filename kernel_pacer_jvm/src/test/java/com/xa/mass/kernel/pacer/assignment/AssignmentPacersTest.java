@@ -70,11 +70,11 @@ class AssignmentPacersTest {
     }
 
     @Test
-    void activationRequiresDueItemAndReschedulesOtherAdmissionTasks() {
+    void initializationPromotesOnlyInitialTasksWithDueItems() {
         TaskScoreBandCore taskScore = mock(TaskScoreBandCore.class);
         TaskItemScoreBandCore itemScore = mock(TaskItemScoreBandCore.class);
-        TaskScoreState first = admissionState("task-1", 10);
-        TaskScoreState second = admissionState("task-2", 20);
+        TaskScoreState first = initialState("task-1", 10_000);
+        TaskScoreState second = initialState("task-2", 9_900);
         TaskDescriptor firstDescriptor = descriptor(
                 "task-1",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
@@ -87,24 +87,19 @@ class AssignmentPacersTest {
         );
         when(itemScore.hasDueActiveItems(List.of("task-1", "task-2")))
                 .thenReturn(Map.of("task-1", true, "task-2", false));
-        when(taskScore.countRunningCapacityTasks()).thenReturn(0);
-        when(taskScore.rewriteScore(
+        when(taskScore.promoteObservedInitialTask(
                 "task-1",
-                TaskScoreBand.ADMISSION_VISIBLE,
-                1_000L,
-                TaskScoreBand.RUNNING_VISIBLE,
-                0
+                first.score()
         )).thenReturn(new TaskScoreTransitionResult(
                 TaskScoreTransitionStatus.TRANSITIONED,
                 1L
         ));
-        TaskRunningActivationPolicy policy = new TaskRunningActivationPolicy(
+        TaskInitializationPolicy policy = new TaskInitializationPolicy(
                 taskScore,
-                itemScore,
-                () -> 1_000L
+                itemScore
         );
 
-        assertEquals(1, policy.activateRunningVisibleTasks(
+        assertEquals(1, policy.initializeTasks(
                 List.of(
                         new DueTaskObservation(
                                 "task-1",
@@ -116,13 +111,15 @@ class AssignmentPacersTest {
                                 second,
                                 secondDescriptor
                         )
-                ),
-                new TaskRunningActivationConfig(1_000, 100)
+                )
         ));
-        verify(taskScore).rewriteSameBandTimeMillis(
+        verify(taskScore).promoteObservedInitialTask(
+                "task-1",
+                first.score()
+        );
+        verify(taskScore, never()).promoteObservedInitialTask(
                 "task-2",
-                TaskScoreBand.ADMISSION_VISIBLE,
-                3_100L
+                second.score()
         );
     }
 
@@ -181,13 +178,13 @@ class AssignmentPacersTest {
         );
     }
 
-    private static TaskScoreState admissionState(String taskId, int priority) {
+    private static TaskScoreState initialState(String taskId, long time) {
         return new TaskScoreState(
                 taskId,
                 2L,
-                TaskScoreBand.ADMISSION_VISIBLE,
-                900L,
-                priority
+                TaskScoreBand.RUNNING_VISIBLE,
+                time,
+                0
         );
     }
 

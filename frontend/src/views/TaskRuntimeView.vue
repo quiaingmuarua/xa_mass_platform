@@ -96,7 +96,7 @@ function workerGroupId(entry: TaskRuntimePreviewEntry): string {
 function scoreBandLabel(band: TaskScoreBand): string {
   return {
     pre_review: "Awaiting Review",
-    admission_visible: "Admission Visible",
+    "running-initial": "Running Initial",
     running_visible: "Running Visible",
     terminal: "Closed"
   }[band];
@@ -107,7 +107,7 @@ function scoreBandType(
 ): "warning" | "primary" | "success" | "info" {
   return {
     pre_review: "warning",
-    admission_visible: "primary",
+    "running-initial": "primary",
     running_visible: "success",
     terminal: "info"
   }[band] as "warning" | "primary" | "success" | "info";

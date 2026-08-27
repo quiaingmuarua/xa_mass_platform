@@ -88,7 +88,7 @@ class RuntimeViewControllerTest {
             throws Exception {
         when(taskScores.previewScoreStates(100)).thenReturn(List.of(
                 scoreState("task-review", TaskScoreBand.PRE_REVIEW),
-                scoreState("missing-task", TaskScoreBand.ADMISSION_VISIBLE),
+                initialScoreState("missing-task"),
                 scoreState("task-group-missing", TaskScoreBand.RUNNING_VISIBLE),
                 scoreState("task-terminal", TaskScoreBand.TERMINAL)
         ));
@@ -156,6 +156,8 @@ class RuntimeViewControllerTest {
                         .value(nullValue()))
                 .andExpect(jsonPath("$.entries[1].workerGroup")
                         .value(nullValue()))
+                .andExpect(jsonPath("$.entries[1].scoreBand")
+                        .value("running-initial"))
                 .andExpect(jsonPath("$.entries[2].task.taskId")
                         .value("task-group-missing"))
                 .andExpect(jsonPath("$.entries[2].workerGroup")
@@ -848,8 +850,18 @@ class RuntimeViewControllerTest {
                 taskId,
                 terminal ? -1 : 1,
                 band,
-                terminal ? null : 0L,
+                terminal ? null : TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS,
                 terminal ? null : 0
+        );
+    }
+
+    private static TaskScoreState initialScoreState(String taskId) {
+        return new TaskScoreState(
+                taskId,
+                1,
+                TaskScoreBand.RUNNING_VISIBLE,
+                TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS,
+                0
         );
     }
 }

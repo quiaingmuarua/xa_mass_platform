@@ -120,10 +120,11 @@ not fabricate a response.
 `Task Runtime Preview` reads the highest `1..100` Task Score coordinates and
 displays their Task and WorkerGroup descriptor projections in Owner order. It
 has no total, cursor, paging, stable-window or completeness meaning. The page
-shows only `Awaiting Review`, `Admission Visible`, `Running Visible` and
-`Closed`; it never receives raw Score, and `Running Visible` does not prove a
-Task is executing. Search filters only the current browser window and does not
-issue another API request. Descriptor gaps remain visible and are never
+shows only `Awaiting Review`, `Running Initial`, `Running Visible` and `Closed`;
+it never receives raw Score. `Running Initial` is a fixed Kernel sorting
+coordinate rather than a wall-clock deadline, and `Running Visible` does not
+prove a Task is executing. Search filters only the current browser window and
+does not issue another API request. Descriptor gaps remain visible and are never
 repaired or inferred by the browser.
 
 In API mode, each readable `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task with a

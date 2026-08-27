@@ -22,8 +22,9 @@
       "TIME_SLOT_FACTOR": 100000000000
     },
     "TaskScoreBandCore": {
-      "ADMISSION_VISIBLE_TAG": 2,
       "DEFAULT_TAG_FACTOR": 10000000000000,
+      "INITIAL_PRIORITY_STEP_MILLIS": 100,
+      "INITIAL_TIME_CEILING_MILLIS": 10000,
       "MAX_SUFFIX": 99,
       "MAX_TASK_SCORE_PREVIEW_LIMIT": 100,
       "MAX_TIME_MILLIS": 9999999999900,
@@ -34,7 +35,8 @@
       "MUTABLE_SCORE_MIN": 1,
       "PAUSE_TIME_MILLIS": 9999999999900,
       "PAUSE_TIME_SLOT": 99999999999,
-      "PRE_REVIEW_TAG": 3,
+      "NORMAL_TIME_MIN_MILLIS": 10100,
+      "PRE_REVIEW_TAG": 2,
       "RUNNING_VISIBLE_TAG": 1,
       "SLOT_MILLIS": 100,
       "SUFFIX_FACTOR": 100,
@@ -106,18 +108,19 @@
       "store_task_item_success_results"
     ],
     "TaskScoreBandCore": [
-      "acquire_band_task_candidates",
       "acquire_dispatch_work_tasks",
+      "acquire_initial_running_tasks",
       "close_observed_score",
       "close_score",
-      "count_running_capacity_tasks",
+      "count_running_tasks",
       "get_score_states",
       "initialize_score",
       "park_observed_idle_task",
       "preview_score_states",
+      "promote_observed_initial_task",
       "release_observed_score_hold",
       "rewrite_same_band_time_millis",
-      "rewrite_score",
+      "start_observed_pre_review_task",
       "try_release_idle_park"
     ],
     "WorkerCommandRuntime": [
@@ -302,7 +305,6 @@
     "TaskScoreBand": [
       "pre_review",
       "running_visible",
-      "admission_visible",
       "terminal"
     ],
     "TaskScoreTransitionStatus": [

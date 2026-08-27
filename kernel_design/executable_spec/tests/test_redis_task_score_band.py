@@ -73,6 +73,10 @@ class FakeRedis:
         key = str(args[0])
         argv = args[1:]
 
+        if "local pre_review_min" in script:
+            return self._eval_start_pre_review(key, argv)
+        if "local normal_min_score" in script:
+            return self._eval_promote_initial(key, argv)
         if "local idle_park_score" in script:
             return self._eval_try_release_idle_park(key, argv)
         if "local terminal_score" in script:
@@ -82,6 +86,52 @@ class FakeRedis:
         if "local min_expected_score" in script:
             return self._eval_mint_from_range(key, argv)
         raise ValueError("unsupported fake redis script")
+
+    def _eval_start_pre_review(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        task_id = str(argv[0])
+        observed_score = int(argv[1])
+        pre_review_min = int(argv[2])
+        pre_review_max = int(argv[3])
+        initial_score = int(argv[4])
+        stored = self.zscore(key, task_id)
+        if stored is None:
+            return ["stale"]
+        if stored != observed_score:
+            return ["stale", stored]
+        if not pre_review_min <= stored <= pre_review_max:
+            return ["invalid", stored]
+        self.zadd(key, {task_id: initial_score})
+        return ["transitioned", initial_score]
+
+    def _eval_promote_initial(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        task_id = str(argv[0])
+        observed_score = int(argv[1])
+        normal_min_score = int(argv[2])
+        running_min_score = int(argv[3])
+        idle_park_score = int(argv[4])
+        slot_millis = int(argv[5])
+        suffix_factor = int(argv[6])
+        stored = self.zscore(key, task_id)
+        if stored is None:
+            return ["stale"]
+        if stored != observed_score:
+            return ["stale", stored]
+        next_score = running_min_score + (
+            self.now_millis // slot_millis
+        ) * suffix_factor
+        next_score = max(next_score, normal_min_score)
+        if next_score >= idle_park_score:
+            return ["invalid", stored]
+        self.zadd(key, {task_id: next_score})
+        return ["transitioned", next_score]
 
     def _eval_cas_update(self, key: str, argv: tuple[object, ...]) -> list[object]:
         task_id = str(argv[0])
@@ -203,6 +253,29 @@ class FakeRedis:
             return [(member, score) for score, member in selected]
         return [member for _, member in selected]
 
+    def zrevrangebyscore(
+        self,
+        key: str,
+        max_score: int,
+        min_score: int,
+        *,
+        start: int = 0,
+        num: int | None = None,
+        withscores: bool = False,
+    ) -> list[object]:
+        rows = sorted(
+            (
+                (score, member)
+                for member, score in self.zsets.get(key, {}).items()
+                if min_score <= score <= max_score
+            ),
+            reverse=True,
+        )
+        selected = rows[start:] if num is None else rows[start : start + num]
+        if withscores:
+            return [(member, score) for score, member in selected]
+        return [member for _, member in selected]
+
     def zcount(self, key: str, min_score: int, max_score: int) -> int:
         return sum(
             1
@@ -238,12 +311,8 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def test_preview_score_states_is_one_bounded_descending_read(self) -> None:
         scores = {
             "terminal": -1,
-            "running": self.score(self.kernel.RUNNING_VISIBLE_TAG, 1, 0),
-            "admission": self.score(
-                self.kernel.ADMISSION_VISIBLE_TAG,
-                2,
-                3,
-            ),
+            "initial": self.score(self.kernel.RUNNING_VISIBLE_TAG, 1, 0),
+            "normal": self.score(self.kernel.RUNNING_VISIBLE_TAG, 101, 0),
             "review": self.score(self.kernel.PRE_REVIEW_TAG, 3, 4),
         }
         for task_id, score in scores.items():
@@ -252,13 +321,13 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         states = self.kernel.preview_score_states(limit=4)
 
         self.assertEqual(
-            ["review", "admission", "running", "terminal"],
+            ["review", "normal", "initial", "terminal"],
             [state.task_id for state in states],
         )
         self.assertEqual(
             [
                 TaskScoreBand.PRE_REVIEW,
-                TaskScoreBand.ADMISSION_VISIBLE,
+                TaskScoreBand.RUNNING_VISIBLE,
                 TaskScoreBand.RUNNING_VISIBLE,
                 TaskScoreBand.TERMINAL,
             ],
@@ -280,160 +349,32 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.kernel.preview_score_states(limit=1)
 
-    def test_running_capacity_count_excludes_only_private_idle_park(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
-        running_current_second = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 1)
-        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5)
-        paused = self.score(
-            self.kernel.RUNNING_VISIBLE_TAG,
-            self.kernel.PAUSE_TIME_SLOT,
-            5,
-        )
-        idle_park = self.score(
-            self.kernel.RUNNING_VISIBLE_TAG,
-            self.kernel.MAX_TIME_SLOT - 1,
-            self.kernel.MAX_SUFFIX,
-        )
-
-        self.store_score("running", running)
-        self.store_score("running-current-second", running_current_second)
-        self.store_score("admission-visible", admission_visible)
-        self.store_score("paused", paused)
-        self.store_score("idle-park", idle_park)
-
-        self.assertEqual(3, self.kernel.count_running_capacity_tasks())
-        self.assertEqual(
-            ["running"],
-            self.kernel.acquire_dispatch_work_tasks(limit=10),
-        )
-
-    def test_acquire_band_candidates_uses_exact_band_and_exclusive_horizon(
-        self,
-    ) -> None:
+    def test_initial_and_normal_reads_use_disjoint_ranges_and_order(self) -> None:
         self.store_score(
-            "running-before",
-            self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5),
+            "priority-99",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 1, 0),
         )
         self.store_score(
-            "running-at-horizon",
-            self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 5),
+            "priority-1",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 99, 0),
         )
         self.store_score(
-            "admission-before",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
-        )
-
-        self.assertEqual(
-            ["admission-before"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.ADMISSION_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=10,
-            ),
-        )
-        self.assertEqual(
-            ["running-before"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.RUNNING_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=10,
-            ),
-        )
-
-    def test_admission_candidates_sort_bounded_window_by_priority(self) -> None:
-        self.store_score(
-            "earlier-low-priority",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 99),
+            "priority-0",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 100, 0),
         )
         self.store_score(
-            "same-slot-low-priority",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 99),
-        )
-        self.store_score(
-            "same-slot-high-priority",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 0),
-        )
-
-        self.assertEqual(
-            ["same-slot-high-priority", "earlier-low-priority"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.ADMISSION_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=2,
-            ),
-        )
-
-    def test_admission_candidates_use_time_order_for_window_membership(self) -> None:
-        self.store_score(
-            "old-priority-99",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 997, 99),
-        )
-        self.store_score(
-            "middle-priority-50",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 50),
-        )
-        self.store_score(
-            "new-priority-0",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 0),
-        )
-
-        self.assertEqual(
-            ["middle-priority-50", "old-priority-99"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.ADMISSION_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=2,
-            ),
-        )
-
-    def test_admission_candidates_use_time_then_id_for_equal_priority(self) -> None:
-        self.store_score(
-            "task-b",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 5),
-        )
-        self.store_score(
-            "task-c",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
-        )
-        self.store_score(
-            "task-a",
-            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
-        )
-
-        self.assertEqual(
-            ["task-b", "task-a", "task-c"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.ADMISSION_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=3,
-            ),
-        )
-
-    def test_running_candidates_keep_score_order(self) -> None:
-        self.store_score(
-            "earlier-suffix-99",
-            self.score(self.kernel.RUNNING_VISIBLE_TAG, 998, 99),
-        )
-        self.store_score(
-            "later-suffix-0",
+            "normal",
             self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 0),
         )
 
         self.assertEqual(
-            ["earlier-suffix-99", "later-suffix-0"],
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.RUNNING_VISIBLE,
-                before_time_millis=self.millis(1_000),
-                limit=2,
-            ),
+            ["priority-0", "priority-1", "priority-99"],
+            self.kernel.acquire_initial_running_tasks(limit=10),
         )
-    def test_acquire_band_candidates_rejects_terminal_band(self) -> None:
-        with self.assertRaises(ValueError):
-            self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.TERMINAL,
-                before_time_millis=self.millis(1_000),
-                limit=10,
-            )
+        self.assertEqual(
+            ["normal"],
+            self.kernel.acquire_dispatch_work_tasks(limit=10),
+        )
 
     def test_initialize_score_writes_duration_lease(self) -> None:
         new_result = self.kernel.initialize_score(
@@ -506,67 +447,61 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
 
         self.assertEqual(TaskScoreTransitionStatus.NOOP, result.status)
 
-    def test_rewrite_allows_downward_lifecycle_jump(self) -> None:
-        pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 7)
-        self.store_score("task", pre_review)
+    def test_start_pre_review_uses_priority_coordinate_without_capacity_policy(
+        self,
+    ) -> None:
+        priority_zero = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 1)
+        priority_99 = self.score(self.kernel.PRE_REVIEW_TAG, 1_001, 1)
+        blocked = self.score(self.kernel.PRE_REVIEW_TAG, 1_002, 1)
+        self.store_score("priority-0", priority_zero)
+        self.store_score("priority-99", priority_99)
+        self.store_score("blocked", blocked)
 
-        result = self.kernel.rewrite_score(
-            task_id="task",
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_time_millis=self.millis(1_001),
-            target_suffix=9,
+        first = self.kernel.start_observed_pre_review_task(
+            task_id="priority-0",
+            observed_pre_review_score=priority_zero,
+            priority=0,
         )
-        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+        second = self.kernel.start_observed_pre_review_task(
+            task_id="priority-99",
+            observed_pre_review_score=priority_99,
+            priority=99,
+        )
+        third = self.kernel.start_observed_pre_review_task(
+            task_id="blocked",
+            observed_pre_review_score=blocked,
+            priority=50,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, first.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, second.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, third.status)
+        self.assertEqual(3, self.kernel.count_running_tasks())
+        states = self.kernel.get_score_states(
+            task_ids=("priority-0", "priority-99", "blocked"),
+        )
+        self.assertEqual(10_000, states["priority-0"].time_millis)
+        self.assertEqual(100, states["priority-99"].time_millis)
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, states["blocked"].band)
+
+    def test_promote_initial_uses_redis_time_and_exact_observation(self) -> None:
+        initial = self.score(self.kernel.RUNNING_VISIBLE_TAG, 100, 0)
+        self.store_score("task", initial)
+
+        result = self.kernel.promote_observed_initial_task(
+            task_id="task",
+            observed_initial_score=initial,
+        )
+        stale = self.kernel.promote_observed_initial_task(
+            task_id="task",
+            observed_initial_score=initial,
+        )
+        state = self.kernel.get_score_states(task_ids=("task",))["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
-        self.assertEqual(9, state.suffix)
-
-    def test_rewrite_rejects_lifecycle_regression(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.store_score("task", running)
-
-        result = self.kernel.rewrite_score(
-            task_id="task",
-            expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_time_millis=self.millis(1_001),
-        )
-
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
-
-    def test_rewrite_allows_suffix_change_only_with_newer_time(self) -> None:
-        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", admission_visible)
-
-        result = self.kernel.rewrite_score(
-            task_id="task",
-            expected_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_time_millis=self.millis(1_001),
-            target_suffix=4,
-        )
-        state = self.kernel.get_score_states(task_ids=["task"])["task"]
-
-        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
-        self.assertIsNotNone(state)
-        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, state.band)
-        self.assertEqual(self.millis(1_001), state.time_millis)
-        self.assertEqual(4, state.suffix)
-
-    def test_rewrite_rejects_suffix_change_without_newer_time(self) -> None:
-        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", admission_visible)
-
-        result = self.kernel.rewrite_score(
-            task_id="task",
-            expected_band=TaskScoreBand.ADMISSION_VISIBLE,
-            target_time_millis=self.millis(1_000),
-            target_suffix=4,
-        )
-
-        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.STALE, stale.status)
+        self.assertEqual(self.redis.now_millis, state.time_millis)
+        self.assertEqual(0, state.suffix)
 
     def test_rewrite_same_band_time_millis_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
@@ -630,6 +565,22 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(7, state.suffix)
 
+    def test_running_pacing_cannot_promote_initial_coordinate(self) -> None:
+        initial = self.score(self.kernel.RUNNING_VISIBLE_TAG, 100, 0)
+        self.store_score("task", initial)
+
+        result = self.kernel.rewrite_same_band_time_millis(
+            task_id="task",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=self.millis(1_002),
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(
+            initial,
+            self.redis.zscore("xa_mass:test_task_score_unit:task:score", "task"),
+        )
+
     def test_park_observed_idle_task_uses_private_coordinate(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
         self.store_score("task", running)
@@ -655,6 +606,17 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.park_observed_idle_task(
             task_id="task",
             observed_score=running,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+
+    def test_park_observed_idle_task_rejects_initial_coordinate(self) -> None:
+        initial = self.score(self.kernel.RUNNING_VISIBLE_TAG, 100, 0)
+        self.store_score("task", initial)
+
+        result = self.kernel.park_observed_idle_task(
+            task_id="task",
+            observed_score=initial,
         )
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
@@ -693,7 +655,6 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def test_try_release_idle_park_accepts_scores_outside_running_pause(self) -> None:
         cases = (
             (self.kernel.RUNNING_VISIBLE_TAG, 7),
-            (self.kernel.ADMISSION_VISIBLE_TAG, self.kernel.MAX_SUFFIX),
             (self.kernel.PRE_REVIEW_TAG, self.kernel.MAX_SUFFIX),
         )
         for tag, suffix in cases:
@@ -767,18 +728,6 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(self.millis(2_000), state.time_millis)
         self.assertEqual(7, state.suffix)
-
-    def test_rewrite_rejects_stale_expected_band(self) -> None:
-        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", admission_visible)
-
-        result = self.kernel.rewrite_score(
-            task_id="task",
-            expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_time_millis=self.millis(1_001),
-        )
-
-        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
     def test_close_score_closes_positive_score(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)

@@ -204,8 +204,8 @@ public final class KernelPacerRuntime {
                         candidateAcquirer,
                         candidateCache
                 );
-        TaskRunningActivationPolicy activation =
-                new TaskRunningActivationPolicy(
+        TaskInitializationPolicy initialization =
+                new TaskInitializationPolicy(
                         requiredTaskScores,
                         itemScores
                 );
@@ -233,7 +233,7 @@ public final class KernelPacerRuntime {
                                 requiredTaskScores,
                                 requiredTaskCatalog
                         ),
-                        activation,
+                        initialization,
                         allocation,
                         dispatch,
                         serviceabilityDispatch

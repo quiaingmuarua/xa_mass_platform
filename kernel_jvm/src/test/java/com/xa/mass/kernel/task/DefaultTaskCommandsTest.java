@@ -1,8 +1,6 @@
 package com.xa.mass.kernel.task;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskCallItemSubmission.TaskCallSubmissionStatus;
@@ -99,7 +97,7 @@ class DefaultTaskCommandsTest {
                 100L,
                 1
         );
-        score.rewriteResult = transition(
+        score.startResult = transition(
                 TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
         );
         TaskDescriptor descriptor = descriptor("task-1", 17);
@@ -114,14 +112,14 @@ class DefaultTaskCommandsTest {
                 lifecycle.approveTask("task-1").status()
         );
         assertEquals(
-                TaskScoreBandCore.TaskScoreBand.PRE_REVIEW,
-                score.rewriteExpectedBand
+                1L,
+                score.startObservedScore
         );
         assertEquals(
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE,
-                score.rewriteTargetBand
+                17,
+                score.startPriority
         );
-        assertEquals(17, score.rewriteTargetSuffix);
+        assertEquals(1, score.countRunningCalls);
 
         score.state = new TaskScoreBandCore.TaskScoreState(
                 "task-1",
@@ -148,14 +146,6 @@ class DefaultTaskCommandsTest {
         RecordingScore score = new RecordingScore();
         DefaultTaskLifecycleCommands lifecycle = lifecycle(score);
 
-        score.state = state(TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE);
-        assertEquals(
-                TaskApprovalStatus.ALREADY_APPROVED,
-                lifecycle.approveTask("task-1").status()
-        );
-
-        score = new RecordingScore();
-        lifecycle = lifecycle(score);
         score.state = state(TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE);
         assertEquals(
                 TaskApprovalStatus.ALREADY_APPROVED,
@@ -173,7 +163,7 @@ class DefaultTaskCommandsTest {
         score = new RecordingScore();
         lifecycle = lifecycle(score);
         score.state = state(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
-        score.rewriteResult = transition(
+        score.startResult = transition(
                 TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
         );
         assertEquals(
@@ -185,15 +175,28 @@ class DefaultTaskCommandsTest {
         lifecycle = lifecycle(score);
         score.state = state(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
         score.reclassifiedState = state(
-                TaskScoreBandCore.TaskScoreBand.ADMISSION_VISIBLE
+                TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
         );
-        score.rewriteResult = transition(
+        score.startResult = transition(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
         assertEquals(
                 TaskApprovalStatus.ALREADY_APPROVED,
                 lifecycle.approveTask("task-1").status()
         );
+    }
+
+    @Test
+    void approvalTreatsRunningLimitAsReadOnlySoftPrecheck() {
+        RecordingScore score = new RecordingScore();
+        score.state = state(TaskScoreBandCore.TaskScoreBand.PRE_REVIEW);
+        score.runningCount = 100;
+
+        var result = lifecycle(score).approveTask("task-1");
+
+        assertEquals(TaskApprovalStatus.RETRYABLE, result.status());
+        assertEquals(1, score.countRunningCalls);
+        assertEquals(0, score.startCalls);
     }
 
     @Test
@@ -326,10 +329,12 @@ class DefaultTaskCommandsTest {
         private TaskScoreState reclassifiedState;
         private int getScoreCalls;
         private RuntimeException getFailure;
-        private TaskScoreTransitionResult rewriteResult;
-        private TaskScoreBand rewriteExpectedBand;
-        private TaskScoreBand rewriteTargetBand;
-        private Integer rewriteTargetSuffix;
+        private TaskScoreTransitionResult startResult;
+        private int runningCount;
+        private int countRunningCalls;
+        private int startCalls;
+        private long startObservedScore;
+        private int startPriority;
         private TaskScoreTransitionResult closeResult;
         private long closeTarget;
 
@@ -356,19 +361,39 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public TaskScoreTransitionResult rewriteScore(
+        public int countRunningTasks() {
+            countRunningCalls++;
+            return runningCount;
+        }
+
+        @Override
+        public List<String> acquireDispatchWorkTasks(int limit) {
+            throw unsupported();
+        }
+
+        @Override
+        public List<String> acquireInitialRunningTasks(int limit) {
+            throw unsupported();
+        }
+
+        @Override
+        public TaskScoreTransitionResult startObservedPreReviewTask(
                 String taskId,
-                TaskScoreBand expectedBand,
-                long targetTimeMillis,
-                TaskScoreBand targetBand,
-                Integer targetSuffix
+                long observedPreReviewScore,
+                int priority
         ) {
-            rewriteExpectedBand = expectedBand;
-            rewriteTargetBand = targetBand;
-            rewriteTargetSuffix = targetSuffix;
-            assertFalse(targetTimeMillis <= 100);
-            assertNotNull(rewriteResult);
-            return rewriteResult;
+            startCalls++;
+            startObservedScore = observedPreReviewScore;
+            startPriority = priority;
+            return startResult;
+        }
+
+        @Override
+        public TaskScoreTransitionResult promoteObservedInitialTask(
+                String taskId,
+                long observedInitialScore
+        ) {
+            throw unsupported();
         }
 
         @Override
@@ -384,25 +409,6 @@ class DefaultTaskCommandsTest {
         ) {
             closeTarget = terminalScore;
             return closeResult;
-        }
-
-        @Override
-        public int countRunningCapacityTasks() {
-            throw unsupported();
-        }
-
-        @Override
-        public List<String> acquireBandTaskCandidates(
-                TaskScoreBand band,
-                long beforeTimeMillis,
-                int limit
-        ) {
-            throw unsupported();
-        }
-
-        @Override
-        public List<String> acquireDispatchWorkTasks(int limit) {
-            throw unsupported();
         }
 
         @Override

@@ -42,12 +42,7 @@ const taskViewSchema = z
 const taskRuntimePreviewEntrySchema = z
   .object({
     taskId: z.string().min(1),
-    scoreBand: z.enum([
-      "pre_review",
-      "admission_visible",
-      "running_visible",
-      "terminal"
-    ]),
+    scoreBand: z.enum(["pre_review", "running-initial", "running_visible", "terminal"]),
     task: taskViewSchema.nullable(),
     workerGroup: workerGroupViewSchema.nullable()
   })

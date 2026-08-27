@@ -142,11 +142,9 @@ class KernelPacerPolicyConfigTest {
         assertEquals(expected, config.assignmentDispatch()
                 .workerAllocationIntervalMillis());
         assertEquals(expected, config.assignmentDispatch()
-                .runningActivationIntervalMillis());
+                .taskInitializationIntervalMillis());
         assertEquals(expected, config.assignmentDispatch()
                 .taskDispatchIntervalMillis());
-        assertEquals(100, config.assignmentDispatch().runningActivation()
-                .runningTaskSoftLimit());
     }
 
     private static void assertServiceability(

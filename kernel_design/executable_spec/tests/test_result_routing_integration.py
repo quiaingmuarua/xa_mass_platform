@@ -72,7 +72,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             redis_url=_REDIS_URL,
             redis_scope=self.test_scope.scope,
             worker_allocation_interval_millis=500,
-            running_activation_interval_millis=10,
+            task_initialization_interval_millis=10,
             task_dispatch_interval_millis=10,
             result_routing_interval_millis=10,
             stop_timeout_millis=1_000,

@@ -43,21 +43,21 @@ The config keys are exactly:
 
 | Key | Meaning | Validation |
 | --- | --- | --- |
-| `priority` | Task scheduling priority used by RUNNING admission and Worker contention | decimal text in `0..99`; `0` highest |
+| `priority` | Task scheduling priority used by RUNNING INITIAL ordering and Worker contention | decimal text in `0..99`; `0` highest |
 | `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `DIRECT_ITEM_RULE` in this slice |
 | `maxRetryTimes` | TaskItem retry budget source used when initializing Item scores | decimal text in `0..98` |
 
 All values are strings in the first cut. Supporting two representations for
 the same setting adds ambiguity without mechanism value.
 
-`priority` is one Task scheduling intent. Task approval stores it as the
-ADMISSION score suffix, and the
-Worker matcher uses it when multiple RUNNING Tasks contend for Workers. There
-must not be a second admission-priority or allocation-priority field.
+`priority` is one Task scheduling intent. Task approval maps it to the fixed
+RUNNING INITIAL time coordinate, and the Worker matcher uses it when multiple
+NORMAL Tasks contend for Workers. There must not be a second initialization
+or allocation-priority field.
 
 `config` is not an unchecked extension bag. New keys require a named owner and
 consumer. The Task resource model deliberately contains no minimum matching
-Worker requirement: ADMISSION policy must not reserve or count Workers.
+Worker requirement: initialization must not reserve or count Workers.
 
 ## Worker Allocation
 
@@ -118,8 +118,8 @@ PARK_WHEN_IDLE
 
 The idle park is `RUNNING_VISIBLE` at `MAX_TIME_SLOT - 1`, suffix `MAX_SUFFIX`.
 The low-order value makes the private coordinate the upper raw-score boundary
-of that reserved slot; it carries no scheduling policy meaning. It is
-outside due scans and excluded from the RUNNING admission soft-limit count.
+of that reserved slot; it carries no scheduling policy meaning. It is outside
+due scans but remains visible to the RUNNING soft-limit count.
 It is distinct from the public pause coordinate at `MAX_TIME_SLOT`; callers
 cannot mint, select or release the park through a generic time rewrite.
 
@@ -176,28 +176,27 @@ WorkerCandidateConstraint
 
 This is an in-memory bounded transformation, not a stored Task state.
 
-## Task Admission Inputs
+## Task Initialization Input
 
-`TaskDescriptor` is available to Task and System admission policies, but the
-default Task policy does not add a descriptor start-condition field. It asks
-the Item score owner whether the Task currently has at least one due ACTIVE
-Item. ADMISSION timeSlot selects bounded observation-window membership; Task
-priority orders members inside that window. The default System policy only
-applies the global RUNNING soft limit. Every observed Task that does not enter
-RUNNING is moved to its next priority-bucket recheck time.
+Approve first reads the complete RUNNING count and returns its existing
+retryable result when the soft limit of 100 is already reached. It then uses a
+separate exact score transition to move the observed PRE_REVIEW Task into the
+fixed RUNNING INITIAL coordinate range. Concurrent approvals may exceed 100;
+that bounded drift is not a scheduling-safety failure. Priority orders the
+fixed INITIAL coordinates; no admission policy or recheck time is stored in
+the Descriptor.
+
+The one current initialization condition is a due ACTIVE Item:
 
 ```text
-ADMISSION_VISIBLE
-  -> due Item Task policy
-  -> score-ordered priority + RUNNING soft-limit System policy
-  -> ADMISSION_VISIBLE -> RUNNING_VISIBLE
+RUNNING INITIAL
+  -> TaskItemScoreBandCore.has_due_active_items
+  -> exact promotion to RUNNING NORMAL
 ```
 
-Worker estimates, quota, tenant rules, and business start conditions may be
-future policy inputs. They are not Task score encoding and must not pre-lease
-Workers before RUNNING.
-
-See [Task Running Activation Pacer](../scheduling/task-running-activation-pacer.md).
+Worker estimates, quota, tenant rules, and business start conditions remain
+outside the current mechanism and must not pre-lease Workers for INITIAL Tasks.
+See [Task Initialization Policy](../scheduling/task-initialization-policy.md).
 
 ## Task Runtime Surfaces
 
@@ -225,7 +224,7 @@ A retry may complete exactly one score-only interruption residue when the
 existing score is still `PRE_REVIEW` and the descriptor key is absent. It
 creates the descriptor without rewriting or releasing that existing score.
 
-`load_task_allocation_descriptors` is batch-only. It supports admission and
+`load_task_allocation_descriptors` is batch-only. It supports initialization and
 allocation without creating general `get/list/query/update/delete Task` APIs.
 Missing or corrupt descriptor rows map to `None` and fail that Task closed for
 the bounded round.
@@ -267,10 +266,10 @@ deduplicate across pages. This supports caller-owned export without adding a
 second result store or allowing Server to read Redis directly.
 
 `eventCode` stores the full opaque Event Name and is passed through to the
-selected Worker's local handler dispatch. Kernel Task admission, matching, and
+selected Worker's local handler dispatch. Kernel Task initialization, matching, and
 dispatch do not parse it or compare it with the WorkerGroup catalog projection.
 Server may use that projection to recommend a WorkerGroup, but its possible
-staleness means it must not be promoted into a Kernel admission or dispatch
+staleness means it must not be promoted into a Kernel initialization or dispatch
 guarantee.
 `expireAtMillis` is the new-attempt cutoff:
 TaskRuntime rejects an already-expired append, while Task dispatch final-fails
@@ -324,21 +323,20 @@ Task-scoped result read for later polling.
 
 ## Scheduling Read Paths
 
-Activation:
+Initialization:
 
 ```text
-TaskScoreBandCore.acquire_band_task_candidates(ADMISSION_VISIBLE, now, limit)
+TaskScoreBandCore.acquire_initial_running_tasks(limit)
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
-  -> Task Admission Policy
-  -> System Admission Policy
-  -> TaskScoreBandCore.rewrite_score(... RUNNING_VISIBLE ...)
+  -> TaskItemScoreBandCore.has_due_active_items(taskIds)
+  -> TaskScoreBandCore.promote_observed_initial_task(exact score)
 ```
 
 Worker allocation:
 
 ```text
-TaskSchedulingBatchSource.acquire_running_tasks(limit)
-  -> verify due RUNNING suffix-zero Score and Descriptor once
+TaskSchedulingBatchSource.acquire_tasks(... normal=true ...)
+  -> verify due NORMAL RUNNING suffix-zero Score and Descriptor once
   -> share immutable DueTaskObservation[] with allocation and dispatch
   -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> group by workerGroupId
@@ -347,7 +345,7 @@ TaskSchedulingBatchSource.acquire_running_tasks(limit)
   -> append candidate evidence
 ```
 
-Every admitted Task enters `RUNNING_VISIBLE` with suffix `0`. When the complete
+Every initialized Task enters NORMAL `RUNNING_VISIBLE` with suffix `0`. When the complete
 ACTIVE Item band is empty, Task Dispatch applies the descriptor's idle
 disposition immediately. Any ACTIVE Item prevents close or park, and a
 post-park check can exact-release a park installed concurrently with Task Call
@@ -355,9 +353,10 @@ append. Item execution retry remains TaskItem-score truth. The Kernel close
 owner remains valid for either disposition; generic public Server close is
 limited to finite Tasks and cannot close the managed Task Call Task.
 Initial finite Items may be appended before approval; after a finite Task
-reaches RUNNING with an empty ACTIVE band it may close immediately. Task Call
-submission treats valid PRE_REVIEW and ADMISSION scores as score no-ops, so a
-new due ACTIVE Item can still enter the ordinary activation path. The private
+reaches NORMAL RUNNING with an empty ACTIVE band it may close immediately.
+Task Call submission treats valid PRE_REVIEW and RUNNING INITIAL scores as
+score no-ops, so a new due ACTIVE Item can still enter the initialization
+path. The private
 park is needed only for a later idle-to-active cycle.
 
 Existing candidate cache and Worker lease evidence is not actively deleted

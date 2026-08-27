@@ -11,6 +11,8 @@ import java.util.Objects;
 public final class DefaultTaskLifecycleCommands
         implements TaskLifecycleCommands {
 
+    private static final int RUNNING_TASK_SOFT_LIMIT = 100;
+
     private final TaskScoreBandCore taskScore;
     private final TaskResourceCatalog taskCatalog;
 
@@ -54,26 +56,20 @@ public final class DefaultTaskLifecycleCommands
         if (classified != null) {
             return classified;
         }
-        long stateTimeMillis = Objects.requireNonNull(
-                state.timeMillis(),
-                "PRE_REVIEW timeMillis"
-        );
         int priority = Integer.parseInt(
                 descriptor.config().get("priority")
         );
 
         try {
-            var transition = taskScore.rewriteScore(
+            if (taskScore.countRunningTasks() >= RUNNING_TASK_SOFT_LIMIT) {
+                return new TaskApprovalResult(
+                        TaskApprovalStatus.RETRYABLE,
+                        "RUNNING Task soft limit is full"
+                );
+            }
+            var transition = taskScore.startObservedPreReviewTask(
                     taskId,
-                    TaskScoreBand.PRE_REVIEW,
-                    Math.max(
-                            System.currentTimeMillis(),
-                            Math.addExact(
-                                    stateTimeMillis,
-                                    TaskScoreBandCore.SLOT_MILLIS
-                            )
-                    ),
-                    TaskScoreBand.ADMISSION_VISIBLE,
+                    state.score(),
                     priority
             );
             if (transition.status()
@@ -157,8 +153,7 @@ public final class DefaultTaskLifecycleCommands
         if (state == null) {
             return new TaskApprovalResult(TaskApprovalStatus.NOT_FOUND);
         }
-        if (state.band() == TaskScoreBand.ADMISSION_VISIBLE
-                || state.band() == TaskScoreBand.RUNNING_VISIBLE) {
+        if (state.band() == TaskScoreBand.RUNNING_VISIBLE) {
             return new TaskApprovalResult(
                     TaskApprovalStatus.ALREADY_APPROVED
             );

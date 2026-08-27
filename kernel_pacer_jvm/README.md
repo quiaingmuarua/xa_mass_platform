@@ -55,10 +55,11 @@ retains its finite Serviceability event policy and shares the same lifecycle
 without becoming a general EventBus.
 
 Dispatch Convergence owns one coordinator and fixed single-flight virtual
-Batch lanes. An ADMISSION Source feeds RUNNING Activation. One shared due
-RUNNING Source feeds Worker Allocation, Task Dispatch, and optional Worker
-Serviceability. Busy lanes skip the current Batch without storing a pending
-hint; due Task score provides rediscovery.
+Batch lanes. One bounded RUNNING source produces a NORMAL projection for
+Worker Allocation, Task Dispatch and optional Worker Serviceability, plus an
+INITIAL projection used only by Task Initialization. NORMAL fills the shared
+Batch first. Busy lanes skip the current Batch without storing a pending hint;
+Task score provides rediscovery.
 
 Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
 Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal
