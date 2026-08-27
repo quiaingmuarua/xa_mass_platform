@@ -1,10 +1,7 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -13,9 +10,9 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime
         .ProbeRequestOfferStatus;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
@@ -30,32 +27,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
-class WorkerServiceabilityDispatchPacerTest {
+class WorkerServiceabilityDispatchPolicyTest {
 
     private static final long FLOOR = 5_000;
 
     @Test
-    void noDueTaskStopsBeforeWorkerOwners() {
-        TaskScoreBandCore taskScore = proxy(
-                TaskScoreBandCore.class,
-                (method, _args) -> {
-                    if (method.equals("acquireDispatchWorkTasks")) {
-                        return List.of();
-                    }
-                    throw new AssertionError("Unexpected Task call: " + method);
-                }
-        );
-        WorkerServiceabilityDispatchPacer pacer =
-                new WorkerServiceabilityDispatchPacer(
-                        taskScore,
-                        unused(TaskResourceCatalog.class),
+    void emptyTaskBatchStopsBeforeWorkerOwners() {
+        WorkerServiceabilityDispatchPolicy policy =
+                new WorkerServiceabilityDispatchPolicy(
                         unused(WorkerScoreCore.class),
                         unused(WorkerResourceCatalog.class),
                         unused(WorkerServiceabilityRuntime.class),
                         () -> 10_000
                 );
 
-        assertEquals(0, pacer.dispatchProbes(config(), FLOOR));
+        assertEquals(0, policy.dispatchProbes(List.of(), config(), FLOOR));
     }
 
     @Test
@@ -65,11 +51,6 @@ class WorkerServiceabilityDispatchPacerTest {
         List<Long> recoveryUpperBounds = new ArrayList<>();
         AtomicInteger hotPages = new AtomicInteger();
         AtomicInteger recoveryPages = new AtomicInteger();
-        TaskScoreBandCore taskScore = taskScore(List.of("task-1", "task-2"));
-        TaskResourceCatalog tasks = taskIds -> Map.of(
-                "task-1", task("task-1", "group-1"),
-                "task-2", task("task-2", "group-1")
-        );
         Map<String, WorkerScoreState> states = Map.of(
                 "hot", state("hot", 100, WorkerScorePolarity.HOT_ACQUIRE,
                         4_000, 0),
@@ -123,20 +104,22 @@ class WorkerServiceabilityDispatchPacerTest {
                     : ProbeRequestOfferStatus.ALREADY_REQUESTED;
             return Map.of(workerIds.getFirst(), status);
         });
-        WorkerServiceabilityDispatchPacer pacer =
-                new WorkerServiceabilityDispatchPacer(
-                        taskScore,
-                        tasks,
+        WorkerServiceabilityDispatchPolicy policy =
+                new WorkerServiceabilityDispatchPolicy(
                         workerScore,
                         workers,
                         runtime,
                         now::get
                 );
+        List<DueTaskObservation> tasks = List.of(
+                task("task-1", "group-1"),
+                task("task-2", "group-1")
+        );
 
-        assertEquals(1, pacer.dispatchProbes(config(), FLOOR));
-        assertEquals(0, pacer.dispatchProbes(config(), FLOOR));
+        assertEquals(1, policy.dispatchProbes(tasks, config(), FLOOR));
+        assertEquals(0, policy.dispatchProbes(tasks, config(), FLOOR));
         now.set(10_001);
-        assertEquals(0, pacer.dispatchProbes(config(), FLOOR));
+        assertEquals(0, policy.dispatchProbes(tasks, config(), FLOOR));
 
         assertEquals(List.of(0L, 90L), hotUpperBounds);
         assertEquals(List.of(0L, -200L), recoveryUpperBounds);
@@ -145,10 +128,6 @@ class WorkerServiceabilityDispatchPacerTest {
 
     @Test
     void excludedEndpointUsesExactToggleThenColdParkAndNeverOffers() {
-        TaskScoreBandCore taskScore = taskScore(List.of("task-1"));
-        TaskResourceCatalog tasks = taskIds -> Map.of(
-                "task-1", task("task-1", "group-1")
-        );
         WorkerScoreState hot = state(
                 "polling-worker",
                 123,
@@ -192,17 +171,19 @@ class WorkerServiceabilityDispatchPacerTest {
         WorkerServiceabilityRuntime runtime = runtime((_adapter, _workers) -> {
             throw new AssertionError("Excluded Worker must not be offered");
         });
-        WorkerServiceabilityDispatchPacer pacer =
-                new WorkerServiceabilityDispatchPacer(
-                        taskScore,
-                        tasks,
+        WorkerServiceabilityDispatchPolicy policy =
+                new WorkerServiceabilityDispatchPolicy(
                         workerScore,
                         workers,
                         runtime,
                         () -> 10_000
                 );
 
-        assertEquals(0, pacer.dispatchProbes(config(), FLOOR));
+        assertEquals(0, policy.dispatchProbes(
+                List.of(task("task-1", "group-1")),
+                config(),
+                FLOOR
+        ));
         assertEquals(
                 List.of(
                         "toggle:polling-worker:123",
@@ -212,52 +193,8 @@ class WorkerServiceabilityDispatchPacerTest {
         );
     }
 
-    @Test
-    void applicationIsolatesRoundFailureAndStopsPromptly() {
-        AtomicInteger rounds = new AtomicInteger();
-        TaskScoreBandCore taskScore = proxy(
-                TaskScoreBandCore.class,
-                (method, _args) -> {
-                    if (!method.equals("acquireDispatchWorkTasks")) {
-                        throw new AssertionError("Unexpected call: " + method);
-                    }
-                    if (rounds.getAndIncrement() == 0) {
-                        throw new IllegalStateException("transient");
-                    }
-                    return List.of();
-                }
-        );
-        WorkerServiceabilityDispatchApplication application =
-                new WorkerServiceabilityDispatchApplication(
-                        new WorkerServiceabilityDispatchPacer(
-                                taskScore,
-                                unused(TaskResourceCatalog.class),
-                                unused(WorkerScoreCore.class),
-                                unused(WorkerResourceCatalog.class),
-                                unused(WorkerServiceabilityRuntime.class)
-                        )
-                );
-        WorkerServiceabilityDispatchApplicationConfig config =
-                new WorkerServiceabilityDispatchApplicationConfig(
-                        5,
-                        config()
-                );
-
-        application.start(config, FLOOR);
-        long deadline = System.nanoTime() + 2_000_000_000L;
-        while (rounds.get() < 2 && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
-        }
-        assertTrue(rounds.get() >= 2);
-        assertTrue(application.isRunning());
-        application.stop(1_000);
-        application.stop(1_000);
-        assertEquals("STOPPED", application.state());
-    }
-
     private static WorkerServiceabilityDispatchConfig config() {
         return new WorkerServiceabilityDispatchConfig(
-                100,
                 1_000,
                 10_000,
                 5,
@@ -267,34 +204,11 @@ class WorkerServiceabilityDispatchPacerTest {
         );
     }
 
-    private static TaskScoreBandCore taskScore(List<String> taskIds) {
-        return proxy(
-                TaskScoreBandCore.class,
-                (method, args) -> switch (method) {
-                    case "acquireDispatchWorkTasks" -> taskIds;
-                    case "getScoreStates" -> {
-                        Map<String, TaskScoreState> states =
-                                new LinkedHashMap<>();
-                        for (String taskId : castList(args[0])) {
-                            states.put(taskId, new TaskScoreState(
-                                    taskId,
-                                    1,
-                                    TaskScoreBand.RUNNING_VISIBLE,
-                                    1_000L,
-                                    0
-                            ));
-                        }
-                        yield states;
-                    }
-                    default -> throw new AssertionError(
-                            "Unexpected Task Score call: " + method
-                    );
-                }
-        );
-    }
-
-    private static TaskDescriptor task(String taskId, String workerGroupId) {
-        return new TaskDescriptor(
+    private static DueTaskObservation task(
+            String taskId,
+            String workerGroupId
+    ) {
+        TaskDescriptor descriptor = new TaskDescriptor(
                 taskId,
                 workerGroupId,
                 WorkerAllocationMechanism.DIRECT_ITEM_RULE,
@@ -305,6 +219,17 @@ class WorkerServiceabilityDispatchPacerTest {
                         "maximumCandidateWorkers", "1",
                         "maxRetryTimes", "1"
                 )
+        );
+        return new DueTaskObservation(
+                taskId,
+                new TaskScoreState(
+                        taskId,
+                        1,
+                        TaskScoreBand.RUNNING_VISIBLE,
+                        1_000L,
+                        0
+                ),
+                descriptor
         );
     }
 

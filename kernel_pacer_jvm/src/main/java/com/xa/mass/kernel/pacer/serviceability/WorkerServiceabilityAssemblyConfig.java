@@ -7,7 +7,7 @@ record WorkerServiceabilityAssemblyConfig(
         boolean enabled,
         long hotEligibilityFloorMillis,
         WorkerServiceabilityResultConfig result,
-        WorkerServiceabilityDispatchApplicationConfig dispatch
+        WorkerServiceabilityDispatchLaneConfig dispatch
 ) {
 
     public WorkerServiceabilityAssemblyConfig {
@@ -27,7 +27,7 @@ record WorkerServiceabilityAssemblyConfig(
                 false,
                 0,
                 WorkerServiceabilityResultConfig.defaults(),
-                WorkerServiceabilityDispatchApplicationConfig.defaults()
+                WorkerServiceabilityDispatchLaneConfig.defaults()
         );
     }
 

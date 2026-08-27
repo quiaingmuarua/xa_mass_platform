@@ -30,12 +30,8 @@ public final class KernelPacerHealthIndicator implements HealthIndicator {
                 snapshot.runtime().resultConvergenceState()
         );
         health.withDetail(
-                "javaWorkerServiceabilityDispatchState",
-                snapshot.runtime().workerServiceabilityDispatchState()
-        );
-        health.withDetail(
-                "javaAssignmentDispatchState",
-                snapshot.runtime().assignmentDispatchState()
+                "javaDispatchConvergenceState",
+                snapshot.runtime().dispatchConvergenceState()
         );
         return health.build();
     }

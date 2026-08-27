@@ -32,7 +32,7 @@ The executable specification currently proves:
 - Task and TaskItem record persistence with owner-local Redis shapes;
 - WorkerGroup and Worker resource truth plus bounded property reads;
 - `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` Worker-acquisition profiles;
-- Task admission, candidate warmup, Task dispatch and Result Routing;
+- Task admission, Task-source candidate allocation, Task dispatch and Result Routing;
 - exact-observation score transitions and bounded Worker lease acquisition;
 - Adapter-partitioned DeliveryCommand handoff and DeliveryReport ingestion;
 - optional Adapter-route Worker serviceability discovery and score convergence;
@@ -113,7 +113,8 @@ cross-owner Kernel APIs.
 
 ```text
 Task admission
-  -> optional PRECOMPUTED_TASK_RULE candidate warmup
+  -> shared due RUNNING Task source
+  -> optional PRECOMPUTED_TASK_RULE candidate allocation
   -> Task dispatch acquisition
   -> Worker validation and lease
   -> exact TaskItem claim
@@ -192,8 +193,8 @@ unless an owner contract explicitly says so.
   is never embedded in or supervised by the production Server and exposes no
   HTTP API.
 - `kernel_jvm/` mirrors the production-call closure of public contracts and
-  Redis providers, including stable Candidate Cache/Warmup owners.
-- `kernel_pacer_jvm/` owns the four fixed production Pacer applications,
+  Redis providers, including the stable Candidate Cache owner.
+- `kernel_pacer_jvm/` owns the two fixed production convergence applications,
   policy interpretation and their finite lifecycle behind one runtime entry.
 - `server_jvm/` composes Java owners and adapts that runtime to Spring. It does
   not interpret scheduling policy or implement missing Kernel operations.

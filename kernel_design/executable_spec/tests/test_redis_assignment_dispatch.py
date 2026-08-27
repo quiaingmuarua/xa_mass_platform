@@ -14,9 +14,6 @@ from kernel_design.executable_spec import (
     RedisWorkerCommandRuntime,
     encode_delivery_command,
 )
-from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
-    RedisCandidateWarmupSchedule,
-)
 
 
 class FakeRedis:
@@ -895,64 +892,6 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
                 separators=(",", ":"),
             ),
         )
-
-
-class RedisCandidateWarmupScheduleTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.redis = FakeRedis()
-        self.keyspace = RedisKeyspace("test_warmup_schedule_unit")
-        self.schedule = RedisCandidateWarmupSchedule(
-            self.redis,
-            keyspace=self.keyspace,
-        )
-        self.key = (
-            "xa_mass:test_warmup_schedule_unit:dispatch:candidate_warmups"
-        )
-
-    def test_schedule_deduplicates_and_consume_is_due_ordered_and_bounded(self) -> None:
-        self.schedule.schedule_candidate_warmups(
-            task_ids=("task-2", "task-1", "task-2"),
-            due_time_millis=100_000,
-        )
-        self.schedule.schedule_candidate_warmups(
-            task_ids=("task-3",),
-            due_time_millis=101_000,
-        )
-
-        self.assertEqual(
-            ("task-1",),
-            self.schedule.consume_due_candidate_warmups(
-                before_time_millis=100_000,
-                limit=1,
-            ),
-        )
-        self.assertEqual(
-            ("task-2",),
-            self.schedule.consume_due_candidate_warmups(
-                before_time_millis=100_000,
-                limit=10,
-            ),
-        )
-        self.assertEqual({"task-3": 101_000}, self.redis.zsets[self.key])
-
-    def test_empty_and_invalid_schedule_operations(self) -> None:
-        self.schedule.schedule_candidate_warmups(
-            task_ids=(),
-            due_time_millis=100_000,
-        )
-        self.assertNotIn(self.key, self.redis.zsets)
-
-        for task_ids, due_time_millis in ((('',), 100_000), (("task-1",), 0)):
-            with self.subTest(task_ids=task_ids), self.assertRaises(ValueError):
-                self.schedule.schedule_candidate_warmups(
-                    task_ids=task_ids,
-                    due_time_millis=due_time_millis,
-                )
-        with self.assertRaises(ValueError):
-            self.schedule.consume_due_candidate_warmups(
-                before_time_millis=100_000,
-                limit=0,
-            )
 
 
 if __name__ == "__main__":

@@ -70,10 +70,6 @@
     }
   },
   "contracts": {
-    "CandidateWarmupSchedule": [
-      "consume_due_candidate_warmups",
-      "schedule_candidate_warmups"
-    ],
     "CandidateWorkerCache": [
       "append_candidate_workers",
       "candidate_worker_counts",

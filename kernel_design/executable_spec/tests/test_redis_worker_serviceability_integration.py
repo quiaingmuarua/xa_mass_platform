@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from kernel_design.executable_spec import (
     DeliveryEndpoint,
     DeliveryReport,
+    DueTaskObservation,
     ProbeRequestOfferStatus,
     RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
@@ -22,7 +23,7 @@ from kernel_design.executable_spec import (
     WorkerScorePolarity,
     WorkerScoreTransitionStatus,
     WorkerServiceabilityDispatchConfig,
-    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityDispatchPolicy,
 )
 from kernel_design.executable_spec.tests.redis_test_scope import RedisTestScope
 
@@ -353,9 +354,7 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
                     for task_id in task_ids
                 }
 
-        pacer = WorkerServiceabilityDispatchPacer(
-            TaskScore(),
-            TaskCatalog(),
+        policy = WorkerServiceabilityDispatchPolicy(
             self.score,
             Catalog(),
             Runtime(),
@@ -364,11 +363,24 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(
             0,
-            pacer.dispatch_probes(config=WorkerServiceabilityDispatchConfig(
-                hot_scan_limit=1,
-                recovery_scan_limit=1,
-                max_recovery_attempts=5,
-            )),
+            policy.dispatch_probes(
+                (
+                    DueTaskObservation(
+                        "active-task",
+                        TaskScore().get_score_states(
+                            task_ids=("active-task",)
+                        )["active-task"],
+                        TaskCatalog().load_task_allocation_descriptors(
+                            task_ids=("active-task",)
+                        )["active-task"],
+                    ),
+                ),
+                config=WorkerServiceabilityDispatchConfig(
+                    hot_scan_limit=1,
+                    recovery_scan_limit=1,
+                    max_recovery_attempts=5,
+                ),
+            ),
         )
         state = self.score.get_score_states(
             home_bucket_id=self.group_id,
@@ -462,9 +474,7 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
                     for current_worker_id in worker_ids
                 }
 
-        pacer = WorkerServiceabilityDispatchPacer(
-            task_score,
-            TaskCatalog(),
+        policy = WorkerServiceabilityDispatchPolicy(
             self.score,
             WorkerCatalog(),
             Runtime(),
@@ -475,9 +485,17 @@ class RedisWorkerServiceabilityIntegrationTest(unittest.TestCase):
 
         self.assertEqual(
             1,
-            pacer.dispatch_probes(
+            policy.dispatch_probes(
+                (
+                    DueTaskObservation(
+                        task_id,
+                        task_score.get_score_states(task_ids=(task_id,))[task_id],
+                        TaskCatalog().load_task_allocation_descriptors(
+                            task_ids=(task_id,)
+                        )[task_id],
+                    ),
+                ),
                 config=WorkerServiceabilityDispatchConfig(
-                    task_scan_limit=1,
                     hot_scan_limit=1,
                     recovery_scan_limit=1,
                     probe_excluded_endpoint_manager_ids=(),

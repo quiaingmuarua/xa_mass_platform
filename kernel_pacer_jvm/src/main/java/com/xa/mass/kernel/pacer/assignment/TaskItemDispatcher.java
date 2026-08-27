@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
@@ -29,7 +28,6 @@ final class TaskItemDispatcher {
     private final TaskItemScoreBandCore itemScore;
     private final TaskRuntime taskRuntime;
     private final WorkerCandidateAcquirer candidateAcquirer;
-    private final CandidateWarmupSchedule warmups;
     private final ResultContextCodec resultContextCodec;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
@@ -37,7 +35,6 @@ final class TaskItemDispatcher {
             TaskItemScoreBandCore itemScore,
             TaskRuntime taskRuntime,
             WorkerCandidateAcquirer candidateAcquirer,
-            CandidateWarmupSchedule warmups,
             ResultContextCodec resultContextCodec
     ) {
         this.itemScore = java.util.Objects.requireNonNull(
@@ -52,7 +49,6 @@ final class TaskItemDispatcher {
                 candidateAcquirer,
                 "candidateAcquirer"
         );
-        this.warmups = java.util.Objects.requireNonNull(warmups, "warmups");
         this.resultContextCodec = java.util.Objects.requireNonNull(
                 resultContextCodec,
                 "resultContextCodec"
@@ -122,14 +118,13 @@ final class TaskItemDispatcher {
             TaskDescriptor descriptor,
             List<ClaimableTaskItem> claimableItems,
             long claimUntilMillis,
-            long warmupDueTimeMillis
+            long dispatchTimeMillis
     ) {
         Map<String, CandidateWorkerEntry> candidates = acquireCandidates(
                 taskId,
                 descriptor,
                 claimableItems,
-                claimUntilMillis,
-                warmupDueTimeMillis
+                claimUntilMillis
         );
         if (candidates.isEmpty()) {
             return Map.of();
@@ -190,8 +185,7 @@ final class TaskItemDispatcher {
             String taskId,
             TaskDescriptor descriptor,
             List<ClaimableTaskItem> claimableItems,
-            long leaseUntilMillis,
-            long warmupDueTimeMillis
+            long leaseUntilMillis
     ) {
         int priority = Integer.parseInt(
                 descriptor.config().get("priority")
@@ -211,10 +205,6 @@ final class TaskItemDispatcher {
                             )),
                             leaseUntilMillis
                     );
-            warmups.scheduleCandidateWarmups(
-                    List.of(taskId),
-                    warmupDueTimeMillis
-            );
             List<CandidateWorkerEntry> entries = acquired.getOrDefault(
                     taskId,
                     List.of()

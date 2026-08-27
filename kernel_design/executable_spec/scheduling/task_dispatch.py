@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from time import time_ns
 from typing import cast
 
-from ..kernel.assignment_dispatch_runtime import (
-    CandidateWarmupSchedule,
-    CandidateWorkerEntry,
-)
+from ..kernel.assignment_dispatch_runtime import CandidateWorkerEntry
 from ..kernel.result_context import ResultContext, encode_result_context
 from ..kernel.task_item_score_band import (
     TaskItemScoreBand,
@@ -21,7 +18,6 @@ from ..kernel.task_runtime import (
     TaskDescriptor,
     TaskIdleDisposition,
     TaskItem,
-    TaskResourceCatalog,
     TaskRuntime,
     WorkerAllocationMechanism,
 )
@@ -46,6 +42,7 @@ from .worker_candidate import (
     WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
 )
+from .task_scheduling_batch_source import DueTaskObservation
 
 
 def _encode_event_payload(task_item: TaskItem) -> str:
@@ -61,13 +58,10 @@ def _encode_event_payload(task_item: TaskItem) -> str:
 class TaskDispatchConfig:
     """Bounds and timing policy supplied to one RUNNING Task round."""
 
-    task_batch_limit: int
     per_task_dispatch_limit: int
     item_claim_lease_duration_millis: TimeMillis
 
     def __post_init__(self) -> None:
-        if self.task_batch_limit <= 0:
-            raise ValueError("task batch limit must be positive")
         if self.per_task_dispatch_limit <= 0:
             raise ValueError("per-task dispatch limit must be positive")
         if self.item_claim_lease_duration_millis <= 0:
@@ -82,13 +76,11 @@ class TaskItemDispatcher:
         item_score: TaskItemScoreBandCore,
         task_runtime: TaskRuntime,
         candidate_acquirer: WorkerCandidateAcquirer,
-        candidate_warmup_schedule: CandidateWarmupSchedule,
         payload_encoder: Callable[[TaskItem], str] = _encode_event_payload,
     ) -> None:
         self.item_score = item_score
         self.task_runtime = task_runtime
         self.candidate_acquirer = candidate_acquirer
-        self.candidate_warmup_schedule = candidate_warmup_schedule
         self._payload_encoder = payload_encoder
 
     def observe_claimable_task_items(
@@ -154,7 +146,6 @@ class TaskItemDispatcher:
         descriptor: TaskDescriptor,
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         claim_until_millis: TimeMillis,
-        warmup_due_time_millis: TimeMillis,
     ) -> dict[
         EndpointManagerId,
         dict[str, DeliveryCommand],
@@ -164,7 +155,6 @@ class TaskItemDispatcher:
             descriptor=descriptor,
             claimable_items=claimable_items,
             lease_until_millis=claim_until_millis,
-            warmup_due_time_millis=warmup_due_time_millis,
         )
         if not candidate_workers_by_message_id:
             return {}
@@ -212,7 +202,6 @@ class TaskItemDispatcher:
         descriptor: TaskDescriptor,
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         lease_until_millis: TimeMillis,
-        warmup_due_time_millis: TimeMillis,
     ) -> dict[MessageId, CandidateWorkerEntry]:
         priority = int(descriptor.config["priority"])
         task_items = tuple(item for item, _ in claimable_items)
@@ -233,10 +222,6 @@ class TaskItemDispatcher:
                 },
                 lease_until_millis=lease_until_millis,
             ).get(task_id, ())
-            self.candidate_warmup_schedule.schedule_candidate_warmups(
-                task_ids=(task_id,),
-                due_time_millis=warmup_due_time_millis,
-            )
             return {
                 item.message_id: candidate_worker
                 for item, candidate_worker in zip(task_items, precomputed)
@@ -307,25 +292,24 @@ class TaskItemDispatcher:
         return tuple(dispatch_assignments)
 
 
-class TaskDispatchPacer:
-    """Pace RUNNING Tasks through Item dispatch or their idle disposition."""
+class TaskDispatchPolicy:
+    """Dispatch Items for one observed RUNNING Task batch."""
 
     def __init__(
         self,
         task_score: TaskScoreBandCore,
-        task_catalog: TaskResourceCatalog,
         worker_command_runtime: WorkerCommandRuntime,
         item_score: TaskItemScoreBandCore,
         task_item_dispatcher: TaskItemDispatcher,
     ) -> None:
         self.task_score = task_score
-        self.task_catalog = task_catalog
         self.worker_command_runtime = worker_command_runtime
         self.item_score = item_score
         self.task_item_dispatcher = task_item_dispatcher
 
     def dispatch_tasks(
         self,
+        tasks: Sequence[DueTaskObservation],
         *,
         config: TaskDispatchConfig,
     ) -> int:
@@ -333,10 +317,6 @@ class TaskDispatchPacer:
         claim_until_millis = (
             dispatch_time_millis + config.item_claim_lease_duration_millis
         )
-        active_tasks = self._acquire_dispatchable_tasks(
-            limit=config.task_batch_limit,
-        )
-
         round_worker_commands: dict[
             EndpointManagerId,
             dict[str, DeliveryCommand],
@@ -345,7 +325,10 @@ class TaskDispatchPacer:
             TaskId,
             tuple[TaskDescriptor, TaskScoreState],
         ] = {}
-        for task_id, descriptor, state in active_tasks:
+        for task in tasks:
+            task_id = task.task_id
+            descriptor = task.descriptor
+            state = task.score_state
             claimable_items = self.task_item_dispatcher.observe_claimable_task_items(
                 task_id=task_id,
                 limit=config.per_task_dispatch_limit,
@@ -362,7 +345,6 @@ class TaskDispatchPacer:
                         descriptor=descriptor,
                         claimable_items=claimable_items,
                         claim_until_millis=claim_until_millis,
-                        warmup_due_time_millis=dispatch_time_millis,
                     )
                 )
                 for endpoint_manager_id, commands in task_worker_commands.items():
@@ -408,28 +390,6 @@ class TaskDispatchPacer:
                 tuple(parked_task_ids),
             )
         return published_command_count
-
-    def _acquire_dispatchable_tasks(
-        self,
-        *,
-        limit: int,
-    ) -> tuple[tuple[TaskId, TaskDescriptor, TaskScoreState], ...]:
-        task_ids = self.task_score.acquire_dispatch_work_tasks(limit=limit)
-        if not task_ids:
-            return ()
-
-        states = self.task_score.get_score_states(task_ids=task_ids)
-        descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=task_ids,
-        )
-        return tuple(
-            (task_id, descriptor, state)
-            for task_id in task_ids
-            if (descriptor := descriptors.get(task_id)) is not None
-            and (state := states.get(task_id)) is not None
-            and state.band is TaskScoreBand.RUNNING_VISIBLE
-            and state.suffix == TaskScoreBandCore.MIN_SUFFIX
-        )
 
     def _apply_activity_recheck(
         self,

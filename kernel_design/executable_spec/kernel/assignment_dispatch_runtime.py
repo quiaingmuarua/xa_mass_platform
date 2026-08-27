@@ -55,27 +55,3 @@ class CandidateWorkerCache(ABC):
     ) -> tuple[CandidateWorkerEntry, ...]:
         """Atomically consume up to limit entries from one candidate collection."""
         pass
-
-
-class CandidateWarmupSchedule(ABC):
-    """Best-effort schedule for rebuilding derived candidate evidence."""
-
-    @abstractmethod
-    def schedule_candidate_warmups(
-        self,
-        *,
-        task_ids: Sequence[TaskId],
-        due_time_millis: TimeMillis,
-    ) -> None:
-        """Schedule bounded Task candidate warmups at an absolute time."""
-        pass
-
-    @abstractmethod
-    def consume_due_candidate_warmups(
-        self,
-        *,
-        before_time_millis: TimeMillis,
-        limit: int,
-    ) -> tuple[TaskId, ...]:
-        """Consume a bounded due Task-id batch in due-time order."""
-        pass

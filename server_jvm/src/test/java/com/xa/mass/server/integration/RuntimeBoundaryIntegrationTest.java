@@ -689,9 +689,7 @@ class RuntimeBoundaryIntegrationTest {
         assertThat(snapshot.enabled()).isTrue();
         assertThat(snapshot.runtime().resultConvergenceState())
                 .isEqualTo("RUNNING");
-        assertThat(snapshot.runtime().workerServiceabilityDispatchState())
-                .isEqualTo("RUNNING");
-        assertThat(snapshot.runtime().assignmentDispatchState())
+        assertThat(snapshot.runtime().dispatchConvergenceState())
                 .isEqualTo("RUNNING");
         assertThat(kernelPacerAssembly.isRunning()).isTrue();
         HttpResponse<String> readiness = send(

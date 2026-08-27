@@ -15,13 +15,13 @@ nullability and score constants; unsupported provider operations fail with
 | `task` | Task record, catalog, lifecycle and bounded Task Call commands |
 | `worker` | Worker record, catalog and canonical properties |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
-| `assignment` | Candidate Worker Cache and Candidate Warmup Schedule hint owners |
+| `assignment` | Candidate Worker Cache owner |
 | `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe/evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for the matching owner only |
 
-Candidate Cache and Warmup Schedule stay here because they are bounded,
-disposable owner mechanisms with their own Redis shape. Candidate matching,
+Candidate Cache stays here because it is a bounded, disposable owner mechanism
+with its own Redis shape. Candidate matching,
 allocation policy, result disposition, serviceability policy, Pacer loops and
 thread lifecycle belong to [`kernel_pacer_jvm`](../kernel_pacer_jvm/).
 
@@ -37,7 +37,7 @@ API and the fixed production Pacers, including:
 - authoritative and non-overwriting Worker Command writes plus bounded
   consume;
 - explicit SUCCESS/FAILURE Task Result append/consume without error-code policy;
-- Candidate Cache/Warmup hint operations;
+- Candidate Cache operations;
 - Serviceability probe request offer/consume and evidence append/consume.
 
 These implementations preserve existing Redis keys, score encoding, Redis

@@ -6,12 +6,7 @@ from time import time_ns
 from typing import Protocol
 
 from ..kernel.task_item_score_band import TaskItemScoreBandCore
-from ..kernel.assignment_dispatch_runtime import CandidateWarmupSchedule
-from ..kernel.task_runtime import (
-    TaskDescriptor,
-    TaskResourceCatalog,
-    WorkerAllocationMechanism,
-)
+from ..kernel.task_runtime import TaskDescriptor
 from ..kernel.task_score_band import (
     TaskId,
     TaskScoreBand,
@@ -20,18 +15,14 @@ from ..kernel.task_score_band import (
     TaskScoreTransitionStatus,
     TimeMillis,
 )
+from .task_scheduling_batch_source import DueTaskObservation
 
 
 @dataclass(frozen=True)
 class TaskRunningActivationConfig:
-    """Bounds for one ADMISSION_VISIBLE activation round."""
-
-    task_batch_limit: int
     priority_recheck_step_millis: int = 1_000
 
     def __post_init__(self) -> None:
-        if self.task_batch_limit <= 0:
-            raise ValueError("task batch limit must be positive")
         if self.priority_recheck_step_millis <= 0:
             raise ValueError("priority recheck step must be positive")
 
@@ -101,78 +92,53 @@ class RunningSoftLimitSystemAdmissionPolicy:
             self.running_task_soft_limit
             - self.task_score.count_running_capacity_tasks(),
         )
-        if available_slots == 0:
-            return ()
-
         return tuple(ordered_task_ids[:available_slots])
 
 
-class TaskRunningActivationPacer:
-    """Apply Task and System admission before the RUNNING transition."""
+class TaskRunningActivationPolicy:
+    """Apply admission policies to an observed ADMISSION Task batch."""
 
     def __init__(
         self,
         task_score: TaskScoreBandCore,
-        task_catalog: TaskResourceCatalog,
         task_admission_policy: TaskAdmissionPolicy,
         system_admission_policy: SystemAdmissionPolicy,
-        candidate_warmup_schedule: CandidateWarmupSchedule,
     ) -> None:
         self.task_score = task_score
-        self.task_catalog = task_catalog
         self.task_admission_policy = task_admission_policy
         self.system_admission_policy = system_admission_policy
-        self.candidate_warmup_schedule = candidate_warmup_schedule
 
     def activate_running_visible_tasks(
         self,
+        tasks: Sequence[DueTaskObservation],
         *,
         config: TaskRunningActivationConfig,
     ) -> int:
         activation_time_millis = self._current_time_millis()
-        observed_task_ids = tuple(
-            self.task_score.acquire_band_task_candidates(
-                band=TaskScoreBand.ADMISSION_VISIBLE,
-                before_time_millis=activation_time_millis,
-                limit=config.task_batch_limit,
-            )
-        )
+        observed_task_ids = tuple(task.task_id for task in tasks)
         if not observed_task_ids:
             return 0
-
-        observed_states = self.task_score.get_score_states(
-            task_ids=observed_task_ids,
-        )
-        loaded_descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=observed_task_ids,
-        )
-        descriptors = {
-            task_id: descriptor
-            for task_id in observed_task_ids
-            if (descriptor := loaded_descriptors.get(task_id)) is not None
+        descriptors = {task.task_id: task.descriptor for task in tasks}
+        observed_states = {
+            task.task_id: task.score_state
+            for task in tasks
         }
-        descriptor_task_ids = tuple(descriptors)
-        task_allowed_ids: tuple[TaskId, ...] = ()
-        if descriptor_task_ids:
-            task_allowed_ids = self._validated_policy_output(
-                input_task_ids=descriptor_task_ids,
-                output_task_ids=self.task_admission_policy.filter_tasks(
-                    ordered_task_ids=descriptor_task_ids,
-                    descriptors=descriptors,
-                ),
-                policy_name="Task admission policy",
-            )
-
-        system_allowed_ids: tuple[TaskId, ...] = ()
-        if task_allowed_ids:
-            system_allowed_ids = self._validated_policy_output(
-                input_task_ids=task_allowed_ids,
-                output_task_ids=self.system_admission_policy.select_tasks(
-                    ordered_task_ids=task_allowed_ids,
-                    descriptors=descriptors,
-                ),
-                policy_name="System admission policy",
-            )
+        task_allowed_ids = self._validated_policy_output(
+            input_task_ids=observed_task_ids,
+            output_task_ids=self.task_admission_policy.filter_tasks(
+                ordered_task_ids=observed_task_ids,
+                descriptors=descriptors,
+            ),
+            policy_name="Task admission policy",
+        )
+        system_allowed_ids = self._validated_policy_output(
+            input_task_ids=task_allowed_ids,
+            output_task_ids=self.system_admission_policy.select_tasks(
+                ordered_task_ids=task_allowed_ids,
+                descriptors=descriptors,
+            ),
+            policy_name="System admission policy",
+        )
 
         activated_task_ids: list[TaskId] = []
         for task_id in system_allowed_ids:
@@ -191,20 +157,10 @@ class TaskRunningActivationPacer:
             observed_states=observed_states,
             activated_task_ids=activated_task_ids,
             activation_time_millis=activation_time_millis,
-            priority_recheck_step_millis=config.priority_recheck_step_millis,
+            priority_recheck_step_millis=(
+                config.priority_recheck_step_millis
+            ),
         )
-
-        warmup_task_ids = tuple(
-            task_id
-            for task_id in activated_task_ids
-            if descriptors[task_id].worker_allocation_mechanism
-            is WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE
-        )
-        if warmup_task_ids:
-            self.candidate_warmup_schedule.schedule_candidate_warmups(
-                task_ids=warmup_task_ids,
-                due_time_millis=activation_time_millis,
-            )
         return len(activated_task_ids)
 
     def _reschedule_observed_admission_tasks(

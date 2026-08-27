@@ -1,6 +1,6 @@
 from .task_dispatch import (
     TaskDispatchConfig,
-    TaskDispatchPacer,
+    TaskDispatchPolicy,
     TaskItemDispatcher,
 )
 from .task_call_submission import (
@@ -19,11 +19,15 @@ from .task_running_activation import (
     SystemAdmissionPolicy,
     TaskAdmissionPolicy,
     TaskRunningActivationConfig,
-    TaskRunningActivationPacer,
+    TaskRunningActivationPolicy,
 )
 from .task_worker_allocation import (
     TaskWorkerAllocationConfig,
-    TaskWorkerAllocationPacer,
+    TaskWorkerAllocationPolicy,
+)
+from .task_scheduling_batch_source import (
+    DueTaskObservation,
+    TaskSchedulingBatchSource,
 )
 from .worker_candidate import (
     WorkerCandidateAcquisition,
@@ -32,7 +36,7 @@ from .worker_candidate import (
 )
 from .worker_serviceability import (
     WorkerServiceabilityDispatchConfig,
-    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityDispatchPolicy,
     WorkerServiceabilityResultConfig,
     WorkerServiceabilityResultPolicy,
 )
@@ -43,7 +47,7 @@ __all__ = [
     "TaskResultBatchPolicy",
     "TaskResultEvidence",
     "TaskDispatchConfig",
-    "TaskDispatchPacer",
+    "TaskDispatchPolicy",
     "TaskItemDispatcher",
     "TaskCallItemSubmission",
     "TaskCallSubmissionResult",
@@ -53,15 +57,17 @@ __all__ = [
     "SystemAdmissionPolicy",
     "TaskAdmissionPolicy",
     "TaskRunningActivationConfig",
-    "TaskRunningActivationPacer",
+    "TaskRunningActivationPolicy",
     "TaskWorkerAllocationConfig",
-    "TaskWorkerAllocationPacer",
+    "TaskWorkerAllocationPolicy",
+    "DueTaskObservation",
+    "TaskSchedulingBatchSource",
     "WorkerCandidateConstraint",
     "WorkerCandidateAcquisition",
     "WorkerCandidateMatcher",
     "WorkerResultEvidence",
     "WorkerServiceabilityDispatchConfig",
-    "WorkerServiceabilityDispatchPacer",
+    "WorkerServiceabilityDispatchPolicy",
     "WorkerServiceabilityResultConfig",
     "WorkerServiceabilityResultPolicy",
 ]

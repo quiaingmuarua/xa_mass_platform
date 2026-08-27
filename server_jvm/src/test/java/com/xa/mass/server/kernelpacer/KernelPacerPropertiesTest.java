@@ -3,7 +3,6 @@ package com.xa.mass.server.kernelpacer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
@@ -28,10 +27,6 @@ class KernelPacerPropertiesTest {
                     .withBean(
                             CandidateWorkerCache.class,
                             () -> mock(CandidateWorkerCache.class)
-                    )
-                    .withBean(
-                            CandidateWarmupSchedule.class,
-                            () -> mock(CandidateWarmupSchedule.class)
                     )
                     .withBean(
                             WorkerCommandRuntime.class,

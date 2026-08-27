@@ -71,16 +71,18 @@ Reports and accepts only the available prefix of an append batch.
 There is no dispatched state, deadline index, batch registry, ack, retry queue,
 or durable claim. Loss leaves the old score eligible for a later scan.
 
-## Dispatch Pacer
+## Dispatch Lane
 
-The Dispatch Pacer first reads one bounded page of due
-`RUNNING_VISIBLE` Tasks through the same read-only acquisition surface used by
-Task Dispatch. It re-reads their current score states and allocation
-descriptors, removes Tasks that became paused, terminal, missing, or invalid,
-and deduplicates `workerGroupId` in page order. With no surviving due Task it
-does not read Worker score, Worker resources, or the Probe Runtime.
+`TaskSchedulingBatchSource` reads one bounded page of due `RUNNING_VISIBLE`
+Tasks, re-reads their current score states and allocation descriptors, removes
+Tasks that became paused, terminal, missing, or invalid, and publishes one
+immutable observation batch. Task Dispatch, Worker Allocation and the optional
+Worker Serviceability lane share that batch. With no surviving due Task the
+Serviceability policy is not invoked and therefore does not read Worker score,
+Worker resources, or the Probe Runtime.
 
-One round selects one Group from that current Task page. HOT and RECOVERY each
+One Serviceability batch selects one Group from the current Task observations.
+HOT and RECOVERY each
 keep one process-local opaque score cursor for Groups still present in the
 page; hints for disappeared Groups are deleted. For the selected Group it
 reads:
@@ -94,7 +96,7 @@ RECOVERY retry `laneRank=n` is due only after:
 (n + 1) * recoveryRetryIntervalMillis
 ```
 
-The Pacer batch-loads current score states and Worker descriptors, groups
+The policy batch-loads current score states and Worker descriptors, groups
 eligible Workers by `endpointManagerId`, and offers ids to the matching request
 HASH. It does not lease Workers and normally does not write scores.
 
@@ -103,8 +105,8 @@ exclusive upper bound before state filtering or request offer, so a fixed
 ineligible head cannot pin later score coordinates. Equal-score entries beyond
 the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
 independently resets that cursor and cools only that range for
-`probeSweepRestartDelayMillis` (default 10 seconds); the one-second Application
-loop keeps running and never sleeps for the cooldown. Cursor and cooldown are
+`probeSweepRestartDelayMillis` (default 10 seconds); the Dispatch Convergence
+coordinator keeps running and does not block for the cooldown. Cursor and cooldown are
 fairness hints, not Redis checkpoints or in-flight Probe tracking. The Task
 score page is never mutated or held by Serviceability. A Group outside the
 bounded due-Task page is intentionally ignored until Task demand exposes it in
@@ -146,7 +148,7 @@ dropped. There is no retry or retained current-state projection.
 
 ## Score Convergence
 
-The Pacer composes existing Score owner operations; there is no business-shaped
+The Adapter Evidence policy composes existing Score owner operations; there is no business-shaped
 `applyServiceability` operation.
 
 Route `CONNECTED` or snapshot `CONNECTED`:
@@ -206,23 +208,21 @@ second Report. Queue pressure drops both without closing a Worker Channel.
 ## Lifecycle And Guardrails
 
 When Serviceability is absent, no floor, Adapter Evidence lane, or
-Serviceability Dispatch thread exists. The Server bridge owner may still be
+Serviceability Dispatch lane exists. The Server bridge owner may still be
 assembled but has no production Evidence consumer. Standalone Python keeps the
 complete Oracle order. Production mints the floor once in Java, shares it with
-the Evidence policy, Serviceability Dispatch and Assignment, and uses:
+the Evidence policy, Serviceability policy and Assignment policies, and uses:
 
 ```text
 start: Java Result Convergence
-    -> Java Serviceability Dispatch
-    -> Java Assignment Dispatch
+    -> Java Dispatch Convergence
 
-stop: Java Assignment Dispatch
-   -> Java Serviceability Dispatch
+stop: Java Dispatch Convergence
    -> Java Result Convergence
 ```
 
-The Adapter Evidence policy, Java Serviceability Dispatch and Java Assignment
-use the same floor.
+The Adapter Evidence policy and the Serviceability, Allocation and Task Dispatch
+lanes use the same floor.
 Python has no production process, so this assembly has no duplicate consumers
 or Probe Request producers.
 

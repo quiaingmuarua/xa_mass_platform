@@ -1,6 +1,5 @@
 package com.xa.mass.server.kernelbinding;
 
-import com.xa.mass.kernel.assignment.redis.RedisCandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.redis.RedisCandidateWorkerCache;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -31,17 +30,6 @@ public class KernelOwnerAssemblyConfiguration {
             XaMassRedisProperties properties
     ) {
         return new RedisCandidateWorkerCache(
-                redisClient,
-                properties.keyspace()
-        );
-    }
-
-    @Bean(destroyMethod = "close")
-    RedisCandidateWarmupSchedule redisCandidateWarmupSchedule(
-            RedisClient redisClient,
-            XaMassRedisProperties properties
-    ) {
-        return new RedisCandidateWarmupSchedule(
                 redisClient,
                 properties.keyspace()
         );

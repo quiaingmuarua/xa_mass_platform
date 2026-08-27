@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer;
 
-record AssignmentDispatchApplicationConfig(
+record AssignmentDispatchConfig(
         long workerAllocationIntervalMillis,
         long runningActivationIntervalMillis,
         long taskDispatchIntervalMillis,
@@ -8,16 +8,16 @@ record AssignmentDispatchApplicationConfig(
         TaskRunningActivationConfig runningActivation,
         TaskDispatchConfig taskDispatch
 ) {
-    public static final long DEFAULT_INTERVAL_MILLIS = 100;
-    public static final int TASK_BATCH_LIMIT = 100;
-    public static final int WORKER_SCAN_LIMIT = 100;
-    public static final long WORKER_LEASE_DURATION_MILLIS = 5_000;
-    public static final int PER_TASK_DISPATCH_LIMIT = 100;
-    public static final long ITEM_CLAIM_LEASE_MILLIS = 5_000;
-    public static final long PRIORITY_RECHECK_STEP_MILLIS = 1_000;
-    public static final int DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100;
+    static final long DEFAULT_INTERVAL_MILLIS = 100;
+    static final int TASK_BATCH_LIMIT = 100;
+    static final int WORKER_SCAN_LIMIT = 100;
+    static final long WORKER_LEASE_DURATION_MILLIS = 5_000;
+    static final int PER_TASK_DISPATCH_LIMIT = 100;
+    static final long ITEM_CLAIM_LEASE_MILLIS = 5_000;
+    static final long PRIORITY_RECHECK_STEP_MILLIS = 1_000;
+    static final int DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100;
 
-    public AssignmentDispatchApplicationConfig {
+    AssignmentDispatchConfig {
         if (workerAllocationIntervalMillis <= 0
                 || runningActivationIntervalMillis <= 0
                 || taskDispatchIntervalMillis <= 0) {
@@ -36,7 +36,7 @@ record AssignmentDispatchApplicationConfig(
         java.util.Objects.requireNonNull(taskDispatch, "taskDispatch");
     }
 
-    public static AssignmentDispatchApplicationConfig defaults() {
+    static AssignmentDispatchConfig defaults() {
         return create(
                 DEFAULT_INTERVAL_MILLIS,
                 DEFAULT_INTERVAL_MILLIS,
@@ -45,27 +45,24 @@ record AssignmentDispatchApplicationConfig(
         );
     }
 
-    public static AssignmentDispatchApplicationConfig create(
+    static AssignmentDispatchConfig create(
             long workerAllocationIntervalMillis,
             long runningActivationIntervalMillis,
             long taskDispatchIntervalMillis,
             int runningTaskSoftLimit
     ) {
-        return new AssignmentDispatchApplicationConfig(
+        return new AssignmentDispatchConfig(
                 workerAllocationIntervalMillis,
                 runningActivationIntervalMillis,
                 taskDispatchIntervalMillis,
                 new TaskWorkerAllocationConfig(
-                        TASK_BATCH_LIMIT,
                         WORKER_LEASE_DURATION_MILLIS
                 ),
                 new TaskRunningActivationConfig(
-                        TASK_BATCH_LIMIT,
                         PRIORITY_RECHECK_STEP_MILLIS,
                         runningTaskSoftLimit
                 ),
                 new TaskDispatchConfig(
-                        TASK_BATCH_LIMIT,
                         PER_TASK_DISPATCH_LIMIT,
                         ITEM_CLAIM_LEASE_MILLIS
                 )

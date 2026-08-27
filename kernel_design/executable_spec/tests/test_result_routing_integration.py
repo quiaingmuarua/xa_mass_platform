@@ -122,12 +122,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 f"{self.keyspace.base}:dispatch:candidate:task-1:workers"
             ),
         )
-        self.assertEqual(
-            0,
-            self.redis.exists(
-                f"{self.keyspace.base}:dispatch:candidate_warmups"
-            ),
-        )
 
     def _run_success_e2e(
         self,

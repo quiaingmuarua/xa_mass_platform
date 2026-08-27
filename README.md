@@ -111,10 +111,10 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   current Kernel documentation and Redis proof surface.
 - [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
   Redis providers, including the caller-driven Task commands used by Server,
-  Worker delivery owners and the Candidate Cache/Warmup hint owners.
+  Worker delivery owners and the Candidate Cache owner.
 - [`kernel_pacer_jvm/`](kernel_pacer_jvm/) is the Kernel-owned policy and
   lifecycle module. Its sole public entry assembles fixed-lane Result
-  Convergence, Worker Serviceability Dispatch and Assignment Dispatch over `kernel_jvm`
+  Convergence and Task-source Dispatch Convergence over `kernel_jvm`
   owners. The stability order is `kernel_jvm > kernel_pacer_jvm > server_jvm`.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server adapts the one

@@ -4,7 +4,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.List;
 
 record WorkerServiceabilityDispatchConfig(
-        int taskScanLimit,
         long recoveryRetryIntervalMillis,
         long probeSweepRestartDelayMillis,
         int maxRecoveryAttempts,
@@ -13,7 +12,6 @@ record WorkerServiceabilityDispatchConfig(
         List<String> probeExcludedEndpointManagerIds
 ) {
 
-    public static final int DEFAULT_TASK_SCAN_LIMIT = 100;
     public static final long DEFAULT_RECOVERY_RETRY_INTERVAL_MILLIS = 60_000;
     public static final long DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS = 10_000;
     public static final int DEFAULT_MAX_RECOVERY_ATTEMPTS = 5;
@@ -23,11 +21,6 @@ record WorkerServiceabilityDispatchConfig(
             List.of("system-polling");
 
     public WorkerServiceabilityDispatchConfig {
-        if (taskScanLimit < 1 || taskScanLimit > 100) {
-            throw new IllegalArgumentException(
-                    "taskScanLimit must be between 1 and 100"
-            );
-        }
         if (recoveryRetryIntervalMillis < 1
                 || probeSweepRestartDelayMillis < 1) {
             throw new IllegalArgumentException(
@@ -69,7 +62,6 @@ record WorkerServiceabilityDispatchConfig(
 
     public static WorkerServiceabilityDispatchConfig defaults() {
         return new WorkerServiceabilityDispatchConfig(
-                DEFAULT_TASK_SCAN_LIMIT,
                 DEFAULT_RECOVERY_RETRY_INTERVAL_MILLIS,
                 DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
                 DEFAULT_MAX_RECOVERY_ATTEMPTS,

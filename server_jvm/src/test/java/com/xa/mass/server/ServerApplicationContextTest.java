@@ -10,7 +10,6 @@ import com.xa.mass.server.api.v1.runtimeview.RuntimeViewController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterDirectCallController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
-import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
@@ -165,9 +164,6 @@ class ServerApplicationContextTest {
                 .isInstanceOf(RedisWorkerScoreCore.class);
         assertThat(applicationContext.getBeansOfType(
                 CandidateWorkerCache.class
-        )).hasSize(1);
-        assertThat(applicationContext.getBeansOfType(
-                CandidateWarmupSchedule.class
         )).hasSize(1);
         assertThat(applicationContext.getBean(
                 ServerWorkerDeliveryAdapterProperties.class

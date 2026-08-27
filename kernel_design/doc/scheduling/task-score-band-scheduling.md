@@ -162,7 +162,7 @@ new lane coordinate comes from approval evidence rather than Task creation age.
 
 ## Running Admission
 
-`TaskRunningActivationPacer` is the only normal assignment mechanism that
+`TaskRunningActivationPolicy` is the only normal assignment mechanism that
 changes ADMISSION to RUNNING:
 
 ```text
@@ -193,7 +193,8 @@ hiding later Tasks without lowering priority or promising global fairness.
 
 ## Running Dispatch And Idle Disposition
 
-`TaskDispatchPacer` acquires due RUNNING suffix-zero Tasks and observes due
+`TaskSchedulingBatchSource` acquires due RUNNING suffix-zero Tasks, and
+`TaskDispatchPolicy` observes due
 Items. When no claimable Item remains, it queries the complete ACTIVE Item band:
 
 ```text
@@ -284,9 +285,9 @@ Runtime preview
   one descending window; equal-score order and repeated membership are unstable
 ```
 
-Candidate warming uses its own disposable hint schedule. It may validate that
-a hinted Task is RUNNING, but it never uses Task score as its cursor and never
-mutates Task score.
+Candidate allocation consumes verified observations from the shared due
+RUNNING Task Source. It has no second scheduling cursor and never mutates Task
+score.
 
 ## Redis And Lua Boundary
 
@@ -320,7 +321,7 @@ remains their production owner.
 | Task dispatch | RUNNING same-band pacing, exact idle park or exact idle close |
 | Task Call submission | idempotent private-park release before and after bounded Item append; other valid nearer positive coordinates are no-ops |
 | Explicit lifecycle command | close any positive band; exact hold release when authorized |
-| Candidate warmer | none |
+| Candidate allocation policy | none |
 | Worker/runtime/transport/result routing | none |
 
 ## Failure And Concurrency
@@ -341,7 +342,7 @@ remains their production owner.
 - Do not expose score encoding or accept caller-minted score coordinates.
 - Do not use Task score for Item retry, Worker lease, candidate cache, or
   result truth.
-- Do not make candidate warming a Task score writer.
+- Do not make candidate allocation a Task score writer.
 - Keep ordinary RUNNING scheduling suffix fixed at zero. The private idle-park
   boundary alone uses `MAX_SUFFIX` as a range sentinel.
 - Do not classify only-due absence as Task emptiness; query the full ACTIVE Item

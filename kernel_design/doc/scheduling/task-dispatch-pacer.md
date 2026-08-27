@@ -1,11 +1,12 @@
-# Task Dispatch Pacer
+# Task Dispatch Policy
 
 Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
 ## Purpose
 
-`TaskDispatchPacer` owns one bounded round over due `RUNNING_VISIBLE` Tasks.
+`TaskDispatchPolicy` owns one bounded round over a verified due
+`RUNNING_VISIBLE` Task batch supplied by `TaskSchedulingBatchSource`.
 Every RUNNING Task uses suffix `0`; Task score no longer encodes an idle
 recheck lane.
 
@@ -28,7 +29,6 @@ hard lock against concurrent Item submission.
 
 ```python
 TaskDispatchConfig(
-    task_batch_limit,
     per_task_dispatch_limit,
     item_claim_lease_duration_millis,
 )
@@ -37,9 +37,8 @@ TaskDispatchConfig(
 Dependencies:
 
 ```text
-TaskDispatchPacer
-  TaskScoreBandCore       RUNNING discovery, pacing, exact park/close/release
-  TaskResourceCatalog     bounded Task allocation descriptors
+TaskDispatchPolicy
+  TaskScoreBandCore       pacing and exact park/close/release
   TaskItemScoreBandCore   due Item observation and complete ACTIVE existence
   TaskItemDispatcher      one Task's bounded Item dispatch
   WorkerCommandRuntime    round-level Adapter mailbox publication
@@ -48,12 +47,11 @@ TaskItemDispatcher
   TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
   TaskRuntime             canonical Item records
   WorkerCandidateAcquirer PRECOMPUTED or DIRECT Worker acquisition
-  CandidateWarmupSchedule PRECOMPUTED_TASK_RULE replenishment hints
   delivery item encoder   opaque Worker command payload
 ```
 
 `TaskItemDispatcher` has no background lifecycle and does not scan Tasks,
-rewrite Task score, publish mailboxes, or decide idle lifecycle. The Pacer does
+rewrite Task score, publish mailboxes, or decide idle lifecycle. The policy does
 not read CandidateWorker cache or Worker score directly; those details remain
 behind `WorkerCandidateAcquirer`.
 
@@ -61,21 +59,19 @@ behind `WorkerCandidateAcquirer`.
 
 One round computes its dispatch time and Item claim deadline once:
 
-1. Acquire a bounded due `RUNNING_VISIBLE` Task batch.
-2. Batch-load current Task score states and Task descriptors, retaining only
-   exact RUNNING suffix-zero observations.
-3. Ask `TaskItemDispatcher` to observe record-backed due ACTIVE Items.
-4. Promote observed zero-budget Items and Items whose persisted
+1. Consume the immutable verified RUNNING observation batch.
+2. Ask `TaskItemDispatcher` to observe record-backed due ACTIVE Items.
+3. Promote observed zero-budget Items and Items whose persisted
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
-5. If claimable Items remain, acquire Workers, exact-claim only Worker-backed
+4. If claimable Items remain, acquire Workers, exact-claim only Worker-backed
    Items, construct DeliveryCommands, and group them by the CandidateWorker
    route snapshot.
-6. Preserve suffix zero and advance ordinary dispatch time for Tasks that ran
+5. Preserve suffix zero and advance ordinary dispatch time for Tasks that ran
    the dispatch path.
-7. For Tasks with no claimable Item, call `has_active_items` once over the
+6. For Tasks with no claimable Item, call `has_active_items` once over the
    complete ACTIVE band and apply the idle transition below.
-8. Publish the round's sparse Worker Command maps once per endpoint manager.
-9. For every Task successfully idle-parked, perform one bounded
+7. Publish the round's sparse Worker Command maps once per endpoint manager.
+8. For every Task successfully idle-parked, perform one bounded
    second ACTIVE-existence read. If a concurrent append created an ACTIVE Item,
    exact-release that observed park.
 
@@ -102,7 +98,7 @@ exists, not merely when no Item is currently due or claimable.
 
 ## Idle Transitions
 
-The Pacer uses the complete Task score observed for the current round:
+The policy uses the complete Task score observed by the shared Source:
 
 ```text
 ACTIVE exists
@@ -188,7 +184,7 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
   Task score.
 - A pause or close after discovery does not retract evidence already published
   by the bounded round.
-- Unused or failed Worker leases expire naturally; this Pacer does not release
+- Unused or failed Worker leases expire naturally; this policy does not release
   or demote them.
 - One WorkerId may appear only once in the entire round. `APPENDED` and
   `REPLACED` both count as publication; replacement remains best-effort mailbox

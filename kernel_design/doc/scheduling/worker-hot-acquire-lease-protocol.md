@@ -237,9 +237,9 @@ cross-owner transaction.
 | WorkerCandidateAcquirer HOT pool | bounded due-HOT scan, exact lease and full match for precomputation | no cache read/write |
 | WorkerCandidateAcquirer DIRECT | bounded Group score source for `{}` or request-local WorkerId source for explicit rules, point pre-match, exact lease and post-lease rematch | no descriptor scan, index discovery, cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
-| TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
+| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, acquire HOT-pool candidates and publish cache evidence | no Task discovery, Task-score write or result handling |
 | TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable WorkerAllocationMechanism, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
-| TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
+| TaskDispatchPolicy | bounded Task batch, suffix routing, mailbox publication and Task-score pacing | no direct Candidate Cache or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
@@ -257,7 +257,7 @@ payload.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
 - Do not let PRECOMPUTED acquisition fall back to DIRECT acquisition.
-- Do not let TaskItemDispatcher or TaskDispatchPacer call WorkerScoreCore
+- Do not let TaskItemDispatcher or TaskDispatchPolicy call WorkerScoreCore
   directly.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as Adapter rejection.

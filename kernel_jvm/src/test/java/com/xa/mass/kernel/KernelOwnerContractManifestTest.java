@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
@@ -51,10 +50,6 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "CandidateWorkerCache",
                     CandidateWorkerCache.class
-            ),
-            Map.entry(
-                    "CandidateWarmupSchedule",
-                    CandidateWarmupSchedule.class
             ),
             Map.entry(
                     "WorkerCommandRuntime",

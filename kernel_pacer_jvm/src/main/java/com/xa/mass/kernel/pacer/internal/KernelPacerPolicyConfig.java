@@ -14,7 +14,7 @@ import java.util.function.LongSupplier;
 record KernelPacerPolicyConfig(
         ResultConvergenceConfig resultConvergence,
         WorkerServiceabilityAssemblyConfig workerServiceability,
-        AssignmentDispatchApplicationConfig assignmentDispatch
+        AssignmentDispatchConfig assignmentDispatch
 ) {
 
     private static final long LAB_INTERVAL_MILLIS = 20;
@@ -53,7 +53,7 @@ record KernelPacerPolicyConfig(
         return new KernelPacerPolicyConfig(
                 ResultConvergenceConfig.defaults(),
                 WorkerServiceabilityAssemblyConfig.disabled(),
-                AssignmentDispatchApplicationConfig.defaults()
+                AssignmentDispatchConfig.defaults()
         );
     }
 
@@ -68,9 +68,9 @@ record KernelPacerPolicyConfig(
                 enabledServiceability(
                         currentTimeMillis,
                         WorkerServiceabilityResultConfig.defaults(),
-                        WorkerServiceabilityDispatchApplicationConfig.defaults()
+                        WorkerServiceabilityDispatchLaneConfig.defaults()
                 ),
-                AssignmentDispatchApplicationConfig.defaults()
+                AssignmentDispatchConfig.defaults()
         );
     }
 
@@ -85,13 +85,13 @@ record KernelPacerPolicyConfig(
                 enabledServiceability(
                         currentTimeMillis,
                         WorkerServiceabilityResultConfig.defaults(),
-                        WorkerServiceabilityDispatchApplicationConfig.defaults()
+                        WorkerServiceabilityDispatchLaneConfig.defaults()
                 ),
-                AssignmentDispatchApplicationConfig.create(
+                AssignmentDispatchConfig.create(
                         LAB_INTERVAL_MILLIS,
                         LAB_INTERVAL_MILLIS,
                         LAB_INTERVAL_MILLIS,
-                        AssignmentDispatchApplicationConfig
+                        AssignmentDispatchConfig
                                 .DEFAULT_RUNNING_TASK_SOFT_LIMIT
                 )
         );
@@ -110,8 +110,6 @@ record KernelPacerPolicyConfig(
                 );
         WorkerServiceabilityDispatchConfig dispatch =
                 new WorkerServiceabilityDispatchConfig(
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_TASK_SCAN_LIMIT,
                         BOUNDARY_RECOVERY_RETRY_MILLIS,
                         WorkerServiceabilityDispatchConfig
                                 .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
@@ -132,20 +130,20 @@ record KernelPacerPolicyConfig(
                 enabledServiceability(
                         currentTimeMillis,
                         result,
-                        new WorkerServiceabilityDispatchApplicationConfig(
-                                WorkerServiceabilityDispatchApplicationConfig
+                        new WorkerServiceabilityDispatchLaneConfig(
+                                WorkerServiceabilityDispatchLaneConfig
                                         .DEFAULT_INTERVAL_MILLIS,
                                 dispatch
                         )
                 ),
-                AssignmentDispatchApplicationConfig.defaults()
+                AssignmentDispatchConfig.defaults()
         );
     }
 
     private static WorkerServiceabilityAssemblyConfig enabledServiceability(
             LongSupplier currentTimeMillis,
             WorkerServiceabilityResultConfig result,
-            WorkerServiceabilityDispatchApplicationConfig dispatch
+            WorkerServiceabilityDispatchLaneConfig dispatch
     ) {
         long current = currentTimeMillis.getAsLong();
         long floor = current / WorkerScoreCore.SLOT_MILLIS

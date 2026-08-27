@@ -1,18 +1,13 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime
         .ProbeRequestOfferStatus;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
-import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
@@ -20,13 +15,12 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
-final class WorkerServiceabilityDispatchPacer {
+final class WorkerServiceabilityDispatchPolicy {
 
-    private final TaskScoreBandCore taskScore;
-    private final TaskResourceCatalog taskCatalog;
     private final WorkerScoreCore workerScore;
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerServiceabilityRuntime runtime;
@@ -37,16 +31,12 @@ final class WorkerServiceabilityDispatchPacer {
             new LinkedHashMap<>();
     private int groupCursor;
 
-    public WorkerServiceabilityDispatchPacer(
-            TaskScoreBandCore taskScore,
-            TaskResourceCatalog taskCatalog,
+    WorkerServiceabilityDispatchPolicy(
             WorkerScoreCore workerScore,
             WorkerResourceCatalog workerCatalog,
             WorkerServiceabilityRuntime runtime
     ) {
         this(
-                taskScore,
-                taskCatalog,
                 workerScore,
                 workerCatalog,
                 runtime,
@@ -54,51 +44,43 @@ final class WorkerServiceabilityDispatchPacer {
         );
     }
 
-    WorkerServiceabilityDispatchPacer(
-            TaskScoreBandCore taskScore,
-            TaskResourceCatalog taskCatalog,
+    WorkerServiceabilityDispatchPolicy(
             WorkerScoreCore workerScore,
             WorkerResourceCatalog workerCatalog,
             WorkerServiceabilityRuntime runtime,
             LongSupplier currentTimeMillis
     ) {
-        this.taskScore = java.util.Objects.requireNonNull(
-                taskScore,
-                "taskScore"
-        );
-        this.taskCatalog = java.util.Objects.requireNonNull(
-                taskCatalog,
-                "taskCatalog"
-        );
-        this.workerScore = java.util.Objects.requireNonNull(
+        this.workerScore = Objects.requireNonNull(
                 workerScore,
                 "workerScore"
         );
-        this.workerCatalog = java.util.Objects.requireNonNull(
+        this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
         );
-        this.runtime = java.util.Objects.requireNonNull(runtime, "runtime");
-        this.currentTimeMillis = java.util.Objects.requireNonNull(
+        this.runtime = Objects.requireNonNull(runtime, "runtime");
+        this.currentTimeMillis = Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
         );
     }
 
     int dispatchProbes(
+            List<DueTaskObservation> tasks,
             WorkerServiceabilityDispatchConfig config,
             long hotEligibilityFloorMillis
     ) {
-        java.util.Objects.requireNonNull(config, "config");
+        Objects.requireNonNull(tasks, "tasks");
+        Objects.requireNonNull(config, "config");
         WorkerServiceabilityAssemblyConfig.requireFloor(
                 hotEligibilityFloorMillis
         );
         long nowMillis = currentTimeMillis.getAsLong();
-        List<String> workerGroupIds = activeWorkerGroupIds(
-                config.taskScanLimit(),
-                nowMillis / TaskScoreBandCore.SLOT_MILLIS
-                        * TaskScoreBandCore.SLOT_MILLIS
-        );
+        LinkedHashSet<String> groupIds = new LinkedHashSet<>();
+        tasks.forEach(task -> groupIds.add(
+                task.descriptor().workerGroupId()
+        ));
+        List<String> workerGroupIds = List.copyOf(groupIds);
         retainActiveGroupSweeps(workerGroupIds);
         if (workerGroupIds.isEmpty()) {
             groupCursor = 0;
@@ -188,39 +170,6 @@ final class WorkerServiceabilityDispatchPacer {
                     .count();
         }
         return offered;
-    }
-
-    private List<String> activeWorkerGroupIds(
-            int taskScanLimit,
-            long currentSlotMillis
-    ) {
-        List<String> taskIds = taskScore.acquireDispatchWorkTasks(
-                taskScanLimit
-        );
-        if (taskIds.isEmpty()) {
-            return List.of();
-        }
-        Map<String, TaskScoreState> states = taskScore.getScoreStates(taskIds);
-        Map<String, TaskDescriptor> descriptors =
-                taskCatalog.loadTaskAllocationDescriptors(taskIds);
-        LinkedHashSet<String> workerGroupIds = new LinkedHashSet<>();
-        for (String taskId : taskIds) {
-            TaskScoreState state = states.get(taskId);
-            TaskDescriptor descriptor = descriptors.get(taskId);
-            if (state == null
-                    || state.band() != TaskScoreBand.RUNNING_VISIBLE
-                    || state.timeMillis() == null
-                    || state.timeMillis() >= currentSlotMillis
-                    || state.timeMillis()
-                    == TaskScoreBandCore.PAUSE_TIME_MILLIS
-                    || state.suffix() == null
-                    || descriptor == null
-                    || !taskId.equals(descriptor.taskId())) {
-                continue;
-            }
-            workerGroupIds.add(descriptor.workerGroupId());
-        }
-        return List.copyOf(workerGroupIds);
     }
 
     private void retainActiveGroupSweeps(List<String> workerGroupIds) {

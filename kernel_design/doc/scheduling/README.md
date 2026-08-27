@@ -135,9 +135,9 @@ WorkerScoreCore and worker-runtime
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
-CandidateWarmupSchedule
-  owns disposable PRECOMPUTED_TASK_RULE cache-replenishment hints only; it is not Task
-  score, assignment, or liveness truth
+TaskSchedulingBatchSource
+  owns bounded ADMISSION and RUNNING Task discovery and emits immutable
+  DueTaskObservation batches; it owns no persistent state
 
 TaskItemDispatcher
   owns one suffix-zero Task's bounded Item observation, Worker acquisition,
@@ -165,7 +165,7 @@ WorkerServiceabilityRuntime
   owns Adapter-partitioned coalesced probe requests and one bounded batch
   Report handoff; neither structure is current connection or score truth
 
-WorkerServiceabilityDispatchPacer / ResultPolicy
+WorkerServiceabilityDispatchPolicy / ResultPolicy
   derive demanded Groups from due Tasks, discover old score coordinates, and
   translate valid Adapter route snapshots into bounded WorkerScore operations
 
@@ -173,8 +173,9 @@ Fixed Result Batch policies
   compose Task and Worker owner operations without owning their truth; they are
   not a registry, SPI or replacement-handler surface
 
-Other scheduling pacers
-  compose declared owner operations in bounded rounds; they do not copy truth
+DispatchConvergenceApplication
+  shares one verified RUNNING Task batch across fixed single-flight policies;
+  busy lanes skip without creating a replay hint
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
@@ -201,8 +202,8 @@ Worker Delivery Dispatch
 | Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Implemented with Python Oracle plus Java production Redis operations for append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
-| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; PRECOMPUTED_TASK_RULE has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING same-band reschedule, immediate idle close or private idle park, and DeliveryCommand append; both allocation mechanisms have deterministic Redis proof and DIRECT_ITEM_RULE proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Worker allocation | Implemented as a shared-RUNNING-source Policy that fills PRECOMPUTED Task candidate deficits through HOT-pool acquisition; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
+| Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy and Python Oracle implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 

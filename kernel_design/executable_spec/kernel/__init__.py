@@ -61,7 +61,6 @@ from .assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerCache,
     CandidateWorkerEntry,
-    CandidateWarmupSchedule,
 )
 from .worker_delivery import (
     SUCCESS_OUTCOME_CODE,
@@ -137,7 +136,6 @@ __all__ = [
     "TaskItemScoreTransitionResult",
     "TaskItemScoreTransitionStatus",
     "CandidateWorkerEntry",
-    "CandidateWarmupSchedule",
     "SUCCESS_OUTCOME_CODE",
     "WORKER_CONNECTION_CLOSE_EVENT_CODE",
     "WORKER_CONNECTION_IDENTIFY_EVENT_CODE",

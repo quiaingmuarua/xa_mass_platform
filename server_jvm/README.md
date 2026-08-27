@@ -31,8 +31,9 @@ KernelPacerAssembly
   -> kernel_pacer_jvm KernelPacerRuntime
      -> Java ResultConvergenceApplication
         -> TASK_SUCCESS / TASK_FAILURE / optional ADAPTER_EVIDENCE lanes
-     -> Java WorkerServiceabilityDispatchApplication (when configured)
-     -> Java AssignmentDispatchApplication
+     -> Java DispatchConvergenceApplication
+        -> ADMISSION activation lane
+        -> shared RUNNING allocation / dispatch / optional serviceability lanes
      -> one bounded reverse shutdown
 
 Worker Identity / Binding
@@ -62,7 +63,7 @@ Provider ownership is deliberately mixed but explicit:
 | Worker resources, selected Task data and Worker scheduling operations | JVM owner contracts with Java Redis providers |
 | DeliveryCommand consume and DeliveryReport append | Java Redis delivery providers |
 | Result Convergence | `kernel_pacer_jvm` fixed Task success/failure and optional Adapter Evidence lanes over Java owners |
-| Worker Serviceability Dispatch bridge | `kernel_pacer_jvm` request producer plus lowest-priority Server Adapter snapshot construction |
+| Worker Serviceability Dispatch bridge | shared Task-source Kernel lane plus lowest-priority Server Adapter snapshot construction |
 | Worker Identity and Endpoint Binding | Server-owned Redis boundaries |
 | Managed Task Call and finite Result export | Server-bounded use cases over Kernel Task Call submission, Task score observation and Result owner reads |
 | Worker Direct Command slot | `WorkerCommandRuntime` shared Redis Hash |
@@ -449,7 +450,7 @@ scheduler, queues, current route registry and physical Channels remain owned by
 Long-lived Worker identity carries `workerId` in the Report source and exact
 `null` payload. Adapter routing and retained verification use only workerId;
 WorkerGroup remains outside the Transport route. The optional Kernel
-Serviceability Dispatch Pacer writes Adapter-partitioned probe requests. Server
+Serviceability Dispatch lane writes Adapter-partitioned probe requests. Server
 destructively consumes a bounded request set only at the lowest Command-response
 priority and constructs one `KERNEL -> ADAPTER`
 `platform.adapter.worker-connections.snapshot` Command. The ordinary Adapter
@@ -607,9 +608,10 @@ GET /actuator/health/readiness
 ```
 
 Liveness covers the JVM process. Readiness requires Result Convergence,
-configured Worker Serviceability Dispatch, Assignment Dispatch and Kernel
-Redis to remain available. The `kernel` health contributor exposes only the
-aggregate lifecycle and three Java application states.
+Dispatch Convergence and Kernel Redis to remain available. The optional
+Serviceability lane is part of Dispatch Convergence rather than a separate
+lifecycle. The `kernel` health contributor exposes only the aggregate lifecycle
+and the two Java convergence-application states.
 
 ## Verification
 
@@ -623,8 +625,9 @@ aggregate lifecycle and three Java application states.
 
 The two integration tasks use the checked `integration-test` profile with
 Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary selects
-`RUNTIME_BOUNDARY_PROOF` and starts one Java Spring context and all four Java
-applications. No Python process or second host is started by the test operator.
+`RUNTIME_BOUNDARY_PROOF` and starts one Java Spring context and both Java
+convergence applications. No Python process or second host is started by the
+test operator.
 
 The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
 `preset`, and `shutdown-timeout`. Spring accepts the normal
@@ -647,10 +650,11 @@ Exactly one Server instance per Redis scope may have the Pacer lifecycle
 enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;
 there is no distributed leader election.
 
-Result Convergence starts first, optional Serviceability Dispatch starts
-second and Assignment Dispatch starts last. Worker/Adapter assembly starts
-after the aggregate reaches `RUNNING`. Shutdown uses one shared deadline in
-the exact reverse order. A failed start rolls back every already-started Java
+Result Convergence starts first and Dispatch Convergence starts second.
+Dispatch Convergence owns the fixed Activation, Allocation, Task Dispatch and
+optional Serviceability lanes. Worker/Adapter assembly starts after the
+aggregate reaches `RUNNING`. Shutdown uses one shared deadline in the exact
+reverse order. A failed start rolls back every already-started Java
 application.
 
 The Runtime Boundary proof closes real polling, WebSocket and Socket Task

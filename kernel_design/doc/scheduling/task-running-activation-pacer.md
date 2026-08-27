@@ -1,11 +1,11 @@
-# Task Running Activation Pacer
+# Task Running Activation Policy
 
 Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
 ## Purpose
 
-`TaskRunningActivationPacer` is the explicit admission boundary between an
+`TaskRunningActivationPolicy` is the explicit admission boundary between an
 approved Task and ordinary Worker allocation:
 
 ```text
@@ -87,22 +87,22 @@ Priority does not change which Tasks enter the bounded observation window and
 does not promise a global strict-priority scan.
 
 It returns at most `availableSlots` Tasks. The limit is deliberately soft:
-concurrent pacer instances may observe the same count and temporarily exceed
+concurrent policy rounds may observe the same count and temporarily exceed
 it. A hard cap would require an atomic permit owner, which is not part of this
 mechanism.
 
 ## Round Flow
 
 ```text
-1. scan one bounded due ADMISSION_VISIBLE observation window
-2. batch load observed score states and TaskDescriptor values
-3. apply TaskAdmissionPolicy to descriptor-backed Tasks
-4. validate ordered subset
-5. apply SystemAdmissionPolicy
-6. validate ordered subset
-7. request ADMISSION_VISIBLE -> RUNNING_VISIBLE for selected Tasks
-8. reschedule every observed Task that did not transition
-9. count only TRANSITIONED results
+1. consume one immutable ADMISSION `DueTaskObservation` batch from the shared
+   `TaskSchedulingBatchSource`
+2. apply TaskAdmissionPolicy to descriptor-backed Tasks
+3. validate ordered subset
+4. apply SystemAdmissionPolicy
+5. validate ordered subset
+6. request ADMISSION_VISIBLE -> RUNNING_VISIBLE for selected Tasks
+7. reschedule every observed Task that did not transition
+8. count only TRANSITIONED results
 ```
 
 The transition uses the round timestamp and always initializes RUNNING suffix
@@ -136,13 +136,11 @@ the lifecycle admission mechanism.
 
 ```python
 TaskRunningActivationConfig(
-    task_batch_limit,
     priority_recheck_step_millis=1000,
 )
 
-TaskRunningActivationPacer(
+TaskRunningActivationPolicy(
     task_score,
-    task_catalog,
     task_admission_policy,
     system_admission_policy,
 )

@@ -31,9 +31,9 @@ from ..kernel import (
 )
 from ..redis_runtime.keyspace import RedisKeyspace
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
-from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
-from .worker_serviceability_application import (
-    WorkerServiceabilityDispatchApplicationConfig,
+from .dispatch_convergence_application import (
+    AssignmentDispatchConfig,
+    WorkerServiceabilityDispatchLaneConfig,
 )
 
 
@@ -49,7 +49,6 @@ _DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
 
-_TASK_BATCH_LIMIT = 100
 _WORKER_SCAN_LIMIT = 100
 _WORKER_LEASE_DURATION_MILLIS = 5_000
 _PER_TASK_DISPATCH_LIMIT = 100
@@ -98,7 +97,6 @@ def _reject_unknown(
 
 @dataclass(frozen=True, slots=True)
 class WorkerServiceabilityConfig:
-    task_scan_limit: int = 100
     dispatch_interval_millis: int = _DEFAULT_SERVICEABILITY_DISPATCH_INTERVAL_MILLIS
     result_interval_millis: int = _DEFAULT_SERVICEABILITY_RESULT_INTERVAL_MILLIS
     recovery_retry_interval_millis: int = 60_000
@@ -116,7 +114,6 @@ class WorkerServiceabilityConfig:
 
     def __post_init__(self) -> None:
         for value, name in (
-            (self.task_scan_limit, "serviceability Task scan limit"),
             (self.dispatch_interval_millis, "serviceability dispatch interval"),
             (self.result_interval_millis, "serviceability result interval"),
             (self.recovery_retry_interval_millis, "recovery retry interval"),
@@ -132,7 +129,6 @@ class WorkerServiceabilityConfig:
         ):
             _positive_integer(value, name=name)
         dispatch = WorkerServiceabilityDispatchConfig(
-            task_scan_limit=self.task_scan_limit,
             recovery_retry_interval_millis=self.recovery_retry_interval_millis,
             probe_sweep_restart_delay_millis=(
                 self.probe_sweep_restart_delay_millis
@@ -149,7 +145,6 @@ class WorkerServiceabilityConfig:
             result_report_limit=self.result_report_limit,
             evidence_max_age_millis=self.evidence_max_age_millis,
         )
-        object.__setattr__(self, "task_scan_limit", dispatch.task_scan_limit)
         object.__setattr__(
             self,
             "probe_excluded_endpoint_manager_ids",
@@ -280,7 +275,6 @@ class KernelApplicationConfig:
                 raw_serviceability,
                 allowed=frozenset(
                     {
-                        "taskScanLimit",
                         "dispatchIntervalMillis",
                         "resultIntervalMillis",
                         "recoveryRetryIntervalMillis",
@@ -296,10 +290,6 @@ class KernelApplicationConfig:
                 name="workerServiceability config",
             )
             serviceability_config = WorkerServiceabilityConfig(
-                task_scan_limit=_positive_integer(
-                    raw_serviceability.get("taskScanLimit", 100),
-                    name="serviceability Task scan limit",
-                ),
                 dispatch_interval_millis=_positive_integer(
                     raw_serviceability.get(
                         "dispatchIntervalMillis",
@@ -667,19 +657,16 @@ class KernelApplication:
             running_task_soft_limit=config.running_task_soft_limit,
             worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
             hot_eligibility_floor_millis=hot_eligibility_floor_millis,
-            assignment_dispatch=AssignmentDispatchApplicationConfig(
+            assignment_dispatch=AssignmentDispatchConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
-                    task_batch_limit=_TASK_BATCH_LIMIT,
                     worker_lease_duration_millis=_WORKER_LEASE_DURATION_MILLIS,
                 ),
                 running_activation=TaskRunningActivationConfig(
-                    task_batch_limit=_TASK_BATCH_LIMIT,
                     priority_recheck_step_millis=(
                         _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS
                     ),
                 ),
                 task_dispatch=TaskDispatchConfig(
-                    task_batch_limit=_TASK_BATCH_LIMIT,
                     per_task_dispatch_limit=_PER_TASK_DISPATCH_LIMIT,
                     item_claim_lease_duration_millis=(
                         _ITEM_CLAIM_LEASE_DURATION_MILLIS
@@ -704,11 +691,8 @@ class KernelApplication:
             worker_serviceability_dispatch=(
                 None
                 if config.worker_serviceability is None
-                else WorkerServiceabilityDispatchApplicationConfig(
+                else WorkerServiceabilityDispatchLaneConfig(
                     dispatch=WorkerServiceabilityDispatchConfig(
-                        task_scan_limit=(
-                            config.worker_serviceability.task_scan_limit
-                        ),
                         recovery_retry_interval_millis=(
                             config.worker_serviceability
                             .recovery_retry_interval_millis

@@ -1,13 +1,13 @@
 package com.xa.mass.kernel.pacer;
 
-record WorkerServiceabilityDispatchApplicationConfig(
+record WorkerServiceabilityDispatchLaneConfig(
         long intervalMillis,
         WorkerServiceabilityDispatchConfig dispatch
 ) {
 
-    public static final long DEFAULT_INTERVAL_MILLIS = 1_000;
+    static final long DEFAULT_INTERVAL_MILLIS = 1_000;
 
-    public WorkerServiceabilityDispatchApplicationConfig {
+    WorkerServiceabilityDispatchLaneConfig {
         if (intervalMillis < 1) {
             throw new IllegalArgumentException(
                     "intervalMillis must be positive"
@@ -16,8 +16,8 @@ record WorkerServiceabilityDispatchApplicationConfig(
         java.util.Objects.requireNonNull(dispatch, "dispatch");
     }
 
-    public static WorkerServiceabilityDispatchApplicationConfig defaults() {
-        return new WorkerServiceabilityDispatchApplicationConfig(
+    static WorkerServiceabilityDispatchLaneConfig defaults() {
+        return new WorkerServiceabilityDispatchLaneConfig(
                 DEFAULT_INTERVAL_MILLIS,
                 WorkerServiceabilityDispatchConfig.defaults()
         );

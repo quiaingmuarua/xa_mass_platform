@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer;
 
-import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
@@ -45,8 +44,7 @@ public final class KernelPacerRuntime {
     public record Snapshot(
             State state,
             String resultConvergenceState,
-            String workerServiceabilityDispatchState,
-            String assignmentDispatchState
+            String dispatchConvergenceState
     ) {
         public Snapshot {
             Objects.requireNonNull(state, "state");
@@ -55,12 +53,8 @@ public final class KernelPacerRuntime {
                     "resultConvergenceState"
             );
             Objects.requireNonNull(
-                    workerServiceabilityDispatchState,
-                    "workerServiceabilityDispatchState"
-            );
-            Objects.requireNonNull(
-                    assignmentDispatchState,
-                    "assignmentDispatchState"
+                    dispatchConvergenceState,
+                    "dispatchConvergenceState"
             );
         }
     }
@@ -68,17 +62,14 @@ public final class KernelPacerRuntime {
     private final Duration shutdownTimeout;
     private final KernelPacerPolicyConfig policy;
     private final ResultConvergenceApplication resultConvergence;
-    private final WorkerServiceabilityDispatchApplication
-            serviceabilityDispatch;
-    private final AssignmentDispatchApplication assignmentDispatch;
+    private final DispatchConvergenceApplication dispatchConvergence;
     private State state = State.STOPPED;
 
     KernelPacerRuntime(
             Duration shutdownTimeout,
             KernelPacerPolicyConfig policy,
             ResultConvergenceApplication resultConvergence,
-            WorkerServiceabilityDispatchApplication serviceabilityDispatch,
-            AssignmentDispatchApplication assignmentDispatch
+            DispatchConvergenceApplication dispatchConvergence
     ) {
         this.shutdownTimeout = requirePositive(
                 shutdownTimeout,
@@ -89,13 +80,9 @@ public final class KernelPacerRuntime {
                 resultConvergence,
                 "resultConvergence"
         );
-        this.serviceabilityDispatch = Objects.requireNonNull(
-                serviceabilityDispatch,
-                "serviceabilityDispatch"
-        );
-        this.assignmentDispatch = Objects.requireNonNull(
-                assignmentDispatch,
-                "assignmentDispatch"
+        this.dispatchConvergence = Objects.requireNonNull(
+                dispatchConvergence,
+                "dispatchConvergence"
         );
     }
 
@@ -111,8 +98,7 @@ public final class KernelPacerRuntime {
             WorkerResourceCatalog workerCatalog,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            CandidateWorkerCache candidateCache,
-            CandidateWarmupSchedule warmups
+            CandidateWorkerCache candidateCache
     ) {
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
@@ -188,23 +174,14 @@ public final class KernelPacerRuntime {
                         resultLanes,
                         ResultConvergenceConfig.GLOBAL_MAX_CONCURRENCY
                 );
-        WorkerServiceabilityDispatchApplication serviceabilityDispatch =
-                new WorkerServiceabilityDispatchApplication(
-                        new WorkerServiceabilityDispatchPacer(
-                                Objects.requireNonNull(
-                                        taskScores,
-                                        "taskScores"
-                                ),
-                                Objects.requireNonNull(
-                                        taskCatalog,
-                                        "taskCatalog"
-                                ),
-                                workerScores,
-                                workerCatalog,
-                                serviceability
-                        )
-                );
-
+        TaskScoreBandCore requiredTaskScores = Objects.requireNonNull(
+                taskScores,
+                "taskScores"
+        );
+        TaskResourceCatalog requiredTaskCatalog = Objects.requireNonNull(
+                taskCatalog,
+                "taskCatalog"
+        );
         WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(
                 workerCatalog
         );
@@ -216,53 +193,56 @@ public final class KernelPacerRuntime {
                         ),
                         workerScores,
                         matcher,
-                        AssignmentDispatchApplicationConfig.WORKER_SCAN_LIMIT,
+                        AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
                         serviceabilityPolicy.enabled()
                                 ? serviceabilityPolicy
                                 .hotEligibilityFloorMillis()
                                 : null
                 );
-        TaskWorkerAllocationPacer allocation =
-                new TaskWorkerAllocationPacer(
-                        Objects.requireNonNull(warmups, "warmups"),
-                        taskScores,
-                        taskCatalog,
+        TaskWorkerAllocationPolicy allocation =
+                new TaskWorkerAllocationPolicy(
                         candidateAcquirer,
                         candidateCache
                 );
-        TaskRunningActivationPacer activation =
-                new TaskRunningActivationPacer(
-                        taskScores,
-                        itemScores,
-                        taskCatalog,
-                        warmups
+        TaskRunningActivationPolicy activation =
+                new TaskRunningActivationPolicy(
+                        requiredTaskScores,
+                        itemScores
                 );
         TaskItemDispatcher itemDispatcher = new TaskItemDispatcher(
                 itemScores,
                 taskRuntime,
                 candidateAcquirer,
-                warmups,
                 new ResultContextCodec()
         );
-        TaskDispatchPacer dispatch = new TaskDispatchPacer(
-                taskScores,
-                taskCatalog,
+        TaskDispatchPolicy dispatch = new TaskDispatchPolicy(
+                requiredTaskScores,
                 Objects.requireNonNull(workerCommands, "workerCommands"),
                 itemScores,
                 itemDispatcher
         );
-        AssignmentDispatchApplication assignmentDispatch =
-                new AssignmentDispatchApplication(
-                        allocation,
+        WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
+                new WorkerServiceabilityDispatchPolicy(
+                        workerScores,
+                        workerCatalog,
+                        serviceability
+                );
+        DispatchConvergenceApplication dispatchConvergence =
+                new DispatchConvergenceApplication(
+                        new TaskSchedulingBatchSource(
+                                requiredTaskScores,
+                                requiredTaskCatalog
+                        ),
                         activation,
-                        dispatch
+                        allocation,
+                        dispatch,
+                        serviceabilityDispatch
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,
                 policy,
                 resultConvergence,
-                serviceabilityDispatch,
-                assignmentDispatch
+                dispatchConvergence
         );
     }
 
@@ -274,29 +254,21 @@ public final class KernelPacerRuntime {
         }
         state = State.STARTING;
         boolean resultStarted = false;
-        boolean serviceabilityDispatchStarted = false;
-        boolean assignmentStarted = false;
+        boolean dispatchStarted = false;
         try {
             resultConvergence.start();
             resultStarted = true;
-            if (policy.workerServiceability().enabled()) {
-                long floor = policy.workerServiceability()
-                        .hotEligibilityFloorMillis();
-                serviceabilityDispatch.start(
-                        policy.workerServiceability().dispatch(),
-                        floor
-                );
-                serviceabilityDispatchStarted = true;
-            }
-            assignmentDispatch.start(policy.assignmentDispatch());
-            assignmentStarted = true;
+            dispatchConvergence.start(
+                    policy.assignmentDispatch(),
+                    policy.workerServiceability()
+            );
+            dispatchStarted = true;
             state = State.RUNNING;
         } catch (RuntimeException failure) {
             rollbackStarted(
                     failure,
                     resultStarted,
-                    serviceabilityDispatchStarted,
-                    assignmentStarted
+                    dispatchStarted
             );
             state = State.FAILED;
             throw failure;
@@ -311,16 +283,9 @@ public final class KernelPacerRuntime {
         RuntimeException firstFailure = null;
         long deadline = System.nanoTime() + shutdownTimeout.toNanos();
         try {
-            assignmentDispatch.stop(remainingMillis(deadline));
+            dispatchConvergence.stop(remainingMillis(deadline));
         } catch (RuntimeException failure) {
             firstFailure = failure;
-        }
-        if (policy.workerServiceability().enabled()) {
-            try {
-                serviceabilityDispatch.stop(remainingMillis(deadline));
-            } catch (RuntimeException failure) {
-                firstFailure = accumulate(firstFailure, failure);
-            }
         }
         try {
             resultConvergence.stop(remainingMillis(deadline));
@@ -342,24 +307,17 @@ public final class KernelPacerRuntime {
 
     public synchronized Snapshot snapshot() {
         refreshUnexpectedExit();
-        boolean serviceabilityEnabled = policy.workerServiceability()
-                .enabled();
         return new Snapshot(
                 state,
                 resultConvergence.state(),
-                serviceabilityEnabled
-                        ? serviceabilityDispatch.state()
-                        : "DISABLED",
-                assignmentDispatch.state()
+                dispatchConvergence.state()
         );
     }
 
     private void refreshUnexpectedExit() {
         if (state == State.RUNNING
                 && (!resultConvergence.isRunning()
-                || !assignmentDispatch.isRunning()
-                || policy.workerServiceability().enabled()
-                && !serviceabilityDispatch.isRunning())) {
+                || !dispatchConvergence.isRunning())) {
             state = State.FAILED;
         }
     }
@@ -367,20 +325,13 @@ public final class KernelPacerRuntime {
     private void rollbackStarted(
             RuntimeException startFailure,
             boolean resultStarted,
-            boolean serviceabilityDispatchStarted,
-            boolean assignmentStarted
+            boolean dispatchStarted
     ) {
         long deadline = System.nanoTime() + shutdownTimeout.toNanos();
-        if (assignmentStarted) {
+        if (dispatchStarted) {
             stopForRollback(
                     startFailure,
-                    () -> assignmentDispatch.stop(remainingMillis(deadline))
-            );
-        }
-        if (serviceabilityDispatchStarted) {
-            stopForRollback(
-                    startFailure,
-                    () -> serviceabilityDispatch.stop(
+                    () -> dispatchConvergence.stop(
                             remainingMillis(deadline)
                     )
             );

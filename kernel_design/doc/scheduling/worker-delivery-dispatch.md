@@ -204,7 +204,7 @@ endpointManagerId -> workerId -> DeliveryCommand
 is the mailbox field and active-channel route. Neither is duplicated inside
 the command.
 
-`TaskDispatchPacer` appends one Map per endpoint-manager bucket. A Worker lease
+`TaskDispatchPolicy` appends one Map per endpoint-manager bucket. A Worker lease
 prevents a second valid concurrent assignment. If a mailbox field still
 exists, it is stale transport residue; append first uses `HSETNX`, then replaces
 the occupied residue. The new lease-backed command is authoritative, including

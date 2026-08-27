@@ -4,7 +4,6 @@ import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
-import com.xa.mass.kernel.assignment.redis.RedisCandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.redis.RedisCandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandAppendStatus;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
@@ -34,7 +33,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisCandidateWorkerCache candidateCache;
-    private RedisCandidateWarmupSchedule warmups;
     private RedisWorkerCommandRuntime commands;
 
     @BeforeEach
@@ -45,7 +43,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
         candidateCache = new RedisCandidateWorkerCache(redisClient, keyspace);
-        warmups = new RedisCandidateWarmupSchedule(redisClient, keyspace);
         commands = new RedisWorkerCommandRuntime(
                 redisClient,
                 new WorkerDeliveryCodec(),
@@ -61,9 +58,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         if (candidateCache != null) {
             candidateCache.close();
         }
-        if (warmups != null) {
-            warmups.close();
-        }
         if (commands != null) {
             commands.close();
         }
@@ -78,23 +72,6 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
     @Test
     void candidateEvidenceIsBoundedExpiringAndDestructivelyConsumed() {
         long nowMillis = redisTimeMillis();
-        warmups.scheduleCandidateWarmups(
-                List.of("task-b", "task-a", "task-a"),
-                nowMillis
-        );
-        assertThat(warmups.consumeDueCandidateWarmups(
-                nowMillis,
-                1
-        )).containsExactly("task-a");
-        assertThat(warmups.consumeDueCandidateWarmups(
-                nowMillis,
-                10
-        )).containsExactly("task-b");
-        assertThat(warmups.consumeDueCandidateWarmups(
-                nowMillis,
-                10
-        )).isEmpty();
-
         CandidateWorkerEntry first = new CandidateWorkerEntry(
                 "worker-1",
                 "group-1",

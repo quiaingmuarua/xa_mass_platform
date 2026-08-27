@@ -51,7 +51,6 @@ Adapter evidence      xa_mass:<scope>:worker:serviceability:evidence_results
 
 Delivery commands     xa_mass:<scope>:delivery:commands:<endpointManagerId>
 Result routing        xa_mass:<scope>:result:routing:<outcomeClass>
-Candidate warmups     xa_mass:<scope>:dispatch:candidate_warmups
 Candidate workers     xa_mass:<scope>:dispatch:candidate:<candidateId>:workers
 ```
 

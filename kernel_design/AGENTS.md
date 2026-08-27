@@ -42,11 +42,11 @@ a Kernel mechanism decision.
   Worker score, DeliveryCommand and result disposition remain distinct owners.
 - Score is a scheduling coordinate, not a resource lock or general version.
 - Keep score values opaque outside score-owner operations.
-- Assignment Dispatch may orchestrate bounded owner reads and transitions; it
+- Dispatch Convergence may orchestrate bounded owner reads and transitions; it
   does not merge owner truth.
 - Result Routing owns retry/finality policy and accepted evidence disposition.
-- Python Result Routing, Worker Serviceability and Assignment Dispatch remain
-  mechanism oracles. Their fixed Java implementations are the only production
+- Python Result and Dispatch Convergence remain mechanism oracles. Their fixed
+  Java implementations are the only production
   Pacers. Do not add a managed Python mode, fallback, dual-consumer or
   dual-producer path.
 - Worker Delivery carries already-assigned work and never selects a Worker or

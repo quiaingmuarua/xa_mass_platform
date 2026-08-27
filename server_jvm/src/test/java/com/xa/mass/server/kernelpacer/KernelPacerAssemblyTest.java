@@ -89,7 +89,6 @@ class KernelPacerAssemblyTest {
         return new KernelPacerRuntime.Snapshot(
                 state,
                 state.name(),
-                state.name(),
                 state.name()
         );
     }

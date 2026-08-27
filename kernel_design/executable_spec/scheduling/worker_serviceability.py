@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from enum import Enum
 from time import time_ns
 
-from ..kernel.task_runtime import TaskResourceCatalog
-from ..kernel.task_score_band import TaskScoreBand, TaskScoreBandCore
 from ..kernel.worker_delivery import DeliveryEndpoint, DeliveryReport
 from ..kernel.worker_runtime import WorkerResourceCatalog
 from ..kernel.worker_score import (
@@ -21,6 +19,7 @@ from ..kernel.worker_serviceability import (
     ProbeRequestOfferStatus,
     WorkerServiceabilityRuntime,
 )
+from .task_scheduling_batch_source import DueTaskObservation
 
 
 _PROBE_EVENT = "platform.adapter.worker-connections.snapshot"
@@ -39,7 +38,6 @@ def _current_time_millis() -> int:
 
 @dataclass(frozen=True, slots=True)
 class WorkerServiceabilityDispatchConfig:
-    task_scan_limit: int = 100
     recovery_retry_interval_millis: int = 60_000
     probe_sweep_restart_delay_millis: int = 10_000
     max_recovery_attempts: int = 5
@@ -66,7 +64,6 @@ class WorkerServiceabilityDispatchConfig:
         if any(
             isinstance(value, bool) or not isinstance(value, int) or value <= 0
             for value in (
-                self.task_scan_limit,
                 self.recovery_retry_interval_millis,
                 self.probe_sweep_restart_delay_millis,
                 self.max_recovery_attempts,
@@ -75,8 +72,6 @@ class WorkerServiceabilityDispatchConfig:
             )
         ):
             raise ValueError("serviceability durations and limits must be positive")
-        if self.task_scan_limit > 100:
-            raise ValueError("serviceability Task scan limit must be in 1..100")
         if self.hot_scan_limit + self.recovery_scan_limit > 100:
             raise ValueError("serviceability scan limits must total at most 100")
         if self.max_recovery_attempts > WorkerScoreCore.MAX_LANE_RANK:
@@ -120,13 +115,11 @@ class _ProbeScoreSweep:
     resume_at_millis: int = 0
 
 
-class WorkerServiceabilityDispatchPacer:
+class WorkerServiceabilityDispatchPolicy:
     """Offer pre-epoch HOT and due RECOVERY Workers for Adapter probing."""
 
     def __init__(
         self,
-        task_score: TaskScoreBandCore,
-        task_catalog: TaskResourceCatalog,
         worker_score: WorkerScoreCore,
         worker_catalog: WorkerResourceCatalog,
         runtime: WorkerServiceabilityRuntime,
@@ -141,8 +134,6 @@ class WorkerServiceabilityDispatchPacer:
             or hot_eligibility_floor_millis % WorkerScoreCore.SLOT_MILLIS != 0
         ):
             raise ValueError("HOT eligibility floor must be score-slot aligned")
-        self.task_score = task_score
-        self.task_catalog = task_catalog
         self.worker_score = worker_score
         self.worker_catalog = worker_catalog
         self.runtime = runtime
@@ -154,18 +145,15 @@ class WorkerServiceabilityDispatchPacer:
 
     def dispatch_probes(
         self,
+        tasks: Sequence[DueTaskObservation],
         *,
         config: WorkerServiceabilityDispatchConfig,
     ) -> int:
         now_millis = self._clock_millis()
-        worker_group_ids = self._active_worker_group_ids(
-            task_scan_limit=config.task_scan_limit,
-            current_slot_millis=(
-                now_millis
-                // TaskScoreBandCore.SLOT_MILLIS
-                * TaskScoreBandCore.SLOT_MILLIS
-            ),
-        )
+        worker_group_ids = tuple(dict.fromkeys(
+            task.descriptor.worker_group_id
+            for task in tasks
+        ))
         self._retain_active_group_sweeps(worker_group_ids)
         if not worker_group_ids:
             self._group_cursor = 0
@@ -248,37 +236,6 @@ class WorkerServiceabilityDispatchPacer:
                 for status in statuses.values()
             )
         return offered
-
-    def _active_worker_group_ids(
-        self,
-        *,
-        task_scan_limit: int,
-        current_slot_millis: int,
-    ) -> tuple[str, ...]:
-        task_ids = tuple(
-            self.task_score.acquire_dispatch_work_tasks(limit=task_scan_limit)
-        )
-        if not task_ids:
-            return ()
-
-        states = self.task_score.get_score_states(task_ids=task_ids)
-        descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=task_ids,
-        )
-        return tuple(
-            dict.fromkeys(
-                descriptor.worker_group_id
-                for task_id in task_ids
-                if (state := states.get(task_id)) is not None
-                and state.band is TaskScoreBand.RUNNING_VISIBLE
-                and state.time_millis is not None
-                and state.time_millis < current_slot_millis
-                and state.time_millis != TaskScoreBandCore.PAUSE_TIME_MILLIS
-                and state.suffix is not None
-                and (descriptor := descriptors.get(task_id)) is not None
-                and descriptor.task_id == task_id
-            )
-        )
 
     def _retain_active_group_sweeps(
         self,

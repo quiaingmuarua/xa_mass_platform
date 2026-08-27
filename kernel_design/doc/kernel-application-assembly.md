@@ -2,23 +2,25 @@
 
 Status: active Kernel application and production lifecycle contract.
 
-## Two Deliberately Separate Assemblies
+## Production And Oracle Assemblies
 
 Production is Java-only:
 
 ```text
 Java Server
-  -> KernelPacerAssembly                  Spring lifecycle adapter
-     -> KernelPacerRuntime                kernel_pacer_jvm
+  -> KernelPacerAssembly                 Spring lifecycle adapter
+     -> KernelPacerRuntime               kernel_pacer_jvm
         -> ResultConvergenceApplication
-           -> TASK_SUCCESS virtual batch
-           -> TASK_FAILURE virtual batch
-           -> ADAPTER_EVIDENCE virtual batch            optional
-        -> WorkerServiceabilityDispatchApplication     optional
-        -> AssignmentDispatchApplication
-           -> TaskWorkerAllocationPacer
-           -> TaskRunningActivationPacer
-           -> TaskDispatchPacer
+           -> TASK_SUCCESS virtual batches
+           -> TASK_FAILURE virtual batches
+           -> ADAPTER_EVIDENCE virtual batch             optional
+        -> DispatchConvergenceApplication
+           -> ADMISSION Task Source
+              -> RUNNING_ACTIVATION virtual batch
+           -> shared due RUNNING Task Source
+              -> WORKER_ALLOCATION virtual batch
+              -> TASK_DISPATCH virtual batch
+              -> WORKER_SERVICEABILITY virtual batch     optional
 ```
 
 The Python executable specification remains the standalone mechanism Oracle:
@@ -26,25 +28,13 @@ The Python executable specification remains the standalone mechanism Oracle:
 ```text
 python -m kernel_design.executable_spec.assembly --config <path>
   -> KernelApplication
-     -> complete Python Result, Serviceability and Assignment mechanisms
+     -> Result Convergence
+     -> Dispatch Convergence
 ```
 
-A minimal isolated Oracle configuration is:
-
-```json
-{
-  "redis": {
-    "url": "redis://127.0.0.1:6379/15",
-    "scope": "test_oracle_local"
-  },
-  "workerServiceability": {}
-}
-```
-
-The Oracle exposes no HTTP surface, managed-child mode or selectively disabled
-production mode. It is not packaged in the Server Runtime. Its required config
-must select an explicit isolated `test_*` Redis scope; the CLI rejects
-`profile_*` scopes before constructing the application.
+The Oracle exposes no HTTP surface, managed-child mode, or selectively disabled
+production mode. It must use an isolated `test_*` Redis scope and is not
+packaged in the Server Runtime.
 
 ## Production Configuration
 
@@ -57,197 +47,150 @@ xa.mass.kernel-pacer:
   shutdown-timeout: 5s
 ```
 
-`kernel_pacer_jvm` owns exactly four checked presets:
+`kernel_pacer_jvm` owns the checked presets and interprets all policy values.
+Server passes the selected preset to `KernelPacerRuntime.assemble(...)`; it
+does not inspect lane policy. There is no production Pacer JSON, dynamic lane
+registry, or per-field Server override.
 
-| Preset | Assembly |
-| --- | --- |
-| `DEFAULT` | Ordinary Server and AgentForge; Serviceability disabled |
-| `SERVICEABILITY_DEFAULT` | Normal production cadence with Serviceability enabled |
-| `SCENARIO_LAB` | Fast Scenario, Capability Task and Android Lab policy |
-| `RUNTIME_BOUNDARY_PROOF` | Test-only policy with accelerated boundary Serviceability |
+When Serviceability is enabled, Runtime mints one Worker-Score-slot-aligned
+`hotEligibilityFloorMillis`. Adapter Evidence, Serviceability Dispatch, and
+Assignment candidate acquisition receive the same immutable value. It is not
+stored in Redis or exposed through Health or Runtime APIs.
 
-Server passes the selected enum to `KernelPacerRuntime.assemble(...)` and does
-not interpret scheduling policy. It rejects the proof-only preset unless the
-configured Redis scope starts with `test_`. Unknown preset names fail Spring
-binding before Runtime construction. There is no Java production Pacer JSON,
-dynamic preset or per-field override. The Redis URL and scope remain
-exclusively in `xa.mass.redis`; a preset cannot select a second Redis universe.
-The Python executable Oracle still consumes its own required JSON configuration
-and an isolated `test_*` scope; that format is not a Java production contract.
+## Mechanical Owners
 
-When a selected preset enables Serviceability, Runtime assembly mints one
-Worker-Score-slot-aligned `hotEligibilityFloorMillis`. The same immutable floor
-is injected into the Adapter Evidence policy, Serviceability Dispatch and Assignment
-candidate acquisition. It is not written to Redis or exposed through health or
-Runtime APIs. When Serviceability is disabled, no floor exists and Assignment
-uses the full HOT due range.
-
-## Owner Wiring
-
-The Java production closure is caller-driven and finite:
+The finite Java caller closure is:
 
 ```text
 TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
-CandidateWorkerCache / CandidateWarmupSchedule
+CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
 WorkerServiceabilityRuntime
 ```
 
-Each Redis provider owns only its documented keys and operations. Pacers
-compose bounded owner calls; they do not bypass owners, decode opaque scores,
-or merge Task, TaskItem, Worker, Candidate and Delivery truth.
+Candidate Cache is a disposable derived owner. There is no Candidate retry or
+warmup index: due RUNNING Task score is the only demand source for allocation,
+dispatch, and serviceability policy.
 
-The module boundary is:
-
-```text
-kernel_jvm
-  mechanical owner contracts, Redis providers, Candidate hints and codecs
-
-kernel_pacer_jvm
-  policy, matching, Pacer loops, configuration and finite thread lifecycle
-
-server_jvm
-  preset selection, owner wiring, Spring lifecycle delegation and Health
-```
-
-Java implements the production caller closure. Operations without a Java
-production caller remain explicit `KernelOperationNotImplementedException`
-gaps rather than no-op or remote fallbacks. Python retains the complete Oracle
-implementation for parity and independent mechanism proof.
-
-## Assignment Dispatch
-
-`AssignmentDispatchApplication` owns exactly three non-daemon threads:
+The module direction remains:
 
 ```text
-assignment-dispatch-worker-allocation
-assignment-dispatch-running-activation
-assignment-dispatch-task-dispatch
+server_jvm -> kernel_pacer_jvm -> kernel_jvm
 ```
 
-Each loop executes immediately after start and then waits interruptibly for its
-configured interval. A `RuntimeException` fails one round and the loop
-continues. A JVM `Error` or unexpected thread exit fails the Application and
-therefore Kernel readiness.
+- `kernel_jvm` owns mechanical contracts, Redis providers, Candidate Cache,
+  and codecs.
+- `kernel_pacer_jvm` owns Sources, policies, coordination, presets, and finite
+  thread lifecycle.
+- `server_jvm` owns Owner assembly, Spring lifecycle delegation, and Health.
 
-The three loops preserve the Python Oracle mechanisms:
+## Dispatch Convergence
 
-- Worker Allocation consumes due warmup hints, validates RUNNING suffix-zero
-  Tasks, acquires and exactly leases bounded HOT candidates, publishes the
-  disposable Candidate cache, and requeues incomplete warmups.
-- RUNNING Activation reads due ADMISSION Tasks, applies due-Item and RUNNING
-  soft-limit policy, transitions accepted Tasks to RUNNING suffix zero,
-  reschedules others by priority bucket, and emits PRECOMPUTED warmup hints.
-- Task Dispatch reads due RUNNING Tasks, finalizes exhausted/expired Items,
-  acquires and exactly leases Workers, exactly claims Items, constructs
-  `TASK -> WORKER` Commands, appends them by Adapter, then applies normal
-  RUNNING pacing or the declared idle disposition.
+`TaskSchedulingBatchSource` has two bounded views:
 
-Candidate caches and warmup schedules are hints. Exact Worker lease and
-TaskItem claim operations remain the concurrency fences. Command publication
-failure does not roll back claims or Worker leases; their existing expiries
-provide recovery.
+```text
+ADMISSION Source
+  -> acquire at most 100 due ADMISSION_VISIBLE Tasks
+
+RUNNING Source
+  -> acquire at most 100 due RUNNING_VISIBLE suffix-zero Tasks
+```
+
+Each Source call point-reads Task Score and Descriptor once, preserves Score
+order, and emits immutable `DueTaskObservation` values. These observations are
+round evidence, not locks; every later mutation still uses exact owner fences.
+
+`DispatchConvergenceApplication` owns one non-daemon coordinator and one
+virtual thread per non-empty eligible lane batch. Every lane is single-flight.
+When multiple RUNNING lanes are eligible, the Source is read once and the same
+immutable batch is submitted to all of them. A busy lane skips that batch and
+retains no memory hint; unchanged Task score lets a later Source read rediscover
+the Task.
+
+The fixed lanes are:
+
+| Lane | Source | Responsibility |
+| --- | --- | --- |
+| RUNNING_ACTIVATION | ADMISSION | due-Item and soft-limit admission, exact transition, priority recheck |
+| WORKER_ALLOCATION | RUNNING | PRECOMPUTED Candidate deficit acquisition and cache publication |
+| TASK_DISPATCH | RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
+| WORKER_SERVICEABILITY | RUNNING | derive demanded WorkerGroups and offer Adapter route probes |
+
+Allocation and Task Dispatch may run concurrently. A Candidate produced during
+one batch is not guaranteed to be consumed in the same batch; later RUNNING
+discovery provides convergence. Candidate entries left behind after a Task is
+parked or closed expire with their existing lease/cache deadline.
+
+An empty Source or Source failure defers only the currently eligible lanes by
+their own interval. A policy `RuntimeException` drops that best-effort batch and
+defers its lane. A JVM `Error`, rejected execution, or unexpected coordinator
+exit fails Dispatch Convergence and therefore Kernel readiness.
+
+## Result Convergence
+
+Result Convergence owns one coordinator and ten shared virtual-batch slots.
+Its fixed lanes are Task SUCCESS, Task FAILURE, and optional Adapter Evidence.
+Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
+and Dispatch lanes do not share queues, lifecycle state, or executors.
 
 ## Lifecycle
 
-With Serviceability enabled, startup order is:
+Startup is:
 
 ```text
 Result Convergence
--> Worker Serviceability Dispatch
--> Assignment Dispatch
+-> Dispatch Convergence
 ```
 
-Without Serviceability, Result Convergence contains only the two Task lanes;
-only it and Assignment Dispatch start.
-Startup failure rolls back every already-started Application in reverse order.
+Shutdown is strictly reversed. Both Applications share one shutdown deadline;
+neither resets the budget per lane or thread. Startup failure rolls back every
+started Application in reverse order. Any required coordinator or worker-loop
+death moves `KernelPacerRuntime` to `FAILED`.
 
-Result Convergence uses one coordinator and ten shared Batch slots. Fixed
-weighted-fair target/max values are Task SUCCESS `6/10`, Task FAILURE `3/10`
-and Adapter Evidence `1/1`. Both Task lanes may execute concurrent owner-fenced
-Batches, while Adapter Evidence remains serial. The capacity and weights are
-Kernel-internal policy, not lifecycle or Server configuration.
-
-Shutdown signals every loop and uses one shared deadline in exact reverse
-startup order. An Application must not reset the remaining budget for each
-thread. `KernelPacerRuntime` reaches `RUNNING` only after every required Java
-Application starts. Any required loop death moves its aggregate state to
-`FAILED`; `KernelPacerAssembly` exposes that existing state to Spring without
-maintaining a second lifecycle state machine.
-
-Spring readiness requires:
+Spring readiness requires the Runtime and Kernel Redis to be UP. Liveness
+remains a JVM-process signal. Health exposes only:
 
 ```text
-KernelPacerRuntime RUNNING through KernelPacerAssembly
-+ Kernel Redis UP
+javaResultConvergenceState
+javaDispatchConvergenceState
 ```
 
-Liveness covers the JVM process and remains UP for a Pacer failure so an
-external orchestrator can distinguish process death from Kernel unavailability.
-Health exposes only safe lifecycle states; it does not expose Redis coordinates,
-policy content, HOT floor, payloads or results.
+It does not expose Redis coordinates, Task batches, policy content, HOT floor,
+payloads, or results.
 
-Exactly one Server per Redis scope may enable this lifecycle. There is no
-distributed Pacer leader election. Other API replicas must set
-`xa.mass.kernel-pacer.enabled=false`.
-
-## Python Oracle CLI
-
-The Oracle CLI accepts only a policy config path and log level. It builds the
-complete Python `KernelApplication`, starts every configured mechanism, blocks
-on stdin, and stops in reverse order on EOF or interruption. This CLI is for
-executable-spec and Redis parity work only.
-
-Python continues to own:
-
-- the mechanism trust source under `executable_spec/`;
-- focused and integration tests;
-- independent real-Redis parity fixtures.
-
-Python does not own:
-
-- production process lifecycle or readiness;
-- production Task HTTP or Worker Delivery HTTP;
-- a Server fallback or remote owner adapter;
-- a wheel, venv, launcher or other Server Runtime artifact.
+Exactly one Server per Redis scope may enable Kernel Pacers. There is no
+distributed leader election.
 
 ## Proof Boundary
 
-The Runtime Boundary lane starts one Java Spring context and real Redis, with
-no Python process. It proves:
+Runtime Boundary starts one Java Spring context and real Redis, with no Python
+process, and proves:
 
 ```text
 Task API
 -> Java Task owners
--> Java Assignment Dispatch
--> Java Worker Delivery and Worker execution
--> Java Result Routing
+-> shared Task Source
+-> Java Dispatch Convergence
+-> Worker Delivery and execution
+-> Java Result Convergence
 -> TaskItem finality + result + exact Worker release
 ```
 
-The same lane proves the Adapter snapshot request/evidence path through Java
-Serviceability Dispatch, the Adapter Evidence lane and the shared HOT floor.
-Redis Owner tests
-prove Java/Python shape compatibility, exact CAS and range ordering. The Python
-suite remains the independent Oracle proof.
-
-Deterministic policy and three-stage lifecycle tests live in
-`kernel_pacer_jvm`; `kernel_jvm` tests remain focused on owner contracts,
-providers, Candidate hints and codecs. Server tests prove only Spring
-delegation, Health projection and absence of individual Pacer beans.
+The Serviceability boundary proves that the same due RUNNING Task batch drives
+WorkerGroup probe demand and that Adapter Evidence converges through the Result
+Application. Python tests remain the independent policy/shape Oracle.
 
 ## Guardrails
 
-- Do not restore a Python HTTP host, managed child, ready/owner file protocol,
-  production wheel, venv or launcher.
-- Do not add a dynamic Pacer registry, public policy SPI or fallback owner.
-- Do not expose package-private Pacer/Application types or assemble them from
-  Server; `KernelPacerRuntime` is the only public Pacer-module entry.
-- Do not allow two Pacer implementations for the same function in one Redis
-  scope.
-- Do not move candidate selection, Worker lease, TaskItem claim, retry,
-  recovery or Task finality into Server.
-- Do not decode or synthesize score structure outside its score owner.
-- Do not log opaque payloads, results, allocation rules or ResultContext.
+- Do not restore Candidate demand hints, a second Task scan, or a pending Batch
+  queue inside Dispatch Convergence.
+- Do not add a dynamic Pacer/lane registry, public policy SPI, or fallback
+  owner.
+- Do not assemble package-private Pacer types from Server;
+  `KernelPacerRuntime` is the only public Pacer entry.
+- Do not decode opaque Score structure outside its owner.
+- Do not move candidate selection, Worker lease, Item claim, retry, recovery,
+  or Task finality into Server.
+- Never run Python Oracle against a production Redis scope.

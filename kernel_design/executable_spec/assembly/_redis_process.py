@@ -11,12 +11,13 @@ from ..scheduling import (
     RunningSoftLimitSystemAdmissionPolicy,
     TaskResultBatchPolicy,
     TaskCallItemSubmission,
-    TaskDispatchPacer,
+    TaskDispatchPolicy,
     TaskItemDispatcher,
-    TaskRunningActivationPacer,
-    TaskWorkerAllocationPacer,
+    TaskRunningActivationPolicy,
+    TaskSchedulingBatchSource,
+    TaskWorkerAllocationPolicy,
     WorkerCandidateMatcher,
-    WorkerServiceabilityDispatchPacer,
+    WorkerServiceabilityDispatchPolicy,
     WorkerServiceabilityResultConfig,
     WorkerServiceabilityResultPolicy,
 )
@@ -35,19 +36,15 @@ from ..redis_runtime import (
     RedisTaskResultRuntime,
     RedisWorkerServiceabilityRuntime,
 )
-from ..redis_runtime.assignment_dispatch import RedisCandidateWarmupSchedule
-from .assignment_dispatch_application import (
-    AssignmentDispatchApplication,
-    AssignmentDispatchApplicationConfig,
+from .dispatch_convergence_application import (
+    AssignmentDispatchConfig,
+    DispatchConvergenceApplication,
+    WorkerServiceabilityDispatchLaneConfig,
 )
 from .result_convergence_application import (
     ResultConvergenceApplication,
     _ResultLane,
     _ResultLaneId,
-)
-from .worker_serviceability_application import (
-    WorkerServiceabilityDispatchApplication,
-    WorkerServiceabilityDispatchApplicationConfig,
 )
 
 
@@ -66,11 +63,11 @@ class _RedisKernelProcessConfig:
     running_task_soft_limit: int
     worker_candidate_scan_limit: int
     hot_eligibility_floor_millis: int | None
-    assignment_dispatch: AssignmentDispatchApplicationConfig
+    assignment_dispatch: AssignmentDispatchConfig
     task_result_batch_limit: int
     task_result_idle_interval_millis: int
     worker_serviceability_dispatch: (
-        WorkerServiceabilityDispatchApplicationConfig | None
+        WorkerServiceabilityDispatchLaneConfig | None
     )
     worker_serviceability_result: WorkerServiceabilityResultConfig | None
     worker_serviceability_result_idle_interval_millis: int | None
@@ -159,10 +156,6 @@ class _RedisKernelProcess:
             redis_client,
             keyspace=config.keyspace,
         )
-        candidate_warmup_schedule = RedisCandidateWarmupSchedule(
-            redis_client,
-            keyspace=config.keyspace,
-        )
         self._worker_command_runtime = RedisWorkerCommandRuntime(
             redis_client,
             keyspace=config.keyspace,
@@ -180,32 +173,25 @@ class _RedisKernelProcess:
             ),
         )
 
-        worker_allocation_pacer = TaskWorkerAllocationPacer(
-            candidate_warmup_schedule,
-            self._task_score,
-            self._task_resource_catalog,
+        worker_allocation_policy = TaskWorkerAllocationPolicy(
             candidate_acquirer,
             candidate_cache,
         )
-        running_activation_pacer = TaskRunningActivationPacer(
+        running_activation_policy = TaskRunningActivationPolicy(
             self._task_score,
-            self._task_resource_catalog,
             DueTaskItemAdmissionPolicy(self._task_item_score),
             RunningSoftLimitSystemAdmissionPolicy(
                 self._task_score,
                 running_task_soft_limit=config.running_task_soft_limit,
             ),
-            candidate_warmup_schedule,
         )
         task_item_dispatcher = TaskItemDispatcher(
             self._task_item_score,
             self._task_runtime,
             candidate_acquirer,
-            candidate_warmup_schedule,
         )
-        task_dispatch_pacer = TaskDispatchPacer(
+        task_dispatch_policy = TaskDispatchPolicy(
             self._task_score,
-            self._task_resource_catalog,
             self._worker_command_runtime,
             self._task_item_score,
             task_item_dispatcher,
@@ -213,11 +199,6 @@ class _RedisKernelProcess:
         self._task_call_item_submission = TaskCallItemSubmission(
             self._task_score,
             self._task_runtime,
-        )
-        self._assignment_dispatch_application = AssignmentDispatchApplication(
-            worker_allocation_pacer,
-            running_activation_pacer,
-            task_dispatch_pacer,
         )
         self._task_result_runtime = RedisTaskResultRuntime(
             redis_client,
@@ -262,8 +243,8 @@ class _RedisKernelProcess:
                 policy=task_result_policy.handle_failure,
             ),
         ]
-        self._worker_serviceability_dispatch_application: (
-            WorkerServiceabilityDispatchApplication | None
+        serviceability_dispatch_policy: (
+            WorkerServiceabilityDispatchPolicy | None
         ) = None
         if (
             config.worker_serviceability_dispatch is not None
@@ -307,20 +288,28 @@ class _RedisKernelProcess:
                     policy=evidence_policy.handle,
                 ))
             if config.worker_serviceability_dispatch is not None:
-                self._worker_serviceability_dispatch_application = (
-                    WorkerServiceabilityDispatchApplication(
-                        WorkerServiceabilityDispatchPacer(
-                            self._task_score,
-                            self._task_resource_catalog,
-                            self._worker_score,
-                            self._worker_resource_catalog,
-                            serviceability_runtime,
-                            hot_eligibility_floor_millis=(
-                                config.hot_eligibility_floor_millis
-                            ),
-                        )
+                serviceability_dispatch_policy = (
+                    WorkerServiceabilityDispatchPolicy(
+                        self._worker_score,
+                        self._worker_resource_catalog,
+                        serviceability_runtime,
+                        hot_eligibility_floor_millis=(
+                            config.hot_eligibility_floor_millis
+                        ),
                     )
                 )
+        self._dispatch_convergence_application = (
+            DispatchConvergenceApplication(
+                TaskSchedulingBatchSource(
+                    self._task_score,
+                    self._task_resource_catalog,
+                ),
+                running_activation_policy,
+                worker_allocation_policy,
+                task_dispatch_policy,
+                serviceability_dispatch_policy,
+            )
+        )
         self._result_convergence_application = ResultConvergenceApplication(
             result_lanes,
             global_max_concurrency=(
@@ -349,19 +338,15 @@ class _RedisKernelProcess:
     def start(self) -> None:
         self._redis.ping()
         result_convergence_started = False
-        started_serviceability_dispatch = False
+        dispatch_convergence_started = False
         try:
             self._result_convergence_application.start()
             result_convergence_started = True
-            if self._worker_serviceability_dispatch_application is not None:
-                assert self._config.worker_serviceability_dispatch is not None
-                self._worker_serviceability_dispatch_application.start(
-                    config=self._config.worker_serviceability_dispatch,
-                )
-                started_serviceability_dispatch = True
-            self._assignment_dispatch_application.start(
-                config=self._config.assignment_dispatch,
+            self._dispatch_convergence_application.start(
+                assignment=self._config.assignment_dispatch,
+                serviceability=self._config.worker_serviceability_dispatch,
             )
+            dispatch_convergence_started = True
         except Exception as start_error:
             rollback_error: Exception | None = None
             rollback_deadline = (
@@ -369,8 +354,8 @@ class _RedisKernelProcess:
             )
             for started, application in (
                 (
-                    started_serviceability_dispatch,
-                    self._worker_serviceability_dispatch_application,
+                    dispatch_convergence_started,
+                    self._dispatch_convergence_application,
                 ),
                 (
                     result_convergence_started,
@@ -395,8 +380,7 @@ class _RedisKernelProcess:
         first_error: Exception | None = None
         deadline = monotonic() + self._config.stop_timeout_millis / 1_000
         for application in (
-            self._assignment_dispatch_application,
-            self._worker_serviceability_dispatch_application,
+            self._dispatch_convergence_application,
             self._result_convergence_application,
         ):
             if application is None:

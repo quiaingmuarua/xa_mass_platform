@@ -17,7 +17,7 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 `com.xa.mass.kernel.pacer.KernelPacerRuntime` is the only public top-level
 type. Its `assemble(...)` method accepts the bounded mechanical owners needed by
-the three production applications plus one of its four checked `PolicyPreset`
+the two production applications plus one of its four checked `PolicyPreset`
 values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
 `RUNTIME_BOUNDARY_PROOF`. The Runtime
 owns fixed policy selection, one immutable HOT eligibility floor when
@@ -36,8 +36,7 @@ Startup order:
 
 ```text
 Result Convergence
--> Worker Serviceability Dispatch     optional
--> Assignment Dispatch
+-> Dispatch Convergence
 ```
 
 Result Convergence owns exactly three fixed lane definitions:
@@ -55,6 +54,12 @@ the exact assignment lease and never changes Worker polarity. Adapter Evidence
 retains its finite Serviceability event policy and shares the same lifecycle
 without becoming a general EventBus.
 
+Dispatch Convergence owns one coordinator and fixed single-flight virtual
+Batch lanes. An ADMISSION Source feeds RUNNING Activation. One shared due
+RUNNING Source feeds Worker Allocation, Task Dispatch, and optional Worker
+Serviceability. Busy lanes skip the current Batch without storing a pending
+hint; due Task score provides rediscovery.
+
 Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
 Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal
 production cadence, `SCENARIO_LAB` is the checked fast local-Lab policy, and
@@ -64,7 +69,7 @@ compose existing configuration value objects; there is no Java policy file,
 per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
 or fallback path.
 
-Spring assembly belongs to `server_jvm`. Candidate Cache/Warmup,
+Spring assembly belongs to `server_jvm`. Candidate Cache,
 ResultContextCodec and all Redis providers remain in `kernel_jvm`.
 
 Build:

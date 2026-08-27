@@ -167,7 +167,6 @@ class KernelPacerPolicyConfigTest {
                 config.result().evidenceMaxAgeMillis()
         );
         assertEquals(dispatchInterval, config.dispatch().intervalMillis());
-        assertEquals(100, config.dispatch().dispatch().taskScanLimit());
         assertEquals(
                 recoveryRetryInterval,
                 config.dispatch().dispatch().recoveryRetryIntervalMillis()

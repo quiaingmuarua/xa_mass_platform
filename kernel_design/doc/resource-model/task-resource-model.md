@@ -81,7 +81,7 @@ DIRECT_ITEM_RULE
   an empty object means no Worker restriction within the Task WorkerGroup
 ```
 
-The mechanism derives rule owner, acquisition strategy, warmer participation
+The mechanism derives rule owner, acquisition strategy, allocation participation
 and candidate-cache participation as one coherent allocation contract:
 
 ```text
@@ -337,10 +337,9 @@ TaskScoreBandCore.acquire_band_task_candidates(ADMISSION_VISIBLE, now, limit)
 Worker allocation:
 
 ```text
-CandidateWarmupSchedule.acquire_candidate_warmups(now, limit)
-  -> TaskScoreBandCore.get_score_states(taskIds)
-  -> retain current RUNNING/non-hard-paused Tasks with suffix 0
-  -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
+TaskSchedulingBatchSource.acquire_running_tasks(limit)
+  -> verify due RUNNING suffix-zero Score and Descriptor once
+  -> share immutable DueTaskObservation[] with allocation and dispatch
   -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
@@ -363,7 +362,7 @@ park is needed only for a later idle-to-active cycle.
 
 Existing candidate cache and Worker lease evidence is not actively deleted
 when a Task becomes idle; it expires naturally. `PRECOMPUTED_TASK_RULE` replenishment
-continues through its existing dispatch and incomplete-warmup hints.
+continues through later shared RUNNING Task discovery.
 
 Task dispatch:
 

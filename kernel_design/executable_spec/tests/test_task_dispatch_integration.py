@@ -37,13 +37,14 @@ from kernel_design.executable_spec import (
     TaskItemAppendResult,
     TaskItemAppendStatus,
     TaskDispatchConfig,
-    TaskDispatchPacer,
+    TaskDispatchPolicy,
     TaskCallItemSubmission,
     TaskCallSubmissionStatus,
     TaskRunningActivationConfig,
-    TaskRunningActivationPacer,
+    TaskRunningActivationPolicy,
+    TaskSchedulingBatchSource,
     TaskWorkerAllocationConfig,
-    TaskWorkerAllocationPacer,
+    TaskWorkerAllocationPolicy,
     TaskItemScoreBand,
     TaskScoreBand,
     TaskScoreBandCore,
@@ -63,9 +64,6 @@ from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
 )
 from kernel_design.executable_spec.scheduling import TaskItemDispatcher
-from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
-    RedisCandidateWarmupSchedule,
-)
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -113,10 +111,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             keyspace=self.keyspace,
         )
-        self.warmup_schedule = RedisCandidateWarmupSchedule(
-            self.redis,
-            keyspace=self.keyspace,
-        )
         self.worker_command_runtime = RedisWorkerCommandRuntime(
             self.redis,
             keyspace=self.keyspace,
@@ -142,22 +136,17 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             ),
             worker_scan_limit=10,
         )
-        self.allocation_pacer = TaskWorkerAllocationPacer(
-            self.warmup_schedule,
-            self.task_score,
-            self.task_catalog,
+        self.allocation_policy = TaskWorkerAllocationPolicy(
             candidate_acquirer,
             self.candidate_cache,
         )
-        self.activation_pacer = TaskRunningActivationPacer(
+        self.activation_policy = TaskRunningActivationPolicy(
             self.task_score,
-            self.task_catalog,
             DueTaskItemAdmissionPolicy(self.item_score),
             RunningSoftLimitSystemAdmissionPolicy(
                 self.task_score,
                 running_task_soft_limit=100,
             ),
-            self.warmup_schedule,
         )
         self.task_lifecycle = _TaskLifecycleManager(
             self.task_score,
@@ -167,18 +156,45 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             self.task_runtime,
             candidate_acquirer,
-            self.warmup_schedule,
         )
-        self.pacer = TaskDispatchPacer(
+        self.dispatch_policy = TaskDispatchPolicy(
             self.task_score,
-            self.task_catalog,
             self.worker_command_runtime,
             self.item_score,
             task_item_dispatcher,
         )
+        self.task_source = TaskSchedulingBatchSource(
+            self.task_score,
+            self.task_catalog,
+        )
         self.task_call_submission = TaskCallItemSubmission(
             self.task_score,
             self.task_runtime,
+        )
+
+    def _activate(self, *, limit: int = 100) -> int:
+        return self.activation_policy.activate_running_visible_tasks(
+            self.task_source.acquire_admission_tasks(limit=limit),
+            config=TaskRunningActivationConfig(),
+        )
+
+    def _allocate(
+        self,
+        *,
+        limit: int = 100,
+        worker_lease_duration_millis: int = 5_000,
+    ) -> int:
+        return self.allocation_policy.allocate_candidate_workers(
+            self.task_source.acquire_running_tasks(limit=limit),
+            config=TaskWorkerAllocationConfig(
+                worker_lease_duration_millis=worker_lease_duration_millis,
+            ),
+        )
+
+    def _dispatch(self, config: TaskDispatchConfig) -> int:
+        return self.dispatch_policy.dispatch_tasks(
+            self.task_source.acquire_running_tasks(limit=100),
+            config=config,
         )
 
     def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
@@ -436,9 +452,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             items=items,
         )
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
-        activated = self.activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(task_batch_limit=10)
-        )
+        activated = self._activate(limit=10)
         return created, approved, appended, activated
 
     def test_precomputed_allocation_redis_proof_uses_candidate_cache(self) -> None:
@@ -466,9 +480,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         approved = self.task_lifecycle.approve_task(task_id=self.task_id)
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
         activation_without_item = (
-            self.activation_pacer.activate_running_visible_tasks(
-                config=TaskRunningActivationConfig(task_batch_limit=10)
-            )
+            self._activate(limit=10)
         )
         state_without_item = self.task_score.get_score_states(
             task_ids=(self.task_id,)
@@ -478,16 +490,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             items=(item,),
         )
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
-        activated = self.activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(task_batch_limit=10)
-        )
+        activated = self._activate(limit=10)
         running_state = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
-        warmup_score = self.redis.zscore(
-            f"{self.keyspace.base}:dispatch:candidate_warmups",
-            self.task_id,
-        )
         candidate_count_before_worker_registration = (
             self.candidate_cache.candidate_worker_counts(
                 candidate_ids=(self.task_id,),
@@ -518,23 +524,24 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        dispatched_without_precomputation = self.pacer.dispatch_tasks(
+        running_observations = self.task_source.acquire_running_tasks(limit=10)
+        dispatched_without_precomputation = self.dispatch_policy.dispatch_tasks(
+            running_observations,
             config=TaskDispatchConfig(
-                task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
-            )
+            ),
         )
-        task_state_before_warmup = self.task_score.get_score_states(
+        task_state_before_allocation = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
-        warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
+        warmed_tasks = self.allocation_policy.allocate_candidate_workers(
+            running_observations,
             config=TaskWorkerAllocationConfig(
-                task_batch_limit=10,
                 worker_lease_duration_millis=5_000,
-            )
+            ),
         )
-        task_state_after_warmup = self.task_score.get_score_states(
+        task_state_after_allocation = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
         candidate_count_before_dispatch = (
@@ -555,9 +562,8 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatch_started_millis = time.time_ns() // 1_000_000
-        dispatched = self.pacer.dispatch_tasks(
-            config=TaskDispatchConfig(
-                task_batch_limit=10,
+        dispatched = self._dispatch(
+            TaskDispatchConfig(
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
             )
@@ -569,11 +575,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             message_ids=(self.message_id,),
         )[self.message_id]
-        warmup_score_after_dispatch = self.redis.zscore(
-            f"{self.keyspace.base}:dispatch:candidate_warmups",
-            self.task_id,
-        )
-
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(0, activation_without_item)
@@ -588,11 +589,20 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(1, activated)
         self.assertIsNotNone(running_state)
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, running_state.band)
-        self.assertIsNotNone(warmup_score)
+        self.assertEqual(0, running_state.suffix)
+        self.assertEqual(
+            (self.task_id,),
+            tuple(observation.task_id for observation in running_observations),
+        )
+        self.assertEqual(descriptor, running_observations[0].descriptor)
+        self.assertEqual(running_state, running_observations[0].score_state)
         self.assertEqual(0, candidate_count_before_worker_registration)
         self.assertEqual(0, dispatched_without_precomputation)
         self.assertEqual(1, warmed_tasks)
-        self.assertEqual(task_state_before_warmup, task_state_after_warmup)
+        self.assertEqual(
+            task_state_before_allocation,
+            task_state_after_allocation,
+        )
         self.assertEqual(1, candidate_count_before_dispatch)
         self.assertGreater(
             worker_states["worker-1"].time_millis,
@@ -606,7 +616,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertNotIn("worker-2", due_worker_candidates)
         self.assertEqual(1, dispatched)
         self.assertEqual(0, candidate_count)
-        self.assertIsNotNone(warmup_score_after_dispatch)
         self.assertIsNotNone(item_state)
         self.assertEqual(TaskItemScoreBand.ACTIVE, item_state.band)
         self.assertEqual(3, item_state.remaining_budget)
@@ -710,12 +719,8 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
             time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
 
-            first_round = self.activation_pacer.activate_running_visible_tasks(
-                config=TaskRunningActivationConfig(task_batch_limit=2)
-            )
-            second_round = self.activation_pacer.activate_running_visible_tasks(
-                config=TaskRunningActivationConfig(task_batch_limit=2)
-            )
+            first_round = self._activate(limit=2)
+            second_round = self._activate(limit=2)
             state = self.task_score.get_score_states(
                 task_ids=(self.task_id,)
             )[self.task_id]
@@ -787,29 +792,19 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 items=items,
             )
         )
-        warmup_score_after_activation = self.redis.zscore(
-            f"{self.keyspace.base}:dispatch:candidate_warmups",
-            self.task_id,
-        )
-        worker_scores_before_warmer = self.worker_score.get_score_states(
+        worker_scores_before_allocation = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=("worker-1", "worker-2"),
         )
-        warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
-            config=TaskWorkerAllocationConfig(
-                task_batch_limit=10,
-                worker_lease_duration_millis=5_000,
-            )
-        )
-        worker_scores_after_warmer = self.worker_score.get_score_states(
+        warmed_tasks = self._allocate(limit=10)
+        worker_scores_after_allocation = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=("worker-1", "worker-2"),
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
-        dispatched = self.pacer.dispatch_tasks(
-            config=TaskDispatchConfig(
-                task_batch_limit=10,
+        dispatched = self._dispatch(
+            TaskDispatchConfig(
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
             )
@@ -828,9 +823,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             all(result.status is WorkerRuntimeStatus.OK for result in worker_results)
         )
         self.assertEqual(1, activated)
-        self.assertIsNone(warmup_score_after_activation)
         self.assertEqual(0, warmed_tasks)
-        self.assertEqual(worker_scores_before_warmer, worker_scores_after_warmer)
+        self.assertEqual(
+            worker_scores_before_allocation,
+            worker_scores_after_allocation,
+        )
         self.assertEqual(2, dispatched)
         self.assertEqual(
             {
@@ -841,12 +838,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.candidate_cache.candidate_worker_counts(
                 candidate_ids=(self.task_id, "message-1", "message-2"),
             ),
-        )
-        self.assertIsNone(
-            self.redis.zscore(
-                f"{self.keyspace.base}:dispatch:candidate_warmups",
-                self.task_id,
-            )
         )
         for index in (1, 2):
             worker_id = f"worker-{index}"
@@ -898,13 +889,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         with patch.object(
-            self.pacer,
+            self.dispatch_policy,
             "_current_time_millis",
             return_value=expire_at_millis,
         ):
-            dispatched = self.pacer.dispatch_tasks(
-                config=TaskDispatchConfig(
-                    task_batch_limit=10,
+            dispatched = self._dispatch(
+                TaskDispatchConfig(
                     per_task_dispatch_limit=10,
                     item_claim_lease_duration_millis=5_000,
                 )
@@ -980,24 +970,21 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             target_time_millis=time.time_ns() // 1_000_000,
         )
         config = TaskDispatchConfig(
-            task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
         )
 
         time.sleep(0.12)
-        worker_before_warmup = self.worker_score.get_score_states(
+        worker_before_allocation = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=("worker-1",),
         )["worker-1"]
-        self.pacer.dispatch_tasks(config=config)
-        warmed = self.allocation_pacer.allocate_candidate_workers(
-            config=TaskWorkerAllocationConfig(
-                task_batch_limit=10,
-                worker_lease_duration_millis=1_000,
-            )
+        self._dispatch(config)
+        warmed = self._allocate(
+            limit=10,
+            worker_lease_duration_millis=1_000,
         )
-        worker_after_warmup = self.worker_score.get_score_states(
+        worker_after_allocation = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=("worker-1",),
         )["worker-1"]
@@ -1006,7 +993,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         ]
 
         self.assertEqual(0, warmed)
-        self.assertEqual(worker_before_warmup, worker_after_warmup)
+        self.assertEqual(worker_before_allocation, worker_after_allocation)
         self.assertEqual(
             {self.task_id: 0},
             self.candidate_cache.candidate_worker_counts(
@@ -1063,13 +1050,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             target_time_millis=time.time_ns() // 1_000_000,
         )
         config = TaskDispatchConfig(
-            task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
         )
 
         time.sleep(0.12)
-        self.pacer.dispatch_tasks(config=config)
+        self._dispatch(config)
         held = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
         ]
@@ -1086,7 +1072,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             items=(resumed_item,),
         )
         time.sleep(0.12)
-        dispatched = self.pacer.dispatch_tasks(config=config)
+        dispatched = self._dispatch(config)
         command = self.worker_command_runtime.consume_worker_command(
             endpoint_manager_id="endpoint-manager-1",
             worker_id="worker-1",
@@ -1146,9 +1132,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
-        activated = self.activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(task_batch_limit=10)
-        )
+        activated = self._activate(limit=10)
         running = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
         ]
@@ -1196,13 +1180,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             target_time_millis=time.time_ns() // 1_000_000,
         )
         config = TaskDispatchConfig(
-            task_batch_limit=10,
             per_task_dispatch_limit=10,
             item_claim_lease_duration_millis=1_000,
         )
 
         time.sleep(0.12)
-        self.pacer.dispatch_tasks(config=config)
+        self._dispatch(config)
 
         closed = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
