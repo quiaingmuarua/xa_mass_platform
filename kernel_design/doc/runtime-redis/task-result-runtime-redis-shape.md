@@ -56,7 +56,9 @@ RedisTaskResultRuntime
 
 ResultConvergenceApplication
   owns fixed SUCCESS/FAILURE lane consumption and shared-capacity asynchronous
-  Batch dispatch; FAILURE may execute concurrently while SUCCESS remains serial
+  Batch dispatch; both Task lanes may execute concurrent Batches. FIFO fixes
+  consume order, not policy completion order; duplicate SUCCESS payloads use
+  the last actual Redis field write
 
 TaskResultBatchPolicy
   owns ResultContext decode, bounded grouping and fixed SUCCESS/FAILURE policy

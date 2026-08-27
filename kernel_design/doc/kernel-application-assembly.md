@@ -165,9 +165,10 @@ only it and Assignment Dispatch start.
 Startup failure rolls back every already-started Application in reverse order.
 
 Result Convergence uses one coordinator and ten shared Batch slots. Fixed
-weighted-fair target/max values keep Task SUCCESS and Adapter Evidence serial,
-while Task FAILURE may run concurrent exact-release Batches. The capacity and
-weights are Kernel-internal policy, not lifecycle or Server configuration.
+weighted-fair target/max values are Task SUCCESS `6/10`, Task FAILURE `3/10`
+and Adapter Evidence `1/1`. Both Task lanes may execute concurrent owner-fenced
+Batches, while Adapter Evidence remains serial. The capacity and weights are
+Kernel-internal policy, not lifecycle or Server configuration.
 
 Shutdown signals every loop and uses one shared deadline in exact reverse
 startup order. An Application must not reset the remaining budget for each

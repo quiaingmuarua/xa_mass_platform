@@ -66,7 +66,7 @@ class ResultConvergenceApplicationTest {
     }
 
     @Test
-    void productionQuotasKeepOrderedLanesSingleAndLetFailureBorrow()
+    void productionQuotasFavorSuccessAndKeepEvidenceSingleFlight()
             throws Exception {
         BlockingPolicies policies = new BlockingPolicies(10);
         ResultConvergenceApplication application = application(
@@ -100,8 +100,8 @@ class ResultConvergenceApplicationTest {
         application.start();
         try {
             assertTrue(policies.started.await(1, TimeUnit.SECONDS));
-            assertEquals(1, policies.active(ResultLaneId.TASK_SUCCESS));
-            assertEquals(8, policies.active(ResultLaneId.TASK_FAILURE));
+            assertEquals(6, policies.active(ResultLaneId.TASK_SUCCESS));
+            assertEquals(3, policies.active(ResultLaneId.TASK_FAILURE));
             assertEquals(1, policies.active(
                     ResultLaneId.ADAPTER_EVIDENCE
             ));

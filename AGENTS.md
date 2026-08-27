@@ -89,8 +89,8 @@ specification, owner Redis providers and Kernel application assembly.
   each have one fixed Java production application. Result Convergence owns the
   two Task lanes and optional Adapter Evidence lane. Its one coordinator owns
   shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
-  and Adapter Evidence remain single-flight while Task FAILURE may borrow idle
-  capacity for concurrent exact-release Batches.
+  and Task FAILURE may borrow idle capacity for concurrent owner-fenced Batches,
+  while Adapter Evidence remains single-flight.
   Never run the Python Oracle against the same Redis scope as production.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
 

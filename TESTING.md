@@ -143,8 +143,8 @@ data.
 Deterministic `kernel_pacer_jvm` lifecycle tests prove three-stage startup,
 reverse rollback, thread-death failure, idempotent stop and one shared bounded
 shutdown deadline. Result convergence tests additionally prove the global
-Batch cap, weighted fair `4/3/3` allocation, production per-lane maxima,
-FAILURE capacity borrowing, order-sensitive lane single-flight and JVM virtual
+Batch cap, weighted fair `4/3/3` allocation, production `6/3/1` fair share,
+Task-lane capacity borrowing, Adapter Evidence single-flight and JVM virtual
 thread use. Server tests prove Spring delegation and Health projection.
 The configured Group/Task and Adapter assembly has an explicit higher
 lifecycle phase, so it starts after all Pacers and closes before them. The

@@ -153,9 +153,9 @@ TaskResultRuntime
 
 ResultConvergenceApplication
   owns one weighted-fair coordinator and ten shared asynchronous Batch slots;
-  fixed per-lane target/max policy keeps Task SUCCESS and optional Adapter
-  Evidence single-flight while Task FAILURE may borrow capacity; it owns no
-  Redis key or result policy
+  fixed per-lane target/max policy lets both Task lanes borrow capacity while
+  optional Adapter Evidence remains single-flight; it owns no Redis key or
+  result policy
 
 TaskResultBatchPolicy
   decodes and groups one already-classified homogeneous Task result Batch and

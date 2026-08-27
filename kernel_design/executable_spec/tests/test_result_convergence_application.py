@@ -107,14 +107,14 @@ class ResultConvergenceApplicationTest(unittest.TestCase):
             policies.release.set()
             application.stop(timeout_millis=1_000)
 
-    def test_production_quotas_keep_ordered_lanes_single(self) -> None:
+    def test_production_quotas_favor_success_and_keep_evidence_single(self) -> None:
         policies = _BlockingPolicies(expected_starts=10)
         application = self._application(
             10,
             self._endless_lane(
                 _ResultLaneId.TASK_SUCCESS,
-                target=1,
-                maximum=1,
+                target=6,
+                maximum=10,
                 policies=policies,
             ),
             self._endless_lane(
@@ -134,8 +134,8 @@ class ResultConvergenceApplicationTest(unittest.TestCase):
         application.start()
         try:
             self.assertTrue(policies.wait_for_all())
-            self.assertEqual(1, policies.active(_ResultLaneId.TASK_SUCCESS))
-            self.assertEqual(8, policies.active(_ResultLaneId.TASK_FAILURE))
+            self.assertEqual(6, policies.active(_ResultLaneId.TASK_SUCCESS))
+            self.assertEqual(3, policies.active(_ResultLaneId.TASK_FAILURE))
             self.assertEqual(
                 1,
                 policies.active(_ResultLaneId.ADAPTER_EVIDENCE),

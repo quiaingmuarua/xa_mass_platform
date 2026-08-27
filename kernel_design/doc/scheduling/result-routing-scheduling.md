@@ -70,7 +70,7 @@ Serviceability is enabled:
 
 | Priority | Lane | Owner source | Batch limit | Target | Max |
 | ---: | --- | --- | ---: | ---: | ---: |
-| 0 | `TASK_SUCCESS` | `TaskResultRuntime.SUCCESS` | 100 | 1 | 1 |
+| 0 | `TASK_SUCCESS` | `TaskResultRuntime.SUCCESS` | 100 | 6 | 10 |
 | 1 | `TASK_FAILURE` | `TaskResultRuntime.FAILURE` | 100 | 3 | 10 |
 | 2 | `ADAPTER_EVIDENCE` | `WorkerServiceabilityRuntime` | configured | 1 | 1 |
 
@@ -91,11 +91,13 @@ empty read or consumer exception delays only that lane by its existing idle
 interval, leaving unused capacity available to the others.
 
 Every non-empty batch runs on its own named JVM virtual thread. SUCCESS and
-Adapter Evidence retain `max=1`, preserving consumed-Batch processing order.
-FAILURE may borrow every otherwise unused slot up to ten because its policy is
-only exact Worker-lease release; its Batch completion order is deliberately
-unspecified. Redis FIFO therefore guarantees consumption order, not concurrent
-FAILURE completion order. Successful completion releases capacity immediately.
+FAILURE may each borrow every otherwise unused slot up to ten. Their Batch
+completion order is deliberately unspecified: Redis FIFO guarantees consumption
+order, not concurrent policy completion order. SUCCESS remains safe because
+Item promotion is monotonic and Worker release uses the completed-HOT exact
+fence; FAILURE only exact-releases the correlated Worker lease. Adapter Evidence
+retains `max=1` because it has no cross-Batch Evidence fence. Successful
+completion releases capacity immediately.
 A policy `RuntimeException` loses that best-effort Batch and delays future
 consumption for the affected lane without cancelling its other in-flight
 Batches.
@@ -117,9 +119,11 @@ workerGroupId -> ordered WorkerResultEvidence(workerId, workerLeaseScore)
 
 Within one lane batch, repeated Task message IDs and Worker IDs use the last
 queue occurrence. This is bounded collapse, not cross-lane winner selection.
-SUCCESS remains single-flight so its last-payload behavior is not reordered
-across Batches. Exact score-owner fencing makes concurrent FAILURE release
-safe and decides whether a selected Worker observation still applies.
+Across concurrent SUCCESS Batches, the final payload for the same message ID is
+the last actual Redis `HSET`, not necessarily the later queue occurrence. The
+contract accepts any valid successful payload for that duplicated execution;
+Item promotion remains monotonic. Exact score-owner fencing decides whether a
+concurrent SUCCESS or FAILURE Worker observation still applies.
 
 Python Oracle and Java production both install exactly the two built-in
 strategies. There is no public Handler map, dynamic registry, reflection,

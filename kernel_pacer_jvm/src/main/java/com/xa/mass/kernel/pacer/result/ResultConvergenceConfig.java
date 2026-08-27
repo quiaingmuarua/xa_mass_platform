@@ -7,8 +7,8 @@ record ResultConvergenceConfig(
 
     static final int TASK_RESULT_BATCH_LIMIT = 100;
     static final int GLOBAL_MAX_CONCURRENCY = 10;
-    static final int TASK_SUCCESS_TARGET_CONCURRENCY = 1;
-    static final int TASK_SUCCESS_MAX_CONCURRENCY = 1;
+    static final int TASK_SUCCESS_TARGET_CONCURRENCY = 6;
+    static final int TASK_SUCCESS_MAX_CONCURRENCY = 10;
     static final int TASK_FAILURE_TARGET_CONCURRENCY = 3;
     static final int TASK_FAILURE_MAX_CONCURRENCY = 10;
     static final int ADAPTER_EVIDENCE_TARGET_CONCURRENCY = 1;

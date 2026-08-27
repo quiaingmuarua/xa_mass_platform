@@ -242,7 +242,7 @@ cross-owner transaction.
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
-| ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; order-sensitive lanes remain single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
+| ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
 | TaskResultBatchPolicy | context decode, bounded owner-key grouping, Task finality and Worker lease disposition | no queue ownership, score decoding or cross-owner truth |
 
 ## Deferred Policy

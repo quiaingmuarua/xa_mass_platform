@@ -45,8 +45,8 @@ Result Convergence owns exactly three fixed lane definitions:
 coordinator schedules at most ten bounded Batches by the smallest
 `inflight / targetConcurrency` ratio; priority only breaks equal ratios. Every
 non-empty Batch runs on a named virtual thread. Production target/max values
-are SUCCESS `1/1`, FAILURE `3/10`, and Evidence `1/1`, so FAILURE may borrow
-idle capacity while the two order-sensitive policies remain single-flight.
+are SUCCESS `6/10`, FAILURE `3/10`, and Evidence `1/1`. Both Task lanes may
+borrow idle capacity while Adapter Evidence remains single-flight.
 These values are internal constants, not configuration or a public lane model.
 Server validates endpoint-owned outcome codes and selects the Task lane; Task
 policy does not read `DeliveryReport.outcomeCode`. SUCCESS stores and promotes
