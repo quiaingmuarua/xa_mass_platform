@@ -22,6 +22,9 @@ class KernelPacerModuleBoundaryTest {
                     + "(?:class|record|enum|interface) "
                     + "([A-Za-z0-9_]+)"
     );
+    private static final Pattern PACKAGE_DECLARATION = Pattern.compile(
+            "(?m)^package ([A-Za-z0-9_.]+);$"
+    );
     private static final String PACER_IMPORT =
             "import com.xa.mass.kernel.pacer.";
 
@@ -44,6 +47,14 @@ class KernelPacerModuleBoundaryTest {
         }
 
         assertEquals(List.of("KernelPacerRuntime"), publicTypes);
+    }
+
+    @Test
+    void keepsDeclaredPackagesAlignedWithSourcePaths() throws IOException {
+        Path moduleRoot = repositoryRoot().resolve("kernel_pacer_jvm/src");
+
+        assertPackagePaths(moduleRoot.resolve("main/java"));
+        assertPackagePaths(moduleRoot.resolve("test/java"));
     }
 
     @Test
@@ -116,6 +127,32 @@ class KernelPacerModuleBoundaryTest {
 
     private static Path repositoryRoot() {
         return Path.of(System.getProperty("xa.mass.repository.root"));
+    }
+
+    private static void assertPackagePaths(Path sourceRoot)
+            throws IOException {
+        try (Stream<Path> files = Files.walk(sourceRoot)) {
+            files.filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        Path relative = sourceRoot.relativize(path);
+                        String expectedPackage = relative.getParent()
+                                .toString()
+                                .replace(java.io.File.separatorChar, '.');
+                        Matcher matcher = PACKAGE_DECLARATION.matcher(
+                                read(path)
+                        );
+                        assertTrue(
+                                matcher.find(),
+                                () -> "missing package declaration: "
+                                        + relative
+                        );
+                        assertEquals(
+                                expectedPackage,
+                                matcher.group(1),
+                                () -> "package/path mismatch: " + relative
+                        );
+                    });
+        }
     }
 
     private static String read(Path path) {

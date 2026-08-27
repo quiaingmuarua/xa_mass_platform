@@ -25,10 +25,10 @@ Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
 and aggregate failure state. It never closes the supplied owners.
 
 All Assignment, Result Routing and Serviceability implementation types are
-package-private. Their source files remain grouped under `assignment/`,
-`result/`, `serviceability/` and `internal/`, but share the Runtime package so
-Java package visibility enforces the single-entry boundary without reflection
-or public factory types.
+package-private. Their source files live directly in the matching
+`com/xa/mass/kernel/pacer` package directory so Java package visibility
+enforces the single-entry boundary without reflection, public factory types,
+or source-path/package mismatches in Java tooling.
 
 ## Fixed Applications
 
