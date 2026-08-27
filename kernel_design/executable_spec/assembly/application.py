@@ -58,7 +58,7 @@ _WORKER_LEASE_DURATION_MILLIS = 5_000
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
 _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS = 1_000
-_RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
+_RESULT_ROUTING_PER_RESULT_CLASS_BATCH_LIMIT = 100
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -723,8 +723,8 @@ class KernelApplication:
             ),
             result_routing=ResultRoutingApplicationConfig(
                 routing=ResultRoutingConfig(
-                    per_outcome_batch_limit=(
-                        _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT
+                    per_result_class_batch_limit=(
+                        _RESULT_ROUTING_PER_RESULT_CLASS_BATCH_LIMIT
                     ),
                 ),
                 interval_millis=config.result_routing_interval_millis,

@@ -339,7 +339,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("WorkerResultRuntime");
+                .doesNotContain("TaskResultRuntime");
         assertThat(readSources(DELIVERY))
                 .doesNotContain("@RestController")
                 .doesNotContain("WorkerDeliveryHttpContract");
@@ -367,7 +367,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("getScoreStates")
                 .doesNotContain("rewriteCurrentScores")
                 .doesNotContain("releaseScoreHolds")
-                .doesNotContain("WorkerResultRuntime")
+                .doesNotContain("TaskResultRuntime")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskItem")
                 .doesNotContain("Pacer")
@@ -478,7 +478,7 @@ class ServerArchitectureBoundaryTest {
         String deliveryAssembly = Files.readString(DELIVERY_ASSEMBLY);
         assertThat(deliveryAssembly)
                 .contains("RedisWorkerCommandRuntime")
-                .contains("RedisWorkerResultRuntime")
+                .contains("RedisTaskResultRuntime")
                 .contains("RedisWorkerServiceabilityRuntime")
                 .doesNotContain("RedisWorkerChangeInbox")
                 .doesNotContain("TaskRuntime")
@@ -495,10 +495,10 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("HttpWorkerResourceCatalog")
                 .doesNotContain("AssembledWorkerResourceCatalog")
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("WorkerResultRuntime")
+                .doesNotContain("TaskResultRuntime")
                 .doesNotContain("WorkerServiceabilityRuntime")
                 .doesNotContain("RedisWorkerCommandRuntime")
-                .doesNotContain("RedisWorkerResultRuntime")
+                .doesNotContain("RedisTaskResultRuntime")
                 .doesNotContain("RedisWorkerServiceabilityRuntime");
 
         assertThat(readSources(KERNEL_SOURCE))

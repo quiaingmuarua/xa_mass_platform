@@ -1,11 +1,11 @@
 package com.xa.mass.kernel.pacer;
 
-record ResultRoutingConfig(int perOutcomeBatchLimit) {
+record ResultRoutingConfig(int perResultClassBatchLimit) {
 
     public ResultRoutingConfig {
-        if (perOutcomeBatchLimit < 1) {
+        if (perResultClassBatchLimit < 1) {
             throw new IllegalArgumentException(
-                    "perOutcomeBatchLimit must be positive"
+                    "perResultClassBatchLimit must be positive"
             );
         }
     }

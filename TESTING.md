@@ -179,7 +179,7 @@ Redis Owner:
 .\gradlew.bat :server_jvm:redisOwnerIntegrationTest
 ```
 
-Runtime Boundary starts only the Java test context. Java consumes the three
+Runtime Boundary starts only the Java test context. Java consumes the two
 Task Result LISTs, consumes Adapter Evidence and produces Serviceability Probe
 requests, and runs Assignment Dispatch. Task business calls remain
 Java-to-Redis:

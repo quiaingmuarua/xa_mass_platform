@@ -41,6 +41,12 @@ Result Routing
 -> Assignment Dispatch
 ```
 
+Result Routing consumes exactly two Task result lanes in order: `SUCCESS`,
+then `FAILURE`. Server validates endpoint-owned outcome codes and selects the
+lane; the Pacer does not read `DeliveryReport.outcomeCode`. SUCCESS stores and
+promotes the Item before its narrow completed-HOT release, while FAILURE only
+releases the exact assignment lease and never changes Worker polarity.
+
 Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
 Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal
 production cadence, `SCENARIO_LAB` is the checked fast local-Lab policy, and

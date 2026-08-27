@@ -10,7 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.workerbinding.WorkerBindingService;
@@ -35,7 +36,7 @@ class WorkerDeliveryServiceTest {
             WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private WorkerCommandRuntime commandRuntime;
-    private WorkerResultRuntime resultRuntime;
+    private TaskResultRuntime resultRuntime;
     private WorkerBindingService bindings;
     private DirectCallService directCalls;
     private WorkerServiceabilityRuntime serviceability;
@@ -44,7 +45,7 @@ class WorkerDeliveryServiceTest {
     @BeforeEach
     void setUp() {
         commandRuntime = mock(WorkerCommandRuntime.class);
-        resultRuntime = mock(WorkerResultRuntime.class);
+        resultRuntime = mock(TaskResultRuntime.class);
         bindings = mock(WorkerBindingService.class);
         directCalls = mock(DirectCallService.class);
         serviceability = mock(WorkerServiceabilityRuntime.class);
@@ -293,6 +294,35 @@ class WorkerDeliveryServiceTest {
     }
 
     @Test
+    void pointWorkerResultsAreMappedToSuccessAndFailureLanes() {
+        DeliveryReport success = result(COMMAND_ID, "200");
+        DeliveryReport failure = result(
+                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
+                "3500"
+        );
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        )).thenReturn(1);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.FAILURE,
+                List.of(failure)
+        )).thenReturn(1);
+
+        service.appendWorkerResult(POLLING, "worker-1", success);
+        service.appendWorkerResult(POLLING, "worker-1", failure);
+
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        );
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.FAILURE,
+                List.of(failure)
+        );
+    }
+
+    @Test
     void workerResultRejectsAdapterEvidence() {
         DeliveryReport result = result(COMMAND_ID, "23002");
 
@@ -308,7 +338,10 @@ class WorkerDeliveryServiceTest {
                 .isEqualTo(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST
                 );
-        verify(resultRuntime, never()).appendWorkerResults(List.of(result));
+        verify(resultRuntime, never()).appendTaskResults(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyList()
+        );
         verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
     }
 
@@ -329,7 +362,10 @@ class WorkerDeliveryServiceTest {
                 "worker-1",
                 result
         )).isInstanceOf(ServerException.class);
-        verify(resultRuntime, never()).appendWorkerResults(List.of(result));
+        verify(resultRuntime, never()).appendTaskResults(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyList()
+        );
     }
 
     @Test
@@ -343,13 +379,14 @@ class WorkerDeliveryServiceTest {
                 "66f60ac8-e68f-4783-90e3-13b20a54ca13",
                 "23002"
         );
-        List<DeliveryReport> accepted = List.of(
-                success,
-                failure,
-                forgedRejection
-        );
-        when(resultRuntime.appendWorkerResults(accepted))
-                .thenReturn(accepted.size());
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        )).thenReturn(1);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.FAILURE,
+                List.of(failure, forgedRejection)
+        )).thenReturn(2);
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
@@ -364,7 +401,14 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(3);
         assertThat(counts.rejectedCount()).isEqualTo(2);
-        verify(resultRuntime).appendWorkerResults(accepted);
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        );
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.FAILURE,
+                List.of(failure, forgedRejection)
+        );
     }
 
     @Test
@@ -379,8 +423,10 @@ class WorkerDeliveryServiceTest {
                 "null",
                 "context"
         );
-        when(resultRuntime.appendWorkerResults(List.of(success)))
-                .thenReturn(1);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        )).thenReturn(1);
         when(directCalls.completeReports(
                 "endpoint-1",
                 List.of(wrongDestination)
@@ -396,7 +442,10 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(1);
         assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendWorkerResults(List.of(success));
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        );
     }
 
     @Test
@@ -411,8 +460,10 @@ class WorkerDeliveryServiceTest {
                 "null",
                 "context"
         );
-        when(resultRuntime.appendWorkerResults(List.of(success)))
-                .thenReturn(1);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        )).thenReturn(1);
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
@@ -424,7 +475,10 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(1);
         assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendWorkerResults(List.of(success));
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        );
     }
 
     @Test
@@ -490,7 +544,10 @@ class WorkerDeliveryServiceTest {
                 "{}",
                 "unknown"
         );
-        when(resultRuntime.appendWorkerResults(List.of(task))).thenReturn(1);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(task)
+        )).thenReturn(1);
         when(directCalls.completeReports(
                 "endpoint-1",
                 List.of(direct, unknownSystem)
@@ -513,7 +570,10 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isEqualTo(4);
         assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendWorkerResults(List.of(task));
+        verify(resultRuntime).appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(task)
+        );
         verify(directCalls).completeReports(
                 "endpoint-1",
                 List.of(direct, unknownSystem)
@@ -546,7 +606,8 @@ class WorkerDeliveryServiceTest {
 
         assertThat(counts.acceptedCount()).isZero();
         assertThat(counts.rejectedCount()).isEqualTo(2);
-        verify(resultRuntime, never()).appendWorkerResults(
+        verify(resultRuntime, never()).appendTaskResults(
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyList()
         );
     }
@@ -554,8 +615,10 @@ class WorkerDeliveryServiceTest {
     @Test
     void incompleteRuntimeAppendIsUnavailableForRetry() {
         DeliveryReport success = result(COMMAND_ID, "200");
-        when(resultRuntime.appendWorkerResults(List.of(success)))
-                .thenReturn(0);
+        when(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(success)
+        )).thenReturn(0);
 
         assertThatThrownBy(() -> service.appendAdapterResults(
                 "endpoint-1",

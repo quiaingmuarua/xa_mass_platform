@@ -89,7 +89,7 @@ TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
 CandidateWorkerCache / CandidateWarmupSchedule
-WorkerCommandRuntime / WorkerResultRuntime
+WorkerCommandRuntime / TaskResultRuntime
 WorkerServiceabilityRuntime
 ```
 

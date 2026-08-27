@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from collections import defaultdict
 from dataclasses import dataclass
 from time import time_ns
-from typing import Protocol, Callable
 
 from ..kernel.result_context import decode_result_context
-from ..kernel.worker_delivery import (
-    DeliveryEndpoint,
-    DeliveryReportOutcomeClass,
-    classify_delivery_report_outcome_code,
+from ..kernel.task_result_runtime import (
+    TaskResultClass,
+    TaskResultRuntime,
 )
-from ..kernel.worker_result_runtime import WorkerResultRuntime
+from ..kernel.worker_delivery import DeliveryEndpoint
 from ..kernel.task_item_score_band import TaskItemScoreBand, TaskItemScoreBandCore
 from ..kernel.task_runtime import MessageId, TaskRuntime
 from ..kernel.task_score_band import TaskId, TimeMillis
@@ -23,11 +20,13 @@ from ..kernel.worker_score import WorkerId, WorkerScoreCore
 
 @dataclass(frozen=True, slots=True)
 class ResultRoutingConfig:
-    per_outcome_batch_limit: int
+    per_result_class_batch_limit: int
 
     def __post_init__(self) -> None:
-        if self.per_outcome_batch_limit <= 0:
-            raise ValueError("per-outcome result-routing batch limit must be positive")
+        if self.per_result_class_batch_limit <= 0:
+            raise ValueError(
+                "per-result-class routing batch limit must be positive"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,26 +42,6 @@ class WorkerResultEvidence:
     worker_lease_score: WorkerScore
 
 
-class TaskResultHandler(Protocol):
-    def __call__(
-        self,
-        *,
-        task_id: TaskId,
-        results: tuple[TaskResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None: ...
-
-
-class WorkerResultHandler(Protocol):
-    def __call__(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        results: tuple[WorkerResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None: ...
-
-
 class ResultRoutingBuiltinPolicies:
     def __init__(
         self,
@@ -74,24 +53,6 @@ class ResultRoutingBuiltinPolicies:
         self.task_runtime = task_runtime
         self.item_score = item_score
         self.worker_score = worker_score
-
-    def default_task_result_handlers(
-        self,
-    ) -> dict[DeliveryReportOutcomeClass, Callable[..., None]]:
-        return {
-            DeliveryReportOutcomeClass.SUCCESS: self.store_task_success_results,
-        }
-
-    def default_worker_result_handlers(
-        self,
-    ) -> dict[DeliveryReportOutcomeClass, Callable[..., None]]:
-        return {
-            DeliveryReportOutcomeClass.SUCCESS: (
-                self.release_completed_hot_score_holds
-            ),
-            DeliveryReportOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
-            DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.release_worker_score_holds,
-        }
 
     def store_task_success_results(
         self,
@@ -163,97 +124,73 @@ class _DecodedWorkerResultBatch:
     ]
 
 
-_OUTCOME_CLASSES = (
-    DeliveryReportOutcomeClass.SUCCESS,
-    DeliveryReportOutcomeClass.WORKER_FAILURE,
-    DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+_RESULT_CLASSES = (
+    TaskResultClass.SUCCESS,
+    TaskResultClass.FAILURE,
 )
 
 
 class ResultRoutingPacer:
-    """Route outcome-class queues into TaskItem and Worker owners."""
+    """Route Task result-class queues into TaskItem and Worker owners."""
 
     def __init__(
         self,
-        worker_result_runtime: WorkerResultRuntime,
+        task_result_runtime: TaskResultRuntime,
         *,
-        task_result_handlers: Mapping[
-            DeliveryReportOutcomeClass, TaskResultHandler
-        ],
-        worker_result_handlers: Mapping[
-            DeliveryReportOutcomeClass, WorkerResultHandler
-        ],
+        task_runtime: TaskRuntime,
+        item_score: TaskItemScoreBandCore,
+        worker_score: WorkerScoreCore,
     ) -> None:
-        self.worker_result_runtime = worker_result_runtime
-        self._task_result_handlers = dict(task_result_handlers)
-        self._worker_result_handlers = dict(worker_result_handlers)
-        self._validate_result_handlers()
+        if not isinstance(task_result_runtime, TaskResultRuntime):
+            raise TypeError("task_result_runtime must be TaskResultRuntime")
+        self.task_result_runtime = task_result_runtime
+        self._policies = ResultRoutingBuiltinPolicies(
+            task_runtime=task_runtime,
+            item_score=item_score,
+            worker_score=worker_score,
+        )
 
     def route_worker_results(self, *, config: ResultRoutingConfig) -> int:
         result_time_millis = self._current_time_millis()
         routed_count = 0
-        for outcome_class in _OUTCOME_CLASSES:
+        for result_class in _RESULT_CLASSES:
             batch = self._consume_decoded(
-                outcome_class=outcome_class,
-                limit=config.per_outcome_batch_limit,
+                result_class=result_class,
+                limit=config.per_result_class_batch_limit,
             )
             if batch.decoded_count == 0:
                 continue
-            self._handle_task_results(
-                outcome_class=outcome_class,
-                results_by_task=batch.results_by_task,
-                result_time_millis=result_time_millis,
-            )
-            self._handle_worker_results(
-                outcome_class=outcome_class,
-                results_by_worker_group=batch.results_by_worker_group,
-                result_time_millis=result_time_millis,
-            )
+            if result_class is TaskResultClass.SUCCESS:
+                for task_id, entries in batch.results_by_task.items():
+                    self._policies.store_task_success_results(
+                        task_id=task_id,
+                        results=entries,
+                        result_time_millis=result_time_millis,
+                    )
+            for worker_group_id, entries in batch.results_by_worker_group.items():
+                if result_class is TaskResultClass.SUCCESS:
+                    self._policies.release_completed_hot_score_holds(
+                        worker_group_id=worker_group_id,
+                        results=entries,
+                        result_time_millis=result_time_millis,
+                    )
+                else:
+                    self._policies.release_worker_score_holds(
+                        worker_group_id=worker_group_id,
+                        results=entries,
+                        result_time_millis=result_time_millis,
+                    )
             routed_count += batch.decoded_count
         return routed_count
-
-    def _handle_task_results(
-        self,
-        *,
-        outcome_class: DeliveryReportOutcomeClass,
-        results_by_task: dict[TaskId, tuple[TaskResultEvidence, ...]],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        handler = self._task_result_handlers.get(outcome_class)
-        if handler is None:
-            return
-        for task_id, entries in results_by_task.items():
-            handler(
-                task_id=task_id,
-                results=entries,
-                result_time_millis=result_time_millis,
-            )
-
-    def _handle_worker_results(
-        self,
-        *,
-        outcome_class: DeliveryReportOutcomeClass,
-        results_by_worker_group: dict[
-            WorkerGroupId, tuple[WorkerResultEvidence, ...]
-        ],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        handler = self._worker_result_handlers[outcome_class]
-        for worker_group_id, entries in results_by_worker_group.items():
-            handler(
-                worker_group_id=worker_group_id,
-                results=entries,
-                result_time_millis=result_time_millis,
-            )
 
     def _consume_decoded(
         self,
         *,
-        outcome_class: DeliveryReportOutcomeClass,
+        result_class: TaskResultClass,
         limit: int,
     ) -> _DecodedWorkerResultBatch:
-        results = self.worker_result_runtime.consume_worker_results(
-            outcome_class=outcome_class,
+        results = self.task_result_runtime.consume_task_results(
+            result_class=result_class,
             limit=limit,
         )
         decoded_count = 0
@@ -266,11 +203,9 @@ class ResultRoutingPacer:
             if (
                 result.dst is DeliveryEndpoint.TASK
                 and context is not None
-                and classify_delivery_report_outcome_code(result.outcome_code)
-                is outcome_class
             ):
                 decoded_count += 1
-                if outcome_class is DeliveryReportOutcomeClass.SUCCESS:
+                if result_class is TaskResultClass.SUCCESS:
                     results_by_task[context.task_id].append(
                         TaskResultEvidence(
                             task_id=context.task_id,
@@ -295,16 +230,6 @@ class ResultRoutingPacer:
                 for worker_group_id, entries in results_by_worker_group.items()
             },
         )
-
-    def _validate_result_handlers(self) -> None:
-        if set(self._task_result_handlers) != {DeliveryReportOutcomeClass.SUCCESS}:
-            raise ValueError("Task result handlers must define SUCCESS exactly")
-        if set(self._worker_result_handlers) != set(_OUTCOME_CLASSES):
-            raise ValueError("Worker result handlers must define every outcome class")
-        if not all(callable(handler) for handler in self._task_result_handlers.values()):
-            raise TypeError("Task result handlers must be callable")
-        if not all(callable(handler) for handler in self._worker_result_handlers.values()):
-            raise TypeError("Worker result handlers must be callable")
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:

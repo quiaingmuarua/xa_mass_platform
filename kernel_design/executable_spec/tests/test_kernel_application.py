@@ -318,7 +318,7 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.assertEqual(
             100,
-            internal.result_routing.routing.per_outcome_batch_limit,
+            internal.result_routing.routing.per_result_class_batch_limit,
         )
         self.assertEqual(100, internal.result_routing.interval_millis)
         self.assertIsNone(internal.worker_serviceability_dispatch)

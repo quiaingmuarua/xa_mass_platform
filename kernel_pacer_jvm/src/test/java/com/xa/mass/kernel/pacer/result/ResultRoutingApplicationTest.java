@@ -4,14 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryReportOutcomeClass;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,15 +21,18 @@ class ResultRoutingApplicationTest {
     @Test
     void isolatesRoundFailureAndStopsPromptly() throws Exception {
         AtomicInteger invocations = new AtomicInteger();
-        WorkerResultRuntime runtime = new WorkerResultRuntime() {
+        TaskResultRuntime runtime = new TaskResultRuntime() {
             @Override
-            public int appendWorkerResults(List<DeliveryReport> results) {
+            public int appendTaskResults(
+                    TaskResultClass resultClass,
+                    List<DeliveryReport> results
+            ) {
                 return 0;
             }
 
             @Override
-            public List<DeliveryReport> consumeWorkerResults(
-                    DeliveryReportOutcomeClass outcomeClass,
+            public List<DeliveryReport> consumeTaskResults(
+                    TaskResultClass resultClass,
                     int limit
             ) {
                 if (invocations.getAndIncrement() == 0) {

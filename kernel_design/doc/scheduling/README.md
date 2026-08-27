@@ -148,8 +148,8 @@ WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes, authoritative append, non-overwriting
   offer and destructive consume; the mailbox is not lifecycle truth
 
-WorkerResultRuntime
-  owns three bounded best-effort outcome-class queues, not Item or Worker truth
+TaskResultRuntime
+  owns two bounded best-effort Task result-class queues, not Item or Worker truth
 
 ResultRoutingPacer
   bounded-consumes, decodes, groups, and delegates owner-local evidence
@@ -237,8 +237,8 @@ xa_mass:<scope>:delivery:commands:<endpointManagerId>
   one shared sparse DeliveryCommand HASH per Adapter route; TASK append may
   replace, while a generic offer fills only an empty worker field
 
-xa_mass:<scope>:result:routing:<outcomeClass>
-  three global best-effort result LISTs
+xa_mass:<scope>:result:routing:<success|failure>
+  two global best-effort Task result LISTs
 
 xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests
 xa_mass:<scope>:worker:serviceability:evidence_results
@@ -249,7 +249,7 @@ xa_mass:<scope>:worker:serviceability:evidence_results
 These are current mechanism boundaries, not claims of unlimited throughput.
 Adding Pacer or HTTP threads does not partition a hot Redis key and may only
 increase duplicate observation and exact-CAS contention. WorkerGroup, Task,
-Adapter route, and outcome class are the existing natural batching boundaries.
+Adapter route, and Task result class are the existing natural batching boundaries.
 A single very large WorkerGroup, one extremely hot Task, the global Task score
 key, or one result-class LIST may require a future explicitly owned
 partitioning design.
@@ -292,7 +292,7 @@ Read owner details only when changing that owner:
   [JVM Runtime API Server](../../../server_jvm/README.md).
 - Backend representation:
   [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
-  and [Worker Result Runtime Redis Shape](../runtime-redis/worker-result-runtime-redis-shape.md).
+  and [Task Result Runtime Redis Shape](../runtime-redis/task-result-runtime-redis-shape.md).
 
 The score documents own encoding and transition rules. The Worker lease
 protocol owns the one cross-pacer lease lifecycle without becoming a score or
@@ -312,7 +312,7 @@ kernel_design/executable_spec/
     worker_runtime.py
     assignment_dispatch_runtime.py
     result_context.py
-    worker_result_runtime.py
+    task_result_runtime.py
     worker_serviceability.py
     worker_delivery.py
   scheduling/

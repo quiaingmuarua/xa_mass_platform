@@ -7,7 +7,8 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReportOutcomeClass;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.server.directcall.DirectCallService;
@@ -37,7 +38,7 @@ public final class WorkerDeliveryService {
     );
 
     private final WorkerCommandRuntime commandRuntime;
-    private final WorkerResultRuntime resultRuntime;
+    private final TaskResultRuntime taskResults;
     private final WorkerBindingService bindings;
     private final DirectCallService directCalls;
     private final WorkerServiceabilityRuntime serviceability;
@@ -45,13 +46,13 @@ public final class WorkerDeliveryService {
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            WorkerResultRuntime resultRuntime,
+            TaskResultRuntime taskResults,
             WorkerBindingService bindings,
             DirectCallService directCalls,
             WorkerServiceabilityRuntime serviceability
     ) {
         this.commandRuntime = commandRuntime;
-        this.resultRuntime = resultRuntime;
+        this.taskResults = taskResults;
         this.bindings = bindings;
         this.directCalls = directCalls;
         this.serviceability = serviceability;
@@ -252,7 +253,13 @@ public final class WorkerDeliveryService {
                             + "or a Worker-owned 3... code"
             );
         }
-        appendResults(List.of(result), operation);
+        appendTaskResults(
+                outcomeClass == DeliveryReportOutcomeClass.SUCCESS
+                        ? TaskResultClass.SUCCESS
+                        : TaskResultClass.FAILURE,
+                List.of(result),
+                operation
+        );
     }
 
     public WorkerResultAppendCounts appendAdapterResults(
@@ -270,7 +277,8 @@ public final class WorkerDeliveryService {
 
         List<DeliveryReport> directCallResults = new ArrayList<>();
         List<DeliveryReport> kernelResults = new ArrayList<>();
-        List<DeliveryReport> taskResults = new ArrayList<>();
+        List<DeliveryReport> successfulTaskResults = new ArrayList<>();
+        List<DeliveryReport> failedTaskResults = new ArrayList<>();
         int rejectedCount = 0;
         for (String encodedWorkerResult : encodedWorkerResults) {
             if (encodedWorkerResult == null
@@ -290,13 +298,18 @@ public final class WorkerDeliveryService {
                         && result.src() == DeliveryEndpoint.ADAPTER
                         && endpointManagerId.equals(result.sourceId())) {
                     kernelResults.add(result);
-                } else if (acceptableTaskBatchReport(
-                        endpointManagerId,
-                        result
-                )) {
-                    taskResults.add(result);
                 } else {
-                    rejectedCount++;
+                    TaskResultClass resultClass = taskResultClass(
+                            endpointManagerId,
+                            result
+                    );
+                    if (resultClass == TaskResultClass.SUCCESS) {
+                        successfulTaskResults.add(result);
+                    } else if (resultClass == TaskResultClass.FAILURE) {
+                        failedTaskResults.add(result);
+                    } else {
+                        rejectedCount++;
+                    }
                 }
             } catch (IllegalArgumentException error) {
                 rejectedCount++;
@@ -304,9 +317,21 @@ public final class WorkerDeliveryService {
         }
 
         int acceptedCount = 0;
-        if (!taskResults.isEmpty()) {
-            appendResults(taskResults, operation);
-            acceptedCount += taskResults.size();
+        if (!successfulTaskResults.isEmpty()) {
+            appendTaskResults(
+                    TaskResultClass.SUCCESS,
+                    successfulTaskResults,
+                    operation
+            );
+            acceptedCount += successfulTaskResults.size();
+        }
+        if (!failedTaskResults.isEmpty()) {
+            appendTaskResults(
+                    TaskResultClass.FAILURE,
+                    failedTaskResults,
+                    operation
+            );
+            acceptedCount += failedTaskResults.size();
         }
         if (!directCallResults.isEmpty()) {
             DirectCallService.ResultAppendCounts directCounts =
@@ -345,33 +370,44 @@ public final class WorkerDeliveryService {
         );
     }
 
-    private static boolean acceptableTaskBatchReport(
+    private static TaskResultClass taskResultClass(
             String endpointManagerId,
             DeliveryReport report
     ) {
         if (report == null || report.dst() != DeliveryEndpoint.TASK) {
-            return false;
+            return null;
         }
         DeliveryReportOutcomeClass outcome =
                 WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode(
                         report.outcomeCode()
                 );
         if (report.src() == DeliveryEndpoint.WORKER) {
-            return outcome == DeliveryReportOutcomeClass.SUCCESS
-                    || outcome == DeliveryReportOutcomeClass.WORKER_FAILURE;
+            if (outcome == DeliveryReportOutcomeClass.SUCCESS) {
+                return TaskResultClass.SUCCESS;
+            }
+            if (outcome == DeliveryReportOutcomeClass.WORKER_FAILURE) {
+                return TaskResultClass.FAILURE;
+            }
+            return null;
         }
         return report.src() == DeliveryEndpoint.ADAPTER
                 && endpointManagerId.equals(report.sourceId())
                 && report.outcomeCode().startsWith("2")
-                && outcome == DeliveryReportOutcomeClass.ADAPTER_REJECTION;
+                && outcome == DeliveryReportOutcomeClass.ADAPTER_REJECTION
+                ? TaskResultClass.FAILURE
+                : null;
     }
 
-    private void appendResults(
+    private void appendTaskResults(
+            TaskResultClass resultClass,
             List<DeliveryReport> results,
             String operation
     ) {
         try {
-            int accepted = resultRuntime.appendWorkerResults(results);
+            int accepted = taskResults.appendTaskResults(
+                    resultClass,
+                    results
+            );
             if (accepted != results.size()) {
                 throw unavailable(
                         operation,

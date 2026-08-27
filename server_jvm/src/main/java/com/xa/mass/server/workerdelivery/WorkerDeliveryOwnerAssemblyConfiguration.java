@@ -1,8 +1,8 @@
 package com.xa.mass.server.workerdelivery;
 
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
+import com.xa.mass.kernel.delivery.redis.RedisTaskResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.redis.RedisWorkerServiceabilityRuntime;
@@ -29,12 +29,12 @@ public class WorkerDeliveryOwnerAssemblyConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    WorkerResultRuntime seedResultRuntime(
+    TaskResultRuntime taskResultRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
             XaMassRedisProperties properties
     ) {
-        return new RedisWorkerResultRuntime(
+        return new RedisTaskResultRuntime(
                 redisClient,
                 codec,
                 properties.keyspace()

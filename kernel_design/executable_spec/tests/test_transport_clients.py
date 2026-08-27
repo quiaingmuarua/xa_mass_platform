@@ -8,6 +8,7 @@ from kernel_design.executable_spec import (
     DeliveryReport,
     DeliveryCommand,
     DeliveryEndpoint,
+    TaskResultClass,
 )
 from kernel_design.executable_spec.assembly import (
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
@@ -31,7 +32,7 @@ class TransportClientsTest(unittest.TestCase):
             ),
             patch(
                 "kernel_design.executable_spec.assembly.transport_clients."
-                "RedisWorkerResultRuntime",
+                "RedisTaskResultRuntime",
                 return_value=self.result_runtime,
             ),
         )
@@ -122,7 +123,7 @@ class TransportClientsTest(unittest.TestCase):
         )
         self.deliver_runtime.consume_worker_command.return_value = command
         self.deliver_runtime.consume_worker_commands.return_value = commands
-        self.result_runtime.append_worker_results.return_value = 1
+        self.result_runtime.append_task_results.return_value = 1
 
         deliver_client = WorkerCommandConsumerClient(self.config)
         result_client = WorkerResultCommandClient(self.config)
@@ -153,8 +154,9 @@ class TransportClientsTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             limit=10,
         )
-        self.result_runtime.append_worker_results.assert_called_once_with(
-            results=(worker_result,),
+        self.result_runtime.append_task_results.assert_called_once_with(
+            result_class=TaskResultClass.SUCCESS,
+            results=[worker_result],
         )
 
     def test_result_client_accepts_all_worker_result_outcome_classes(self) -> None:
@@ -179,11 +181,12 @@ class TransportClientsTest(unittest.TestCase):
                 forward="adapter-context",
             ),
         )
-        self.result_runtime.append_worker_results.return_value = 2
+        self.result_runtime.append_task_results.return_value = 2
 
         self.assertEqual(2, client.append_worker_results(results=results))
-        self.result_runtime.append_worker_results.assert_called_once_with(
-            results=results
+        self.result_runtime.append_task_results.assert_called_once_with(
+            result_class=TaskResultClass.FAILURE,
+            results=list(results),
         )
 
 

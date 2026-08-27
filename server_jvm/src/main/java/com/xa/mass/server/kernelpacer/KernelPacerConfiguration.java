@@ -3,7 +3,7 @@ package com.xa.mass.server.kernelpacer;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -26,7 +26,7 @@ public class KernelPacerConfiguration {
     KernelPacerRuntime kernelPacerRuntime(
             KernelPacerProperties properties,
             XaMassRedisProperties redisProperties,
-            WorkerResultRuntime workerResults,
+            TaskResultRuntime taskResults,
             TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
@@ -42,7 +42,7 @@ public class KernelPacerConfiguration {
         return KernelPacerRuntime.assemble(
                 properties.preset(),
                 properties.shutdownTimeout(),
-                workerResults,
+                taskResults,
                 taskRuntime,
                 taskScores,
                 itemScores,

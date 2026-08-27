@@ -13,9 +13,7 @@ from .result_routing import (
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskResultEvidence,
-    TaskResultHandler,
     WorkerResultEvidence,
-    WorkerResultHandler,
 )
 from .task_running_activation import (
     DueTaskItemAdmissionPolicy,
@@ -48,7 +46,6 @@ __all__ = [
     "ResultRoutingBuiltinPolicies",
     "ResultRoutingPacer",
     "TaskResultEvidence",
-    "TaskResultHandler",
     "TaskDispatchConfig",
     "TaskDispatchPacer",
     "TaskItemDispatcher",
@@ -67,7 +64,6 @@ __all__ = [
     "WorkerCandidateAcquisition",
     "WorkerCandidateMatcher",
     "WorkerResultEvidence",
-    "WorkerResultHandler",
     "WorkerServiceabilityDispatchConfig",
     "WorkerServiceabilityDispatchPacer",
     "WorkerServiceabilityResultConfig",

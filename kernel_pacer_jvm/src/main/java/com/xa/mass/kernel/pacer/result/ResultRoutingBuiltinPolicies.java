@@ -4,8 +4,7 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryReportOutcomeClass;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +64,7 @@ final class ResultRoutingBuiltinPolicies {
     }
 
     void handleWorkerResults(
-            DeliveryReportOutcomeClass outcomeClass,
+            TaskResultClass resultClass,
             Map<String, List<WorkerResultEvidence>> resultsByWorkerGroup
     ) {
         resultsByWorkerGroup.forEach((workerGroupId, evidence) -> {
@@ -74,7 +73,7 @@ final class ResultRoutingBuiltinPolicies {
                 scores.put(result.workerId(), result.workerLeaseScore());
             }
             long releaseTimeMillis = currentTimeMillis.getAsLong();
-            if (outcomeClass == DeliveryReportOutcomeClass.SUCCESS) {
+            if (resultClass == TaskResultClass.SUCCESS) {
                 workerScore.releaseCompletedHotScoreHolds(
                         workerGroupId,
                         scores,

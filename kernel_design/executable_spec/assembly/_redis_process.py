@@ -9,7 +9,6 @@ from ..kernel.worker_score import WorkerScoreCore
 from ..scheduling import (
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
-    ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskCallItemSubmission,
     TaskDispatchPacer,
@@ -31,7 +30,7 @@ from ..redis_runtime import (
     RedisTaskScoreBandCore,
     RedisWorkerResourceCatalog,
     RedisWorkerScoreCore,
-    RedisWorkerResultRuntime,
+    RedisTaskResultRuntime,
     RedisWorkerServiceabilityRuntime,
 )
 from ..redis_runtime.assignment_dispatch import RedisCandidateWarmupSchedule
@@ -199,20 +198,16 @@ class _RedisKernelProcess:
             running_activation_pacer,
             task_dispatch_pacer,
         )
-        self._worker_result_runtime = RedisWorkerResultRuntime(
+        self._task_result_runtime = RedisTaskResultRuntime(
             redis_client,
             keyspace=config.keyspace,
         )
-        result_routing_policies = ResultRoutingBuiltinPolicies(
-            task_runtime=self._task_runtime,
-            item_score=self._task_item_score,
-            worker_score=self._worker_score,
-        )
         self._result_routing_application = ResultRoutingApplication(
             ResultRoutingPacer(
-                self._worker_result_runtime,
-                task_result_handlers=result_routing_policies.default_task_result_handlers(),
-                worker_result_handlers=result_routing_policies.default_worker_result_handlers(),
+                self._task_result_runtime,
+                task_runtime=self._task_runtime,
+                item_score=self._task_item_score,
+                worker_score=self._worker_score,
             )
         )
         self._worker_serviceability_dispatch_application: (

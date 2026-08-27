@@ -1,10 +1,9 @@
 package com.xa.mass.kernel.pacer;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyDeliveryReportOutcomeCode;
-
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.ResultContextCodec.ResultContext;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -12,8 +11,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryReportOutcomeClass;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,26 +19,24 @@ import java.util.function.LongSupplier;
 
 final class ResultRoutingPacer {
 
-    private static final List<DeliveryReportOutcomeClass> OUTCOME_CLASSES =
-            List.of(
-                    DeliveryReportOutcomeClass.SUCCESS,
-                    DeliveryReportOutcomeClass.WORKER_FAILURE,
-                    DeliveryReportOutcomeClass.ADAPTER_REJECTION
-            );
+    private static final List<TaskResultClass> RESULT_CLASSES = List.of(
+            TaskResultClass.SUCCESS,
+            TaskResultClass.FAILURE
+    );
 
-    private final WorkerResultRuntime workerResultRuntime;
+    private final TaskResultRuntime taskResultRuntime;
     private final ResultRoutingBuiltinPolicies policies;
     private final ResultContextCodec contextCodec;
     private final LongSupplier currentTimeMillis;
 
     public ResultRoutingPacer(
-            WorkerResultRuntime workerResultRuntime,
+            TaskResultRuntime taskResultRuntime,
             TaskRuntime taskRuntime,
             TaskItemScoreBandCore itemScore,
             WorkerScoreCore workerScore
     ) {
         this(
-                workerResultRuntime,
+                taskResultRuntime,
                 taskRuntime,
                 itemScore,
                 workerScore,
@@ -51,16 +46,16 @@ final class ResultRoutingPacer {
     }
 
     ResultRoutingPacer(
-            WorkerResultRuntime workerResultRuntime,
+            TaskResultRuntime taskResultRuntime,
             TaskRuntime taskRuntime,
             TaskItemScoreBandCore itemScore,
             WorkerScoreCore workerScore,
             LongSupplier currentTimeMillis,
             ResultContextCodec contextCodec
     ) {
-        this.workerResultRuntime = java.util.Objects.requireNonNull(
-                workerResultRuntime,
-                "workerResultRuntime"
+        this.taskResultRuntime = java.util.Objects.requireNonNull(
+                taskResultRuntime,
+                "taskResultRuntime"
         );
         this.currentTimeMillis = java.util.Objects.requireNonNull(
                 currentTimeMillis,
@@ -82,22 +77,22 @@ final class ResultRoutingPacer {
         java.util.Objects.requireNonNull(config, "config");
         long resultTimeMillis = currentTimeMillis.getAsLong();
         int routedCount = 0;
-        for (DeliveryReportOutcomeClass outcomeClass : OUTCOME_CLASSES) {
+        for (TaskResultClass resultClass : RESULT_CLASSES) {
             DecodedBatch batch = consumeDecoded(
-                    outcomeClass,
-                    config.perOutcomeBatchLimit()
+                    resultClass,
+                    config.perResultClassBatchLimit()
             );
             if (batch.decodedCount() == 0) {
                 continue;
             }
-            if (outcomeClass == DeliveryReportOutcomeClass.SUCCESS) {
+            if (resultClass == TaskResultClass.SUCCESS) {
                 policies.handleTaskSuccess(
                         batch.resultsByTask(),
                         resultTimeMillis
                 );
             }
             policies.handleWorkerResults(
-                    outcomeClass,
+                    resultClass,
                     batch.resultsByWorkerGroup()
             );
             routedCount += batch.decodedCount();
@@ -106,12 +101,12 @@ final class ResultRoutingPacer {
     }
 
     private DecodedBatch consumeDecoded(
-            DeliveryReportOutcomeClass outcomeClass,
+            TaskResultClass resultClass,
             int limit
     ) {
         List<DeliveryReport> results =
-                workerResultRuntime.consumeWorkerResults(
-                        outcomeClass,
+                taskResultRuntime.consumeTaskResults(
+                        resultClass,
                         limit
                 );
         int decodedCount = 0;
@@ -124,15 +119,12 @@ final class ResultRoutingPacer {
                     result.forward()
             );
             if (result.dst() != DeliveryEndpoint.TASK
-                    || decoded.isEmpty()
-                    || classifyDeliveryReportOutcomeCode(
-                            result.outcomeCode()
-                    ) != outcomeClass) {
+                    || decoded.isEmpty()) {
                 continue;
             }
             ResultContext context = decoded.get();
             decodedCount++;
-            if (outcomeClass == DeliveryReportOutcomeClass.SUCCESS) {
+            if (resultClass == TaskResultClass.SUCCESS) {
                 resultsByTask.computeIfAbsent(
                         context.taskId(),
                         ignored -> new java.util.ArrayList<>()

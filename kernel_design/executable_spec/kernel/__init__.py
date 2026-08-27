@@ -80,7 +80,7 @@ from .worker_delivery import (
     encode_delivery_command,
     encode_delivery_report,
 )
-from .worker_result_runtime import WorkerResultRuntime
+from .task_result_runtime import TaskResultClass, TaskResultRuntime
 from .worker_serviceability import (
     ProbeRequestOfferStatus,
     WorkerServiceabilityRuntime,
@@ -152,7 +152,8 @@ __all__ = [
     "encode_delivery_command",
     "DeliveryReport",
     "DeliveryReportOutcomeClass",
-    "WorkerResultRuntime",
+    "TaskResultClass",
+    "TaskResultRuntime",
     "ProbeRequestOfferStatus",
     "WorkerServiceabilityRuntime",
     "classify_delivery_report_outcome_code",

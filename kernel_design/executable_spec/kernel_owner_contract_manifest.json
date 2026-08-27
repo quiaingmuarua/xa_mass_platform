@@ -79,9 +79,9 @@
       "candidate_worker_counts",
       "consume_candidate_workers"
     ],
-    "WorkerResultRuntime": [
-      "append_worker_results",
-      "consume_worker_results"
+    "TaskResultRuntime": [
+      "append_task_results",
+      "consume_task_results"
     ],
     "WorkerServiceabilityRuntime": [
       "append_adapter_evidence_results",
@@ -273,6 +273,10 @@
       "SUCCESS",
       "WORKER_FAILURE",
       "ADAPTER_REJECTION"
+    ],
+    "TaskResultClass": [
+      "SUCCESS",
+      "FAILURE"
     ],
     "TaskCreationStatus": [
       "created",

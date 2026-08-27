@@ -3,7 +3,8 @@ package com.xa.mass.server.kernelbinding;
 import static com.xa.mass.server.testsupport.ServerIntegrationProfile.REDIS_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
+import com.xa.mass.kernel.delivery.redis.RedisTaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandOfferStatus;
 import com.xa.mass.kernel.redis.RedisKeyspace;
@@ -15,8 +16,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryReportOutcomeClass;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -39,7 +38,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisWorkerCommandRuntime commandRuntime;
-    private RedisWorkerResultRuntime resultRuntime;
+    private RedisTaskResultRuntime resultRuntime;
     private RedisWorkerServiceabilityRuntime serviceabilityRuntime;
     private WorkerDeliveryCodec codec;
 
@@ -56,7 +55,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec,
                 keyspace
         );
-        resultRuntime = new RedisWorkerResultRuntime(
+        resultRuntime = new RedisTaskResultRuntime(
                 redisClient,
                 codec,
                 keyspace
@@ -136,23 +135,25 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                         "rejection"
                 )
         );
-        assertThat(resultRuntime.appendWorkerResults(results)).isEqualTo(3);
+        assertThat(resultRuntime.appendTaskResults(
+                TaskResultClass.SUCCESS,
+                List.of(results.get(0))
+        )).isEqualTo(1);
+        assertThat(resultRuntime.appendTaskResults(
+                TaskResultClass.FAILURE,
+                results.subList(1, 3)
+        )).isEqualTo(2);
         assertThat(redis.llen(resultKey("success"))).isEqualTo(1);
-        assertThat(redis.llen(resultKey("worker-failure"))).isEqualTo(1);
-        assertThat(redis.llen(resultKey("adapter-rejection"))).isEqualTo(1);
+        assertThat(redis.llen(resultKey("failure"))).isEqualTo(2);
 
-        assertThat(resultRuntime.consumeWorkerResults(
-                DeliveryReportOutcomeClass.SUCCESS,
+        assertThat(resultRuntime.consumeTaskResults(
+                TaskResultClass.SUCCESS,
                 100
         )).containsExactly(results.get(0));
-        assertThat(resultRuntime.consumeWorkerResults(
-                DeliveryReportOutcomeClass.WORKER_FAILURE,
+        assertThat(resultRuntime.consumeTaskResults(
+                TaskResultClass.FAILURE,
                 100
-        )).containsExactly(results.get(1));
-        assertThat(resultRuntime.consumeWorkerResults(
-                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
-                100
-        )).containsExactly(results.get(2));
+        )).containsExactly(results.get(1), results.get(2));
         assertThat(redis.llen(resultKey("success"))).isZero();
     }
 
@@ -167,8 +168,8 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec.encodeDeliveryReport(second)
         );
 
-        assertThat(resultRuntime.consumeWorkerResults(
-                DeliveryReportOutcomeClass.SUCCESS,
+        assertThat(resultRuntime.consumeTaskResults(
+                TaskResultClass.SUCCESS,
                 100
         )).containsExactly(first, second);
         assertThat(redis.llen(resultKey("success"))).isZero();

@@ -105,7 +105,7 @@ HOT_ACQUIRE does not mean immediately acquirable or physically connected. The
 sign selects the ordinary-allocation versus recovery-validation lane; the
 decoded `timeSlot` answers whether a HOT Worker is due, leased, held, disabled,
 draining, or cooling down. Task result disposition releases an exact lease but
-does not infer scheduling serviceability from the outcome class.
+does not infer scheduling serviceability from the Task result class.
 
 `abs(score)` is decoded the same way for both polarities:
 

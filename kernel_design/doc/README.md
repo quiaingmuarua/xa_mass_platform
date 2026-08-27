@@ -30,7 +30,7 @@ The document families are grouped by design concern:
 - Runtime Redis shapes:
   [Redis Keyspace](runtime-redis/redis-keyspace.md),
   [Worker Runtime](runtime-redis/worker-runtime-redis-shape.md) and
-  [Worker Result Runtime](runtime-redis/worker-result-runtime-redis-shape.md),
+  [Task Result Runtime](runtime-redis/task-result-runtime-redis-shape.md),
   plus the optional
   [Worker Serviceability Runtime](runtime-redis/worker-serviceability-runtime-redis-shape.md).
 Python executable-spec code lives under `../executable_spec/`; these documents

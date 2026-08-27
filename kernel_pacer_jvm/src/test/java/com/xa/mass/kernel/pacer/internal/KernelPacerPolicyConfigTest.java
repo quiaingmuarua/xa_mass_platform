@@ -23,7 +23,7 @@ class KernelPacerPolicyConfigTest {
         assertEquals(100, config.resultRouting().intervalMillis());
         assertEquals(
                 100,
-                config.resultRouting().routing().perOutcomeBatchLimit()
+                config.resultRouting().routing().perResultClassBatchLimit()
         );
         assertFalse(config.workerServiceability().enabled());
         assertEquals(0, config.workerServiceability()

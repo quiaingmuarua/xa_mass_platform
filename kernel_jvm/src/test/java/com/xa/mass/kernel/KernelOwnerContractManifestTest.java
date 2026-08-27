@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -60,7 +60,7 @@ class KernelOwnerContractManifestTest {
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
             ),
-            Map.entry("WorkerResultRuntime", WorkerResultRuntime.class),
+            Map.entry("TaskResultRuntime", TaskResultRuntime.class),
             Map.entry(
                     "WorkerServiceabilityRuntime",
                     WorkerServiceabilityRuntime.class
@@ -146,6 +146,10 @@ class KernelOwnerContractManifestTest {
                             "DeliveryReportOutcomeClass",
                             WorkerDeliveryProtocol
                                     .DeliveryReportOutcomeClass.class
+                    ),
+                    Map.entry(
+                            "TaskResultClass",
+                            TaskResultRuntime.TaskResultClass.class
                     ),
                     Map.entry(
                             "TaskCreationStatus",

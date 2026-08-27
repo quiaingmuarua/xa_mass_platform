@@ -8,21 +8,19 @@ from unittest.mock import Mock, call, patch
 
 from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
-    ResultRoutingConfig,
-    ResultRoutingBuiltinPolicies,
-    ResultRoutingPacer,
-    DeliveryReport,
     DeliveryEndpoint,
-    DeliveryReportOutcomeClass,
-    WorkerResultRuntime,
-    TaskResultEvidence,
-    TaskResultHandler,
+    DeliveryReport,
+    ResultRoutingBuiltinPolicies,
+    ResultRoutingConfig,
+    ResultRoutingPacer,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
+    TaskResultClass,
+    TaskResultEvidence,
+    TaskResultRuntime,
     TaskRuntime,
-    WorkerScoreCore,
     WorkerResultEvidence,
-    WorkerResultHandler,
+    WorkerScoreCore,
 )
 from kernel_design.executable_spec.kernel.result_context import (
     ResultContext,
@@ -43,7 +41,10 @@ class ResultContextCodecTest(unittest.TestCase):
 
         encoded = encode_result_context(context)
 
-        self.assertEqual(["context"], list(inspect.signature(encode_result_context).parameters))
+        self.assertEqual(
+            ["context"],
+            list(inspect.signature(encode_result_context).parameters),
+        )
         self.assertEqual(
             '{"messageId":"message-1","taskId":"task-1",'
             '"workerGroupId":"image-workers",'
@@ -69,10 +70,10 @@ class ResultContextCodecTest(unittest.TestCase):
             "{bad-json",
             "[]",
             '{"taskId":"task-1"}',
-            '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
-            '"workerLeaseScore":201}',
-            '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
-            '"workerGroupId":"image-workers",'
+            '{"taskId":"task-1","messageId":"message-1",'
+            '"workerId":"worker-1","workerLeaseScore":201}',
+            '{"taskId":"task-1","messageId":"message-1",'
+            '"workerId":"worker-1","workerGroupId":"image-workers",'
             '"workerLeaseScore":0}',
         ):
             with self.subTest(invalid=invalid):
@@ -83,25 +84,26 @@ class ResultRoutingPacerTest(unittest.TestCase):
     NOW_MILLIS = 100_000
 
     def setUp(self) -> None:
-        self.runtime = Mock(spec=WorkerResultRuntime)
+        self.runtime = Mock(spec=TaskResultRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.task_runtime = Mock(spec=TaskRuntime)
-        self.queues: dict[DeliveryReportOutcomeClass, tuple[DeliveryReport, ...]] = {}
-        self.runtime.consume_worker_results.side_effect = (
-            lambda *, outcome_class, limit: self.queues.get(outcome_class, ())
+        self.queues: dict[
+            TaskResultClass, tuple[DeliveryReport, ...]
+        ] = {}
+        self.runtime.consume_task_results.side_effect = (
+            lambda *, result_class, limit: self.queues.get(
+                result_class,
+                (),
+            )
         )
-        self.builtin_policies = ResultRoutingBuiltinPolicies(
+        self.pacer = ResultRoutingPacer(
+            self.runtime,
             task_runtime=self.task_runtime,
             item_score=self.item_score,
             worker_score=self.worker_score,
         )
-        self.pacer = ResultRoutingPacer(
-            self.runtime,
-            task_result_handlers=self.builtin_policies.default_task_result_handlers(),
-            worker_result_handlers=self.builtin_policies.default_worker_result_handlers(),
-        )
-        self.config = ResultRoutingConfig(per_outcome_batch_limit=100)
+        self.config = ResultRoutingConfig(per_result_class_batch_limit=100)
 
     def route(self) -> int:
         with patch.object(
@@ -124,21 +126,18 @@ class ResultRoutingPacerTest(unittest.TestCase):
         worker_group_id: str = "image-workers",
         worker_lease_score: int = 201,
         outcome_code: str = "200",
-        payload: str | None = '{"value":1}',
+        payload: str = '{"value":1}',
+        dst: DeliveryEndpoint = DeliveryEndpoint.TASK,
+        forward: str | None = None,
     ) -> DeliveryReport:
-        source = (
-            DeliveryEndpoint.ADAPTER
-            if outcome_code != "200" and outcome_code.startswith("2")
-            else DeliveryEndpoint.WORKER
-        )
         return DeliveryReport.create(
-            src=source,
-            source_id=("endpoint-manager-1" if source is DeliveryEndpoint.ADAPTER else worker_id),
-            dst=DeliveryEndpoint.TASK,
+            src=DeliveryEndpoint.WORKER,
+            source_id=worker_id,
+            dst=dst,
             message_type="test.event",
             outcome_code=outcome_code,
-            payload=payload if payload is not None else "null",
-            forward=encode_result_context(
+            payload=payload,
+            forward=forward or encode_result_context(
                 ResultContext(
                     task_id=task_id,
                     message_id=message_id,
@@ -149,26 +148,39 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ),
         )
 
-    def test_public_contract(self) -> None:
-        self.assertIs(kernel.WorkerResultRuntime, WorkerResultRuntime)
+    def test_public_contract_is_fixed_to_two_result_lanes(self) -> None:
+        self.assertIs(kernel.TaskResultRuntime, TaskResultRuntime)
+        self.assertIs(kernel.TaskResultClass, TaskResultClass)
         self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
         self.assertIs(scheduling.TaskResultEvidence, TaskResultEvidence)
-        self.assertIs(scheduling.TaskResultHandler, TaskResultHandler)
         self.assertIs(scheduling.WorkerResultEvidence, WorkerResultEvidence)
-        self.assertIs(scheduling.WorkerResultHandler, WorkerResultHandler)
-        self.assertIs(
-            scheduling.ResultRoutingBuiltinPolicies,
-            ResultRoutingBuiltinPolicies,
-        )
-        self.assertFalse(hasattr(kernel, "ResultRoutingPacer"))
+        self.assertFalse(hasattr(scheduling, "TaskResultHandler"))
+        self.assertFalse(hasattr(scheduling, "WorkerResultHandler"))
         self.assertEqual(
             [
                 "self",
-                "worker_result_runtime",
-                "task_result_handlers",
-                "worker_result_handlers",
+                "task_result_runtime",
+                "task_runtime",
+                "item_score",
+                "worker_score",
             ],
             list(inspect.signature(ResultRoutingPacer.__init__).parameters),
+        )
+        self.assertEqual(
+            {"append_task_results", "consume_task_results"},
+            TaskResultRuntime.__abstractmethods__,
+        )
+        self.assertEqual(
+            ["self", "result_class", "limit"],
+            list(
+                inspect.signature(
+                    TaskResultRuntime.consume_task_results
+                ).parameters
+            ),
+        )
+        self.assertEqual(
+            ["SUCCESS", "FAILURE"],
+            [value.name for value in TaskResultClass],
         )
         self.assertEqual(
             [
@@ -182,120 +194,19 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ],
             [field.name for field in fields(DeliveryReport)],
         )
-        self.assertEqual(
-            {"append_worker_results", "consume_worker_results"},
-            WorkerResultRuntime.__abstractmethods__,
-        )
-        self.assertEqual(
-            ["task_id", "message_id", "opaque_result_payload"],
-            [field.name for field in fields(TaskResultEvidence)],
-        )
-        self.assertEqual(
-            [
-                "worker_id",
-                "worker_lease_score",
-            ],
-            [field.name for field in fields(WorkerResultEvidence)],
-        )
-        self.assertEqual(
-            ["self", "task_id", "results", "result_time_millis"],
-            list(inspect.signature(TaskResultHandler.__call__).parameters),
-        )
-        self.assertEqual(
-            ["self", "worker_group_id", "results", "result_time_millis"],
-            list(inspect.signature(WorkerResultHandler.__call__).parameters),
-        )
-        self.assertEqual(
-            ["self", "outcome_class", "limit"],
-            list(inspect.signature(WorkerResultRuntime.consume_worker_results).parameters),
-        )
         with self.assertRaises(ValueError):
             ResultRoutingConfig(0)
 
-    def test_owner_result_handlers_are_replaceable_stable_contracts(self) -> None:
-        task_handler = Mock()
-        worker_handlers = {
-            outcome_class: Mock()
-            for outcome_class in DeliveryReportOutcomeClass
-        }
-        pacer = ResultRoutingPacer(
-            self.runtime,
-            task_result_handlers={
-                DeliveryReportOutcomeClass.SUCCESS: task_handler,
-            },
-            worker_result_handlers=worker_handlers,
-        )
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
-
-        with patch.object(
-            ResultRoutingPacer,
-            "_current_time_millis",
-            return_value=self.NOW_MILLIS,
-        ):
-            self.assertEqual(1, pacer.route_worker_results(config=self.config))
-
-        task_handler.assert_called_once_with(
-            task_id="task-1",
-            results=(
-                TaskResultEvidence(
-                    task_id="task-1",
-                    message_id="message-1",
-                    opaque_result_payload='{"value":1}',
-                ),
-            ),
-            result_time_millis=self.NOW_MILLIS,
-        )
-        worker_handlers[DeliveryReportOutcomeClass.SUCCESS].assert_called_once_with(
-            worker_group_id="image-workers",
-            results=(
-                WorkerResultEvidence(
-                    worker_id="worker-1",
-                    worker_lease_score=201,
-                ),
-            ),
-            result_time_millis=self.NOW_MILLIS,
-        )
-        self.task_runtime.store_task_item_success_results.assert_not_called()
-        self.item_score.promote_item_outcomes.assert_not_called()
-        self.worker_score.release_score_holds.assert_not_called()
-        self.worker_score.release_completed_hot_score_holds.assert_not_called()
-
-    def test_builtin_policy_mappings_expose_composable_named_methods(self) -> None:
-        self.assertEqual(
-            {
-                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
-            },
-            self.builtin_policies.default_task_result_handlers(),
-        )
-        self.assertEqual(
-            {
-                DeliveryReportOutcomeClass.SUCCESS: self.builtin_policies.release_completed_hot_score_holds,
-                DeliveryReportOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
-                DeliveryReportOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.release_worker_score_holds,
-            },
-            self.builtin_policies.default_worker_result_handlers(),
-        )
-
-    def test_owner_result_handler_coverage_is_required(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Task result handlers"):
-            ResultRoutingPacer(
-                self.runtime,
-                task_result_handlers={},
-                worker_result_handlers=self.builtin_policies.default_worker_result_handlers(),
-            )
-        with self.assertRaisesRegex(ValueError, "Worker result handlers"):
-            ResultRoutingPacer(
-                self.runtime,
-                task_result_handlers=self.builtin_policies.default_task_result_handlers(),
-                worker_result_handlers={
-                    DeliveryReportOutcomeClass.SUCCESS: Mock(),
-                },
-            )
-
-    def test_success_results_are_last_write_grouped_by_task_and_stored_first(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
+    def test_success_lane_trusts_lane_and_preserves_store_promote_release_order(
+        self,
+    ) -> None:
+        self.queues[TaskResultClass.SUCCESS] = (
             self.result(payload='{"version":1}'),
-            self.result(payload='{"version":2}', worker_lease_score=202),
+            self.result(
+                outcome_code="3500",
+                payload='{"version":2}',
+                worker_lease_score=202,
+            ),
             self.result(
                 task_id="task-2",
                 message_id="message-2",
@@ -311,58 +222,84 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.promote_item_outcomes.side_effect = (
             lambda **_kwargs: owner_order.append("promote") or {}
         )
+        self.worker_score.release_completed_hot_score_holds.side_effect = (
+            lambda **_kwargs: owner_order.append("completed-release") or {}
+        )
 
         self.assertEqual(3, self.route())
 
-        self.assertEqual(["store", "promote", "store", "promote"], owner_order)
+        self.assertEqual(
+            [
+                "store",
+                "promote",
+                "store",
+                "promote",
+                "completed-release",
+            ],
+            owner_order,
+        )
         self.assertEqual(
             call(task_id="task-1", results={"message-1": '{"version":2}'}),
             self.task_runtime.store_task_item_success_results.call_args_list[0],
         )
-        self.assertEqual(
-            call(task_id="task-2", results={"message-2": "null"}),
-            self.task_runtime.store_task_item_success_results.call_args_list[1],
+        self.item_score.promote_item_outcomes.assert_any_call(
+            task_id="task-1",
+            message_ids=("message-1",),
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=self.NOW_MILLIS,
         )
-        self.assertEqual(
-            call(
-                task_id="task-1",
-                message_ids=("message-1",),
-                target_band=TaskItemScoreBand.FINAL_SUCCESS,
-                target_time_millis=self.NOW_MILLIS,
-            ),
-            self.item_score.promote_item_outcomes.call_args_list[0],
-        )
-        self.item_score.rewrite_observed_item_scores.assert_not_called()
-        self.assertEqual(
-            [
-                call(
-                    home_bucket_id="image-workers",
-                    observed_hot_scores={"worker-1": 202, "worker-2": 203},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-            ],
-            self.worker_score.release_completed_hot_score_holds.call_args_list,
+        self.worker_score.release_completed_hot_score_holds.assert_called_once_with(
+            home_bucket_id="image-workers",
+            observed_hot_scores={"worker-1": 202, "worker-2": 203},
+            release_time_millis=self.NOW_MILLIS,
         )
         self.worker_score.release_score_holds.assert_not_called()
 
-    def test_worker_failure_only_releases_worker_lease(self) -> None:
-        failure = self.result(outcome_code="3500", payload=None)
-        self.queues[DeliveryReportOutcomeClass.WORKER_FAILURE] = (failure,)
+    def test_failure_lane_only_releases_and_does_not_read_outcome_code(self) -> None:
+        self.queues[TaskResultClass.FAILURE] = (
+            self.result(outcome_code="200", payload="unexpected"),
+            self.result(outcome_code="23002", worker_lease_score=202),
+        )
 
-        self.assertEqual(1, self.route())
+        self.assertEqual(2, self.route())
 
         self.worker_score.release_score_holds.assert_called_once_with(
             home_bucket_id="image-workers",
-            observed_scores={"worker-1": 201},
+            observed_scores={"worker-1": 202},
             release_time_millis=self.NOW_MILLIS,
         )
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
-        self.item_score.rewrite_observed_item_scores.assert_not_called()
+        self.worker_score.release_completed_hot_score_holds.assert_not_called()
+
+    def test_each_lane_uses_its_own_bounded_consume_in_fixed_order(self) -> None:
+        self.assertEqual(0, self.route())
+
+        self.assertEqual(
+            [
+                call(result_class=TaskResultClass.SUCCESS, limit=100),
+                call(result_class=TaskResultClass.FAILURE, limit=100),
+            ],
+            self.runtime.consume_task_results.call_args_list,
+        )
+
+    def test_corrupt_context_and_non_task_result_are_consumed_without_writes(
+        self,
+    ) -> None:
+        self.queues[TaskResultClass.SUCCESS] = (
+            self.result(forward="{bad-json"),
+            self.result(dst=DeliveryEndpoint.SYSTEM),
+        )
+
+        self.assertEqual(0, self.route())
+
+        self.task_runtime.store_task_item_success_results.assert_not_called()
+        self.item_score.promote_item_outcomes.assert_not_called()
+        self.worker_score.release_score_holds.assert_not_called()
         self.worker_score.release_completed_hot_score_holds.assert_not_called()
 
     def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[TaskResultClass.SUCCESS] = (self.result(),)
         release_time_millis = self.NOW_MILLIS + WorkerScoreCore.SLOT_MILLIS
 
         with patch.object(
@@ -374,7 +311,10 @@ class ResultRoutingPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=release_time_millis,
         ):
-            self.assertEqual(1, self.pacer.route_worker_results(config=self.config))
+            self.assertEqual(
+                1,
+                self.pacer.route_worker_results(config=self.config),
+            )
 
         self.item_score.promote_item_outcomes.assert_called_once_with(
             task_id="task-1",
@@ -386,123 +326,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
             home_bucket_id="image-workers",
             observed_hot_scores={"worker-1": 201},
             release_time_millis=release_time_millis,
-        )
-        self.worker_score.release_score_holds.assert_not_called()
-
-    def test_worker_failure_batches_each_worker_group_once(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.WORKER_FAILURE] = (
-            self.result(outcome_code="3500", payload=None),
-            self.result(
-                task_id="task-2",
-                message_id="message-2",
-                worker_id="worker-2",
-                worker_group_id="gpu-workers",
-                worker_lease_score=202,
-                outcome_code="3500",
-                payload=None,
-            ),
-        )
-
-        self.assertEqual(2, self.route())
-
-        self.assertEqual(
-            [
-                call(
-                    home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 201},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-                call(
-                    home_bucket_id="gpu-workers",
-                    observed_scores={"worker-2": 202},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-            ],
-            self.worker_score.release_score_holds.call_args_list,
-        )
-
-    def test_adapter_rejection_only_releases_exact_worker_lease(self) -> None:
-        rejection = self.result(outcome_code="23002", payload=None)
-        self.queues[DeliveryReportOutcomeClass.ADAPTER_REJECTION] = (rejection,)
-
-        self.assertEqual(1, self.route())
-
-        self.worker_score.release_score_holds.assert_called_once_with(
-            home_bucket_id="image-workers",
-            observed_scores={"worker-1": 201},
-            release_time_millis=self.NOW_MILLIS,
-        )
-        self.task_runtime.store_task_item_success_results.assert_not_called()
-        self.item_score.promote_item_outcomes.assert_not_called()
-        self.worker_score.release_completed_hot_score_holds.assert_not_called()
-
-    def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (self.result(),)
-        self.queues[DeliveryReportOutcomeClass.ADAPTER_REJECTION] = (
-            self.result(outcome_code="23002", payload=None),
-        )
-
-        self.assertEqual(2, self.route())
-
-        self.worker_score.release_completed_hot_score_holds.assert_called_once()
-        self.worker_score.release_score_holds.assert_called_once()
-
-    def test_result_context_supplies_worker_disposition_bucket(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
-            self.result(worker_group_id="gpu-workers"),
-        )
-
-        self.assertEqual(1, self.route())
-
-        self.task_runtime.store_task_item_success_results.assert_called_once()
-        self.item_score.promote_item_outcomes.assert_called_once()
-        self.worker_score.release_completed_hot_score_holds.assert_called_once_with(
-            home_bucket_id="gpu-workers",
-            observed_hot_scores={"worker-1": 201},
-            release_time_millis=self.NOW_MILLIS,
-        )
-        self.worker_score.release_score_holds.assert_not_called()
-
-    def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
-        self.queues[DeliveryReportOutcomeClass.SUCCESS] = (
-            DeliveryReport.create(
-                src=DeliveryEndpoint.WORKER,
-                source_id="worker-1",
-                dst=DeliveryEndpoint.TASK,
-                message_type="test.event",
-                outcome_code="200",
-                payload="null",
-                forward="{bad-json",
-            ),
-            self.result(outcome_code="3303", payload=None),
-        )
-
-        self.assertEqual(0, self.route())
-
-        self.task_runtime.store_task_item_success_results.assert_not_called()
-        self.item_score.promote_item_outcomes.assert_not_called()
-        self.worker_score.release_score_holds.assert_not_called()
-        self.worker_score.release_completed_hot_score_holds.assert_not_called()
-
-    def test_each_lane_uses_its_own_bounded_consume(self) -> None:
-        self.assertEqual(0, self.route())
-
-        self.assertEqual(
-            [
-                call(
-                    outcome_class=DeliveryReportOutcomeClass.SUCCESS,
-                    limit=100,
-                ),
-                call(
-                    outcome_class=DeliveryReportOutcomeClass.WORKER_FAILURE,
-                    limit=100,
-                ),
-                call(
-                    outcome_class=DeliveryReportOutcomeClass.ADAPTER_REJECTION,
-                    limit=100,
-                ),
-            ],
-            self.runtime.consume_worker_results.call_args_list,
         )
 
 

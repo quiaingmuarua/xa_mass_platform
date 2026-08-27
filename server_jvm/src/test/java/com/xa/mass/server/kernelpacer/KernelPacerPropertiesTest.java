@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -38,8 +38,8 @@ class KernelPacerPropertiesTest {
                             () -> mock(WorkerCommandRuntime.class)
                     )
                     .withBean(
-                            WorkerResultRuntime.class,
-                            () -> mock(WorkerResultRuntime.class)
+                            TaskResultRuntime.class,
+                            () -> mock(TaskResultRuntime.class)
                     )
                     .withBean(
                             TaskRuntime.class,

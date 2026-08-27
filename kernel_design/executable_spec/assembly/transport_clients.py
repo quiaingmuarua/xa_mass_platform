@@ -5,13 +5,16 @@ from collections.abc import Mapping, Sequence
 from ..kernel import (
     EndpointManagerId,
     DeliveryReport,
+    DeliveryReportOutcomeClass,
     DeliveryCommand,
+    TaskResultClass,
     WorkerId,
+    classify_delivery_report_outcome_code,
 )
 from ..redis_runtime import (
     RedisKeyspace,
     RedisWorkerCommandRuntime,
-    RedisWorkerResultRuntime,
+    RedisTaskResultRuntime,
 )
 from .application import KernelApplicationConfig
 
@@ -76,7 +79,7 @@ class WorkerResultCommandClient:
         if config is not None and not isinstance(config, KernelApplicationConfig):
             raise TypeError("config must be KernelApplicationConfig or None")
         resolved_config = config or KernelApplicationConfig.from_json()
-        self._runtime = RedisWorkerResultRuntime(
+        self._runtime = RedisTaskResultRuntime(
             _redis_client(resolved_config),
             keyspace=RedisKeyspace(resolved_config.redis_scope),
         )
@@ -93,4 +96,30 @@ class WorkerResultCommandClient:
         *,
         results: Sequence[DeliveryReport],
     ) -> int:
-        return self._runtime.append_worker_results(results=results)
+        grouped: dict[TaskResultClass, list[DeliveryReport]] = {
+            TaskResultClass.SUCCESS: [],
+            TaskResultClass.FAILURE: [],
+        }
+        for result in results:
+            outcome = classify_delivery_report_outcome_code(
+                result.outcome_code
+            )
+            if outcome is DeliveryReportOutcomeClass.SUCCESS:
+                grouped[TaskResultClass.SUCCESS].append(result)
+            elif outcome in {
+                DeliveryReportOutcomeClass.WORKER_FAILURE,
+                DeliveryReportOutcomeClass.ADAPTER_REJECTION,
+            }:
+                grouped[TaskResultClass.FAILURE].append(result)
+            else:
+                raise ValueError(
+                    "DeliveryReport outcome code must be classifiable"
+                )
+        accepted = 0
+        for result_class, classified_results in grouped.items():
+            if classified_results:
+                accepted += self._runtime.append_task_results(
+                    result_class=result_class,
+                    results=classified_results,
+                )
+        return accepted

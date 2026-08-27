@@ -16,7 +16,7 @@ nullability and score constants; unsupported provider operations fail with
 | `worker` | Worker record, catalog and canonical properties |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
 | `assignment` | Candidate Worker Cache and Candidate Warmup Schedule hint owners |
-| `delivery` | Worker Command/Result runtimes and internal ResultContext codec |
+| `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
 | `serviceability` | Adapter probe/evidence handoff owner |
 | owner-local `redis` packages | Redis implementations for the matching owner only |
 
@@ -36,7 +36,7 @@ API and the fixed production Pacers, including:
 - Worker registration, canonical descriptors and bounded property reads;
 - authoritative and non-overwriting Worker Command writes plus bounded
   consume;
-- Worker Result append/consume;
+- explicit SUCCESS/FAILURE Task Result append/consume without error-code policy;
 - Candidate Cache/Warmup hint operations;
 - Serviceability probe request offer/consume and evidence append/consume.
 

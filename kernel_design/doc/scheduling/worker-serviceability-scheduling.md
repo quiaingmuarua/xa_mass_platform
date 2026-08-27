@@ -188,7 +188,7 @@ remain the write fences.
 Server routes result ownership only by destination:
 
 ```text
-TASK   -> Worker Result Runtime
+TASK   -> Task Result Runtime
 SYSTEM -> Direct Call correlation
 KERNEL -> Worker Serviceability Runtime
 ```

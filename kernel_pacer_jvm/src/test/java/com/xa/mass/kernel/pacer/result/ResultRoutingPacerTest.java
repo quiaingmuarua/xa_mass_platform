@@ -5,7 +5,8 @@ import com.xa.mass.kernel.delivery.ResultContextCodec;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -13,8 +14,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
-        .DeliveryReportOutcomeClass;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -29,31 +28,32 @@ class ResultRoutingPacerTest {
     @Test
     void routesFixedLanesAndPreservesOwnerOrderingAndLastSemantics() {
         List<String> calls = new ArrayList<>();
-        Map<DeliveryReportOutcomeClass, List<DeliveryReport>> batches =
-                new EnumMap<>(DeliveryReportOutcomeClass.class);
-        batches.put(DeliveryReportOutcomeClass.SUCCESS, List.of(
+        Map<TaskResultClass, List<DeliveryReport>> batches =
+                new EnumMap<>(TaskResultClass.class);
+        batches.put(TaskResultClass.SUCCESS, List.of(
                 report("200", "first", 11),
-                report("200", "last", 12)
+                report("3303", "last", 12)
         ));
-        batches.put(DeliveryReportOutcomeClass.WORKER_FAILURE, List.of(
-                report("3303", "worker-failure", 13)
-        ));
-        batches.put(DeliveryReportOutcomeClass.ADAPTER_REJECTION, List.of(
+        batches.put(TaskResultClass.FAILURE, List.of(
+                report("200", "worker-failure", 13),
                 report("23002", "adapter-rejection", 14)
         ));
-        WorkerResultRuntime runtime = new WorkerResultRuntime() {
+        TaskResultRuntime runtime = new TaskResultRuntime() {
             @Override
-            public int appendWorkerResults(List<DeliveryReport> results) {
+            public int appendTaskResults(
+                    TaskResultClass resultClass,
+                    List<DeliveryReport> results
+            ) {
                 throw new AssertionError("append is not used");
             }
 
             @Override
-            public List<DeliveryReport> consumeWorkerResults(
-                    DeliveryReportOutcomeClass outcomeClass,
+            public List<DeliveryReport> consumeTaskResults(
+                    TaskResultClass resultClass,
                     int limit
             ) {
-                calls.add("consume:" + outcomeClass + ":" + limit);
-                return batches.get(outcomeClass);
+                calls.add("consume:" + resultClass + ":" + limit);
+                return batches.get(resultClass);
             }
         };
         TaskRuntime taskRuntime = proxy(TaskRuntime.class, (_proxy, method, args) -> {
@@ -115,28 +115,28 @@ class ResultRoutingPacerTest {
         assertEquals("promote:task-1:[message-1]:1000", calls.get(2));
         assertTrue(calls.get(3).contains("{worker-1=12}"));
         assertTrue(calls.get(3).endsWith(":1001"));
-        assertEquals("consume:WORKER_FAILURE:100", calls.get(4));
-        assertTrue(calls.get(5).contains("{worker-1=13}"));
+        assertEquals("consume:FAILURE:100", calls.get(4));
+        assertTrue(calls.get(5).contains("{worker-1=14}"));
         assertTrue(calls.get(5).endsWith(":1002"));
-        assertEquals("consume:ADAPTER_REJECTION:100", calls.get(6));
-        assertTrue(calls.get(7).contains("{worker-1=14}"));
-        assertTrue(calls.get(7).endsWith(":1003"));
     }
 
     @Test
-    void consumesButDropsMalformedWrongDestinationAndWrongLane() {
-        WorkerResultRuntime runtime = new WorkerResultRuntime() {
+    void consumesButDropsMalformedContextAndWrongDestination() {
+        TaskResultRuntime runtime = new TaskResultRuntime() {
             @Override
-            public int appendWorkerResults(List<DeliveryReport> results) {
+            public int appendTaskResults(
+                    TaskResultClass resultClass,
+                    List<DeliveryReport> results
+            ) {
                 return 0;
             }
 
             @Override
-            public List<DeliveryReport> consumeWorkerResults(
-                    DeliveryReportOutcomeClass outcomeClass,
+            public List<DeliveryReport> consumeTaskResults(
+                    TaskResultClass resultClass,
                     int limit
             ) {
-                return outcomeClass == DeliveryReportOutcomeClass.SUCCESS
+                return resultClass == TaskResultClass.SUCCESS
                         ? List.of(
                                 DeliveryReport.create(
                                         DeliveryEndpoint.WORKER,
@@ -155,8 +155,7 @@ class ResultRoutingPacerTest {
                                         "200",
                                         "payload",
                                         "not-json"
-                                ),
-                                report("3303", "wrong-lane", 15)
+                                )
                         )
                         : List.of();
             }

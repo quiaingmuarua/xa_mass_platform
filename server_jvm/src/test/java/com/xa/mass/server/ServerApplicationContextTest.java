@@ -12,7 +12,7 @@ import com.xa.mass.server.api.v1.workerdelivery.AdapterDirectCallController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -95,7 +95,7 @@ class ServerApplicationContextTest {
                 .isInstanceOf(RedisWorkerResourceCatalog.class);
         assertThat(applicationContext.getBean(WorkerCommandRuntime.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(WorkerResultRuntime.class))
+        assertThat(applicationContext.getBean(TaskResultRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(
                 WorkerServiceabilityRuntime.class

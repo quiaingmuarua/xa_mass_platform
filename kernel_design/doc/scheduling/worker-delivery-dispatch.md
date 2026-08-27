@@ -502,21 +502,22 @@ the Client's existing reconnect budget.
 ## Result Routing
 
 DeliveryReport Redis keys are documented in
-[Worker Result Runtime Redis Shape](../runtime-redis/worker-result-runtime-redis-shape.md).
+[Task Result Runtime Redis Shape](../runtime-redis/task-result-runtime-redis-shape.md).
 
-`WorkerResultRuntime` partitions transient evidence only by outcome class.
-`ResultRoutingPacer` consumes one class, requires `dst=TASK`, decodes `forward`
-as ResultContext, and delegates:
+Server validates producer-owned endpoint codes and appends accepted Task
+reports to an explicit `TaskResultRuntime` lane:
 
 ```text
-200                          -> success disposition policy
-other nonblank 3...          -> Worker failure disposition policy
-other nonblank outcomeCode   -> Adapter rejection disposition policy
+Worker 200                    -> SUCCESS
+Worker-owned 3...             -> FAILURE
+Adapter-owned Task rejection  -> FAILURE
 ```
 
-This classification is coarse evidence only. Exact retry or band policy must
-come from explicit typed interface fields rather than parsing an outcome
-subcode.
+`ResultRoutingPacer` consumes `SUCCESS` then `FAILURE`, requires `dst=TASK`,
+decodes `forward` as ResultContext and never reads `outcomeCode`. SUCCESS stores
+and promotes the Item before using the completed-HOT exact release; FAILURE
+only releases the assignment lease. Adapter connection and delivery-expiry
+evidence remains on the separate KERNEL result path.
 
 The Report `messageType` is not used as truth or a fence. Task and Worker owner
 coordinates from `forward`, together with exact score/lease operations, decide

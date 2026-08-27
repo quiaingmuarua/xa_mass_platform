@@ -3,8 +3,8 @@ package com.xa.mass.kernel.pacer;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.ResultContextCodec;
+import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -110,7 +110,7 @@ public final class KernelPacerRuntime {
     public static KernelPacerRuntime assemble(
             PolicyPreset policyPreset,
             Duration shutdownTimeout,
-            WorkerResultRuntime workerResults,
+            TaskResultRuntime taskResults,
             TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
@@ -127,7 +127,7 @@ public final class KernelPacerRuntime {
         );
         ResultRoutingApplication resultRouting =
                 new ResultRoutingApplication(new ResultRoutingPacer(
-                        Objects.requireNonNull(workerResults, "workerResults"),
+                        Objects.requireNonNull(taskResults, "taskResults"),
                         Objects.requireNonNull(taskRuntime, "taskRuntime"),
                         Objects.requireNonNull(itemScores, "itemScores"),
                         Objects.requireNonNull(workerScores, "workerScores")

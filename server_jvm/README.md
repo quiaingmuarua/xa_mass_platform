@@ -460,6 +460,14 @@ Adapter-produced single-Worker Route changes or TASK delivery-expiry evidence.
 Server parses neither event nor payload semantics, does not resolve
 WorkerGroup, and never invokes the Worker score owner.
 
+For `dst=TASK`, Worker Delivery validates producer identity and the endpoint
+code namespace before mapping accepted reports to the Kernel-owned
+`TaskResultClass.SUCCESS` or `TaskResultClass.FAILURE` lane. A Worker `200` is
+SUCCESS; Worker-owned `3...` and valid Adapter Task rejection are FAILURE.
+Kernel Result Routing receives that type and does not reinterpret the raw
+error code. Adapter delivery-expiry still emits a separate `dst=KERNEL`
+Serviceability report in the same HTTP batch.
+
 Adapter instances may configure `route-cache` and `properties-cache`. The
 defaults retain disconnected verification evidence for `10m` with at most
 `100000` disconnected Workers, and bound properties by a `64 MiB` encoded-data
