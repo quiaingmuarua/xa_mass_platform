@@ -83,6 +83,9 @@ class ServerWorkerAssemblyPropertiesTest {
             assertThat(context.getBean(
                     ServerWorkerDeliveryAdapterProperties.class
             ).instanceConfigs()).containsOnlyKeys("scenario-websocket");
+            assertThat(context.getEnvironment().getProperty(
+                    "xa.mass.kernel-pacer.preset"
+            )).isEqualTo("SCENARIO_LAB");
             ServerWorkerAssemblyProperties properties = context.getBean(
                     ServerWorkerAssemblyProperties.class
             );

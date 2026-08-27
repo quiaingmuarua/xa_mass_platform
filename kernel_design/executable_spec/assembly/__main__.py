@@ -25,14 +25,14 @@ def _run_application(
     input_stream: BinaryIO,
     application_factory: _ApplicationFactory = KernelApplication,
 ) -> None:
-    config_json = (
-        config_path.read_text(encoding="utf-8")
-        if config_path is not None
-        else None
+    if config_path is None:
+        raise ValueError("Oracle CLI requires an explicit --config file")
+    config = KernelApplicationConfig.from_json(
+        config_path.read_text(encoding="utf-8"),
     )
-    application = application_factory(
-        KernelApplicationConfig.from_json(config_json),
-    )
+    if not config.redis_scope.startswith("test_"):
+        raise ValueError("Oracle CLI requires an isolated test_* Redis scope")
+    application = application_factory(config)
     started = False
     try:
         application.start()
@@ -53,7 +53,8 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        help="optional UTF-8 KernelApplication JSON config file",
+        required=True,
+        help="UTF-8 KernelApplication JSON config with a test_* Redis scope",
     )
     parser.add_argument(
         "--log-level",

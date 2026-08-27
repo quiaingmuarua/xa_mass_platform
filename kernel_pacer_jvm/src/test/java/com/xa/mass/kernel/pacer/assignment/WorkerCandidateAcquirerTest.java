@@ -16,9 +16,12 @@ import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WorkerCandidateAcquirerTest {
 
@@ -85,6 +88,58 @@ class WorkerCandidateAcquirerTest {
                 any(),
                 any(),
                 anyInt()
+        );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"$eq", "$equal"})
+    void directNullExplicitWorkerIdFailsClosed(String operator) {
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerScoreCore score = mock(WorkerScoreCore.class);
+        WorkerCandidateMatcher matcher = mock(WorkerCandidateMatcher.class);
+        WorkerCandidateAcquirer acquirer = new WorkerCandidateAcquirer(
+                cache,
+                score,
+                matcher,
+                100,
+                1_000L
+        );
+        LinkedHashMap<String, Object> workerIdConstraint =
+                new LinkedHashMap<>();
+        workerIdConstraint.put(operator, null);
+        WorkerCandidateRequest request = new WorkerCandidateRequest(
+                1,
+                1,
+                Map.of("workerId", workerIdConstraint)
+        );
+        when(matcher.filterCandidateWorkerIds(
+                eq("group-1"),
+                any(),
+                any()
+        )).thenReturn(Map.of("candidate", List.of()));
+
+        var result = acquirer.acquireWorkerCandidates(
+                WorkerCandidateAcquisitionStrategy.DIRECT,
+                "group-1",
+                Map.of("candidate", request),
+                2_000L
+        );
+
+        assertTrue(result.get("candidate").isEmpty());
+        verify(score, never()).acquireHotAcquireCandidates(
+                any(),
+                any(),
+                anyInt()
+        );
+        verify(score, never()).observeDueHotScores(
+                any(),
+                any(),
+                any()
+        );
+        verify(score, never()).acquireObservedHotScoreLeases(
+                any(),
+                any(),
+                anyLong()
         );
     }
 

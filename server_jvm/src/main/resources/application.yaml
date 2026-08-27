@@ -14,7 +14,7 @@ xa:
   mass:
     kernel-pacer:
       enabled: ${XA_MASS_KERNEL_PACER_ENABLED:true}
-      config-path: ${XA_MASS_KERNEL_PACER_CONFIG:kernel_design/config/pacer-default.json}
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}
       shutdown-timeout: 5s
     redis:
       url: ${XA_MASS_REDIS_URL:redis://localhost:6379/15}

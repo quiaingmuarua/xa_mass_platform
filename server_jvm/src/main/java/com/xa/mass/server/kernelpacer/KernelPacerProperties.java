@@ -1,5 +1,6 @@
 package com.xa.mass.server.kernelpacer;
 
+import com.xa.mass.kernel.pacer.KernelPacerRuntime;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,18 +11,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 )
 public record KernelPacerProperties(
         boolean enabled,
-        String configPath,
+        KernelPacerRuntime.PolicyPreset preset,
         Duration shutdownTimeout
 ) {
     public KernelPacerProperties {
-        requireText(configPath, "configPath");
+        Objects.requireNonNull(preset, "preset");
         requirePositive(shutdownTimeout, "shutdownTimeout");
-    }
-
-    private static void requireText(String value, String name) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(name + " must be non-empty");
-        }
     }
 
     private static void requirePositive(Duration value, String name) {

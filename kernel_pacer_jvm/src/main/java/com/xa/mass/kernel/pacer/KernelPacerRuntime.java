@@ -18,11 +18,18 @@ import java.util.Objects;
 /**
  * The single assembly and lifecycle boundary for all production Kernel Pacers.
  *
- * <p>The runtime owns only policy interpretation and Pacer threads. The
+ * <p>The runtime owns only fixed policy selection and Pacer threads. The
  * mechanical owners supplied to {@link #assemble} retain their own lifecycle
  * and storage ownership.</p>
  */
 public final class KernelPacerRuntime {
+
+    public enum PolicyPreset {
+        DEFAULT,
+        SERVICEABILITY_DEFAULT,
+        SCENARIO_LAB,
+        RUNTIME_BOUNDARY_PROOF
+    }
 
     public enum State {
         STOPPED,
@@ -101,7 +108,7 @@ public final class KernelPacerRuntime {
     }
 
     public static KernelPacerRuntime assemble(
-            String policyJson,
+            PolicyPreset policyPreset,
             Duration shutdownTimeout,
             WorkerResultRuntime workerResults,
             TaskRuntime taskRuntime,
@@ -115,8 +122,8 @@ public final class KernelPacerRuntime {
             CandidateWorkerCache candidateCache,
             CandidateWarmupSchedule warmups
     ) {
-        KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.fromJson(
-                policyJson
+        KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
+                Objects.requireNonNull(policyPreset, "policyPreset")
         );
         ResultRoutingApplication resultRouting =
                 new ResultRoutingApplication(new ResultRoutingPacer(

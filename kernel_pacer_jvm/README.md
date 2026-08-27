@@ -17,9 +17,12 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 `com.xa.mass.kernel.pacer.KernelPacerRuntime` is the only public top-level
 type. Its `assemble(...)` method accepts the bounded mechanical owners needed by
-the four production applications. The Runtime owns policy JSON interpretation,
-one immutable HOT eligibility floor, thread startup/rollback, reverse bounded
-shutdown and aggregate failure state. It never closes the supplied owners.
+the four production applications plus one of its four checked `PolicyPreset`
+values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
+`RUNTIME_BOUNDARY_PROOF`. The Runtime
+owns fixed policy selection, one immutable HOT eligibility floor when
+Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
+and aggregate failure state. It never closes the supplied owners.
 
 All Assignment, Result Routing and Serviceability implementation types are
 package-private. Their source files remain grouped under `assignment/`,
@@ -38,10 +41,14 @@ Result Routing
 -> Assignment Dispatch
 ```
 
-Shutdown uses one shared deadline in strict reverse order. The current thread
-names, Redis shapes, score semantics, Pacer JSON and scheduling policy remain
-defined by the Kernel mechanism documents; this module introduces no Pacer
-SPI, dynamic registry, network API, Redis owner or fallback path.
+Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
+Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal
+production cadence, `SCENARIO_LAB` is the checked fast local-Lab policy, and
+`RUNTIME_BOUNDARY_PROOF` is the deterministic boundary-proof policy. Server
+accepts that proof-only preset only with a `test_*` Redis scope. These presets
+compose existing configuration value objects; there is no Java policy file,
+per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
+or fallback path.
 
 Spring assembly belongs to `server_jvm`. Candidate Cache/Warmup,
 ResultContextCodec and all Redis providers remain in `kernel_jvm`.

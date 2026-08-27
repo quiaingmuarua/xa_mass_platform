@@ -1,5 +1,7 @@
 xa:
   mass:
+    kernel-pacer:
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:SCENARIO_LAB}
     redis:
       scope: ${XA_MASS_REDIS_SCOPE:profile_scenario_workers}
     worker-delivery:

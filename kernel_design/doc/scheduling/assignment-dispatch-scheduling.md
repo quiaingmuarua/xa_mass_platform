@@ -93,6 +93,7 @@ PRECOMPUTED
 DIRECT
   for any empty rule, issue one bounded due-HOT Group query shared by the round
   otherwise require bounded workerId $eq/$equal/$in candidates
+  fail closed on null, non-string, or empty explicit WorkerId operands
   admit at most 100 unique WorkerIds across the round in priority order
   pre-match complete non-empty rules for explicit WorkerIds
   use Group-query scores for empty rules; point-observe explicit matches

@@ -120,15 +120,6 @@
       "reason": "Capability Task acceptance code owns no Fleet identity proof."
     },
     {
-      "path": "integrations/worker-capability-task/kernel-config.json",
-      "lanes": [
-        "jvm_contracts",
-        "capability_task",
-        "worker_fleet"
-      ],
-      "reason": "The checked fast Pacer policy is shared by Capability Task and Worker Fleet scenario startup."
-    },
-    {
       "path": "integrations/worker-fleet-acceptance/src/main/java/com/xa/mass/integration/workerfleet/WorkerFleetAcceptanceMain.java",
       "lanes": [
         "jvm_contracts",

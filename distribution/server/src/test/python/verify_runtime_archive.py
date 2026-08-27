@@ -47,7 +47,6 @@ def verify(archive: Path, version: str) -> None:
             f"{root}/scenario-workers/bin/xa-mass-scenario-workers.bat",
             f"{root}/scenario-workers/lib/"
             f"xa-mass-scenario-workers-jvm-{version}.jar",
-            f"{root}/config/pacer-default.json",
             f"{root}/frontend/dist/index.html",
             f"{root}/frontend/dist/reference/"
             "platform-diagnostic-codes.json",
@@ -58,6 +57,10 @@ def verify(archive: Path, version: str) -> None:
         }
         missing = required - set(names)
         _require(not missing, f"runtime archive is missing: {sorted(missing)}")
+        _require(
+            not any(name.startswith(f"{root}/config/") for name in names),
+            "runtime archive retains a Java Pacer config directory",
+        )
 
         manifest = json.loads(runtime.read(f"{root}/manifest.json"))
         _require(manifest.get("schemaVersion") == 4, "manifest schema mismatch")

@@ -120,7 +120,11 @@ Redis scope     test_runtime_boundary_<unique run token>
 The test starts one Java Spring context. Its `KernelPacerAssembly` delegates to
 the `kernel_pacer_jvm` Runtime, which starts Java Result Routing, Java Worker
 Serviceability Result, Java Worker Serviceability Dispatch and Java Assignment
-Dispatch. Redis remains an external dependency;
+Dispatch from the fixed `RUNTIME_BOUNDARY_PROOF` preset. Scenario, Capability
+Task, Worker Fleet and Android Emulator proofs use `SCENARIO_LAB`; default and
+AgentForge runtime assembly use `DEFAULT`. No Java proof reads a Pacer policy
+file. The proof-only preset is rejected unless the Server Redis scope starts
+with `test_`. Redis remains an external dependency;
 failure to start any required application or connect to Redis fails the proof.
 Each run generates one
 unique `test_*` scope. It plants a sentinel in a different scope and proves the

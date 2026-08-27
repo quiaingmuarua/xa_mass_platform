@@ -2,119 +2,165 @@ package com.xa.mass.kernel.pacer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class KernelPacerPolicyConfigTest {
 
     @Test
-    void emptyDocumentBuildsFiniteDefaultsWithoutServiceability() {
-        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.fromJson(
-                "{}",
-                () -> 12_345
+    void defaultPresetKeepsProductionDefaultsWithoutServiceability() {
+        AtomicInteger clockReads = new AtomicInteger();
+        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
+                PolicyPreset.DEFAULT,
+                clockReads::incrementAndGet
+        );
+
+        assertEquals(0, clockReads.get());
+        assertEquals(100, config.resultRouting().intervalMillis());
+        assertEquals(
+                100,
+                config.resultRouting().routing().perOutcomeBatchLimit()
+        );
+        assertFalse(config.workerServiceability().enabled());
+        assertEquals(0, config.workerServiceability()
+                .hotEligibilityFloorMillis());
+        assertAssignmentIntervals(config, 100);
+    }
+
+    @Test
+    void serviceabilityDefaultPresetUsesProductionCadence() {
+        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
+                PolicyPreset.SERVICEABILITY_DEFAULT,
+                () -> 12_345L
         );
 
         assertEquals(100, config.resultRouting().intervalMillis());
-        assertFalse(config.workerServiceability().enabled());
-        assertEquals(
+        assertAssignmentIntervals(config, 100);
+        assertServiceability(
+                config.workerServiceability(),
                 100,
-                config.assignmentDispatch()
-                        .workerAllocationIntervalMillis()
+                1_000,
+                60_000,
+                10
         );
-        assertEquals(
+    }
+
+    @Test
+    void scenarioLabPresetKeepsTheCheckedLabPolicy() {
+        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
+                PolicyPreset.SCENARIO_LAB,
+                () -> 12_345L
+        );
+
+        assertEquals(20, config.resultRouting().intervalMillis());
+        assertAssignmentIntervals(config, 20);
+        assertServiceability(
+                config.workerServiceability(),
                 100,
-                config.assignmentDispatch().runningActivation()
-                        .runningTaskSoftLimit()
+                1_000,
+                60_000,
+                10
         );
     }
 
     @Test
-    void parsesAllProductionSectionsAndGeneratesOneAlignedFloor() {
-        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.fromJson(
-                """
-                {
-                  "resultRouting":{"intervalMillis":11},
-                  "workerServiceability":{
-                    "dispatchIntervalMillis":12,
-                    "resultIntervalMillis":13,
-                    "maxRecoveryAttempts":4,
-                    "probeExcludedEndpointManagerIds":[]
-                  },
-                  "assignmentDispatch":{
-                    "workerAllocationIntervalMillis":14,
-                    "runningActivationIntervalMillis":15,
-                    "taskDispatchIntervalMillis":16
-                  },
-                  "systemPolicy":{"runningTaskSoftLimit":17}
-                }
-                """,
-                () -> 12_399
+    void runtimeBoundaryPresetKeepsTheCheckedProofPolicy() {
+        KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
+                PolicyPreset.RUNTIME_BOUNDARY_PROOF,
+                () -> 12_345L
         );
 
-        assertEquals(11, config.resultRouting().intervalMillis());
-        assertTrue(config.workerServiceability().enabled());
-        assertEquals(
-                12_300,
-                config.workerServiceability().hotEligibilityFloorMillis()
-        );
-        assertEquals(
-                4,
-                config.workerServiceability().result().result()
-                        .maxRecoveryAttempts()
-        );
-        assertEquals(
-                4,
-                config.workerServiceability().dispatch().dispatch()
-                        .maxRecoveryAttempts()
-        );
-        assertEquals(
-                14,
-                config.assignmentDispatch()
-                        .workerAllocationIntervalMillis()
-        );
-        assertEquals(
-                17,
-                config.assignmentDispatch().runningActivation()
-                        .runningTaskSoftLimit()
+        assertEquals(100, config.resultRouting().intervalMillis());
+        assertAssignmentIntervals(config, 100);
+        assertServiceability(
+                config.workerServiceability(),
+                20,
+                1_000,
+                10,
+                100
         );
     }
 
     @Test
-    void rejectsUnknownRootAndSectionFields() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> KernelPacerPolicyConfig.fromJson(
-                        "{\"redis\":{}}"
-                )
-        );
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> KernelPacerPolicyConfig.fromJson(
-                        "{\"assignmentDispatch\":{\"batchLimit\":1}}"
-                )
-        );
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> KernelPacerPolicyConfig.fromJson(
-                        "{\"systemPolicy\":{\"fairness\":\"weighted\"}}"
-                )
-        );
-    }
+    void serviceabilityPresetMintsOneAlignedFloorPerAssembly() {
+        for (PolicyPreset preset : List.of(
+                PolicyPreset.SERVICEABILITY_DEFAULT,
+                PolicyPreset.SCENARIO_LAB,
+                PolicyPreset.RUNTIME_BOUNDARY_PROOF
+        )) {
+            AtomicInteger clockReads = new AtomicInteger();
 
-    @Test
-    void rejectsInvalidTypesAndBounds() {
-        for (String json : new String[]{
-                "{\"resultRouting\":{\"intervalMillis\":true}}",
-                "{\"assignmentDispatch\":{\"taskDispatchIntervalMillis\":0}}",
-                "{\"systemPolicy\":{\"runningTaskSoftLimit\":0}}",
-                "{\"workerServiceability\":{\"hotScanLimit\":80,\"recoveryScanLimit\":21}}"
-        }) {
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> KernelPacerPolicyConfig.fromJson(json)
+            KernelPacerPolicyConfig config = KernelPacerPolicyConfig.forPreset(
+                    preset,
+                    () -> {
+                        clockReads.incrementAndGet();
+                        return 12_345L;
+                    }
+            );
+
+            assertEquals(1, clockReads.get());
+            assertEquals(
+                    12_300,
+                    config.workerServiceability()
+                            .hotEligibilityFloorMillis()
             );
         }
+    }
+
+    private static void assertAssignmentIntervals(
+            KernelPacerPolicyConfig config,
+            long expected
+    ) {
+        assertEquals(expected, config.assignmentDispatch()
+                .workerAllocationIntervalMillis());
+        assertEquals(expected, config.assignmentDispatch()
+                .runningActivationIntervalMillis());
+        assertEquals(expected, config.assignmentDispatch()
+                .taskDispatchIntervalMillis());
+        assertEquals(100, config.assignmentDispatch().runningActivation()
+                .runningTaskSoftLimit());
+    }
+
+    private static void assertServiceability(
+            WorkerServiceabilityAssemblyConfig config,
+            long resultInterval,
+            long dispatchInterval,
+            long recoveryRetryInterval,
+            int resultReportLimit
+    ) {
+        assertTrue(config.enabled());
+        assertEquals(12_300, config.hotEligibilityFloorMillis());
+        assertEquals(resultInterval, config.result().intervalMillis());
+        assertEquals(5, config.result().result().maxRecoveryAttempts());
+        assertEquals(
+                resultReportLimit,
+                config.result().result().resultReportLimit()
+        );
+        assertEquals(
+                30_000,
+                config.result().result().evidenceMaxAgeMillis()
+        );
+        assertEquals(dispatchInterval, config.dispatch().intervalMillis());
+        assertEquals(100, config.dispatch().dispatch().taskScanLimit());
+        assertEquals(
+                recoveryRetryInterval,
+                config.dispatch().dispatch().recoveryRetryIntervalMillis()
+        );
+        assertEquals(
+                10_000,
+                config.dispatch().dispatch().probeSweepRestartDelayMillis()
+        );
+        assertEquals(5, config.dispatch().dispatch().maxRecoveryAttempts());
+        assertEquals(80, config.dispatch().dispatch().hotScanLimit());
+        assertEquals(20, config.dispatch().dispatch().recoveryScanLimit());
+        assertEquals(
+                List.of("system-polling"),
+                config.dispatch().dispatch()
+                        .probeExcludedEndpointManagerIds()
+        );
     }
 }

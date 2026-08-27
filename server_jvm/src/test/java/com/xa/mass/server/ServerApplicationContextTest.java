@@ -30,6 +30,7 @@ import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
+import com.xa.mass.server.kernelpacer.KernelPacerProperties;
 import com.xa.mass.server.openapi.OpenApiSnapshotSupport;
 import com.xa.mass.server.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
@@ -101,6 +102,10 @@ class ServerApplicationContextTest {
         )).isInstanceOf(RedisWorkerServiceabilityRuntime.class);
         assertThat(applicationContext.getBean(KernelPacerRuntime.class))
                 .isNotNull();
+        assertThat(applicationContext.getBean(KernelPacerProperties.class)
+                .preset()).isEqualTo(
+                        KernelPacerRuntime.PolicyPreset.DEFAULT
+                );
         assertThat(applicationContext.containsBean(
                 "workerServiceabilityResultApplication"
         )).isFalse();

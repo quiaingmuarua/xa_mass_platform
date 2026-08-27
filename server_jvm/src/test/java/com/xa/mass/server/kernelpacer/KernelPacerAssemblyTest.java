@@ -63,12 +63,12 @@ class KernelPacerAssemblyTest {
     void propertiesRejectUnsafeValues() {
         assertThatThrownBy(() -> new KernelPacerProperties(
                 true,
-                " ",
+                null,
                 Duration.ofSeconds(1)
-        )).isInstanceOf(IllegalArgumentException.class);
+        )).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new KernelPacerProperties(
                 true,
-                "kernel.json",
+                KernelPacerRuntime.PolicyPreset.DEFAULT,
                 Duration.ZERO
         )).isInstanceOf(IllegalArgumentException.class);
     }
@@ -76,7 +76,7 @@ class KernelPacerAssemblyTest {
     private static KernelPacerProperties properties(boolean enabled) {
         return new KernelPacerProperties(
                 enabled,
-                "kernel.json",
+                KernelPacerRuntime.PolicyPreset.DEFAULT,
                 Duration.ofSeconds(1)
         );
     }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="XA Mass Kernel、Server 与 Transport 当前架构全景">
+  <meta name="description" content="XA Mass 纯 Java 生产 Kernel、Server 与 Transport 当前架构全景">
   <title>XA Mass · 架构全景</title>
   <style>
     :root {
@@ -576,12 +576,13 @@
 
     <main id="main">
       <section class="hero" id="overview">
-        <p class="eyebrow">Current architecture · mechanism first</p>
+        <p class="eyebrow">Current architecture · Java production kernel</p>
         <h1>XA Mass<br><span>架构全景</span></h1>
         <p class="lede">
-          Kernel 决定谁应该执行什么；Server 负责外部访问、有限编排、authority routing
-          与请求相关性；Transport 把已经形成的 Command 送到目标，并调用 endpoint-local
-          handler。三层都可以出现 dispatch，但只有 Kernel Assignment Dispatch 做资源决策。
+          生产 Kernel 已完全由 Java owner 与固定 Pacer 组成。Kernel 决定谁应该执行什么；
+          Server 负责外部访问、有限编排、authority routing 与请求相关性；Transport
+          把已经形成的 Command 送到目标，并调用 endpoint-local handler。三层都可以出现
+          dispatch，但只有 Kernel Assignment Dispatch 做资源决策。
         </p>
         <div class="hero-links">
           <a class="button primary" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md">Architecture Entry</a>
@@ -823,11 +824,12 @@ DeliveryReport
         <div class="section-head">
           <div>
             <p class="kicker">05 · Runtime topology</p>
-            <h2>一个机制oracle，增量生产装配</h2>
+            <h2>一个 Python Oracle<br>一套纯 Java 生产内核</h2>
           </div>
           <p>
-            当前不是“Python版”和“Java版”两个生产Kernel。Python保存完整机制
-            oracle；JVM拥有全部生产Pacer及其明确调用闭包，缺失操作继续显式失败。
+            Python保留完整机制Oracle与独立Redis proof，但不进入生产进程、HTTP、
+            fallback或发行物。生产调用闭包由Java mechanical owners、固定Pacer和
+            Spring生命周期装配共同完成。
           </p>
         </div>
 
@@ -835,17 +837,22 @@ DeliveryReport
           <article class="card kernel">
             <span class="owner">KERNEL_DESIGN</span>
             <h3>Mechanism oracle</h3>
-            <p>Python executable spec、完整Pacers与Redis机制proof；仅用于独立Oracle验证，不进入生产发行物。</p>
+            <p>Python executable spec、完整机制Pacers与Redis proof；只在隔离的<code>test_*</code> scope中独立验证，不进入生产Server或发行物。</p>
           </article>
           <article class="card kernel">
             <span class="owner">KERNEL_JVM</span>
-            <h3>Production Kernel</h3>
-            <p>Java 21 owner contracts、生产Redis providers与四个固定Pacer应用。未被生产调用的operation仍显式失败。</p>
+            <h3>Mechanical owners</h3>
+            <p>稳定的Java 21 owner contracts、Redis providers、Candidate Cache/Warmup与codec；不拥有调度策略、Pacer线程或Spring生命周期。</p>
+          </article>
+          <article class="card kernel">
+            <span class="owner">KERNEL_PACER_JVM</span>
+            <h3>Policy & lifecycle</h3>
+            <p><code>KernelPacerRuntime</code>是唯一公开生产入口，固定装配Result Routing、可选Serviceability Result/Dispatch与Assignment Dispatch。</p>
           </article>
           <article class="card server">
             <span class="owner">SERVER_JVM</span>
-            <h3>Java production assembly</h3>
-            <p>Spring API把Task、resource、data、delivery owner绑定到Java provider，并统一托管四个Java Kernel Pacer应用。</p>
+            <h3>API & Spring assembly</h3>
+            <p>选择受检Pacer Preset、装配mechanical owners，并把一个<code>KernelPacerRuntime</code>委托给Spring生命周期；不解释调度策略或装配单个Pacer。</p>
           </article>
           <article class="card transport">
             <span class="owner">TRANSPORT</span>
@@ -853,16 +860,21 @@ DeliveryReport
             <p>Java 11 contract/Core、Netty Adapter、Java Worker与Android Worker，不依赖Kernel调度实现。</p>
           </article>
           <article class="card worker">
-            <span class="owner">CAPABILITIES</span>
-            <h3>Finite assembly</h3>
-            <p>Scenario Workers与Android capabilities提供具体Definitions和Host assembly，不建设通用插件系统。</p>
-          </article>
-          <article class="card server">
-            <span class="owner">OBSERVATION</span>
-            <h3>Integration & frontend</h3>
-            <p>外部acceptance与Runtime Viewer只通过公开API证明或观察；有限Task文件流程同样不拥有运行truth。</p>
+            <span class="owner">ASSEMBLY & OBSERVATION</span>
+            <h3>Finite edges</h3>
+            <p>Scenario/Android提供具体Definitions与Host；Integrations和Frontend只通过公开API执行acceptance、Runtime Preview、有限Task与诊断调用，不拥有Kernel truth。</p>
           </article>
         </div>
+
+        <pre class="code-panel" style="margin-top: 14px">Production
+  Java Server / KernelPacerAssembly
+    -> KernelPacerRuntime
+       -> fixed Java Pacer applications
+          -> kernel_jvm mechanical owners
+             -> Redis
+
+Independent proof
+  Python mechanism Oracle -> isolated test_* Redis scope</pre>
 
         <div class="rule">
           真相分类：<span class="tag">truth</span><span class="tag">evidence</span><span class="tag">address</span>
@@ -889,8 +901,9 @@ DeliveryReport
             <h3>稳定owner cut</h3>
             <ul>
               <li>三条独立score轴</li>
-              <li>两类Task acquisition profile</li>
+              <li>两类Worker allocation mechanism与独立idle disposition</li>
               <li>Assignment / Result planes</li>
+              <li>纯Java生产Kernel runtime</li>
               <li>Kernel / Server / Transport authority</li>
               <li>Adapter与Worker三层结构</li>
               <li>统一Adapter delivery API</li>
@@ -911,7 +924,7 @@ DeliveryReport
             <span class="owner">DEFERRED</span>
             <h3>独立未来路线</h3>
             <ul>
-              <li>统一生产Kernel runtime</li>
+              <li>分布式Pacer leader election与multi-active Kernel</li>
               <li>分布式DIRECT_CALL correlation</li>
               <li>认证、Adapter HA与显式unbind</li>
               <li>persistent delivery ack</li>
@@ -922,9 +935,9 @@ DeliveryReport
 
         <div class="grid-4" style="margin-top: 14px">
           <article class="card"><h3>Kernel Oracle</h3><p>Python executable spec与真实Redis机制proof。</p></article>
-          <article class="card"><h3>JVM / Redis Owner</h3><p>contract、architecture guard与Java Redis owner proof。</p></article>
+          <article class="card"><h3>Java Kernel</h3><p>mechanical owner、Java Redis provider、固定Pacer policy与生命周期proof。</p></article>
           <article class="card"><h3>Runtime Boundary</h3><p>单一Java Server宿主、四个Java Pacer、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
-          <article class="card"><h3>Capability Task / Android / Frontend</h3><p>普通有限Task、真实文件、Host assembly与read-only UI proof。</p></article>
+          <article class="card"><h3>Capability Task / Android / Frontend</h3><p>普通有限Task、真实文件、Host assembly、Runtime Preview与公开诊断客户端proof。</p></article>
         </div>
 
         <div class="reading">

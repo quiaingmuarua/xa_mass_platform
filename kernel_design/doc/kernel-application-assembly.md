@@ -22,14 +22,27 @@ Java Server
 The Python executable specification remains the standalone mechanism Oracle:
 
 ```text
-python -m kernel_design.executable_spec.assembly [--config <path>]
+python -m kernel_design.executable_spec.assembly --config <path>
   -> KernelApplication
      -> complete Python Result, Serviceability and Assignment mechanisms
 ```
 
+A minimal isolated Oracle configuration is:
+
+```json
+{
+  "redis": {
+    "url": "redis://127.0.0.1:6379/15",
+    "scope": "test_oracle_local"
+  },
+  "workerServiceability": {}
+}
+```
+
 The Oracle exposes no HTTP surface, managed-child mode or selectively disabled
-production mode. It is not packaged in the Server Runtime. Never run it against
-the Redis scope of an active production Kernel assembly.
+production mode. It is not packaged in the Server Runtime. Its required config
+must select an explicit isolated `test_*` Redis scope; the CLI rejects
+`profile_*` scopes before constructing the application.
 
 ## Production Configuration
 
@@ -38,34 +51,33 @@ Spring owns only the finite lifecycle envelope:
 ```yaml
 xa.mass.kernel-pacer:
   enabled: true
-  config-path: kernel_design/config/pacer-default.json
+  preset: DEFAULT
   shutdown-timeout: 5s
 ```
 
-Relative config paths resolve from the JVM working directory. Server reads the
-file and passes its content to `KernelPacerRuntime.assemble(...)`; the Pacer
-module parses policy once. Server does not interpret scheduling policy.
+`kernel_pacer_jvm` owns exactly four checked presets:
 
-The production policy JSON accepts only:
+| Preset | Assembly |
+| --- | --- |
+| `DEFAULT` | Ordinary Server and AgentForge; Serviceability disabled |
+| `SERVICEABILITY_DEFAULT` | Normal production cadence with Serviceability enabled |
+| `SCENARIO_LAB` | Fast Scenario, Capability Task and Android Lab policy |
+| `RUNTIME_BOUNDARY_PROOF` | Test-only policy with accelerated boundary Serviceability |
 
-```json
-{
-  "resultRouting": {},
-  "workerServiceability": {},
-  "assignmentDispatch": {},
-  "systemPolicy": {}
-}
-```
+Server passes the selected enum to `KernelPacerRuntime.assemble(...)` and does
+not interpret scheduling policy. It rejects the proof-only preset unless the
+configured Redis scope starts with `test_`. Unknown preset names fail Spring
+binding before Runtime construction. There is no Java production Pacer JSON,
+dynamic preset or per-field override. The Redis URL and scope remain
+exclusively in `xa.mass.redis`; a preset cannot select a second Redis universe.
+The Python executable Oracle still consumes its own required JSON configuration
+and an isolated `test_*` scope; that format is not a Java production contract.
 
-Unknown root fields and unknown fields inside a known section fail startup.
-The Redis URL and scope remain exclusively in `xa.mass.redis`; policy cannot
-select a second Redis universe.
-
-When `workerServiceability` is present, the Kernel Pacer parser mints one
-100-millisecond-aligned `hotEligibilityFloorMillis`. The same immutable floor
+When a selected preset enables Serviceability, Runtime assembly mints one
+Worker-Score-slot-aligned `hotEligibilityFloorMillis`. The same immutable floor
 is injected into Serviceability Result, Serviceability Dispatch and Assignment
 candidate acquisition. It is not written to Redis or exposed through health or
-Runtime APIs. When Serviceability is absent, no floor exists and Assignment
+Runtime APIs. When Serviceability is disabled, no floor exists and Assignment
 uses the full HOT due range.
 
 ## Owner Wiring
@@ -95,7 +107,7 @@ kernel_pacer_jvm
   policy, matching, Pacer loops, configuration and finite thread lifecycle
 
 server_jvm
-  config-file I/O, owner wiring, Spring lifecycle delegation and Health
+  preset selection, owner wiring, Spring lifecycle delegation and Health
 ```
 
 Java implements the production caller closure. Operations without a Java

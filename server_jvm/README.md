@@ -7,7 +7,8 @@ configured Server runtime host.
 
 - the versioned `/api/v1` HTTP boundary, validation and error mapping;
 - provider assembly over `kernel_jvm` owner contracts;
-- config-file I/O, Spring lifecycle delegation and Health projection for the
+- fixed Pacer preset selection, Spring lifecycle delegation and Health
+  projection for the
   single `kernel_pacer_jvm` Runtime, plus public OpenAPI/Scalar surfaces;
 - Worker Identity and persistent Endpoint Binding;
 - bounded application use cases such as finite Task Result export, managed
@@ -512,7 +513,7 @@ Default coordinates:
 Java Runtime API Server        http://127.0.0.1:18082
 Kernel Redis                   redis://localhost:6379/15
 Redis scope                    profile_default
-Kernel Pacer policy            kernel_design/config/pacer-default.json
+Kernel Pacer preset            DEFAULT
 Adapter instances              none
 Managed Task Call wait         30s default / 60s maximum
 Task Call waiters              10000 maximum
@@ -544,9 +545,9 @@ matching Endpoint Binding entry.
 
 ## Run
 
-Start the Java Runtime API from the repository root. Server reads the checked
-policy, constructs the one `KernelPacerRuntime`, and its Spring adapter starts
-that Runtime before later lifecycle components:
+Start the Java Runtime API from the repository root. Server selects the
+checked `DEFAULT` policy preset, constructs the one `KernelPacerRuntime`, and
+its Spring adapter starts that Runtime before later lifecycle components:
 
 ```text
 ./gradlew :server_jvm:bootRun
@@ -559,9 +560,9 @@ Start the checked local Scenario profile from the repository root:
   --args="--spring.profiles.active=scenario-workers"
 ```
 
-This starts Group/Task seeds, Pacer and Adapter, but no JVM Worker. For the
-complete local Lab use the one-command process launcher. Omitting `--profile`
-defaults to `scenario-workers`:
+This selects `SCENARIO_LAB` and starts Group/Task seeds, Pacer and Adapter, but
+no JVM Worker. For the complete local Lab use the one-command process launcher.
+Omitting `--profile` defaults to `scenario-workers`:
 
 ```text
 python run_local_runtime.py
@@ -586,7 +587,7 @@ Worker Host. Unknown Profiles are rejected.
 For a repository-independent deployment, extract the
 [`distribution/server`](../distribution/server/) Runtime ZIP and start its Boot
 JAR directly from the Runtime root with Java 21, external Redis and explicit
-Profile/Pacer/frontend arguments. The schema-v4 manifest lists the supported
+Profile and frontend arguments. The schema-v4 manifest lists the supported
 `scenario-workers` and `agentforge` Profiles. The optional Scenario Worker Host
 has independent Gradle-generated scripts under `scenario-workers/bin`; Server
 never starts it. Source `bootRun` remains available for repository development.
@@ -614,22 +615,26 @@ aggregate lifecycle and four Java application states.
 ```
 
 The two integration tasks use the checked `integration-test` profile with
-Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary starts one Java Spring
-context and all four Java applications from the checked policy. No Python
-process or second host is started by the test operator.
+Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary selects
+`RUNTIME_BOUNDARY_PROOF` and starts one Java Spring context and all four Java
+applications. No Python process or second host is started by the test operator.
 
 The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
-`config-path`, and `shutdown-timeout`. Relative config paths resolve from the
-JVM working directory. Normal JVM tests use the `test` profile with this
-lifecycle disabled.
+`preset`, and `shutdown-timeout`. Spring accepts the normal
+`XA_MASS_KERNEL_PACER_PRESET` environment override or
+`--xa.mass.kernel-pacer.preset=...`; an unknown preset fails configuration
+binding before Runtime construction. Normal JVM tests use the `test` profile
+with this lifecycle disabled.
 
 `xa.mass.redis` is the single production source for the Redis URL and scope.
-The policy JSON contains only `resultRouting`, `workerServiceability`,
-`assignmentDispatch` and `systemPolicy`; `kernel_pacer_jvm` parses it once and
-mints one shared HOT eligibility floor. Server passes configuration and owner
-dependencies without interpreting scheduling policy. Runtime Boundary uses a
-unique `test_*` scope. The default profile uses `profile_default`; the checked
-Scenario profile defaults to `profile_scenario_workers`.
+`kernel_pacer_jvm` owns the four fixed policy presets and mints one shared HOT
+eligibility floor for each Serviceability-enabled Runtime assembly. Server
+passes only the selected preset, shutdown timeout and owner dependencies; it
+does not interpret scheduling policy. `SERVICEABILITY_DEFAULT` provides normal
+production cadence with Serviceability enabled. Runtime Boundary uses a unique
+`test_*` scope; Server rejects its proof-only preset for every other scope. The
+default and AgentForge profiles use `DEFAULT`; the checked Scenario profile
+uses `SCENARIO_LAB` and defaults to `profile_scenario_workers`.
 
 Exactly one Server instance per Redis scope may have the Pacer lifecycle
 enabled. Other API replicas must set `xa.mass.kernel-pacer.enabled=false`;

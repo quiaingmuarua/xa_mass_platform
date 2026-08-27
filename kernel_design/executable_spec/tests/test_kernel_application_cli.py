@@ -37,7 +37,10 @@ class KernelApplicationCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "kernel.json"
             config.write_text(
-                '{"resultRouting":{"intervalMillis":17}}',
+                (
+                    '{"redis":{"scope":"test_oracle_cli"},'
+                    '"resultRouting":{"intervalMillis":17}}'
+                ),
                 encoding="utf-8",
             )
             _run_application(
@@ -56,16 +59,52 @@ class KernelApplicationCliTest(unittest.TestCase):
         application.start.assert_called_once_with()
         application.stop.assert_called_once_with()
 
-    def test_start_failure_does_not_call_stop(self) -> None:
-        application = Mock(spec=KernelApplication)
-        application.start.side_effect = RuntimeError("start failed")
+    def test_oracle_run_requires_explicit_config(self) -> None:
+        application_factory = Mock()
 
-        with self.assertRaisesRegex(RuntimeError, "start failed"):
+        with self.assertRaisesRegex(ValueError, "explicit --config"):
             _run_application(
                 config_path=None,
                 input_stream=io.BytesIO(),
-                application_factory=lambda _config: application,
+                application_factory=application_factory,
             )
+
+        application_factory.assert_not_called()
+
+    def test_oracle_run_rejects_non_test_redis_scope(self) -> None:
+        application_factory = Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "kernel.json"
+            config.write_text(
+                '{"redis":{"scope":"profile_default"}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "test_\\*"):
+                _run_application(
+                    config_path=config,
+                    input_stream=io.BytesIO(),
+                    application_factory=application_factory,
+                )
+
+        application_factory.assert_not_called()
+
+    def test_start_failure_does_not_call_stop(self) -> None:
+        application = Mock(spec=KernelApplication)
+        application.start.side_effect = RuntimeError("start failed")
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "kernel.json"
+            config.write_text(
+                '{"redis":{"scope":"test_oracle_start_failure"}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "start failed"):
+                _run_application(
+                    config_path=config,
+                    input_stream=io.BytesIO(),
+                    application_factory=lambda _config: application,
+                )
 
         application.stop.assert_not_called()
 

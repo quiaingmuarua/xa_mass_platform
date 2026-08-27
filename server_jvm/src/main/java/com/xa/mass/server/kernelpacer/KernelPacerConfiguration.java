@@ -12,10 +12,7 @@ import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.xa.mass.server.kernelredis.XaMassRedisProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +25,7 @@ public class KernelPacerConfiguration {
     @Bean
     KernelPacerRuntime kernelPacerRuntime(
             KernelPacerProperties properties,
+            XaMassRedisProperties redisProperties,
             WorkerResultRuntime workerResults,
             TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
@@ -40,8 +38,9 @@ public class KernelPacerConfiguration {
             CandidateWorkerCache candidateCache,
             CandidateWarmupSchedule warmups
     ) {
+        validatePresetScope(properties.preset(), redisProperties.scope());
         return KernelPacerRuntime.assemble(
-                readKernelConfig(properties),
+                properties.preset(),
                 properties.shutdownTimeout(),
                 workerResults,
                 taskRuntime,
@@ -57,6 +56,20 @@ public class KernelPacerConfiguration {
         );
     }
 
+    static void validatePresetScope(
+            KernelPacerRuntime.PolicyPreset preset,
+            String redisScope
+    ) {
+        if (preset == KernelPacerRuntime.PolicyPreset.RUNTIME_BOUNDARY_PROOF
+                && !redisScope.startsWith("test_")) {
+            throw new IllegalStateException(
+                    "operation=kernelPacer.validatePresetScope "
+                            + "RUNTIME_BOUNDARY_PROOF requires a test_* "
+                            + "Redis scope"
+            );
+        }
+    }
+
     @Bean
     KernelPacerAssembly kernelPacerAssembly(
             KernelPacerProperties properties,
@@ -68,25 +81,5 @@ public class KernelPacerConfiguration {
     @Bean("kernel")
     HealthIndicator kernelHealthIndicator(KernelPacerAssembly assembly) {
         return new KernelPacerHealthIndicator(assembly);
-    }
-
-    private static String readKernelConfig(
-            KernelPacerProperties properties
-    ) {
-        if (!properties.enabled()) {
-            return "{}";
-        }
-        Path configured = Path.of(properties.configPath());
-        Path configPath = configured.isAbsolute()
-                ? configured.normalize()
-                : Path.of("").toAbsolutePath().resolve(configured).normalize();
-        try {
-            return Files.readString(configPath, StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new IllegalStateException(
-                    "operation=kernelPacer.readConfig failed",
-                    error
-            );
-        }
     }
 }

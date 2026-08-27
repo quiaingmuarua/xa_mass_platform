@@ -154,11 +154,6 @@ def start_server(
         "--spring.web.resources.static-locations="
         f"{FRONTEND_DIST.resolve().as_uri()}/",
     ]
-    if profile == DEFAULT_PROFILE:
-        command.append(
-            "--xa.mass.kernel-pacer.config-path="
-            "integrations/worker-capability-task/kernel-config.json"
-        )
     return subprocess.Popen(command, cwd=ROOT, env=dict(environ))
 
 

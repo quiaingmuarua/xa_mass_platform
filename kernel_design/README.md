@@ -44,12 +44,17 @@ does not maintain a second status matrix.
 
 ## Oracle Boundary
 
-`python -m kernel_design.executable_spec.assembly` starts the complete
-standalone Python mechanism for Oracle and Redis parity work. It is not built
-into the Server Runtime, has no managed or selectively disabled production
-mode, and exposes no HTTP surface. The fixed Java applications in
-`kernel_pacer_jvm` are the only production Pacers; the Python implementation
-remains the trust source for mechanism review and independent proof.
+`python -m kernel_design.executable_spec.assembly --config <path>` starts the
+complete standalone Python mechanism for Oracle and Redis parity work. The
+configuration file is required and must select an explicit isolated `test_*`
+Redis scope. The Oracle is not built into the Server Runtime, has no managed or
+selectively disabled production mode, and exposes no HTTP surface. The fixed
+Java applications in `kernel_pacer_jvm` are the only production Pacers; the
+Python implementation remains the trust source for mechanism review and
+independent proof.
+
+The minimal isolated JSON configuration is shown in
+[Kernel Application Assembly](doc/kernel-application-assembly.md).
 
 ## Core Axioms
 
@@ -182,9 +187,10 @@ unless an owner contract explicitly says so.
 
 ## Runtime And JVM Boundaries
 
-- `python -m kernel_design.executable_spec.assembly` starts the complete
-  standalone mechanism Oracle. It is never embedded in or supervised by the
-  production Server and exposes no HTTP API.
+- `python -m kernel_design.executable_spec.assembly --config <path>` starts the
+  complete standalone mechanism Oracle against an explicit `test_*` scope. It
+  is never embedded in or supervised by the production Server and exposes no
+  HTTP API.
 - `kernel_jvm/` mirrors the production-call closure of public contracts and
   Redis providers, including stable Candidate Cache/Warmup owners.
 - `kernel_pacer_jvm/` owns the four fixed production Pacer applications,

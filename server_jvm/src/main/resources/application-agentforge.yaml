@@ -3,6 +3,8 @@ server:
 
 xa:
   mass:
+    kernel-pacer:
+      preset: ${XA_MASS_KERNEL_PACER_PRESET:DEFAULT}
     redis:
       scope: ${XA_MASS_REDIS_SCOPE:profile_agentforge}
     worker-delivery:

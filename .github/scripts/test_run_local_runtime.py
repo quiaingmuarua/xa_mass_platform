@@ -79,13 +79,13 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
             self.assertIs(
                 launcher.start_server(
                     Path(directory) / "server.jar",
-                    "agentforge",
+                    "scenario-workers",
                     {"PATH": "test-path"},
                 ),
                 process,
             )
         command = popen.call_args.args[0]
-        self.assertIn("--spring.profiles.active=agentforge", command)
+        self.assertIn("--spring.profiles.active=scenario-workers", command)
         static_argument = next(
             value
             for value in command
@@ -93,7 +93,7 @@ class LocalRuntimeLauncherTest(unittest.TestCase):
         )
         self.assertIn("frontend/dist/", static_argument.replace("\\", "/"))
         self.assertFalse(
-            any("worker-capability-task" in value for value in command)
+            any("kernel-pacer" in value for value in command)
         )
         self.assertEqual(popen.call_args.kwargs["env"], {"PATH": "test-path"})
 

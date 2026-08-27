@@ -307,7 +307,6 @@ jobs:
           proof_root="$GITHUB_WORKSPACE/build/worker-fleet-proof"
           java -jar "$server_jar" \
             --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             > fleet-server.log 2>&1 &
           echo $! > fleet-server.pid
           for _ in $(seq 1 90); do
@@ -502,7 +501,6 @@ jobs:
           test -n "$SERVER_JAR"
           java -jar "$SERVER_JAR" \
             --spring.profiles.active=scenario-workers \
-            --xa.mass.kernel-pacer.config-path=integrations/worker-capability-task/kernel-config.json \
             > scenario-server.log 2>&1 &
           echo $! > scenario-server.pid
           for _ in $(seq 1 90); do

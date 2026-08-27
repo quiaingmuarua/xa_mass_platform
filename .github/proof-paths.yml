@@ -1,5 +1,4 @@
 kernel_oracle:
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
   - 'kernel_pacer_jvm/**'
@@ -9,7 +8,6 @@ kernel_oracle:
 jvm_contracts:
   - 'run_local_runtime.py'
   - 'frontend/public/reference/openapi.json'
-  - 'kernel_design/config/**'
   - 'kernel_jvm/**'
   - 'kernel_pacer_jvm/**'
   - 'scenario_workers_jvm/**'
@@ -32,7 +30,6 @@ jvm_contracts:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 redis_owner:
-  - 'kernel_design/config/**'
   - 'kernel_jvm/**'
   - 'kernel_pacer_jvm/**'
   - 'server_jvm/**'
@@ -50,7 +47,6 @@ redis_owner:
   - '!**/*.md'
 runtime_boundary:
   - 'run_local_runtime.py'
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
   - 'kernel_jvm/**'
@@ -72,7 +68,6 @@ runtime_boundary:
   - '!**/*.md'
 capability_task:
   - 'run_local_runtime.py'
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
   - 'kernel_jvm/**'
@@ -96,7 +91,6 @@ capability_task:
   - '!**/*.md'
 worker_fleet:
   - 'run_local_runtime.py'
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/**'
   - 'kernel_design/requirements.txt'
   - 'kernel_jvm/**'
@@ -107,7 +101,6 @@ worker_fleet:
   - 'transport/worker-core/**'
   - 'transport/java-worker/**'
   - 'transport/netty-adapter/**'
-  - 'integrations/worker-capability-task/kernel-config.json'
   - 'integrations/worker-fleet-acceptance/**'
   - 'build.gradle'
   - 'settings.gradle'
@@ -135,7 +128,6 @@ android_host:
   - '.github/scripts/summarize_junit.py'
   - '!**/*.md'
 android_emulator:
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/assembly/**'
   - 'kernel_design/requirements.txt'
   - 'kernel_pacer_jvm/**'
@@ -191,7 +183,6 @@ frontend:
 runtime_distribution:
   - 'distribution/server/**'
   - 'distribution/worker-sdk/**'
-  - 'kernel_design/config/**'
   - 'kernel_design/executable_spec/__init__.py'
   - 'kernel_design/executable_spec/assembly/**'
   - 'kernel_design/executable_spec/constraint_dsl/**'

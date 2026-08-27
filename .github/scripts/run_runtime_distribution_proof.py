@@ -245,8 +245,6 @@ def _server_command(
         "-jar",
         str(jar),
         f"--spring.profiles.active={profile}",
-        "--xa.mass.kernel-pacer.config-path="
-        f"{(runtime_root / 'config/pacer-default.json').resolve()}",
         "--spring.web.resources.static-locations="
         f"{(runtime_root / 'frontend/dist').resolve().as_uri()}/",
         *arguments,

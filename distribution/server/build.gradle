@@ -148,9 +148,6 @@ tasks.register('stageRuntime', Sync) {
     from(scenarioWorkerInstallDirectory) {
         into 'scenario-workers'
     }
-    from(rootProject.file('kernel_design/config/pacer-default.json')) {
-        into 'config'
-    }
     from(rootProject.file('frontend/dist')) {
         into 'frontend/dist'
         exclude 'reference/platform-diagnostic-codes.json'

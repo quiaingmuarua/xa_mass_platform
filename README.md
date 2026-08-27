@@ -157,8 +157,8 @@ Exactly one Java Server instance per Kernel Redis scope may run with
 lifecycle; there is no distributed Pacer leader election. The enabled Server
 owns the `xa.mass.redis` URL and scope used by its Java Result consumers and
 the Java Assignment and Serviceability owners. Spring Profile selects
-assembly; Redis scope selects the persistent data boundary. The checked Pacer
-JSON contains policy only and cannot select a different Redis universe.
+assembly and one fixed Java Pacer preset; Redis scope selects the persistent
+data boundary. A Pacer preset cannot select a different Redis universe.
 
 The shared Worker contracts are also published as one version-locked Worker
 SDK Maven Repository ZIP containing the Delivery Contract, Worker Core,
@@ -169,12 +169,12 @@ obligation.
 
 The Server deployment boundary is publishable independently from Worker SDKs:
 `xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
-compiled frontend, default Pacer policy, and the optional Scenario Worker
-Host. Start the Boot JAR directly with Java 21 and an explicit Spring Profile,
-Pacer config and frontend path. The packaged Gradle start scripts launch only
-the finite JVM Lab Host; they are independent from Server. AgentForge uses the
-clean Profile plus public APIs and consumes the matching Worker SDK Release
-instead of copying XA Mass source modules.
+compiled frontend and the optional Scenario Worker Host. Start the Boot JAR
+directly with Java 21, an explicit Spring Profile and the frontend path; the
+Profile selects its checked Pacer preset. The packaged Gradle start scripts
+launch only the finite JVM Lab Host; they are independent from Server.
+AgentForge uses the clean Profile plus public APIs and consumes the matching
+Worker SDK Release instead of copying XA Mass source modules.
 
 Inside the source checkout, `python run_local_runtime.py` builds the frontend
 and defaults to the complete `scenario-workers` Lab; `--profile agentforge`

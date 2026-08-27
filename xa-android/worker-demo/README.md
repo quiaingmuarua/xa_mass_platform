@@ -114,12 +114,12 @@ adb forward --remove tcp:18084
 ## Real device run
 
 Redis must be available at `redis://localhost:6379/15`. Start the shared Lab
-profile; Java Server starts the four Java Kernel Pacer applications with the
-Android proof configuration:
+profile; Java Server selects the checked `SCENARIO_LAB` preset and starts the
+four Java Kernel Pacer applications:
 
 ```powershell
 .\gradlew.bat :server_jvm:bootRun `
-  --args="--spring.profiles.active=scenario-workers --xa.mass.kernel-pacer.config-path=xa-android/worker-demo/kernel-config.json"
+  --args="--spring.profiles.active=scenario-workers"
 ```
 
 The profile initializes the advisory `android-demo-workers` catalog and its

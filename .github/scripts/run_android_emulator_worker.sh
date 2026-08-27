@@ -6,7 +6,6 @@ workspace=${GITHUB_WORKSPACE:?GITHUB_WORKSPACE must be set}
 proof_root=${ANDROID_WORKER_PROOF_ROOT:-$workspace/build/android-emulator-proof}
 apk=${ANDROID_WORKER_APK:-$proof_root/apk/xa-mass-android-worker-demo-debug.apk}
 driver="$workspace/xa-android/worker-demo/host/android_worker_acceptance.py"
-kernel_config="$workspace/xa-android/worker-demo/kernel-config.json"
 application_id=com.xa.mass.integration.androidworker
 activity_component="$application_id/com.xa.mass.android.workerdemo.MainActivity"
 endpoint_manager_id=scenario-websocket
@@ -33,7 +32,6 @@ process_marker_wait_seconds=$((
 mkdir -p "$proof_root/data" "$evidence_root" "$log_root"
 test -f "$apk"
 test -f "$driver"
-test -f "$kernel_config"
 
 collect_android_log() {
     {
@@ -97,7 +95,6 @@ start_server() {
     test -n "$server_jar"
     java -jar "$server_jar" \
         --spring.profiles.active=scenario-workers \
-        --xa.mass.kernel-pacer.config-path="$kernel_config" \
         > "$log_root/server-$phase.log" 2>&1 &
     server_pid=$!
     if ! wait_for_url \

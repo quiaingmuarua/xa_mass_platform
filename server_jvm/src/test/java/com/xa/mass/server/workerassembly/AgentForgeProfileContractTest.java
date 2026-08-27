@@ -29,6 +29,8 @@ class AgentForgeProfileContractTest {
                 .isEqualTo("18182");
         assertThat(environment.getProperty("xa.mass.redis.scope"))
                 .isEqualTo("profile_agentforge");
+        assertThat(environment.getProperty("xa.mass.kernel-pacer.preset"))
+                .isEqualTo("DEFAULT");
         assertThat(environment.getProperty(
                 "xa.mass.worker-assembly.group-config-json"
         )).isEqualTo("{}");

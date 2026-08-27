@@ -340,7 +340,7 @@ final class WorkerCandidateAcquirer {
             List<?> values;
             if ("$eq".equals(operator.getKey())
                     || "$equal".equals(operator.getKey())) {
-                values = List.of(operator.getValue());
+                values = Collections.singletonList(operator.getValue());
             } else if ("$in".equals(operator.getKey())
                     && operator.getValue() instanceof List<?> list
                     && !list.isEmpty()
