@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +16,6 @@ final class DispatchConvergenceApplication {
 
     private final Object lifecycleLock = new Object();
     private final DispatchLaneCoordinator laneCoordinator;
-    private final TaskInitializationPolicy initialization;
     private final TaskWorkerAllocationPolicy allocation;
     private final TaskDispatchPolicy dispatch;
     private final WorkerServiceabilityDispatchPolicy serviceability;
@@ -24,21 +25,20 @@ final class DispatchConvergenceApplication {
     private State state = State.STOPPED;
 
     DispatchConvergenceApplication(
-            TaskSchedulingMechanism taskScheduling,
-            TaskInitializationPolicy initialization,
+            TaskScoreBandCore taskScores,
+            TaskResourceCatalog taskCatalog,
+            TaskInitializationCheck initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability
     ) {
         this.laneCoordinator = new DispatchLaneCoordinator(
-                new DispatchTaskBatchFanout(Objects.requireNonNull(
-                        taskScheduling,
-                        "taskScheduling"
-                ))
-        );
-        this.initialization = Objects.requireNonNull(
-                initialization,
-                "initialization"
+                Objects.requireNonNull(taskScores, "taskScores"),
+                Objects.requireNonNull(taskCatalog, "taskCatalog"),
+                Objects.requireNonNull(
+                        initialization,
+                        "initialization"
+                )
         );
         this.allocation = Objects.requireNonNull(allocation, "allocation");
         this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
@@ -69,7 +69,15 @@ final class DispatchConvergenceApplication {
                     batchThreads
             );
             Thread started = new Thread(
-                    () -> runCoordinator(signal, executor, definitions),
+                    () -> runCoordinator(
+                            signal,
+                            executor,
+                            TimeUnit.MILLISECONDS.toNanos(
+                                    assignmentConfig
+                                            .taskInitializationIntervalMillis()
+                            ),
+                            definitions
+                    ),
                     "dispatch-convergence-coordinator"
             );
             started.setDaemon(false);
@@ -154,11 +162,6 @@ final class DispatchConvergenceApplication {
     ) {
         List<DispatchLaneDefinition> definitions = new ArrayList<>();
         definitions.add(DispatchLaneDefinition.fromMillis(
-                DispatchLaneId.TASK_INITIALIZATION,
-                assignmentConfig.taskInitializationIntervalMillis(),
-                initialization::initializeTasks
-        ));
-        definitions.add(DispatchLaneDefinition.fromMillis(
                 DispatchLaneId.WORKER_ALLOCATION,
                 assignmentConfig.workerAllocationIntervalMillis(),
                 batch -> allocation.allocateCandidateWorkers(
@@ -196,10 +199,16 @@ final class DispatchConvergenceApplication {
     private void runCoordinator(
             CountDownLatch signal,
             ExecutorService executor,
+            long initializationIntervalNanos,
             List<DispatchLaneDefinition> definitions
     ) {
         try {
-            laneCoordinator.run(signal, executor, definitions);
+            laneCoordinator.run(
+                    signal,
+                    executor,
+                    initializationIntervalNanos,
+                    definitions
+            );
         } finally {
             synchronized (lifecycleLock) {
                 if (coordinator == Thread.currentThread()

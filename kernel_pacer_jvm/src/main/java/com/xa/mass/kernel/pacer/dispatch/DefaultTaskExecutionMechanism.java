@@ -6,7 +6,6 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandAppendStatus;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemObservation;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemWorkerAssignment;
-import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreTransitionStatus;
@@ -125,7 +124,7 @@ final class DefaultTaskExecutionMechanism
 
     @Override
     public int dispatch(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             List<TaskItemWorkerAssignment> assignments,
             long claimUntilMillis
     ) {
@@ -141,7 +140,7 @@ final class DefaultTaskExecutionMechanism
 
     @Override
     public void onDispatchAttemptFinished(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             long dispatchTimeMillis
     ) {
         taskScores.rewriteSameBandTimeMillis(
@@ -153,7 +152,7 @@ final class DefaultTaskExecutionMechanism
 
     @Override
     public void settleNoClaimableItems(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             IdleAction action,
             long observedAtMillis
     ) {
@@ -195,7 +194,7 @@ final class DefaultTaskExecutionMechanism
     }
 
     private int dispatchSelected(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             List<TaskItemWorkerAssignment> assignments,
             long claimUntilMillis
     ) {
@@ -300,7 +299,7 @@ final class DefaultTaskExecutionMechanism
     }
 
     private static void validateAssignments(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             List<TaskItemWorkerAssignment> assignments
     ) {
         requireTaskReference(task.taskId(), task.reference());

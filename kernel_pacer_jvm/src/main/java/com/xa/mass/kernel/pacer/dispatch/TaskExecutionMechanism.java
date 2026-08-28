@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import java.util.List;
@@ -18,18 +17,18 @@ interface TaskExecutionMechanism {
     );
 
     int dispatch(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             List<TaskItemWorkerAssignment> assignments,
             long claimUntilMillis
     );
 
     void onDispatchAttemptFinished(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             long dispatchTimeMillis
     );
 
     void settleNoClaimableItems(
-            TaskSchedulingObservation task,
+            DueTaskObservation task,
             IdleAction action,
             long observedAtMillis
     );

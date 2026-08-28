@@ -43,9 +43,11 @@ public interface TaskScoreBandCore {
 
     int countRunningTasks();
 
-    TaskScoreScanPage acquireDispatchWorkTasks(int limit);
+    Map<String, Long> acquireSchedulingTasks(int limit);
 
-    List<String> acquireInitialRunningTasks(int limit);
+    Map<String, Long> filterInitialTaskScores(
+            Map<String, Long> observedTaskScores
+    );
 
     TaskScoreTransitionResult initializeScore(
             String taskId,
@@ -59,9 +61,8 @@ public interface TaskScoreBandCore {
             int priority
     );
 
-    TaskScoreTransitionResult promoteObservedInitialTask(
-            String taskId,
-            long observedInitialScore
+    Map<String, TaskScoreTransitionResult> promoteObservedInitialTasks(
+            Map<String, Long> observedInitialScores
     );
 
     TaskScoreTransitionResult rewriteSameBandTimeMillis(
@@ -147,43 +148,6 @@ public interface TaskScoreBandCore {
                     && suffix <= MAX_SUFFIX;
         }
 
-        public boolean isDueNormal(long currentTimeMillis) {
-            if (currentTimeMillis < MIN_TIME_MILLIS) {
-                return false;
-            }
-            long currentSlotMillis = currentTimeMillis / SLOT_MILLIS
-                    * SLOT_MILLIS;
-            return band == TaskScoreBand.RUNNING_VISIBLE
-                    && timeMillis != null
-                    && suffix != null
-                    && suffix == MIN_SUFFIX
-                    && timeMillis >= NORMAL_TIME_MIN_MILLIS
-                    && timeMillis < currentSlotMillis;
-        }
-    }
-
-    record TaskScoreScanPage(
-            long readAtMillis,
-            List<String> taskIds
-    ) {
-        public TaskScoreScanPage {
-            if (readAtMillis < 0) {
-                throw new IllegalArgumentException(
-                        "readAtMillis must not be negative"
-                );
-            }
-            taskIds = List.copyOf(Objects.requireNonNull(
-                    taskIds,
-                    "taskIds"
-            ));
-            if (taskIds.stream().anyMatch(
-                    taskId -> taskId == null || taskId.isBlank()
-            )) {
-                throw new IllegalArgumentException(
-                        "taskIds must contain only non-blank values"
-                );
-            }
-        }
     }
 
     record TaskScoreTransitionResult(

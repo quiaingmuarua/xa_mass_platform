@@ -58,8 +58,8 @@ class DispatchMechanismBoundaryTest {
                 "src/main/java/com/xa/mass/kernel/pacer/dispatch"
         );
         List<String> internalTypes = List.of(
-                "TaskSchedulingMechanism",
-                "DefaultTaskSchedulingMechanism",
+                "TaskInitializationCheck",
+                "DueActiveItemInitializationCheck",
                 "WorkerCandidateMechanism",
                 "DefaultWorkerCandidateMechanism",
                 "TaskExecutionMechanism",

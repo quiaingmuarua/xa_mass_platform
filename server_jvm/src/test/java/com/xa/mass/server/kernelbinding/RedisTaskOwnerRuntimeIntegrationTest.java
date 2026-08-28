@@ -486,23 +486,76 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         );
         assertThat(initial.suffix()).isEqualTo(95);
 
-        var promoted = scoreCore.promoteObservedInitialTask(
+        var promoted = scoreCore.promoteObservedInitialTasks(Map.of(
                 "rewrite-task",
                 initial.score()
-        );
+        )).get("rewrite-task");
         assertThat(promoted.status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
         );
-        assertThat(scoreCore.promoteObservedInitialTask(
+        assertThat(scoreCore.promoteObservedInitialTasks(Map.of(
                 "rewrite-task",
                 initial.score()
-        ).status()).isEqualTo(
+        )).get("rewrite-task").status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
         assertThat(scoreCore.releaseObservedScoreHold(
                 "rewrite-task",
                 initialized.score()
         ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.STALE
+        );
+    }
+
+    @Test
+    void initialPromotionUsesOneRedisTimeAndIndependentExactResults() {
+        Map<String, Long> initialScores = new java.util.LinkedHashMap<>();
+        for (String taskId : List.of("batch-a", "batch-b", "batch-c")) {
+            var initialized = scoreCore.initializeScore(taskId, 1, 3_000);
+            var released = scoreCore.releaseObservedScoreHold(
+                    taskId,
+                    initialized.score()
+            );
+            var started = scoreCore.startObservedPreReviewTask(
+                    taskId,
+                    released.score(),
+                    10
+            );
+            initialScores.put(taskId, started.score());
+        }
+        assertThat(scoreCore.closeScore(
+                "batch-b",
+                TaskScoreBandCore.TERMINAL_SCORE_MAX
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        initialScores.put(
+                "batch-missing",
+                taskScore(
+                        TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                        TaskScoreBandCore.INITIAL_TIME_SLOT,
+                        TaskScoreBandCore.MAX_SUFFIX
+                )
+        );
+
+        var results = scoreCore.promoteObservedInitialTasks(initialScores);
+
+        assertThat(results.keySet()).containsExactlyElementsOf(
+                initialScores.keySet()
+        );
+        assertThat(results.get("batch-a").status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(results.get("batch-c").status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(results.get("batch-a").score()).isEqualTo(
+                results.get("batch-c").score()
+        );
+        assertThat(results.get("batch-b").status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.STALE
+        );
+        assertThat(results.get("batch-missing").status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.STALE
         );
     }
@@ -556,12 +609,24 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 lowSlotScore,
                 "other-low-slot"
         );
-        assertThat(scoreCore.acquireInitialRunningTasks(4))
-                .containsExactly("priority-0", "priority-1", "priority-99");
-        assertThat(scoreCore.promoteObservedInitialTask(
+        var schedulingScores = scoreCore.acquireSchedulingTasks(4);
+        assertThat(schedulingScores.keySet())
+                .containsExactly(
+                        "priority-0",
+                        "priority-1",
+                        "priority-99",
+                        "other-low-slot"
+                );
+        assertThat(scoreCore.filterInitialTaskScores(schedulingScores)
+                .keySet()).containsExactly(
+                        "priority-0",
+                        "priority-1",
+                        "priority-99"
+                );
+        assertThat(scoreCore.promoteObservedInitialTasks(Map.of(
                 "other-low-slot",
                 lowSlotScore
-        ).status()).isEqualTo(
+        )).get("other-low-slot").status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
         );
         assertThat(scoreCore.rewriteSameBandTimeMillis(
@@ -604,7 +669,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(states.get("equal-b").score()).isEqualTo(
                 states.get("equal-a").score()
         );
-        assertThat(scoreCore.acquireInitialRunningTasks(2))
+        assertThat(scoreCore.acquireSchedulingTasks(2).keySet())
                 .containsExactlyInAnyOrder("equal-a", "equal-b");
     }
 
@@ -701,7 +766,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void dispatchTaskScanReadsOnlyDueRunningScoresInAscendingOrder() {
+    void schedulingTaskScanReadsDueNormalThenInitialInDescendingOrder() {
         String scoreKey = keyspace.base() + ":task:score";
         long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
         redis.zadd(scoreKey, taskScore(
@@ -716,6 +781,11 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ), "running-new");
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot,
+                0
+        ), "running-current");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
                 nowSlot + 100,
                 0
         ), "running-future");
@@ -724,6 +794,22 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 TaskScoreBandCore.INITIAL_TIME_SLOT,
                 TaskScoreBandCore.MAX_SUFFIX
         ), "initial");
+        redis.zadd(scoreKey, idleParkScore(), "idle-park");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.PAUSE_TIME_SLOT,
+                TaskScoreBandCore.MAX_SUFFIX
+        ), "pause");
+        redis.zadd(scoreKey, taskScore(
+                TaskScoreBandCore.PRE_REVIEW_TAG,
+                nowSlot - 1,
+                0
+        ), "pre-review");
+        redis.zadd(
+                scoreKey,
+                TaskScoreBandCore.TERMINAL_SCORE_MAX,
+                "terminal"
+        );
         Map<String, Double> before = redis.zrangeWithScores(scoreKey, 0, -1)
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -731,15 +817,71 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         io.lettuce.core.ScoredValue::getScore
                 ));
 
-        var dispatchPage = scoreCore.acquireDispatchWorkTasks(100);
-        assertThat(dispatchPage.readAtMillis()).isPositive();
-        assertThat(dispatchPage.taskIds())
-                .containsExactly("running-old", "running-new");
+        var schedulingScores = scoreCore.acquireSchedulingTasks(100);
+        assertThat(schedulingScores.keySet())
+                .containsExactly("running-new", "running-old", "initial");
+        assertThat(scoreCore.filterInitialTaskScores(schedulingScores))
+                .containsOnlyKeys("initial");
         assertThat(redis.zrangeWithScores(scoreKey, 0, -1).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         io.lettuce.core.ScoredValue::getValue,
                         io.lettuce.core.ScoredValue::getScore
                 ))).isEqualTo(before);
+    }
+
+    @Test
+    void schedulingTaskScanFiltersInvalidScoresWithoutRefill() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        long newestScore = taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot - 1,
+                0
+        );
+        long olderScore = taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                nowSlot - 3,
+                0
+        );
+        redis.zadd(scoreKey, newestScore, "valid-newest");
+        redis.zadd(
+                scoreKey,
+                taskScore(
+                        TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                        nowSlot - 2,
+                        0
+                ) + 0.5D,
+                "invalid-fractional"
+        );
+        redis.zadd(scoreKey, olderScore, "valid-older");
+
+        var page = scoreCore.acquireSchedulingTasks(2);
+
+        assertThat(page.keySet())
+                .containsExactly("valid-newest");
+    }
+
+    @Test
+    void schedulingTaskScanAppliesOneHundredMemberOwnerLimit() {
+        String scoreKey = keyspace.base() + ":task:score";
+        long nowSlot = redisTimeMillis() / TaskScoreBandCore.SLOT_MILLIS;
+        for (int index = 0; index < 101; index++) {
+            redis.zadd(scoreKey, taskScore(
+                    TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                    nowSlot - index - 1,
+                    0
+            ), "bounded-" + index);
+        }
+
+        var page = scoreCore.acquireSchedulingTasks(100);
+
+        assertThat(page).hasSize(100);
+        assertThat(page.keySet())
+                .containsExactlyElementsOf(
+                        java.util.stream.IntStream.range(0, 100)
+                                .mapToObj(index -> "bounded-" + index)
+                                .toList()
+                );
     }
 
     @Test

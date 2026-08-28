@@ -5,7 +5,7 @@ explicit below.
 
 Detailed mechanisms:
 
-- [Task Initialization Policy](task-initialization-policy.md)
+- [Task Initialization](task-initialization-policy.md)
 - [Task Worker Allocation Policy](task-worker-allocation-pacer.md)
 - [Task Dispatch Policy](task-dispatch-pacer.md)
 - [Worker HOT_ACQUIRE Lease Protocol](../../../kernel_jvm/doc/score/worker-hot-acquire-lease-protocol.md)
@@ -26,21 +26,22 @@ keeps four fixed single-flight policy lanes:
 | Task dispatch | NORMAL RUNNING | Does a Task dispatch Items, idle-park, or close? | Claimed Items, Commands, or exact Task score transition |
 | Worker serviceability | NORMAL RUNNING | Which demanded WorkerGroups need Adapter Route probes? | best-effort Probe Request evidence |
 
-The RUNNING lanes share one immutable `DueTaskObservation` batch whenever they
-are simultaneously eligible. They have independent cadence and completion;
-there is no transaction or assignment lifecycle object. A busy lane skips the
-batch, and Task score remains the only persistent demand surface.
+One descending Redis scan supplies an ordered `taskId -> opaque score` map.
+The Score Owner filters its INITIAL subset; the remaining NORMAL identities
+are loaded with Descriptors once and shared by the three ordinary RUNNING
+lanes. The INITIAL map is sent only to Task Initialization. The lanes have independent
+cadence and completion; there is no transaction or assignment lifecycle
+object. A busy lane skips the batch, and Task score remains the only persistent
+demand surface.
 
 The supported Task command path commits the `TaskDescriptor` before approval
 can enter RUNNING INITIAL. INITIAL uses the fixed time slot `100` and the
 Owner-derived suffix `99 - priority`; initialization writes the NORMAL time
 coordinate with suffix zero.
-`TaskSchedulingMechanism` therefore revalidates concurrent observations with
-the Redis range-read time and hides the exact Task score in an opaque reference. It
-is not a legacy-data repair or migration surface. A Task that changed band,
-moved into the future, or disappeared between the range read and the owner
-reread is omitted from that batch and remains governed by its current owner
-state.
+The coordinator does not decode Score. INITIAL classification belongs to the
+Task Score Owner, and NORMAL scores are only wrapped for exact downstream
+transitions. There is no second Task Score read. Concurrent changes after the
+scan are rejected by exact Owner operations rather than repaired.
 
 ## Worker Allocation Mechanisms
 
@@ -253,8 +254,9 @@ the dispatch round does not infer type or strategy from Item contents.
 
 ## Owner And Failure Boundaries
 
-- `TaskInitializationPolicy` is the only assignment mechanism that promotes a
-  RUNNING INITIAL coordinate into the NORMAL scheduling range.
+- `TaskInitializationCheck` receives only the INITIAL taskId-to-score map,
+  checks due Items once, and asks the Task Score Owner for one exact batch
+  promotion into NORMAL.
 - `TaskWorkerAllocationPolicy` receives validated Task evidence and never reads
   or mutates Task score.
 - `TaskWorkerAllocationPolicy` owns deficit and may read bounded Candidate

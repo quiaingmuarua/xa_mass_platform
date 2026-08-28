@@ -3,7 +3,6 @@ package com.xa.mass.kernel.pacer.dispatch;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.IdleAction;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemObservation;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemWorkerAssignment;
-import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
@@ -59,7 +58,6 @@ final class TaskDispatchPolicy {
         Set<String> roundWorkerIds = new LinkedHashSet<>();
         int published = 0;
         for (DueTaskObservation task : tasks) {
-            TaskSchedulingObservation scheduling = scheduling(task);
             List<TaskItemObservation> observed = execution.observeTaskItems(
                     task.taskId(),
                     config.perTaskDispatchLimit()
@@ -82,7 +80,7 @@ final class TaskDispatchPolicy {
                     .toList();
             if (claimable.isEmpty()) {
                 execution.settleNoClaimableItems(
-                        scheduling,
+                        task,
                         task.descriptor().idleDisposition()
                                 == TaskIdleDisposition.CLOSE_WHEN_IDLE
                                 ? IdleAction.CLOSE
@@ -99,13 +97,13 @@ final class TaskDispatchPolicy {
                         roundWorkerIds
                 );
                 published += execution.dispatch(
-                        scheduling,
+                        task,
                         assignments,
                         claimUntilMillis
                 );
             } finally {
                 execution.onDispatchAttemptFinished(
-                        scheduling,
+                        task,
                         dispatchTimeMillis
                 );
             }
@@ -208,13 +206,4 @@ final class TaskDispatchPolicy {
                 && observedAtMillis >= item.item().expireAtMillis();
     }
 
-    private static TaskSchedulingObservation scheduling(
-            DueTaskObservation task
-    ) {
-        return new TaskSchedulingObservation(
-                task.taskId(),
-                task.descriptor(),
-                task.reference()
-        );
-    }
 }

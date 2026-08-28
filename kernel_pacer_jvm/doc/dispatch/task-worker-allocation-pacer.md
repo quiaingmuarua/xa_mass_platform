@@ -23,8 +23,8 @@ ignored because they acquire Workers only while dispatching their Items.
 
 ## Input Boundary
 
-`TaskSchedulingMechanism` owns Redis-time Task observation and validation;
-`DispatchTaskBatchFanout` supplies an
+The Task Score Owner supplies the bounded taskId-to-score map and identifies
+the INITIAL subset; `DispatchLaneCoordinator` loads NORMAL Descriptors and supplies an
 immutable `DueTaskObservation` containing:
 
 ```text

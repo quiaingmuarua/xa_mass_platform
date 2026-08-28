@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.IdleAction;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemObservation;
-import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -68,34 +67,6 @@ class AssignmentPacersTest {
     }
 
     @Test
-    void initializationPublishesOnlyReadySemanticObservations() {
-        TaskSchedulingMechanism mechanism = mock(
-                TaskSchedulingMechanism.class
-        );
-        DueTaskObservation first = due(
-                "task-1",
-                WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE
-        );
-        DueTaskObservation second = due(
-                "task-2",
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
-                TaskIdleDisposition.CLOSE_WHEN_IDLE
-        );
-        TaskSchedulingObservation firstObservation = scheduling(first);
-        when(mechanism.observeInitializationReady(any()))
-                .thenReturn(List.of(firstObservation));
-        when(mechanism.onInitializationReady(List.of(firstObservation)))
-                .thenReturn(1);
-        TaskInitializationPolicy policy = new TaskInitializationPolicy(
-                mechanism
-        );
-
-        assertEquals(1, policy.initializeTasks(List.of(first, second)));
-        verify(mechanism).onInitializationReady(List.of(firstObservation));
-    }
-
-    @Test
     void dispatchDelegatesIdleParkToExecutionMechanism() {
         TaskExecutionMechanism execution = mock(
                 TaskExecutionMechanism.class
@@ -121,7 +92,7 @@ class AssignmentPacersTest {
                 new TaskDispatchConfig(100, 5_000)
         ));
         verify(execution).settleNoClaimableItems(
-                scheduling(task),
+                task,
                 IdleAction.PARK,
                 1_000L
         );
@@ -245,7 +216,7 @@ class AssignmentPacersTest {
                 )
         );
         verify(execution).onDispatchAttemptFinished(
-                scheduling(task),
+                task,
                 1_000L
         );
     }
@@ -259,16 +230,6 @@ class AssignmentPacersTest {
                 taskId,
                 mock(TaskSchedulingReference.class),
                 descriptor(taskId, mechanism, idle)
-        );
-    }
-
-    private static TaskSchedulingObservation scheduling(
-            DueTaskObservation task
-    ) {
-        return new TaskSchedulingObservation(
-                task.taskId(),
-                task.descriptor(),
-                task.reference()
         );
     }
 

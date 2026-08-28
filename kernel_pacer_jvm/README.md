@@ -75,14 +75,13 @@ Serviceability transitions. Adapter Evidence shares the same lifecycle without
 becoming a general EventBus.
 
 Dispatch Convergence owns one coordinator and fixed single-flight virtual
-Batch lanes. `DispatchTaskBatchFanout` asks the internal
-`TaskSchedulingMechanism` for a bounded NORMAL observation first, then asks for
-INITIAL only with the remaining source budget. The owner scan supplies Redis
-`readAtMillis`, so point revalidation does not
-mix Redis and JVM clocks. NORMAL is routed to Worker Allocation, Task Dispatch
-and optional Worker Serviceability; INITIAL is routed only to Task
-Initialization. Busy lanes skip the current Batch without storing a pending
-hint; Task score provides rediscovery.
+Batch lanes. The coordinator reads one bounded descending
+`taskId -> opaque score` map and asks the Task Score Owner for its INITIAL
+subset. It loads Descriptors once for only the NORMAL complement, shares those
+observations with Worker Allocation, Task Dispatch and optional Worker
+Serviceability, and sends the INITIAL map directly to Task Initialization.
+There is no Task Score point recheck; exact downstream transitions reject stale
+observations. Busy lanes skip the current Batch without storing a pending hint.
 
 Dispatch policies own selection, priority, matching, deficits, retry cadence
 and Group rotation. Package-private mechanisms in this module protect raw

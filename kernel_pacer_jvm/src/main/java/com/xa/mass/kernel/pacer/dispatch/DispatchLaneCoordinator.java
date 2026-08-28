@@ -1,5 +1,9 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -19,29 +23,57 @@ final class DispatchLaneCoordinator {
             DispatchLaneCoordinator.class.getName()
     );
 
-    private final DispatchTaskBatchFanout fanout;
+    private final TaskScoreBandCore taskScores;
+    private final TaskResourceCatalog taskCatalog;
+    private final TaskInitializationCheck initialization;
 
-    DispatchLaneCoordinator(DispatchTaskBatchFanout fanout) {
-        this.fanout = Objects.requireNonNull(fanout, "fanout");
+    DispatchLaneCoordinator(
+            TaskScoreBandCore taskScores,
+            TaskResourceCatalog taskCatalog,
+            TaskInitializationCheck initialization
+    ) {
+        this.taskScores = Objects.requireNonNull(taskScores, "taskScores");
+        this.taskCatalog = Objects.requireNonNull(
+                taskCatalog,
+                "taskCatalog"
+        );
+        this.initialization = Objects.requireNonNull(
+                initialization,
+                "initialization"
+        );
     }
 
     void run(
             CountDownLatch stopSignal,
             ExecutorService executor,
+            long initializationIntervalNanos,
             List<DispatchLaneDefinition> lanes
     ) {
         Objects.requireNonNull(stopSignal, "stopSignal");
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(lanes, "lanes");
+        if (initializationIntervalNanos < 1) {
+            throw new IllegalArgumentException(
+                    "Initialization lane interval must be positive"
+            );
+        }
         BlockingQueue<LaneCompletion> completions =
                 new LinkedBlockingQueue<>();
         Map<DispatchLaneId, LaneRuntime> runtimes = new EnumMap<>(
                 DispatchLaneId.class
         );
+        runtimes.put(
+                DispatchLaneId.TASK_INITIALIZATION,
+                LaneRuntime.initialization(initializationIntervalNanos)
+        );
         lanes.forEach(lane -> {
-            if (runtimes.put(lane.id(), new LaneRuntime(lane)) != null) {
+            if (lane.id() == DispatchLaneId.TASK_INITIALIZATION
+                    || runtimes.put(
+                            lane.id(),
+                            LaneRuntime.normal(lane)
+                    ) != null) {
                 throw new IllegalArgumentException(
-                        "Duplicate Dispatch lane: " + lane.id()
+                        "Duplicate or invalid Dispatch lane: " + lane.id()
                 );
             }
         });
@@ -103,12 +135,24 @@ final class DispatchLaneCoordinator {
         if (eligible.isEmpty() || stopSignal.getCount() == 0) {
             return;
         }
-        Map<DispatchLaneId, List<DueTaskObservation>> batches;
+
+        Map<String, Long> observedScores;
+        Map<String, Long> initialScores;
+        List<DueTaskObservation> normalTasks;
         try {
-            batches = fanout.acquireFor(
-                    eligible,
-                    AssignmentDispatchConfig.TASK_BATCH_LIMIT
+            observedScores = Objects.requireNonNull(
+                    taskScores.acquireSchedulingTasks(
+                            AssignmentDispatchConfig.TASK_BATCH_LIMIT
+                    ),
+                    "Task score owner returned null scores"
             );
+            initialScores = Objects.requireNonNull(
+                    taskScores.filterInitialTaskScores(observedScores),
+                    "Task score owner returned null INITIAL scores"
+            );
+            normalTasks = requiresNormalTasks(eligible)
+                    ? normalTasks(observedScores, initialScores.keySet())
+                    : List.of();
         } catch (RuntimeException failure) {
             eligible.forEach(laneId -> deferLane(runtimes.get(laneId)));
             logFailure("taskSource", null, 0, failure);
@@ -117,30 +161,93 @@ final class DispatchLaneCoordinator {
         if (stopSignal.getCount() == 0) {
             return;
         }
+
         for (DispatchLaneId laneId : eligible) {
             LaneRuntime runtime = Objects.requireNonNull(
                     runtimes.get(laneId),
                     "eligible lane runtime"
             );
-            List<DueTaskObservation> batch = batches.get(laneId);
-            if (batch == null || batch.isEmpty()) {
+            if (laneId == DispatchLaneId.TASK_INITIALIZATION) {
+                if (initialScores.isEmpty()) {
+                    deferLane(runtime);
+                } else {
+                    submit(
+                            runtime,
+                            initialScores.size(),
+                            () -> initialization.check(initialScores),
+                            completions,
+                            executor
+                    );
+                }
+            } else if (normalTasks.isEmpty()) {
                 deferLane(runtime);
             } else {
-                submit(runtime, batch, completions, executor);
+                submit(
+                        runtime,
+                        normalTasks.size(),
+                        () -> Objects.requireNonNull(
+                                runtime.policy,
+                                "normal lane policy"
+                        ).handle(normalTasks),
+                        completions,
+                        executor
+                );
             }
         }
     }
 
+    private List<DueTaskObservation> normalTasks(
+            Map<String, Long> observedScores,
+            Set<String> initialTaskIds
+    ) {
+        List<String> normalTaskIds = observedScores.keySet().stream()
+                .filter(taskId -> !initialTaskIds.contains(taskId))
+                .toList();
+        if (normalTaskIds.isEmpty()) {
+            return List.of();
+        }
+        Map<String, TaskDescriptor> descriptors = Objects.requireNonNull(
+                taskCatalog.loadTaskAllocationDescriptors(normalTaskIds),
+                "Task catalog returned null descriptors"
+        );
+        List<DueTaskObservation> tasks = new ArrayList<>();
+        for (String taskId : normalTaskIds) {
+            TaskDescriptor descriptor = descriptors.get(taskId);
+            if (descriptor == null || !taskId.equals(descriptor.taskId())) {
+                continue;
+            }
+            tasks.add(new DueTaskObservation(
+                    taskId,
+                    new TaskSchedulingReference(
+                            taskId,
+                            observedScores.get(taskId)
+                    ),
+                    descriptor
+            ));
+        }
+        return List.copyOf(tasks);
+    }
+
+    private static boolean requiresNormalTasks(
+            Set<DispatchLaneId> eligible
+    ) {
+        return eligible.stream().anyMatch(
+                lane -> lane != DispatchLaneId.TASK_INITIALIZATION
+        );
+    }
+
     private static void submit(
             LaneRuntime runtime,
-            List<DueTaskObservation> batch,
+            int batchSize,
+            Runnable batch,
             BlockingQueue<LaneCompletion> completions,
             ExecutorService executor
     ) {
         runtime.inflight = true;
         try {
             executor.submit(() -> executeBatch(
-                    runtime.lane,
+                    runtime.id,
+                    batchSize,
                     batch,
                     completions
             ));
@@ -148,20 +255,21 @@ final class DispatchLaneCoordinator {
             runtime.inflight = false;
             throw new IllegalStateException(
                     "Dispatch Convergence executor rejected lane="
-                            + runtime.lane.id(),
+                            + runtime.id,
                     failure
             );
         }
     }
 
     private static void executeBatch(
-            DispatchLaneDefinition lane,
-            List<DueTaskObservation> batch,
+            DispatchLaneId laneId,
+            int batchSize,
+            Runnable batch,
             BlockingQueue<LaneCompletion> completions
     ) {
         Throwable failure = null;
         try {
-            lane.policy().handle(batch);
+            batch.run();
         } catch (RuntimeException runtimeFailure) {
             failure = runtimeFailure;
         } catch (Error fatalFailure) {
@@ -169,8 +277,8 @@ final class DispatchLaneCoordinator {
             throw fatalFailure;
         } finally {
             completions.offer(new LaneCompletion(
-                    lane.id(),
-                    batch.size(),
+                    laneId,
+                    batchSize,
                     failure
             ));
         }
@@ -207,7 +315,7 @@ final class DispatchLaneCoordinator {
         }
         logFailure(
                 "policy",
-                runtime.lane.id(),
+                runtime.id,
                 completion.batchSize(),
                 (RuntimeException) completion.failure()
         );
@@ -242,7 +350,7 @@ final class DispatchLaneCoordinator {
     private static void deferLane(LaneRuntime runtime) {
         runtime.nextEligibleNanos = Math.addExact(
                 System.nanoTime(),
-                runtime.lane.intervalNanos()
+                runtime.intervalNanos
         );
     }
 
@@ -264,12 +372,36 @@ final class DispatchLaneCoordinator {
     }
 
     private static final class LaneRuntime {
-        private final DispatchLaneDefinition lane;
+        private final DispatchLaneId id;
+        private final long intervalNanos;
+        private final DispatchBatchPolicy policy;
         private boolean inflight;
         private long nextEligibleNanos;
 
-        private LaneRuntime(DispatchLaneDefinition lane) {
-            this.lane = lane;
+        private LaneRuntime(
+                DispatchLaneId id,
+                long intervalNanos,
+                DispatchBatchPolicy policy
+        ) {
+            this.id = id;
+            this.intervalNanos = intervalNanos;
+            this.policy = policy;
+        }
+
+        private static LaneRuntime initialization(long intervalNanos) {
+            return new LaneRuntime(
+                    DispatchLaneId.TASK_INITIALIZATION,
+                    intervalNanos,
+                    null
+            );
+        }
+
+        private static LaneRuntime normal(DispatchLaneDefinition lane) {
+            return new LaneRuntime(
+                    lane.id(),
+                    lane.intervalNanos(),
+                    lane.policy()
+            );
         }
 
         private boolean idleAndEligible(long nowNanos) {

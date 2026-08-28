@@ -74,12 +74,12 @@ or durable claim. Loss leaves the old score eligible for a later scan.
 
 ## Dispatch Lane
 
-`DispatchTaskBatchFanout` requests one bounded NORMAL page from
-`TaskSchedulingMechanism`, which re-reads current score states and allocation
-descriptors using the Redis scan time and removes Tasks that became paused,
-terminal, missing, or invalid. Task Dispatch, Worker Allocation and the optional
-Worker Serviceability lane share that batch. With no surviving due Task the
-Serviceability policy is not invoked and therefore does not ask its Mechanism
+`DispatchLaneCoordinator` receives one bounded descending score map, removes
+the INITIAL subset identified by the Task Score Owner, and loads allocation
+Descriptors once for the NORMAL complement. It does not issue a Task Score
+point recheck. Task Dispatch, Worker Allocation and the optional Worker
+Serviceability lane share that projection. With no surviving due Task
+the Serviceability policy is not invoked and therefore does not ask its Mechanism
 to read Worker state or offer Probe requests.
 
 One Serviceability batch selects one Group from the current Task observations.

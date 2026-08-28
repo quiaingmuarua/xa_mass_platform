@@ -9,6 +9,8 @@ import io.lettuce.core.ZAddArgs;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,41 +113,37 @@ public final class RedisTaskScoreBandCore
             return {"transitioned", initial_score}
             """;
 
-    private static final String PROMOTE_INITIAL_SCRIPT = """
+    private static final String PROMOTE_INITIAL_TASKS_SCRIPT = """
             local key = KEYS[1]
-            local task_id = ARGV[1]
-            local observed_score = tonumber(ARGV[2])
-            local normal_min_score = tonumber(ARGV[3])
-            local running_min_score = tonumber(ARGV[4])
-            local idle_park_score = tonumber(ARGV[5])
-            local slot_millis = tonumber(ARGV[6])
-            local suffix_factor = tonumber(ARGV[7])
-
-            local stored = redis.call("ZSCORE", key, task_id)
-            if not stored then
-              return {"stale"}
+            local next_score = tonumber(ARGV[1])
+            local initial_min_score = tonumber(ARGV[2])
+            local initial_max_score = tonumber(ARGV[3])
+            local result = {}
+            for index = 4, #ARGV, 2 do
+              local task_id = ARGV[index]
+              local observed_score = tonumber(ARGV[index + 1])
+              local status = "stale"
+              local result_score = ""
+              local stored = redis.call("ZSCORE", key, task_id)
+              if stored then
+                local stored_score = tonumber(stored)
+                result_score = stored
+                if stored_score == observed_score then
+                  if observed_score < initial_min_score
+                      or observed_score > initial_max_score then
+                    status = "invalid"
+                  else
+                    redis.call("ZADD", key, next_score, task_id)
+                    status = "transitioned"
+                    result_score = next_score
+                  end
+                end
+              end
+              result[#result + 1] = task_id
+              result[#result + 1] = status
+              result[#result + 1] = result_score
             end
-
-            local stored_score = tonumber(stored)
-            if stored_score ~= observed_score then
-              return {"stale", stored_score}
-            end
-
-            local redis_time = redis.call("TIME")
-            local now_millis = tonumber(redis_time[1]) * 1000
-                + math.floor(tonumber(redis_time[2]) / 1000)
-            local now_time_slot = math.floor(now_millis / slot_millis)
-            local next_score = running_min_score
-                + now_time_slot * suffix_factor
-            if next_score < normal_min_score then
-              next_score = normal_min_score
-            end
-            if next_score >= idle_park_score then
-              return {"invalid", stored_score}
-            end
-
-            redis.call("ZADD", key, next_score, task_id)
-            return {"transitioned", next_score}
+            return result
             """;
 
     private static final String TRY_RELEASE_IDLE_PARK_SCRIPT = """
@@ -265,70 +263,173 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public TaskScoreScanPage acquireDispatchWorkTasks(int limit) {
-        if (limit <= 0) {
-            return new TaskScoreScanPage(0, List.of());
+    public Map<String, Long> acquireSchedulingTasks(int limit) {
+        if (limit == 0) {
+            return Map.of();
         }
-        long readAtMillis = redisTimeMillis();
-        long currentTimeSlot = readAtMillis / SLOT_MILLIS;
-        long maximumTimeSlot = currentTimeSlot - 1;
-        if (maximumTimeSlot < MIN_TIME_SLOT) {
-            return new TaskScoreScanPage(readAtMillis, List.of());
+        if (limit < 0 || limit > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+            throw new IllegalArgumentException(
+                    "limit must be between 0 and "
+                            + MAX_TASK_SCORE_PREVIEW_LIMIT
+            );
         }
-        long minimumScore = score(
-                RUNNING_VISIBLE_TAG,
-                NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS,
-                MIN_SUFFIX
-        );
+        long dueTimeSlot = redisTimeMillis() / SLOT_MILLIS - 1;
+        if (dueTimeSlot < MIN_TIME_SLOT) {
+            return Map.of();
+        }
         long maximumScore = score(
                 RUNNING_VISIBLE_TAG,
-                maximumTimeSlot,
+                dueTimeSlot,
                 MAX_SUFFIX
         );
-        return new TaskScoreScanPage(
-                readAtMillis,
-                List.copyOf(commands().zrangebyscore(
+        List<ScoredValue<String>> rows = commands()
+                .zrevrangebyscoreWithScores(
                         scoreKey(),
-                        minimumScore,
                         maximumScore,
                         0,
+                        0,
                         limit
-                ))
         );
+        LinkedHashMap<String, Long> taskScores = new LinkedHashMap<>();
+        for (ScoredValue<String> row : rows) {
+            try {
+                taskScores.put(
+                        row.getValue(),
+                        scoreToLong(row.getScore())
+                );
+            } catch (IllegalStateException invalidScore) {
+                // Malformed score evidence is skipped without refilling.
+            }
+        }
+        return Collections.unmodifiableMap(taskScores);
     }
 
     @Override
-    public List<String> acquireInitialRunningTasks(int limit) {
-        if (limit <= 0) {
-            return List.of();
+    public Map<String, Long> filterInitialTaskScores(
+            Map<String, Long> observedTaskScores
+    ) {
+        if (observedTaskScores == null) {
+            throw new IllegalArgumentException(
+                    "observedTaskScores must be present"
+            );
         }
-        long minimumScore = score(
+        if (observedTaskScores.size() > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+            throw new IllegalArgumentException(
+                    "observedTaskScores must contain at most "
+                            + MAX_TASK_SCORE_PREVIEW_LIMIT + " tasks"
+            );
+        }
+        LinkedHashMap<String, Long> initialScores = new LinkedHashMap<>();
+        observedTaskScores.forEach((taskId, observedScore) -> {
+            requireNonBlank(taskId, "taskId");
+            if (observedScore == null) {
+                throw new IllegalArgumentException(
+                        "observedTaskScores must not contain null scores"
+                );
+            }
+            DecodedPositive decoded = decodePositive(observedScore);
+            if (decoded != null
+                    && decoded.tag() == RUNNING_VISIBLE_TAG
+                    && decoded.timeSlot() == INITIAL_TIME_SLOT) {
+                initialScores.put(taskId, observedScore);
+            }
+        });
+        return Collections.unmodifiableMap(initialScores);
+    }
+
+    @Override
+    public Map<String, TaskScoreTransitionResult>
+            promoteObservedInitialTasks(
+                    Map<String, Long> observedInitialScores
+            ) {
+        if (observedInitialScores == null) {
+            throw new IllegalArgumentException(
+                    "observedInitialScores must be present"
+            );
+        }
+        if (observedInitialScores.isEmpty()) {
+            return Map.of();
+        }
+        if (observedInitialScores.size() > MAX_TASK_SCORE_PREVIEW_LIMIT) {
+            throw new IllegalArgumentException(
+                    "observedInitialScores must contain at most "
+                            + MAX_TASK_SCORE_PREVIEW_LIMIT + " tasks"
+            );
+        }
+        long nextTimeSlot = Math.max(
+                redisTimeMillis() / SLOT_MILLIS,
+                NORMAL_TIME_SLOT_MIN
+        );
+        long nextScore = score(
+                RUNNING_VISIBLE_TAG,
+                nextTimeSlot,
+                MIN_SUFFIX
+        );
+        if (nextScore >= idleParkScore()) {
+            return uniformResults(
+                    observedInitialScores.keySet(),
+                    TaskScoreTransitionStatus.INVALID
+            );
+        }
+        List<String> arguments = new ArrayList<>();
+        arguments.add(Long.toString(nextScore));
+        arguments.add(Long.toString(score(
                 RUNNING_VISIBLE_TAG,
                 INITIAL_TIME_SLOT,
                 MIN_SUFFIX
-        );
-        long maximumScore = score(
+        )));
+        arguments.add(Long.toString(score(
                 RUNNING_VISIBLE_TAG,
                 INITIAL_TIME_SLOT,
                 MAX_SUFFIX
+        )));
+        observedInitialScores.forEach((taskId, observedScore) -> {
+            requireNonBlank(taskId, "taskId");
+            if (observedScore == null) {
+                throw new IllegalArgumentException(
+                        "observedInitialScores must not contain null scores"
+                );
+            }
+            arguments.add(taskId);
+            arguments.add(Long.toString(observedScore));
+        });
+        Object raw = commands().eval(
+                PROMOTE_INITIAL_TASKS_SCRIPT,
+                ScriptOutputType.MULTI,
+                new String[]{scoreKey()},
+                arguments.toArray(String[]::new)
         );
-        return commands().zrevrangebyscoreWithScores(
-                scoreKey(),
-                maximumScore,
-                minimumScore,
-                0,
-                limit
-        ).stream()
-                .filter(row -> {
-                    DecodedPositive decoded = decodePositive(
-                            scoreToLong(row.getScore())
-                    );
-                    return decoded != null
-                            && decoded.tag() == RUNNING_VISIBLE_TAG
-                            && decoded.timeSlot() == INITIAL_TIME_SLOT;
-                })
-                .map(ScoredValue::getValue)
-                .toList();
+        if (!(raw instanceof List<?> values)
+                || values.size() != observedInitialScores.size() * 3) {
+            throw new IllegalStateException(
+                    "Task initialization batch result is invalid"
+            );
+        }
+        LinkedHashMap<String, TaskScoreTransitionResult> results =
+                new LinkedHashMap<>();
+        for (int index = 0; index < values.size(); index += 3) {
+            String taskId = String.valueOf(values.get(index));
+            TaskScoreTransitionStatus status = transitionStatus(
+                    values.get(index + 1)
+            );
+            Object rawScore = values.get(index + 2);
+            Long score = rawScore == null || String.valueOf(rawScore).isEmpty()
+                    ? null
+                    : scoreToLong(rawScore);
+            if (results.put(taskId, transition(status, score)) != null) {
+                throw new IllegalStateException(
+                        "Task initialization batch contains duplicate ids"
+                );
+            }
+        }
+        if (!List.copyOf(results.keySet()).equals(
+                List.copyOf(observedInitialScores.keySet())
+        )) {
+            throw new IllegalStateException(
+                    "Task initialization batch identities are invalid"
+            );
+        }
+        return Collections.unmodifiableMap(results);
     }
 
     @Override
@@ -423,40 +524,6 @@ public final class RedisTaskScoreBandCore
                         INITIAL_TIME_SLOT,
                         initialSuffix
                 ))
-        ));
-    }
-
-    @Override
-    public TaskScoreTransitionResult promoteObservedInitialTask(
-            String taskId,
-            long observedInitialScore
-    ) {
-        requireNonBlank(taskId, "taskId");
-        DecodedPositive observed = decodePositive(observedInitialScore);
-        if (observed == null
-                || observed.tag() != RUNNING_VISIBLE_TAG
-                || observed.timeSlot() != INITIAL_TIME_SLOT) {
-            return transition(TaskScoreTransitionStatus.INVALID);
-        }
-        return scriptResult(commands().eval(
-                PROMOTE_INITIAL_SCRIPT,
-                ScriptOutputType.MULTI,
-                new String[]{scoreKey()},
-                taskId,
-                Long.toString(observedInitialScore),
-                Long.toString(score(
-                        RUNNING_VISIBLE_TAG,
-                        NORMAL_TIME_MIN_MILLIS / SLOT_MILLIS,
-                        MIN_SUFFIX
-                )),
-                Long.toString(score(
-                        RUNNING_VISIBLE_TAG,
-                        MIN_TIME_SLOT,
-                        MIN_SUFFIX
-                )),
-                Long.toString(idleParkScore()),
-                Long.toString(SLOT_MILLIS),
-                Long.toString(SUFFIX_FACTOR)
         ));
     }
 
@@ -631,7 +698,10 @@ public final class RedisTaskScoreBandCore
     }
 
     private TaskScoreState decodeState(String taskId, double rawScore) {
-        long storedScore = scoreToLong(rawScore);
+        return decodeState(taskId, scoreToLong(rawScore));
+    }
+
+    private TaskScoreState decodeState(String taskId, long storedScore) {
         if (storedScore < 0) {
             return new TaskScoreState(
                     taskId,
@@ -726,9 +796,15 @@ public final class RedisTaskScoreBandCore
                     "Task score script result is invalid"
             );
         }
-        TaskScoreTransitionStatus status = switch (
-                String.valueOf(values.get(0))
-        ) {
+        TaskScoreTransitionStatus status = transitionStatus(values.get(0));
+        Long resultScore = values.size() > 1 && values.get(1) != null
+                ? scoreToLong(values.get(1))
+                : null;
+        return transition(status, resultScore);
+    }
+
+    private static TaskScoreTransitionStatus transitionStatus(Object raw) {
+        return switch (String.valueOf(raw)) {
             case "transitioned" -> TaskScoreTransitionStatus.TRANSITIONED;
             case "noop" -> TaskScoreTransitionStatus.NOOP;
             case "stale" -> TaskScoreTransitionStatus.STALE;
@@ -737,10 +813,6 @@ public final class RedisTaskScoreBandCore
                     "Task score script status is invalid"
             );
         };
-        Long resultScore = values.size() > 1 && values.get(1) != null
-                ? scoreToLong(values.get(1))
-                : null;
-        return transition(status, resultScore);
     }
 
     private static TaskScoreTransitionResult transition(
@@ -754,6 +826,16 @@ public final class RedisTaskScoreBandCore
             Long score
     ) {
         return new TaskScoreTransitionResult(status, score);
+    }
+
+    private static Map<String, TaskScoreTransitionResult> uniformResults(
+            Iterable<String> taskIds,
+            TaskScoreTransitionStatus status
+    ) {
+        LinkedHashMap<String, TaskScoreTransitionResult> results =
+                new LinkedHashMap<>();
+        taskIds.forEach(taskId -> results.put(taskId, transition(status)));
+        return Collections.unmodifiableMap(results);
     }
 
     private static long scoreToLong(Object raw) {

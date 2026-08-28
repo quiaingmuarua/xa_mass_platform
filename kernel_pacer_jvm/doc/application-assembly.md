@@ -13,8 +13,8 @@ Java Server
            -> TASK_FAILURE virtual batches
            -> ADAPTER_EVIDENCE virtual batch             optional
         -> DispatchConvergenceApplication
-           -> TaskSchedulingMechanism observation
-           -> fixed DispatchTaskBatchFanout
+           -> one Task Score scan and INITIAL subset filter
+           -> fixed coordinator fan-out
               -> TASK_INITIALIZATION virtual batch
               -> WORKER_ALLOCATION virtual batch
               -> TASK_DISPATCH virtual batch
@@ -51,7 +51,7 @@ TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
-TaskSchedulingMechanism / WorkerCandidateMechanism
+TaskInitializationCheck / WorkerCandidateMechanism
 TaskExecutionMechanism / WorkerServiceabilityDispatchMechanism
 CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
@@ -76,24 +76,22 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 ## Dispatch Convergence
 
-`TaskSchedulingMechanism` observes two projections of one RUNNING lifecycle
-surface. `DispatchTaskBatchFanout` routes the immutable observation to the
-fixed lanes:
+`DispatchLaneCoordinator` obtains two projections from one bounded Task Score
+scan and routes them to the fixed lanes:
 
 ```text
 NORMAL projection
-  -> acquire due RUNNING scores at or above 10,100ms
+  -> newest due RUNNING scores at or above 10,100ms
 
 INITIAL projection
-  -> fill the remaining batch from fixed RUNNING scores at or below 10,000ms
+  -> fixed RUNNING slot 10,000ms after all returned NORMAL scores
 ```
 
-The fan-out asks the Mechanism for NORMAL first and requests INITIAL only with
-the remaining part of the 100-Task budget. The Mechanism point-reads Task Score
-and Descriptor using the Redis scan time. It preserves each projection's
-Score order and emits immutable `DueTaskObservation` values with opaque exact
-Task references. These observations are round evidence, not locks; every later
-mutation still uses exact owner fences inside a Mechanism.
+The Score Owner returns one ordered `taskId -> opaque score` map and separately
+filters its INITIAL subset. The coordinator treats the remaining identities as
+NORMAL, loads only their Descriptors once, and performs no Task Score point
+recheck. INITIAL needs no Descriptor wrapper. These values are round evidence,
+not locks; every later mutation still uses exact owner fences.
 
 `DispatchConvergenceApplication` owns one non-daemon coordinator and one
 virtual thread per non-empty eligible lane batch. Every lane is single-flight.
@@ -106,7 +104,7 @@ The fixed lanes are:
 
 | Lane | Source | Responsibility |
 | --- | --- | --- |
-| TASK_INITIALIZATION | INITIAL RUNNING | due ACTIVE Item check and exact promotion to NORMAL |
+| TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
 | WORKER_ALLOCATION | NORMAL RUNNING | PRECOMPUTED Candidate deficit acquisition and cache publication |
 | TASK_DISPATCH | NORMAL RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
 | WORKER_SERVICEABILITY | NORMAL RUNNING | derive demanded WorkerGroups and offer Adapter route probes |

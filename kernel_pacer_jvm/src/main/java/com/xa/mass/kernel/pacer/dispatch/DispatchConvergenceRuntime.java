@@ -64,12 +64,6 @@ public final class DispatchConvergenceRuntime {
             ResultContextCodec resultContextCodec
     ) {
         Objects.requireNonNull(preset, "preset");
-        TaskSchedulingMechanism taskScheduling =
-                new DefaultTaskSchedulingMechanism(
-                        taskScores,
-                        itemScores,
-                        taskCatalog
-                );
         WorkerCandidateMechanism candidateMechanism =
                 new DefaultWorkerCandidateMechanism(
                         candidateCache,
@@ -119,8 +113,11 @@ public final class DispatchConvergenceRuntime {
                         candidateMechanism,
                         candidateCache
                 );
-        TaskInitializationPolicy initialization =
-                new TaskInitializationPolicy(taskScheduling);
+        TaskInitializationCheck initialization =
+                new DueActiveItemInitializationCheck(
+                        itemScores,
+                        taskScores
+                );
         TaskDispatchPolicy dispatch = new TaskDispatchPolicy(
                 taskExecution,
                 candidateSelection
@@ -132,7 +129,8 @@ public final class DispatchConvergenceRuntime {
                 );
         DispatchConvergenceApplication application =
                 new DispatchConvergenceApplication(
-                        taskScheduling,
+                        taskScores,
+                        taskCatalog,
                         initialization,
                         allocation,
                         dispatch,

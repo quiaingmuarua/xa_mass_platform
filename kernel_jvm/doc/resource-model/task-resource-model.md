@@ -196,7 +196,7 @@ RUNNING INITIAL
 Worker estimates, quota, tenant rules, and business start conditions remain
 outside the current mechanism and must not pre-lease Workers for INITIAL Tasks.
 See
-[Task Initialization Policy](../../../kernel_pacer_jvm/doc/dispatch/task-initialization-policy.md).
+[Task Initialization](../../../kernel_pacer_jvm/doc/dispatch/task-initialization-policy.md).
 
 ## Task Runtime Surfaces
 
@@ -326,22 +326,21 @@ Task-scoped result read for later polling.
 Initialization:
 
 ```text
-TaskScoreBandCore.acquire_initial_running_tasks(limit)
-  -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
-  -> TaskItemScoreBandCore.has_due_active_items(taskIds)
-  -> TaskScoreBandCore.promote_observed_initial_task(exact score)
+TaskScoreBandCore.acquire_scheduling_tasks(limit)
+  -> TaskScoreBandCore.filter_initial_task_scores(taskId -> opaque score)
+  -> TaskItemScoreBandCore.has_due_active_items(initial taskIds)
+  -> TaskScoreBandCore.promote_observed_initial_tasks(ready exact scores)
 ```
 
 Worker allocation:
 
 ```text
-DispatchTaskBatchFanout
-  -> TaskSchedulingMechanism.observeNormalTasks using Redis scan time
-  -> verify due NORMAL RUNNING Score and Descriptor once
-  -> calculate the remaining fixed source budget
-  -> TaskSchedulingMechanism.observeInitialTasks only for that remainder
-  -> expose only an opaque TaskSchedulingReference
-  -> share immutable DueTaskObservation[] through fixed fan-out
+DispatchLaneCoordinator
+  -> Task Score Owner scans taskId -> opaque score once with limit 100
+  -> Task Score Owner filters the exact INITIAL subset
+  -> load Descriptors once for only the NORMAL complement
+  -> expose NORMAL scores through opaque TaskSchedulingReference values
+  -> send the INITIAL taskId -> opaque score map directly to its check
   -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values

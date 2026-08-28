@@ -10,7 +10,6 @@ import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandAppendStatus;
 import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemWorkerAssignment;
-import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.LeaseMode;
 import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -18,9 +17,6 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreObservation;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreTransitionResult;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreTransitionStatus;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreScanPage;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionResult;
 import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -28,7 +24,6 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
-import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
@@ -48,111 +43,55 @@ import org.junit.jupiter.api.Test;
 class DefaultDispatchMechanismsTest {
 
     @Test
-    void taskSchedulingUsesOwnerReadTimeForNormalExactRecheck() {
-        AtomicInteger initialReads = new AtomicInteger();
-        List<String> normalIds = java.util.stream.IntStream.range(0, 100)
-                .mapToObj(index -> "task-" + index)
-                .toList();
-        Map<String, TaskScoreState> states = new LinkedHashMap<>();
-        Map<String, TaskDescriptor> descriptors = new LinkedHashMap<>();
-        normalIds.forEach(taskId -> {
-            states.put(taskId, taskState(taskId, 19_900));
-            descriptors.put(taskId, task(taskId));
-        });
-        TaskScoreBandCore taskScores = proxy(
-                TaskScoreBandCore.class,
-                (target, method, args) -> switch (method.getName()) {
-                    case "acquireDispatchWorkTasks" ->
-                            new TaskScoreScanPage(20_000, normalIds);
-                    case "acquireInitialRunningTasks" -> {
-                        initialReads.incrementAndGet();
-                        yield List.of("initial");
-                    }
-                    case "getScoreStates" -> states;
-                    default -> throw unsupported(method.getName());
-                }
-        );
+    void dueActiveItemInitializationChecksAndPromotesOneBatch() {
+        AtomicInteger reads = new AtomicInteger();
+        AtomicInteger promotions = new AtomicInteger();
+        AtomicReference<Map<String, Long>> promoted = new AtomicReference<>();
         TaskItemScoreBandCore itemScores = proxy(
                 TaskItemScoreBandCore.class,
-                (target, method, args) -> Map.of()
-        );
-        TaskResourceCatalog catalog = taskIds -> descriptors;
-        DefaultTaskSchedulingMechanism mechanism =
-                new DefaultTaskSchedulingMechanism(
-                        taskScores,
-                        itemScores,
-                        catalog
-                );
-
-        var page = mechanism.observeNormalTasks(100);
-
-        assertEquals(100, page.sourceCount());
-        assertEquals(100, page.tasks().size());
-        assertEquals(20_000, page.readAtMillis());
-        assertEquals(0, initialReads.get());
-        assertEquals(
-                "TaskSchedulingReference[opaque]",
-                page.tasks().get(0).reference().toString()
-        );
-    }
-
-    @Test
-    void taskSchedulingUsesRawNormalPageForBudgetAndExactRecheck() {
-        AtomicInteger requestedInitialLimit = new AtomicInteger();
-        List<String> normalIds = List.of("normal", "future", "missing");
-        List<String> initialIds = List.of("initial", "wrong-initial");
-        Map<String, TaskScoreState> states = Map.of(
-                "normal", taskState("normal", 19_900),
-                "future", taskState("future", 20_000),
-                "missing", taskState("missing", 19_800),
-                "initial", initialTaskState("initial"),
-                "wrong-initial", taskState("wrong-initial", 10_100)
-        );
-        Map<String, TaskDescriptor> descriptors = Map.of(
-                "normal", task("normal"),
-                "future", task("future"),
-                "initial", task("initial"),
-                "wrong-initial", task("wrong-initial")
+                (target, method, args) -> {
+                    if ("hasDueActiveItems".equals(method.getName())) {
+                        reads.incrementAndGet();
+                        assertEquals(
+                                List.of("initial-1", "initial-2"),
+                                args[0]
+                        );
+                        return Map.of(
+                                "initial-1", false,
+                                "initial-2", true
+                        );
+                    }
+                    throw unsupported(method.getName());
+                }
         );
         TaskScoreBandCore taskScores = proxy(
                 TaskScoreBandCore.class,
-                (target, method, args) -> switch (method.getName()) {
-                    case "acquireDispatchWorkTasks" ->
-                            new TaskScoreScanPage(20_000, normalIds);
-                    case "acquireInitialRunningTasks" -> {
-                        requestedInitialLimit.set((Integer) args[0]);
-                        yield initialIds;
+                (target, method, args) -> {
+                    if ("promoteObservedInitialTasks".equals(
+                            method.getName()
+                    )) {
+                        promotions.incrementAndGet();
+                        @SuppressWarnings("unchecked")
+                        Map<String, Long> scores =
+                                (Map<String, Long>) args[0];
+                        promoted.set(Map.copyOf(scores));
+                        return Map.of("initial-2", transitioned(201L));
                     }
-                    case "getScoreStates" -> states;
-                    default -> throw unsupported(method.getName());
+                    throw unsupported(method.getName());
                 }
         );
-        DefaultTaskSchedulingMechanism mechanism =
-                new DefaultTaskSchedulingMechanism(
-                        taskScores,
-                        proxy(
-                                TaskItemScoreBandCore.class,
-                                (target, method, args) -> Map.of()
-                        ),
-                        taskIds -> descriptors
-                );
+        LinkedHashMap<String, Long> scores = new LinkedHashMap<>();
+        scores.put("initial-1", 101L);
+        scores.put("initial-2", 102L);
 
-        var normalPage = mechanism.observeNormalTasks(100);
-        var initial = mechanism.observeInitialTasks(97);
+        new DueActiveItemInitializationCheck(
+                itemScores,
+                taskScores
+        ).check(scores);
 
-        assertEquals(97, requestedInitialLimit.get());
-        assertEquals(
-                List.of("normal"),
-                normalPage.tasks().stream()
-                        .map(TaskSchedulingObservation::taskId)
-                        .toList()
-        );
-        assertEquals(
-                List.of("initial"),
-                initial.stream()
-                        .map(TaskSchedulingObservation::taskId)
-                        .toList()
-        );
+        assertEquals(1, reads.get());
+        assertEquals(1, promotions.get());
+        assertEquals(Map.of("initial-2", 102L), promoted.get());
     }
 
     @Test
@@ -311,10 +250,10 @@ class DefaultDispatchMechanismsTest {
                         commands,
                         codec
                 );
-        TaskSchedulingObservation task = new TaskSchedulingObservation(
+        DueTaskObservation task = new DueTaskObservation(
                 "task-1",
-                descriptor,
-                new TaskSchedulingReference("task-1", 777L)
+                new TaskSchedulingReference("task-1", 777L),
+                descriptor
         );
         var itemObservation = mechanism.observeTaskItems("task-1", 100)
                 .get(0);
@@ -383,10 +322,10 @@ class DefaultDispatchMechanismsTest {
                         ),
                         new ResultContextCodec()
                 );
-        TaskSchedulingObservation task = new TaskSchedulingObservation(
+        DueTaskObservation task = new DueTaskObservation(
                 "task-1",
-                task("task-1"),
-                new TaskSchedulingReference("task-1", 777L)
+                new TaskSchedulingReference("task-1", 777L),
+                task("task-1")
         );
         WorkerCandidateObservation worker =
                 new WorkerCandidateObservation(
@@ -489,26 +428,6 @@ class DefaultDispatchMechanismsTest {
         return new TaskScoreTransitionResult(
                 TaskScoreTransitionStatus.TRANSITIONED,
                 score
-        );
-    }
-
-    private static TaskScoreState taskState(String taskId, long timeMillis) {
-        return new TaskScoreState(
-                taskId,
-                1L,
-                TaskScoreBand.RUNNING_VISIBLE,
-                timeMillis,
-                0
-        );
-    }
-
-    private static TaskScoreState initialTaskState(String taskId) {
-        return new TaskScoreState(
-                taskId,
-                2L,
-                TaskScoreBand.RUNNING_VISIBLE,
-                TaskScoreBandCore.INITIAL_TIME_MILLIS,
-                TaskScoreBandCore.MAX_SUFFIX
         );
     }
 

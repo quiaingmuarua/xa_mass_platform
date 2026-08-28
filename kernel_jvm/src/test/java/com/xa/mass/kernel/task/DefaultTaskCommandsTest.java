@@ -367,12 +367,14 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public TaskScoreScanPage acquireDispatchWorkTasks(int limit) {
+        public Map<String, Long> acquireSchedulingTasks(int limit) {
             throw unsupported();
         }
 
         @Override
-        public List<String> acquireInitialRunningTasks(int limit) {
+        public Map<String, Long> filterInitialTaskScores(
+                Map<String, Long> observedTaskScores
+        ) {
             throw unsupported();
         }
 
@@ -389,10 +391,10 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public TaskScoreTransitionResult promoteObservedInitialTask(
-                String taskId,
-                long observedInitialScore
-        ) {
+        public Map<String, TaskScoreTransitionResult>
+                promoteObservedInitialTasks(
+                        Map<String, Long> observedInitialScores
+                ) {
             throw unsupported();
         }
 

@@ -72,10 +72,16 @@ time   = max(redisNowAligned, NORMAL_TIME_MIN_MILLIS)
 suffix = 0
 ```
 
-NORMAL dispatch reads only due RUNNING scores in
-`[NORMAL_TIME_MIN_MILLIS, current slot)`, ascending by score. INITIAL scores
-therefore cannot enter Worker allocation, Task dispatch, or Worker
-serviceability policy.
+Scheduling reads one descending range from the latest due RUNNING score down
+to zero. It returns only the ordered `taskId -> opaque score` map; it does not
+decode a `TaskScoreState`. A separate Score Owner operation filters the exact
+INITIAL subset. The Pacer obtains NORMAL identities by removing that subset and
+never compares, decodes, calculates, or logs the scores.
+
+The scan accepts `0..100` and never mutates Score. Malformed non-integral
+members are skipped without a compensating second read, so a page may contain
+fewer than the requested limit. With valid Owner data, due NORMAL scores appear
+newest first, followed by the fixed INITIAL slot ordered by priority suffix.
 
 ## Owner Surface
 
@@ -85,8 +91,8 @@ Read operations:
 get_score_states(task_ids)
 preview_score_states(limit)
 count_running_tasks()
-acquire_dispatch_work_tasks(limit)
-acquire_initial_running_tasks(limit)
+acquire_scheduling_tasks(limit)
+filter_initial_task_scores(observed_task_scores)
 ```
 
 Lifecycle operations:
@@ -98,7 +104,7 @@ start_observed_pre_review_task(
     observed_pre_review_score,
     priority,
 )
-promote_observed_initial_task(task_id, observed_initial_score)
+promote_observed_initial_tasks(observed_initial_scores_by_task_id)
 close_score(task_id, terminal_score)
 close_observed_score(task_id, observed_score, terminal_score)
 ```
@@ -149,17 +155,23 @@ safety violation.
 
 ## Initialization
 
-`TaskInitializationPolicy` receives only verified INITIAL observations:
+Task Initialization receives only the Score Owner-filtered INITIAL map:
 
 ```text
-hasDueActiveItems(initial task ids)
--> due true: promoteObservedInitialTask(exact score)
--> due false: keep the fixed INITIAL slot and priority suffix
+TaskInitializationCheck.check(initial taskId -> opaque score)
+-> one bounded hasDueActiveItems(all task ids)
+-> keep due ids with their original opaque score
+-> one promoteObservedInitialTasks(exact scores of ready subset)
+-> not ready: keep the fixed INITIAL slot and priority suffix
 ```
 
+The batch promotion chooses one NORMAL coordinate from Redis TIME before its
+single batch Lua. That Lua only compares exact observations against the fixed
+INITIAL range and writes the supplied target score; it does not construct or
+decode Score fields. Each Task still has an independent exact-score result.
 There is no Task admission SPI, System admission policy, capacity reservation,
 or priority recheck. A Task without a due Item is rediscovered on a later
-INITIAL scan.
+joint scheduling scan.
 
 ## Dispatch And Idle Lifecycle
 

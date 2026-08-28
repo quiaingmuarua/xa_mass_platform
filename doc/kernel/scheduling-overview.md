@@ -117,10 +117,9 @@ TaskScoreBandCore
   owns Task acquisition visibility, encoding, bounded queries, holds,
   lifecycle-direction validation, and terminal score
 
-TaskInitializationPolicy
-  checks which bounded RUNNING INITIAL Tasks have a due ACTIVE Item and may
-  request exact promotion to RUNNING NORMAL; it owns no score, Item, Worker,
-  or candidate truth
+TaskInitializationCheck
+  receives the bounded taskId-to-opaque-score INITIAL subset, checks due ACTIVE
+  Items once, and asks the Task Score Owner for one exact batch promotion
 
 TaskRuntime
   owns Task descriptors, canonical TaskItem records, and Task-scoped
@@ -137,13 +136,10 @@ WorkerScoreCore and worker-runtime
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
-DispatchTaskBatchFanout
-  owns fixed NORMAL/INITIAL projection routing to eligible single-flight lanes;
-  it owns no Redis key, Score transition, or pending Batch
-
-TaskSchedulingMechanism
-  owns bounded Redis-time RUNNING observation, exact Task/Descriptor recheck,
-  INITIAL readiness observation and exact promotion through opaque references
+DispatchLaneCoordinator
+  reads one bounded taskId-to-opaque-score map, asks the Task Score Owner for
+  its INITIAL subset, loads Descriptors only for the NORMAL complement, and
+  fans those two inputs into fixed single-flight lanes
 
 WorkerCandidateMechanism
   internally protects bounded Worker observation, cached opaque lease
