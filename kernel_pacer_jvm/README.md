@@ -65,11 +65,14 @@ are SUCCESS `6/10`, FAILURE `3/10`, and Evidence `1/1`. Both Task lanes may
 borrow idle capacity while Adapter Evidence remains single-flight.
 These values are internal constants, not configuration or a public lane model.
 Server validates endpoint-owned outcome codes and selects the Task lane; Task
-policy does not read `DeliveryReport.outcomeCode`. SUCCESS stores and promotes
-the Item before its narrow completed-HOT release, while FAILURE only releases
-the exact assignment lease and never changes Worker polarity. Adapter Evidence
-retains its finite Serviceability event policy and shares the same lifecycle
-without becoming a general EventBus.
+policy does not read `DeliveryReport.outcomeCode`. Result policies stop after
+strict Report parsing, bounded last-wins grouping and publication to the fixed
+`TaskItemResultEvents`, `WorkerExecutionResultEvents`, and
+`WorkerServiceabilityEvents` ports. They do not import Task/TaskItem/Worker
+score owners or expose raw Worker lease scores. The default event Mechanisms in
+`kernel_jvm` implement the current store, promotion, exact release and
+Serviceability transitions. Adapter Evidence shares the same lifecycle without
+becoming a general EventBus.
 
 Dispatch Convergence owns one coordinator and fixed single-flight virtual
 Batch lanes. One bounded RUNNING source produces a NORMAL projection for

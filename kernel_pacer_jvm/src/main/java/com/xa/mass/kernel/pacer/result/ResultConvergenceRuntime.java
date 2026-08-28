@@ -3,11 +3,10 @@ package com.xa.mass.kernel.pacer.result;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.pacer.KernelPacerRuntime.PolicyPreset;
-import com.xa.mass.kernel.score.TaskItemScoreBandCore;
-import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.task.TaskItemResultEvents;
+import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
+import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -39,25 +38,28 @@ public final class ResultConvergenceRuntime {
             PolicyPreset preset,
             long hotEligibilityFloorMillis,
             TaskResultRuntime taskResults,
-            TaskRuntime taskRuntime,
-            TaskItemScoreBandCore itemScores,
-            WorkerScoreCore workerScores,
-            WorkerResourceCatalog workerCatalog,
+            TaskItemResultEvents taskItemEvents,
+            WorkerExecutionResultEvents workerExecutionEvents,
+            WorkerServiceabilityEvents workerServiceabilityEvents,
             WorkerServiceabilityRuntime serviceability
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(taskResults, "taskResults");
-        Objects.requireNonNull(taskRuntime, "taskRuntime");
-        Objects.requireNonNull(itemScores, "itemScores");
-        Objects.requireNonNull(workerScores, "workerScores");
-        Objects.requireNonNull(workerCatalog, "workerCatalog");
+        Objects.requireNonNull(taskItemEvents, "taskItemEvents");
+        Objects.requireNonNull(
+                workerExecutionEvents,
+                "workerExecutionEvents"
+        );
+        Objects.requireNonNull(
+                workerServiceabilityEvents,
+                "workerServiceabilityEvents"
+        );
         Objects.requireNonNull(serviceability, "serviceability");
 
         ResultConvergenceConfig convergence = configForPreset(preset);
         TaskResultBatchPolicy taskPolicy = new TaskResultBatchPolicy(
-                taskRuntime,
-                itemScores,
-                workerScores
+                taskItemEvents,
+                workerExecutionEvents
         );
         List<ResultLane> lanes = new ArrayList<>();
         lanes.add(new ResultLane(
@@ -89,8 +91,7 @@ public final class ResultConvergenceRuntime {
                     serviceabilityConfigForPreset(preset);
             WorkerServiceabilityResultPolicy evidencePolicy =
                     new WorkerServiceabilityResultPolicy(
-                            workerCatalog,
-                            workerScores,
+                            workerServiceabilityEvents,
                             serviceabilityConfig,
                             hotEligibilityFloorMillis
                     );

@@ -12,7 +12,7 @@ boundary named below.
 | Lane | Invariant | External dependencies | Primary command |
 | --- | --- | --- | --- |
 | Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
-| JVM Contracts | JVM modules compile and their owner, codec, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
+| JVM Contracts | JVM modules compile and their owner, opaque ResultContext codec, semantic Result event, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, evidence append/consume, polarity toggle and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context starts Result and Dispatch Convergence; without a Python child, a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
@@ -144,7 +144,10 @@ reverse rollback, thread-death failure, idempotent stop and one shared bounded
 shutdown deadline. Result convergence tests additionally prove the global
 Batch cap, weighted fair `4/3/3` allocation, production `6/3/1` fair share,
 Task-lane capacity borrowing, Adapter Evidence single-flight and JVM virtual
-thread use. Server tests prove Spring delegation and Health projection.
+thread use. Result policy tests use recording semantic event ports rather than
+mocking Score owners; architecture guards reject direct mechanical-owner calls
+from Result policies and reject DeliveryReport or raw score leakage into event
+ports. Server tests prove Spring delegation and Health projection.
 The configured Group/Task and Adapter assembly has an explicit higher
 lifecycle phase, so it starts after all Pacers and closes before them. The
 standalone Scenario Worker Host is outside the Spring lifecycle.

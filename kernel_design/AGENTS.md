@@ -44,7 +44,10 @@ a Kernel mechanism decision.
 - Keep score values opaque outside score-owner operations.
 - Dispatch Convergence may orchestrate bounded owner reads and transitions; it
   does not merge owner truth.
-- Result Routing owns retry/finality policy and accepted evidence disposition.
+- Result Routing Policy owns accepted evidence parsing, grouping and semantic
+  event publication. Finite TaskItem and Worker Mechanism ports decide the
+  legal cross-owner transition; DeliveryReport and raw scores never enter
+  them.
 - Python Result and Dispatch Convergence remain mechanism oracles. Their fixed
   Java implementations are the only production
   Pacers. Do not add a managed Python mode, fallback, dual-consumer or
@@ -136,6 +139,9 @@ record merely to make a mechanical signature look smaller.
 ## JVM Parity
 
 - JVM parity is incremental and caller-driven.
+- Java-production semantic Result event ports may remain outside the frozen
+  Python Oracle when they only hide existing owner composition from Pacer
+  policy and add no Redis operation, state transition or behavioral policy.
 - Do not widen Java scheduling merely because the Python mechanism exposes a
   broader test surface; Java parity remains production-caller-driven.
 - A parity slice names the Python interface/DTO/enum, current caller, Java

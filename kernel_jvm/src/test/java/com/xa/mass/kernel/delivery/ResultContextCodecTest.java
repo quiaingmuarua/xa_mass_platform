@@ -1,8 +1,13 @@
 package com.xa.mass.kernel.delivery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xa.mass.kernel.worker.WorkerLeaseReference;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
 class ResultContextCodecTest {
@@ -11,7 +16,7 @@ class ResultContextCodecTest {
 
     @Test
     void decodesGoldenContextAndIgnoresUnknownFields() {
-        var decoded = codec.decode("""
+        var decoded = codec.decodeForRouting("""
                 {
                   "taskId":"task-1",
                   "messageId":"message-1",
@@ -26,7 +31,14 @@ class ResultContextCodecTest {
         assertEquals("message-1", decoded.messageId());
         assertEquals("worker-1", decoded.workerId());
         assertEquals("group-1", decoded.workerGroupId());
-        assertEquals(123L, decoded.workerLeaseScore());
+        assertEquals(
+                WorkerLeaseReference.fromEncodedScore(123),
+                decoded.workerLease()
+        );
+        assertEquals(
+                "WorkerLeaseReference[opaque]",
+                decoded.workerLease().toString()
+        );
     }
 
     @Test
@@ -40,8 +52,19 @@ class ResultContextCodecTest {
                 context("true"),
                 context("\"1\"")
         }) {
-            assertTrue(codec.decode(value).isEmpty(), value);
+            assertTrue(codec.decodeForRouting(value).isEmpty(), value);
         }
+    }
+
+    @Test
+    void routedLeaseReferenceExposesNoNumericAccessor() {
+        assertFalse(Arrays.stream(
+                        WorkerLeaseReference.class.getDeclaredMethods()
+                )
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .map(Method::getReturnType)
+                .anyMatch(type -> type == long.class
+                        || type == Long.class));
     }
 
     private static String context(String score) {

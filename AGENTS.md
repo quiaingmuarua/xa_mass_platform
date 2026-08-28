@@ -75,11 +75,15 @@ specification, owner Redis providers and Kernel application assembly.
 - Task, TaskItem and Worker score truth remain independent.
 - Score is a scheduling coordinate, not a resource write lock.
 - Policy calls conservative owner operations; it does not widen owner APIs.
-- Result Routing owns retry/finality disposition; Transport only carries
-  evidence.
-- Task Result Routing may exact-release the correlated Worker lease but must
-  not infer connection polarity. Adapter Route/delivery-expiry evidence is
-  consumed only by the optional Worker Serviceability policy.
+- Result Routing Policy owns evidence parsing, bounded grouping and semantic
+  event publication; Transport only carries evidence. Finite TaskItem, Worker
+  execution and Worker Serviceability Mechanism ports decide which legal
+  mechanical transitions implement each event.
+- DeliveryReport and raw Worker lease scores stop at Result Policy boundaries.
+  Task execution events may exact-release the correlated opaque Worker lease
+  but must not infer connection polarity. Adapter Route/delivery-expiry
+  evidence is consumed only by the optional Worker Serviceability policy and
+  its named event Mechanism.
 - All production Pacers run in `kernel_pacer_jvm` behind its finite
   `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Python is
   the standalone executable mechanism oracle only. Do not restore a Python
@@ -104,12 +108,18 @@ workspace.
 
 `kernel_jvm/` is the more stable Java 21 mechanical-owner module.
 
-- Mirror only public contracts exported by the Python Kernel package.
+- Mirror mechanical owner contracts exported by the Python Kernel package.
+  Java-production-only semantic Result event ports are the narrow exception:
+  they must have an explicit fixed Pacer caller, remain bounded, and compose
+  existing mechanical owners without adding Redis state or provider parity.
 - Missing operations fail with `KernelOperationNotImplementedException`.
 - Java Redis operations live in the matching owner package.
 - Server connection/health packages must not own Redis keys.
 - Candidate Cache remains a stable mechanical owner here;
   Pacer policy and loop code do not.
+- Finite Result semantic event ports live with the Task/Worker owners; their
+  default implementations may compose bounded mechanical operations but must
+  not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
 - Do not add Task score or owner behavior merely to improve parity percentage.
 - Add a provider operation only with an explicit production caller and scoped
   parity proof.

@@ -1,10 +1,6 @@
 package com.xa.mass.kernel.pacer.result;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerServiceabilityEvents;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
@@ -32,22 +28,19 @@ final class WorkerServiceabilityResultPolicy {
             "worker-serviceability:v1:";
     private static final String CONNECTED = "CONNECTED";
 
-    private final WorkerResourceCatalog workerCatalog;
-    private final WorkerScoreCore workerScore;
+    private final WorkerServiceabilityEvents workerEvents;
     private final WorkerServiceabilityResultConfig config;
     private final long hotEligibilityFloorMillis;
     private final LongSupplier currentTimeMillis;
     private final JsonMapper json;
 
     WorkerServiceabilityResultPolicy(
-            WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScore,
+            WorkerServiceabilityEvents workerEvents,
             WorkerServiceabilityResultConfig config,
             long hotEligibilityFloorMillis
     ) {
         this(
-                workerCatalog,
-                workerScore,
+                workerEvents,
                 config,
                 hotEligibilityFloorMillis,
                 System::currentTimeMillis,
@@ -56,40 +49,23 @@ final class WorkerServiceabilityResultPolicy {
     }
 
     WorkerServiceabilityResultPolicy(
-            WorkerResourceCatalog workerCatalog,
-            WorkerScoreCore workerScore,
+            WorkerServiceabilityEvents workerEvents,
             WorkerServiceabilityResultConfig config,
             long hotEligibilityFloorMillis,
             LongSupplier currentTimeMillis,
             JsonMapper json
     ) {
-        this.workerCatalog = java.util.Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
-        );
-        this.workerScore = java.util.Objects.requireNonNull(
-                workerScore,
-                "workerScore"
+        this.workerEvents = java.util.Objects.requireNonNull(
+                workerEvents,
+                "workerEvents"
         );
         this.config = java.util.Objects.requireNonNull(config, "config");
-        requireFloor(hotEligibilityFloorMillis);
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
         this.currentTimeMillis = java.util.Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
         );
         this.json = java.util.Objects.requireNonNull(json, "json");
-    }
-
-    private static void requireFloor(long floor) {
-        if (floor < WorkerScoreCore.SLOT_MILLIS
-                || floor % WorkerScoreCore.SLOT_MILLIS != 0
-                || floor > WorkerScoreCore.MAX_TIME_MILLIS) {
-            throw new IllegalArgumentException(
-                    "hotEligibilityFloorMillis must be a valid "
-                            + "score-slot-aligned time"
-            );
-        }
     }
 
     void handle(List<DeliveryReport> reports) {
@@ -119,162 +95,40 @@ final class WorkerServiceabilityResultPolicy {
             return;
         }
 
-        LinkedHashMap<String, String> groupIds = new LinkedHashMap<>();
-        List<String> workerIds = new ArrayList<>(latestEvidence.keySet());
-        int lookupLimit = WorkerResourceCatalog.MAX_WORKER_GROUP_LOOKUP_LIMIT;
-        for (int offset = 0; offset < workerIds.size(); offset += lookupLimit) {
-            List<String> chunk = workerIds.subList(
-                    offset,
-                    Math.min(offset + lookupLimit, workerIds.size())
-            );
-            workerCatalog.getWorkerGroupIds(chunk).forEach((workerId, groupId) -> {
-                if (groupId != null) {
-                    groupIds.put(workerId, groupId);
-                }
-            });
-        }
-
-        LinkedHashMap<String, LinkedHashMap<String, WorkerEvidence>>
-                evidenceByGroup = new LinkedHashMap<>();
+        LinkedHashMap<String, Long> connected = new LinkedHashMap<>();
+        LinkedHashMap<String, Long> routeUnavailable = new LinkedHashMap<>();
+        LinkedHashMap<String, Long> probeUnavailable = new LinkedHashMap<>();
         latestEvidence.forEach((workerId, evidence) -> {
-            String groupId = groupIds.get(workerId);
-            if (groupId != null) {
-                evidenceByGroup.computeIfAbsent(
-                        groupId,
-                        ignored -> new LinkedHashMap<>()
-                ).put(workerId, evidence);
+            switch (evidence.kind()) {
+                case CONNECTED -> connected.put(
+                        workerId,
+                        evidence.observedAtMillis()
+                );
+                case ROUTE_UNAVAILABLE -> routeUnavailable.put(
+                        workerId,
+                        evidence.observedAtMillis()
+                );
+                case PROBE_UNAVAILABLE -> probeUnavailable.put(
+                        workerId,
+                        evidence.observedAtMillis()
+                );
             }
         });
-
-        for (Map.Entry<String, LinkedHashMap<String, WorkerEvidence>> group
-                : evidenceByGroup.entrySet()) {
-            Map<String, WorkerScoreState> states = workerScore.getScoreStates(
-                    group.getKey(),
-                    new ArrayList<>(group.getValue().keySet())
-            );
-            for (Map.Entry<String, WorkerEvidence> worker
-                    : group.getValue().entrySet()) {
-                WorkerScoreState state = states.get(worker.getKey());
-                if (state == null) {
-                    continue;
-                }
-                applyEvidence(
-                        group.getKey(),
-                        worker.getKey(),
-                        state,
-                        worker.getValue(),
-                        config.maxRecoveryAttempts(),
-                        hotEligibilityFloorMillis
-                );
-            }
-        }
-    }
-
-    private void applyEvidence(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            WorkerEvidence evidence,
-            int maxRecoveryAttempts,
-            long hotEligibilityFloorMillis
-    ) {
-        if (state.timeMillis() == WorkerScoreCore.PAUSE_TIME_MILLIS) {
-            return;
-        }
-        if (evidence.kind() == EvidenceKind.CONNECTED) {
-            applyConnected(
-                    workerGroupId,
-                    workerId,
-                    state,
+        if (!connected.isEmpty()) {
+            workerEvents.onConnected(
+                    connected,
                     hotEligibilityFloorMillis
             );
-            return;
         }
-        if (evidence.kind() == EvidenceKind.ROUTE_UNAVAILABLE) {
-            if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-                workerScore.toggleCurrentPolarity(
-                        workerGroupId,
-                        workerId,
-                        state.score()
-                );
-            }
-            return;
+        if (!routeUnavailable.isEmpty()) {
+            workerEvents.onRouteUnavailable(routeUnavailable);
         }
-        applyProbeUnavailable(
-                workerGroupId,
-                workerId,
-                state,
-                evidence.observedAtMillis(),
-                maxRecoveryAttempts
-        );
-    }
-
-    private void applyConnected(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            long hotEligibilityFloorMillis
-    ) {
-        if (state.polarity() == WorkerScorePolarity.RECOVERY_RECHECK) {
-            var toggled = workerScore.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    state.score()
+        if (!probeUnavailable.isEmpty()) {
+            workerEvents.onProbeUnavailable(
+                    probeUnavailable,
+                    config.maxRecoveryAttempts()
             );
-            if (toggled.status()
-                    != WorkerScoreTransitionStatus.TRANSITIONED) {
-                return;
-            }
         }
-        workerScore.rewriteCurrentScores(
-                workerGroupId,
-                List.of(workerId),
-                hotEligibilityFloorMillis,
-                WorkerScoreCore.MIN_LANE_RANK
-        );
-    }
-
-    private void applyProbeUnavailable(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            long observedAtMillis,
-            int maxRecoveryAttempts
-    ) {
-        if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            var toggled = workerScore.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    state.score()
-            );
-            if (toggled.status()
-                    != WorkerScoreTransitionStatus.TRANSITIONED) {
-                return;
-            }
-            workerScore.rewriteCurrentScores(
-                    workerGroupId,
-                    List.of(workerId),
-                    observedAtMillis,
-                    WorkerScoreCore.MIN_LANE_RANK
-            );
-            return;
-        }
-        int nextAttempt = state.laneRank() + 1;
-        if (nextAttempt >= maxRecoveryAttempts) {
-            workerScore.exhaustRecoveryRecheck(
-                    workerGroupId,
-                    workerId,
-                    state.score(),
-                    maxRecoveryAttempts
-            );
-            return;
-        }
-        workerScore.rewriteCurrentScores(
-                workerGroupId,
-                List.of(workerId),
-                observedAtMillis,
-                nextAttempt
-        );
     }
 
     private Map<String, WorkerEvidence> decodeReport(

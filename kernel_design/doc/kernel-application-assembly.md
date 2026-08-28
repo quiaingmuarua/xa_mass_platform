@@ -64,6 +64,7 @@ The finite Java caller closure is:
 TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
+TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
 CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
 WorkerServiceabilityRuntime
@@ -135,6 +136,13 @@ Result Convergence owns one coordinator and ten shared virtual-batch slots.
 Its fixed lanes are Task SUCCESS, Task FAILURE, and optional Adapter Evidence.
 Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
 and Dispatch lanes do not share queues, lifecycle state, or executors.
+
+Its policies terminate `DeliveryReport` and JSON interpretation, perform
+bounded last-wins grouping, and publish finite semantic callbacks. The Runtime
+composition point constructs the default TaskItem, Worker execution and Worker
+Serviceability event Mechanisms from the supplied mechanical owners. Policies do
+not directly store Task results, promote Item scores, release Worker scores,
+read Worker scores, or select Serviceability score transitions.
 
 ## Lifecycle
 

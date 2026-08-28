@@ -16,7 +16,8 @@ exact Route change or expired Worker delivery
   -> ADAPTER -> KERNEL DeliveryReport
   -> Result Convergence ADAPTER_EVIDENCE lane
   -> Worker Serviceability Result Policy
-  -> explicit WorkerScore primitives
+  -> WorkerServiceabilityEvents
+  -> Worker resource and score-owner primitives
 
 or pre-epoch HOT / due RECOVERY score
   -> Adapter-scoped snapshot request
@@ -142,14 +143,20 @@ platform.adapter.worker-connections.snapshot
 
 Evidence in the future or older than `evidenceMaxAgeMillis` (default 30s) is
 dropped. Within one consumed round, the latest timestamp wins per Worker; equal
-timestamps use the later Report. Global workerId is resolved to WorkerGroup in
-bounded catalog reads. Missing owners, scores, or malformed Reports are
-dropped. There is no retry or retained current-state projection.
+timestamps use the later Report. The policy publishes only three bounded
+semantic facts: connected, route unavailable, and probe unavailable.
+`DeliveryReport`, JSON, forward values and Adapter Event Names stop at that
+policy. `WorkerServiceabilityEvents` resolves global workerId to WorkerGroup in
+bounded catalog reads and owns current-score interpretation. Missing owners,
+scores, or malformed Reports are dropped. There is no retry or retained
+current-state projection.
 
 ## Score Convergence
 
-The Adapter Evidence policy composes existing Score owner operations; there is no business-shaped
-`applyServiceability` operation.
+`DefaultWorkerServiceabilityEvents` composes existing Score owner operations;
+the Adapter Evidence policy cannot read a Worker score or select a concrete
+toggle, rewrite, or cold-park operation. The finite event interface is not a
+generic `applyServiceability` operation or EventBus.
 
 Route `CONNECTED` or snapshot `CONNECTED`:
 

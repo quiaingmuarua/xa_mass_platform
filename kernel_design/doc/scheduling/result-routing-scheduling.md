@@ -14,17 +14,21 @@ Result Routing consumes two bounded Task result evidence lanes:
 
 ```text
 SUCCESS
-  -> TaskRuntime last-success result HASH
-  -> TaskItemScoreBandCore FINAL_SUCCESS
-  -> WorkerScoreCore completed-HOT exact release
+  -> TaskResultBatchPolicy decode and bounded last-wins grouping
+  -> TaskItemResultEvents.onItemsSucceeded
+  -> WorkerExecutionResultEvents.onTaskSucceeded
 
 FAILURE
-  -> WorkerScoreCore exact release
+  -> TaskResultBatchPolicy decode and bounded last-wins grouping
+  -> TaskItemResultEvents.onItemsFailed
+  -> WorkerExecutionResultEvents.onTaskFailed
 ```
 
 It does not select Workers, claim Items, actively retry failed Items, refresh
 Task score, parse score internals, interpret endpoint error codes, or own
-Worker scheduling-serviceability truth.
+Worker scheduling-serviceability truth. The finite event Mechanisms decide
+which mechanical Task, TaskItem, and Worker operations currently implement each
+semantic result event.
 
 ## Protocol Boundary And Queues
 
@@ -58,9 +62,10 @@ xa_mass:<scope>:result:routing:failure
 
 `forward` remains opaque to the queue Runtime and carries `taskId`,
 `messageId`, `workerId`, `workerGroupId`, and opaque `workerLeaseScore`.
-TaskItem identity and the Worker lease fence are decoded only by Result
-Routing. Queue members are destructive best-effort evidence, not pending/ack
-truth.
+`TaskResultBatchPolicy` decodes the identities, but receives the lease only as
+`WorkerLeaseReference`. That reference has no public numeric accessor or
+serialization surface; only the Worker event implementation may unwrap it.
+Queue members are destructive best-effort evidence, not pending/ack truth.
 
 ## Fixed Lanes And Shared Batch Capacity
 
@@ -114,7 +119,7 @@ normalized into bounded owner-local indexes:
 
 ```text
 taskId -> ordered TaskResultEvidence(taskId, messageId, payload)
-workerGroupId -> ordered WorkerResultEvidence(workerId, workerLeaseScore)
+workerGroupId -> ordered WorkerResultEvidence(workerId, WorkerLeaseReference)
 ```
 
 Within one lane batch, repeated Task message IDs and Worker IDs use the last
@@ -125,23 +130,30 @@ contract accepts any valid successful payload for that duplicated execution;
 Item promotion remains monotonic. Exact score-owner fencing decides whether a
 concurrent SUCCESS or FAILURE Worker observation still applies.
 
-Python Oracle and Java production both install exactly the two built-in
-strategies. There is no public Handler map, dynamic registry, reflection,
-ServiceLoader or replacement policy surface.
+Java production installs exactly two fixed Task policies and three finite
+semantic event ports. `DeliveryReport`, lane identity, Adapter event names and
+JSON stop at the policies; the event ports accept only bounded domain facts.
+There is no public Handler map, dynamic registry, reflection, ServiceLoader or
+replacement policy surface. The frozen Python executable specification remains
+the behavioral Oracle and does not mirror this Java production layering.
 
 ### SUCCESS
 
 ```text
-store last payload per Task/messageId
--> promote the same Item IDs to FINAL_SUCCESS
--> exact-release each correlated Worker lease
+TaskItemResultEvents.onItemsSucceeded
+  -> store last payload per Task/messageId
+  -> promote the same Item IDs to FINAL_SUCCESS
+
+WorkerExecutionResultEvents.onTaskSucceeded
+  -> apply the correlated successful-execution event per WorkerGroup
 ```
 
 Payload storage precedes Item promotion, so a promoted success has stored
 result truth. A later success may replace an earlier payload and may promote
 an Item from `FINAL_FAILED` according to the existing Item owner contract.
 
-Worker release uses `releaseCompletedHotScoreHolds`. It accepts only:
+The current Worker event implementation uses
+`releaseCompletedHotScoreHolds`. It accepts only:
 
 - the original positive HOT assignment lease; or
 - the exact RECOVERY counterpart derived by the Score Owner from that lease.
@@ -155,10 +167,12 @@ RECOVERY-to-HOT or connection-state API.
 ### FAILURE
 
 ```text
-exact-release each correlated Worker lease
--> do not store payload
--> do not mutate TaskItem retry/finality coordinate
--> do not change Worker polarity
+TaskItemResultEvents.onItemsFailed
+  -> currently leaves Item retry/finality unchanged
+
+WorkerExecutionResultEvents.onTaskFailed
+  -> currently exact-releases each correlated Worker lease
+  -> does not change Worker polarity
 ```
 
 Worker handler failure and Adapter rejection are identical to Result Routing.
@@ -198,12 +212,18 @@ the unified Application and therefore Kernel readiness.
 non-daemon coordinator platform thread, a virtual-thread-per-batch executor,
 ten global Batch slots, and only coordinator-owned per-lane `inflight` and
 backoff state. Lifecycle is composed by `KernelPacerRuntime`; Server supplies
-owners but never observes or assembles a lane or policy. Target and maximum
+mechanical owners, and the Runtime constructs the three default semantic event
+owners before assembling its policies. Server never observes or assembles a
+lane, policy, or event Mechanism. Target and maximum
 concurrency are fixed Kernel policy constants, not Server/Pacer configuration
 or Health state.
 
 - Do not let Adapter or Worker mutate score directly.
 - Do not parse exact Worker or Adapter subcodes in Kernel Result Routing.
+- Do not pass `DeliveryReport`, lane identity, JSON, Adapter Event Name or a raw
+  Worker score into an Owner semantic event port.
+- Do not let a Result policy call Task, TaskItem score, Worker score or Worker
+  catalog mechanical operations directly.
 - Do not partition by exact code, Task, WorkerGroup or producer.
 - Do not infer connection polarity from the `FAILURE` lane.
 - Do not add fast Item retry without an opaque Item claim fence and exact Item

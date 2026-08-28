@@ -243,7 +243,8 @@ cross-owner transaction.
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
-| TaskResultBatchPolicy | context decode, bounded owner-key grouping, Task finality and Worker lease disposition | no queue ownership, score decoding or cross-owner truth |
+| TaskResultBatchPolicy | context decode, bounded owner-key grouping and TaskItem/Worker execution event publication | no queue ownership, score decoding, mechanical owner calls or cross-owner truth |
+| WorkerExecutionResultEvents | successful/failed Task execution semantics and batched score-owner fence application | no DeliveryReport, lane, JSON or endpoint-code interpretation |
 
 ## Deferred Policy
 

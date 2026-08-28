@@ -161,19 +161,21 @@ ResultConvergenceApplication
 
 TaskResultBatchPolicy
   decodes and groups one already-classified homogeneous Task result Batch and
-  delegates owner-local evidence
+  publishes bounded TaskItem and Worker execution semantic events; it receives
+  only opaque Worker lease references and calls no score owner
 
 WorkerServiceabilityRuntime
   owns Adapter-partitioned coalesced probe requests and one bounded batch
   Report handoff; neither structure is current connection or score truth
 
 WorkerServiceabilityDispatchPolicy / ResultPolicy
-  derive demanded Groups from due Tasks, discover old score coordinates, and
-  translate valid Adapter route snapshots into bounded WorkerScore operations
+  derive demanded Groups from due Tasks and translate valid Adapter evidence
+  into finite semantic callbacks; the Result policy does not read or mutate
+  Worker score
 
-Fixed Result Batch policies
-  compose Task and Worker owner operations without owning their truth; they are
-  not a registry, SPI or replacement-handler surface
+Fixed Result semantic Mechanism ports
+  compose legal Task, TaskItem and Worker owner operations behind named event
+  methods; they are not a registry, SPI or replacement-handler surface
 
 DispatchConvergenceApplication
   shares one verified RUNNING Task batch across fixed single-flight policies;

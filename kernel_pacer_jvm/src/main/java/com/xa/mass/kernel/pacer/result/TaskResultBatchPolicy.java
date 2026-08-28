@@ -1,17 +1,17 @@
 package com.xa.mass.kernel.pacer.result;
 
 import com.xa.mass.kernel.delivery.ResultContextCodec;
-import com.xa.mass.kernel.delivery.ResultContextCodec.ResultContext;
-import com.xa.mass.kernel.score.TaskItemScoreBandCore;
-import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
-import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.delivery.ResultContextCodec.RoutedResultContext;
+import com.xa.mass.kernel.task.TaskItemResultEvents;
+import com.xa.mass.kernel.worker.WorkerExecutionResultEvents;
+import com.xa.mass.kernel.worker.WorkerLeaseReference;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,44 +19,36 @@ import java.util.function.LongSupplier;
 
 final class TaskResultBatchPolicy {
 
-    private final TaskRuntime taskRuntime;
-    private final TaskItemScoreBandCore itemScore;
-    private final WorkerScoreCore workerScore;
+    private final TaskItemResultEvents taskItemEvents;
+    private final WorkerExecutionResultEvents workerEvents;
     private final LongSupplier currentTimeMillis;
     private final ResultContextCodec contextCodec;
 
     TaskResultBatchPolicy(
-            TaskRuntime taskRuntime,
-            TaskItemScoreBandCore itemScore,
-            WorkerScoreCore workerScore
+            TaskItemResultEvents taskItemEvents,
+            WorkerExecutionResultEvents workerEvents
     ) {
         this(
-                taskRuntime,
-                itemScore,
-                workerScore,
+                taskItemEvents,
+                workerEvents,
                 System::currentTimeMillis,
                 new ResultContextCodec()
         );
     }
 
     TaskResultBatchPolicy(
-            TaskRuntime taskRuntime,
-            TaskItemScoreBandCore itemScore,
-            WorkerScoreCore workerScore,
+            TaskItemResultEvents taskItemEvents,
+            WorkerExecutionResultEvents workerEvents,
             LongSupplier currentTimeMillis,
             ResultContextCodec contextCodec
     ) {
-        this.taskRuntime = java.util.Objects.requireNonNull(
-                taskRuntime,
-                "taskRuntime"
+        this.taskItemEvents = java.util.Objects.requireNonNull(
+                taskItemEvents,
+                "taskItemEvents"
         );
-        this.itemScore = java.util.Objects.requireNonNull(
-                itemScore,
-                "itemScore"
-        );
-        this.workerScore = java.util.Objects.requireNonNull(
-                workerScore,
-                "workerScore"
+        this.workerEvents = java.util.Objects.requireNonNull(
+                workerEvents,
+                "workerEvents"
         );
         this.currentTimeMillis = java.util.Objects.requireNonNull(
                 currentTimeMillis,
@@ -69,7 +61,7 @@ final class TaskResultBatchPolicy {
     }
 
     void handleSuccess(List<DeliveryReport> batch) {
-        DecodedBatch decoded = decode(batch, true);
+        DecodedBatch decoded = decode(batch);
         if (decoded.decodedCount() == 0) {
             return;
         }
@@ -82,29 +74,36 @@ final class TaskResultBatchPolicy {
                         result.opaqueResultPayload()
                 );
             }
-            taskRuntime.storeTaskItemSuccessResults(taskId, payloads);
-            itemScore.promoteItemOutcomes(
+            taskItemEvents.onItemsSucceeded(
                     taskId,
-                    List.copyOf(payloads.keySet()),
-                    TaskItemScoreBand.FINAL_SUCCESS,
+                    payloads,
                     resultTimeMillis
             );
         });
-        releaseWorkers(decoded.resultsByWorkerGroup(), true);
+        publishWorkerEvents(decoded.resultsByWorkerGroup(), true);
     }
 
     void handleFailure(List<DeliveryReport> batch) {
-        DecodedBatch decoded = decode(batch, false);
+        DecodedBatch decoded = decode(batch);
         if (decoded.decodedCount() == 0) {
             return;
         }
-        releaseWorkers(decoded.resultsByWorkerGroup(), false);
+        long resultTimeMillis = currentTimeMillis.getAsLong();
+        decoded.resultsByTask().forEach((taskId, evidence) -> {
+            LinkedHashSet<String> messageIds = new LinkedHashSet<>();
+            for (TaskResultEvidence result : evidence) {
+                messageIds.add(result.messageId());
+            }
+            taskItemEvents.onItemsFailed(
+                    taskId,
+                    List.copyOf(messageIds),
+                    resultTimeMillis
+            );
+        });
+        publishWorkerEvents(decoded.resultsByWorkerGroup(), false);
     }
 
-    private DecodedBatch decode(
-            List<DeliveryReport> batch,
-            boolean includeTaskEvidence
-    ) {
+    private DecodedBatch decode(List<DeliveryReport> batch) {
         java.util.Objects.requireNonNull(batch, "batch");
         int decodedCount = 0;
         LinkedHashMap<String, List<TaskResultEvidence>> resultsByTask =
@@ -115,30 +114,29 @@ final class TaskResultBatchPolicy {
             if (result == null || result.dst() != DeliveryEndpoint.TASK) {
                 continue;
             }
-            Optional<ResultContext> context = contextCodec.decode(
-                    result.forward()
-            );
+            Optional<RoutedResultContext> context =
+                    contextCodec.decodeForRouting(
+                            result.forward()
+                    );
             if (context.isEmpty()) {
                 continue;
             }
-            ResultContext value = context.get();
+            RoutedResultContext value = context.get();
             decodedCount++;
-            if (includeTaskEvidence) {
-                resultsByTask.computeIfAbsent(
-                        value.taskId(),
-                        ignored -> new ArrayList<>()
-                ).add(new TaskResultEvidence(
-                        value.taskId(),
-                        value.messageId(),
-                        result.payload()
-                ));
-            }
+            resultsByTask.computeIfAbsent(
+                    value.taskId(),
+                    ignored -> new ArrayList<>()
+            ).add(new TaskResultEvidence(
+                    value.taskId(),
+                    value.messageId(),
+                    result.payload()
+            ));
             resultsByWorkerGroup.computeIfAbsent(
                     value.workerGroupId(),
                     ignored -> new ArrayList<>()
             ).add(new WorkerResultEvidence(
                     value.workerId(),
-                    value.workerLeaseScore()
+                    value.workerLease()
             ));
         }
         return new DecodedBatch(
@@ -148,27 +146,28 @@ final class TaskResultBatchPolicy {
         );
     }
 
-    private void releaseWorkers(
+    private void publishWorkerEvents(
             Map<String, List<WorkerResultEvidence>> resultsByWorkerGroup,
-            boolean completed
+            boolean succeeded
     ) {
         resultsByWorkerGroup.forEach((workerGroupId, evidence) -> {
-            LinkedHashMap<String, Long> scores = new LinkedHashMap<>();
+            LinkedHashMap<String, WorkerLeaseReference> leases =
+                    new LinkedHashMap<>();
             for (WorkerResultEvidence result : evidence) {
-                scores.put(result.workerId(), result.workerLeaseScore());
+                leases.put(result.workerId(), result.workerLease());
             }
-            long releaseTimeMillis = currentTimeMillis.getAsLong();
-            if (completed) {
-                workerScore.releaseCompletedHotScoreHolds(
+            long observedAtMillis = currentTimeMillis.getAsLong();
+            if (succeeded) {
+                workerEvents.onTaskSucceeded(
                         workerGroupId,
-                        scores,
-                        releaseTimeMillis
+                        leases,
+                        observedAtMillis
                 );
             } else {
-                workerScore.releaseScoreHolds(
+                workerEvents.onTaskFailed(
                         workerGroupId,
-                        scores,
-                        releaseTimeMillis
+                        leases,
+                        observedAtMillis
                 );
             }
         });

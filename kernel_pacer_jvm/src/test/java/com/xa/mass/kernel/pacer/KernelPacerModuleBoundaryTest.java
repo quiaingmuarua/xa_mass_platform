@@ -179,8 +179,98 @@ class KernelPacerModuleBoundaryTest {
         ), Set.copyOf(pacerImports));
     }
 
+    @Test
+    void resultPoliciesPublishEventsWithoutMechanicalOwnerAccess()
+            throws IOException {
+        Path root = repositoryRoot();
+        Path resultRoot = root.resolve(
+                "kernel_pacer_jvm/src/main/java/"
+                        + "com/xa/mass/kernel/pacer/result"
+        );
+        List<String> forbidden = List.of(
+                "WorkerScoreCore",
+                "TaskItemScoreBandCore",
+                "TaskRuntime",
+                "WorkerResourceCatalog",
+                "workerLeaseScore()",
+                "releaseScoreHolds",
+                "releaseCompletedHotScoreHolds",
+                "promoteItemOutcomes",
+                "toggleCurrentPolarity",
+                "rewriteCurrentScores",
+                "exhaustRecoveryRecheck"
+        );
+        List<String> violations = sourceViolations(
+                resultRoot,
+                forbidden
+        );
+
+        assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void ownerResultEventsDoNotAcceptTransportOrPacerTypes()
+            throws IOException {
+        Path root = repositoryRoot();
+        List<Path> eventSources = List.of(
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "task/TaskItemResultEvents.java"),
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "task/DefaultTaskItemResultEvents.java"),
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "worker/WorkerExecutionResultEvents.java"),
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "worker/DefaultWorkerExecutionResultEvents.java"),
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "worker/WorkerServiceabilityEvents.java"),
+                root.resolve("kernel_jvm/src/main/java/com/xa/mass/kernel/"
+                        + "worker/DefaultWorkerServiceabilityEvents.java")
+        );
+        List<String> forbidden = List.of(
+                "DeliveryReport",
+                "DeliveryEndpoint",
+                "ResultLane",
+                "platform.adapter.",
+                "onEvent(",
+                "ServiceLoader",
+                "Class.forName"
+        );
+        List<String> violations = new ArrayList<>();
+        for (Path source : eventSources) {
+            String content = read(source);
+            for (String token : forbidden) {
+                if (content.contains(token)) {
+                    violations.add(source.getFileName() + ":" + token);
+                }
+            }
+        }
+
+        assertEquals(List.of(), violations);
+    }
+
     private static Path repositoryRoot() {
         return Path.of(System.getProperty("xa.mass.repository.root"));
+    }
+
+    private static List<String> sourceViolations(
+            Path sourceRoot,
+            List<String> forbidden
+    ) throws IOException {
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(sourceRoot)) {
+            files.filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> {
+                        String source = read(path);
+                        for (String token : forbidden) {
+                            if (source.contains(token)) {
+                                violations.add(
+                                        path.getFileName() + ":" + token
+                                );
+                            }
+                        }
+                    });
+        }
+        return violations;
     }
 
     private static void assertPackagePaths(Path sourceRoot)

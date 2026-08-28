@@ -544,8 +544,9 @@ Raw socket, heartbeat, keepalive, session, latency observation, and
 Upsert initializes only a missing score and preserves every existing score
 exactly while replacing the Worker Properties snapshot. Only normalized
 Adapter Route evidence interpreted by the Kernel Serviceability Result Policy
-may compose exact toggle and monotonic rewrite; Transport never calls the score
-owner.
+may reach `WorkerServiceabilityEvents`; its default event Mechanism composes
+exact toggle and monotonic rewrite. Transport and the Result Policy never call
+the score owner directly.
 
 ## Interface Rule
 
@@ -631,8 +632,8 @@ future recovery retry -> RECOVERY_RECHECK with later time and retryCount + 1
 ```
 
 This primitive cannot change HOT_ACQUIRE to RECOVERY_RECHECK or
-RECOVERY_RECHECK to HOT_ACQUIRE. The optional Serviceability Result Policy uses
-it only after an exact polarity transition or while advancing one observed
+RECOVERY_RECHECK to HOT_ACQUIRE. The default Worker Serviceability event Mechanism
+uses it only after an exact polarity transition or while advancing one observed
 RECOVERY retry; it does not turn rewrite into a cross-polarity operation.
 
 ### Release

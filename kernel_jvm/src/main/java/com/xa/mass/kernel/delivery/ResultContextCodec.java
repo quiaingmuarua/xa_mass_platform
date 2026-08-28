@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.delivery;
 
+import com.xa.mass.kernel.worker.WorkerLeaseReference;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -29,7 +30,7 @@ public final class ResultContextCodec {
         }
     }
 
-    public Optional<ResultContext> decode(String value) {
+    public Optional<RoutedResultContext> decodeForRouting(String value) {
         if (value == null) {
             return Optional.empty();
         }
@@ -54,12 +55,12 @@ public final class ResultContextCodec {
                     || workerLeaseScore == null) {
                 return Optional.empty();
             }
-            return Optional.of(new ResultContext(
+            return Optional.of(new RoutedResultContext(
                     taskId,
                     messageId,
                     workerId,
                     workerGroupId,
-                    workerLeaseScore
+                    WorkerLeaseReference.fromEncodedScore(workerLeaseScore)
             ));
         } catch (JacksonException | IllegalArgumentException error) {
             return Optional.empty();
@@ -109,6 +110,22 @@ public final class ResultContextCodec {
                         name + " must be non-empty"
                 );
             }
+        }
+    }
+
+    public record RoutedResultContext(
+            String taskId,
+            String messageId,
+            String workerId,
+            String workerGroupId,
+            WorkerLeaseReference workerLease
+    ) {
+        public RoutedResultContext {
+            ResultContext.requireNonBlank(taskId, "taskId");
+            ResultContext.requireNonBlank(messageId, "messageId");
+            ResultContext.requireNonBlank(workerId, "workerId");
+            ResultContext.requireNonBlank(workerGroupId, "workerGroupId");
+            java.util.Objects.requireNonNull(workerLease, "workerLease");
         }
     }
 }

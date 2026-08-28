@@ -1,7 +1,5 @@
 package com.xa.mass.kernel.pacer.result;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
-
 record WorkerServiceabilityResultConfig(
         int maxRecoveryAttempts,
         int resultReportLimit,
@@ -13,10 +11,9 @@ record WorkerServiceabilityResultConfig(
     public static final long DEFAULT_EVIDENCE_MAX_AGE_MILLIS = 30_000;
 
     public WorkerServiceabilityResultConfig {
-        if (maxRecoveryAttempts < 1
-                || maxRecoveryAttempts > WorkerScoreCore.MAX_LANE_RANK) {
+        if (maxRecoveryAttempts < 1) {
             throw new IllegalArgumentException(
-                    "maxRecoveryAttempts must be between 1 and 99"
+                    "maxRecoveryAttempts must be positive"
             );
         }
         if (resultReportLimit < 1 || resultReportLimit > 100) {

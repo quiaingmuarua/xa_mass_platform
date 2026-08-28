@@ -623,9 +623,8 @@ class RuntimeBoundaryIntegrationTest {
             var redis = connection.sync();
             String scoreKey = REDIS_KEYSPACE.base()
                     + ":worker:score:" + workerGroupId;
-            // Fixture-only: leave the Route connected while making the
-            // periodic snapshot, rather than another Route transition, own
-            // the RECOVERY -> HOT proof below.
+            // Fixture-only: leave the Route connected while forcing the
+            // periodic snapshot path to converge RECOVERY back to HOT.
             redis.zadd(scoreKey, -before.score(), workerId);
             WorkerScoreState recovery = awaitWorkerScore(
                     workerGroupId,
@@ -642,7 +641,16 @@ class RuntimeBoundaryIntegrationTest {
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        assertThat(after.score()).isEqualTo(before.score());
+        // Route and periodic snapshot evidence are both best-effort. A
+        // concurrently observed unavailable snapshot may advance the
+        // recovery coordinate before later CONNECTED evidence restores HOT;
+        // neither ordering may move the Worker backwards.
+        assertThat(after.timeMillis()).isGreaterThanOrEqualTo(
+                before.timeMillis()
+        );
+        assertThat(after.laneRank()).isEqualTo(
+                WorkerScoreCore.MIN_LANE_RANK
+        );
     }
 
     private void awaitConnectionState(String workerId, String expectedState)

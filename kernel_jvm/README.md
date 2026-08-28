@@ -12,8 +12,8 @@ nullability and score constants; unsupported provider operations fail with
 
 | Package | Responsibility |
 | --- | --- |
-| `task` | Task record, catalog, lifecycle and bounded Task Call commands |
-| `worker` | Worker record, catalog and canonical properties |
+| `task` | Task record, catalog, lifecycle, bounded Task Call commands and finite TaskItem result events |
+| `worker` | Worker record, catalog, canonical properties, opaque lease references and finite execution/serviceability events |
 | `score` | Task, TaskItem and Worker score contracts plus exact Redis transitions |
 | `assignment` | Candidate Worker Cache owner |
 | `delivery` | Worker Command and Task Result runtimes plus internal ResultContext codec |
@@ -24,6 +24,13 @@ Candidate Cache stays here because it is a bounded, disposable owner mechanism
 with its own Redis shape. Candidate matching,
 allocation policy, result disposition, serviceability policy, Pacer loops and
 thread lifecycle belong to [`kernel_pacer_jvm`](../kernel_pacer_jvm/).
+
+The three Result event interfaces are stable semantic Mechanism ports rather
+than Pacer policy or new truth owners. Their default implementations may
+compose bounded mechanical owners, while `DeliveryReport`, lane identity, JSON
+and Adapter Event Names remain confined to `kernel_pacer_jvm` policies.
+`WorkerLeaseReference` keeps the assignment fence opaque outside the Worker
+owner package.
 
 ## Production Call Closure
 

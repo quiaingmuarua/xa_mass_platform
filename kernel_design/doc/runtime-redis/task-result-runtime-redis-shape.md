@@ -61,7 +61,17 @@ ResultConvergenceApplication
   the last actual Redis field write
 
 TaskResultBatchPolicy
-  owns ResultContext decode, bounded grouping and fixed SUCCESS/FAILURE policy
+  owns ResultContext decode, bounded grouping, last-wins collapse and
+  SUCCESS/FAILURE semantic event publication
+
+TaskItemResultEvents
+  owns the TaskItem success/failure event meaning; its current success
+  implementation stores payload then promotes finality, while failure leaves
+  the existing claim coordinate unchanged
+
+WorkerExecutionResultEvents
+  owns Worker execution success/failure event meaning and is the only Result
+  layer allowed to unwrap WorkerLeaseReference into the score-owner fence
 
 TaskRuntime
   owns Task-scoped last-success payload truth

@@ -9,8 +9,11 @@ import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
+import com.xa.mass.kernel.task.DefaultTaskItemResultEvents;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.worker.DefaultWorkerExecutionResultEvents;
+import com.xa.mass.kernel.worker.DefaultWorkerServiceabilityEvents;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.time.Duration;
 import java.util.Objects;
@@ -104,10 +107,17 @@ public final class KernelPacerRuntime {
                         policy.preset(),
                         policy.hotEligibilityFloorMillis(),
                         taskResults,
-                        taskRuntime,
-                        itemScores,
-                        workerScores,
-                        workerCatalog,
+                        new DefaultTaskItemResultEvents(
+                                taskRuntime,
+                                itemScores
+                        ),
+                        new DefaultWorkerExecutionResultEvents(
+                                workerScores
+                        ),
+                        new DefaultWorkerServiceabilityEvents(
+                                workerCatalog,
+                                workerScores
+                        ),
                         serviceability
                 );
         DispatchConvergenceRuntime dispatchConvergence =

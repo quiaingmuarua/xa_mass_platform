@@ -515,10 +515,13 @@ Adapter-owned Task rejection  -> FAILURE
 
 The Result Convergence coordinator consumes the `SUCCESS` and `FAILURE` keys as
 separate fixed lanes. `TaskResultBatchPolicy` requires `dst=TASK`, decodes
-`forward` as ResultContext and never reads `outcomeCode`. SUCCESS stores and
-promotes the Item before using the completed-HOT exact release; FAILURE only
-releases the assignment lease. Both Task lanes may therefore execute several
-Batches out of completion order under the shared Result capacity. Duplicate
+`forward` as a routed context containing an opaque `WorkerLeaseReference`, and
+never reads `outcomeCode`. It performs bounded last-wins grouping and publishes
+TaskItem and Worker execution semantic events. Their default Owner
+implementations currently store/promote SUCCESS before completed-HOT exact
+release, while FAILURE leaves Item retry unchanged and only releases the
+assignment lease. Both Task lanes may therefore execute several Batches out of
+completion order under the shared Result capacity. Duplicate
 SUCCESS payloads for one message use the last actual Redis write, while Item
 promotion and Worker lease disposition remain owner-fenced. Adapter connection
 and delivery-expiry evidence remains on the separate KERNEL result key and runs
