@@ -586,7 +586,7 @@
         </p>
         <div class="hero-links">
           <a class="button primary" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md">Architecture Entry</a>
-          <a class="button" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/README.md">Kernel Oracle</a>
+          <a class="button" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md">Java Kernel</a>
           <a class="button" href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md">Proof Lanes</a>
         </div>
       </section>
@@ -824,30 +824,30 @@ DeliveryReport
         <div class="section-head">
           <div>
             <p class="kicker">05 · Runtime topology</p>
-            <h2>一个 Python Oracle<br>一套纯 Java 生产内核</h2>
+            <h2>一套 Java Kernel<br>两个稳定性层级</h2>
           </div>
           <p>
-            Python保留完整机制Oracle与独立Redis proof，但不进入生产进程、HTTP、
-            fallback或发行物。生产调用闭包由Java mechanical owners、固定Pacer和
-            Spring生命周期装配共同完成。
+            <code>kernel_jvm</code>拥有稳定的机械Owner与Redis转换，
+            <code>kernel_pacer_jvm</code>拥有变化更快的Policy、Convergence与线程生命周期；
+            Server只完成Spring装配和公开API。
           </p>
         </div>
 
         <div class="grid-3">
           <article class="card kernel">
-            <span class="owner">KERNEL_DESIGN</span>
-            <h3>Mechanism oracle</h3>
-            <p>Python executable spec、完整机制Pacers与Redis proof；只在隔离的<code>test_*</code> scope中独立验证，不进入生产Server或发行物。</p>
+            <span class="owner">DOC / KERNEL</span>
+            <h3>Authority index</h3>
+            <p>Java Kernel总入口连接mechanical Owner、Pacer Policy、跨模块边界和对应proof，不复制第二份运行机制。</p>
           </article>
           <article class="card kernel">
             <span class="owner">KERNEL_JVM</span>
             <h3>Mechanical owners</h3>
-            <p>稳定的Java 21 owner contracts、Redis providers、Candidate Cache/Warmup与codec；不拥有调度策略、Pacer线程或Spring生命周期。</p>
+            <p>稳定的Java 21 owner contracts、Redis providers、Candidate Cache与codec；不拥有调度策略、Pacer线程或Spring生命周期。</p>
           </article>
           <article class="card kernel">
             <span class="owner">KERNEL_PACER_JVM</span>
             <h3>Policy & lifecycle</h3>
-            <p><code>KernelPacerRuntime</code>是唯一公开生产入口，固定装配Result Routing、可选Serviceability Result/Dispatch与Assignment Dispatch。</p>
+            <p><code>KernelPacerRuntime</code>是唯一公开生产入口，固定装配Result Convergence与Dispatch Convergence。</p>
           </article>
           <article class="card server">
             <span class="owner">SERVER_JVM</span>
@@ -873,8 +873,8 @@ DeliveryReport
           -> kernel_jvm mechanical owners
              -> Redis
 
-Independent proof
-  Python mechanism Oracle -> isolated test_* Redis scope</pre>
+Proof
+  focused JVM -> Redis Owner -> Runtime Boundary -> finite E2E</pre>
 
         <div class="rule">
           真相分类：<span class="tag">truth</span><span class="tag">evidence</span><span class="tag">address</span>
@@ -934,15 +934,15 @@ Independent proof
         </div>
 
         <div class="grid-4" style="margin-top: 14px">
-          <article class="card"><h3>Kernel Oracle</h3><p>Python executable spec与真实Redis机制proof。</p></article>
-          <article class="card"><h3>Java Kernel</h3><p>mechanical owner、Java Redis provider、固定Pacer policy与生命周期proof。</p></article>
+          <article class="card"><h3>JVM Contracts</h3><p>mechanical Owner、固定Pacer policy、生命周期与架构守卫。</p></article>
+          <article class="card"><h3>Redis Owner</h3><p>真实Redis范围、原子转换、跨Owner调用闭包与故障语义。</p></article>
           <article class="card"><h3>Runtime Boundary</h3><p>单一Java Server宿主、四个Java Pacer、Polling、WebSocket、Socket与DIRECT_CALL。</p></article>
           <article class="card"><h3>Capability Task / Android / Frontend</h3><p>普通有限Task、真实文件、Host assembly、Runtime Preview与公开诊断客户端proof。</p></article>
         </div>
 
         <div class="reading">
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/README.md"><b>Repository Architecture</b><br>跨模块authority、dispatch词义与主链。</a>
-          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/kernel_design/doc/README.md"><b>Kernel Owner Documents</b><br>score、resource、assignment、delivery与result truth。</a>
+          <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/doc/kernel/README.md"><b>Java Kernel Documents</b><br>score、resource、policy、delivery与result truth。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/server_jvm/README.md"><b>Server Runtime</b><br>provider matrix、use case边界与assembly。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/transport/README.md"><b>Transport Modules</b><br>Adapter、Worker Core、Java与Android physical implementations。</a>
           <a href="https://github.com/quiaingmuarua/xa_mass_platform/blob/main/TESTING.md"><b>Proof Lanes</b><br>每条CI lane究竟证明什么，以及不证明什么。</a>
@@ -952,7 +952,7 @@ Independent proof
     </main>
 
     <footer>
-      XA Mass Platform · Human-facing architecture projection · Canonical truth remains in executable and owner documents.
+      XA Mass Platform · Human-facing architecture projection · Canonical truth remains in production code and owner documents.
     </footer>
   </div>
 

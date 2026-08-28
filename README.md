@@ -102,16 +102,15 @@ resources, and Worker IDs remain Server-owned rather than Host-persisted.
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a
 scheduling coordinate rather than a resource lock, separate assignment and
 result-routing planes, the frozen Netty Adapter three-layer structure, and the
-Worker Client/Transport/Run Controller split. JVM parity, finite Server use
-cases and concrete endpoint handlers may evolve without moving those owners.
+Worker Client/Transport/Run Controller split. Mechanical providers, finite
+Server use cases and concrete endpoint handlers may evolve without moving
+those owners.
 
 ## Active Surfaces
 
-- [`kernel_design/`](kernel_design/) is the Python executable mechanism oracle,
-  current Kernel documentation and Redis proof surface.
-- [`kernel_jvm/`](kernel_jvm/) mirrors public owner contracts and selected Java
-  Redis providers, including the caller-driven Task commands used by Server,
-  Worker delivery owners and the Candidate Cache owner.
+- [`kernel_jvm/`](kernel_jvm/) owns the stable Java mechanical contracts and
+  Redis providers, including caller-driven Task commands, Worker delivery
+  owners, Score owners and the Candidate Cache owner.
 - [`kernel_pacer_jvm/`](kernel_pacer_jvm/) is the Kernel-owned policy and
   lifecycle module. Its sole externally supported entry assembles fixed-lane
   Result Convergence and Task-demand Dispatch Convergence over `kernel_jvm`
@@ -125,8 +124,7 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   Matched Runtime use cases use coarse `200/400/429/503` classes with detailed
   business codes; framework routing/protocol failures remain ordinary HTTP
   concerns, and Worker Delivery additionally retains its machine-protocol
-  `202/204` successes. It does not start Worker processes. Python exposes no
-  production HTTP surface.
+  `202/204` successes. It does not start Worker processes.
 - [`transport/`](transport/) contains the Java 11 delivery contract, Worker
   Core, Netty Adapter, Java Worker and Android Worker implementations.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) is the independently launched
@@ -186,7 +184,7 @@ Host.
 
 1. This cross-module authority contract.
 2. [Documentation Index](doc/README.md).
-3. [Kernel Design Workspace](kernel_design/README.md).
+3. [Java Kernel Authority](doc/kernel/README.md).
 4. [Proof Lanes](TESTING.md).
 5. The owning module README for the area being changed.
 
@@ -200,9 +198,6 @@ Commands, prerequisites and CI selection rules live in
 [TESTING.md](TESTING.md).
 
 ```text
-python -m unittest discover -s kernel_design/executable_spec/tests
-python -m compileall -q kernel_design/executable_spec
-
 ./gradlew --continue \
   :transport:worker-delivery-contract:build \
   :kernel_jvm:build \

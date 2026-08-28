@@ -11,10 +11,9 @@ boundary named below.
 
 | Lane | Invariant | External dependencies | Primary command |
 | --- | --- | --- | --- |
-| Kernel Oracle | Python executable spec remains the mechanism oracle | Redis 7 | `python -m unittest discover -s kernel_design/executable_spec/tests` |
-| JVM Contracts | JVM modules compile and their owner, opaque ResultContext codec, semantic Result event, internal Dispatch Mechanism, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
+| JVM Contracts | Java Kernel and other JVM modules compile; mechanical Owner, opaque ResultContext codec, semantic Result event, internal Dispatch Mechanism, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, evidence append/consume, polarity toggle and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | One Java Server context starts Result and Dispatch Convergence; without a Python child, a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
+| Runtime Boundary | One Java Server context starts Result and Dispatch Convergence without an auxiliary Kernel process; a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
@@ -83,7 +82,7 @@ capacity invariant.
 | Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
 | Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
 | Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, partial failure and reverse close | Worker Fleet | dynamic scaling or automatic reconcile |
-| Task and Result correlation | Kernel owner/oracle plus Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary and Capability Task | throughput SLA, per-Task fairness, soak or crash recovery |
+| Task and Result correlation | Java Kernel Owner, Pacer and Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary and Capability Task | throughput SLA, per-Task fairness, soak or crash recovery |
 | Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
 
 The separate `Worker Fleet` lane first starts Server and proves both JVM Group
@@ -131,8 +130,8 @@ sentinel survives. After the Spring context and its Pacers stop, cleanup uses
 cursor `SCAN` plus bounded `UNLINK` only
 for the exact run-owned scope; it never clears Redis DB 15.
 
-Redis Owner tests and Python Redis proofs generate the same kind of exact scope
-inside their fixtures. Worker Fleet, Capability Task, and Android Emulator CI set
+Redis Owner tests generate the same kind of exact scope inside their fixtures.
+Worker Fleet, Capability Task, and Android Emulator CI set
 `XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
 process trees, retain that scope across an intentional restart, then clean only
 that scope after all writers stop. A proof may share the URL and DB with a
@@ -151,15 +150,6 @@ ports. Server tests prove Spring delegation and Health projection.
 The configured Group/Task and Adapter assembly has an explicit higher
 lifecycle phase, so it starts after all Pacers and closes before them. The
 standalone Scenario Worker Host is outside the Spring lifecycle.
-
-The Python Kernel Oracle is a separate proof owner and still uses its explicit
-Redis test switch:
-
-```powershell
-$env:KERNEL_DESIGN_REDIS_URL = "redis://127.0.0.1:6379/15"
-python -m unittest discover -s kernel_design/executable_spec/tests
-python -m compileall -q kernel_design/executable_spec
-```
 
 Non-Android JVM contracts:
 
@@ -365,8 +355,9 @@ Representative selection rules:
   build, or Emulator driver changes also run Android Emulator Worker;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
   Worker Fleet, Capability Task, Android Host, and Android Emulator proofs;
-- Kernel executable-spec changes run the Oracle plus JVM parity, Redis,
-  Runtime, Worker Fleet, Capability Task, and Runtime Distribution proofs;
+- Kernel mechanical Owner changes run JVM Contracts, Redis Owner and their
+  downstream Runtime proofs; Pacer changes additionally select every
+  Java-hosted scheduling acceptance lane;
 - production inputs embedded in the Server archive run Runtime Distribution;
   test-only changes in those modules do not select it.
 - the committed OpenAPI snapshot selects JVM Contracts for drift, Frontend for

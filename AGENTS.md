@@ -8,8 +8,8 @@ agents change the repository; it is not the canonical mechanism narrative.
 
 ## Mainline
 
-- `kernel_design/` is the mechanism oracle.
-- `kernel_jvm/` is incremental contract/provider parity, not a second Kernel.
+- `kernel_jvm/` owns stable Java mechanical contracts, Redis providers and
+  score/resource mechanisms.
 - `kernel_pacer_jvm/` is the fixed Java production policy and Pacer lifecycle
   over `kernel_jvm` owners.
 - `server_jvm/` is the Runtime API and application assembly, not a scheduler.
@@ -31,10 +31,10 @@ or Task finality into Server or Transport.
 
 ## Trust Order
 
-1. `kernel_design/executable_spec/` code and focused tests.
-2. Verified Redis behavior.
-3. Current `kernel_design/doc/` owner contracts.
-4. Current module README and root architecture entrypoint.
+1. Java production Owner and Pacer code.
+2. Focused JVM tests and verified Redis behavior.
+3. Current Owner documents.
+4. Runtime Boundary and end-to-end proofs.
 5. Historical tag material only as failure-mode evidence.
 
 When code and a current document disagree, report and repair the drift. Do not
@@ -66,12 +66,12 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
 - Use focused owner tests first and real Redis proof for Redis concurrency or
   atomicity claims.
 
-## Kernel Design
+## Java Kernel
 
-`kernel_design/` owns clean mechanism contracts, Python executable
-specification, owner Redis providers and Kernel application assembly.
+[`doc/kernel/`](doc/kernel/) is the current Kernel documentation entry. Stable
+mechanical Owners live in `kernel_jvm`; production policy and finite Pacer
+lifecycle live in `kernel_pacer_jvm`.
 
-- Scope Kernel searches, diffs and Python tests to `kernel_design/` by default.
 - Task, TaskItem and Worker score truth remain independent.
 - Score is a scheduling coordinate, not a resource write lock.
 - Dispatch Policy may call a mechanical owner directly when the bounded
@@ -90,10 +90,8 @@ specification, owner Redis providers and Kernel application assembly.
   evidence is consumed only by the optional Worker Serviceability policy and
   its named event Mechanism.
 - All production Pacers run in `kernel_pacer_jvm` behind its finite
-  `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Python is
-  the standalone executable mechanism oracle only. Do not restore a Python
-  HTTP host, managed child process, Task business route, production launcher,
-  or Server fallback through Python.
+  `KernelPacerRuntime`; Server only adapts that lifecycle to Spring. Do not add
+  a second Kernel host, Task business fallback, or alternate Pacer runtime.
 - Result Convergence and Dispatch Convergence each have one fixed Java
   production application. Result Convergence owns the
   two Task lanes and optional Adapter Evidence lane. Its one coordinator owns
@@ -105,8 +103,8 @@ specification, owner Redis providers and Kernel application assembly.
   feeds only Task Initialization. Dispatch policies receive opaque Task, Item,
   Worker and sweep references and must not read Score coordinates or construct
   claimed Commands outside the exact dispatch mechanism.
-  Never run the Python Oracle against the same Redis scope as production.
-- Do not add Kotlin behavior without a named Python parity slice and proof.
+- Do not add another language implementation without a named migration slice,
+  one production owner and explicit proof of the cutover.
 
 The current scheduling scale contract is deliberately vertical:
 
@@ -133,17 +131,13 @@ remain fully utilized. Massive active Task/WorkerGroup cardinality,
 multi-tenant fairness, sharding and SaaS-scale isolation are separate future
 architectures.
 
-Read [kernel_design/AGENTS.md](kernel_design/AGENTS.md) before changing this
-workspace.
-
 ## Kernel JVM
 
 `kernel_jvm/` is the more stable Java 21 mechanical-owner module.
 
-- Mirror mechanical owner contracts exported by the Python Kernel package.
-  Java-production-only semantic Result event ports are the narrow exception:
-  they must have an explicit fixed Pacer caller, remain bounded, and compose
-  existing mechanical owners without adding Redis state or provider parity.
+- Keep public mechanical contracts caller-driven and bounded. Semantic Result
+  event ports must have an explicit fixed Pacer caller and compose existing
+  mechanical owners without adding Redis state or a second truth path.
 - Missing operations fail with `KernelOperationNotImplementedException`.
 - Java Redis operations live in the matching owner package.
 - Server connection/health packages must not own Redis keys.
@@ -152,9 +146,9 @@ workspace.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
-- Do not add Task score or owner behavior merely to improve parity percentage.
+- Do not add Task score or owner behavior merely to broaden an API surface.
 - Add a provider operation only with an explicit production caller and scoped
-  parity proof.
+  owner proof.
 
 ## Kernel Pacer JVM
 
@@ -172,8 +166,8 @@ kernel_jvm`.
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
   reflection, ServiceLoader or a second external runtime entry.
-- Keep Java policy behavior aligned with the Python executable mechanism
-  Oracle and prove Redis-sensitive behavior through the stable owner ports.
+- Prove policy behavior through focused Pacer tests and Redis-sensitive
+  behavior through the stable owner ports.
 
 ## Server JVM
 

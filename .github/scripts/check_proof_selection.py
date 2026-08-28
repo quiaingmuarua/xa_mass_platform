@@ -15,7 +15,6 @@ FILTERS_FILE = ROOT / ".github/proof-paths.yml"
 CONTRACT_FILE = ROOT / ".github/proof-selection-contract.json"
 WORKFLOW_FILE = ROOT / ".github/workflows/proof-ci.yml"
 EXPECTED_LANES = {
-    "kernel_oracle",
     "jvm_contracts",
     "redis_owner",
     "runtime_boundary",

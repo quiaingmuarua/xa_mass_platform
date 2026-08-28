@@ -40,6 +40,5 @@ replace focused owner proofs.
   families, and report schemas.
 - Projection-first assertions when the new owner exposes direct runtime truth.
 
-New Kotlin proof infrastructure should be introduced only with the owner slice
-it verifies and should retain the Python executable specification as the parity
-oracle during migration.
+New proof infrastructure should be introduced only with the Owner slice it
+verifies and must not create a second runtime truth path.

@@ -73,7 +73,7 @@ adb shell pm clear com.xa.mass.integration.androidworker
 
 The App owns the probe port and passes `18084` to the reusable HTTP module. It
 listens only on the device loopback address. This path does not require Redis,
-Python Kernel, Java Server, or an Adapter. Install and open the App, then
+the platform Kernel, Java Server, or an Adapter. Install and open the App, then
 forward a host loopback port to the device:
 
 ```powershell

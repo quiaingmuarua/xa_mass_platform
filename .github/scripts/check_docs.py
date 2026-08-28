@@ -18,14 +18,15 @@ REQUIRED_DOCS = {
     "doc/README.md": "Status: current",
     "AGENTS.md": "Status: current",
     "TESTING.md": "Status: current",
-    "kernel_design/README.md": "Status: current",
-    "kernel_design/doc/README.md": "Status: current",
+    "doc/kernel/README.md": "Status: current",
+    "kernel_jvm/README.md": "Status: stable",
+    "kernel_pacer_jvm/README.md": "Status: Kernel-owned",
     "server_jvm/README.md": "Status: current",
     "transport/README.md": "Status: repository-local",
 }
 REQUIRED_ROOT_LINKS = {
     "doc/README.md",
-    "kernel_design/README.md",
+    "doc/kernel/README.md",
     "TESTING.md",
     "AGENTS.md",
     "frontend/public/overview.htm",
@@ -69,6 +70,13 @@ FORBIDDEN_CURRENT_TERMS = {
     "ad:{prefix}",
     "ws:{prefix}",
     "wi:{prefix}",
+    "kernel_" + "design",
+    "executable" + "_spec",
+    "Python " + "Oracle",
+    "Kernel " + "Oracle",
+    "mechanism " + "oracle",
+    "kernel-" + "oracle",
+    "KERNEL_" + "DESIGN_REDIS_URL",
 }
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")

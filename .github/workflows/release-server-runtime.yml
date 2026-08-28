@@ -60,9 +60,9 @@ jobs:
         with:
           python-version: '3.11.3'
           cache: pip
-          cache-dependency-path: kernel_design/requirements.txt
+          cache-dependency-path: .github/scripts/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/requirements.txt
+        run: python -m pip install -r .github/scripts/requirements.txt
       - uses: pnpm/action-setup@v6.0.10
         with:
           version: 11.9.0

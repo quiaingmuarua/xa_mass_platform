@@ -18,8 +18,6 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -215,7 +213,7 @@ class KernelOwnerContractManifestTest {
             );
 
     @Test
-    void jvmContractsMatchTheSharedPythonOwnerManifest() throws Exception {
+    void jvmContractsMatchTheOwnerManifest() throws Exception {
         Map<String, Object> manifest = manifest();
         assertEquals(
                 manifest.get("contracts"),
@@ -227,7 +225,7 @@ class KernelOwnerContractManifestTest {
                 normalizeNumbers(enumValues())
         );
         assertEquals(
-                normalizeNumbers(sharedManifestConstants()),
+                normalizeNumbers(manifestConstants()),
                 constants()
         );
     }
@@ -347,7 +345,7 @@ class KernelOwnerContractManifestTest {
             try {
                 @SuppressWarnings("unchecked")
                 Map<String, Number> names =
-                        (Map<String, Number>) sharedManifestConstants()
+                        (Map<String, Number>) manifestConstants()
                                 .get(name);
                 for (String constantName : names.keySet()) {
                     Number value = (Number) type.getField(constantName)
@@ -363,7 +361,7 @@ class KernelOwnerContractManifestTest {
     }
 
     private static Map<String, Map<String, Number>>
-            sharedManifestConstants() {
+            manifestConstants() {
         var classes = Map.of(
                 "TaskRuntime", TaskRuntime.class,
                 "TaskScoreBandCore", TaskScoreBandCore.class,
@@ -403,13 +401,16 @@ class KernelOwnerContractManifestTest {
     }
 
     private static Map<String, Object> manifest() {
-        try {
+        try (var stream = KernelOwnerContractManifestTest.class
+                .getResourceAsStream("/kernel_owner_contract_manifest.json")) {
+            if (stream == null) {
+                throw new IllegalStateException(
+                        "Kernel owner contract manifest is not on classpath"
+                );
+            }
             ObjectMapper mapper = JsonMapper.builder().build();
             return mapper.readValue(
-                    Files.readString(Path.of(
-                            "../kernel_design/executable_spec/"
-                                    + "kernel_owner_contract_manifest.json"
-                    )),
+                    stream,
                     new TypeReference<LinkedHashMap<String, Object>>() {
                     }
             );

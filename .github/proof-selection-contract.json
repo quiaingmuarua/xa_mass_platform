@@ -17,9 +17,8 @@
       "reason": "A module document remains Docs-only even though its directory selects downstream implementation lanes."
     },
     {
-      "path": "kernel_design/executable_spec/kernel/worker_runtime.py",
+      "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/worker/WorkerRuntime.java",
       "lanes": [
-        "kernel_oracle",
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
@@ -27,12 +26,11 @@
         "worker_fleet",
         "runtime_distribution"
       ],
-      "reason": "Kernel mechanism changes require the oracle and every current JVM/runtime parity consumer."
+      "reason": "Kernel mechanical-owner changes require deterministic JVM, Redis, and every Java runtime consumer proof."
     },
     {
       "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java",
       "lanes": [
-        "kernel_oracle",
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
@@ -41,7 +39,7 @@
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Kernel Pacer policy or lifecycle changes reach the Oracle parity and every Java-hosted runtime proof."
+      "reason": "Kernel Pacer policy or lifecycle changes reach every Java-hosted runtime proof."
     },
     {
       "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
@@ -194,7 +192,6 @@
     {
       "path": ".github/workflows/proof-ci.yml",
       "lanes": [
-        "kernel_oracle",
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
@@ -210,7 +207,6 @@
     {
       "path": ".github/proof-paths.yml",
       "lanes": [
-        "kernel_oracle",
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",

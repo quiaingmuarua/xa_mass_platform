@@ -50,10 +50,9 @@ Configured deployment
 ```
 
 Task control, Task data, Worker resources, scheduling and delivery operations
-use Java Redis providers. Java owns every production Pacer. Python remains the
-standalone executable mechanism Oracle and exposes no production HTTP or child
-process surface. Missing JVM operations outside the production caller closure
-fail explicitly; there is no HTTP fallback or Server scheduler.
+use Java Redis providers. Java owns every production Pacer. Missing JVM
+operations outside the production caller closure fail explicitly; there is no
+HTTP fallback or Server scheduler.
 
 Provider ownership is deliberately mixed but explicit:
 
@@ -293,8 +292,8 @@ Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
 Runtime View may request one bounded `1..100` Worker scheduling observation.
 The existing Java `WorkerScoreCore.getScoreStates` owner operation performs one
 batch read; `WorkerSchedulingService` projects only facts derivable from that
-Score snapshot. No new Python Kernel HTTP route is involved. This projection is
-independent of Adapter connection, Binding and Task execution evidence.
+Score snapshot. This projection is independent of Adapter connection, Binding
+and Task execution evidence.
 
 ```text
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/
@@ -537,7 +536,7 @@ Serviceability evidence       10000 per Redis scope
 Spring Profile controls assembly while `xa.mass.redis.scope` controls the data
 boundary; the Redis DB number is not a profile or test discriminator. Scope
 syntax and the complete physical ABI are owned by the Kernel
-[Redis Keyspace contract](../kernel_design/doc/runtime-redis/redis-keyspace.md).
+[Redis Keyspace contract](../kernel_jvm/doc/runtime-redis/redis-keyspace.md).
 
 The optional Serviceability handoff uses
 `xa_mass:<scope>:worker:serviceability:adapter:<adapterId>:probe_requests` and
@@ -626,8 +625,8 @@ and the two Java convergence-application states.
 The two integration tasks use the checked `integration-test` profile with
 Redis at `redis://127.0.0.1:6379/15`. Runtime Boundary selects
 `RUNTIME_BOUNDARY_PROOF` and starts one Java Spring context and both Java
-convergence applications. No Python process or second host is started by the
-test operator.
+convergence applications. No auxiliary Kernel process or second host is
+started by the test operator.
 
 The finite lifecycle configuration is `xa.mass.kernel-pacer`: `enabled`,
 `preset`, and `shutdown-timeout`. Spring accepts the normal

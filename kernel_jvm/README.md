@@ -2,11 +2,10 @@
 
 Status: stable JVM Kernel owner contracts and mechanical Redis providers.
 
-`kernel_jvm` mirrors the production-call closure of the Python executable
-mechanism Oracle. It owns durable mechanical seams, not scheduling policy or
-background loops. Java contracts preserve the Python DTO fields, enum values,
-nullability and score constants; unsupported provider operations fail with
-`KernelOperationNotImplementedException` rather than a no-op or fallback.
+`kernel_jvm` owns the production-call closure of the Java Kernel mechanical
+layer. It provides durable contracts and Redis state transitions, not
+scheduling policy or background loops. Unsupported provider operations fail
+with `KernelOperationNotImplementedException` rather than a no-op or fallback.
 
 ## Ownership
 
@@ -57,11 +56,13 @@ Operations outside the production caller closure remain explicit gaps.
 `kernel_jvm` has no Spring, HTTP, Pacer thread or policy configuration
 dependency. It never depends on `kernel_pacer_jvm` or `server_jvm`.
 
-The shared
-[`kernel_owner_contract_manifest.json`](../kernel_design/executable_spec/kernel_owner_contract_manifest.json)
-is parity evidence, not source generation or an external protocol. Python
-remains the standalone mechanism Oracle; there is no Python production process,
-remote fallback or dual owner.
+The
+[`kernel_owner_contract_manifest.json`](src/test/resources/kernel_owner_contract_manifest.json)
+is the Java public-contract snapshot guard. It is not source generation or an
+external protocol. There is no remote fallback or dual owner.
+
+Current mechanical Owner documents live under [`doc/`](doc/); the complete
+Kernel index is [`doc/kernel/README.md`](../doc/kernel/README.md).
 
 Build:
 

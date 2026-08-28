@@ -537,7 +537,6 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("ResultConvergenceApplication")
                 .doesNotContain("DispatchConvergenceApplication")
                 .doesNotContain("ProcessBuilder")
-                .doesNotContain("kernel_design.executable_spec.assembly")
                 .doesNotContain("RestClient");
         assertThat(readSources(KERNEL_PACER_ASSEMBLY))
                 .contains("KernelPacerRuntime")

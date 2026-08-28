@@ -6,8 +6,8 @@ Status: current repository document index.
 
 1. [Repository Entry](../README.md) defines cross-module authority, dispatch
    vocabulary and the TASK/DIRECT_CALL paths.
-2. [Kernel Design Workspace](../kernel_design/README.md) leads to executable
-   mechanism truth and owner documents.
+2. [Java Kernel Authority](kernel/README.md) indexes the mechanical Owner,
+   scheduling Policy and cross-module Kernel documents.
 3. [Proof Lanes](../TESTING.md) defines what each deterministic, Redis-backed,
    cross-process, Android and frontend lane proves.
 4. [Agent Handoff](../AGENTS.md) defines repository change rules and forbidden
@@ -17,8 +17,9 @@ Status: current repository document index.
 
 ## Owner Documents
 
-- [Kernel documents](../kernel_design/doc/README.md)
-- [JVM Kernel parity](../kernel_jvm/README.md)
+- [Java Kernel authority](kernel/README.md)
+- [Kernel mechanical owners](../kernel_jvm/README.md)
+- [Kernel Pacer policy](../kernel_pacer_jvm/README.md)
 - [Runtime API Server](../server_jvm/README.md)
 - [Transport](../transport/README.md)
 - [Transport Platform Event Catalog](../transport/EVENTS.md)
