@@ -74,7 +74,12 @@ specification, owner Redis providers and Kernel application assembly.
 - Scope Kernel searches, diffs and Python tests to `kernel_design/` by default.
 - Task, TaskItem and Worker score truth remain independent.
 - Score is a scheduling coordinate, not a resource write lock.
-- Policy calls conservative owner operations; it does not widen owner APIs.
+- Dispatch Policy may call a mechanical owner directly when the bounded
+  decision and operation already belong to that owner. Add a finite internal
+  Mechanism only when one legal transition composes owners or must protect an
+  opaque exact fence; never add one merely to hide a direct call. Mechanisms
+  must not absorb priority, matching, deficit, retry cadence or lane lifecycle
+  policy.
 - Result Routing Policy owns evidence parsing, bounded grouping and semantic
   event publication; Transport only carries evidence. Finite TaskItem, Worker
   execution and Worker Serviceability Mechanism ports decide which legal
@@ -95,11 +100,38 @@ specification, owner Redis providers and Kernel application assembly.
   shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
   and Task FAILURE may borrow idle capacity for concurrent owner-fenced Batches,
   while Adapter Evidence remains single-flight. Dispatch Convergence owns one
-  bounded RUNNING Task source with NORMAL and INITIAL projections. NORMAL feeds
-  Allocation, Task Dispatch and optional Serviceability; INITIAL feeds only
-  Task Initialization.
+  bounded Redis-time RUNNING Task observation and fixed NORMAL/INITIAL fan-out.
+  NORMAL feeds Allocation, Task Dispatch and optional Serviceability; INITIAL
+  feeds only Task Initialization. Dispatch policies receive opaque Task, Item,
+  Worker and sweep references and must not read Score coordinates or construct
+  claimed Commands outside the exact dispatch mechanism.
   Never run the Python Oracle against the same Redis scope as production.
 - Do not add Kotlin behavior without a named Python parity slice and proof.
+
+The current scheduling scale contract is deliberately vertical:
+
+```text
+small bounded active Task set
+  -> each Task may contain many TaskItems
+  -> each finite WorkerGroup may contain many Workers
+```
+
+The liveness target is work-conserving convergence, not per-Task fairness:
+
+- fully occupied compatible Workers that keep completing assigned work are
+  normal backpressure;
+- bounded scan, exact CAS and Candidate refill may create short convergence
+  delay;
+- persistently due work plus persistently available compatible Workers that
+  still cannot form any assignment across repeated eligible rounds is a
+  scheduling liveness defect.
+
+A full Task page alone does not classify the condition: check whether compatible
+Worker capacity is actually idle. Do not add Task rotation, tenant fairness or
+global Group discovery merely because some Tasks wait while available Workers
+remain fully utilized. Massive active Task/WorkerGroup cardinality,
+multi-tenant fairness, sharding and SaaS-scale isolation are separate future
+architectures.
 
 Read [kernel_design/AGENTS.md](kernel_design/AGENTS.md) before changing this
 workspace.

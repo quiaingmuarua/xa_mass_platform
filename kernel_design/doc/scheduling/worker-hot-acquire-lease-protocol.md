@@ -71,7 +71,8 @@ When Worker Serviceability is enabled, both reads exclude scores below that
 Kernel process's HOT eligibility floor. With no Serviceability configuration,
 the optional floor is absent and the original full positive range remains.
 
-`WorkerCandidateAcquirer` exposes separate source semantics:
+`WorkerCandidateMechanism` exposes separate bounded observation and exact-fence
+semantics while `WorkerCandidateSelectionPolicy` owns matching and selection:
 
 ```text
 acquire_hot_pool_candidates
@@ -81,17 +82,18 @@ DIRECT with an Item-owned rule
   empty rule: one bounded due-HOT WorkerGroup score query
   non-empty rule: bounded Worker ids from workerId $eq/$equal/$in
   non-empty rule without a Worker-id source fails closed
-  complete point pre-match over explicit ids and index.* projections
+  complete point pre-match over canonical Worker descriptors
   use Group-query scores or observe only pre-matched explicit Workers
   exact lease at most requestedCount Workers per request
   complete post-lease rematch
 ```
 
-Neither HOT-pool nor DIRECT acquisition reads or writes candidate cache; the
-allocation Pacer owns publication. Each call is scoped to one explicit
-WorkerGroup and one score ZSET. Every accepted Worker still passes exact lease
-and full allocation-rule matching; explicit index fields are point-loaded only
-for that bounded Worker-id set.
+HOT-pool and DIRECT observation do not read Candidate Cache; PRECOMPUTED does.
+Allocation cache publication also goes through the Mechanism. Each call is
+scoped to one explicit WorkerGroup and one score ZSET. Policy first matches and
+selects bounded observations, then Mechanism exact-leases only those Workers,
+reloads canonical descriptors, and returns opaque lease references for the
+required post-lease rematch.
 
 Pre-match failures do not receive a lease. Post-lease mismatches and candidate
 publication failures are not actively released; their short leases expire
@@ -131,10 +133,11 @@ The returned fence, unchanged or renewed, is written into
 `forward`.
 
 PRECOMPUTED miss or rejected evidence never falls back to DIRECT acquisition.
-`TaskItemDispatcher` never calls Worker score directly. It chooses one path
-from `TaskDescriptor.workerAllocationMechanism`: PRECOMPUTED for Task-owned
-rules or DIRECT for Item-owned rules. Neither the Dispatcher nor PRECOMPUTED acquisition
-decodes scores, clears dirty, or releases rejected candidates.
+`TaskDispatchPolicy` chooses one path from
+`TaskDescriptor.workerAllocationMechanism`: PRECOMPUTED for Task-owned rules or
+DIRECT for Item-owned rules. It receives only opaque candidate/lease
+references; neither Policy path decodes scores, clears dirty, or releases
+rejected candidates.
 
 ## Dirty Fence
 
@@ -234,12 +237,11 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateAcquirer HOT pool | bounded due-HOT scan, exact lease and full match for precomputation | no cache read/write |
-| WorkerCandidateAcquirer DIRECT | bounded Group score source for `{}` or request-local WorkerId source for explicit rules, point pre-match, exact lease and post-lease rematch | no descriptor scan, index discovery, cache read/write or fallback |
-| WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
-| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, acquire HOT-pool candidates and publish cache evidence | no Task discovery, Task-score write or result handling |
-| TaskItemDispatcher | resolve PRECOMPUTED/DIRECT from immutable WorkerAllocationMechanism, preserve binding, claim Item and build DeliveryCommand | no Task-score, mailbox, cache or Worker-score access |
-| TaskDispatchPolicy | bounded Task batch, suffix routing, mailbox publication and Task-score pacing | no direct Candidate Cache or Worker-score access |
+| WorkerCandidateMechanism | bounded HOT/point observations, cached opaque lease correlation, exact lease/renew and canonical descriptor reload | no priority, deficit, rule decision or fallback |
+| WorkerCandidateSelectionPolicy | request priority, bounded candidate choice, complete pre/post match and PRECOMPUTED/DIRECT strategy | no Score or lease internals |
+| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits and request Candidate publication | no Task discovery, Task-score write or result handling |
+| TaskExecutionMechanism | Item observation/finality, Worker fence verification, Item claim, Command publication and Task pacing/idle transitions | no expiry, pairing, limit or idle-disposition policy |
+| TaskDispatchPolicy | bounded Task batch, expiry/exhaustion, pairing, per-Task limit and idle-disposition choice | no Score, Candidate Cache, Command Runtime or ResultContext access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |
@@ -258,8 +260,10 @@ payload.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
 - Do not let PRECOMPUTED acquisition fall back to DIRECT acquisition.
-- Do not let TaskItemDispatcher or TaskDispatchPolicy call WorkerScoreCore
-  directly.
+- Do not let a Dispatch Policy call WorkerScoreCore, TaskScoreBandCore,
+  TaskItemScoreBandCore or WorkerCommandRuntime directly. A bounded
+  CandidateWorkerCache count read may remain in Allocation Policy because it
+  neither exposes a Score nor composes owners.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as Adapter rejection.
 - Do not let old result evidence mutate a newer Worker lease.

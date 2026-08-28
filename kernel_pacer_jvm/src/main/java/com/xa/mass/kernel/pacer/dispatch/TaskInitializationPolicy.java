@@ -1,23 +1,15 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.score.TaskItemScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
+import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 final class TaskInitializationPolicy {
 
-    private final TaskScoreBandCore taskScore;
-    private final TaskItemScoreBandCore itemScore;
+    private final TaskSchedulingMechanism mechanism;
 
-    TaskInitializationPolicy(
-            TaskScoreBandCore taskScore,
-            TaskItemScoreBandCore itemScore
-    ) {
-        this.taskScore = Objects.requireNonNull(taskScore, "taskScore");
-        this.itemScore = Objects.requireNonNull(itemScore, "itemScore");
+    TaskInitializationPolicy(TaskSchedulingMechanism mechanism) {
+        this.mechanism = Objects.requireNonNull(mechanism, "mechanism");
     }
 
     int initializeTasks(List<DueTaskObservation> tasks) {
@@ -25,23 +17,21 @@ final class TaskInitializationPolicy {
         if (tasks.isEmpty()) {
             return 0;
         }
-        List<String> taskIds = tasks.stream()
-                .map(DueTaskObservation::taskId)
+        List<TaskSchedulingObservation> observations = tasks.stream()
+                .map(TaskInitializationPolicy::schedulingObservation)
                 .toList();
-        Map<String, Boolean> due = itemScore.hasDueActiveItems(taskIds);
-        int initialized = 0;
-        for (DueTaskObservation task : tasks) {
-            if (!due.getOrDefault(task.taskId(), false)) {
-                continue;
-            }
-            var result = taskScore.promoteObservedInitialTask(
-                    task.taskId(),
-                    task.scoreState().score()
-            );
-            if (result.status() == TaskScoreTransitionStatus.TRANSITIONED) {
-                initialized++;
-            }
-        }
-        return initialized;
+        return mechanism.onInitializationReady(
+                mechanism.observeInitializationReady(observations)
+        );
+    }
+
+    private static TaskSchedulingObservation schedulingObservation(
+            DueTaskObservation task
+    ) {
+        return new TaskSchedulingObservation(
+                task.taskId(),
+                task.descriptor(),
+                task.reference()
+        );
     }
 }

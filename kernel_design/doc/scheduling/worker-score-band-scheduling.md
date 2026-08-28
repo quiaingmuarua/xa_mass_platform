@@ -1192,9 +1192,9 @@ slot registry redesign
   execution slot; physical concurrency is multiple logical WorkerIds.
 - Do not release an active Worker lease early to simulate immediate slot reuse
   or assign independent Items concurrently to one WorkerId.
-- WorkerCandidateAcquirer owns HOT observations and lease transitions. Matcher
-  may receive leased scores only as opaque values used to construct
-  CandidateWorkerEntry; it must not decode or mutate them.
+- WorkerCandidateMechanism owns HOT observations and exact lease transitions.
+  Selection Policy and Matcher receive only opaque candidate/lease references;
+  they must not decode, print, construct or mutate scores.
 - Where an operation explicitly requires `observedScore`, do not trim it to
   time/laneRank/dirty. It remains the full signed score and callers must not
   construct or decode it.

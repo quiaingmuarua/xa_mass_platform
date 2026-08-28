@@ -5,19 +5,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreState;
+import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.NormalTaskObservationPage;
+import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -30,15 +32,36 @@ import org.junit.jupiter.api.Test;
 class DispatchConvergenceApplicationTest {
 
     @Test
+    void rawNormalPageExhaustsBudgetBeforeInitialProjection() {
+        TaskSchedulingMechanism scheduling = mock(
+                TaskSchedulingMechanism.class
+        );
+        when(scheduling.observeNormalTasks(100)).thenReturn(
+                new NormalTaskObservationPage(100, 1_000, List.of())
+        );
+
+        Map<DispatchLaneId, List<DueTaskObservation>> routed =
+                new DispatchTaskBatchFanout(scheduling).acquireFor(
+                        EnumSet.of(
+                                DispatchLaneId.TASK_INITIALIZATION,
+                                DispatchLaneId.TASK_DISPATCH
+                        ),
+                        100
+                );
+
+        assertEquals(Map.of(), routed);
+        verify(scheduling, never()).observeInitialTasks(anyInt());
+    }
+
+    @Test
     void sharesOneRunningBatchAcrossThreeVirtualThreadLanes()
             throws Exception {
         Fixture fixture = fixture();
-        List<DueTaskObservation> batch = List.of(observation());
-        when(fixture.source.acquireTasks(anyInt(), anyBoolean(), anyBoolean()))
-                .thenReturn(new TaskSchedulingBatchSource.TaskSchedulingBatch(
-                        batch,
-                        batch
-                ));
+        List<TaskSchedulingObservation> batch = List.of(observation());
+        when(fixture.scheduling.observeNormalTasks(anyInt()))
+                .thenReturn(new NormalTaskObservationPage(1, 1_000, batch));
+        when(fixture.scheduling.observeInitialTasks(anyInt()))
+                .thenReturn(batch);
         CountDownLatch rounds = new CountDownLatch(4);
         AtomicBoolean allVirtual = new AtomicBoolean(true);
         doAnswer(ignored -> complete(rounds, allVirtual))
@@ -58,7 +81,8 @@ class DispatchConvergenceApplicationTest {
 
         assertTrue(rounds.await(2, TimeUnit.SECONDS));
         assertTrue(allVirtual.get());
-        verify(fixture.source).acquireTasks(100, true, true);
+        verify(fixture.scheduling).observeNormalTasks(100);
+        verify(fixture.scheduling).observeInitialTasks(99);
         assertTrue(fixture.application.isRunning());
         assertThrows(IllegalStateException.class, () ->
                 fixture.application.start(
@@ -96,7 +120,28 @@ class DispatchConvergenceApplicationTest {
     }
 
     @Test
-    void blockedAllocationDoesNotBlockOtherRunningLanesOrConsumeItselfAgain()
+    void persistentlyDueNormalTaskIsRediscoveredAcrossDispatchCadences()
+            throws Exception {
+        Fixture fixture = fixture();
+        stubNormalBatch(fixture);
+        CountDownLatch dispatchRounds = new CountDownLatch(3);
+        doAnswer(ignored -> {
+            dispatchRounds.countDown();
+            return 1;
+        }).when(fixture.dispatch).dispatchTasks(any(), any());
+
+        fixture.application.start(
+                fastAssignment(),
+                WorkerServiceabilityDispatchAssemblyConfig.disabled()
+        );
+
+        assertTrue(dispatchRounds.await(2, TimeUnit.SECONDS));
+        verify(fixture.scheduling, atLeast(3)).observeNormalTasks(100);
+        fixture.application.stop(2_000);
+    }
+
+    @Test
+    void blockedAllocationDoesNotBlockOtherRunningLanesOrReenter()
             throws Exception {
         Fixture fixture = fixture();
         stubNormalBatch(fixture);
@@ -166,11 +211,7 @@ class DispatchConvergenceApplicationTest {
     }
 
     private static AssignmentDispatchConfig oneShotAssignment() {
-        return AssignmentDispatchConfig.create(
-                10_000,
-                10_000,
-                10_000
-        );
+        return AssignmentDispatchConfig.create(10_000, 10_000, 10_000);
     }
 
     private static WorkerServiceabilityDispatchAssemblyConfig
@@ -185,35 +226,33 @@ class DispatchConvergenceApplicationTest {
         );
     }
 
-    private static DueTaskObservation observation() {
+    private static TaskSchedulingObservation observation() {
         String taskId = "task-1";
-        return new DueTaskObservation(
+        return new TaskSchedulingObservation(
                 taskId,
-                new TaskScoreState(
-                        taskId,
-                        1,
-                        TaskScoreBand.RUNNING_VISIBLE,
-                        100L,
-                        0
-                ),
-                new TaskDescriptor(
-                        taskId,
-                        "group-1",
-                        WorkerAllocationMechanism.DIRECT_ITEM_RULE,
-                        TaskIdleDisposition.PARK_WHEN_IDLE,
-                        null,
-                        Map.of(
-                                "priority", "0",
-                                "maximumCandidateWorkers", "1",
-                                "maxRetryTimes", "1"
-                        )
+                descriptor(taskId),
+                mock(TaskSchedulingReference.class)
+        );
+    }
+
+    private static TaskDescriptor descriptor(String taskId) {
+        return new TaskDescriptor(
+                taskId,
+                "group-1",
+                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                TaskIdleDisposition.PARK_WHEN_IDLE,
+                null,
+                Map.of(
+                        "priority", "0",
+                        "maximumCandidateWorkers", "1",
+                        "maxRetryTimes", "1"
                 )
         );
     }
 
     private static Fixture fixture() {
-        TaskSchedulingBatchSource source = mock(
-                TaskSchedulingBatchSource.class
+        TaskSchedulingMechanism scheduling = mock(
+                TaskSchedulingMechanism.class
         );
         TaskInitializationPolicy initialization = mock(
                 TaskInitializationPolicy.class
@@ -227,13 +266,13 @@ class DispatchConvergenceApplicationTest {
         );
         return new Fixture(
                 new DispatchConvergenceApplication(
-                        source,
+                        scheduling,
                         initialization,
                         allocation,
                         dispatch,
                         serviceability
                 ),
-                source,
+                scheduling,
                 initialization,
                 allocation,
                 dispatch,
@@ -242,11 +281,14 @@ class DispatchConvergenceApplicationTest {
     }
 
     private static void stubNormalBatch(Fixture fixture) {
-        when(fixture.source.acquireTasks(anyInt(), anyBoolean(), anyBoolean()))
-                .thenReturn(new TaskSchedulingBatchSource.TaskSchedulingBatch(
-                        List.of(observation()),
-                        List.of()
+        when(fixture.scheduling.observeNormalTasks(anyInt()))
+                .thenReturn(new NormalTaskObservationPage(
+                        1,
+                        1_000,
+                        List.of(observation())
                 ));
+        when(fixture.scheduling.observeInitialTasks(anyInt()))
+                .thenReturn(List.of());
     }
 
     private static void await(
@@ -262,7 +304,7 @@ class DispatchConvergenceApplicationTest {
 
     private record Fixture(
             DispatchConvergenceApplication application,
-            TaskSchedulingBatchSource source,
+            TaskSchedulingMechanism scheduling,
             TaskInitializationPolicy initialization,
             TaskWorkerAllocationPolicy allocation,
             TaskDispatchPolicy dispatch,

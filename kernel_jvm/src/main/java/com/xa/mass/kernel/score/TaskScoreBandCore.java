@@ -43,7 +43,7 @@ public interface TaskScoreBandCore {
 
     int countRunningTasks();
 
-    List<String> acquireDispatchWorkTasks(int limit);
+    TaskScoreScanPage acquireDispatchWorkTasks(int limit);
 
     List<String> acquireInitialRunningTasks(int limit);
 
@@ -159,6 +159,30 @@ public interface TaskScoreBandCore {
                     && suffix == MIN_SUFFIX
                     && timeMillis >= NORMAL_TIME_MIN_MILLIS
                     && timeMillis < currentSlotMillis;
+        }
+    }
+
+    record TaskScoreScanPage(
+            long readAtMillis,
+            List<String> taskIds
+    ) {
+        public TaskScoreScanPage {
+            if (readAtMillis < 0) {
+                throw new IllegalArgumentException(
+                        "readAtMillis must not be negative"
+                );
+            }
+            taskIds = List.copyOf(Objects.requireNonNull(
+                    taskIds,
+                    "taskIds"
+            ));
+            if (taskIds.stream().anyMatch(
+                    taskId -> taskId == null || taskId.isBlank()
+            )) {
+                throw new IllegalArgumentException(
+                        "taskIds must contain only non-blank values"
+                );
+            }
         }
     }
 

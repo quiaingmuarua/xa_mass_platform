@@ -367,7 +367,7 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public List<String> acquireDispatchWorkTasks(int limit) {
+        public TaskScoreScanPage acquireDispatchWorkTasks(int limit) {
             throw unsupported();
         }
 

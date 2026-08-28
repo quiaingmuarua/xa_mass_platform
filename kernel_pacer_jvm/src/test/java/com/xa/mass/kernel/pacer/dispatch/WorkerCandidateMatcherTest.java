@@ -1,12 +1,9 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,83 +13,53 @@ import org.junit.jupiter.api.Test;
 class WorkerCandidateMatcherTest {
 
     @Test
-    void matchesBoundedDescriptorsByPriorityAndUsesEachWorkerOnce() {
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        when(catalog.getWorkerDescriptors("group-1", List.of("w1", "w2")))
-                .thenReturn(Map.of(
-                        "w1",
-                        descriptor("w1", "cn", 80),
-                        "w2",
-                        descriptor("w2", "us", 50)
-                ));
-        WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(catalog);
+    void matchesCanonicalPropertiesAndKeepsWorkersUniqueByPriority() {
+        WorkerCandidateObservation east = worker("worker-east", "east");
+        WorkerCandidateObservation west = worker("worker-west", "west");
         LinkedHashMap<String, WorkerCandidateRequest> requests =
                 new LinkedHashMap<>();
-        requests.put("later", new WorkerCandidateRequest(
-                20,
-                2,
-                Map.of("worker.region", Map.of("$in", List.of("cn", "us")))
-        ));
-        requests.put("first", new WorkerCandidateRequest(
-                10,
+        requests.put("preferred", new WorkerCandidateRequest(
+                0,
                 1,
-                Map.of("worker.battery", Map.of("$gte", 60))
+                Map.of("worker.region", Map.of("$eq", "east"))
+        ));
+        requests.put("fallback", new WorkerCandidateRequest(
+                1,
+                2,
+                Map.of()
         ));
 
-        var result = matcher.matchExplicitWorkerCandidates(
-                "group-1",
-                Map.of("w1", 101L, "w2", 102L),
-                Map.of(
-                        "first", List.of("w1", "w2"),
-                        "later", List.of("w1", "w2")
-                ),
-                requests
-        );
+        Map<String, List<WorkerCandidateObservation>> matched =
+                new WorkerCandidateMatcher().match(
+                        "group-1",
+                        Map.of(
+                                "preferred", List.of(east, west),
+                                "fallback", List.of(east, west)
+                        ),
+                        requests,
+                        true,
+                        true
+                );
 
-        assertEquals(List.of("later", "first"), List.copyOf(result.keySet()));
-        assertEquals(
-                List.of("w1"),
-                result.get("first").stream().map(
-                        CandidateWorkerCache.CandidateWorkerEntry::workerId
-                ).toList()
-        );
-        assertEquals(
-                List.of("w2"),
-                result.get("later").stream().map(
-                        CandidateWorkerCache.CandidateWorkerEntry::workerId
-                ).toList()
-        );
+        assertEquals(List.of(east), matched.get("preferred"));
+        assertEquals(List.of(west), matched.get("fallback"));
     }
 
-    @Test
-    void rejectsIndexRulesWithoutExpandingTheBoundedRead() {
-        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
-        WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(catalog);
-
-        var result = matcher.filterCandidateWorkerIds(
-                "group-1",
-                Map.of("candidate", List.of("w1")),
-                Map.of("candidate", new WorkerCandidateRequest(
-                        1,
-                        1,
-                        Map.of("index.worker.region", Map.of("$eq", "cn"))
-                ))
-        );
-
-        assertTrue(result.get("candidate").isEmpty());
-    }
-
-    private static WorkerDescriptor descriptor(
+    private static WorkerCandidateObservation worker(
             String workerId,
-            String region,
-            int battery
+            String region
     ) {
-        return new WorkerDescriptor(
+        return new WorkerCandidateObservation(
                 workerId,
                 "group-1",
-                "adapter-1",
-                Map.of("region", region, "battery", battery),
-                Map.of("pool", "default")
+                new WorkerDescriptor(
+                        workerId,
+                        "group-1",
+                        "adapter-1",
+                        Map.of("region", region),
+                        Map.of()
+                ),
+                mock(WorkerCandidateReference.class)
         );
     }
 }

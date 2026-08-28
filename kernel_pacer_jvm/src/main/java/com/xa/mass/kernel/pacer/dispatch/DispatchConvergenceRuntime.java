@@ -52,26 +52,48 @@ public final class DispatchConvergenceRuntime {
     public static DispatchConvergenceRuntime assemble(
             PolicyPreset preset,
             long hotEligibilityFloorMillis,
-            TaskRuntime taskRuntime,
             TaskScoreBandCore taskScores,
             TaskItemScoreBandCore itemScores,
             TaskResourceCatalog taskCatalog,
+            CandidateWorkerCache candidateCache,
             WorkerScoreCore workerScores,
             WorkerResourceCatalog workerCatalog,
+            TaskRuntime taskRuntime,
             WorkerCommandRuntime workerCommands,
             WorkerServiceabilityRuntime serviceability,
-            CandidateWorkerCache candidateCache
+            ResultContextCodec resultContextCodec
     ) {
         Objects.requireNonNull(preset, "preset");
-        Objects.requireNonNull(taskRuntime, "taskRuntime");
-        Objects.requireNonNull(taskScores, "taskScores");
-        Objects.requireNonNull(itemScores, "itemScores");
-        Objects.requireNonNull(taskCatalog, "taskCatalog");
-        Objects.requireNonNull(workerScores, "workerScores");
-        Objects.requireNonNull(workerCatalog, "workerCatalog");
-        Objects.requireNonNull(workerCommands, "workerCommands");
-        Objects.requireNonNull(serviceability, "serviceability");
-        Objects.requireNonNull(candidateCache, "candidateCache");
+        TaskSchedulingMechanism taskScheduling =
+                new DefaultTaskSchedulingMechanism(
+                        taskScores,
+                        itemScores,
+                        taskCatalog
+                );
+        WorkerCandidateMechanism candidateMechanism =
+                new DefaultWorkerCandidateMechanism(
+                        candidateCache,
+                        workerScores,
+                        workerCatalog
+                );
+        TaskExecutionMechanism taskExecution =
+                new DefaultTaskExecutionMechanism(
+                        taskScores,
+                        itemScores,
+                        workerScores,
+                        taskRuntime,
+                        workerCommands,
+                        resultContextCodec
+                );
+        WorkerServiceabilityDispatchMechanism serviceabilityMechanism =
+                new DefaultWorkerServiceabilityDispatchMechanism(
+                        workerScores,
+                        workerCatalog
+                );
+        Objects.requireNonNull(
+                resultContextCodec,
+                "resultContextCodec"
+        );
 
         AssignmentDispatchConfig assignment = assignmentConfigForPreset(
                 preset
@@ -81,14 +103,10 @@ public final class DispatchConvergenceRuntime {
                         preset,
                         hotEligibilityFloorMillis
                 );
-        WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(
-                workerCatalog
-        );
-        WorkerCandidateAcquirer candidateAcquirer =
-                new WorkerCandidateAcquirer(
-                        candidateCache,
-                        workerScores,
-                        matcher,
+        WorkerCandidateSelectionPolicy candidateSelection =
+                new WorkerCandidateSelectionPolicy(
+                        candidateMechanism,
+                        new WorkerCandidateMatcher(),
                         AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
                         serviceabilityConfig.enabled()
                                 ? serviceabilityConfig
@@ -97,35 +115,24 @@ public final class DispatchConvergenceRuntime {
                 );
         TaskWorkerAllocationPolicy allocation =
                 new TaskWorkerAllocationPolicy(
-                        candidateAcquirer,
+                        candidateSelection,
+                        candidateMechanism,
                         candidateCache
                 );
         TaskInitializationPolicy initialization =
-                new TaskInitializationPolicy(taskScores, itemScores);
-        TaskItemDispatcher itemDispatcher = new TaskItemDispatcher(
-                itemScores,
-                taskRuntime,
-                candidateAcquirer,
-                new ResultContextCodec()
-        );
+                new TaskInitializationPolicy(taskScheduling);
         TaskDispatchPolicy dispatch = new TaskDispatchPolicy(
-                taskScores,
-                workerCommands,
-                itemScores,
-                itemDispatcher
+                taskExecution,
+                candidateSelection
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 new WorkerServiceabilityDispatchPolicy(
-                        workerScores,
-                        workerCatalog,
+                        serviceabilityMechanism,
                         serviceability
                 );
         DispatchConvergenceApplication application =
                 new DispatchConvergenceApplication(
-                        new TaskSchedulingBatchSource(
-                                taskScores,
-                                taskCatalog
-                        ),
+                        taskScheduling,
                         initialization,
                         allocation,
                         dispatch,

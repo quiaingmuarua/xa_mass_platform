@@ -335,14 +335,19 @@ TaskScoreBandCore.acquire_initial_running_tasks(limit)
 Worker allocation:
 
 ```text
-TaskSchedulingBatchSource.acquire_tasks(... normal=true ...)
-  -> verify due NORMAL RUNNING suffix-zero Score and Descriptor once
-  -> share immutable DueTaskObservation[] with allocation and dispatch
+DispatchTaskBatchFanout
+  -> TaskSchedulingMechanism.observeNormalTasks using Redis scan time
+  -> verify due NORMAL RUNNING Score and Descriptor once
+  -> calculate the remaining fixed source budget
+  -> TaskSchedulingMechanism.observeInitialTasks only for that remainder
+  -> expose only an opaque TaskSchedulingReference
+  -> share immutable DueTaskObservation[] through fixed fan-out
   -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
-  -> bounded HOT-pool lease/match
-  -> append candidate evidence
+  -> WorkerCandidateSelectionPolicy matches and chooses bounded Workers
+  -> WorkerCandidateMechanism exact-leases, reloads canonical descriptors,
+     rematches, and appends Candidate evidence
 ```
 
 Every initialized Task enters NORMAL `RUNNING_VISIBLE` with suffix `0`. When the complete

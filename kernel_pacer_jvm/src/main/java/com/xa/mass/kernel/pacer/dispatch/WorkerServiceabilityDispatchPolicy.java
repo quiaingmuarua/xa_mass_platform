@@ -1,15 +1,10 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.score.WorkerScoreCore;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreObservation;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.pacer.dispatch.WorkerServiceabilityDispatchMechanism.ServiceabilityPolarity;
+import com.xa.mass.kernel.pacer.dispatch.WorkerServiceabilityDispatchMechanism.WorkerServiceabilityObservation;
+import com.xa.mass.kernel.pacer.dispatch.WorkerServiceabilityDispatchMechanism.WorkerSweepPage;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
-import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime
-        .ProbeRequestOfferStatus;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
+import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime.ProbeRequestOfferStatus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,44 +16,30 @@ import java.util.function.LongSupplier;
 
 final class WorkerServiceabilityDispatchPolicy {
 
-    private final WorkerScoreCore workerScore;
-    private final WorkerResourceCatalog workerCatalog;
-    private final WorkerServiceabilityRuntime runtime;
+    private final WorkerServiceabilityDispatchMechanism mechanism;
+    private final WorkerServiceabilityRuntime serviceability;
     private final LongSupplier currentTimeMillis;
-    private final Map<String, ProbeScoreSweep> hotSweeps =
-            new LinkedHashMap<>();
-    private final Map<String, ProbeScoreSweep> recoverySweeps =
+    private final LinkedHashMap<String, GroupSweepState> groupSweeps =
             new LinkedHashMap<>();
     private int groupCursor;
 
     WorkerServiceabilityDispatchPolicy(
-            WorkerScoreCore workerScore,
-            WorkerResourceCatalog workerCatalog,
-            WorkerServiceabilityRuntime runtime
+            WorkerServiceabilityDispatchMechanism mechanism,
+            WorkerServiceabilityRuntime serviceability
     ) {
-        this(
-                workerScore,
-                workerCatalog,
-                runtime,
-                System::currentTimeMillis
-        );
+        this(mechanism, serviceability, System::currentTimeMillis);
     }
 
     WorkerServiceabilityDispatchPolicy(
-            WorkerScoreCore workerScore,
-            WorkerResourceCatalog workerCatalog,
-            WorkerServiceabilityRuntime runtime,
+            WorkerServiceabilityDispatchMechanism mechanism,
+            WorkerServiceabilityRuntime serviceability,
             LongSupplier currentTimeMillis
     ) {
-        this.workerScore = Objects.requireNonNull(
-                workerScore,
-                "workerScore"
+        this.mechanism = Objects.requireNonNull(mechanism, "mechanism");
+        this.serviceability = Objects.requireNonNull(
+                serviceability,
+                "serviceability"
         );
-        this.workerCatalog = Objects.requireNonNull(
-                workerCatalog,
-                "workerCatalog"
-        );
-        this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.currentTimeMillis = Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
@@ -91,77 +72,176 @@ final class WorkerServiceabilityDispatchPolicy {
                 groupCursor % workerGroupIds.size()
         );
         groupCursor = (groupCursor + 1) % workerGroupIds.size();
-        List<WorkerScoreObservation> hot = hotPage(
+        GroupSweepState sweepState = sweepState(workerGroupId);
+        List<WorkerCandidateReference> hot = hotPage(
                 workerGroupId,
+                sweepState.hot,
                 hotEligibilityFloorMillis,
                 nowMillis,
                 config
         );
-        List<WorkerScoreObservation> recovery = recoveryPage(
+        List<WorkerCandidateReference> recovery = recoveryPage(
                 workerGroupId,
+                sweepState.recovery,
                 nowMillis,
                 config
         );
-        LinkedHashSet<String> candidateIds = new LinkedHashSet<>();
-        hot.forEach(row -> candidateIds.add(row.workerId()));
-        recovery.forEach(row -> candidateIds.add(row.workerId()));
-        if (candidateIds.isEmpty()) {
+        LinkedHashMap<String, WorkerCandidateReference> candidates =
+                new LinkedHashMap<>();
+        hot.forEach(reference -> candidates.putIfAbsent(
+                reference.workerId(),
+                reference
+        ));
+        recovery.forEach(reference -> candidates.putIfAbsent(
+                reference.workerId(),
+                reference
+        ));
+        if (candidates.isEmpty()) {
             return 0;
         }
 
-        List<String> candidates = List.copyOf(candidateIds);
-        Map<String, WorkerScoreState> states = workerScore.getScoreStates(
+        List<WorkerServiceabilityObservation> rechecked = mechanism.recheck(
                 workerGroupId,
-                candidates
+                List.copyOf(candidates.values())
         );
-        List<String> eligibleIds = candidates.stream()
-                .filter(workerId -> eligible(
-                        states.get(workerId),
-                        nowMillis,
-                        hotEligibilityFloorMillis,
-                        config.recoveryRetryIntervalMillis()
-                ))
-                .toList();
-        if (eligibleIds.isEmpty()) {
-            return 0;
-        }
-
-        Map<String, WorkerDescriptor> descriptors =
-                workerCatalog.getWorkerDescriptors(
-                        workerGroupId,
-                        eligibleIds
-                );
-        Map<String, List<String>> workerIdsByAdapter = new LinkedHashMap<>();
-        Set<String> excluded = Set.copyOf(
+        Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
         );
-        for (String workerId : eligibleIds) {
-            WorkerDescriptor descriptor = descriptors.get(workerId);
-            if (descriptor == null
-                    || !workerGroupId.equals(descriptor.workerGroupId())
-                    || !workerId.equals(descriptor.workerId())) {
+        List<WorkerServiceabilityObservation> excluded = new ArrayList<>();
+        List<WorkerServiceabilityObservation> probe = new ArrayList<>();
+        for (WorkerServiceabilityObservation worker : rechecked) {
+            if (!eligible(
+                    worker,
+                    nowMillis,
+                    hotEligibilityFloorMillis,
+                    config.recoveryRetryIntervalMillis()
+            )) {
                 continue;
             }
-            if (excluded.contains(descriptor.endpointManagerId())) {
-                coldParkExcluded(
-                        workerGroupId,
-                        workerId,
-                        states.get(workerId),
-                        config.maxRecoveryAttempts()
-                );
-                continue;
+            if (excludedEndpoints.contains(worker.endpointManagerId())) {
+                excluded.add(worker);
+            } else {
+                probe.add(worker);
             }
-            workerIdsByAdapter.computeIfAbsent(
-                    descriptor.endpointManagerId(),
-                    ignored -> new ArrayList<>()
-            ).add(workerId);
         }
+        mechanism.coldParkExcluded(
+                excluded,
+                config.maxRecoveryAttempts()
+        );
+        return offerProbes(probe);
+    }
 
+    private GroupSweepState sweepState(String workerGroupId) {
+        return groupSweeps.computeIfAbsent(
+                workerGroupId,
+                ignored -> new GroupSweepState()
+        );
+    }
+
+    private void retainActiveGroupSweeps(List<String> workerGroupIds) {
+        Set<String> active = Set.copyOf(workerGroupIds);
+        groupSweeps.keySet().removeIf(id -> !active.contains(id));
+    }
+
+    private List<WorkerCandidateReference> hotPage(
+            String workerGroupId,
+            ProbeScoreSweep sweep,
+            long hotEligibilityFloorMillis,
+            long nowMillis,
+            WorkerServiceabilityDispatchConfig config
+    ) {
+        if (nowMillis < sweep.resumeAtMillis) {
+            return List.of();
+        }
+        WorkerSweepPage page = mechanism.observePreEpochHot(
+                workerGroupId,
+                hotEligibilityFloorMillis,
+                sweep.cursor,
+                config.hotScanLimit()
+        );
+        advanceSweep(
+                sweep,
+                page,
+                nowMillis,
+                config.probeSweepRestartDelayMillis()
+        );
+        return page.candidates();
+    }
+
+    private List<WorkerCandidateReference> recoveryPage(
+            String workerGroupId,
+            ProbeScoreSweep sweep,
+            long nowMillis,
+            WorkerServiceabilityDispatchConfig config
+    ) {
+        if (nowMillis < sweep.resumeAtMillis) {
+            return List.of();
+        }
+        WorkerSweepPage page = mechanism.observeRecovery(
+                workerGroupId,
+                sweep.cursor,
+                config.recoveryScanLimit()
+        );
+        advanceSweep(
+                sweep,
+                page,
+                nowMillis,
+                config.probeSweepRestartDelayMillis()
+        );
+        return page.candidates();
+    }
+
+    private static void advanceSweep(
+            ProbeScoreSweep sweep,
+            WorkerSweepPage page,
+            long nowMillis,
+            long restartDelayMillis
+    ) {
+        if (!page.isEmpty()) {
+            sweep.cursor = page.nextCursor();
+            sweep.resumeAtMillis = 0;
+            return;
+        }
+        sweep.cursor = WorkerSweepCursor.start();
+        sweep.resumeAtMillis = safeAdd(nowMillis, restartDelayMillis);
+    }
+
+    private static boolean eligible(
+            WorkerServiceabilityObservation worker,
+            long nowMillis,
+            long hotEligibilityFloorMillis,
+            long recoveryRetryIntervalMillis
+    ) {
+        if (worker.polarity() == ServiceabilityPolarity.HOT) {
+            return worker.timeMillis() < hotEligibilityFloorMillis;
+        }
+        long multiplier = worker.laneRank() + 1L;
+        if (recoveryRetryIntervalMillis > Long.MAX_VALUE / multiplier) {
+            return false;
+        }
+        long delay = multiplier * recoveryRetryIntervalMillis;
+        return delay <= nowMillis
+                && worker.timeMillis() <= nowMillis - delay;
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (left > Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return left + right;
+    }
+
+    private int offerProbes(List<WorkerServiceabilityObservation> workers) {
+        Map<String, List<String>> workerIdsByAdapter = new LinkedHashMap<>();
+        workers.forEach(worker -> workerIdsByAdapter.computeIfAbsent(
+                worker.endpointManagerId(),
+                ignored -> new ArrayList<>()
+        ).add(worker.workerId()));
         int offered = 0;
         for (Map.Entry<String, List<String>> adapter
                 : workerIdsByAdapter.entrySet()) {
             Map<String, ProbeRequestOfferStatus> statuses =
-                    runtime.offerProbeRequests(
+                    serviceability.offerProbeRequests(
                             adapter.getKey(),
                             adapter.getValue()
                     );
@@ -172,145 +252,13 @@ final class WorkerServiceabilityDispatchPolicy {
         return offered;
     }
 
-    private void retainActiveGroupSweeps(List<String> workerGroupIds) {
-        Set<String> retained = Set.copyOf(workerGroupIds);
-        hotSweeps.keySet().removeIf(id -> !retained.contains(id));
-        recoverySweeps.keySet().removeIf(id -> !retained.contains(id));
-    }
-
-    private List<WorkerScoreObservation> hotPage(
-            String workerGroupId,
-            long hotEligibilityFloorMillis,
-            long nowMillis,
-            WorkerServiceabilityDispatchConfig config
-    ) {
-        ProbeScoreSweep sweep = hotSweeps.computeIfAbsent(
-                workerGroupId,
-                ignored -> new ProbeScoreSweep()
-        );
-        if (nowMillis < sweep.resumeAtMillis) {
-            return List.of();
-        }
-        List<WorkerScoreObservation> page =
-                workerScore.acquirePreEpochHotCandidates(
-                        workerGroupId,
-                        hotEligibilityFloorMillis,
-                        sweep.currentMaxWorkerScore,
-                        config.hotScanLimit()
-                );
-        advanceSweep(
-                sweep,
-                page,
-                nowMillis,
-                config.probeSweepRestartDelayMillis()
-        );
-        return page;
-    }
-
-    private List<WorkerScoreObservation> recoveryPage(
-            String workerGroupId,
-            long nowMillis,
-            WorkerServiceabilityDispatchConfig config
-    ) {
-        ProbeScoreSweep sweep = recoverySweeps.computeIfAbsent(
-                workerGroupId,
-                ignored -> new ProbeScoreSweep()
-        );
-        if (nowMillis < sweep.resumeAtMillis) {
-            return List.of();
-        }
-        List<WorkerScoreObservation> page =
-                workerScore.acquireRecoveryRecheckCandidates(
-                        workerGroupId,
-                        sweep.currentMaxWorkerScore,
-                        config.recoveryScanLimit()
-                );
-        advanceSweep(
-                sweep,
-                page,
-                nowMillis,
-                config.probeSweepRestartDelayMillis()
-        );
-        return page;
-    }
-
-    private static void advanceSweep(
-            ProbeScoreSweep sweep,
-            List<WorkerScoreObservation> page,
-            long nowMillis,
-            long restartDelayMillis
-    ) {
-        if (!page.isEmpty()) {
-            sweep.currentMaxWorkerScore = page.get(page.size() - 1).score();
-            sweep.resumeAtMillis = 0;
-            return;
-        }
-        sweep.currentMaxWorkerScore = WorkerScoreCore.ZERO_SCORE;
-        sweep.resumeAtMillis = safeAdd(nowMillis, restartDelayMillis);
-    }
-
-    private static boolean eligible(
-            WorkerScoreState state,
-            long nowMillis,
-            long hotEligibilityFloorMillis,
-            long recoveryRetryIntervalMillis
-    ) {
-        if (state == null) {
-            return false;
-        }
-        if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            return state.timeMillis() < hotEligibilityFloorMillis;
-        }
-        long multiplier = state.laneRank() + 1L;
-        if (recoveryRetryIntervalMillis > Long.MAX_VALUE / multiplier) {
-            return false;
-        }
-        long delay = multiplier * recoveryRetryIntervalMillis;
-        return delay <= nowMillis
-                && state.timeMillis() <= nowMillis - delay;
-    }
-
-    private void coldParkExcluded(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            int maxRecoveryAttempts
-    ) {
-        if (state == null
-                || state.timeMillis() == WorkerScoreCore.PAUSE_TIME_MILLIS) {
-            return;
-        }
-        long observedScore = state.score();
-        if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            var toggled = workerScore.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    observedScore
-            );
-            if (toggled.status()
-                    != WorkerScoreTransitionStatus.TRANSITIONED
-                    || toggled.score() == null) {
-                return;
-            }
-            observedScore = toggled.score();
-        }
-        workerScore.exhaustRecoveryRecheck(
-                workerGroupId,
-                workerId,
-                observedScore,
-                maxRecoveryAttempts
-        );
-    }
-
-    private static long safeAdd(long left, long right) {
-        if (left > Long.MAX_VALUE - right) {
-            return Long.MAX_VALUE;
-        }
-        return left + right;
+    private static final class GroupSweepState {
+        private final ProbeScoreSweep hot = new ProbeScoreSweep();
+        private final ProbeScoreSweep recovery = new ProbeScoreSweep();
     }
 
     private static final class ProbeScoreSweep {
-        private long currentMaxWorkerScore = WorkerScoreCore.ZERO_SCORE;
+        private WorkerSweepCursor cursor = WorkerSweepCursor.start();
         private long resumeAtMillis;
     }
 }

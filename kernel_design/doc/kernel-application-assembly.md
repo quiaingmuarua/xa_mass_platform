@@ -15,7 +15,8 @@ Java Server
            -> TASK_FAILURE virtual batches
            -> ADAPTER_EVIDENCE virtual batch             optional
         -> DispatchConvergenceApplication
-           -> one RUNNING Task Source
+           -> TaskSchedulingMechanism observation
+           -> fixed DispatchTaskBatchFanout
               -> TASK_INITIALIZATION virtual batch
               -> WORKER_ALLOCATION virtual batch
               -> TASK_DISPATCH virtual batch
@@ -65,6 +66,8 @@ TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
+TaskSchedulingMechanism / WorkerCandidateMechanism
+TaskExecutionMechanism / WorkerServiceabilityDispatchMechanism
 CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
 WorkerServiceabilityRuntime
@@ -80,16 +83,17 @@ The module direction remains:
 server_jvm -> kernel_pacer_jvm -> kernel_jvm
 ```
 
-- `kernel_jvm` owns mechanical contracts, Redis providers, Candidate Cache,
-  and codecs.
-- `kernel_pacer_jvm` owns Sources, policies, coordination, presets, and finite
+- `kernel_jvm` owns mechanical contracts, Redis providers, finite cross-owner
+  Mechanisms, Candidate Cache, and codecs.
+- `kernel_pacer_jvm` owns fan-out, policies, coordination, presets, and finite
   thread lifecycle.
 - `server_jvm` owns Owner assembly, Spring lifecycle delegation, and Health.
 
 ## Dispatch Convergence
 
-`TaskSchedulingBatchSource` has two projections of one RUNNING lifecycle
-surface:
+`TaskSchedulingMechanism` observes two projections of one RUNNING lifecycle
+surface. `DispatchTaskBatchFanout` routes the immutable observation to the
+fixed lanes:
 
 ```text
 NORMAL projection
@@ -99,17 +103,19 @@ INITIAL projection
   -> fill the remaining batch from fixed RUNNING scores at or below 10,000ms
 ```
 
-One Source call reads NORMAL first, lets INITIAL use the remaining part of the
-100-Task budget, and point-reads Task Score and Descriptor once. It preserves
-each projection's Score order and emits immutable `DueTaskObservation` values. These observations are
-round evidence, not locks; every later mutation still uses exact owner fences.
+The fan-out asks the Mechanism for NORMAL first and requests INITIAL only with
+the remaining part of the 100-Task budget. The Mechanism point-reads Task Score
+and Descriptor using the Redis scan time. It preserves each projection's
+Score order and emits immutable `DueTaskObservation` values with opaque exact
+Task references. These observations are round evidence, not locks; every later
+mutation still uses exact owner fences inside a Mechanism.
 
 `DispatchConvergenceApplication` owns one non-daemon coordinator and one
 virtual thread per non-empty eligible lane batch. Every lane is single-flight.
-When multiple RUNNING lanes are eligible, the Source is read once and the same
-immutable batch is submitted to all of them. A busy lane skips that batch and
-retains no memory hint; unchanged Task score lets a later Source read rediscover
-the Task.
+When multiple RUNNING lanes are eligible, NORMAL is observed once and the same
+immutable batch is submitted to all of them. A busy lane skips that batch
+and retains no memory hint; unchanged Task score lets a later observation
+rediscover the Task.
 
 The fixed lanes are:
 

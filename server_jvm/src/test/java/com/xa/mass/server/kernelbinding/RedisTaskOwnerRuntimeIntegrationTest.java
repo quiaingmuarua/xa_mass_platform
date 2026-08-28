@@ -731,7 +731,9 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                         io.lettuce.core.ScoredValue::getScore
                 ));
 
-        assertThat(scoreCore.acquireDispatchWorkTasks(100))
+        var dispatchPage = scoreCore.acquireDispatchWorkTasks(100);
+        assertThat(dispatchPage.readAtMillis()).isPositive();
+        assertThat(dispatchPage.taskIds())
                 .containsExactly("running-old", "running-new");
         assertThat(redis.zrangeWithScores(scoreKey, 0, -1).stream()
                 .collect(java.util.stream.Collectors.toMap(

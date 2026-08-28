@@ -1,6 +1,7 @@
 package com.xa.mass.kernel.pacer;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.pacer.dispatch.DispatchConvergenceRuntime;
@@ -124,15 +125,16 @@ public final class KernelPacerRuntime {
                 DispatchConvergenceRuntime.assemble(
                         policy.preset(),
                         policy.hotEligibilityFloorMillis(),
-                        taskRuntime,
                         taskScores,
                         itemScores,
                         taskCatalog,
+                        candidateCache,
                         workerScores,
                         workerCatalog,
+                        taskRuntime,
                         workerCommands,
                         serviceability,
-                        candidateCache
+                        new ResultContextCodec()
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,

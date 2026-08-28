@@ -132,19 +132,30 @@ TaskItemScoreBandCore
 
 WorkerScoreCore and worker-runtime
   own Worker acquisition/recovery coordinates, exact leases, dirty fence,
-  resource Properties, indexed scheduling projections, and candidate validation
+  canonical resource Properties and candidate validation
 
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
-TaskSchedulingBatchSource
-  owns bounded RUNNING NORMAL-first and INITIAL-remainder discovery and emits
-  immutable DueTaskObservation projections; it owns no persistent state
+DispatchTaskBatchFanout
+  owns fixed NORMAL/INITIAL projection routing to eligible single-flight lanes;
+  it owns no Redis key, Score transition, or pending Batch
 
-TaskItemDispatcher
-  owns one suffix-zero Task's bounded Item observation, Worker acquisition,
-  exact Item claim, and DeliveryCommand construction;
-  it owns no Task score, mailbox, or background lifecycle
+TaskSchedulingMechanism
+  owns bounded Redis-time RUNNING observation, exact Task/Descriptor recheck,
+  INITIAL readiness observation and exact promotion through opaque references
+
+WorkerCandidateMechanism
+  internally protects bounded Worker observation, cached opaque lease
+  correlation, exact lease or renew, and canonical descriptor reload
+
+TaskExecutionMechanism
+  owns Item observation/finality, exact Worker fence and Item claim, Command
+  construction/publication, Task pacing and idle convergence
+
+WorkerServiceabilityDispatchMechanism
+  internally protects Worker sweep Score reads and exact excluded-endpoint
+  cold park; Policy offers selected ids through WorkerServiceabilityRuntime
 
 WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes, authoritative append, non-overwriting
@@ -206,7 +217,7 @@ Worker Delivery Dispatch
 | Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Implemented with Python Oracle plus Java production Redis operations for append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
-| Worker allocation | Implemented as a shared-RUNNING-source Policy that fills PRECOMPUTED Task candidate deficits through HOT-pool acquisition; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
+| Worker allocation | Implemented as a shared-RUNNING-observation Policy that fills PRECOMPUTED Task candidate deficits through the finite Candidate Mechanism; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
 | Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy and Python Oracle implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
@@ -260,12 +271,43 @@ xa_mass:<scope>:worker:serviceability:evidence_results
 ```
 
 These are current mechanism boundaries, not claims of unlimited throughput.
-Adding Pacer or HTTP threads does not partition a hot Redis key and may only
-increase duplicate observation and exact-CAS contention. WorkerGroup, Task,
-Adapter route, and Task result class are the existing natural batching boundaries.
-A single very large WorkerGroup, one extremely hot Task, the global Task score
-key, or one result-class LIST may require a future explicitly owned
-partitioning design.
+The supported production shape is deliberately vertical:
+
+```text
+small bounded active Task set
+  -> many TaskItems per Task
+  -> many Workers inside a finite WorkerGroup set
+```
+
+One hot Task is therefore an expected load shape. Backpressure belongs in its
+bounded Item observation, Worker selection/lease, Item claim, DeliveryCommand
+and Result convergence chain.
+
+The Kernel liveness target is **work-conserving convergence**, not per-Task
+fairness:
+
+```text
+compatible Workers fully occupied + assigned work keeps completing
+  -> normal backpressure
+
+compatible capacity temporarily idle during bounded scan / exact CAS /
+Candidate refill
+  -> normal convergence delay
+
+compatible capacity persistently idle + TaskItem persistently due +
+no assignment across repeated eligible rounds
+  -> scheduling starvation / liveness defect
+```
+
+A full bounded Task page is therefore not enough to classify starvation. If
+its compatible Workers are fully utilized, waiting Tasks need no fairness
+repair. If compatible capacity remains idle, repeated Redis rediscovery must
+eventually produce assignments; code review and focused proofs should follow
+that vertical path rather than inventing Task rotation. Massive active
+Task/WorkerGroup cardinality, tenant-level fairness, sharding and SaaS-scale
+isolation require a separate architecture and must not be inferred as current
+Pacer obligations. Adding Pacer or HTTP threads does not partition a hot Redis
+key and may only increase duplicate observation and exact-CAS contention.
 
 The polling API performs only point mailbox consume for one target Worker. It
 never scans a bucket. Each locally registered Adapter instance may

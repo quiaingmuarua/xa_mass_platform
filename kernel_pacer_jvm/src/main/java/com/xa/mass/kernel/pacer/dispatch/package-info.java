@@ -1,11 +1,8 @@
 /**
- * Fixed Task-source-driven scheduling and Serviceability dispatch policy.
+ * Fixed Dispatch lanes, policy, internal mechanisms and opaque references.
  *
- * <p>{@link com.xa.mass.kernel.pacer.dispatch.DispatchConvergenceRuntime} is a
- * module-internal bridge. External callers assemble only
- * {@link com.xa.mass.kernel.pacer.KernelPacerRuntime}.</p>
+ * <p>A mechanism exists only where a legal transition composes owners or must
+ * protect an exact fence. Policy may call a bounded owner directly when that
+ * call already belongs to its decision; score coordinates remain opaque.</p>
  */
-@NullMarked
 package com.xa.mass.kernel.pacer.dispatch;
-
-import org.jspecify.annotations.NullMarked;

@@ -1,14 +1,12 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.WorkerCommandRuntime
-        .WorkerCommandAppendStatus;
-import com.xa.mass.kernel.score.TaskItemScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreBand;
-import com.xa.mass.kernel.score.TaskScoreBandCore.TaskScoreTransitionStatus;
+import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.IdleAction;
+import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemObservation;
+import com.xa.mass.kernel.pacer.dispatch.TaskExecutionMechanism.TaskItemWorkerAssignment;
+import com.xa.mass.kernel.pacer.dispatch.TaskSchedulingMechanism.TaskSchedulingObservation;
+import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
+import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -20,43 +18,26 @@ import java.util.function.LongSupplier;
 
 final class TaskDispatchPolicy {
 
-    private final TaskScoreBandCore taskScore;
-    private final WorkerCommandRuntime commandRuntime;
-    private final TaskItemScoreBandCore itemScore;
-    private final TaskItemDispatcher itemDispatcher;
+    private final TaskExecutionMechanism execution;
+    private final WorkerCandidateSelectionPolicy candidateSelection;
     private final LongSupplier currentTimeMillis;
 
     TaskDispatchPolicy(
-            TaskScoreBandCore taskScore,
-            WorkerCommandRuntime commandRuntime,
-            TaskItemScoreBandCore itemScore,
-            TaskItemDispatcher itemDispatcher
+            TaskExecutionMechanism execution,
+            WorkerCandidateSelectionPolicy candidateSelection
     ) {
-        this(
-                taskScore,
-                commandRuntime,
-                itemScore,
-                itemDispatcher,
-                System::currentTimeMillis
-        );
+        this(execution, candidateSelection, System::currentTimeMillis);
     }
 
     TaskDispatchPolicy(
-            TaskScoreBandCore taskScore,
-            WorkerCommandRuntime commandRuntime,
-            TaskItemScoreBandCore itemScore,
-            TaskItemDispatcher itemDispatcher,
+            TaskExecutionMechanism execution,
+            WorkerCandidateSelectionPolicy candidateSelection,
             LongSupplier currentTimeMillis
     ) {
-        this.taskScore = Objects.requireNonNull(taskScore, "taskScore");
-        this.commandRuntime = Objects.requireNonNull(
-                commandRuntime,
-                "commandRuntime"
-        );
-        this.itemScore = Objects.requireNonNull(itemScore, "itemScore");
-        this.itemDispatcher = Objects.requireNonNull(
-                itemDispatcher,
-                "itemDispatcher"
+        this.execution = Objects.requireNonNull(execution, "execution");
+        this.candidateSelection = Objects.requireNonNull(
+                candidateSelection,
+                "candidateSelection"
         );
         this.currentTimeMillis = Objects.requireNonNull(
                 currentTimeMillis,
@@ -75,130 +56,165 @@ final class TaskDispatchPolicy {
                 dispatchTimeMillis,
                 config.itemClaimLeaseDurationMillis()
         );
-        LinkedHashMap<String, Map<String, DeliveryCommand>> commandsByAdapter =
-                new LinkedHashMap<>();
-        LinkedHashMap<String, DueTaskObservation> activityRechecks =
-                new LinkedHashMap<>();
         Set<String> roundWorkerIds = new LinkedHashSet<>();
+        int published = 0;
         for (DueTaskObservation task : tasks) {
-            List<TaskItemDispatcher.ClaimableTaskItem> claimable =
-                    itemDispatcher.observeClaimableTaskItems(
-                            task.taskId(),
-                            config.perTaskDispatchLimit(),
-                            dispatchTimeMillis
-                    );
+            TaskSchedulingObservation scheduling = scheduling(task);
+            List<TaskItemObservation> observed = execution.observeTaskItems(
+                    task.taskId(),
+                    config.perTaskDispatchLimit()
+            );
+            List<TaskItemObservation> failed = observed.stream()
+                    .filter(item -> failed(item, dispatchTimeMillis))
+                    .toList();
+            execution.finalizeFailedItems(
+                    task.taskId(),
+                    failed,
+                    dispatchTimeMillis
+            );
+            Set<String> failedIds = failed.stream()
+                    .map(TaskItemObservation::messageId)
+                    .collect(java.util.stream.Collectors.toSet());
+            List<TaskItemObservation> claimable = observed.stream()
+                    .filter(item -> item.remainingBudget() > 0)
+                    .filter(item -> item.item() != null)
+                    .filter(item -> !failedIds.contains(item.messageId()))
+                    .toList();
             if (claimable.isEmpty()) {
-                activityRechecks.put(task.taskId(), task);
+                execution.settleNoClaimableItems(
+                        scheduling,
+                        task.descriptor().idleDisposition()
+                                == TaskIdleDisposition.CLOSE_WHEN_IDLE
+                                ? IdleAction.CLOSE
+                                : IdleAction.PARK,
+                        dispatchTimeMillis
+                );
                 continue;
             }
             try {
-                Map<String, Map<String, DeliveryCommand>> taskCommands =
-                        itemDispatcher.dispatchTaskItems(
-                                task.taskId(),
-                                task.descriptor(),
-                                claimable,
-                                claimUntilMillis,
-                                dispatchTimeMillis
-                        );
-                taskCommands.forEach((adapterId, workerCommands) -> {
-                    for (String workerId : workerCommands.keySet()) {
-                        if (!roundWorkerIds.add(workerId)) {
-                            throw new IllegalStateException(
-                                    "one Worker received multiple commands "
-                                            + "in one round"
-                            );
-                        }
-                    }
-                    commandsByAdapter.computeIfAbsent(
-                            adapterId,
-                            ignored -> new LinkedHashMap<>()
-                    ).putAll(workerCommands);
-                });
+                List<TaskItemWorkerAssignment> assignments = assignments(
+                        task,
+                        claimable,
+                        claimUntilMillis,
+                        roundWorkerIds
+                );
+                published += execution.dispatch(
+                        scheduling,
+                        assignments,
+                        claimUntilMillis
+                );
             } finally {
-                taskScore.rewriteSameBandTimeMillis(
-                        task.taskId(),
-                        TaskScoreBand.RUNNING_VISIBLE,
+                execution.onDispatchAttemptFinished(
+                        scheduling,
                         dispatchTimeMillis
                 );
             }
         }
-        int published = publish(commandsByAdapter);
-        if (!activityRechecks.isEmpty()) {
-            Map<String, Boolean> activeItems = itemScore.hasActiveItems(
-                    List.copyOf(activityRechecks.keySet())
-            );
-            List<String> parked = new ArrayList<>();
-            activityRechecks.forEach((taskId, task) -> {
-                if (applyActivityRecheck(
-                        task,
-                        activeItems.getOrDefault(taskId, false),
-                        dispatchTimeMillis
-                )) {
-                    parked.add(taskId);
-                }
-            });
-            releaseParksWithConcurrentItems(parked);
-        }
         return published;
     }
 
-    private boolean applyActivityRecheck(
+    private List<TaskItemWorkerAssignment> assignments(
             DueTaskObservation task,
-            boolean hasActiveItems,
-            long dispatchTimeMillis
+            List<TaskItemObservation> items,
+            long leaseUntilMillis,
+            Set<String> roundWorkerIds
     ) {
-        if (hasActiveItems) {
-            taskScore.rewriteSameBandTimeMillis(
-                    task.taskId(),
-                    TaskScoreBand.RUNNING_VISIBLE,
-                    dispatchTimeMillis
-            );
-            return false;
-        }
-        if (task.descriptor().idleDisposition()
-                == TaskIdleDisposition.CLOSE_WHEN_IDLE) {
-            taskScore.closeObservedScore(
-                    task.taskId(),
-                    task.scoreState().score(),
-                    TaskScoreBandCore.TERMINAL_SCORE_MAX
-            );
-            return false;
-        }
-        var parked = taskScore.parkObservedIdleTask(
-                task.taskId(),
-                task.scoreState().score()
+        int priority = Integer.parseInt(
+                task.descriptor().config().get("priority")
         );
-        return parked.status() == TaskScoreTransitionStatus.TRANSITIONED;
-    }
-
-    private void releaseParksWithConcurrentItems(List<String> taskIds) {
-        if (taskIds.isEmpty()) {
-            return;
+        Map<String, List<WorkerCandidateObservation>> acquired;
+        if (task.descriptor().workerAllocationMechanism()
+                == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
+            acquired = candidateSelection.acquireWorkerCandidates(
+                    WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+                    task.descriptor().workerGroupId(),
+                    Map.of(task.taskId(), new WorkerCandidateRequest(
+                            priority,
+                            items.size(),
+                            Objects.requireNonNull(
+                                    task.descriptor().allocationRule()
+                            )
+                    )),
+                    leaseUntilMillis
+            );
+            return pair(
+                    items,
+                    acquired.getOrDefault(task.taskId(), List.of()),
+                    roundWorkerIds
+            );
         }
-        Map<String, Boolean> activeItems = itemScore.hasActiveItems(taskIds);
-        taskIds.forEach(taskId -> {
-            if (activeItems.getOrDefault(taskId, false)) {
-                taskScore.tryReleaseIdlePark(taskId);
+
+        LinkedHashMap<String, WorkerCandidateRequest> requests =
+                new LinkedHashMap<>();
+        items.forEach(item -> requests.put(
+                item.messageId(),
+                new WorkerCandidateRequest(
+                        priority,
+                        1,
+                        Objects.requireNonNull(
+                                item.item().allocationRule()
+                        )
+                )
+        ));
+        acquired = candidateSelection.acquireWorkerCandidates(
+                WorkerCandidateAcquisitionStrategy.DIRECT,
+                task.descriptor().workerGroupId(),
+                requests,
+                leaseUntilMillis
+        );
+        List<TaskItemWorkerAssignment> result = new ArrayList<>();
+        for (TaskItemObservation item : items) {
+            List<WorkerCandidateObservation> workers = acquired.getOrDefault(
+                    item.messageId(),
+                    List.of()
+            );
+            if (!workers.isEmpty()
+                    && roundWorkerIds.add(workers.get(0).workerId())) {
+                result.add(new TaskItemWorkerAssignment(
+                        item,
+                        workers.get(0)
+                ));
             }
-        });
+        }
+        return List.copyOf(result);
     }
 
-    private int publish(
-            Map<String, Map<String, DeliveryCommand>> commandsByAdapter
+    private static List<TaskItemWorkerAssignment> pair(
+            List<TaskItemObservation> items,
+            List<WorkerCandidateObservation> workers,
+            Set<String> roundWorkerIds
     ) {
-        int published = 0;
-        for (Map.Entry<String, Map<String, DeliveryCommand>> adapter
-                : commandsByAdapter.entrySet()) {
-            Map<String, WorkerCommandAppendStatus> results =
-                    commandRuntime.appendWorkerCommands(
-                            adapter.getKey(),
-                            adapter.getValue()
-                    );
-            published += (int) results.values().stream()
-                    .filter(status -> status == WorkerCommandAppendStatus.APPENDED
-                            || status == WorkerCommandAppendStatus.REPLACED)
-                    .count();
+        List<TaskItemWorkerAssignment> result = new ArrayList<>();
+        int count = Math.min(items.size(), workers.size());
+        for (int index = 0; index < count; index++) {
+            WorkerCandidateObservation worker = workers.get(index);
+            if (roundWorkerIds.add(worker.workerId())) {
+                result.add(new TaskItemWorkerAssignment(
+                        items.get(index),
+                        worker
+                ));
+            }
         }
-        return published;
+        return List.copyOf(result);
+    }
+
+    private static boolean failed(
+            TaskItemObservation item,
+            long observedAtMillis
+    ) {
+        return item.remainingBudget() == 0
+                || item.item() != null
+                && item.item().expireAtMillis() != null
+                && observedAtMillis >= item.item().expireAtMillis();
+    }
+
+    private static TaskSchedulingObservation scheduling(
+            DueTaskObservation task
+    ) {
+        return new TaskSchedulingObservation(
+                task.taskId(),
+                task.descriptor(),
+                task.reference()
+        );
     }
 }

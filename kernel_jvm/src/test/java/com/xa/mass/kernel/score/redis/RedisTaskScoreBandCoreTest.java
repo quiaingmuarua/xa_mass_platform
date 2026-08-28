@@ -22,7 +22,8 @@ class RedisTaskScoreBandCoreTest {
                     );
 
             org.junit.jupiter.api.Assertions.assertEquals(
-                    List.of(),
+                    new com.xa.mass.kernel.score.TaskScoreBandCore
+                            .TaskScoreScanPage(0, List.of()),
                     scoreCore.acquireDispatchWorkTasks(0)
             );
             org.junit.jupiter.api.Assertions.assertEquals(

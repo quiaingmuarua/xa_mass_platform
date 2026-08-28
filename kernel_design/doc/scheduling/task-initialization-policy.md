@@ -20,7 +20,8 @@ capacity owner.
 
 ## Input
 
-`TaskSchedulingBatchSource` supplies only verified INITIAL observations:
+`TaskSchedulingMechanism` supplies only verified INITIAL observations through
+the fixed Dispatch fan-out:
 
 ```text
 band       = RUNNING_VISIBLE
@@ -29,22 +30,25 @@ suffix     = 99 - priority
 Descriptor identity matches Task id
 ```
 
-The Source reads NORMAL first and lets INITIAL use only the remaining part of
-the fixed 100-Task batch. Approval normally keeps the RUNNING set near 100 via
-a soft precheck, but concurrent approvals may exceed it. In that case INITIAL
-may wait for a later source round with NORMAL capacity; no strict same-round or
-starvation-free guarantee is added.
+`DispatchTaskBatchFanout` always asks the Mechanism for NORMAL first and asks
+for INITIAL only with the remaining part of the fixed 100-Task source budget.
+Approval normally keeps the RUNNING set near 100 via a soft precheck, but
+concurrent approvals may exceed it. In that case INITIAL
+waits for a later source round with NORMAL capacity. This is normal bounded
+initialization policy under the supported small active-Task model. INITIAL is
+not yet part of the NORMAL assignment working set, so this deliberate priority
+does not weaken the work-conserving guarantee for already-NORMAL due work.
 
 ## Policy
 
 The complete policy is:
 
 ```text
-hasDueActiveItems(initial task ids)
+TaskSchedulingMechanism.observeInitializationReady(initial references)
 
 for each observation:
   false -> no write
-  true  -> promoteObservedInitialTask(taskId, exact observed score)
+  true  -> onInitializationReady(task reference)
 ```
 
 Promotion uses Redis TIME and resets the ordinary RUNNING suffix to zero.
@@ -54,7 +58,7 @@ Tasks in a later round.
 
 ## Concurrency
 
-The Task Source observation is not a lease. Close, pause, or any concurrent
+The opaque Task observation is not a lease. Close, pause, or any concurrent
 score transition wins through exact CAS. A busy Initialization lane retains no
 memory queue or hint; a future INITIAL scan is the liveness path.
 

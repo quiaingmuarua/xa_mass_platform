@@ -265,14 +265,15 @@ public final class RedisTaskScoreBandCore
     }
 
     @Override
-    public List<String> acquireDispatchWorkTasks(int limit) {
+    public TaskScoreScanPage acquireDispatchWorkTasks(int limit) {
         if (limit <= 0) {
-            return List.of();
+            return new TaskScoreScanPage(0, List.of());
         }
-        long currentTimeSlot = redisTimeMillis() / SLOT_MILLIS;
+        long readAtMillis = redisTimeMillis();
+        long currentTimeSlot = readAtMillis / SLOT_MILLIS;
         long maximumTimeSlot = currentTimeSlot - 1;
         if (maximumTimeSlot < MIN_TIME_SLOT) {
-            return List.of();
+            return new TaskScoreScanPage(readAtMillis, List.of());
         }
         long minimumScore = score(
                 RUNNING_VISIBLE_TAG,
@@ -284,13 +285,16 @@ public final class RedisTaskScoreBandCore
                 maximumTimeSlot,
                 MAX_SUFFIX
         );
-        return List.copyOf(commands().zrangebyscore(
-                scoreKey(),
-                minimumScore,
-                maximumScore,
-                0,
-                limit
-        ));
+        return new TaskScoreScanPage(
+                readAtMillis,
+                List.copyOf(commands().zrangebyscore(
+                        scoreKey(),
+                        minimumScore,
+                        maximumScore,
+                        0,
+                        limit
+                ))
+        );
     }
 
     @Override

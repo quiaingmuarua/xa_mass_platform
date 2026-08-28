@@ -23,12 +23,13 @@ ignored because they acquire Workers only while dispatching their Items.
 
 ## Input Boundary
 
-`TaskSchedulingBatchSource` owns Task discovery and validation. It supplies an
+`TaskSchedulingMechanism` owns Redis-time Task observation and validation;
+`DispatchTaskBatchFanout` supplies an
 immutable `DueTaskObservation` containing:
 
 ```text
 taskId
-verified RUNNING score state with suffix 0
+opaque exact TaskSchedulingReference
 TaskDescriptor
 ```
 
@@ -70,16 +71,21 @@ TaskWorkerAllocationConfig(
 )
 ```
 
-The shared RUNNING Source owns the fixed batch limit of 100. Worker scan bounds
-belong to `WorkerCandidateAcquirer` construction.
+The shared RUNNING observation owns the fixed batch limit of 100. Worker scan
+bounds belong to the internal `WorkerCandidateMechanism`; selection and
+matching belong to `WorkerCandidateSelectionPolicy`. The Allocation Policy
+reads bounded Candidate counts directly from `CandidateWorkerCache` because
+the deficit decision and that read already share one Owner boundary.
 
 ## Guardrails
 
 - Use `taskId` as the stable PRECOMPUTED CandidateId.
 - Do not rediscover or revalidate Tasks inside this policy.
 - Do not mutate Task score or introduce a Candidate retry index.
-- Keep HOT observation, exact lease and complete match inside the candidate
-  acquirer.
+- Keep HOT observation, exact lease and canonical descriptor reload inside the
+  Mechanism; keep deficit, complete matching and selection in Policy. Cached
+  opaque lease consume/append remains internal to the Mechanism, while bounded
+  count observation may be called directly by Allocation Policy.
 - Keep Candidate Cache disposable; it owns no Task or Worker truth.
 - Do not release unmatched or publication-failed Worker leases; expiry is the
   recovery mechanism.

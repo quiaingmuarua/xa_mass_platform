@@ -35,7 +35,7 @@ com.xa.mass.kernel.pacer
 │  └─ package-private Result lanes, policies and Application
 └─ dispatch
    ├─ DispatchConvergenceRuntime
-   └─ package-private Task source, lanes, policies and Application
+   └─ package-private coordinator, fan-out, lanes, policies and Application
 ```
 
 The two `*ConvergenceRuntime` types are narrow module-internal lifecycle
@@ -75,11 +75,35 @@ Serviceability transitions. Adapter Evidence shares the same lifecycle without
 becoming a general EventBus.
 
 Dispatch Convergence owns one coordinator and fixed single-flight virtual
-Batch lanes. One bounded RUNNING source produces a NORMAL projection for
-Worker Allocation, Task Dispatch and optional Worker Serviceability, plus an
-INITIAL projection used only by Task Initialization. NORMAL fills the shared
-Batch first. Busy lanes skip the current Batch without storing a pending hint;
-Task score provides rediscovery.
+Batch lanes. `DispatchTaskBatchFanout` asks the internal
+`TaskSchedulingMechanism` for a bounded NORMAL observation first, then asks for
+INITIAL only with the remaining source budget. The owner scan supplies Redis
+`readAtMillis`, so point revalidation does not
+mix Redis and JVM clocks. NORMAL is routed to Worker Allocation, Task Dispatch
+and optional Worker Serviceability; INITIAL is routed only to Task
+Initialization. Busy lanes skip the current Batch without storing a pending
+hint; Task score provides rediscovery.
+
+Dispatch policies own selection, priority, matching, deficits, retry cadence
+and Group rotation. Package-private mechanisms in this module protect raw
+Score fences and cross-owner claim/Command sequences. Policy directly calls a
+bounded Owner when the operation already belongs to that policy decision—for
+example Candidate count observation and Adapter Probe request offer. This is
+not a generic Mechanism layer. Task, Item and Worker score correlations remain
+opaque. Serviceability retains sweep hints only for Groups visible in the
+current bounded Task batch.
+
+The production load model is intentionally a small bounded active Task set,
+many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The
+vertical Item acquisition/lease/claim/delivery/result chain is the primary
+backpressure surface. The Pacer targets work-conserving convergence rather than
+per-Task fairness: fully utilized Workers are normal backpressure, while a
+bounded scan, exact CAS or Candidate refill may add short convergence delay.
+Persistently due work and persistently idle compatible Workers failing to form
+an assignment across repeated eligible rounds is a liveness defect. A full Task
+page by itself proves neither starvation nor sufficient capacity. Massive
+active Task/WorkerGroup counts, multi-tenant fairness and sharding are outside
+this Pacer contract.
 
 Shutdown uses one shared deadline in strict reverse order. `DEFAULT` keeps
 Serviceability disabled, `SERVICEABILITY_DEFAULT` enables it at the normal
@@ -90,8 +114,9 @@ compose existing configuration value objects; there is no Java policy file,
 per-field runtime tuning, Pacer SPI, dynamic registry, network API, Redis owner
 or fallback path.
 
-Spring assembly belongs to `server_jvm`. Candidate Cache,
-ResultContextCodec and all Redis providers remain in `kernel_jvm`.
+Spring assembly belongs to `server_jvm`. Candidate Cache, ResultContextCodec
+and all Redis providers remain in `kernel_jvm`; dispatch-only mechanisms remain
+package-private here.
 
 Build:
 

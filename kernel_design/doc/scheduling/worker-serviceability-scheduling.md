@@ -74,19 +74,21 @@ or durable claim. Loss leaves the old score eligible for a later scan.
 
 ## Dispatch Lane
 
-`TaskSchedulingBatchSource` reads one bounded page of due `RUNNING_VISIBLE`
-Tasks, re-reads their current score states and allocation descriptors, removes
-Tasks that became paused, terminal, missing, or invalid, and publishes one
-immutable observation batch. Task Dispatch, Worker Allocation and the optional
+`DispatchTaskBatchFanout` requests one bounded NORMAL page from
+`TaskSchedulingMechanism`, which re-reads current score states and allocation
+descriptors using the Redis scan time and removes Tasks that became paused,
+terminal, missing, or invalid. Task Dispatch, Worker Allocation and the optional
 Worker Serviceability lane share that batch. With no surviving due Task the
-Serviceability policy is not invoked and therefore does not read Worker score,
-Worker resources, or the Probe Runtime.
+Serviceability policy is not invoked and therefore does not ask its Mechanism
+to read Worker state or offer Probe requests.
 
 One Serviceability batch selects one Group from the current Task observations.
-HOT and RECOVERY each
-keep one process-local opaque score cursor for Groups still present in the
-page; hints for disappeared Groups are deleted. For the selected Group it
-reads:
+HOT and RECOVERY each keep one process-local opaque score cursor for Groups in
+that bounded batch. A Group absent from the next Task batch is not scanned and
+its hint is discarded; if demand exposes it later, scanning restarts from the
+full range. This bounded behavior follows the finite active-Group workload
+contract and does not promise cross-page or multi-tenant fairness. For the
+selected Group the internal Mechanism reads:
 
 - HOT scores in `[MIN_BASE, hotEligibilityFloor)`;
 - RECOVERY scores in the owner's bounded recent negative window.
@@ -97,9 +99,13 @@ RECOVERY retry `laneRank=n` is due only after:
 (n + 1) * recoveryRetryIntervalMillis
 ```
 
-The policy batch-loads current score states and Worker descriptors, groups
-eligible Workers by `endpointManagerId`, and offers ids to the matching request
-HASH. It does not lease Workers and normally does not write scores.
+The policy chooses retry eligibility and endpoint exclusions from semantic
+observations. `WorkerServiceabilityDispatchMechanism` batch-loads current
+score states and Worker descriptors and exact-cold-parks excluded endpoints.
+The Policy groups remaining targets by `endpointManagerId` and directly calls
+the bounded `WorkerServiceabilityRuntime.offerProbeRequests` Owner operation.
+That direct call crosses no additional semantic boundary; the Policy still
+cannot read or mutate a raw Worker score.
 
 Each raw owner page is score-descending. Its last score becomes the next
 exclusive upper bound before state filtering or request offer, so a fixed
@@ -107,8 +113,9 @@ ineligible head cannot pin later score coordinates. Equal-score entries beyond
 the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
 independently resets that cursor and cools only that range for
 `probeSweepRestartDelayMillis` (default 10 seconds); the Dispatch Convergence
-coordinator keeps running and does not block for the cooldown. Cursor and cooldown are
-fairness hints, not Redis checkpoints or in-flight Probe tracking. The Task
+coordinator keeps running and does not block for the cooldown. Cursor and
+cooldown are bounded scan hints, not fairness guarantees, Redis checkpoints or
+in-flight Probe tracking. The Task
 score page is never mutated or held by Serviceability. A Group outside the
 bounded due-Task page is intentionally ignored until Task demand exposes it in
 a later round.

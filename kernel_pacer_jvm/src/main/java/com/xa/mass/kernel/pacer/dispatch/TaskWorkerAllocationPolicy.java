@@ -1,7 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
+import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.LinkedHashMap;
@@ -12,25 +12,37 @@ import java.util.function.LongSupplier;
 
 final class TaskWorkerAllocationPolicy {
 
-    private final WorkerCandidateAcquirer candidateAcquirer;
+    private final WorkerCandidateSelectionPolicy candidateSelection;
+    private final WorkerCandidateMechanism candidateMechanism;
     private final CandidateWorkerCache candidateCache;
     private final LongSupplier currentTimeMillis;
 
     TaskWorkerAllocationPolicy(
-            WorkerCandidateAcquirer candidateAcquirer,
+            WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerCandidateMechanism candidateMechanism,
             CandidateWorkerCache candidateCache
     ) {
-        this(candidateAcquirer, candidateCache, System::currentTimeMillis);
+        this(
+                candidateSelection,
+                candidateMechanism,
+                candidateCache,
+                System::currentTimeMillis
+        );
     }
 
     TaskWorkerAllocationPolicy(
-            WorkerCandidateAcquirer candidateAcquirer,
+            WorkerCandidateSelectionPolicy candidateSelection,
+            WorkerCandidateMechanism candidateMechanism,
             CandidateWorkerCache candidateCache,
             LongSupplier currentTimeMillis
     ) {
-        this.candidateAcquirer = Objects.requireNonNull(
-                candidateAcquirer,
-                "candidateAcquirer"
+        this.candidateSelection = Objects.requireNonNull(
+                candidateSelection,
+                "candidateSelection"
+        );
+        this.candidateMechanism = Objects.requireNonNull(
+                candidateMechanism,
+                "candidateMechanism"
         );
         this.candidateCache = Objects.requireNonNull(
                 candidateCache,
@@ -88,20 +100,20 @@ final class TaskWorkerAllocationPolicy {
                 currentTimeMillis.getAsLong(),
                 config.workerLeaseDurationMillis()
         );
-        LinkedHashMap<String, List<CandidateWorkerEntry>> acquired =
+        LinkedHashMap<String, List<WorkerCandidateObservation>> acquired =
                 new LinkedHashMap<>();
         requestsByGroup.forEach((workerGroupId, requests) -> acquired.putAll(
-                candidateAcquirer.acquireHotPoolCandidates(
+                candidateSelection.acquireHotPoolCandidates(
                         workerGroupId,
                         requests,
                         leaseUntil
                 )
         ));
         int published = 0;
-        for (Map.Entry<String, List<CandidateWorkerEntry>> entry
+        for (Map.Entry<String, List<WorkerCandidateObservation>> entry
                 : acquired.entrySet()) {
             if (!entry.getValue().isEmpty()) {
-                candidateCache.appendCandidateWorkers(
+                candidateMechanism.appendCandidates(
                         entry.getKey(),
                         entry.getValue(),
                         leaseUntil

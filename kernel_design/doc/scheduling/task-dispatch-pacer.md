@@ -5,8 +5,9 @@ implemented; policy coverage partial.
 
 ## Purpose
 
-`TaskDispatchPolicy` owns one bounded round over a verified due
-`RUNNING_VISIBLE` Task batch supplied by `TaskSchedulingBatchSource`.
+`TaskDispatchPolicy` owns one bounded decision round over a verified due
+`RUNNING_VISIBLE` Task batch supplied by `TaskSchedulingMechanism` and fixed
+fan-out.
 Every dispatch-visible NORMAL RUNNING Task uses suffix `0`; INITIAL uses an
 Owner-private priority suffix and never enters this policy. Task score no
 longer encodes an idle recheck lane.
@@ -22,9 +23,9 @@ Task has no ACTIVE Item and PARK_WHEN_IDLE
   -> exact private idle park
 ```
 
-The private park removes an idle reusable Task from periodic dispatch scans and
-from RUNNING capacity count. It is not a retry counter, queue state, pause, or
-hard lock against concurrent Item submission.
+The private park removes an idle reusable Task from periodic dispatch scans but
+remains inside the RUNNING lifecycle count. It is not a retry counter, queue
+state, pause, or hard lock against concurrent Item submission.
 
 ## Contract
 
@@ -35,46 +36,44 @@ TaskDispatchConfig(
 )
 ```
 
-Dependencies:
+Policy and Mechanism boundary:
 
 ```text
 TaskDispatchPolicy
-  TaskScoreBandCore       pacing and exact park/close/release
-  TaskItemScoreBandCore   due Item observation and complete ACTIVE existence
-  TaskItemDispatcher      one Task's bounded Item dispatch
-  WorkerCommandRuntime    round-level Adapter mailbox publication
+  expiry/exhaustion decisions
+  PRECOMPUTED or DIRECT Candidate strategy
+  Item/Worker pairing and per-Task limit
+  CLOSE_WHEN_IDLE or PARK_WHEN_IDLE branch
 
-TaskItemDispatcher
-  TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
-  TaskRuntime             canonical Item records
-  WorkerCandidateAcquirer PRECOMPUTED or DIRECT Worker acquisition
-  delivery item encoder   opaque Worker command payload
+WorkerCandidateMechanism
+  bounded observations and Candidate Cache
+  exact Worker lease/renew and canonical descriptor reload
+
+TaskExecutionMechanism
+  Item observation/finality and exact claim
+  Worker fence verification
+  ResultContext and DeliveryCommand construction/publication
+  Task pacing, ACTIVE recheck, close and idle park repair
 ```
 
-`TaskItemDispatcher` has no background lifecycle and does not scan Tasks,
-rewrite Task score, publish mailboxes, or decide idle lifecycle. The policy does
-not read CandidateWorker cache or Worker score directly; those details remain
-behind `WorkerCandidateAcquirer`.
+The Policy has no mechanical Owner dependency. Score, Candidate Cache,
+canonical resource reload, Command publication and exact transition details
+remain behind the two finite Mechanisms.
 
 ## Round Flow
 
 One round computes its dispatch time and Item claim deadline once:
 
 1. Consume the immutable verified RUNNING observation batch.
-2. Ask `TaskItemDispatcher` to observe record-backed due ACTIVE Items.
-3. Promote observed zero-budget Items and Items whose persisted
-   `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
-4. If claimable Items remain, acquire Workers, exact-claim only Worker-backed
-   Items, construct DeliveryCommands, and group them by the CandidateWorker
-   route snapshot.
-5. Preserve suffix zero and advance ordinary dispatch time for Tasks that ran
-   the dispatch path.
-6. For Tasks with no claimable Item, call `has_active_items` once over the
-   complete ACTIVE band and apply the idle transition below.
-7. Publish the round's sparse Worker Command maps once per endpoint manager.
-8. For every Task successfully idle-parked, perform one bounded
-   second ACTIVE-existence read. If a concurrent append created an ACTIVE Item,
-   exact-release that observed park.
+2. Ask `TaskExecutionMechanism` to observe record-backed due ACTIVE Items.
+3. Policy identifies zero-budget and expired Items; Mechanism exact-promotes
+   the selected observations to `FINAL_FAILED`.
+4. Policy matches/selects Workers and pairs them with Items. Mechanisms
+   exact-validate Worker leases, exact-claim only Worker-backed Items, construct
+   DeliveryCommands, and publish endpoint-grouped sparse maps.
+5. In `finally`, Policy reports the semantic dispatch outcome to
+   `TaskExecutionMechanism`, which advances ordinary Task pacing or performs
+   complete ACTIVE recheck, exact close/park, and post-park repair.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item
 claim. Item claim precedes command identity generation and mailbox publication.
@@ -99,7 +98,8 @@ exists, not merely when no Item is currently due or claimable.
 
 ## Idle Transitions
 
-The policy uses the complete Task score observed by the shared Source:
+The Mechanism uses the exact opaque Task reference from the shared
+observation:
 
 ```text
 ACTIVE exists

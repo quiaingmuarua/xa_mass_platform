@@ -114,8 +114,9 @@ cases and concrete endpoint handlers may evolve without moving those owners.
   Worker delivery owners and the Candidate Cache owner.
 - [`kernel_pacer_jvm/`](kernel_pacer_jvm/) is the Kernel-owned policy and
   lifecycle module. Its sole externally supported entry assembles fixed-lane
-  Result Convergence and Task-source Dispatch Convergence over `kernel_jvm`
-  owners. The stability order is `kernel_jvm > kernel_pacer_jvm > server_jvm`.
+  Result Convergence and Task-demand Dispatch Convergence over `kernel_jvm`
+  owners and package-private dispatch mechanisms. The stability order is
+  `kernel_jvm > kernel_pacer_jvm > server_jvm`.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server adapts the one
   Kernel Pacer Runtime lifecycle to Spring and owns Worker Identity,

@@ -42,8 +42,11 @@ a Kernel mechanism decision.
   Worker score, DeliveryCommand and result disposition remain distinct owners.
 - Score is a scheduling coordinate, not a resource lock or general version.
 - Keep score values opaque outside score-owner operations.
-- Dispatch Convergence may orchestrate bounded owner reads and transitions; it
-  does not merge owner truth.
+- Dispatch Convergence coordinates fixed lanes and Policy decisions. Policy
+  may call a bounded mechanical Owner directly when no semantic boundary is
+  crossed. A finite internal Mechanism is warranted only for a legal
+  cross-owner sequence or an opaque exact fence; Policy must not read,
+  construct or mutate raw Score coordinates.
 - Result Routing Policy owns accepted evidence parsing, grouping and semantic
   event publication. Finite TaskItem and Worker Mechanism ports decide the
   legal cross-owner transition; DeliveryReport and raw scores never enter
@@ -111,8 +114,16 @@ record merely to make a mechanical signature look smaller.
 - Task approval uses the Task score owner's complete RUNNING count as a
   best-effort soft-limit precheck, then performs one exact PRE_REVIEW-to-INITIAL
   transition. Concurrent approvals may overshoot the limit; INITIAL ordering
-  and all later fairness remain bounded scheduling policy unless a stronger
-  invariant is explicitly approved.
+  and the bounded Task page remain ordinary capacity policy rather than a
+  cross-Task fairness guarantee.
+- The supported scale model is a small bounded active Task set, many TaskItems
+  per Task, and many Workers inside a finite WorkerGroup set. Kernel liveness
+  means work-conserving convergence, not per-Task fairness. Fully utilized
+  compatible Workers imply normal backpressure, and bounded scan/CAS/refill may
+  add short convergence delay. Persistently idle compatible capacity plus
+  persistently due work that forms no assignment across repeated eligible
+  rounds is a liveness defect. Multi-tenant fairness, massive active Task/Group
+  cardinality and sharding remain explicit non-goals.
 - `PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` are Worker allocation
   mechanisms. `CLOSE_WHEN_IDLE` and `PARK_WHEN_IDLE` are independent idle
   dispositions. The public Server may expose only finite, proved combinations;
