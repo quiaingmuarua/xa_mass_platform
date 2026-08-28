@@ -6,25 +6,26 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
- * The finite production configuration for all Java Kernel Pacers.
+ * Root policy facts shared by both convergence packages.
  *
- * <p>The public Runtime selects one checked preset. Concrete policy values
- * remain package-private and cannot be assembled dynamically by Server.</p>
+ * <p>Each package owns its concrete preset values. The root owns only the
+ * selected finite preset and the single HOT eligibility floor that must be
+ * shared by Result and Dispatch.</p>
  */
 record KernelPacerPolicyConfig(
-        ResultConvergenceConfig resultConvergence,
-        WorkerServiceabilityAssemblyConfig workerServiceability,
-        AssignmentDispatchConfig assignmentDispatch
+        PolicyPreset preset,
+        long hotEligibilityFloorMillis
 ) {
 
-    private static final long LAB_INTERVAL_MILLIS = 20;
-    private static final long BOUNDARY_RECOVERY_RETRY_MILLIS = 10;
-    private static final int BOUNDARY_RESULT_REPORT_LIMIT = 100;
-
-    public KernelPacerPolicyConfig {
-        Objects.requireNonNull(resultConvergence, "resultConvergence");
-        Objects.requireNonNull(workerServiceability, "workerServiceability");
-        Objects.requireNonNull(assignmentDispatch, "assignmentDispatch");
+    KernelPacerPolicyConfig {
+        Objects.requireNonNull(preset, "preset");
+        if (serviceabilityEnabled(preset)) {
+            requireFloor(hotEligibilityFloorMillis);
+        } else if (hotEligibilityFloorMillis != 0) {
+            throw new IllegalArgumentException(
+                    "disabled Serviceability must not carry a HOT floor"
+            );
+        }
     }
 
     static KernelPacerPolicyConfig forPreset(PolicyPreset preset) {
@@ -37,120 +38,31 @@ record KernelPacerPolicyConfig(
     ) {
         Objects.requireNonNull(preset, "preset");
         Objects.requireNonNull(currentTimeMillis, "currentTimeMillis");
-        return switch (preset) {
-            case DEFAULT -> defaultPolicy();
-            case SERVICEABILITY_DEFAULT -> serviceabilityDefaultPolicy(
-                    currentTimeMillis
-            );
-            case SCENARIO_LAB -> scenarioLabPolicy(currentTimeMillis);
-            case RUNTIME_BOUNDARY_PROOF -> runtimeBoundaryPolicy(
-                    currentTimeMillis
-            );
-        };
-    }
-
-    private static KernelPacerPolicyConfig defaultPolicy() {
-        return new KernelPacerPolicyConfig(
-                ResultConvergenceConfig.defaults(),
-                WorkerServiceabilityAssemblyConfig.disabled(),
-                AssignmentDispatchConfig.defaults()
-        );
-    }
-
-    private static KernelPacerPolicyConfig serviceabilityDefaultPolicy(
-            LongSupplier currentTimeMillis
-    ) {
-        return new KernelPacerPolicyConfig(
-                new ResultConvergenceConfig(
-                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS,
-                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS
-                ),
-                enabledServiceability(
-                        currentTimeMillis,
-                        WorkerServiceabilityResultConfig.defaults(),
-                        WorkerServiceabilityDispatchLaneConfig.defaults()
-                ),
-                AssignmentDispatchConfig.defaults()
-        );
-    }
-
-    private static KernelPacerPolicyConfig scenarioLabPolicy(
-            LongSupplier currentTimeMillis
-    ) {
-        return new KernelPacerPolicyConfig(
-                new ResultConvergenceConfig(
-                        LAB_INTERVAL_MILLIS,
-                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS
-                ),
-                enabledServiceability(
-                        currentTimeMillis,
-                        WorkerServiceabilityResultConfig.defaults(),
-                        WorkerServiceabilityDispatchLaneConfig.defaults()
-                ),
-                AssignmentDispatchConfig.create(
-                        LAB_INTERVAL_MILLIS,
-                        LAB_INTERVAL_MILLIS,
-                        LAB_INTERVAL_MILLIS
-                )
-        );
-    }
-
-    private static KernelPacerPolicyConfig runtimeBoundaryPolicy(
-            LongSupplier currentTimeMillis
-    ) {
-        WorkerServiceabilityResultConfig result =
-                new WorkerServiceabilityResultConfig(
-                        WorkerServiceabilityResultConfig
-                                .DEFAULT_MAX_RECOVERY_ATTEMPTS,
-                        BOUNDARY_RESULT_REPORT_LIMIT,
-                        WorkerServiceabilityResultConfig
-                                .DEFAULT_EVIDENCE_MAX_AGE_MILLIS
-                );
-        WorkerServiceabilityDispatchConfig dispatch =
-                new WorkerServiceabilityDispatchConfig(
-                        BOUNDARY_RECOVERY_RETRY_MILLIS,
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_MAX_RECOVERY_ATTEMPTS,
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_HOT_SCAN_LIMIT,
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_RECOVERY_SCAN_LIMIT,
-                        WorkerServiceabilityDispatchConfig
-                                .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
-                );
-        return new KernelPacerPolicyConfig(
-                new ResultConvergenceConfig(
-                        ResultConvergenceConfig.DEFAULT_IDLE_INTERVAL_MILLIS,
-                        LAB_INTERVAL_MILLIS
-                ),
-                enabledServiceability(
-                        currentTimeMillis,
-                        result,
-                        new WorkerServiceabilityDispatchLaneConfig(
-                                WorkerServiceabilityDispatchLaneConfig
-                                        .DEFAULT_INTERVAL_MILLIS,
-                                dispatch
-                        )
-                ),
-                AssignmentDispatchConfig.defaults()
-        );
-    }
-
-    private static WorkerServiceabilityAssemblyConfig enabledServiceability(
-            LongSupplier currentTimeMillis,
-            WorkerServiceabilityResultConfig result,
-            WorkerServiceabilityDispatchLaneConfig dispatch
-    ) {
+        if (!serviceabilityEnabled(preset)) {
+            return new KernelPacerPolicyConfig(preset, 0);
+        }
         long current = currentTimeMillis.getAsLong();
         long floor = current / WorkerScoreCore.SLOT_MILLIS
                 * WorkerScoreCore.SLOT_MILLIS;
-        return new WorkerServiceabilityAssemblyConfig(
-                true,
-                floor,
-                result,
-                dispatch
-        );
+        return new KernelPacerPolicyConfig(preset, floor);
+    }
+
+    boolean serviceabilityEnabled() {
+        return serviceabilityEnabled(preset);
+    }
+
+    private static boolean serviceabilityEnabled(PolicyPreset preset) {
+        return preset != PolicyPreset.DEFAULT;
+    }
+
+    private static void requireFloor(long floor) {
+        if (floor < WorkerScoreCore.SLOT_MILLIS
+                || floor % WorkerScoreCore.SLOT_MILLIS != 0
+                || floor > WorkerScoreCore.MAX_TIME_MILLIS) {
+            throw new IllegalArgumentException(
+                    "hotEligibilityFloorMillis must be a valid "
+                            + "score-slot-aligned time"
+            );
+        }
     }
 }

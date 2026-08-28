@@ -29,7 +29,8 @@ class KernelPacerModuleBoundaryTest {
             "import com.xa.mass.kernel.pacer.";
 
     @Test
-    void exposesOnlyTheFiniteRuntimeEntry() throws IOException {
+    void exposesOnlyTheExternalRuntimeAndTwoInternalBridges()
+            throws IOException {
         Path sourceRoot = repositoryRoot().resolve(
                 "kernel_pacer_jvm/src/main/java"
         );
@@ -46,7 +47,40 @@ class KernelPacerModuleBoundaryTest {
                     });
         }
 
-        assertEquals(List.of("KernelPacerRuntime"), publicTypes);
+        assertEquals(Set.of(
+                "KernelPacerRuntime",
+                "ResultConvergenceRuntime",
+                "DispatchConvergenceRuntime"
+        ), Set.copyOf(publicTypes));
+    }
+
+    @Test
+    void keepsInternalBridgeImportsInsideThePacerModule()
+            throws IOException {
+        Path root = repositoryRoot();
+        Path pacerRoot = root.resolve("kernel_pacer_jvm");
+        List<String> violations = new ArrayList<>();
+        try (Stream<Path> files = Files.walk(root)) {
+            files.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !path.startsWith(pacerRoot))
+                    .filter(path -> !path.toString().contains(
+                            java.io.File.separator + "build"
+                                    + java.io.File.separator
+                    ))
+                    .filter(path -> {
+                        String source = read(path);
+                        return source.contains(
+                                "com.xa.mass.kernel.pacer.result."
+                        ) || source.contains(
+                                "com.xa.mass.kernel.pacer.dispatch."
+                        );
+                    })
+                    .map(root::relativize)
+                    .map(Path::toString)
+                    .forEach(violations::add);
+        }
+
+        assertEquals(List.of(), violations);
     }
 
     @Test
@@ -55,6 +89,26 @@ class KernelPacerModuleBoundaryTest {
 
         assertPackagePaths(moduleRoot.resolve("main/java"));
         assertPackagePaths(moduleRoot.resolve("test/java"));
+    }
+
+    @Test
+    void keepsTheRootPackageFreeOfPacerImplementations()
+            throws IOException {
+        Path rootPackage = repositoryRoot().resolve(
+                "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer"
+        );
+        Set<String> rootFiles;
+        try (Stream<Path> files = Files.list(rootPackage)) {
+            rootFiles = files.filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .collect(java.util.stream.Collectors.toSet());
+        }
+
+        assertEquals(Set.of(
+                "KernelPacerRuntime.java",
+                "KernelPacerPolicyConfig.java",
+                "package-info.java"
+        ), rootFiles);
     }
 
     @Test

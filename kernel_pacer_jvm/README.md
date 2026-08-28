@@ -15,20 +15,37 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 ## Public Boundary
 
-`com.xa.mass.kernel.pacer.KernelPacerRuntime` is the only public top-level
-type. Its `assemble(...)` method accepts the bounded mechanical owners needed by
-the two production applications plus one of its four checked `PolicyPreset`
-values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
+`com.xa.mass.kernel.pacer.KernelPacerRuntime` is the only externally supported
+production entry. Its `assemble(...)` method accepts the bounded mechanical
+owners needed by the two production applications plus one of its four checked
+`PolicyPreset` values: `DEFAULT`, `SERVICEABILITY_DEFAULT`, `SCENARIO_LAB`, or
 `RUNTIME_BOUNDARY_PROOF`. The Runtime
 owns fixed policy selection, one immutable HOT eligibility floor when
 Serviceability is enabled, thread startup/rollback, reverse bounded shutdown
 and aggregate failure state. It never closes the supplied owners.
 
-All Assignment, Result Routing and Serviceability implementation types are
-package-private. Their source files live directly in the matching
-`com/xa/mass/kernel/pacer` package directory so Java package visibility
-enforces the single-entry boundary without reflection, public factory types,
-or source-path/package mismatches in Java tooling.
+Implementation is grouped by mechanism instead of flattened into one package:
+
+```text
+com.xa.mass.kernel.pacer
+├─ KernelPacerRuntime
+├─ KernelPacerPolicyConfig
+├─ result
+│  ├─ ResultConvergenceRuntime
+│  └─ package-private Result lanes, policies and Application
+└─ dispatch
+   ├─ DispatchConvergenceRuntime
+   └─ package-private Task source, lanes, policies and Application
+```
+
+The two `*ConvergenceRuntime` types are narrow module-internal lifecycle
+bridges made public only because Java package visibility does not cross a
+parent/subpackage boundary. No module outside `kernel_pacer_jvm` may import
+them; architecture tests enforce that Server and all other production code use
+only `KernelPacerRuntime`. They are not independent runtimes, extension
+points, registries or deployment entries. All remaining implementation types
+stay package-private in their matching source directories, so IDE package/path
+validation remains exact without flattening the policy classes.
 
 ## Fixed Applications
 

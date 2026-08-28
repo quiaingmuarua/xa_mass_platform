@@ -120,13 +120,16 @@ workspace.
 module. Its dependency direction is `server_jvm -> kernel_pacer_jvm ->
 kernel_jvm`.
 
-- `KernelPacerRuntime` is its only public production entry.
+- `KernelPacerRuntime` is its only externally supported production entry.
+  The `result` and `dispatch` packages may each expose exactly one narrow
+  module-internal lifecycle bridge required by Java package visibility; no
+  module outside `kernel_pacer_jvm` may import either bridge.
 - It owns fixed Assignment, Result Routing and Worker Serviceability policy,
   configuration interpretation, Pacer loops and their finite lifecycle.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
-- Do not add a Pacer SPI, dynamic registry, public internal Pacer type,
-  reflection, ServiceLoader or a second runtime entry.
+- Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
+  reflection, ServiceLoader or a second external runtime entry.
 - Keep Java policy behavior aligned with the Python executable mechanism
   Oracle and prove Redis-sensitive behavior through the stable owner ports.
 

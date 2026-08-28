@@ -189,8 +189,10 @@ Application. Python tests remain the independent policy/shape Oracle.
   queue inside Dispatch Convergence.
 - Do not add a dynamic Pacer/lane registry, public policy SPI, or fallback
   owner.
-- Do not assemble package-private Pacer types from Server;
-  `KernelPacerRuntime` is the only public Pacer entry.
+- Do not assemble Pacer subpackage types from Server;
+  `KernelPacerRuntime` is the only externally supported Pacer entry. The
+  Result and Dispatch lifecycle bridges exist only for internal cross-package
+  composition and are guarded against imports outside `kernel_pacer_jvm`.
 - Do not decode opaque Score structure outside its owner.
 - Do not move candidate selection, Worker lease, Item claim, retry, recovery,
   or Task finality into Server.

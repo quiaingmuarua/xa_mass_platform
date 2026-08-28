@@ -1,10 +1,10 @@
 package com.xa.mass.kernel.pacer;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.ResultContextCodec;
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
-import com.xa.mass.kernel.delivery.TaskResultRuntime.TaskResultClass;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.pacer.dispatch.DispatchConvergenceRuntime;
+import com.xa.mass.kernel.pacer.result.ResultConvergenceRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
@@ -13,12 +13,11 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 
 /**
- * The single assembly and lifecycle boundary for all production Kernel Pacers.
+ * The single external assembly and lifecycle boundary for all production
+ * Kernel Pacers.
  *
  * <p>The runtime owns only fixed policy selection and Pacer threads. The
  * mechanical owners supplied to {@link #assemble} retain their own lifecycle
@@ -60,22 +59,19 @@ public final class KernelPacerRuntime {
     }
 
     private final Duration shutdownTimeout;
-    private final KernelPacerPolicyConfig policy;
-    private final ResultConvergenceApplication resultConvergence;
-    private final DispatchConvergenceApplication dispatchConvergence;
+    private final ResultConvergenceRuntime resultConvergence;
+    private final DispatchConvergenceRuntime dispatchConvergence;
     private State state = State.STOPPED;
 
     KernelPacerRuntime(
             Duration shutdownTimeout,
-            KernelPacerPolicyConfig policy,
-            ResultConvergenceApplication resultConvergence,
-            DispatchConvergenceApplication dispatchConvergence
+            ResultConvergenceRuntime resultConvergence,
+            DispatchConvergenceRuntime dispatchConvergence
     ) {
         this.shutdownTimeout = requirePositive(
                 shutdownTimeout,
                 "shutdownTimeout"
         );
-        this.policy = Objects.requireNonNull(policy, "policy");
         this.resultConvergence = Objects.requireNonNull(
                 resultConvergence,
                 "resultConvergence"
@@ -103,144 +99,33 @@ public final class KernelPacerRuntime {
         KernelPacerPolicyConfig policy = KernelPacerPolicyConfig.forPreset(
                 Objects.requireNonNull(policyPreset, "policyPreset")
         );
-        Objects.requireNonNull(taskResults, "taskResults");
-        Objects.requireNonNull(taskRuntime, "taskRuntime");
-        Objects.requireNonNull(itemScores, "itemScores");
-        Objects.requireNonNull(workerScores, "workerScores");
-        Objects.requireNonNull(serviceability, "serviceability");
-        Objects.requireNonNull(workerCatalog, "workerCatalog");
-        ResultConvergenceConfig convergencePolicy =
-                policy.resultConvergence();
-        TaskResultBatchPolicy taskResultPolicy = new TaskResultBatchPolicy(
-                taskRuntime,
-                itemScores,
-                workerScores
-        );
-        List<ResultLane> resultLanes = new ArrayList<>();
-        resultLanes.add(new ResultLane(
-                ResultLaneId.TASK_SUCCESS,
-                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
-                convergencePolicy.taskResultIdleIntervalMillis(),
-                ResultConvergenceConfig
-                        .TASK_SUCCESS_TARGET_CONCURRENCY,
-                ResultConvergenceConfig
-                        .TASK_SUCCESS_MAX_CONCURRENCY,
-                limit -> taskResults.consumeTaskResults(
-                        TaskResultClass.SUCCESS,
-                        limit
-                ),
-                taskResultPolicy::handleSuccess
-        ));
-        resultLanes.add(new ResultLane(
-                ResultLaneId.TASK_FAILURE,
-                ResultConvergenceConfig.TASK_RESULT_BATCH_LIMIT,
-                convergencePolicy.taskResultIdleIntervalMillis(),
-                ResultConvergenceConfig
-                        .TASK_FAILURE_TARGET_CONCURRENCY,
-                ResultConvergenceConfig
-                        .TASK_FAILURE_MAX_CONCURRENCY,
-                limit -> taskResults.consumeTaskResults(
-                        TaskResultClass.FAILURE,
-                        limit
-                ),
-                taskResultPolicy::handleFailure
-        ));
-        WorkerServiceabilityAssemblyConfig serviceabilityPolicy =
-                policy.workerServiceability();
-        if (serviceabilityPolicy.enabled()) {
-            WorkerServiceabilityResultConfig resultPolicy =
-                    serviceabilityPolicy.result();
-            WorkerServiceabilityResultPolicy evidencePolicy =
-                    new WorkerServiceabilityResultPolicy(
-                            workerCatalog,
-                            workerScores,
-                            resultPolicy,
-                            serviceabilityPolicy.hotEligibilityFloorMillis()
-                    );
-            resultLanes.add(new ResultLane(
-                    ResultLaneId.ADAPTER_EVIDENCE,
-                    resultPolicy.resultReportLimit(),
-                    convergencePolicy.adapterEvidenceIdleIntervalMillis(),
-                    ResultConvergenceConfig
-                            .ADAPTER_EVIDENCE_TARGET_CONCURRENCY,
-                    ResultConvergenceConfig
-                            .ADAPTER_EVIDENCE_MAX_CONCURRENCY,
-                    serviceability::consumeAdapterEvidenceResults,
-                    evidencePolicy::handle
-            ));
-        }
-        ResultConvergenceApplication resultConvergence =
-                new ResultConvergenceApplication(
-                        resultLanes,
-                        ResultConvergenceConfig.GLOBAL_MAX_CONCURRENCY
-                );
-        TaskScoreBandCore requiredTaskScores = Objects.requireNonNull(
-                taskScores,
-                "taskScores"
-        );
-        TaskResourceCatalog requiredTaskCatalog = Objects.requireNonNull(
-                taskCatalog,
-                "taskCatalog"
-        );
-        WorkerCandidateMatcher matcher = new WorkerCandidateMatcher(
-                workerCatalog
-        );
-        WorkerCandidateAcquirer candidateAcquirer =
-                new WorkerCandidateAcquirer(
-                        Objects.requireNonNull(
-                                candidateCache,
-                                "candidateCache"
-                        ),
-                        workerScores,
-                        matcher,
-                        AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
-                        serviceabilityPolicy.enabled()
-                                ? serviceabilityPolicy
-                                .hotEligibilityFloorMillis()
-                                : null
-                );
-        TaskWorkerAllocationPolicy allocation =
-                new TaskWorkerAllocationPolicy(
-                        candidateAcquirer,
-                        candidateCache
-                );
-        TaskInitializationPolicy initialization =
-                new TaskInitializationPolicy(
-                        requiredTaskScores,
-                        itemScores
-                );
-        TaskItemDispatcher itemDispatcher = new TaskItemDispatcher(
-                itemScores,
-                taskRuntime,
-                candidateAcquirer,
-                new ResultContextCodec()
-        );
-        TaskDispatchPolicy dispatch = new TaskDispatchPolicy(
-                requiredTaskScores,
-                Objects.requireNonNull(workerCommands, "workerCommands"),
-                itemScores,
-                itemDispatcher
-        );
-        WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
-                new WorkerServiceabilityDispatchPolicy(
+        ResultConvergenceRuntime resultConvergence =
+                ResultConvergenceRuntime.assemble(
+                        policy.preset(),
+                        policy.hotEligibilityFloorMillis(),
+                        taskResults,
+                        taskRuntime,
+                        itemScores,
                         workerScores,
                         workerCatalog,
                         serviceability
                 );
-        DispatchConvergenceApplication dispatchConvergence =
-                new DispatchConvergenceApplication(
-                        new TaskSchedulingBatchSource(
-                                requiredTaskScores,
-                                requiredTaskCatalog
-                        ),
-                        initialization,
-                        allocation,
-                        dispatch,
-                        serviceabilityDispatch
+        DispatchConvergenceRuntime dispatchConvergence =
+                DispatchConvergenceRuntime.assemble(
+                        policy.preset(),
+                        policy.hotEligibilityFloorMillis(),
+                        taskRuntime,
+                        taskScores,
+                        itemScores,
+                        taskCatalog,
+                        workerScores,
+                        workerCatalog,
+                        workerCommands,
+                        serviceability,
+                        candidateCache
                 );
         return new KernelPacerRuntime(
                 shutdownTimeout,
-                policy,
                 resultConvergence,
                 dispatchConvergence
         );
@@ -258,10 +143,7 @@ public final class KernelPacerRuntime {
         try {
             resultConvergence.start();
             resultStarted = true;
-            dispatchConvergence.start(
-                    policy.assignmentDispatch(),
-                    policy.workerServiceability()
-            );
+            dispatchConvergence.start();
             dispatchStarted = true;
             state = State.RUNNING;
         } catch (RuntimeException failure) {

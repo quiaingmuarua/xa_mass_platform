@@ -11,6 +11,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.xa.mass.kernel.pacer.dispatch.DispatchConvergenceRuntime;
+import com.xa.mass.kernel.pacer.result.ResultConvergenceRuntime;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -39,10 +41,7 @@ class KernelPacerRuntimeTest {
                 fixture.dispatchConvergence
         );
         order.verify(fixture.resultConvergence).start();
-        order.verify(fixture.dispatchConvergence).start(
-                fixture.policy.assignmentDispatch(),
-                fixture.policy.workerServiceability()
-        );
+        order.verify(fixture.dispatchConvergence).start();
         order.verify(fixture.dispatchConvergence).stop(anyLong());
         order.verify(fixture.resultConvergence).stop(anyLong());
         assertEquals(
@@ -56,10 +55,7 @@ class KernelPacerRuntimeTest {
         Fixture fixture = fixture();
         doThrow(new IllegalStateException("dispatch failed"))
                 .when(fixture.dispatchConvergence)
-                .start(
-                        fixture.policy.assignmentDispatch(),
-                        fixture.policy.workerServiceability()
-                );
+                .start();
 
         IllegalStateException failure = assertThrows(
                 IllegalStateException.class,
@@ -134,7 +130,6 @@ class KernelPacerRuntimeTest {
                 IllegalArgumentException.class,
                 () -> new KernelPacerRuntime(
                         Duration.ZERO,
-                        fixture.policy,
                         fixture.resultConvergence,
                         fixture.dispatchConvergence
                 )
@@ -142,33 +137,26 @@ class KernelPacerRuntimeTest {
     }
 
     private static Fixture fixture() {
-        ResultConvergenceApplication result = mock(
-                ResultConvergenceApplication.class
+        ResultConvergenceRuntime result = mock(
+                ResultConvergenceRuntime.class
         );
-        DispatchConvergenceApplication dispatch = mock(
-                DispatchConvergenceApplication.class
+        DispatchConvergenceRuntime dispatch = mock(
+                DispatchConvergenceRuntime.class
         );
         when(result.state()).thenReturn("STOPPED");
         when(dispatch.state()).thenReturn("STOPPED");
-        KernelPacerPolicyConfig policy = new KernelPacerPolicyConfig(
-                ResultConvergenceConfig.defaults(),
-                WorkerServiceabilityAssemblyConfig.disabled(),
-                AssignmentDispatchConfig.defaults()
-        );
         KernelPacerRuntime runtime = new KernelPacerRuntime(
                 Duration.ofSeconds(1),
-                policy,
                 result,
                 dispatch
         );
-        return new Fixture(runtime, result, dispatch, policy);
+        return new Fixture(runtime, result, dispatch);
     }
 
     private record Fixture(
             KernelPacerRuntime runtime,
-            ResultConvergenceApplication resultConvergence,
-            DispatchConvergenceApplication dispatchConvergence,
-            KernelPacerPolicyConfig policy
+            ResultConvergenceRuntime resultConvergence,
+            DispatchConvergenceRuntime dispatchConvergence
     ) {
     }
 }
