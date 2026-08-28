@@ -30,10 +30,10 @@ public interface TaskScoreBandCore {
     long PAUSE_TIME_MILLIS = MAX_TIME_MILLIS;
     long DEFAULT_TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR;
     int MAX_TASK_SCORE_PREVIEW_LIMIT = 100;
-    long INITIAL_TIME_CEILING_MILLIS = 10_000;
-    long INITIAL_PRIORITY_STEP_MILLIS = SLOT_MILLIS;
-    long NORMAL_TIME_MIN_MILLIS = INITIAL_TIME_CEILING_MILLIS
-            + SLOT_MILLIS;
+    long INITIAL_TIME_SLOT = 100;
+    long INITIAL_TIME_MILLIS = INITIAL_TIME_SLOT * SLOT_MILLIS;
+    long NORMAL_TIME_SLOT_MIN = INITIAL_TIME_SLOT + 1;
+    long NORMAL_TIME_MIN_MILLIS = NORMAL_TIME_SLOT_MIN * SLOT_MILLIS;
 
     Map<String, @Nullable TaskScoreState> getScoreStates(
             List<String> taskIds
@@ -142,8 +142,9 @@ public interface TaskScoreBandCore {
             return band == TaskScoreBand.RUNNING_VISIBLE
                     && timeMillis != null
                     && suffix != null
-                    && suffix == MIN_SUFFIX
-                    && timeMillis <= INITIAL_TIME_CEILING_MILLIS;
+                    && timeMillis == INITIAL_TIME_MILLIS
+                    && suffix >= MIN_SUFFIX
+                    && suffix <= MAX_SUFFIX;
         }
 
         public boolean isDueNormal(long currentTimeMillis) {

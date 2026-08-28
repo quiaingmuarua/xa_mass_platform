@@ -215,7 +215,7 @@ class KernelOwnerContractManifestTest {
             );
 
     @Test
-    void jvmContractsMatchThePythonOwnerManifest() throws Exception {
+    void jvmContractsMatchTheSharedPythonOwnerManifest() throws Exception {
         Map<String, Object> manifest = manifest();
         assertEquals(
                 manifest.get("contracts"),
@@ -227,9 +227,17 @@ class KernelOwnerContractManifestTest {
                 normalizeNumbers(enumValues())
         );
         assertEquals(
-                normalizeNumbers(manifest.get("constants")),
+                normalizeNumbers(sharedManifestConstants()),
                 constants()
         );
+    }
+
+    @Test
+    void javaTaskInitialEncodingUsesOneFixedSlot() {
+        assertEquals(100, TaskScoreBandCore.INITIAL_TIME_SLOT);
+        assertEquals(10_000, TaskScoreBandCore.INITIAL_TIME_MILLIS);
+        assertEquals(101, TaskScoreBandCore.NORMAL_TIME_SLOT_MIN);
+        assertEquals(10_100, TaskScoreBandCore.NORMAL_TIME_MIN_MILLIS);
     }
 
     @Test
@@ -339,8 +347,7 @@ class KernelOwnerContractManifestTest {
             try {
                 @SuppressWarnings("unchecked")
                 Map<String, Number> names =
-                        (Map<String, Number>) ((Map<?, ?>) manifest()
-                                .get("constants"))
+                        (Map<String, Number>) sharedManifestConstants()
                                 .get(name);
                 for (String constantName : names.keySet()) {
                     Number value = (Number) type.getField(constantName)
@@ -353,6 +360,46 @@ class KernelOwnerContractManifestTest {
             expected.put(name, values);
         });
         return expected;
+    }
+
+    private static Map<String, Map<String, Number>>
+            sharedManifestConstants() {
+        var classes = Map.of(
+                "TaskRuntime", TaskRuntime.class,
+                "TaskScoreBandCore", TaskScoreBandCore.class,
+                "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
+                "WorkerResourceCatalog", WorkerResourceCatalog.class,
+                "WorkerScoreCore", WorkerScoreCore.class
+        );
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Number>> manifestConstants =
+                (Map<String, Map<String, Number>>) (Map<?, ?>) manifest()
+                        .get("constants");
+        var shared = new TreeMap<String, Map<String, Number>>();
+        int frozenTaskScoreConstants = 0;
+        for (var entry : classes.entrySet()) {
+            var values = new TreeMap<String, Number>();
+            for (var constant : manifestConstants.get(entry.getKey())
+                    .entrySet()) {
+                try {
+                    entry.getValue().getField(constant.getKey());
+                    values.put(constant.getKey(), constant.getValue());
+                } catch (NoSuchFieldException missing) {
+                    if (entry.getValue() != TaskScoreBandCore.class) {
+                        throw new IllegalStateException(missing);
+                    }
+                    frozenTaskScoreConstants++;
+                }
+            }
+            shared.put(entry.getKey(), values);
+        }
+        if (frozenTaskScoreConstants != 2) {
+            throw new IllegalStateException(
+                    "unexpected frozen Task Score constant divergence: "
+                            + frozenTaskScoreConstants
+            );
+        }
+        return shared;
     }
 
     private static Map<String, Object> manifest() {

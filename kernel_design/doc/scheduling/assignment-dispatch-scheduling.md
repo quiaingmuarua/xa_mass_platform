@@ -32,8 +32,9 @@ there is no transaction or assignment lifecycle object. A busy lane skips the
 batch, and Task score remains the only persistent demand surface.
 
 The supported Task command path commits the `TaskDescriptor` before approval
-can enter RUNNING INITIAL. Initialization writes the NORMAL time coordinate
-with suffix zero.
+can enter RUNNING INITIAL. INITIAL uses the fixed time slot `100` and the
+Owner-derived suffix `99 - priority`; initialization writes the NORMAL time
+coordinate with suffix zero.
 `TaskSchedulingBatchSource` therefore revalidates concurrent observations; it
 is not a legacy-data repair or migration surface. A Task that changed band,
 moved into the future, or disappeared between the range read and the owner

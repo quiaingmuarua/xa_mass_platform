@@ -73,8 +73,8 @@ class AssignmentPacersTest {
     void initializationPromotesOnlyInitialTasksWithDueItems() {
         TaskScoreBandCore taskScore = mock(TaskScoreBandCore.class);
         TaskItemScoreBandCore itemScore = mock(TaskItemScoreBandCore.class);
-        TaskScoreState first = initialState("task-1", 10_000);
-        TaskScoreState second = initialState("task-2", 9_900);
+        TaskScoreState first = initialState("task-1", 99);
+        TaskScoreState second = initialState("task-2", 98);
         TaskDescriptor firstDescriptor = descriptor(
                 "task-1",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
@@ -178,13 +178,13 @@ class AssignmentPacersTest {
         );
     }
 
-    private static TaskScoreState initialState(String taskId, long time) {
+    private static TaskScoreState initialState(String taskId, int suffix) {
         return new TaskScoreState(
                 taskId,
                 2L,
                 TaskScoreBand.RUNNING_VISIBLE,
-                time,
-                0
+                TaskScoreBandCore.INITIAL_TIME_MILLIS,
+                suffix
         );
     }
 

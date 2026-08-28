@@ -284,8 +284,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(approved.band()).isEqualTo(
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
         );
-        assertThat(approved.timeMillis()).isEqualTo(9_300L);
-        assertThat(approved.suffix()).isZero();
+        assertThat(approved.timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(approved.suffix()).isEqualTo(92);
 
         redis.zadd(
                 keyspace.base() + ":task:score",
@@ -479,8 +481,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(initial.band()).isEqualTo(
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE
         );
-        assertThat(initial.timeMillis()).isEqualTo(9_600L);
-        assertThat(initial.suffix()).isZero();
+        assertThat(initial.timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(initial.suffix()).isEqualTo(95);
 
         var promoted = scoreCore.promoteObservedInitialTask(
                 "rewrite-task",
@@ -504,7 +508,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void initialCoordinatesPreservePriorityOrder() {
+    void initialSlotUsesPrioritySuffixOrder() {
         Map<String, Integer> priorities = Map.of(
                 "priority-0", 0,
                 "priority-1", 1,
@@ -530,11 +534,36 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         }
 
         var states = scoreCore.getScoreStates(List.copyOf(priorities.keySet()));
-        assertThat(states.get("priority-0").timeMillis()).isEqualTo(10_000L);
-        assertThat(states.get("priority-1").timeMillis()).isEqualTo(9_900L);
-        assertThat(states.get("priority-99").timeMillis()).isEqualTo(100L);
-        assertThat(scoreCore.acquireInitialRunningTasks(3))
+        assertThat(states.get("priority-0").timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(states.get("priority-0").suffix()).isEqualTo(99);
+        assertThat(states.get("priority-1").timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(states.get("priority-1").suffix()).isEqualTo(98);
+        assertThat(states.get("priority-99").timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(states.get("priority-99").suffix()).isZero();
+        long lowSlotScore = taskScore(
+                TaskScoreBandCore.RUNNING_VISIBLE_TAG,
+                TaskScoreBandCore.INITIAL_TIME_SLOT - 1,
+                TaskScoreBandCore.MAX_SUFFIX
+        );
+        redis.zadd(
+                keyspace.base() + ":task:score",
+                lowSlotScore,
+                "other-low-slot"
+        );
+        assertThat(scoreCore.acquireInitialRunningTasks(4))
                 .containsExactly("priority-0", "priority-1", "priority-99");
+        assertThat(scoreCore.promoteObservedInitialTask(
+                "other-low-slot",
+                lowSlotScore
+        ).status()).isEqualTo(
+                TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
+        );
         assertThat(scoreCore.rewriteSameBandTimeMillis(
                 "priority-0",
                 TaskScoreBandCore.TaskScoreBand.RUNNING_VISIBLE,
@@ -548,6 +577,35 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ).status()).isEqualTo(
                 TaskScoreBandCore.TaskScoreTransitionStatus.INVALID
         );
+    }
+
+    @Test
+    void equalPriorityInitialTasksHaveNoOrderingContract() {
+        for (String taskId : List.of("equal-a", "equal-b")) {
+            var initialized = scoreCore.initializeScore(taskId, 1, 3_000);
+            var released = scoreCore.releaseObservedScoreHold(
+                    taskId,
+                    initialized.score()
+            );
+            assertThat(scoreCore.startObservedPreReviewTask(
+                    taskId,
+                    released.score(),
+                    50
+            ).status()).isEqualTo(
+                    TaskScoreBandCore.TaskScoreTransitionStatus.TRANSITIONED
+            );
+        }
+
+        var states = scoreCore.getScoreStates(List.of("equal-a", "equal-b"));
+        assertThat(states.get("equal-a").timeMillis()).isEqualTo(
+                TaskScoreBandCore.INITIAL_TIME_MILLIS
+        );
+        assertThat(states.get("equal-a").suffix()).isEqualTo(49);
+        assertThat(states.get("equal-b").score()).isEqualTo(
+                states.get("equal-a").score()
+        );
+        assertThat(scoreCore.acquireInitialRunningTasks(2))
+                .containsExactlyInAnyOrder("equal-a", "equal-b");
     }
 
     @Test
@@ -663,9 +721,8 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ), "running-future");
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
-                TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS
-                        / TaskScoreBandCore.SLOT_MILLIS,
-                0
+                TaskScoreBandCore.INITIAL_TIME_SLOT,
+                TaskScoreBandCore.MAX_SUFFIX
         ), "initial");
         Map<String, Double> before = redis.zrangeWithScores(scoreKey, 0, -1)
                 .stream()

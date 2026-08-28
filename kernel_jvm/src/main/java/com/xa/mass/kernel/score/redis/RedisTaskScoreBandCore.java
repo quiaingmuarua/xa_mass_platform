@@ -300,12 +300,12 @@ public final class RedisTaskScoreBandCore
         }
         long minimumScore = score(
                 RUNNING_VISIBLE_TAG,
-                MIN_TIME_SLOT,
+                INITIAL_TIME_SLOT,
                 MIN_SUFFIX
         );
         long maximumScore = score(
                 RUNNING_VISIBLE_TAG,
-                INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS,
+                INITIAL_TIME_SLOT,
                 MAX_SUFFIX
         );
         return commands().zrevrangebyscoreWithScores(
@@ -321,9 +321,7 @@ public final class RedisTaskScoreBandCore
                     );
                     return decoded != null
                             && decoded.tag() == RUNNING_VISIBLE_TAG
-                            && decoded.suffix() == MIN_SUFFIX
-                            && decoded.timeSlot()
-                            <= INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS;
+                            && decoded.timeSlot() == INITIAL_TIME_SLOT;
                 })
                 .map(ScoredValue::getValue)
                 .toList();
@@ -399,11 +397,7 @@ public final class RedisTaskScoreBandCore
                 || !validSuffix(priority)) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
-        long initialTimeMillis = Math.max(
-                MIN_TIME_MILLIS,
-                INITIAL_TIME_CEILING_MILLIS
-                        - priority * INITIAL_PRIORITY_STEP_MILLIS
-        );
+        int initialSuffix = MAX_SUFFIX - priority;
         return scriptResult(commands().eval(
                 START_PRE_REVIEW_SCRIPT,
                 ScriptOutputType.MULTI,
@@ -422,8 +416,8 @@ public final class RedisTaskScoreBandCore
                 )),
                 Long.toString(score(
                         RUNNING_VISIBLE_TAG,
-                        initialTimeMillis / SLOT_MILLIS,
-                        MIN_SUFFIX
+                        INITIAL_TIME_SLOT,
+                        initialSuffix
                 ))
         ));
     }
@@ -437,9 +431,7 @@ public final class RedisTaskScoreBandCore
         DecodedPositive observed = decodePositive(observedInitialScore);
         if (observed == null
                 || observed.tag() != RUNNING_VISIBLE_TAG
-                || observed.suffix() != MIN_SUFFIX
-                || observed.timeSlot()
-                > INITIAL_TIME_CEILING_MILLIS / SLOT_MILLIS) {
+                || observed.timeSlot() != INITIAL_TIME_SLOT) {
             return transition(TaskScoreTransitionStatus.INVALID);
         }
         return scriptResult(commands().eval(

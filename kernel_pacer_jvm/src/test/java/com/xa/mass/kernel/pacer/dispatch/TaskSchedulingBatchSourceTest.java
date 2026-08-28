@@ -36,7 +36,11 @@ class TaskSchedulingBatchSourceTest {
                 "normal", running("normal", 19_900, 0),
                 "future", running("future", 20_000, 0),
                 "missing", running("missing", 19_800, 0),
-                "initial", running("initial", 10_000, 0),
+                "initial", running(
+                        "initial",
+                        TaskScoreBandCore.INITIAL_TIME_MILLIS,
+                        TaskScoreBandCore.MAX_SUFFIX
+                ),
                 "wrong-initial", running("wrong-initial", 10_100, 0)
         ));
         when(catalog.loadTaskAllocationDescriptors(allIds)).thenReturn(Map.of(

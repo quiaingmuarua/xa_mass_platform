@@ -1,7 +1,8 @@
 # Task Score-Band Scheduling
 
-Status: current Kernel owner contract; Python Oracle and Java production owner
-implemented.
+Status: current Java production owner contract. The Python executable spec is
+frozen on the preceding encoding and is not a production compatibility target
+for this refinement.
 
 ## Lifecycle
 
@@ -17,7 +18,7 @@ RUNNING_VISIBLE / NORMAL
 TERMINAL
 ```
 
-`INITIAL` is not a band. It is a fixed coordinate range inside RUNNING used
+`INITIAL` is not a band. It is one fixed time slot inside RUNNING used
 only for the first start-condition check.
 
 ## Encoding
@@ -35,9 +36,10 @@ RUNNING_VISIBLE = 1
 PRE_REVIEW      = 2
 TERMINAL        = any negative score
 
-INITIAL_TIME_CEILING_MILLIS = 10_000
-INITIAL_PRIORITY_STEP_MILLIS = 100
-NORMAL_TIME_MIN_MILLIS       = 10_100
+INITIAL_TIME_SLOT      = 100
+INITIAL_TIME_MILLIS    = 10_000
+NORMAL_TIME_SLOT_MIN   = 101
+NORMAL_TIME_MIN_MILLIS = 10_100
 ```
 
 Score encoding, Redis range construction, and complete-score comparison stay
@@ -45,19 +47,21 @@ inside `TaskScoreBandCore`. Pacer code receives opaque score observations.
 
 ## INITIAL Coordinate
 
-Approve computes:
+Approve writes:
 
 ```text
-initialDueMillis = max(0, 10_000 - priority * 100)
+timeSlot = INITIAL_TIME_SLOT
+suffix   = MAX_SUFFIX - priority
 ```
 
 Priority remains `0..99`; smaller values are higher priority. INITIAL reads
-are descending, so priority `0` at `10_000` is observed before priority `99`
-at `100`. Equal scores have no FIFO promise.
+the exact slot in descending score order, so priority `0` with suffix `99` is
+more likely to be observed before priority `99` with suffix `0`. Tasks with the
+same priority have the same score and no FIFO or relative-order promise.
 
-The fixed coordinate is only an ordering value. It is not a Unix timestamp,
-deadline, approval time, or process-start time. It remains stable across
-Kernel restarts.
+The fixed slot is a phase coordinate, not a Unix timestamp, deadline, approval
+time, or process-start time. The suffix is only INITIAL-local priority. Both
+remain stable across Kernel restarts.
 
 ## NORMAL Coordinate
 
@@ -139,8 +143,9 @@ Only terminal close removes a Task from that count.
 
 Approval then calls `start_observed_pre_review_task`. Its same-key Lua requires
 the complete stored score to equal the observed PRE_REVIEW score and writes the
-fixed RUNNING INITIAL coordinate. It does not count other Tasks. Concurrent
-approvals that observed a count below 100 may all succeed, so RUNNING may
+fixed RUNNING INITIAL slot with the Owner-derived priority suffix. It does not
+count other Tasks. Concurrent approvals that observed a count below 100 may
+all succeed, so RUNNING may
 temporarily exceed the soft limit. This is accepted drift, not a scheduling
 safety violation.
 
@@ -151,7 +156,7 @@ safety violation.
 ```text
 hasDueActiveItems(initial task ids)
 -> due true: promoteObservedInitialTask(exact score)
--> due false: keep the fixed INITIAL coordinate
+-> due false: keep the fixed INITIAL slot and priority suffix
 ```
 
 There is no Task admission SPI, System admission policy, capacity reservation,
@@ -195,7 +200,7 @@ owner no-ops for an INITIAL Task. Its new Item is discovered by Initialization.
 
 `preview_score_states(1..100)` performs one descending ZSET read. It is a
 bounded operational window, not pagination or full inventory. Server projects
-an INITIAL score as `running-initial` and does not expose its fixed coordinate
+an INITIAL score as `running-initial` and does not expose its fixed slot
 as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.
 
 ## Failure And Concurrency
@@ -227,7 +232,8 @@ as a timestamp. NORMAL RUNNING keeps the existing `running_visible` view.
 ## Guardrails
 
 - Do not restore an ADMISSION band or generic cross-band rewrite.
-- Do not interpret fixed INITIAL coordinates as wall-clock evidence.
+- Do not interpret the fixed INITIAL slot as wall-clock evidence or its suffix
+  as a general RUNNING lane.
 - Do not admit INITIAL Tasks into allocation, dispatch, or serviceability.
 - Do not treat the RUNNING soft-limit read as a reservation or hard invariant.
 - Do not move TaskItem retry or Worker lease truth into Task score.

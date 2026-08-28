@@ -1,6 +1,7 @@
 # Task Initialization Policy
 
-Status: current fixed policy in Python Oracle and Java production Pacer.
+Status: current Java production Pacer policy. The Python executable spec is
+frozen on the preceding INITIAL encoding.
 
 ## Purpose
 
@@ -23,8 +24,8 @@ capacity owner.
 
 ```text
 band       = RUNNING_VISIBLE
-timeMillis <= 10_000
-suffix     = 0
+timeMillis = 10_000
+suffix     = 99 - priority
 Descriptor identity matches Task id
 ```
 
@@ -62,7 +63,7 @@ memory queue or hint; a future INITIAL scan is the liveness path.
 - No Task/System admission policy registry.
 - No capacity transaction; approve composes a RUNNING count precheck with an
   independent exact INITIAL transition.
-- No priority-bucket recheck; priority is already encoded in fixed INITIAL
-  coordinates.
+- No priority-bucket recheck; priority is already encoded in the suffix of the
+  fixed INITIAL slot.
 - No Worker lease, Candidate Cache, Serviceability probe, or Item claim.
 - No business-profile branching in Kernel policy.

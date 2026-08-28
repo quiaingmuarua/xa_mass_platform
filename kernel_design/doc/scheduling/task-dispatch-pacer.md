@@ -7,8 +7,9 @@ implemented; policy coverage partial.
 
 `TaskDispatchPolicy` owns one bounded round over a verified due
 `RUNNING_VISIBLE` Task batch supplied by `TaskSchedulingBatchSource`.
-Every RUNNING Task uses suffix `0`; Task score no longer encodes an idle
-recheck lane.
+Every dispatch-visible NORMAL RUNNING Task uses suffix `0`; INITIAL uses an
+Owner-private priority suffix and never enters this policy. Task score no
+longer encodes an idle recheck lane.
 
 ```text
 Task has ACTIVE Item
@@ -199,8 +200,9 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 
 ## Guardrails
 
-- Keep ordinary RUNNING scheduling at suffix zero. The private idle park uses
-  `MAX_SUFFIX` only as its raw range boundary.
+- Keep NORMAL RUNNING scheduling at suffix zero. INITIAL priority suffixes are
+  private to the Task Score Owner, and the private idle park uses `MAX_SUFFIX`
+  only as its raw range boundary.
 - Do not classify future ACTIVE Items as idle.
 - Do not make ordinary Item append a hidden scheduling command.
 - Do not add a wake inbox, urgent set, priority queue, or second Task scan.

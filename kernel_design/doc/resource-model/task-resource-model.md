@@ -50,10 +50,10 @@ The config keys are exactly:
 All values are strings in the first cut. Supporting two representations for
 the same setting adds ambiguity without mechanism value.
 
-`priority` is one Task scheduling intent. Task approval maps it to the fixed
-RUNNING INITIAL time coordinate, and the Worker matcher uses it when multiple
-NORMAL Tasks contend for Workers. There must not be a second initialization
-or allocation-priority field.
+`priority` is one Task scheduling intent. Task approval maps it to the suffix
+inside the fixed RUNNING INITIAL time slot, and the Worker matcher uses it when
+multiple NORMAL Tasks contend for Workers. There must not be a second
+initialization or allocation-priority field.
 
 `config` is not an unchecked extension bag. New keys require a named owner and
 consumer. The Task resource model deliberately contains no minimum matching
@@ -181,10 +181,10 @@ This is an in-memory bounded transformation, not a stored Task state.
 Approve first reads the complete RUNNING count and returns its existing
 retryable result when the soft limit of 100 is already reached. It then uses a
 separate exact score transition to move the observed PRE_REVIEW Task into the
-fixed RUNNING INITIAL coordinate range. Concurrent approvals may exceed 100;
-that bounded drift is not a scheduling-safety failure. Priority orders the
-fixed INITIAL coordinates; no admission policy or recheck time is stored in
-the Descriptor.
+fixed RUNNING INITIAL slot. Concurrent approvals may exceed 100; that bounded
+drift is not a scheduling-safety failure. Priority determines the
+INITIAL-local suffix; no admission policy or recheck time is stored in the
+Descriptor.
 
 The one current initialization condition is a due ACTIVE Item:
 

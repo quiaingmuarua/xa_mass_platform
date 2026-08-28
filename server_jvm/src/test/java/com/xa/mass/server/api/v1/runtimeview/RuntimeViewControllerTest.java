@@ -860,8 +860,8 @@ class RuntimeViewControllerTest {
                 taskId,
                 1,
                 TaskScoreBand.RUNNING_VISIBLE,
-                TaskScoreBandCore.INITIAL_TIME_CEILING_MILLIS,
-                0
+                TaskScoreBandCore.INITIAL_TIME_MILLIS,
+                TaskScoreBandCore.MAX_SUFFIX
         );
     }
 }
