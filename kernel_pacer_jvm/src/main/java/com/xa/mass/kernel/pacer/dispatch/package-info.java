@@ -1,5 +1,6 @@
 /**
- * Fixed Dispatch lanes, policy, internal mechanisms and opaque references.
+ * Dispatch Main Scheduler, fixed Resource Producers, policy, internal
+ * mechanisms and opaque references.
  *
  * <p>A mechanism exists only where a legal transition composes owners or must
  * protect an exact fence. Policy may call a bounded owner directly when that

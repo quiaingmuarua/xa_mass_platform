@@ -193,24 +193,24 @@ public final class DispatchConvergenceRuntime {
                     new WorkerServiceabilityDispatchAssemblyConfig(
                             true,
                             hotEligibilityFloorMillis,
-                            WorkerServiceabilityDispatchLaneConfig.defaults()
+                            WorkerServiceabilityDispatchAssemblyConfig
+                                    .DEFAULT_INTERVAL_MILLIS,
+                            WorkerServiceabilityDispatchConfig.defaults()
                     );
             case RUNTIME_BOUNDARY_PROOF ->
                     new WorkerServiceabilityDispatchAssemblyConfig(
                             true,
                             hotEligibilityFloorMillis,
-                            new WorkerServiceabilityDispatchLaneConfig(
-                                    WorkerServiceabilityDispatchLaneConfig
-                                            .DEFAULT_INTERVAL_MILLIS,
-                                    new WorkerServiceabilityDispatchConfig(
-                                            BOUNDARY_RECOVERY_RETRY_MILLIS,
-                                            WorkerServiceabilityDispatchConfig
-                                                    .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
-                                            WorkerServiceabilityDispatchConfig
-                                                    .DEFAULT_MAX_RECOVERY_ATTEMPTS,
-                                            WorkerServiceabilityDispatchConfig
-                                                    .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
-                                    )
+                            WorkerServiceabilityDispatchAssemblyConfig
+                                    .DEFAULT_INTERVAL_MILLIS,
+                            new WorkerServiceabilityDispatchConfig(
+                                    BOUNDARY_RECOVERY_RETRY_MILLIS,
+                                    WorkerServiceabilityDispatchConfig
+                                            .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
+                                    WorkerServiceabilityDispatchConfig
+                                            .DEFAULT_MAX_RECOVERY_ATTEMPTS,
+                                    WorkerServiceabilityDispatchConfig
+                                            .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
                             )
                     );
         };

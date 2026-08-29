@@ -5,11 +5,19 @@ import java.util.Objects;
 record WorkerServiceabilityDispatchAssemblyConfig(
         boolean enabled,
         long hotEligibilityFloorMillis,
-        WorkerServiceabilityDispatchLaneConfig lane
+        long intervalMillis,
+        WorkerServiceabilityDispatchConfig dispatch
 ) {
 
+    static final long DEFAULT_INTERVAL_MILLIS = 1_000;
+
     WorkerServiceabilityDispatchAssemblyConfig {
-        Objects.requireNonNull(lane, "lane");
+        if (intervalMillis < 1) {
+            throw new IllegalArgumentException(
+                    "intervalMillis must be positive"
+            );
+        }
+        Objects.requireNonNull(dispatch, "dispatch");
         if (enabled) {
             requireFloor(hotEligibilityFloorMillis);
         } else if (hotEligibilityFloorMillis != 0) {
@@ -23,7 +31,8 @@ record WorkerServiceabilityDispatchAssemblyConfig(
         return new WorkerServiceabilityDispatchAssemblyConfig(
                 false,
                 0,
-                WorkerServiceabilityDispatchLaneConfig.defaults()
+                DEFAULT_INTERVAL_MILLIS,
+                WorkerServiceabilityDispatchConfig.defaults()
         );
     }
 

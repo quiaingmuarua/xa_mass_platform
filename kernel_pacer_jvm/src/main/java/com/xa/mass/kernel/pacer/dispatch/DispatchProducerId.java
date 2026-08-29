@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-enum DispatchLaneId {
+enum DispatchProducerId {
     TASK_INITIALIZATION,
     WORKER_ALLOCATION,
     TASK_DISPATCH,

@@ -8,8 +8,7 @@ Status: active Kernel mechanism contract.
 already-verified due `RUNNING_VISIBLE` Task batch:
 
 ```text
-DueTaskObservation[]
-  -> retain PRECOMPUTED_TASK_RULE Tasks
+PRECOMPUTED DueTaskObservation[]
   -> read current Candidate cache counts
   -> compute each Task deficit
   -> group requests by workerGroupId
@@ -17,15 +16,18 @@ DueTaskObservation[]
   -> append expiring CandidateWorker entries
 ```
 
-The policy does not discover Tasks, read or rewrite Task score, activate Tasks,
-dispatch Items, or maintain a retry/warmup queue. `DIRECT_ITEM_RULE` Tasks are
-ignored because they acquire Workers only while dispatching their Items.
+The policy does not discover or classify Tasks, read or rewrite Task score,
+activate Tasks, dispatch Items, or maintain a retry/warmup queue.
+`DIRECT_ITEM_RULE` Tasks are excluded by the Main Scheduler because they
+acquire Workers only while dispatching their Items. Receiving one here is an
+internal caller error.
 
 ## Input Boundary
 
 The Task Score Owner supplies the bounded taskId-to-score map and identifies
-the INITIAL subset; `DispatchLaneCoordinator` loads NORMAL Descriptors and supplies an
-immutable `DueTaskObservation` containing:
+the INITIAL subset. `DispatchMainScheduler` loads NORMAL Descriptors, selects
+only `PRECOMPUTED_TASK_RULE`, and supplies an immutable `DueTaskObservation`
+containing:
 
 ```text
 taskId
@@ -59,7 +61,7 @@ xa_mass:<scope>:dispatch:candidate:<taskId>:workers
 ```
 
 There is no Candidate scheduling index. If a Task needs more candidates, its
-unchanged due RUNNING score causes a later shared Source round to expose it
+unchanged due RUNNING score causes a later Main Scheduler round to expose it
 again. If Dispatch advances or parks/closes the Task first, stale Candidate
 evidence simply expires.
 
@@ -71,7 +73,7 @@ TaskWorkerAllocationConfig(
 )
 ```
 
-The shared RUNNING observation owns the fixed batch limit of 100. Worker scan
+The Main Scheduler Task Source owns the fixed batch limit of 100. Worker scan
 bounds belong to the internal `WorkerCandidateMechanism`; selection and
 matching belong to `WorkerCandidateSelectionPolicy`. The Allocation Policy
 reads bounded Candidate counts directly from `CandidateWorkerCache` because

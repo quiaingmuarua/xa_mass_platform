@@ -16,10 +16,11 @@ Process lifecycle is defined by
 
 ## Core Decision
 
-Dispatch Convergence derives two projections from one RUNNING Task source and
-keeps four fixed single-flight policy lanes:
+Dispatch Convergence has one Main Scheduler that derives four fixed root-input
+sets from one RUNNING Task source and starts four single-flight Resource
+Producers:
 
-| Lane | Source | Decision | Output |
+| Producer | Main-planned root input | Decision | Output |
 | --- | --- | --- | --- |
 | Task initialization | INITIAL RUNNING | Which Tasks have a due ACTIVE Item? | exact INITIAL to NORMAL transition |
 | Worker allocation | NORMAL RUNNING | Which stable Task rules have Candidate deficits? | Expiring CandidateWorker cache evidence |
@@ -28,17 +29,18 @@ keeps four fixed single-flight policy lanes:
 
 One descending Redis scan supplies an ordered `taskId -> opaque score` map.
 The Score Owner filters its INITIAL subset; the remaining NORMAL identities
-are loaded with Descriptors once and shared by the three ordinary RUNNING
-lanes. The INITIAL map is sent only to Task Initialization. The lanes have independent
-cadence and completion; there is no transaction or assignment lifecycle
-object. A busy lane skips the batch, and Task score remains the only persistent
-demand surface.
+are loaded with Descriptors once. The Main Scheduler sends INITIAL directly to
+Initialization, PRECOMPUTED NORMAL Tasks to Allocation, all valid NORMAL Tasks
+to Task Dispatch, and first-occurrence ordered WorkerGroup IDs to
+Serviceability. Producers have independent cadence and completion; there is no
+transaction or assignment lifecycle object. A busy Producer skips the source
+snapshot, and Task score remains the only persistent demand surface.
 
 The supported Task command path commits the `TaskDescriptor` before approval
 can enter RUNNING INITIAL. INITIAL uses the fixed time slot `100` and the
 Owner-derived suffix `99 - priority`; initialization writes the NORMAL time
 coordinate with suffix zero.
-The coordinator does not decode Score. INITIAL classification belongs to the
+The Main Scheduler does not decode Score. INITIAL classification belongs to the
 Task Score Owner, and NORMAL scores are only wrapped for exact downstream
 transitions. There is no second Task Score read. Concurrent changes after the
 scan are rejected by exact Owner operations rather than repaired.
@@ -201,7 +203,8 @@ does not own rules, limits, Worker validity, lifecycle truth, or fallback.
 DIRECT Item results never enter this cache.
 
 There is no Candidate scheduling index. A PRECOMPUTED Task remains visible to
-the shared RUNNING Source until Task Dispatch advances, parks, or closes it.
+the Main Scheduler's RUNNING Source until Task Dispatch advances, parks, or
+closes it.
 Allocation recomputes its deficit from Candidate Cache each observed round.
 
 ## Round Flows
@@ -257,8 +260,8 @@ the dispatch round does not infer type or strategy from Item contents.
 - `TaskInitializationCheck` receives only the INITIAL taskId-to-score map,
   checks due Items once, and asks the Task Score Owner for one exact batch
   promotion into NORMAL.
-- `TaskWorkerAllocationPolicy` receives validated Task evidence and never reads
-  or mutates Task score.
+- `TaskWorkerAllocationPolicy` receives only Main-selected PRECOMPUTED Task
+  evidence and never reads or mutates Task score.
 - `TaskWorkerAllocationPolicy` owns deficit and may read bounded Candidate
   counts directly from `CandidateWorkerCache`.
 - `WorkerCandidateSelectionPolicy` owns request priority, bounded selection and
@@ -306,7 +309,8 @@ the dispatch round does not infer type or strategy from Item contents.
 
 ## Guardrails
 
-- Do not collapse the fixed policy lanes into one Task mutation procedure.
+- Do not collapse the fixed Resource Producers into one Task mutation
+  procedure.
 - Do not turn CandidateWorker cache into the universal dispatch mechanism.
 - Do not add PRECOMPUTED-miss DIRECT fallback.
 - Do not expose acquisition strategy, cache flags, or rule owner as independent

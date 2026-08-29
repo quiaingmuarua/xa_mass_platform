@@ -3,8 +3,6 @@ package com.xa.mass.kernel.pacer.dispatch;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -15,11 +13,8 @@ import java.util.concurrent.TimeUnit;
 final class DispatchConvergenceApplication {
 
     private final Object lifecycleLock = new Object();
-    private final DispatchLaneCoordinator laneCoordinator;
-    private final TaskWorkerAllocationPolicy allocation;
-    private final TaskDispatchPolicy dispatch;
-    private final WorkerServiceabilityDispatchPolicy serviceability;
-    private Thread coordinator;
+    private final DispatchMainScheduler mainScheduler;
+    private Thread schedulerThread;
     private ExecutorService batchExecutor;
     private CountDownLatch stopSignal;
     private State state = State.STOPPED;
@@ -32,17 +27,17 @@ final class DispatchConvergenceApplication {
             TaskDispatchPolicy dispatch,
             WorkerServiceabilityDispatchPolicy serviceability
     ) {
-        this.laneCoordinator = new DispatchLaneCoordinator(
+        this.mainScheduler = new DispatchMainScheduler(
                 Objects.requireNonNull(taskScores, "taskScores"),
                 Objects.requireNonNull(taskCatalog, "taskCatalog"),
                 Objects.requireNonNull(
                         initialization,
                         "initialization"
-                )
+                ),
+                Objects.requireNonNull(allocation, "allocation"),
+                Objects.requireNonNull(dispatch, "dispatch"),
+                serviceability
         );
-        this.allocation = Objects.requireNonNull(allocation, "allocation");
-        this.dispatch = Objects.requireNonNull(dispatch, "dispatch");
-        this.serviceability = serviceability;
     }
 
     void start(
@@ -52,15 +47,11 @@ final class DispatchConvergenceApplication {
         Objects.requireNonNull(assignmentConfig, "assignmentConfig");
         Objects.requireNonNull(serviceabilityConfig, "serviceabilityConfig");
         synchronized (lifecycleLock) {
-            if (coordinator != null || state != State.STOPPED) {
+            if (schedulerThread != null || state != State.STOPPED) {
                 throw new IllegalStateException(
                         "Dispatch Convergence application is already started"
                 );
             }
-            List<DispatchLaneDefinition> definitions = lanes(
-                    assignmentConfig,
-                    serviceabilityConfig
-            );
             CountDownLatch signal = new CountDownLatch(1);
             ThreadFactory batchThreads = Thread.ofVirtual()
                     .name("dispatch-convergence-batch-", 0)
@@ -69,21 +60,18 @@ final class DispatchConvergenceApplication {
                     batchThreads
             );
             Thread started = new Thread(
-                    () -> runCoordinator(
+                    () -> runMainScheduler(
                             signal,
                             executor,
-                            TimeUnit.MILLISECONDS.toNanos(
-                                    assignmentConfig
-                                            .taskInitializationIntervalMillis()
-                            ),
-                            definitions
+                            assignmentConfig,
+                            serviceabilityConfig
                     ),
-                    "dispatch-convergence-coordinator"
+                    "dispatch-main-scheduler"
             );
             started.setDaemon(false);
             stopSignal = signal;
             batchExecutor = executor;
-            coordinator = started;
+            schedulerThread = started;
             state = State.RUNNING;
             started.start();
         }
@@ -99,7 +87,7 @@ final class DispatchConvergenceApplication {
         ExecutorService executor;
         CountDownLatch signal;
         synchronized (lifecycleLock) {
-            current = coordinator;
+            current = schedulerThread;
             executor = batchExecutor;
             signal = stopSignal;
             if (current == null || executor == null || signal == null) {
@@ -116,7 +104,7 @@ final class DispatchConvergenceApplication {
             executor.shutdownNow();
             failStoppedState();
             throw new IllegalStateException(
-                    "Dispatch Convergence coordinator did not stop within "
+                    "Dispatch Main Scheduler did not stop within "
                             + "its budget"
             );
         }
@@ -129,8 +117,8 @@ final class DispatchConvergenceApplication {
             );
         }
         synchronized (lifecycleLock) {
-            if (coordinator == current) {
-                coordinator = null;
+            if (schedulerThread == current) {
+                schedulerThread = null;
                 batchExecutor = null;
                 stopSignal = null;
                 state = State.STOPPED;
@@ -140,10 +128,10 @@ final class DispatchConvergenceApplication {
 
     boolean isRunning() {
         synchronized (lifecycleLock) {
-            refreshDeadCoordinator();
+            refreshDeadScheduler();
             return state == State.RUNNING
-                    && coordinator != null
-                    && coordinator.isAlive()
+                    && schedulerThread != null
+                    && schedulerThread.isAlive()
                     && batchExecutor != null
                     && !batchExecutor.isShutdown();
         }
@@ -151,67 +139,27 @@ final class DispatchConvergenceApplication {
 
     String state() {
         synchronized (lifecycleLock) {
-            refreshDeadCoordinator();
+            refreshDeadScheduler();
             return state.name();
         }
     }
 
-    private List<DispatchLaneDefinition> lanes(
+    private void runMainScheduler(
+            CountDownLatch signal,
+            ExecutorService executor,
             AssignmentDispatchConfig assignmentConfig,
             WorkerServiceabilityDispatchAssemblyConfig serviceabilityConfig
     ) {
-        List<DispatchLaneDefinition> definitions = new ArrayList<>();
-        definitions.add(DispatchLaneDefinition.fromMillis(
-                DispatchLaneId.WORKER_ALLOCATION,
-                assignmentConfig.workerAllocationIntervalMillis(),
-                batch -> allocation.allocateCandidateWorkers(
-                        batch,
-                        assignmentConfig.workerAllocation()
-                )
-        ));
-        definitions.add(DispatchLaneDefinition.fromMillis(
-                DispatchLaneId.TASK_DISPATCH,
-                assignmentConfig.taskDispatchIntervalMillis(),
-                batch -> dispatch.dispatchTasks(
-                        batch,
-                        assignmentConfig.taskDispatch()
-                )
-        ));
-        if (serviceabilityConfig.enabled()) {
-            if (serviceability == null) {
-                throw new IllegalStateException(
-                        "enabled serviceability requires its dispatch policy"
-                );
-            }
-            definitions.add(DispatchLaneDefinition.fromMillis(
-                    DispatchLaneId.WORKER_SERVICEABILITY,
-                    serviceabilityConfig.lane().intervalMillis(),
-                    batch -> serviceability.dispatchProbes(
-                            batch,
-                            serviceabilityConfig.lane().dispatch(),
-                            serviceabilityConfig.hotEligibilityFloorMillis()
-                    )
-            ));
-        }
-        return List.copyOf(definitions);
-    }
-
-    private void runCoordinator(
-            CountDownLatch signal,
-            ExecutorService executor,
-            long initializationIntervalNanos,
-            List<DispatchLaneDefinition> definitions
-    ) {
         try {
-            laneCoordinator.run(
+            mainScheduler.run(
                     signal,
                     executor,
-                    initializationIntervalNanos,
-                    definitions
+                    assignmentConfig,
+                    serviceabilityConfig
             );
         } finally {
             synchronized (lifecycleLock) {
-                if (coordinator == Thread.currentThread()
+                if (schedulerThread == Thread.currentThread()
                         && state != State.STOPPING) {
                     state = State.FAILED;
                 }
@@ -265,10 +213,10 @@ final class DispatchConvergenceApplication {
         }
     }
 
-    private void refreshDeadCoordinator() {
+    private void refreshDeadScheduler() {
         if (state == State.RUNNING
-                && coordinator != null
-                && !coordinator.isAlive()) {
+                && schedulerThread != null
+                && !schedulerThread.isAlive()) {
             state = State.FAILED;
         }
     }

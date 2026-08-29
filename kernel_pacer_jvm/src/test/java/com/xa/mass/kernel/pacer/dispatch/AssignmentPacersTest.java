@@ -67,6 +67,27 @@ class AssignmentPacersTest {
     }
 
     @Test
+    void allocationRejectsTasksOutsideTheMainSchedulerInputSet() {
+        TaskWorkerAllocationPolicy policy = new TaskWorkerAllocationPolicy(
+                mock(WorkerCandidateSelectionPolicy.class),
+                mock(WorkerCandidateMechanism.class),
+                mock(CandidateWorkerCache.class),
+                () -> 1_000L
+        );
+
+        assertThrows(IllegalArgumentException.class, () ->
+                policy.allocateCandidateWorkers(
+                        List.of(due(
+                                "task-1",
+                                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                                TaskIdleDisposition.PARK_WHEN_IDLE
+                        )),
+                        new TaskWorkerAllocationConfig(5_000)
+                )
+        );
+    }
+
+    @Test
     void dispatchDelegatesIdleParkToExecutionMechanism() {
         TaskExecutionMechanism execution = mock(
                 TaskExecutionMechanism.class

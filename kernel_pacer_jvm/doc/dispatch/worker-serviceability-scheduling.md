@@ -75,18 +75,18 @@ the exact Worker check coordinate before offering a request. If the HASH offer
 or later Report is lost, the retained RECOVERY coordinate becomes eligible
 through the ordinary retry scan.
 
-## Dispatch Lane
+## Resource Producer
 
-`DispatchLaneCoordinator` receives one bounded descending score map, removes
-the INITIAL subset identified by the Task Score Owner, and loads allocation
-Descriptors once for the NORMAL complement. It does not issue a Task Score
-point recheck. Task Dispatch, Worker Allocation and the optional Worker
-Serviceability lane share that projection. With no surviving due Task
-the Serviceability policy is not invoked and therefore does not ask its Mechanism
-to read Worker state or offer Probe requests.
+`DispatchMainScheduler` receives one bounded descending score map, removes the
+INITIAL subset identified by the Task Score Owner, and loads Descriptors once
+for the NORMAL complement. It does not issue a Task Score point recheck. The
+Main Scheduler derives unique WorkerGroup IDs in first-occurrence Task order
+and supplies that complete root input to the optional Worker Serviceability
+Producer. With no surviving due Task, the Producer is not invoked and therefore
+does not ask its Mechanism to read Worker state or offer Probe requests.
 
-One Serviceability batch derives distinct WorkerGroups from the current Task
-observations in first-occurrence order and visits each Group in that order.
+One Serviceability round receives distinct WorkerGroups from the Main Scheduler
+and visits each Group in that order. The Policy cannot discover or add Groups.
 There is no process-local Group rotation cursor. HOT and RECOVERY each keep one
 process-local opaque score cursor for every Group in the bounded Task batch. A
 Group absent from the next Task batch is not scanned and its hint is discarded;
@@ -129,8 +129,8 @@ exclusive upper bound before state filtering or request offer, so a fixed
 ineligible head cannot pin later score coordinates. Equal-score entries beyond
 the page limit may be skipped for that sweep. An empty HOT or RECOVERY page
 independently resets that cursor and cools only that range for
-`probeSweepRestartDelayMillis` (default 10 seconds); the Dispatch Convergence
-coordinator keeps running and does not block for the cooldown. Cursor and
+`probeSweepRestartDelayMillis` (default 10 seconds); the Dispatch Main Scheduler
+keeps running and does not block for the cooldown. Cursor and
 cooldown are bounded scan hints, not fairness guarantees, Redis checkpoints or
 in-flight Probe tracking. The Task
 score page is never mutated or held by Serviceability. A Group outside the

@@ -15,9 +15,6 @@ import com.xa.mass.kernel.pacer.dispatch.WorkerServiceabilityDispatchMechanism.W
 import com.xa.mass.kernel.pacer.dispatch.WorkerServiceabilityDispatchMechanism.WorkerSweepPage;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime;
 import com.xa.mass.kernel.serviceability.WorkerServiceabilityRuntime.ProbeRequestOfferStatus;
-import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
-import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,11 +82,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         ));
 
         assertEquals(2, policy(mechanism, serviceability).dispatchProbes(
-                List.of(
-                        task("task-1", "group-1"),
-                        task("task-2", "group-2"),
-                        task("task-3", "group-1")
-                ),
+                List.of("group-1", "group-2"),
                 config(100),
                 1_000
         ));
@@ -157,10 +150,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 .thenReturn(rejected);
 
         assertEquals(0, policy(mechanism, serviceability).dispatchProbes(
-                List.of(
-                        task("task-1", "group-1"),
-                        task("task-2", "group-2")
-                ),
+                List.of("group-1", "group-2"),
                 config(100),
                 1_000
         ));
@@ -215,7 +205,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
 
         assertEquals(1, policy.dispatchProbes(
-                List.of(task("task-1", "group-1")),
+                List.of("group-1"),
                 config(100),
                 1_000
         ));
@@ -269,7 +259,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
 
         assertEquals(1, policy.dispatchProbes(
-                List.of(task("task-1", "group-1")),
+                List.of("group-1"),
                 config(100),
                 1_000
         ));
@@ -316,7 +306,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
 
         assertEquals(0, policy.dispatchProbes(
-                List.of(task("task-1", "group-1")),
+                List.of("group-1"),
                 config(100),
                 1_000
         ));
@@ -369,7 +359,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
 
         assertEquals(0, policy.dispatchProbes(
-                List.of(task("task-1", "group-1")),
+                List.of("group-1"),
                 config(100),
                 1_000
         ));
@@ -490,25 +480,4 @@ class WorkerServiceabilityDispatchPolicyTest {
         );
     }
 
-    private static DueTaskObservation task(
-            String taskId,
-            String workerGroupId
-    ) {
-        return new DueTaskObservation(
-                taskId,
-                mock(TaskSchedulingReference.class),
-                new TaskDescriptor(
-                        taskId,
-                        workerGroupId,
-                        WorkerAllocationMechanism.DIRECT_ITEM_RULE,
-                        TaskIdleDisposition.PARK_WHEN_IDLE,
-                        null,
-                        Map.of(
-                                "priority", "0",
-                                "maximumCandidateWorkers", "1",
-                                "maxRetryTimes", "1"
-                        )
-                )
-        );
-    }
 }

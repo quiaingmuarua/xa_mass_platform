@@ -335,13 +335,13 @@ TaskScoreBandCore.acquire_scheduling_tasks(limit)
 Worker allocation:
 
 ```text
-DispatchLaneCoordinator
+DispatchMainScheduler
   -> Task Score Owner scans taskId -> opaque score once with limit 100
   -> Task Score Owner filters the exact INITIAL subset
   -> load Descriptors once for only the NORMAL complement
   -> expose NORMAL scores through opaque TaskSchedulingReference values
   -> send the INITIAL taskId -> opaque score map directly to its check
-  -> retain workerAllocationMechanism=PRECOMPUTED_TASK_RULE
+  -> select workerAllocationMechanism=PRECOMPUTED_TASK_RULE as Allocation root input
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
   -> WorkerCandidateSelectionPolicy matches and chooses bounded Workers

@@ -35,7 +35,7 @@ com.xa.mass.kernel.pacer
 │  └─ package-private Result lanes, policies and Application
 └─ dispatch
    ├─ DispatchConvergenceRuntime
-   └─ package-private coordinator, fan-out, lanes, policies and Application
+   └─ package-private Main Scheduler, fixed producers, policies and Application
 ```
 
 The two `*ConvergenceRuntime` types are narrow module-internal lifecycle
@@ -74,14 +74,15 @@ score owners or expose raw Worker lease scores. The default event Mechanisms in
 Serviceability transitions. Adapter Evidence shares the same lifecycle without
 becoming a general EventBus.
 
-Dispatch Convergence owns one coordinator and fixed single-flight virtual
-Batch lanes. The coordinator reads one bounded descending
-`taskId -> opaque score` map and asks the Task Score Owner for its INITIAL
-subset. It loads Descriptors once for only the NORMAL complement, shares those
-observations with Worker Allocation, Task Dispatch and optional Worker
-Serviceability, and sends the INITIAL map directly to Task Initialization.
-There is no Task Score point recheck; exact downstream transitions reject stale
-observations. Busy lanes skip the current Batch without storing a pending hint.
+Dispatch Convergence owns one Main Scheduler and four fixed single-flight
+Resource Producers. The Main Scheduler reads one bounded descending
+`taskId -> opaque score` map, asks the Task Score Owner for its INITIAL subset,
+and loads Descriptors once for only the NORMAL complement. It explicitly plans
+the complete root input for Initialization, PRECOMPUTED Worker Allocation,
+Task Dispatch and optional ordered WorkerGroup Serviceability. There is no Task
+Score point recheck; exact downstream transitions reject stale observations.
+A busy Producer skips the current source snapshot without storing a pending
+hint.
 
 Dispatch policies own selection, priority, matching, deficits, retry cadence
 and Group rotation. Package-private mechanisms in this module protect raw
@@ -89,8 +90,9 @@ Score fences and cross-owner claim/Command sequences. Policy directly calls a
 bounded Owner when the operation already belongs to that policy decision—for
 example Candidate count observation and Adapter Probe request offer. This is
 not a generic Mechanism layer. Task, Item and Worker score correlations remain
-opaque. Serviceability retains sweep hints only for Groups visible in the
-current bounded Task batch.
+opaque. Producers may discover TaskItems, Workers or Candidate evidence only
+under identities supplied by the Main Scheduler. Serviceability retains sweep
+hints only for Groups visible in the current bounded Task batch.
 
 The production load model is intentionally a small bounded active Task set,
 many TaskItems per Task, and many Workers inside a finite WorkerGroup set. The

@@ -175,8 +175,9 @@ Redis Owner:
 ```
 
 Runtime Boundary starts only the Java test context. Java consumes the two
-Task Result LISTs, consumes Adapter Evidence, and uses shared due Task Sources
-to run Task Initialization, Allocation, Task Dispatch and Serviceability lanes. Task business calls remain
+Task Result LISTs and Adapter Evidence, while one Dispatch Main Scheduler reads
+the due Task Source and plans Task Initialization, Allocation, Task Dispatch
+and Serviceability Resource Producer inputs. Task business calls remain
 Java-to-Redis:
 
 ```powershell
@@ -216,7 +217,7 @@ explicit Worker shutdown
 same Worker identity reconnect
   -> CONNECTED evidence -> Kernel Result Pacer -> target HOT polarity
 due RUNNING_VISIBLE Task demand
-  -> Kernel derives its WorkerGroup -> exact pre-Probe Score hold
+  -> Dispatch Main Scheduler supplies its WorkerGroup -> exact pre-Probe Score hold
   -> periodic Adapter snapshot evidence -> polarity-only compensation
 expired TASK delivery
   -> 23002 Task Result and separate KERNEL evidence use independent Pacers

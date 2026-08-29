@@ -5,8 +5,8 @@ below.
 
 ## Purpose
 
-`TaskDispatchPolicy` owns one bounded decision round over the NORMAL complement
-of the coordinator's due `RUNNING_VISIBLE` Task scan.
+`TaskDispatchPolicy` owns one bounded decision round over all valid NORMAL Tasks
+supplied by the Main Scheduler's due `RUNNING_VISIBLE` Task scan.
 Every dispatch-visible NORMAL RUNNING Task uses suffix `0`; INITIAL uses an
 Owner-private priority suffix and never enters this policy. Task score no
 longer encodes an idle recheck lane.

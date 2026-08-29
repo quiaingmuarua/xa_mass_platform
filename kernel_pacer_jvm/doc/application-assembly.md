@@ -14,11 +14,11 @@ Java Server
            -> ADAPTER_EVIDENCE virtual batch             optional
         -> DispatchConvergenceApplication
            -> one Task Score scan and INITIAL subset filter
-           -> fixed coordinator fan-out
-              -> TASK_INITIALIZATION virtual batch
-              -> WORKER_ALLOCATION virtual batch
-              -> TASK_DISPATCH virtual batch
-              -> WORKER_SERVICEABILITY virtual batch     optional
+           -> DispatchMainScheduler fixed input planning
+              -> TASK_INITIALIZATION resource producer
+              -> WORKER_ALLOCATION resource producer
+              -> TASK_DISPATCH resource producer
+              -> WORKER_SERVICEABILITY resource producer optional
 ```
 
 ## Production Configuration
@@ -71,14 +71,14 @@ server_jvm -> kernel_pacer_jvm -> kernel_jvm
 
 - `kernel_jvm` owns mechanical contracts, Redis providers, finite cross-owner
   Mechanisms, Candidate Cache, and codecs.
-- `kernel_pacer_jvm` owns fan-out, policies, coordination, presets, and finite
-  thread lifecycle.
+- `kernel_pacer_jvm` owns Main Scheduler input planning, Resource Producer
+  policy, presets, and finite thread lifecycle.
 - `server_jvm` owns Owner assembly, Spring lifecycle delegation, and Health.
 
 ## Dispatch Convergence
 
-`DispatchLaneCoordinator` obtains two projections from one bounded Task Score
-scan and routes them to the fixed lanes:
+`DispatchMainScheduler` obtains two projections from one bounded Task Score
+scan and plans the root input of the fixed Resource Producers:
 
 ```text
 NORMAL projection
@@ -89,43 +89,47 @@ INITIAL projection
 ```
 
 The Score Owner returns one ordered `taskId -> opaque score` map and separately
-filters its INITIAL subset. The coordinator treats the remaining identities as
-NORMAL, loads only their Descriptors once, and performs no Task Score point
-recheck. INITIAL needs no Descriptor wrapper. These values are round evidence,
-not locks; every later mutation still uses exact owner fences.
+filters its INITIAL subset. The Main Scheduler treats the remaining identities
+as NORMAL, loads only their Descriptors once, validates identity, and performs
+no Task Score point recheck. INITIAL needs no Descriptor wrapper. These values
+are round evidence, not locks; every later mutation still uses exact owner
+fences.
 
-`DispatchConvergenceApplication` owns one non-daemon coordinator and one
-virtual thread per non-empty eligible lane batch. Every lane is single-flight.
-When multiple RUNNING lanes are eligible, NORMAL is observed once and the same
-immutable batch is submitted to all of them. A busy lane skips that batch
-and retains no memory hint; unchanged Task score lets a later observation
-rediscover the Task.
+`DispatchConvergenceApplication` owns one non-daemon Main Scheduler and one
+virtual thread per non-empty eligible Producer round. Every Producer is
+single-flight. The Main Scheduler reads the original Task Source at most once
+per eligible sweep, then supplies each Producer only its complete root input. A
+busy Producer skips that source snapshot and retains no memory hint; unchanged
+Task score lets a later observation rediscover the Task.
 
-The fixed lanes are:
+The fixed Producers are:
 
-| Lane | Source | Responsibility |
+| Producer | Main-planned root input | Responsibility |
 | --- | --- | --- |
 | TASK_INITIALIZATION | INITIAL RUNNING | one due-Item check and exact batch promotion to NORMAL |
-| WORKER_ALLOCATION | NORMAL RUNNING | PRECOMPUTED Candidate deficit acquisition and cache publication |
+| WORKER_ALLOCATION | PRECOMPUTED NORMAL Tasks | Candidate deficit acquisition and cache publication |
 | TASK_DISPATCH | NORMAL RUNNING | Item finality, Worker lease, Item claim, Command publication, Task pacing/idle lifecycle |
-| WORKER_SERVICEABILITY | NORMAL RUNNING | derive demanded WorkerGroups and offer Adapter route probes |
+| WORKER_SERVICEABILITY | ordered unique WorkerGroup IDs from NORMAL Tasks | offer Adapter route probes |
 
 Allocation and Task Dispatch may run concurrently. A Candidate produced during
 one batch is not guaranteed to be consumed in the same batch; later RUNNING
 discovery provides convergence. Candidate entries left behind after a Task is
 parked or closed expire with their existing lease/cache deadline.
 
-An empty Source or Source failure defers only the currently eligible lanes by
-their own interval. A policy `RuntimeException` drops that best-effort batch and
-defers its lane. A JVM `Error`, rejected execution, or unexpected coordinator
-exit fails Dispatch Convergence and therefore Kernel readiness.
+A Task Source or INITIAL-classification failure defers every currently eligible
+Producer. Descriptor loading failure defers only NORMAL Producers; already
+formed Initialization input may still run. Empty input or a Producer
+`RuntimeException` defers only that Producer by its own interval. A JVM
+`Error`, rejected execution, or unexpected Main Scheduler exit fails Dispatch
+Convergence and therefore Kernel readiness.
 
 ## Result Convergence
 
 Result Convergence owns one coordinator and ten shared virtual-batch slots.
 Its fixed lanes are Task SUCCESS, Task FAILURE, and optional Adapter Evidence.
 Weighted-fair targets and maxima remain Kernel-internal policy. Result lanes
-and Dispatch lanes do not share queues, lifecycle state, or executors.
+and Dispatch Resource Producers do not share queues, lifecycle state, topology,
+or executors.
 
 Its policies terminate `DeliveryReport` and JSON interpretation, perform
 bounded last-wins grouping, and publish finite semantic callbacks. The Runtime
@@ -144,8 +148,8 @@ Result Convergence
 ```
 
 Shutdown is strictly reversed. Both Applications share one shutdown deadline;
-neither resets the budget per lane or thread. Startup failure rolls back every
-started Application in reverse order. Any required coordinator or worker-loop
+neither resets the budget per Producer, lane, or thread. Startup failure rolls
+back every started Application in reverse order. Any required scheduler or worker-loop
 death moves `KernelPacerRuntime` to `FAILED`.
 
 Spring readiness requires the Runtime and Kernel Redis to be UP. Liveness
@@ -170,22 +174,23 @@ auxiliary Kernel process, and proves:
 ```text
 Task API
 -> Java Task owners
--> shared Task Source
+-> Dispatch Main Scheduler
 -> Java Dispatch Convergence
 -> Worker Delivery and execution
 -> Java Result Convergence
 -> TaskItem finality + result + exact Worker release
 ```
 
-The Serviceability boundary proves that the same due RUNNING Task batch drives
-WorkerGroup probe demand and that Adapter Evidence converges through the Result
-Application. Focused Pacer tests and Runtime Boundary proof own this contract.
+The Serviceability boundary proves that the Main Scheduler derives the ordered
+WorkerGroup input from the same due RUNNING Task source and that Adapter
+Evidence converges through the Result Application. Focused Pacer tests and
+Runtime Boundary proof own this contract.
 
 ## Guardrails
 
 - Do not restore Candidate demand hints, a second Task scan, or a pending Batch
   queue inside Dispatch Convergence.
-- Do not add a dynamic Pacer/lane registry, public policy SPI, or fallback
+- Do not add a dynamic Pacer/Producer registry, public policy SPI, or fallback
   owner.
 - Do not assemble Pacer subpackage types from Server;
   `KernelPacerRuntime` is the only externally supported Pacer entry. The

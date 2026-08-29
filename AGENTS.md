@@ -98,11 +98,13 @@ lifecycle live in `kernel_pacer_jvm`.
   shared bounded Batch capacity and fixed weighted-fair targets; Task SUCCESS
   and Task FAILURE may borrow idle capacity for concurrent owner-fenced Batches,
   while Adapter Evidence remains single-flight. Dispatch Convergence owns one
-  bounded Redis-time RUNNING Task observation and fixed NORMAL/INITIAL fan-out.
-  NORMAL feeds Allocation, Task Dispatch and optional Serviceability; INITIAL
-  feeds only Task Initialization. Dispatch policies receive opaque Task, Item,
-  Worker and sweep references and must not read Score coordinates or construct
-  claimed Commands outside the exact dispatch mechanism.
+  Main Scheduler, one bounded Redis-time RUNNING Task observation and four
+  fixed single-flight Resource Producers. The Main Scheduler plans the complete
+  root input for Initialization, Allocation, Task Dispatch and optional
+  Serviceability; a Producer may discover only vertical resources under those
+  supplied Task or WorkerGroup identities. Dispatch policies receive opaque
+  Task, Item, Worker and sweep references and must not read Score coordinates
+  or construct claimed Commands outside the exact dispatch mechanism.
 - Do not add another language implementation without a named migration slice,
   one production owner and explicit proof of the cutover.
 

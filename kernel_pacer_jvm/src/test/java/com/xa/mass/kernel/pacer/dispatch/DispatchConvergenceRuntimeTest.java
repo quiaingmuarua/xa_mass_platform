@@ -63,19 +63,19 @@ class DispatchConvergenceRuntimeTest {
                 );
         assertTrue(config.enabled());
         assertEquals(12_300, config.hotEligibilityFloorMillis());
-        assertEquals(1_000, config.lane().intervalMillis());
+        assertEquals(1_000, config.intervalMillis());
         assertEquals(
                 expectedRecoveryInterval,
-                config.lane().dispatch().recoveryRetryIntervalMillis()
+                config.dispatch().recoveryRetryIntervalMillis()
         );
         assertEquals(
                 10_000,
-                config.lane().dispatch().probeSweepRestartDelayMillis()
+                config.dispatch().probeSweepRestartDelayMillis()
         );
-        assertEquals(5, config.lane().dispatch().maxRecoveryAttempts());
+        assertEquals(5, config.dispatch().maxRecoveryAttempts());
         assertEquals(
                 List.of("system-polling"),
-                config.lane().dispatch()
+                config.dispatch()
                         .probeExcludedEndpointManagerIds()
         );
     }

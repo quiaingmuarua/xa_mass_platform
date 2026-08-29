@@ -58,16 +58,21 @@ final class TaskWorkerAllocationPolicy {
             List<DueTaskObservation> tasks,
             TaskWorkerAllocationConfig config
     ) {
-        Objects.requireNonNull(tasks, "tasks");
+        List<DueTaskObservation> precomputedTasks = List.copyOf(
+                Objects.requireNonNull(tasks, "tasks")
+        );
         Objects.requireNonNull(config, "config");
-        List<DueTaskObservation> precomputed = tasks.stream()
-                .filter(task -> task.descriptor().workerAllocationMechanism()
-                        == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE)
-                .toList();
-        if (precomputed.isEmpty()) {
+        if (precomputedTasks.stream().anyMatch(task ->
+                task.descriptor().workerAllocationMechanism()
+                        != WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE)) {
+            throw new IllegalArgumentException(
+                    "Worker Allocation requires PRECOMPUTED Task inputs"
+            );
+        }
+        if (precomputedTasks.isEmpty()) {
             return 0;
         }
-        List<String> taskIds = precomputed.stream()
+        List<String> taskIds = precomputedTasks.stream()
                 .map(DueTaskObservation::taskId)
                 .toList();
         Map<String, Integer> counts = candidateCache.candidateWorkerCounts(
@@ -75,7 +80,7 @@ final class TaskWorkerAllocationPolicy {
         );
         LinkedHashMap<String, LinkedHashMap<String, WorkerCandidateRequest>>
                 requestsByGroup = new LinkedHashMap<>();
-        for (DueTaskObservation task : precomputed) {
+        for (DueTaskObservation task : precomputedTasks) {
             TaskDescriptor descriptor = task.descriptor();
             int maximum = Integer.parseInt(
                     descriptor.config().get("maximumCandidateWorkers")

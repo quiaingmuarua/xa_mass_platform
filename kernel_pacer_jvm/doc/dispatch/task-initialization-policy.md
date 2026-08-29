@@ -19,7 +19,7 @@ capacity owner.
 
 ## Input
 
-The Dispatch coordinator asks the Task Score Owner to filter the INITIAL
+The Dispatch Main Scheduler asks the Task Score Owner to filter the INITIAL
 subset from one bounded `taskId -> opaque score` scan:
 
 ```text
@@ -56,7 +56,7 @@ unchanged INITIAL Tasks in a later round.
 ## Concurrency
 
 The opaque Task score is not a lease. Close, pause, or any concurrent
-score transition wins through exact CAS. A busy Initialization lane retains no
+score transition wins through exact CAS. A busy Initialization Producer retains no
 memory queue or hint; a future INITIAL scan is the liveness path.
 
 ## Non-Goals

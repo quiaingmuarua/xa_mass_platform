@@ -136,10 +136,10 @@ WorkerScoreCore and worker-runtime
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
-DispatchLaneCoordinator
+DispatchMainScheduler
   reads one bounded taskId-to-opaque-score map, asks the Task Score Owner for
   its INITIAL subset, loads Descriptors only for the NORMAL complement, and
-  fans those two inputs into fixed single-flight lanes
+  plans the complete root input of four fixed single-flight Resource Producers
 
 WorkerCandidateMechanism
   internally protects bounded Worker observation, cached opaque lease
@@ -178,7 +178,7 @@ WorkerServiceabilityRuntime
   Report handoff; neither structure is current connection or score truth
 
 WorkerServiceabilityDispatchPolicy / ResultPolicy
-  derive demanded Groups from due Tasks and translate valid Adapter evidence
+  consumes Main-planned demanded Groups and translates valid Adapter evidence
   into finite semantic callbacks; the Result policy does not read or mutate
   Worker score
 
@@ -187,8 +187,9 @@ Fixed Result semantic Mechanism ports
   methods; they are not a registry, SPI or replacement-handler surface
 
 DispatchConvergenceApplication
-  shares one verified RUNNING Task batch across fixed single-flight policies;
-  busy lanes skip without creating a replay hint
+  owns one Main Scheduler and fixed single-flight Resource Producers; the Main
+  Scheduler plans every root input and busy Producers skip without creating a
+  replay hint
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
@@ -215,7 +216,7 @@ Worker Delivery Dispatch
 | Worker serviceability | Process-local HOT eligibility floor, exact pre-Probe Score hold/Recovery advance, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and time-fenced polarity-only Result convergence implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
-| Worker allocation | Implemented as a shared-RUNNING-observation Policy that fills PRECOMPUTED Task candidate deficits through the finite Candidate Mechanism; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
+| Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through the finite Candidate Mechanism; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
 | Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |

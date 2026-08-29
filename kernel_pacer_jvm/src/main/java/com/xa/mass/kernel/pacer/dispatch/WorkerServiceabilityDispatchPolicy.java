@@ -48,28 +48,32 @@ final class WorkerServiceabilityDispatchPolicy {
     }
 
     int dispatchProbes(
-            List<DueTaskObservation> tasks,
+            List<String> orderedWorkerGroupIds,
             WorkerServiceabilityDispatchConfig config,
             long hotEligibilityFloorMillis
     ) {
-        Objects.requireNonNull(tasks, "tasks");
+        List<String> workerGroupIds = List.copyOf(Objects.requireNonNull(
+                orderedWorkerGroupIds,
+                "orderedWorkerGroupIds"
+        ));
         Objects.requireNonNull(config, "config");
         WorkerServiceabilityDispatchAssemblyConfig.requireFloor(
                 hotEligibilityFloorMillis
         );
-        if (tasks.isEmpty()) {
-            return 0;
-        }
-        long nowMillis = currentTimeMillis.getAsLong();
-        LinkedHashSet<String> groupIds = new LinkedHashSet<>();
-        tasks.forEach(task -> groupIds.add(
-                task.descriptor().workerGroupId()
-        ));
-        List<String> workerGroupIds = List.copyOf(groupIds);
-        retainActiveGroupSweeps(workerGroupIds);
         if (workerGroupIds.isEmpty()) {
             return 0;
         }
+        long nowMillis = currentTimeMillis.getAsLong();
+        LinkedHashSet<String> uniqueGroupIds = new LinkedHashSet<>(
+                workerGroupIds
+        );
+        if (uniqueGroupIds.size() != workerGroupIds.size()
+                || uniqueGroupIds.stream().anyMatch(String::isEmpty)) {
+            throw new IllegalArgumentException(
+                    "orderedWorkerGroupIds must contain unique non-empty IDs"
+            );
+        }
+        retainActiveGroupSweeps(workerGroupIds);
 
         Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
