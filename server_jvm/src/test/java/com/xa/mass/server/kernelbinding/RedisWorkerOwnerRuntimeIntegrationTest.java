@@ -684,9 +684,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 7,
                 1
         );
-        long recoveryCounterpart = -(
-                observedHot - 7L * WorkerScoreCore.DIRTY_FACTOR
-        );
+        long recoveryCounterpart = -observedHot;
         redis.zadd(scoreKey("group-1"), observedHot, "positive-worker");
         redis.zadd(
                 scoreKey("group-1"),
@@ -731,8 +729,202 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(states.get("recovery-worker").polarity()).isEqualTo(
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        assertThat(states.get("recovery-worker").laneRank()).isZero();
+        assertThat(states.get("recovery-worker").laneRank()).isEqualTo(7);
         assertThat(states.get("recovery-worker").dirty()).isEqualTo(1);
+    }
+
+    @Test
+    void serviceabilityHoldsAndEvidenceUseExactBatchFences() {
+        long beforeSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long hot = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                beforeSlot - 20,
+                7,
+                1
+        );
+        long recovery = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                beforeSlot - 20,
+                2,
+                1
+        );
+        long exhausted = workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                beforeSlot - 20,
+                WorkerScoreCore.MAX_LANE_RANK,
+                0
+        );
+        redis.zadd(scoreKey("group-serviceability"), hot, "hot");
+        redis.zadd(
+                scoreKey("group-serviceability"),
+                recovery,
+                "recovery"
+        );
+        redis.zadd(
+                scoreKey("group-serviceability"),
+                exhausted,
+                "exhausted"
+        );
+
+        var hotResults = scoreCore
+                .holdObservedHotForServiceabilityProbes(
+                        "group-serviceability",
+                        Map.of(
+                                "hot", hot,
+                                "stale", hot
+                        )
+                );
+        var recoveryResults = scoreCore.advanceObservedRecoveryRechecks(
+                "group-serviceability",
+                Map.of(
+                        "recovery", recovery,
+                        "exhausted", exhausted
+                )
+        );
+
+        assertThat(hotResults.get("hot").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(hotResults.get("stale").status()).isEqualTo(
+                WorkerScoreTransitionStatus.STALE
+        );
+        assertThat(recoveryResults.get("recovery").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(recoveryResults.get("exhausted").status()).isEqualTo(
+                WorkerScoreTransitionStatus.INVALID
+        );
+
+        Map<String, WorkerScoreState> held = scoreCore.getScoreStates(
+                "group-serviceability",
+                List.of("hot", "recovery", "exhausted")
+        );
+        long afterSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        assertThat(held.get("hot").timeMillis()
+                / WorkerScoreCore.SLOT_MILLIS).isBetween(
+                        beforeSlot,
+                        afterSlot
+                );
+        assertThat(held.get("recovery").timeMillis()
+                / WorkerScoreCore.SLOT_MILLIS).isBetween(
+                        beforeSlot,
+                        afterSlot
+                );
+        assertScoreShape(
+                held.get("hot"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                held.get("hot").timeMillis(),
+                0,
+                1
+        );
+        assertScoreShape(
+                held.get("recovery"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                held.get("recovery").timeMillis(),
+                3,
+                1
+        );
+        assertThat(held.get("exhausted").score()).isEqualTo(exhausted);
+
+        long currentSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long newer = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                currentSlot - 1,
+                4,
+                1
+        );
+        long future = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                currentSlot + 100,
+                5,
+                1
+        );
+        long pause = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                WorkerScoreCore.PAUSE_TIME_SLOT,
+                6,
+                1
+        );
+        redis.zadd(scoreKey("group-serviceability"), newer, "newer");
+        redis.zadd(scoreKey("group-serviceability"), future, "future");
+        redis.zadd(scoreKey("group-serviceability"), pause, "pause");
+
+        LinkedHashMap<String, Long> evidence = new LinkedHashMap<>();
+        evidence.put("hot", held.get("hot").timeMillis());
+        evidence.put(
+                "newer",
+                (currentSlot - 2) * WorkerScoreCore.SLOT_MILLIS
+        );
+        evidence.put(
+                "future",
+                (currentSlot - 100) * WorkerScoreCore.SLOT_MILLIS
+        );
+        evidence.put(
+                "pause",
+                (currentSlot - 100) * WorkerScoreCore.SLOT_MILLIS
+        );
+        evidence.put("missing", currentSlot * WorkerScoreCore.SLOT_MILLIS);
+        var evidenceResults = scoreCore.applyServiceabilityPolarityEvidence(
+                "group-serviceability",
+                evidence,
+                WorkerScorePolarity.HOT_ACQUIRE
+        );
+
+        assertThat(evidenceResults.get("hot").status()).isEqualTo(
+                WorkerScoreTransitionStatus.TRANSITIONED
+        );
+        assertThat(evidenceResults.get("newer").status()).isEqualTo(
+                WorkerScoreTransitionStatus.STALE
+        );
+        assertThat(evidenceResults.get("future").status()).isEqualTo(
+                WorkerScoreTransitionStatus.NOOP
+        );
+        assertThat(evidenceResults.get("pause").status()).isEqualTo(
+                WorkerScoreTransitionStatus.NOOP
+        );
+        assertThat(evidenceResults.get("missing").status()).isEqualTo(
+                WorkerScoreTransitionStatus.STALE
+        );
+
+        var unavailable = scoreCore.applyServiceabilityPolarityEvidence(
+                "group-serviceability",
+                Map.of(
+                        "future",
+                        (currentSlot - 100) * WorkerScoreCore.SLOT_MILLIS,
+                        "pause",
+                        (currentSlot - 100) * WorkerScoreCore.SLOT_MILLIS
+                ),
+                WorkerScorePolarity.RECOVERY_RECHECK
+        );
+        assertThat(unavailable.values()).allSatisfy(result ->
+                assertThat(result.status()).isEqualTo(
+                        WorkerScoreTransitionStatus.TRANSITIONED
+                ));
+        Map<String, WorkerScoreState> finalStates = scoreCore.getScoreStates(
+                "group-serviceability",
+                List.of("hot", "future", "pause")
+        );
+        assertScoreShape(
+                finalStates.get("hot"),
+                WorkerScorePolarity.HOT_ACQUIRE,
+                held.get("hot").timeMillis(),
+                0,
+                1
+        );
+        assertScoreShape(
+                finalStates.get("future"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                (currentSlot + 100) * WorkerScoreCore.SLOT_MILLIS,
+                5,
+                1
+        );
+        assertScoreShape(
+                finalStates.get("pause"),
+                WorkerScorePolarity.RECOVERY_RECHECK,
+                WorkerScoreCore.PAUSE_TIME_MILLIS,
+                6,
+                1
+        );
     }
 
     @Test

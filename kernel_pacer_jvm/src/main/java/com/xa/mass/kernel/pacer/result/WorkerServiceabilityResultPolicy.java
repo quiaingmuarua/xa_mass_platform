@@ -30,19 +30,16 @@ final class WorkerServiceabilityResultPolicy {
 
     private final WorkerServiceabilityEvents workerEvents;
     private final WorkerServiceabilityResultConfig config;
-    private final long hotEligibilityFloorMillis;
     private final LongSupplier currentTimeMillis;
     private final JsonMapper json;
 
     WorkerServiceabilityResultPolicy(
             WorkerServiceabilityEvents workerEvents,
-            WorkerServiceabilityResultConfig config,
-            long hotEligibilityFloorMillis
+            WorkerServiceabilityResultConfig config
     ) {
         this(
                 workerEvents,
                 config,
-                hotEligibilityFloorMillis,
                 System::currentTimeMillis,
                 JsonMapper.builder().build()
         );
@@ -51,7 +48,6 @@ final class WorkerServiceabilityResultPolicy {
     WorkerServiceabilityResultPolicy(
             WorkerServiceabilityEvents workerEvents,
             WorkerServiceabilityResultConfig config,
-            long hotEligibilityFloorMillis,
             LongSupplier currentTimeMillis,
             JsonMapper json
     ) {
@@ -60,7 +56,6 @@ final class WorkerServiceabilityResultPolicy {
                 "workerEvents"
         );
         this.config = java.util.Objects.requireNonNull(config, "config");
-        this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
         this.currentTimeMillis = java.util.Objects.requireNonNull(
                 currentTimeMillis,
                 "currentTimeMillis"
@@ -115,19 +110,13 @@ final class WorkerServiceabilityResultPolicy {
             }
         });
         if (!connected.isEmpty()) {
-            workerEvents.onConnected(
-                    connected,
-                    hotEligibilityFloorMillis
-            );
+            workerEvents.onConnected(connected);
         }
         if (!routeUnavailable.isEmpty()) {
             workerEvents.onRouteUnavailable(routeUnavailable);
         }
         if (!probeUnavailable.isEmpty()) {
-            workerEvents.onProbeUnavailable(
-                    probeUnavailable,
-                    config.maxRecoveryAttempts()
-            );
+            workerEvents.onProbeUnavailable(probeUnavailable);
         }
     }
 

@@ -106,7 +106,6 @@ public final class KernelPacerRuntime {
         ResultConvergenceRuntime resultConvergence =
                 ResultConvergenceRuntime.assemble(
                         policy.preset(),
-                        policy.hotEligibilityFloorMillis(),
                         taskResults,
                         new DefaultTaskItemResultEvents(
                                 taskRuntime,

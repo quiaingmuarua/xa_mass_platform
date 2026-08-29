@@ -27,7 +27,11 @@ interface WorkerServiceabilityDispatchMechanism {
             List<WorkerCandidateReference> candidates
     );
 
-    int coldParkExcluded(
+    List<WorkerServiceabilityObservation> holdForProbe(
+            List<WorkerServiceabilityObservation> workers
+    );
+
+    int coldPark(
             List<WorkerServiceabilityObservation> workers,
             int maxRecoveryAttempts
     );

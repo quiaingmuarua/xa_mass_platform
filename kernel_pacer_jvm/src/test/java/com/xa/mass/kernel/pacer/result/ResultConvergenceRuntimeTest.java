@@ -37,7 +37,6 @@ class ResultConvergenceRuntimeTest {
                 convergence.adapterEvidenceIdleIntervalMillis()
         );
         assertEquals(evidenceLimit, serviceability.resultReportLimit());
-        assertEquals(5, serviceability.maxRecoveryAttempts());
         assertEquals(30_000, serviceability.evidenceMaxAgeMillis());
     }
 }

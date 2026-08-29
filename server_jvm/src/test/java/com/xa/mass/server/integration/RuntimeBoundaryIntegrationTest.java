@@ -641,16 +641,14 @@ class RuntimeBoundaryIntegrationTest {
                 workerId,
                 WorkerScorePolarity.HOT_ACQUIRE
         );
-        // Route and periodic snapshot evidence are both best-effort. A
-        // concurrently observed unavailable snapshot may advance the
-        // recovery coordinate before later CONNECTED evidence restores HOT;
-        // neither ordering may move the Worker backwards.
-        assertThat(after.timeMillis()).isGreaterThanOrEqualTo(
+        // Dispatch advances the exact RECOVERY check coordinate and retry
+        // rank before publishing the snapshot request. CONNECTED evidence
+        // restores only polarity and therefore preserves that held absolute
+        // coordinate.
+        assertThat(after.timeMillis()).isGreaterThan(
                 before.timeMillis()
         );
-        assertThat(after.laneRank()).isEqualTo(
-                WorkerScoreCore.MIN_LANE_RANK
-        );
+        assertThat(after.laneRank()).isEqualTo(1);
     }
 
     private void awaitConnectionState(String workerId, String expectedState)

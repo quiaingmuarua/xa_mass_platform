@@ -198,6 +198,7 @@ class KernelPacerModuleBoundaryTest {
                 "promoteItemOutcomes",
                 "toggleCurrentPolarity",
                 "rewriteCurrentScores",
+                "applyServiceabilityPolarityEvidence",
                 "exhaustRecoveryRecheck"
         );
         List<String> violations = sourceViolations(

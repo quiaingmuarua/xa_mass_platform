@@ -70,7 +70,10 @@ Command response has remaining capacity. The LIST holds at most 10,000 ordinary
 Reports and accepts only the available prefix of an append batch.
 
 There is no dispatched state, deadline index, batch registry, ack, retry queue,
-or durable claim. Loss leaves the old score eligible for a later scan.
+durable claim, global pending counter, or backlog watermark. Dispatch advances
+the exact Worker check coordinate before offering a request. If the HASH offer
+or later Report is lost, the retained RECOVERY coordinate becomes eligible
+through the ordinary retry scan.
 
 ## Dispatch Lane
 
@@ -82,16 +85,23 @@ Serviceability lane share that projection. With no surviving due Task
 the Serviceability policy is not invoked and therefore does not ask its Mechanism
 to read Worker state or offer Probe requests.
 
-One Serviceability batch selects one Group from the current Task observations.
-HOT and RECOVERY each keep one process-local opaque score cursor for Groups in
-that bounded batch. A Group absent from the next Task batch is not scanned and
-its hint is discarded; if demand exposes it later, scanning restarts from the
-full range. This bounded behavior follows the finite active-Group workload
-contract and does not promise cross-page or multi-tenant fairness. For the
-selected Group the internal Mechanism reads:
+One Serviceability batch derives distinct WorkerGroups from the current Task
+observations in first-occurrence order and visits each Group in that order.
+There is no process-local Group rotation cursor. HOT and RECOVERY each keep one
+process-local opaque score cursor for every Group in the bounded Task batch. A
+Group absent from the next Task batch is not scanned and its hint is discarded;
+if demand exposes it later, scanning restarts from the full range.
 
-- HOT scores in `[MIN_BASE, hotEligibilityFloor)`;
-- RECOVERY scores in the owner's bounded recent negative window.
+The whole batch shares a budget of 100 successfully held Probe attempts. For
+each Group, the policy first reads at most the remaining budget from
+`[MIN_BASE, hotEligibilityFloor)`. RECOVERY is read only when that Group's raw
+HOT page is empty or its HOT range is in empty-range cooldown. A non-empty HOT
+page suppresses RECOVERY only for that Group; unused budget continues to later
+Groups. A successful exact Score hold consumes budget even when the subsequent
+HASH offer returns `ALREADY_REQUESTED` or `CAPACITY`, because that Score change
+is not rolled back. Processing stops when the budget is exhausted or every
+Group has been visited. The two ranges retain independent cursors and
+cooldowns; the former 80/20 split no longer exists.
 
 RECOVERY retry `laneRank=n` is due only after:
 
@@ -99,13 +109,20 @@ RECOVERY retry `laneRank=n` is due only after:
 (n + 1) * recoveryRetryIntervalMillis
 ```
 
+The initial HOT Probe writes rank 0 and is not counted as a Recovery Probe.
+A due rank below `maxRecoveryAttempts` is advanced before the next request; a
+due rank already at the maximum is exact-cold-parked without another request.
+
 The policy chooses retry eligibility and endpoint exclusions from semantic
 observations. `WorkerServiceabilityDispatchMechanism` batch-loads current
 score states and Worker descriptors and exact-cold-parks excluded endpoints.
-The Policy groups remaining targets by `endpointManagerId` and directly calls
-the bounded `WorkerServiceabilityRuntime.offerProbeRequests` Owner operation.
-That direct call crosses no additional semantic boundary; the Policy still
-cannot read or mutate a raw Worker score.
+Before any request is offered, the Mechanism atomically holds exact HOT
+observations as `RECOVERY(redisNow, rank=0)` or advances exact RECOVERY
+observations to `RECOVERY(redisNow, rank+1)`. Only successfully transitioned
+Workers are grouped by `endpointManagerId` and offered through the bounded
+`WorkerServiceabilityRuntime.offerProbeRequests` Owner operation. An
+`ALREADY_REQUESTED` or `CAPACITY` result does not roll back the Score hold;
+later Recovery scanning supplies best-effort convergence.
 
 Each raw owner page is score-descending. Its last score becomes the next
 exclusive upper bound before state filtering or request offer, so a fixed
@@ -160,45 +177,28 @@ current-state projection.
 
 ## Score Convergence
 
-`DefaultWorkerServiceabilityEvents` composes existing Score owner operations;
-the Adapter Evidence policy cannot read a Worker score or select a concrete
-toggle, rewrite, or cold-park operation. The finite event interface is not a
-generic `applyServiceability` operation or EventBus.
+`DefaultWorkerServiceabilityEvents` resolves WorkerGroup ownership and calls
+one bounded Score-owner polarity Evidence operation. The Adapter Evidence
+policy cannot read a Worker score or select a concrete score mutation. The
+finite event interface is not a generic EventBus.
 
-Route `CONNECTED` or snapshot `CONNECTED`:
-
-```text
-PAUSE      -> no-op
-RECOVERY   -> exact toggle to HOT
-HOT        -> retain polarity
-then monotonic rewrite to hotEligibilityFloor, laneRank=0
-```
-
-The final HOT time is `max(originalTime, floor)`. A lease or hold newer than the
-floor is never lowered.
-
-Route `DISCONNECTED` or `worker-delivery.expired`:
+The target is fixed by the semantic event:
 
 ```text
-PAUSE      -> no-op
-HOT        -> exact toggle to RECOVERY
-RECOVERY   -> no-op
+CONNECTED                                      -> HOT
+DISCONNECTED / delivery expired / Probe miss  -> RECOVERY
 ```
 
-Toggle preserves time and dirty and resets laneRank to zero. A stale exact CAS
-is not retried.
+For each Worker, Evidence is accepted when its 100ms slot is at least the
+stored non-future slot, or when the stored Score is a future lease/hold. The
+same slot is accepted. Valid Evidence changes only the Score sign; it preserves
+`timeSlot`, `laneRank`, and dirty. This also means PAUSE needs no special branch:
+changing the sign of its fixed absolute coordinate does not make it schedulable.
 
-Snapshot failure (`DISCONNECTED` or `UNKNOWN`) advances retry policy:
-
-```text
-HOT        -> exact toggle, then rewrite to check time at laneRank=0
-RECOVERY n -> rewrite to check time at laneRank=n+1
-n+1 >= max -> exact cold park at laneRank=max
-```
-
-`observedAtMillis` is used only for age validation and within-round ordering;
-it is not a score version. Exact Score CAS and monotonic same-polarity rewrite
-remain the write fences.
+Retry rank, next-check time, and cold parking are Dispatch concerns performed
+before a Probe is offered or when a due Recovery observation is exhausted.
+The Result path neither rewrites to the HOT floor nor advances Recovery retry
+state. A newer non-future Score rejects older Evidence as `STALE`.
 
 ## Server And Adapter Boundary
 
@@ -224,8 +224,8 @@ second Report. Queue pressure drops both without closing a Worker Channel.
 When Serviceability is absent, no floor, Adapter Evidence lane, or
 Serviceability Dispatch lane exists. The Server bridge owner may still be
 assembled but has no production Evidence consumer. Production mints the floor
-once in Java, shares it with the Evidence policy, Serviceability policy and
-Assignment policies, and uses:
+once in Java and shares it only with Serviceability Dispatch and Assignment,
+and uses:
 
 ```text
 start: Java Result Convergence
@@ -235,9 +235,9 @@ stop: Java Dispatch Convergence
    -> Java Result Convergence
 ```
 
-The Adapter Evidence policy and the Serviceability, Allocation and Task Dispatch
-lanes use the same floor. This assembly has no duplicate consumers or Probe
-Request producers.
+Serviceability Dispatch and Assignment use the same floor. Adapter Evidence
+does not receive or rewrite it. This assembly has no duplicate consumers or
+Probe Request producers.
 
 - Do not generalize the Runtime into an event bus.
 - Do not send Adapter Route probes to Workers.

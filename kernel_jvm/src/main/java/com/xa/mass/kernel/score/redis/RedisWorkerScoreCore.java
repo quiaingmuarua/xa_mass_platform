@@ -23,7 +23,6 @@ public final class RedisWorkerScoreCore
 
     private static final long COLD_PARK_TIME_SLOT = MIN_TIME_SLOT + 1;
     private static final long RECOVERY_LOOKBACK_MILLIS = 86_400_000;
-
     private static final String CURRENT_REWRITE_SCRIPT = """
             local key = KEYS[1]
             local worker_id = ARGV[1]
@@ -94,6 +93,108 @@ public final class RedisWorkerScoreCore
             return {"transitioned", next_score}
             """;
 
+    private static final String SERVICEABILITY_HOLD_SCRIPT = """
+            local key = KEYS[1]
+            local slot_millis = tonumber(ARGV[1])
+            local slot_factor = tonumber(ARGV[2])
+            local max_time_slot = tonumber(ARGV[3])
+            local redis_time = redis.call("TIME")
+            local now_millis = tonumber(redis_time[1]) * 1000
+                + math.floor(tonumber(redis_time[2]) / 1000)
+            local now_time_slot = math.floor(now_millis / slot_millis)
+            local result = {}
+
+            for index = 4, #ARGV, 3 do
+              local worker_id = ARGV[index]
+              local observed_score = tonumber(ARGV[index + 1])
+              local target_low_bits = tonumber(ARGV[index + 2])
+              local status = "stale"
+              local result_score = ""
+              local stored = redis.call("ZSCORE", key, worker_id)
+              if stored then
+                local stored_score = tonumber(stored)
+                result_score = stored
+                if stored_score == observed_score then
+                  local target_abs_score = now_time_slot * slot_factor
+                      + target_low_bits
+                  if now_time_slot < 0
+                      or now_time_slot > max_time_slot
+                      or target_low_bits < 0
+                      or target_low_bits >= slot_factor
+                      or target_abs_score <= 0 then
+                    status = "invalid"
+                  else
+                    local target_score = -target_abs_score
+                    if target_score == stored_score then
+                      status = "noop"
+                    else
+                      redis.call("ZADD", key, target_score, worker_id)
+                      status = "transitioned"
+                      result_score = target_score
+                    end
+                  end
+                end
+              end
+              result[#result + 1] = worker_id
+              result[#result + 1] = status
+              result[#result + 1] = result_score
+            end
+            return result
+            """;
+
+    private static final String SERVICEABILITY_EVIDENCE_SCRIPT = """
+            local key = KEYS[1]
+            local target_sign = tonumber(ARGV[1])
+            local slot_millis = tonumber(ARGV[2])
+            local slot_factor = tonumber(ARGV[3])
+            local max_time_slot = tonumber(ARGV[4])
+            local redis_time = redis.call("TIME")
+            local now_millis = tonumber(redis_time[1]) * 1000
+                + math.floor(tonumber(redis_time[2]) / 1000)
+            local now_time_slot = math.floor(now_millis / slot_millis)
+            local result = {}
+
+            for index = 5, #ARGV, 2 do
+              local worker_id = ARGV[index]
+              local evidence_time_slot = tonumber(ARGV[index + 1])
+              local status = "stale"
+              local result_score = ""
+              local stored = redis.call("ZSCORE", key, worker_id)
+              if stored then
+                local stored_score = tonumber(stored)
+                local stored_abs_score = math.abs(stored_score)
+                local stored_time_slot = math.floor(
+                  stored_abs_score / slot_factor
+                )
+                result_score = stored
+                if target_sign ~= 1 and target_sign ~= -1
+                    or now_time_slot < 0
+                    or now_time_slot > max_time_slot
+                    or stored_abs_score <= 0
+                    or stored_time_slot < 0
+                    or stored_time_slot > max_time_slot
+                    or evidence_time_slot < 0
+                    or evidence_time_slot > max_time_slot then
+                  status = "invalid"
+                elseif stored_time_slot > now_time_slot
+                    or stored_time_slot <= evidence_time_slot then
+                  local target_score = target_sign * stored_abs_score
+                  if target_score == stored_score then
+                    status = "noop"
+                  else
+                    redis.call("ZADD", key, target_score, worker_id)
+                    status = "transitioned"
+                    result_score = target_score
+                  end
+                end
+              end
+              result[#result + 1] = worker_id
+              result[#result + 1] = status
+              result[#result + 1] = result_score
+            end
+            return result
+            """;
+
     private static final String COMPLETED_HOT_RELEASE_SCRIPT = """
             -- worker_score_release_completed_hot_hold
             local key = KEYS[1]
@@ -101,7 +202,6 @@ public final class RedisWorkerScoreCore
             local observed_hot_score = tonumber(ARGV[2])
             local release_slot_base = tonumber(ARGV[3])
             local slot_factor = tonumber(ARGV[4])
-            local dirty_factor = tonumber(ARGV[5])
 
             if not observed_hot_score or observed_hot_score <= 0 then
               return {"invalid"}
@@ -110,14 +210,7 @@ public final class RedisWorkerScoreCore
               return {"invalid"}
             end
 
-            local observed_remainder = observed_hot_score % slot_factor
-            local observed_lane_rank = math.floor(
-              observed_remainder / dirty_factor
-            )
-            local recovery_counterpart = -(
-              observed_hot_score
-              - observed_lane_rank * dirty_factor
-            )
+            local recovery_counterpart = -observed_hot_score
 
             local stored = redis.call("ZSCORE", key, worker_id)
             if not stored then
@@ -674,6 +767,178 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
+    public Map<String, WorkerScoreTransitionResult>
+            holdObservedHotForServiceabilityProbes(
+                    String homeBucketId,
+                    Map<String, Long> observedHotScores
+            ) {
+        return updateObservedServiceabilityChecks(
+                homeBucketId,
+                observedHotScores,
+                WorkerScorePolarity.HOT_ACQUIRE
+        );
+    }
+
+    @Override
+    public Map<String, WorkerScoreTransitionResult>
+            advanceObservedRecoveryRechecks(
+                    String homeBucketId,
+                    Map<String, Long> observedRecoveryScores
+            ) {
+        return updateObservedServiceabilityChecks(
+                homeBucketId,
+                observedRecoveryScores,
+                WorkerScorePolarity.RECOVERY_RECHECK
+        );
+    }
+
+    private Map<String, WorkerScoreTransitionResult>
+            updateObservedServiceabilityChecks(
+                    String homeBucketId,
+                    Map<String, Long> observedScores,
+                    WorkerScorePolarity expectedPolarity
+            ) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        LinkedHashMap<String, Long> ordered = boundedWorkerValues(
+                observedScores,
+                "observedScores"
+        );
+        if (ordered.isEmpty()) {
+            return Map.of();
+        }
+
+        LinkedHashMap<String, WorkerScoreTransitionResult> immediate =
+                new LinkedHashMap<>();
+        LinkedHashMap<String, long[]> pending = new LinkedHashMap<>();
+        ordered.forEach((workerId, observedScore) -> {
+            WorkerScoreState state;
+            try {
+                state = decodeState(workerId, observedScore.doubleValue());
+            } catch (IllegalStateException error) {
+                immediate.put(
+                        workerId,
+                        transition(WorkerScoreTransitionStatus.INVALID)
+                );
+                return;
+            }
+            if (state.polarity() != expectedPolarity) {
+                immediate.put(
+                        workerId,
+                        transition(WorkerScoreTransitionStatus.INVALID)
+                );
+                return;
+            }
+            int targetLaneRank = expectedPolarity
+                    == WorkerScorePolarity.HOT_ACQUIRE
+                    ? MIN_LANE_RANK
+                    : state.laneRank() + 1;
+            if (!validLaneRank(targetLaneRank)) {
+                immediate.put(
+                        workerId,
+                        transition(WorkerScoreTransitionStatus.INVALID)
+                );
+                return;
+            }
+            long targetLowBits = (long) targetLaneRank * DIRTY_FACTOR
+                    + state.dirty();
+            pending.put(
+                    workerId,
+                    new long[]{observedScore, targetLowBits}
+            );
+        });
+
+        LinkedHashMap<String, WorkerScoreTransitionResult> transitioned =
+                new LinkedHashMap<>();
+        if (!pending.isEmpty()) {
+            List<String> arguments = new ArrayList<>();
+            arguments.add(Long.toString(SLOT_MILLIS));
+            arguments.add(Integer.toString(SLOT_FACTOR));
+            arguments.add(Long.toString(MAX_TIME_SLOT));
+            pending.forEach((workerId, values) -> {
+                arguments.add(workerId);
+                arguments.add(Long.toString(values[0]));
+                arguments.add(Long.toString(values[1]));
+            });
+            transitioned.putAll(batchScriptResults(
+                    pending.keySet(),
+                    commands().eval(
+                            SERVICEABILITY_HOLD_SCRIPT,
+                            ScriptOutputType.MULTI,
+                            new String[]{scoreKey(homeBucketId)},
+                            arguments.toArray(String[]::new)
+                    ),
+                    "Worker serviceability hold"
+            ));
+        }
+        return mergeOrderedResults(ordered.keySet(), immediate, transitioned);
+    }
+
+    @Override
+    public Map<String, WorkerScoreTransitionResult>
+            applyServiceabilityPolarityEvidence(
+                    String homeBucketId,
+                    Map<String, Long> evidenceTimeMillisByWorkerId,
+                    WorkerScorePolarity targetPolarity
+            ) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (targetPolarity == null) {
+            throw new IllegalArgumentException(
+                    "targetPolarity must be present"
+            );
+        }
+        LinkedHashMap<String, Long> ordered = boundedWorkerValues(
+                evidenceTimeMillisByWorkerId,
+                "evidenceTimeMillisByWorkerId"
+        );
+        if (ordered.isEmpty()) {
+            return Map.of();
+        }
+
+        LinkedHashMap<String, WorkerScoreTransitionResult> immediate =
+                new LinkedHashMap<>();
+        LinkedHashMap<String, Long> pending = new LinkedHashMap<>();
+        ordered.forEach((workerId, evidenceTimeMillis) -> {
+            if (evidenceTimeMillis <= 0
+                    || !validTimeMillis(evidenceTimeMillis)) {
+                immediate.put(
+                        workerId,
+                        transition(WorkerScoreTransitionStatus.INVALID)
+                );
+                return;
+            }
+            pending.put(
+                    workerId,
+                    evidenceTimeMillis / SLOT_MILLIS
+            );
+        });
+
+        LinkedHashMap<String, WorkerScoreTransitionResult> transitioned =
+                new LinkedHashMap<>();
+        if (!pending.isEmpty()) {
+            List<String> arguments = new ArrayList<>();
+            arguments.add(Integer.toString(targetPolarity.value()));
+            arguments.add(Long.toString(SLOT_MILLIS));
+            arguments.add(Integer.toString(SLOT_FACTOR));
+            arguments.add(Long.toString(MAX_TIME_SLOT));
+            pending.forEach((workerId, evidenceTimeSlot) -> {
+                arguments.add(workerId);
+                arguments.add(Long.toString(evidenceTimeSlot));
+            });
+            transitioned.putAll(batchScriptResults(
+                    pending.keySet(),
+                    commands().eval(
+                            SERVICEABILITY_EVIDENCE_SCRIPT,
+                            ScriptOutputType.MULTI,
+                            new String[]{scoreKey(homeBucketId)},
+                            arguments.toArray(String[]::new)
+                    ),
+                    "Worker serviceability evidence"
+            ));
+        }
+        return mergeOrderedResults(ordered.keySet(), immediate, transitioned);
+    }
+
+    @Override
     public WorkerScoreTransitionResult exhaustRecoveryRecheck(
             String homeBucketId,
             String workerId,
@@ -911,8 +1176,7 @@ public final class RedisWorkerScoreCore
                             workerId,
                             Long.toString(observedScore),
                             Long.toString(releaseSlotBase),
-                            Long.toString(SLOT_FACTOR),
-                            Long.toString(DIRTY_FACTOR)
+                            Long.toString(SLOT_FACTOR)
                     )
             ));
             transitioned.putAll(collectScriptResults(
@@ -950,6 +1214,85 @@ public final class RedisWorkerScoreCore
             index++;
         }
         return results;
+    }
+
+    private static Map<String, WorkerScoreTransitionResult>
+            batchScriptResults(
+                    Iterable<String> workerIds,
+                    Object raw,
+                    String operation
+            ) {
+        List<String> expectedIds = new ArrayList<>();
+        workerIds.forEach(expectedIds::add);
+        if (!(raw instanceof List<?> values)
+                || values.size() != expectedIds.size() * 3) {
+            throw new IllegalStateException(
+                    operation + " batch result is invalid"
+            );
+        }
+        LinkedHashMap<String, WorkerScoreTransitionResult> results =
+                new LinkedHashMap<>();
+        for (int index = 0; index < values.size(); index += 3) {
+            String workerId = String.valueOf(values.get(index));
+            WorkerScoreTransitionResult result = scriptResult(List.of(
+                    values.get(index + 1),
+                    values.get(index + 2)
+            ));
+            if (results.put(workerId, result) != null) {
+                throw new IllegalStateException(
+                        operation + " batch contains duplicate ids"
+                );
+            }
+        }
+        if (!List.copyOf(results.keySet()).equals(expectedIds)) {
+            throw new IllegalStateException(
+                    operation + " batch identities are invalid"
+            );
+        }
+        return results;
+    }
+
+    private static Map<String, WorkerScoreTransitionResult>
+            mergeOrderedResults(
+                    Iterable<String> workerIds,
+                    Map<String, WorkerScoreTransitionResult> immediate,
+                    Map<String, WorkerScoreTransitionResult> transitioned
+            ) {
+        LinkedHashMap<String, WorkerScoreTransitionResult> results =
+                new LinkedHashMap<>();
+        workerIds.forEach(workerId -> results.put(
+                workerId,
+                immediate.containsKey(workerId)
+                        ? immediate.get(workerId)
+                        : transitioned.get(workerId)
+        ));
+        return results;
+    }
+
+    private static LinkedHashMap<String, Long> boundedWorkerValues(
+            Map<String, Long> values,
+            String name
+    ) {
+        if (values == null) {
+            throw new IllegalArgumentException(name + " must be present");
+        }
+        if (values.size() > MAX_SERVICEABILITY_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    name + " must contain at most "
+                            + MAX_SERVICEABILITY_BATCH_SIZE + " workers"
+            );
+        }
+        LinkedHashMap<String, Long> ordered = new LinkedHashMap<>();
+        values.forEach((workerId, value) -> {
+            requireNonBlank(workerId, "workerId");
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        name + " must not contain null values"
+                );
+            }
+            ordered.put(workerId, value);
+        });
+        return ordered;
     }
 
     private static Map<String, WorkerScoreTransitionResult> uniformResults(
@@ -1070,8 +1413,9 @@ public final class RedisWorkerScoreCore
                     "Worker score script status is invalid"
             );
         };
-        Long score = values.size() > 1 && values.get(1) != null
-                ? scoreToLong(values.get(1))
+        Object rawScore = values.size() > 1 ? values.get(1) : null;
+        Long score = rawScore != null && !String.valueOf(rawScore).isEmpty()
+                ? scoreToLong(rawScore)
                 : null;
         return new WorkerScoreTransitionResult(status, score);
     }

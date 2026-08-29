@@ -209,10 +209,6 @@ public final class DispatchConvergenceRuntime {
                                             WorkerServiceabilityDispatchConfig
                                                     .DEFAULT_MAX_RECOVERY_ATTEMPTS,
                                             WorkerServiceabilityDispatchConfig
-                                                    .DEFAULT_HOT_SCAN_LIMIT,
-                                            WorkerServiceabilityDispatchConfig
-                                                    .DEFAULT_RECOVERY_SCAN_LIMIT,
-                                            WorkerServiceabilityDispatchConfig
                                                     .DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
                                     )
                             )

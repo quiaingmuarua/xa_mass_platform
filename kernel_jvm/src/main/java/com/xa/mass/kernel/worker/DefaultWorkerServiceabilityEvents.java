@@ -2,8 +2,6 @@ package com.xa.mass.kernel.worker;
 
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
-import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,16 +30,10 @@ public final class DefaultWorkerServiceabilityEvents
     }
 
     @Override
-    public void onConnected(
-            Map<String, Long> observedAtByWorkerId,
-            long hotEligibilityFloorMillis
-    ) {
-        requireFloor(hotEligibilityFloorMillis);
+    public void onConnected(Map<String, Long> observedAtByWorkerId) {
         apply(
                 validatedEvidence(observedAtByWorkerId),
-                EventKind.CONNECTED,
-                hotEligibilityFloorMillis,
-                0
+                WorkerScorePolarity.HOT_ACQUIRE
         );
     }
 
@@ -51,36 +43,23 @@ public final class DefaultWorkerServiceabilityEvents
     ) {
         apply(
                 validatedEvidence(observedAtByWorkerId),
-                EventKind.ROUTE_UNAVAILABLE,
-                0,
-                0
+                WorkerScorePolarity.RECOVERY_RECHECK
         );
     }
 
     @Override
     public void onProbeUnavailable(
-            Map<String, Long> observedAtByWorkerId,
-            int maxRecoveryAttempts
+            Map<String, Long> observedAtByWorkerId
     ) {
-        if (maxRecoveryAttempts < 1
-                || maxRecoveryAttempts > WorkerScoreCore.MAX_LANE_RANK) {
-            throw new IllegalArgumentException(
-                    "maxRecoveryAttempts must be between 1 and 99"
-            );
-        }
         apply(
                 validatedEvidence(observedAtByWorkerId),
-                EventKind.PROBE_UNAVAILABLE,
-                0,
-                maxRecoveryAttempts
+                WorkerScorePolarity.RECOVERY_RECHECK
         );
     }
 
     private void apply(
             LinkedHashMap<String, Long> evidence,
-            EventKind eventKind,
-            long hotEligibilityFloorMillis,
-            int maxRecoveryAttempts
+            WorkerScorePolarity targetPolarity
     ) {
         if (evidence.isEmpty()) {
             return;
@@ -100,39 +79,26 @@ public final class DefaultWorkerServiceabilityEvents
             }
         });
 
+        int limit = WorkerScoreCore.MAX_SERVICEABILITY_BATCH_SIZE;
         evidenceByGroup.forEach((workerGroupId, groupEvidence) -> {
-            Map<String, WorkerScoreState> states = workerScores.getScoreStates(
-                    workerGroupId,
-                    new ArrayList<>(groupEvidence.keySet())
+            List<Map.Entry<String, Long>> entries = new ArrayList<>(
+                    groupEvidence.entrySet()
             );
-            groupEvidence.forEach((workerId, observedAtMillis) -> {
-                WorkerScoreState state = states.get(workerId);
-                if (state == null
-                        || state.timeMillis()
-                        == WorkerScoreCore.PAUSE_TIME_MILLIS) {
-                    return;
-                }
-                switch (eventKind) {
-                    case CONNECTED -> applyConnected(
-                            workerGroupId,
-                            workerId,
-                            state,
-                            hotEligibilityFloorMillis
-                    );
-                    case ROUTE_UNAVAILABLE -> applyRouteUnavailable(
-                            workerGroupId,
-                            workerId,
-                            state
-                    );
-                    case PROBE_UNAVAILABLE -> applyProbeUnavailable(
-                            workerGroupId,
-                            workerId,
-                            state,
-                            observedAtMillis,
-                            maxRecoveryAttempts
-                    );
-                }
-            });
+            for (int offset = 0; offset < entries.size(); offset += limit) {
+                LinkedHashMap<String, Long> chunk = new LinkedHashMap<>();
+                entries.subList(
+                        offset,
+                        Math.min(offset + limit, entries.size())
+                ).forEach(entry -> chunk.put(
+                        entry.getKey(),
+                        entry.getValue()
+                ));
+                workerScores.applyServiceabilityPolarityEvidence(
+                        workerGroupId,
+                        chunk,
+                        targetPolarity
+                );
+            }
         });
     }
 
@@ -153,88 +119,6 @@ public final class DefaultWorkerServiceabilityEvents
         return result;
     }
 
-    private void applyConnected(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            long hotEligibilityFloorMillis
-    ) {
-        if (state.polarity() == WorkerScorePolarity.RECOVERY_RECHECK) {
-            var toggled = workerScores.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    state.score()
-            );
-            if (toggled.status()
-                    != WorkerScoreTransitionStatus.TRANSITIONED) {
-                return;
-            }
-        }
-        workerScores.rewriteCurrentScores(
-                workerGroupId,
-                List.of(workerId),
-                hotEligibilityFloorMillis,
-                WorkerScoreCore.MIN_LANE_RANK
-        );
-    }
-
-    private void applyRouteUnavailable(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state
-    ) {
-        if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            workerScores.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    state.score()
-            );
-        }
-    }
-
-    private void applyProbeUnavailable(
-            String workerGroupId,
-            String workerId,
-            WorkerScoreState state,
-            long observedAtMillis,
-            int maxRecoveryAttempts
-    ) {
-        if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            var toggled = workerScores.toggleCurrentPolarity(
-                    workerGroupId,
-                    workerId,
-                    state.score()
-            );
-            if (toggled.status()
-                    != WorkerScoreTransitionStatus.TRANSITIONED) {
-                return;
-            }
-            workerScores.rewriteCurrentScores(
-                    workerGroupId,
-                    List.of(workerId),
-                    observedAtMillis,
-                    WorkerScoreCore.MIN_LANE_RANK
-            );
-            return;
-        }
-        int nextAttempt = state.laneRank() + 1;
-        if (nextAttempt >= maxRecoveryAttempts) {
-            workerScores.exhaustRecoveryRecheck(
-                    workerGroupId,
-                    workerId,
-                    state.score(),
-                    maxRecoveryAttempts
-            );
-            return;
-        }
-        workerScores.rewriteCurrentScores(
-                workerGroupId,
-                List.of(workerId),
-                observedAtMillis,
-                nextAttempt
-        );
-    }
-
     private static LinkedHashMap<String, Long> validatedEvidence(
             Map<String, Long> source
     ) {
@@ -252,26 +136,9 @@ public final class DefaultWorkerServiceabilityEvents
         return copied;
     }
 
-    private static void requireFloor(long floor) {
-        if (floor < WorkerScoreCore.SLOT_MILLIS
-                || floor % WorkerScoreCore.SLOT_MILLIS != 0
-                || floor > WorkerScoreCore.MAX_TIME_MILLIS) {
-            throw new IllegalArgumentException(
-                    "hotEligibilityFloorMillis must be a valid "
-                            + "score-slot-aligned time"
-            );
-        }
-    }
-
     private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must be non-blank");
         }
-    }
-
-    private enum EventKind {
-        CONNECTED,
-        ROUTE_UNAVAILABLE,
-        PROBE_UNAVAILABLE
     }
 }

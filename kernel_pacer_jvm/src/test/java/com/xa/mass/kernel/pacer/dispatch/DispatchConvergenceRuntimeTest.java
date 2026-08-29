@@ -73,8 +73,6 @@ class DispatchConvergenceRuntimeTest {
                 config.lane().dispatch().probeSweepRestartDelayMillis()
         );
         assertEquals(5, config.lane().dispatch().maxRecoveryAttempts());
-        assertEquals(80, config.lane().dispatch().hotScanLimit());
-        assertEquals(20, config.lane().dispatch().recoveryScanLimit());
         assertEquals(
                 List.of("system-polling"),
                 config.lane().dispatch()

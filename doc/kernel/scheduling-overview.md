@@ -151,7 +151,9 @@ TaskExecutionMechanism
 
 WorkerServiceabilityDispatchMechanism
   internally protects Worker sweep Score reads and exact excluded-endpoint
-  cold park; Policy offers selected ids through WorkerServiceabilityRuntime
+  cold park; Policy visits demanded WorkerGroups in Task order under one
+  100-Probe hold budget and offers selected ids through
+  WorkerServiceabilityRuntime
 
 WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes, authoritative append, non-overwriting
@@ -210,7 +212,7 @@ Worker Delivery Dispatch
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
-| Worker serviceability | Process-local HOT eligibility floor, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and primitive-composing Result Pacer implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
+| Worker serviceability | Process-local HOT eligibility floor, exact pre-Probe Score hold/Recovery advance, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and time-fenced polarity-only Result convergence implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
 | Worker allocation | Implemented as a shared-RUNNING-observation Policy that fills PRECOMPUTED Task candidate deficits through the finite Candidate Mechanism; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |

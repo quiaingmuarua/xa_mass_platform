@@ -17,7 +17,6 @@ import tools.jackson.databind.json.JsonMapper;
 class WorkerServiceabilityResultPolicyTest {
 
     private static final long NOW = 50_000;
-    private static final long FLOOR = 10_000;
 
     @Test
     void publishesTheThreeFixedLatestEvidenceEvents() {
@@ -35,9 +34,9 @@ class WorkerServiceabilityResultPolicyTest {
         ));
 
         assertEquals(List.of(
-                "connected:{connected=49001, connected-snapshot=49004}:10000",
+                "connected:{connected=49001, connected-snapshot=49004}",
                 "route:{route=49002, expired=49003}",
-                "probe:{probe=49004}:5"
+                "probe:{probe=49004}"
         ), events.calls);
     }
 
@@ -85,7 +84,6 @@ class WorkerServiceabilityResultPolicyTest {
         return new WorkerServiceabilityResultPolicy(
                 events,
                 WorkerServiceabilityResultConfig.defaults(),
-                FLOOR,
                 () -> NOW,
                 JsonMapper.builder().build()
         );
@@ -170,12 +168,8 @@ class WorkerServiceabilityResultPolicyTest {
         private final List<String> calls = new ArrayList<>();
 
         @Override
-        public void onConnected(
-                Map<String, Long> observedAtByWorkerId,
-                long hotEligibilityFloorMillis
-        ) {
-            calls.add("connected:" + observedAtByWorkerId + ":"
-                    + hotEligibilityFloorMillis);
+        public void onConnected(Map<String, Long> observedAtByWorkerId) {
+            calls.add("connected:" + observedAtByWorkerId);
         }
 
         @Override
@@ -187,11 +181,9 @@ class WorkerServiceabilityResultPolicyTest {
 
         @Override
         public void onProbeUnavailable(
-                Map<String, Long> observedAtByWorkerId,
-                int maxRecoveryAttempts
+                Map<String, Long> observedAtByWorkerId
         ) {
-            calls.add("probe:" + observedAtByWorkerId + ":"
-                    + maxRecoveryAttempts);
+            calls.add("probe:" + observedAtByWorkerId);
         }
     }
 }

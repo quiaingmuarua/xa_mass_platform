@@ -11,6 +11,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -133,7 +134,63 @@ final class DefaultWorkerServiceabilityDispatchMechanism
     }
 
     @Override
-    public int coldParkExcluded(
+    public List<WorkerServiceabilityObservation> holdForProbe(
+            List<WorkerServiceabilityObservation> workers
+    ) {
+        List<WorkerServiceabilityObservation> immutable = List.copyOf(
+                Objects.requireNonNull(workers, "workers")
+        );
+        if (immutable.isEmpty()) {
+            return List.of();
+        }
+        String workerGroupId = immutable.getFirst().workerGroupId();
+        LinkedHashMap<String, Long> hot = new LinkedHashMap<>();
+        LinkedHashMap<String, Long> recovery = new LinkedHashMap<>();
+        for (WorkerServiceabilityObservation worker : immutable) {
+            if (!workerGroupId.equals(worker.workerGroupId())) {
+                throw new IllegalArgumentException(
+                        "workers must belong to one WorkerGroup"
+                );
+            }
+            WorkerCandidateReference reference = worker.reference();
+            requireReference(workerGroupId, reference);
+            Map<String, Long> target = worker.polarity()
+                    == ServiceabilityPolarity.HOT ? hot : recovery;
+            if (target.put(worker.workerId(), reference.encodedScore())
+                    != null) {
+                throw new IllegalArgumentException(
+                        "workers must be unique by workerId"
+                );
+            }
+        }
+        Map<String, WorkerScoreCore.WorkerScoreTransitionResult> hotResults =
+                workerScores.holdObservedHotForServiceabilityProbes(
+                        workerGroupId,
+                        hot
+                );
+        Map<String, WorkerScoreCore.WorkerScoreTransitionResult>
+                recoveryResults = workerScores.advanceObservedRecoveryRechecks(
+                        workerGroupId,
+                        recovery
+                );
+        List<WorkerServiceabilityObservation> transitioned = new ArrayList<>();
+        for (WorkerServiceabilityObservation worker : immutable) {
+            Map<String, WorkerScoreCore.WorkerScoreTransitionResult> results =
+                    worker.polarity() == ServiceabilityPolarity.HOT
+                            ? hotResults : recoveryResults;
+            WorkerScoreCore.WorkerScoreTransitionResult result = results.get(
+                    worker.workerId()
+            );
+            if (result != null && result.status()
+                    == WorkerScoreTransitionStatus.TRANSITIONED) {
+                transitioned.add(worker);
+            }
+        }
+        return List.copyOf(transitioned);
+    }
+
+    @Override
+    public int coldPark(
             List<WorkerServiceabilityObservation> workers,
             int maxRecoveryAttempts
     ) {

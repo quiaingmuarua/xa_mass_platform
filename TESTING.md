@@ -12,7 +12,7 @@ boundary named below.
 | Lane | Invariant | External dependencies | Primary command |
 | --- | --- | --- | --- |
 | JVM Contracts | Java Kernel and other JVM modules compile; mechanical Owner, opaque ResultContext codec, semantic Result event, internal Dispatch Mechanism, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, evidence append/consume, polarity toggle and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
+| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, exact pre-Probe hold/advance, multi-Group 100-attempt round budgeting, time-fenced polarity Evidence and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context starts Result and Dispatch Convergence without an auxiliary Kernel process; a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
@@ -210,14 +210,14 @@ production policy default.
 
 ```text
 physical WebSocket connect
-  -> exact CONNECTED evidence -> Kernel Result Pacer -> HOT at/above epoch floor
+  -> CONNECTED evidence -> Kernel Result Pacer -> target HOT polarity
 explicit Worker shutdown
-  -> exact DISCONNECTED evidence -> Kernel Result Pacer -> exact RECOVERY toggle
+  -> DISCONNECTED evidence -> Kernel Result Pacer -> target RECOVERY polarity
 same Worker identity reconnect
-  -> exact CONNECTED evidence -> Kernel Result Pacer -> HOT at/above epoch floor
+  -> CONNECTED evidence -> Kernel Result Pacer -> target HOT polarity
 due RUNNING_VISIBLE Task demand
-  -> Kernel derives its WorkerGroup -> periodic Adapter snapshot evidence
-  -> Kernel Result Pacer -> RECOVERY-to-HOT compensation
+  -> Kernel derives its WorkerGroup -> exact pre-Probe Score hold
+  -> periodic Adapter snapshot evidence -> polarity-only compensation
 expired TASK delivery
   -> 23002 Task Result and separate KERNEL evidence use independent Pacers
 ```

@@ -157,11 +157,12 @@ The current Worker event implementation uses
 `releaseCompletedHotScoreHolds`. It accepts only:
 
 - the original positive HOT assignment lease; or
-- the exact RECOVERY counterpart derived by the Score Owner from that lease.
+- the exact sign-flipped RECOVERY counterpart of that lease.
 
 The same-key Lua operation may restore that exact counterpart to HOT and then
-release it. A newer lease, pause, cold coordinate, dirty drift, retry advance,
-or unrelated RECOVERY score returns `STALE` or `INVALID`. This is a cheap,
+release it while preserving the lease's low bits. A newer lease, pause, cold
+coordinate, dirty drift, retry advance, or unrelated RECOVERY score returns
+`STALE` or `INVALID`. This is a cheap,
 opportunistic use of successful execution evidence, not a general
 RECOVERY-to-HOT or connection-state API.
 

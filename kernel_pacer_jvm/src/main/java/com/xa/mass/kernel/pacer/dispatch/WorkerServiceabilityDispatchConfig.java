@@ -6,16 +6,12 @@ record WorkerServiceabilityDispatchConfig(
         long recoveryRetryIntervalMillis,
         long probeSweepRestartDelayMillis,
         int maxRecoveryAttempts,
-        int hotScanLimit,
-        int recoveryScanLimit,
         List<String> probeExcludedEndpointManagerIds
 ) {
 
     public static final long DEFAULT_RECOVERY_RETRY_INTERVAL_MILLIS = 60_000;
     public static final long DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS = 10_000;
     public static final int DEFAULT_MAX_RECOVERY_ATTEMPTS = 5;
-    public static final int DEFAULT_HOT_SCAN_LIMIT = 80;
-    public static final int DEFAULT_RECOVERY_SCAN_LIMIT = 20;
     public static final List<String> DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS =
             List.of("system-polling");
 
@@ -31,14 +27,6 @@ record WorkerServiceabilityDispatchConfig(
                 .MAX_RECOVERY_ATTEMPTS) {
             throw new IllegalArgumentException(
                     "maxRecoveryAttempts must be between 1 and 99"
-            );
-        }
-        if (hotScanLimit < 1
-                || recoveryScanLimit < 1
-                || hotScanLimit + recoveryScanLimit > 100) {
-            throw new IllegalArgumentException(
-                    "HOT and RECOVERY scan limits must be positive and "
-                            + "total at most 100"
             );
         }
         if (probeExcludedEndpointManagerIds == null
@@ -65,8 +53,6 @@ record WorkerServiceabilityDispatchConfig(
                 DEFAULT_RECOVERY_RETRY_INTERVAL_MILLIS,
                 DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
                 DEFAULT_MAX_RECOVERY_ATTEMPTS,
-                DEFAULT_HOT_SCAN_LIMIT,
-                DEFAULT_RECOVERY_SCAN_LIMIT,
                 DEFAULT_PROBE_EXCLUDED_ENDPOINT_IDS
         );
     }

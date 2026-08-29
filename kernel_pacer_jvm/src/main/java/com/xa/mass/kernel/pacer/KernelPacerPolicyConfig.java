@@ -9,8 +9,8 @@ import java.util.function.LongSupplier;
  * Root policy facts shared by both convergence packages.
  *
  * <p>Each package owns its concrete preset values. The root owns only the
- * selected finite preset and the single HOT eligibility floor that must be
- * shared by Result and Dispatch.</p>
+ * selected finite preset and the single HOT eligibility floor shared by
+ * Serviceability Dispatch and Assignment.</p>
  */
 record KernelPacerPolicyConfig(
         PolicyPreset preset,

@@ -26,6 +26,7 @@ public interface WorkerScoreCore {
     int MAX_DIRTY = 1;
     int DIRTY_FACTOR = 2;
     int SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR;
+    int MAX_SERVICEABILITY_BATCH_SIZE = 100;
 
     Map<String, @Nullable WorkerScoreState> getScoreStates(
             String homeBucketId,
@@ -91,6 +92,25 @@ public interface WorkerScoreCore {
             String workerId,
             long observedScore
     );
+
+    Map<String, WorkerScoreTransitionResult>
+            holdObservedHotForServiceabilityProbes(
+                    String homeBucketId,
+                    Map<String, Long> observedHotScores
+            );
+
+    Map<String, WorkerScoreTransitionResult>
+            advanceObservedRecoveryRechecks(
+                    String homeBucketId,
+                    Map<String, Long> observedRecoveryScores
+            );
+
+    Map<String, WorkerScoreTransitionResult>
+            applyServiceabilityPolarityEvidence(
+                    String homeBucketId,
+                    Map<String, Long> evidenceTimeMillisByWorkerId,
+                    WorkerScorePolarity targetPolarity
+            );
 
     WorkerScoreTransitionResult exhaustRecoveryRecheck(
             String homeBucketId,

@@ -16,12 +16,13 @@ import java.util.function.LongSupplier;
 
 final class WorkerServiceabilityDispatchPolicy {
 
+    private static final int PROBE_ROUND_LIMIT = 100;
+
     private final WorkerServiceabilityDispatchMechanism mechanism;
     private final WorkerServiceabilityRuntime serviceability;
     private final LongSupplier currentTimeMillis;
     private final LinkedHashMap<String, GroupSweepState> groupSweeps =
             new LinkedHashMap<>();
-    private int groupCursor;
 
     WorkerServiceabilityDispatchPolicy(
             WorkerServiceabilityDispatchMechanism mechanism,
@@ -56,6 +57,9 @@ final class WorkerServiceabilityDispatchPolicy {
         WorkerServiceabilityDispatchAssemblyConfig.requireFloor(
                 hotEligibilityFloorMillis
         );
+        if (tasks.isEmpty()) {
+            return 0;
+        }
         long nowMillis = currentTimeMillis.getAsLong();
         LinkedHashSet<String> groupIds = new LinkedHashSet<>();
         tasks.forEach(task -> groupIds.add(
@@ -64,71 +68,85 @@ final class WorkerServiceabilityDispatchPolicy {
         List<String> workerGroupIds = List.copyOf(groupIds);
         retainActiveGroupSweeps(workerGroupIds);
         if (workerGroupIds.isEmpty()) {
-            groupCursor = 0;
             return 0;
         }
 
-        String workerGroupId = workerGroupIds.get(
-                groupCursor % workerGroupIds.size()
-        );
-        groupCursor = (groupCursor + 1) % workerGroupIds.size();
-        GroupSweepState sweepState = sweepState(workerGroupId);
-        List<WorkerCandidateReference> hot = hotPage(
-                workerGroupId,
-                sweepState.hot,
-                hotEligibilityFloorMillis,
-                nowMillis,
-                config
-        );
-        List<WorkerCandidateReference> recovery = recoveryPage(
-                workerGroupId,
-                sweepState.recovery,
-                nowMillis,
-                config
-        );
-        LinkedHashMap<String, WorkerCandidateReference> candidates =
-                new LinkedHashMap<>();
-        hot.forEach(reference -> candidates.putIfAbsent(
-                reference.workerId(),
-                reference
-        ));
-        recovery.forEach(reference -> candidates.putIfAbsent(
-                reference.workerId(),
-                reference
-        ));
-        if (candidates.isEmpty()) {
-            return 0;
-        }
-
-        List<WorkerServiceabilityObservation> rechecked = mechanism.recheck(
-                workerGroupId,
-                List.copyOf(candidates.values())
-        );
         Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
         );
-        List<WorkerServiceabilityObservation> excluded = new ArrayList<>();
-        List<WorkerServiceabilityObservation> probe = new ArrayList<>();
-        for (WorkerServiceabilityObservation worker : rechecked) {
-            if (!eligible(
-                    worker,
-                    nowMillis,
+        int remainingProbeBudget = PROBE_ROUND_LIMIT;
+        int offered = 0;
+        for (String workerGroupId : workerGroupIds) {
+            if (remainingProbeBudget == 0) {
+                break;
+            }
+            GroupSweepState sweepState = sweepState(workerGroupId);
+            List<WorkerCandidateReference> hot = hotPage(
+                    workerGroupId,
+                    sweepState.hot,
                     hotEligibilityFloorMillis,
-                    config.recoveryRetryIntervalMillis()
-            )) {
+                    nowMillis,
+                    config,
+                    remainingProbeBudget
+            );
+            List<WorkerCandidateReference> candidates = hot.isEmpty()
+                    ? recoveryPage(
+                            workerGroupId,
+                            sweepState.recovery,
+                            nowMillis,
+                            config,
+                            remainingProbeBudget
+                    )
+                    : hot;
+            if (candidates.isEmpty()) {
                 continue;
             }
-            if (excludedEndpoints.contains(worker.endpointManagerId())) {
-                excluded.add(worker);
-            } else {
-                probe.add(worker);
+
+            List<WorkerServiceabilityObservation> rechecked =
+                    mechanism.recheck(workerGroupId, candidates);
+            List<WorkerServiceabilityObservation> excluded =
+                    new ArrayList<>();
+            List<WorkerServiceabilityObservation> exhausted =
+                    new ArrayList<>();
+            List<WorkerServiceabilityObservation> probe = new ArrayList<>();
+            for (WorkerServiceabilityObservation worker : rechecked) {
+                if (!eligible(
+                        worker,
+                        nowMillis,
+                        hotEligibilityFloorMillis,
+                        config.recoveryRetryIntervalMillis()
+                )) {
+                    continue;
+                }
+                if (excludedEndpoints.contains(worker.endpointManagerId())) {
+                    excluded.add(worker);
+                } else if (worker.polarity()
+                        == ServiceabilityPolarity.RECOVERY
+                        && worker.laneRank()
+                        >= config.maxRecoveryAttempts()) {
+                    exhausted.add(worker);
+                } else {
+                    probe.add(worker);
+                }
             }
+            List<WorkerServiceabilityObservation> cold = new ArrayList<>(
+                    excluded.size() + exhausted.size()
+            );
+            cold.addAll(excluded);
+            cold.addAll(exhausted);
+            mechanism.coldPark(cold, config.maxRecoveryAttempts());
+
+            List<WorkerServiceabilityObservation> held =
+                    mechanism.holdForProbe(probe);
+            if (held.size() > remainingProbeBudget) {
+                throw new IllegalStateException(
+                        "Serviceability hold exceeded the round budget"
+                );
+            }
+            remainingProbeBudget -= held.size();
+            offered += offerProbes(held);
         }
-        mechanism.coldParkExcluded(
-                excluded,
-                config.maxRecoveryAttempts()
-        );
-        return offerProbes(probe);
+        return offered;
     }
 
     private GroupSweepState sweepState(String workerGroupId) {
@@ -148,7 +166,8 @@ final class WorkerServiceabilityDispatchPolicy {
             ProbeScoreSweep sweep,
             long hotEligibilityFloorMillis,
             long nowMillis,
-            WorkerServiceabilityDispatchConfig config
+            WorkerServiceabilityDispatchConfig config,
+            int limit
     ) {
         if (nowMillis < sweep.resumeAtMillis) {
             return List.of();
@@ -157,7 +176,7 @@ final class WorkerServiceabilityDispatchPolicy {
                 workerGroupId,
                 hotEligibilityFloorMillis,
                 sweep.cursor,
-                config.hotScanLimit()
+                limit
         );
         advanceSweep(
                 sweep,
@@ -172,7 +191,8 @@ final class WorkerServiceabilityDispatchPolicy {
             String workerGroupId,
             ProbeScoreSweep sweep,
             long nowMillis,
-            WorkerServiceabilityDispatchConfig config
+            WorkerServiceabilityDispatchConfig config,
+            int limit
     ) {
         if (nowMillis < sweep.resumeAtMillis) {
             return List.of();
@@ -180,7 +200,7 @@ final class WorkerServiceabilityDispatchPolicy {
         WorkerSweepPage page = mechanism.observeRecovery(
                 workerGroupId,
                 sweep.cursor,
-                config.recoveryScanLimit()
+                limit
         );
         advanceSweep(
                 sweep,

@@ -38,9 +38,10 @@ does not inspect lane policy. There is no production Pacer JSON, dynamic lane
 registry, or per-field Server override.
 
 When Serviceability is enabled, Runtime mints one Worker-Score-slot-aligned
-`hotEligibilityFloorMillis`. Adapter Evidence, Serviceability Dispatch, and
-Assignment candidate acquisition receive the same immutable value. It is not
-stored in Redis or exposed through Health or Runtime APIs.
+`hotEligibilityFloorMillis`. Serviceability Dispatch and Assignment candidate
+acquisition receive the same immutable value. Adapter Evidence changes only
+polarity and does not receive the floor. It is not stored in Redis or exposed
+through Health or Runtime APIs.
 
 ## Mechanical Owners
 

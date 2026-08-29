@@ -36,7 +36,6 @@ public final class ResultConvergenceRuntime {
 
     public static ResultConvergenceRuntime assemble(
             PolicyPreset preset,
-            long hotEligibilityFloorMillis,
             TaskResultRuntime taskResults,
             TaskItemResultEvents taskItemEvents,
             WorkerExecutionResultEvents workerExecutionEvents,
@@ -92,8 +91,7 @@ public final class ResultConvergenceRuntime {
             WorkerServiceabilityResultPolicy evidencePolicy =
                     new WorkerServiceabilityResultPolicy(
                             workerServiceabilityEvents,
-                            serviceabilityConfig,
-                            hotEligibilityFloorMillis
+                            serviceabilityConfig
                     );
             lanes.add(new ResultLane(
                     ResultLaneId.ADAPTER_EVIDENCE,
@@ -106,10 +104,6 @@ public final class ResultConvergenceRuntime {
                     serviceability::consumeAdapterEvidenceResults,
                     evidencePolicy::handle
             ));
-        } else if (hotEligibilityFloorMillis != 0) {
-            throw new IllegalArgumentException(
-                    "disabled Serviceability must not carry a HOT floor"
-            );
         }
         return new ResultConvergenceRuntime(
                 new ResultConvergenceApplication(
@@ -158,8 +152,6 @@ public final class ResultConvergenceRuntime {
                     WorkerServiceabilityResultConfig.defaults();
             case RUNTIME_BOUNDARY_PROOF ->
                     new WorkerServiceabilityResultConfig(
-                            WorkerServiceabilityResultConfig
-                                    .DEFAULT_MAX_RECOVERY_ATTEMPTS,
                             BOUNDARY_RESULT_REPORT_LIMIT,
                             WorkerServiceabilityResultConfig
                                     .DEFAULT_EVIDENCE_MAX_AGE_MILLIS

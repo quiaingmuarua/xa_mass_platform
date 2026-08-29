@@ -511,7 +511,7 @@ release preserves polarity
 release is not a reopen and not a polarity move
 
 completed HOT release accepts only the exact ResultContext HOT lease or its
-exact lane-zero RECOVERY counterpart; it atomically restores only that
+exact sign-flipped RECOVERY counterpart; it atomically restores only that
 counterpart and then releases
 ```
 
@@ -528,15 +528,15 @@ RECOVERY_RECHECK -> HOT_ACQUIRE
   policy validation
 ```
 
-The exact `toggle_current_polarity` operation preserves `timeSlot`. Worker
-Serviceability composes this exact operation with monotonic same-polarity
-rewrites; it does not expose a business-shaped score operation. Polarity moves
-must not inherit laneRank across
-lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have different
-meanings, so every polarity move starts the target lane at `laneRank=0`.
-Polarity move preserves the dirty bit. Dirty score primitives are implemented;
-policy may invoke them only for an active continuation that will later
-revalidate or renew. Raw external observation never writes dirty.
+The general `toggle_current_polarity` operation preserves `timeSlot` and dirty
+while resetting the target lane to `laneRank=0`. Worker Serviceability Result
+does not use that general primitive: its dedicated Evidence operation changes
+only the sign and therefore preserves `timeSlot`, `laneRank`, and dirty exactly.
+The two operations remain distinct because an explicit lane transition and an
+Evidence polarity correction own different low-bit semantics. Dirty score
+primitives are implemented; policy may invoke them only for an active
+continuation that will later revalidate or renew. Raw external observation
+never writes dirty.
 
 Raw socket, heartbeat, keepalive, session, latency observation, and
 `WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
@@ -544,8 +544,8 @@ Upsert initializes only a missing score and preserves every existing score
 exactly while replacing the Worker Properties snapshot. Only normalized
 Adapter Route evidence interpreted by the Kernel Serviceability Result Policy
 may reach `WorkerServiceabilityEvents`; its default event Mechanism composes
-exact toggle and monotonic rewrite. Transport and the Result Policy never call
-the score owner directly.
+bounded WorkerGroup resolution with the Score Owner's atomic Evidence fence.
+Transport and the Result Policy never call the score owner directly.
 
 ## Interface Rule
 
@@ -683,8 +683,9 @@ validation before returning to HOT_ACQUIRE acquisition.
 
 The completed-HOT variant is deliberately narrower. Each input is the original
 positive HOT lease from `ResultContext`; one per-Worker Lua operation accepts
-only that exact score or its exact `toggle_current_polarity` RECOVERY
-counterpart. The latter is restored to HOT and released atomically. Other
+only that exact score or the exact negative score produced when Serviceability
+Evidence flips only that lease's polarity. The latter is restored to HOT and
+released atomically. Other
 RECOVERY coordinates, a newer lease, dirty drift, pause, or a missing score are
 `STALE`. Result Routing never decodes or constructs the counterpart.
 
@@ -738,32 +739,48 @@ operation is stale and must not toggle again. The target preserves timeSlot and
 dirty, resets laneRank to zero, and uses `observedScore` only as the stale
 fence.
 
-### Worker Serviceability Composition
+### Worker Serviceability Probe Hold
 
-Serviceability reads bounded decoded states, then composes the owner primitives
-already described here:
+Serviceability Dispatch advances the check coordinate before publishing a
+best-effort Probe request. Both batch operations use one WorkerGroup Score key,
+one Redis `TIME`, and exact observed-score comparison:
 
 ```text
-CONNECTED
-  RECOVERY -> exact toggle to HOT
-  HOT      -> retain polarity
-  then monotonic rewrite to the process HOT eligibility floor
+hold_observed_hot_for_serviceability_probes
+  exact HOT -> RECOVERY(redisNowSlot, laneRank=0, preserve dirty)
 
-DISCONNECTED or Adapter delivery expiry
-  HOT      -> exact toggle to RECOVERY
-  RECOVERY -> no-op
-
-failed periodic snapshot
-  HOT      -> exact toggle, then rewrite at retryCount=0
-  RECOVERY -> monotonic rewrite at retryCount+1
-  exhausted -> exact cold park
+advance_observed_recovery_rechecks
+  exact RECOVERY(rank=n)
+    -> RECOVERY(redisNowSlot, laneRank=n+1, preserve dirty)
 ```
 
-PAUSE is never changed. Exact toggle prevents a score change between the
-Pacer's score read and write; it is not a cross-batch evidence-version fence.
-Monotonic rewrite cannot lower a newer lease or hold. Adapter timestamps are
-evidence age/order inputs, not score versions or caller-owned score
-coordinates.
+Only `TRANSITIONED` Workers may be offered to the Adapter Probe HASH. A stale
+observation cannot advance a newer lease, hold, pause, or check. Probe offer
+loss is not rolled back: the updated RECOVERY coordinate becomes the source of
+the next bounded retry scan.
+
+### Worker Serviceability Evidence Polarity
+
+Adapter Evidence applies one target polarity through a same-key batch Lua. For
+each Worker, with all times reduced to the 100ms score slot, Evidence is valid
+only when:
+
+```text
+storedTimeSlot > redisNowSlot
+OR storedTimeSlot <= evidenceTimeSlot
+```
+
+The first branch permits an observed Route fact to correct the polarity of a
+future lease, hold, or pause without lowering that coordinate. The second is
+the normal non-future freshness fence and deliberately accepts the same slot.
+When valid, the owner changes only the sign; `timeSlot`, `laneRank`, and dirty
+remain byte-for-byte represented by the same absolute score. A score already
+at the target polarity is `NOOP`; a newer non-future coordinate makes older
+Evidence `STALE`.
+
+The Result path therefore owns no HOT-floor rewrite, retry increment, cold
+park, or PAUSE exception. Dispatch owns check timing and retry progression;
+Evidence owns only the observed target polarity.
 
 ### Recovery Exhausted / Cold Park
 

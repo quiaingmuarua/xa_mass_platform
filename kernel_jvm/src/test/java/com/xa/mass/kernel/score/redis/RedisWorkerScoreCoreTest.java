@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import io.lettuce.core.RedisClient;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,28 @@ class RedisWorkerScoreCoreTest {
                     scoreCore.exhaustRecoveryRecheck(
                             "group-1", "worker-1", -200L, 0
                     ).status()
+            );
+            assertEquals(
+                    WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.holdObservedHotForServiceabilityProbes(
+                            "group-1",
+                            Map.of("worker-1", 0L)
+                    ).get("worker-1").status()
+            );
+            assertEquals(
+                    WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.advanceObservedRecoveryRechecks(
+                            "group-1",
+                            Map.of("worker-1", 200L)
+                    ).get("worker-1").status()
+            );
+            assertEquals(
+                    WorkerScoreTransitionStatus.INVALID,
+                    scoreCore.applyServiceabilityPolarityEvidence(
+                            "group-1",
+                            Map.of("worker-1", 0L),
+                            WorkerScorePolarity.HOT_ACQUIRE
+                    ).get("worker-1").status()
             );
         } finally {
             redisClient.shutdown();
