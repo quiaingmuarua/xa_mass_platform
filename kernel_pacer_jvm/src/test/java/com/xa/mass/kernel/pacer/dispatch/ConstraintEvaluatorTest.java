@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,74 +12,121 @@ import org.junit.jupiter.api.Test;
 
 class ConstraintEvaluatorTest {
 
-    @Test
-    void supportsTheFiniteDslAcrossWorkerAndPlatformProperties() {
-        Map<String, Object> rule = new LinkedHashMap<>();
-        rule.put("worker.region", Map.of("$in", List.of("cn", "us")));
-        rule.put("worker.battery", Map.of("$gte", 50));
-        rule.put("platform.pool", Map.of("$ne", "blocked"));
-        rule.put("platform.optional", Map.of("$exists", false));
+    private final ConstraintEvaluator evaluator = new ConstraintEvaluator();
 
-        var compiled = ConstraintEvaluator.compileMatchRules(rule);
-        assertTrue(ConstraintEvaluator.evaluateMatchRules(
-                Map.of(
-                        "worker", Map.of("region", "cn", "battery", 80),
-                        "platform", Map.of("pool", "default")
-                ),
-                compiled
-        ));
-        assertFalse(ConstraintEvaluator.evaluateMatchRules(
-                Map.of(
-                        "worker", Map.of("region", "cn", "battery", 20),
-                        "platform", Map.of("pool", "default")
-                ),
-                compiled
-        ));
+    @Test
+    void evaluatesTheFiniteDslAsAndWithInclusiveRange() {
+        LinkedHashMap<String, Object> rule = new LinkedHashMap<>();
+        rule.put("worker.eq", Map.of("$eq", 10));
+        rule.put("worker.ne", Map.of("$ne", 9));
+        rule.put("worker.gt", Map.of("$gt", 9));
+        rule.put("worker.gte", Map.of("$gte", 10));
+        rule.put("worker.lt", Map.of("$lt", 11));
+        rule.put("worker.lte", Map.of("$lte", 10));
+        rule.put("worker.in", Map.of("$in", List.of(8, 10)));
+        rule.put("worker.battery", Map.of("$range", List.of(50, 100)));
+        rule.put("worker.present", Map.of("$exists", true));
+        rule.put("platform.missing", Map.of("$exists", false));
+
+        LinkedHashMap<String, Object> worker = new LinkedHashMap<>();
+        for (String property : List.of(
+                "eq", "ne", "gt", "gte", "lt", "lte", "in"
+        )) {
+            worker.put(property, 10L);
+        }
+        worker.put("battery", 50L);
+        worker.put("present", null);
+        var conditions = evaluator.normalize(rule);
+
+        assertTrue(matches(conditions, worker, Map.of()));
+        worker.put("battery", 100.0);
+        assertTrue(matches(conditions, worker, Map.of()));
+        worker.put("battery", 101);
+        assertFalse(matches(conditions, worker, Map.of()));
     }
 
     @Test
-    void preservesNullOperandsAndFailsClosedOnIncomparableValues() {
-        Map<String, Object> nullable = new LinkedHashMap<>();
-        nullable.put("worker.value", Map.of("$exists", true));
+    void preservesMissingNullFlatPropertiesAndComparisonFailure() {
+        LinkedHashMap<String, Object> rule = new LinkedHashMap<>();
         LinkedHashMap<String, Object> nullOperator = new LinkedHashMap<>();
-        nullOperator.put("$eq", null);
-        nullable.put("platform.value", nullOperator);
-        var compiled = ConstraintEvaluator.compileMatchRules(nullable);
+        nullOperator.put("$equal", null);
+        rule.put("platform.value", nullOperator);
+        rule.put("worker.device.region", Map.of("$eq", "cn"));
+        rule.put("worker.optional", Map.of("$exists", false));
+        var conditions = evaluator.normalize(rule);
 
-        assertTrue(ConstraintEvaluator.evaluateMatchRules(
-                Map.of(
-                        "worker", Map.of("value", "present"),
-                        "platform", java.util.Collections.singletonMap(
-                                "value",
-                                null
-                        )
-                ),
-                compiled
+        assertTrue(matches(
+                conditions,
+                Map.of("device.region", "cn"),
+                java.util.Collections.singletonMap("value", null)
         ));
-        assertFalse(ConstraintEvaluator.evaluateMatchRules(
-                Map.of("worker", Map.of("value", "text")),
-                ConstraintEvaluator.compileMatchRules(Map.of(
+        assertFalse(matches(
+                conditions,
+                Map.of("device", Map.of("region", "cn")),
+                java.util.Collections.singletonMap("value", null)
+        ));
+        assertFalse(matches(
+                evaluator.normalize(Map.of(
                         "worker.value",
                         Map.of("$gt", 1)
-                ))
+                )),
+                Map.of("value", "text"),
+                Map.of()
         ));
     }
 
     @Test
-    void rejectsUnsupportedOrMalformedRules() {
+    void rejectsUnsupportedMalformedAndInvalidRangeRules() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> ConstraintEvaluator.compileMatchRules(Map.of(
+                () -> evaluator.normalize(Map.of(
                         "worker.region",
                         Map.of("$regex", "cn")
                 ))
         );
         assertThrows(
                 IllegalArgumentException.class,
-                () -> ConstraintEvaluator.compileMatchRules(Map.of(
+                () -> evaluator.normalize(Map.of(
                         "worker.region",
                         Map.of("$in", "cn")
                 ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> evaluator.normalize(Map.of(
+                        "unknown",
+                        Map.of("$eq", "cn")
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> evaluator.normalize(Map.of(
+                        "worker.battery",
+                        Map.of("$range", List.of(100, 50))
+                ))
+        );
+        List<Object> nullBound = new ArrayList<>();
+        nullBound.add(null);
+        nullBound.add(100);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> evaluator.normalize(Map.of(
+                        "worker.battery",
+                        Map.of("$range", nullBound)
+                ))
+        );
+    }
+
+    private boolean matches(
+            List<ConstraintEvaluator.Condition> conditions,
+            Map<String, Object> worker,
+            Map<String, Object> platform
+    ) {
+        return evaluator.matches(
+                conditions,
+                "worker-1",
+                worker,
+                platform
         );
     }
 }

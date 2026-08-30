@@ -81,10 +81,10 @@ acquire_hot_pool_candidates
   canonical shared-pool match, then priority/count/unique selection
 
 DIRECT with an Item-owned rule
-  empty rule: one bounded due-HOT WorkerGroup score query
-  non-empty rule: bounded Worker ids from workerId $eq/$equal/$in
-  non-empty rule without a Worker-id source fails closed
-  point-observe explicit IDs inside the Task WorkerGroup
+  Matcher prepares one rule Plan and derives each Worker identity range
+  unrestricted rule: one bounded due-HOT WorkerGroup score query
+  resolved rule: point-observe bounded IDs inside the Task WorkerGroup
+  unresolved rule: no scheduling source and fail closed
   canonical match over each Candidate's own source range
   exact lease at most requestedCount Workers per request
   canonical rematch of only the original successful Candidate/Worker pairs
@@ -96,11 +96,12 @@ Score Owner at the expected lease slot, then appends only the still-active
 subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
 Policy first matches and selects bounded Worker IDs, then exact-leases only
 those Workers. The Pacer-internal Matcher depends only on the Worker Resource
-Catalog and Rule Evaluator: it does not know priority, requested count,
-uniqueness, Score, Cache or Lease. Its post-lease call reloads canonical
-descriptors only for the original Candidate/Worker pairs whose lease succeeded;
-Policy uses that descriptor's current endpoint to assemble the terminal
-Candidate.
+Catalog and its concrete Constraint Evaluator. It prepares one call-local
+Match Plan and does not know priority, requested count,
+uniqueness, Score, Cache or Lease. Its post-lease call reuses that Plan and
+reloads canonical descriptors only for the original Candidate/Worker pairs
+whose lease succeeded; Policy uses that descriptor's current endpoint to
+assemble the terminal Candidate.
 
 Pre-match failures do not receive a lease. Post-lease mismatches and candidate
 publication failures are not actively released; their short leases expire
@@ -245,8 +246,8 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateMatcher | shared-pool or Candidate-scoped canonical Rule Match and original-pair post-lease rematch | no source choice, priority, count, uniqueness, Score, lease or Candidate Cache access |
-| WorkerCandidateSelectionPolicy | bounded PRECOMPUTED/DIRECT Candidate Source, request priority/count/unique selection, exact lease/renew, post-match invocation and terminal Candidate assembly | no Score decoding, construction or arithmetic |
+| WorkerCandidateMatcher | one call-local Match Plan, rule-derived Worker identity range, shared-pool or Candidate-scoped canonical Rule Match and original-pair post-lease rematch | no HOT/Cache scheduling Source, priority, count, uniqueness, Score, lease or Candidate Cache access |
+| WorkerCandidateSelectionPolicy | bounded PRECOMPUTED/DIRECT scheduling Source, Score eligibility, request priority/count/unique selection, exact lease/renew, Matcher invocation and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
 | TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, reobserve active lease fences, and publish Candidate evidence | no Task discovery, Task-score write or result handling |
 | TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
 | TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |

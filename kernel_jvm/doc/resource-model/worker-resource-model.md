@@ -165,15 +165,18 @@ canonical property.
 ### DIRECT
 
 For an empty rule, DIRECT uses one bounded due-HOT score query in the explicit
-WorkerGroup. For a non-empty rule, `workerId $eq/$equal/$in` produces the
-bounded request-local Worker-id set; without it, the rule fails closed. Other
-`worker.*` and `platform.*` conditions filter only that bounded set and do not
-generate candidates. Explicit-ID rules are evaluated before score observation
-and every leased result is fully rematched.
+WorkerGroup. Matcher prepares one call-local rule Plan. The current fixed
+source derivation resolves `workerId $eq/$equal/$in` into a bounded
+request-local identity range; a different non-empty rule has no source and
+fails closed. Selection point-observes the explicit identities,
+then Matcher evaluates every `worker.*`, `platform.*` and Worker identity
+condition over the bounded canonical descriptors. Every leased original pair
+is fully rematched with the same Plan.
 
-DIRECT does not use `CandidateWorkerCache`, scan Worker descriptors, or fall
-back to PRECOMPUTED acquisition. A future low-cost candidate source is a
-separate mechanism addition, not an expansion of canonical property reads.
+DIRECT does not use `CandidateWorkerCache`, globally scan Worker descriptors,
+or fall back to PRECOMPUTED acquisition. A future Property index may add
+another internal Matcher source for bounded Worker identities;
+ordinary canonical property reads still do not discover candidates.
 
 One DIRECT acquisition round admits at most 100 unique WorkerIds across all
 Item candidates in `(priority, candidateId)` order. A WorkerId already admitted

@@ -19,7 +19,6 @@ import java.util.Set;
 final class WorkerCandidateSelectionPolicy {
 
     static final int MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND = 100;
-    private static final int MAX_DIRECT_EXPLICIT_WORKER_IDS = 100;
 
     private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
@@ -58,15 +57,26 @@ final class WorkerCandidateSelectionPolicy {
             Map<String, WorkerCandidateRequest> requests,
             long leaseUntilMillis
     ) {
-        return switch (Objects.requireNonNull(strategy, "strategy")) {
+        Objects.requireNonNull(strategy, "strategy");
+        Map<String, WorkerCandidateRequest> validated = validate(requests);
+        if (validated.isEmpty()) {
+            return empty(validated);
+        }
+        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
+                workerGroupId,
+                validated
+        );
+        return switch (strategy) {
             case PRECOMPUTED -> acquirePrecomputed(
                     workerGroupId,
-                    requests,
+                    validated,
+                    matchPlan,
                     leaseUntilMillis
             );
             case DIRECT -> acquireDirect(
                     workerGroupId,
-                    requests,
+                    validated,
+                    matchPlan,
                     leaseUntilMillis
             );
         };
@@ -81,22 +91,33 @@ final class WorkerCandidateSelectionPolicy {
         if (validated.isEmpty()) {
             return empty(validated);
         }
+        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
+                workerGroupId,
+                validated
+        );
+        if (!matchPlan.hasValidCandidates()) {
+            return empty(validated);
+        }
         Map<String, Long> observed = workerScores
                 .acquireHotAcquireCandidates(
                         workerGroupId,
                         hotEligibilityFloorMillis,
                         workerScanLimit
                 );
+        if (observed.isEmpty()) {
+            return empty(validated);
+        }
         Map<String, List<WorkerDescriptor>> matched =
                 matcher.matchSharedWorkerPool(
                         workerGroupId,
                         List.copyOf(observed.keySet()),
-                        rulesByCandidateId(validated)
+                        matchPlan
                 );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
                 matched,
+                matchPlan,
                 validated,
                 leaseUntilMillis,
                 false,
@@ -107,15 +128,18 @@ final class WorkerCandidateSelectionPolicy {
     private Map<String, List<AcquiredWorkerCandidate>> acquirePrecomputed(
             String workerGroupId,
             Map<String, WorkerCandidateRequest> requests,
+            WorkerCandidateMatcher.MatchPlan matchPlan,
             long leaseUntilMillis
     ) {
-        Map<String, WorkerCandidateRequest> validated = validate(requests);
         LinkedHashMap<String, Long> observed =
                 new LinkedHashMap<>();
         LinkedHashMap<String, List<String>> candidateWorkerIds =
                 new LinkedHashMap<>();
         for (Map.Entry<String, WorkerCandidateRequest> request
-                : ordered(validated)) {
+                : ordered(requests)) {
+            if (!matchPlan.isValid(request.getKey())) {
+                continue;
+            }
             Map<String, Long> cached = consumePrecomputed(
                     request.getKey(),
                     workerGroupId,
@@ -127,6 +151,9 @@ final class WorkerCandidateSelectionPolicy {
             );
             cached.forEach(observed::putIfAbsent);
         }
+        if (observed.isEmpty()) {
+            return empty(requests);
+        }
         Map<String, List<String>> boundedCandidateWorkerIds =
                 intersectWithObserved(
                         candidateWorkerIds,
@@ -136,13 +163,14 @@ final class WorkerCandidateSelectionPolicy {
                 matcher.matchCandidateScopedWorkerIds(
                         workerGroupId,
                         boundedCandidateWorkerIds,
-                        rulesByCandidateId(validated)
+                        matchPlan
                 );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
                 matched,
-                validated,
+                matchPlan,
+                requests,
                 leaseUntilMillis,
                 true,
                 Integer.MAX_VALUE
@@ -152,15 +180,17 @@ final class WorkerCandidateSelectionPolicy {
     private Map<String, List<AcquiredWorkerCandidate>> acquireDirect(
             String workerGroupId,
             Map<String, WorkerCandidateRequest> requests,
+            WorkerCandidateMatcher.MatchPlan matchPlan,
             long leaseUntilMillis
     ) {
-        Map<String, WorkerCandidateRequest> validated = validate(requests);
-        Set<String> unrestricted = new LinkedHashSet<>();
-        validated.forEach((candidateId, request) -> {
-            if (request.allocationRule().isEmpty()) {
-                unrestricted.add(candidateId);
-            }
-        });
+        Set<String> unrestricted = matcher.unrestrictedCandidateIds(
+                matchPlan
+        );
+        Map<String, List<String>> explicitByCandidate =
+                matcher.explicitWorkerIdsByCandidate(
+                        matchPlan,
+                        MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
+                );
         Map<String, Long> broad = unrestricted.isEmpty()
                 ? Map.of()
                 : workerScores.acquireHotAcquireCandidates(
@@ -175,12 +205,15 @@ final class WorkerCandidateSelectionPolicy {
         LinkedHashMap<String, List<String>> candidateWorkerIds =
                 new LinkedHashMap<>();
         for (Map.Entry<String, WorkerCandidateRequest> request
-                : ordered(validated)) {
+                : ordered(requests)) {
             List<String> workerIds = unrestricted.contains(request.getKey())
                     ? List.copyOf(broad.keySet())
-                    : workerIdCandidates(request.getValue().allocationRule());
+                    : explicitByCandidate.getOrDefault(
+                            request.getKey(),
+                            List.of()
+                    );
             candidateWorkerIds.put(request.getKey(), workerIds);
-            if (!unrestricted.contains(request.getKey())) {
+            if (explicitByCandidate.containsKey(request.getKey())) {
                 explicitIds.addAll(workerIds);
             }
         }
@@ -202,6 +235,9 @@ final class WorkerCandidateSelectionPolicy {
         LinkedHashMap<String, Long> observed =
                 new LinkedHashMap<>(broad);
         explicit.forEach(observed::putIfAbsent);
+        if (observed.isEmpty()) {
+            return empty(requests);
+        }
         Map<String, List<String>> boundedCandidateWorkerIds =
                 intersectWithObserved(
                         candidateWorkerIds,
@@ -211,13 +247,14 @@ final class WorkerCandidateSelectionPolicy {
                 matcher.matchCandidateScopedWorkerIds(
                         workerGroupId,
                         boundedCandidateWorkerIds,
-                        rulesByCandidateId(validated)
+                        matchPlan
                 );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
                 matched,
-                validated,
+                matchPlan,
+                requests,
                 leaseUntilMillis,
                 false,
                 MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
@@ -229,6 +266,7 @@ final class WorkerCandidateSelectionPolicy {
                     String workerGroupId,
                     Map<String, Long> observed,
                     Map<String, List<WorkerDescriptor>> matched,
+                    WorkerCandidateMatcher.MatchPlan matchPlan,
                     Map<String, WorkerCandidateRequest> requests,
                     long leaseUntilMillis,
                     boolean renewal,
@@ -258,6 +296,9 @@ final class WorkerCandidateSelectionPolicy {
                 }
             }
         }
+        if (selectedScores.isEmpty()) {
+            return empty(requests);
+        }
         Map<String, WorkerScoreTransitionResult> transitions = renewal
                 ? workerScores.renewActiveHotScoreLeases(
                         workerGroupId,
@@ -281,13 +322,16 @@ final class WorkerCandidateSelectionPolicy {
                 leased.put(workerId, result.score());
             }
         });
+        if (leased.isEmpty()) {
+            return empty(requests);
+        }
         Map<String, List<String>> leasedWorkerIdsByCandidate =
                 retainLeasedWorkerIds(selected, leased.keySet());
         Map<String, List<WorkerDescriptor>> rematched =
                 matcher.matchCandidateScopedWorkerIds(
                         workerGroupId,
                         leasedWorkerIdsByCandidate,
-                        rulesByCandidateId(requests)
+                        matchPlan
                 );
         return acquiredCandidates(
                 workerGroupId,
@@ -410,53 +454,17 @@ final class WorkerCandidateSelectionPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private static Map<String, Map<String, Object>> rulesByCandidateId(
+    private WorkerCandidateMatcher.MatchPlan prepareMatchPlan(
+            String workerGroupId,
             Map<String, WorkerCandidateRequest> requests
     ) {
-        LinkedHashMap<String, Map<String, Object>> result =
+        LinkedHashMap<String, Map<String, Object>> rules =
                 new LinkedHashMap<>();
-        requests.forEach((candidateId, request) -> result.put(
+        requests.forEach((candidateId, request) -> rules.put(
                 candidateId,
                 request.allocationRule()
         ));
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static List<String> workerIdCandidates(
-            Map<String, Object> allocationRule
-    ) {
-        try {
-            Map<String, Map<String, Object>> compiled =
-                    ConstraintEvaluator.compileMatchRules(allocationRule);
-            Map<String, Object> workerId = compiled.get("workerId");
-            if (workerId == null || workerId.size() != 1) {
-                return List.of();
-            }
-            Map.Entry<String, Object> operator = workerId.entrySet()
-                    .iterator().next();
-            List<?> values;
-            if ("$eq".equals(operator.getKey())
-                    || "$equal".equals(operator.getKey())) {
-                values = Collections.singletonList(operator.getValue());
-            } else if ("$in".equals(operator.getKey())
-                    && operator.getValue() instanceof List<?> list
-                    && !list.isEmpty()
-                    && list.size() <= MAX_DIRECT_EXPLICIT_WORKER_IDS) {
-                values = list;
-            } else {
-                return List.of();
-            }
-            LinkedHashSet<String> ids = new LinkedHashSet<>();
-            for (Object value : values) {
-                if (!(value instanceof String id) || id.isEmpty()) {
-                    return List.of();
-                }
-                ids.add(id);
-            }
-            return List.copyOf(ids);
-        } catch (IllegalArgumentException error) {
-            return List.of();
-        }
+        return matcher.prepare(workerGroupId, rules);
     }
 
     private static Map<String, WorkerCandidateRequest> validate(

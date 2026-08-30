@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
@@ -226,6 +227,45 @@ class WorkerCandidateSelectionPolicyTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt()
         );
+    }
+
+    @Test
+    void invalidRuleDoesNotReadAnyAcquisitionSourceOrAttemptLease() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        WorkerCandidateSelectionPolicy policy = policy(
+                scores,
+                cache,
+                catalog
+        );
+        Map<String, WorkerCandidateRequest> requests = Map.of(
+                "invalid",
+                new WorkerCandidateRequest(
+                        0,
+                        1,
+                        Map.of(
+                                "worker.region",
+                                Map.of("$unknown", "east")
+                        )
+                )
+        );
+
+        assertEquals(List.of(), policy.acquireHotPoolCandidates(
+                "group-1",
+                requests,
+                5_000L
+        ).get("invalid"));
+        for (WorkerCandidateAcquisitionStrategy strategy
+                : WorkerCandidateAcquisitionStrategy.values()) {
+            assertEquals(List.of(), policy.acquireWorkerCandidates(
+                    strategy,
+                    "group-1",
+                    requests,
+                    5_000L
+            ).get("invalid"));
+        }
+        verifyNoInteractions(scores, cache, catalog);
     }
 
     @Test

@@ -145,20 +145,32 @@ while lifecycle commands and ordinary Item append reject the managed type.
 These Server assembly decisions are not additional Kernel enums or score
 states.
 
-`allocationRule` uses the independent constraint DSL and is evaluated by the
-bounded Worker matcher. Example:
+`allocationRule` uses one finite structured constraint DSL and is evaluated by
+the bounded Worker matcher. Example:
 
 ```json
 {
   "worker.runtime": {"$eq": "python"},
-  "platform.pool": {"$eq": "batch"}
+  "platform.pool": {"$eq": "batch"},
+  "worker.battery": {"$range": [50, 100]}
 }
 ```
 
-The descriptor stores the rule snapshot. It does not store compiled matcher
+Each Property/Operator pair is normalized into one immutable
+`propertyName + operator + params` condition. All conditions are currently
+ANDed; `{}` is unrestricted. The fixed operators are `$eq`/`$equal`, `$ne`,
+`$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$exists` and `$range`. `$range` requires
+two ordered non-null bounds and includes both endpoints; open or half-open
+ranges use the ordinary comparison operators. Matcher roots are exactly
+`workerId`, `worker.*` and `platform.*`; the suffix after `worker.` or
+`platform.` remains one flat canonical Property name.
+
+The descriptor stores the rule snapshot. It does not store normalized matcher
 state, current Worker properties, candidate Workers, or a policy handler object.
-Constraint compilation/validation belongs to `constraint_dsl`; Worker field
-resolution belongs to Worker runtime/matcher.
+`WorkerCandidateMatcher` normalizes one call-local Match Plan and reuses it for
+rule-derived Worker identity ranges, canonical matching and post-lease rematch.
+That Plan is never written to Kernel or Redis. A missing Property is distinct
+from a present null value; incompatible comparisons fail closed.
 
 For one `PRECOMPUTED_TASK_RULE` precomputation batch, the Pacer derives:
 
@@ -294,15 +306,14 @@ multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
 The public Java TaskData ingress treats an `DIRECT_ITEM_RULE` allocation rule as an
-opaque JSON-compatible map. It does not compile operators. `{}` uses one
+opaque JSON-compatible map. It does not interpret or normalize operators. `{}` uses one
 bounded due-HOT Worker Score query within the Task's WorkerGroup; exact score
-CAS chooses at most the requested count. A non-empty rule currently derives
-request-local candidates only from bounded `workerId $eq/$equal/$in`; a
-non-empty rule without that source fails closed. The remaining `worker.*`,
-`platform.*`, and explicit `index.*` conditions form the complete rule.
-Descriptor and `index.*` data are point-loaded only for the bounded candidate
-IDs. They do not discover candidates or execute operators.
-TaskRuntime owns canonical persistence, while the matcher owns DSL syntax and
+CAS chooses at most the requested count. Matcher prepares one call-local Plan
+and currently derives bounded explicit IDs from `workerId $eq/$equal/$in`. A
+different non-empty rule has no DIRECT source and fails closed. The complete
+`workerId`, `worker.*` and `platform.*` rule is evaluated only over
+Score-eligible bounded candidate IDs. TaskRuntime owns canonical persistence,
+while Matcher owns DSL syntax, rule-derived identity range and canonical
 evaluation.
 
 The success-result HASH is last-success truth. It is separate from TaskItem
@@ -344,6 +355,7 @@ DispatchMainScheduler
   -> select workerAllocationMechanism=PRECOMPUTED_TASK_RULE as Allocation root input
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
+  -> WorkerCandidateMatcher prepares one call-local Match Plan
   -> observe one shared bounded HOT Worker pool per Group
   -> WorkerCandidateMatcher canonical-matches that pool against all Task rules
   -> WorkerCandidateSelectionPolicy applies priority, deficit and unique-Worker choice

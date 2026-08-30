@@ -2,7 +2,6 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -96,22 +95,11 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void matcherOwnsOnlyCanonicalRuleMatching()
+    void matcherDoesNotOwnSelectionOrScoreMechanics()
             throws IOException {
         String matcher = Files.readString(
                 ROOT.resolve("WorkerCandidateMatcher.java")
         );
-        for (String required : List.of(
-                "matchSharedWorkerPool(",
-                "matchCandidateScopedWorkerIds(",
-                "Map<String, Map<String, Object>> rulesByCandidateId",
-                "WorkerResourceCatalog"
-        )) {
-            assertTrue(
-                    matcher.contains(required),
-                    () -> "WorkerCandidateMatcher must contain " + required
-            );
-        }
         for (String forbidden : List.of(
                 "limitMatches",
                 "uniqueMatches",
@@ -131,6 +119,29 @@ class DispatchMechanismBoundaryTest {
             assertFalse(
                     matcher.contains(forbidden),
                     () -> "WorkerCandidateMatcher must not contain "
+                            + forbidden
+            );
+        }
+    }
+
+    @Test
+    void selectionDoesNotInterpretConstraintSyntax() throws IOException {
+        String selection = Files.readString(
+                ROOT.resolve("WorkerCandidateSelectionPolicy.java")
+        );
+        for (String forbidden : List.of(
+                "workerIdCandidates(",
+                "ConstraintEvaluator",
+                "ConstraintEvaluator.Operator",
+                "\"workerId\"",
+                "\"$eq\"",
+                "\"$equal\"",
+                "\"$in\"",
+                "allocationRule().isEmpty()"
+        )) {
+            assertFalse(
+                    selection.contains(forbidden),
+                    () -> "WorkerCandidateSelectionPolicy must not contain "
                             + forbidden
             );
         }

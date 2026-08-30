@@ -1,5 +1,7 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.pacer.dispatch.ConstraintEvaluator.Condition;
+import com.xa.mass.kernel.pacer.dispatch.ConstraintEvaluator.Operator;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
@@ -9,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 final class WorkerCandidateMatcher {
 
@@ -17,41 +20,140 @@ final class WorkerCandidateMatcher {
     );
 
     private final WorkerResourceCatalog workerCatalog;
+    private final ConstraintEvaluator constraintEvaluator;
 
     WorkerCandidateMatcher(WorkerResourceCatalog workerCatalog) {
+        this(workerCatalog, new ConstraintEvaluator());
+    }
+
+    WorkerCandidateMatcher(
+            WorkerResourceCatalog workerCatalog,
+            ConstraintEvaluator constraintEvaluator
+    ) {
         this.workerCatalog = Objects.requireNonNull(
                 workerCatalog,
                 "workerCatalog"
         );
+        this.constraintEvaluator = Objects.requireNonNull(
+                constraintEvaluator,
+                "constraintEvaluator"
+        );
+    }
+
+    MatchPlan prepare(
+            String workerGroupId,
+            Map<String, Map<String, Object>> rulesByCandidateId
+    ) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Objects.requireNonNull(rulesByCandidateId, "rulesByCandidateId");
+        LinkedHashMap<String, List<Condition>> constraints =
+                new LinkedHashMap<>();
+        int invalid = 0;
+        for (Map.Entry<String, Map<String, Object>> entry
+                : rulesByCandidateId.entrySet()) {
+            requireNonBlank(entry.getKey(), "candidateId");
+            try {
+                constraints.put(
+                        entry.getKey(),
+                        constraintEvaluator.normalize(entry.getValue())
+                );
+            } catch (IllegalArgumentException error) {
+                invalid++;
+            }
+        }
+        if (invalid > 0) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "operation=workerCandidate.prepare rejectedRules="
+                            + invalid + " workerGroupId=" + workerGroupId
+            );
+        }
+        return new MatchPlan(
+                List.copyOf(rulesByCandidateId.keySet()),
+                constraints
+        );
+    }
+
+    Set<String> unrestrictedCandidateIds(MatchPlan plan) {
+        Objects.requireNonNull(plan, "plan");
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        plan.conditionsByCandidateId.forEach((candidateId, conditions) -> {
+            if (conditions.isEmpty()) {
+                result.add(candidateId);
+            }
+        });
+        return Collections.unmodifiableSet(result);
+    }
+
+    Map<String, List<String>> explicitWorkerIdsByCandidate(
+            MatchPlan plan,
+            int limit
+    ) {
+        Objects.requireNonNull(plan, "plan");
+        if (limit < 1) {
+            throw new IllegalArgumentException(
+                    "candidate WorkerId limit must be positive"
+            );
+        }
+        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
+        candidate:
+        for (Map.Entry<String, List<Condition>> candidate
+                : plan.conditionsByCandidateId.entrySet()) {
+            List<Condition> identityConditions = candidate.getValue().stream()
+                    .filter(condition -> "workerId".equals(
+                            condition.propertyName()
+                    ))
+                    .toList();
+            if (identityConditions.size() != 1) {
+                continue;
+            }
+            Condition identity = identityConditions.getFirst();
+            if (identity.operator() != Operator.EQ
+                    && identity.operator() != Operator.IN) {
+                continue;
+            }
+            List<Object> values = identity.params();
+            if (values.size() > limit) {
+                continue;
+            }
+            LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+            for (Object value : values) {
+                if (!(value instanceof String workerId)
+                        || workerId.isEmpty()) {
+                    continue candidate;
+                }
+                workerIds.add(workerId);
+            }
+            result.put(candidate.getKey(), List.copyOf(workerIds));
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     Map<String, List<WorkerDescriptor>> matchSharedWorkerPool(
             String workerGroupId,
             List<String> workerIds,
-            Map<String, Map<String, Object>> rulesByCandidateId
+            MatchPlan plan
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
+        Objects.requireNonNull(plan, "plan");
         List<String> boundedWorkerIds = boundedWorkerIds(workerIds);
-        List<PreparedCandidate> candidates = prepare(
-                rulesByCandidateId,
-                workerGroupId
-        );
         Map<String, WorkerDescriptor> descriptors = loadDescriptors(
                 workerGroupId,
                 boundedWorkerIds
         );
         LinkedHashMap<String, List<WorkerDescriptor>> matches = emptyMatches(
-                rulesByCandidateId
+                plan
         );
-        for (PreparedCandidate candidate : candidates) {
+        for (Map.Entry<String, List<Condition>> candidate
+                : plan.conditionsByCandidateId.entrySet()) {
             List<WorkerDescriptor> candidateMatches = matches.get(
-                    candidate.candidateId()
+                    candidate.getKey()
             );
             for (String workerId : boundedWorkerIds) {
                 addIfMatched(
                         workerId,
                         descriptors,
-                        candidate,
+                        candidate.getValue(),
                         candidateMatches
                 );
             }
@@ -62,38 +164,36 @@ final class WorkerCandidateMatcher {
     Map<String, List<WorkerDescriptor>> matchCandidateScopedWorkerIds(
             String workerGroupId,
             Map<String, List<String>> workerIdsByCandidateId,
-            Map<String, Map<String, Object>> rulesByCandidateId
+            MatchPlan plan
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(
                 workerIdsByCandidateId,
                 "workerIdsByCandidateId"
         );
-        List<PreparedCandidate> candidates = prepare(
-                rulesByCandidateId,
-                workerGroupId
-        );
+        Objects.requireNonNull(plan, "plan");
         Map<String, WorkerDescriptor> descriptors = loadDescriptors(
                 workerGroupId,
-                boundedWorkerIds(candidates, workerIdsByCandidateId)
+                boundedWorkerIds(plan, workerIdsByCandidateId)
         );
         LinkedHashMap<String, List<WorkerDescriptor>> matches = emptyMatches(
-                rulesByCandidateId
+                plan
         );
-        for (PreparedCandidate candidate : candidates) {
+        for (Map.Entry<String, List<Condition>> candidate
+                : plan.conditionsByCandidateId.entrySet()) {
             List<WorkerDescriptor> candidateMatches = matches.get(
-                    candidate.candidateId()
+                    candidate.getKey()
             );
             for (String workerId : boundedWorkerIds(
                     workerIdsByCandidateId.getOrDefault(
-                            candidate.candidateId(),
+                            candidate.getKey(),
                             List.of()
                     )
             )) {
                 addIfMatched(
                         workerId,
                         descriptors,
-                        candidate,
+                        candidate.getValue(),
                         candidateMatches
                 );
             }
@@ -101,17 +201,18 @@ final class WorkerCandidateMatcher {
         return freeze(matches);
     }
 
-    private static void addIfMatched(
+    private void addIfMatched(
             String workerId,
             Map<String, WorkerDescriptor> descriptors,
-            PreparedCandidate candidate,
+            List<Condition> conditions,
             List<WorkerDescriptor> matches
     ) {
         WorkerDescriptor descriptor = descriptors.get(workerId);
-        if (descriptor != null && matches(
+        if (descriptor != null && constraintEvaluator.matches(
+                conditions,
                 workerId,
-                descriptor,
-                candidate.compiledRule()
+                descriptor.workerProperties(),
+                descriptor.platformProperties()
         )) {
             matches.add(descriptor);
         }
@@ -153,14 +254,14 @@ final class WorkerCandidateMatcher {
     }
 
     private static List<String> boundedWorkerIds(
-            List<PreparedCandidate> candidates,
+            MatchPlan plan,
             Map<String, List<String>> workerIdsByCandidateId
     ) {
         LinkedHashSet<String> workerIds = new LinkedHashSet<>();
-        for (PreparedCandidate candidate : candidates) {
+        for (String candidateId : plan.conditionsByCandidateId.keySet()) {
             workerIds.addAll(boundedWorkerIds(
                     workerIdsByCandidateId.getOrDefault(
-                            candidate.candidateId(),
+                            candidateId,
                             List.of()
                     )
             ));
@@ -168,79 +269,12 @@ final class WorkerCandidateMatcher {
         return List.copyOf(workerIds);
     }
 
-    private static List<PreparedCandidate> prepare(
-            Map<String, Map<String, Object>> rulesByCandidateId,
-            String workerGroupId
-    ) {
-        Objects.requireNonNull(rulesByCandidateId, "rulesByCandidateId");
-        List<PreparedCandidate> candidates = new ArrayList<>();
-        int invalid = 0;
-        for (Map.Entry<String, Map<String, Object>> entry
-                : rulesByCandidateId.entrySet()) {
-            requireNonBlank(entry.getKey(), "candidateId");
-            try {
-                Map<String, Map<String, Object>> rule =
-                        ConstraintEvaluator.compileMatchRules(
-                                Objects.requireNonNull(
-                                        entry.getValue(),
-                                        "allocationRule"
-                                )
-                        );
-                if (rule.keySet().stream().anyMatch(
-                        field -> !validAllocationField(field)
-                )) {
-                    throw new IllegalArgumentException(
-                            "unsupported Worker allocation field"
-                    );
-                }
-                candidates.add(new PreparedCandidate(
-                        entry.getKey(),
-                        rule
-                ));
-            } catch (IllegalArgumentException error) {
-                invalid++;
-            }
-        }
-        if (invalid > 0) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "operation=workerCandidate.prepare rejectedRules="
-                            + invalid + " workerGroupId=" + workerGroupId
-            );
-        }
-        return List.copyOf(candidates);
-    }
-
-    private static boolean matches(
-            String workerId,
-            WorkerDescriptor descriptor,
-            Map<String, Map<String, Object>> compiledRule
-    ) {
-        LinkedHashMap<String, Object> context = new LinkedHashMap<>();
-        context.put("workerId", workerId);
-        context.put("worker", descriptor.workerProperties());
-        context.put("platform", descriptor.platformProperties());
-        return ConstraintEvaluator.evaluateMatchRules(context, compiledRule);
-    }
-
-    private static boolean validAllocationField(String field) {
-        return "workerId".equals(field)
-                || field.startsWith("worker.")
-                && field.length() > "worker.".length()
-                || field.startsWith("platform.")
-                && field.length() > "platform.".length();
-    }
-
     private static LinkedHashMap<String, List<WorkerDescriptor>> emptyMatches(
-            Map<String, Map<String, Object>> rulesByCandidateId
+            MatchPlan plan
     ) {
-        Objects.requireNonNull(rulesByCandidateId, "rulesByCandidateId");
         LinkedHashMap<String, List<WorkerDescriptor>> result =
                 new LinkedHashMap<>();
-        rulesByCandidateId.keySet().forEach(id -> result.put(
-                id,
-                new ArrayList<>()
-        ));
+        plan.candidateIds.forEach(id -> result.put(id, new ArrayList<>()));
         return result;
     }
 
@@ -262,9 +296,27 @@ final class WorkerCandidateMatcher {
         }
     }
 
-    private record PreparedCandidate(
-            String candidateId,
-            Map<String, Map<String, Object>> compiledRule
-    ) {
+    static final class MatchPlan {
+
+        private final List<String> candidateIds;
+        private final Map<String, List<Condition>> conditionsByCandidateId;
+
+        MatchPlan(
+                List<String> candidateIds,
+                Map<String, List<Condition>> conditionsByCandidateId
+        ) {
+            this.candidateIds = List.copyOf(candidateIds);
+            this.conditionsByCandidateId = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(conditionsByCandidateId)
+            );
+        }
+
+        boolean hasValidCandidates() {
+            return !conditionsByCandidateId.isEmpty();
+        }
+
+        boolean isValid(String candidateId) {
+            return conditionsByCandidateId.containsKey(candidateId);
+        }
     }
 }

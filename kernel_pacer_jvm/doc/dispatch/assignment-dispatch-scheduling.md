@@ -90,19 +90,22 @@ uses globally unique `taskId`. One Worker may satisfy at most one CandidateId
 in one call.
 
 `allocation_rule` is the same constraint DSL used by Task and TaskItem
-metadata. For DIRECT, `{}` derives one bounded Worker universe from the
-WorkerGroup's due-HOT score query. A non-empty rule derives it only from the
-rule's `workerId` condition; without that condition it fails closed. The
-complete rule may use only `workerId`, `worker.*`, and `platform.*`, all read
-from the bounded canonical Worker descriptor. Exact score lease and complete
-post-lease rematch remain the scheduling truth checks.
+metadata. `WorkerCandidateMatcher.prepare` normalizes every Candidate rule once
+into one call-local Match Plan. For DIRECT, Matcher places `{}` in the shared
+HOT source and derives bounded explicit Worker IDs only from `workerId`
+`$eq`/`$equal`/`$in`; other non-empty rules have no current source and fail
+closed. The complete rule
+may use only `workerId`, `worker.*`, and `platform.*`, all read from the bounded
+canonical Worker descriptor. Exact score lease and Match-Plan-based post-lease
+rematch remain the scheduling truth checks.
 
 ## Acquisition Strategies
 
 `WorkerCandidateSelectionPolicy` preserves two isolated dispatch paths plus the
-explicit allocation entry. Candidate source, canonical matching, selection and
-exact lease are separate steps inside that finite policy; no Candidate Source
-SPI or DTO exists:
+explicit allocation entry. Scheduling Candidate Source, Matcher-derived
+identity range, canonical matching, selection and exact lease are separate
+steps. The evaluator and Match Plan are package-private fixed implementation,
+not public SPI, dynamic registry or stored state:
 
 ```text
 PRECOMPUTED Allocation
@@ -120,10 +123,10 @@ PRECOMPUTED
   return partial or empty on miss/stale/mismatch
 
 DIRECT
-  for any empty rule, issue one bounded due-HOT Group query shared by the round
-  otherwise require bounded workerId $eq/$equal/$in candidates
-  fail closed on null, non-string, or empty explicit WorkerId operands
-  point-observe those explicit IDs only inside the Task WorkerGroup
+  for any empty rule, issue one due-HOT Group query shared by the round
+  derive bounded explicit Worker IDs from workerId EQ/IN conditions
+  point-observe only those explicit IDs inside the Task WorkerGroup
+  give other non-empty or invalid rules no scheduling source for the round
   canonical-match each Candidate's own bounded WorkerId range
   admit at most 100 unique WorkerIds across the round in priority order
   exact-lease only the chosen Workers through WorkerScoreCore
@@ -142,11 +145,18 @@ or the HTTP Task contract.
 Candidate selection stays flat and keeps its source shape explicit:
 
 ```text
+WorkerCandidateMatcher.prepare
+  -> CandidateId -> normalized Conditions reused for the complete call
+
+WorkerCandidateMatcher DIRECT source derivation
+  -> unrestricted Candidate IDs + explicit CandidateId -> WorkerId[]
+
 Candidate Source
   -> WorkerId -> observedScore
   -> shared WorkerId[] or CandidateId -> WorkerId[]
 
 WorkerCandidateMatcher.matchSharedWorkerPool / matchCandidateScopedWorkerIds
+  -> consume the same Match Plan
   -> one bounded canonical Descriptor load over the input union
   -> CandidateId -> WorkerDescriptor[]
 
@@ -172,16 +182,19 @@ PRECOMPUTED Allocation matches one shared HOT pool against multiple Task rules;
 the same Worker may therefore appear in several Matcher results before
 Selection. PRECOMPUTED Dispatch instead consumes Task-local Cache entries and
 retains one Candidate-scoped Worker range per CandidateId. DIRECT uses one bounded
-Group score query for empty rules or the Item rule's explicit `workerId`
-condition for non-empty rules and never touches the Cache.
+Group score query for unrestricted rules or point-observes the bounded identity
+ranges returned by Matcher and never touches the Cache. Matcher-derived
+identity is not Score eligibility; Selection still obtains and preserves the
+opaque score evidence before choosing or leasing a Worker.
 
-Both Matcher calls only validate complete canonical rules. They do not know
-priority, requested count, score, lease, cache or unique-Worker policy. Between
-them, Selection applies `(priority, candidateId)`, requested counts and the
-round's unique-Worker budget before asking the Score Owner to lease. The second
-call reloads descriptors only for the original Candidate/Worker pairs whose
-lease succeeded; it never reallocates a failed pair to another Candidate. Its
-current descriptor supplies the final endpoint. Lease competition or
+Matcher owns rule preparation, rule-derived Worker identity ranges, complete
+canonical Rule Match and post-lease rematch. It does not know priority,
+requested count, score, lease, cache or unique-Worker policy. Selection prepares
+one Match Plan, applies `(priority, candidateId)`, requested counts and the
+round's unique-Worker budget, and passes that same Plan back after the Score
+Owner lease. The second call reloads only the original Candidate/Worker pairs
+whose lease succeeded; it never reallocates a failed pair to another Candidate.
+Its current descriptor supplies the final endpoint. Lease competition or
 post-lease mismatch returns a partial result and does not refill within the
 round.
 
@@ -195,9 +208,10 @@ platform.*
 
 `worker.*` and `platform.*` fields read their corresponding canonical
 descriptor snapshots. The removed `index.*` namespace is invalid and cannot
-discover or intersect candidate sets. A future acceleration index may only
-derive bounded Worker IDs internally; canonical descriptor rematch remains
-mandatory.
+discover or intersect candidate sets. A future Property index may extend the
+Matcher's internal source derivation with bounded Worker IDs; ordinary
+properties still participate only in the complete evaluator, and canonical
+descriptor rematch remains mandatory.
 
 ## Candidate Cache
 
@@ -303,14 +317,16 @@ the dispatch round does not infer type or strategy from Item contents.
   evidence and never reads or mutates Task score.
 - `TaskWorkerAllocationPolicy` owns deficit and may read bounded Candidate
   counts directly from `CandidateWorkerCache`.
-- `WorkerCandidateSelectionPolicy` owns finite Candidate Source branches,
-  request priority/count/unique selection, exact lease/renew, Matcher calls and
-  terminal Candidate assembly. It may correlate and return raw Scores but
-  cannot decode or calculate them.
-- `WorkerCandidateMatcher` alone performs the bounded canonical descriptor
-  reads and complete Rule Match. It has no source, Score, Cache, lease,
-  priority, count or uniqueness semantics. Descriptors return only to Selection
-  and do not flow into Candidate Cache or Task execution.
+- `WorkerCandidateSelectionPolicy` owns finite HOT/Cache scheduling Source
+  branches, Score eligibility, request priority/count/unique selection, exact
+  lease/renew, Matcher calls and terminal Candidate assembly. It does not parse
+  Property names or Constraint operators. It may correlate and return raw
+  Scores but cannot decode or calculate them.
+- `WorkerCandidateMatcher` owns one call-local Match Plan, rule-derived Worker
+  identity ranges, bounded canonical descriptor reads, complete Rule Match and
+  original-pair rematch. It has no Score, Cache, lease, priority, count or
+  uniqueness semantics. Descriptors return only to Selection and do not flow
+  into Candidate Cache or Task execution.
 - `TaskDispatchPolicy` owns expiry/exhaustion decisions, pairing, per-Task
   limits, Item finality, ordinary pacing and idle-disposition choice.
 - `TaskAssignmentDispatcher` protects the exact Worker renew -> Item claim ->

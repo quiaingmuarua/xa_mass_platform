@@ -75,13 +75,14 @@ TaskWorkerAllocationConfig(
 
 The Main Scheduler Task Source owns the fixed batch limit of 100. For each
 WorkerGroup, Allocation asks `WorkerCandidateSelectionPolicy` for one bounded
-HOT pool shared by all Task Candidate rules. `WorkerCandidateMatcher` only
-canonical-matches that shared pool; Selection then applies Task priority,
-deficit/requested count and unique-Worker policy before exact lease. The
-Allocation Policy reads bounded Candidate counts directly from
-`CandidateWorkerCache`, then asks `WorkerScoreCore` to reobserve the selected
-Worker IDs at the expected lease slot before it publishes the still-valid
-subset.
+HOT pool shared by all Task Candidate rules. Selection asks
+`WorkerCandidateMatcher` to prepare one Match Plan, canonical-match that shared
+pool, and rematch the original successful lease pairs with the same Plan.
+Selection applies Task priority, deficit/requested count and unique-Worker
+policy between those Matcher calls. The Allocation Policy reads bounded
+Candidate counts directly from `CandidateWorkerCache`, then asks
+`WorkerScoreCore` to reobserve the selected Worker IDs at the expected lease
+slot before it publishes the still-valid subset.
 
 ## Guardrails
 
@@ -89,10 +90,11 @@ subset.
 - Do not rediscover or revalidate Tasks inside this policy.
 - Do not mutate Task score or introduce a Candidate retry index.
 - Keep deficit, priority/count/unique selection and exact lease in Policy. Keep
-  both canonical Rule Match reads inside the Matcher, which must not know
-  Candidate Source, Score, Cache or selection parameters. Direct bounded
-  Score/Cache Owner calls are intentional; raw scores are correlation values
-  and must not be decoded or calculated in Pacer code.
+  rule preparation, rule-derived identity range and both canonical Rule Match
+  reads inside the Matcher. Matcher must not know HOT/Cache scheduling Source,
+  Score, lease or selection parameters. Direct bounded Score/Cache Owner calls
+  are intentional; raw scores are correlation values and must not be decoded
+  or calculated in Pacer code.
 - Keep Candidate Cache disposable; it owns no Task or Worker truth.
 - Do not release unmatched or publication-failed Worker leases; expiry is the
   recovery mechanism.

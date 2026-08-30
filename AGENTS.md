@@ -169,6 +169,12 @@ kernel_jvm`.
   module outside `kernel_pacer_jvm` may import either bridge.
 - It owns fixed Assignment, Result Routing and Worker Serviceability policy,
   configuration interpretation, Pacer loops and their finite lifecycle.
+- `WorkerCandidateSelectionPolicy` owns bounded HOT/Cache scheduling sources,
+  Score eligibility, priority/count/unique selection and exact lease. The
+  package-private `WorkerCandidateMatcher` owns one call-local Match Plan,
+  rule-derived Worker identity ranges, canonical Rule Match and original-pair
+  post-lease rematch. Selection must not interpret Property names or Constraint
+  operators; Matcher must not read Score, Candidate Cache or selection policy.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,
