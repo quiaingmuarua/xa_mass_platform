@@ -40,7 +40,7 @@ Policy and closure boundary:
 ```text
 TaskDispatchPolicy
   expiry/exhaustion decisions
-  PRECOMPUTED or DIRECT Candidate strategy
+  cached candidate renewal or item-rule on-demand acquisition
   Item/Worker pairing and per-Task limit
   CLOSE_WHEN_IDLE or PARK_WHEN_IDLE branch
 
@@ -155,17 +155,19 @@ The immutable Worker allocation mechanism selects the internal Worker path:
 
 ```text
 PRECOMPUTED_TASK_RULE
-  -> one TaskId-correlated PRECOMPUTED request
+  -> one TaskId-correlated cached candidate renewal request
   -> Task allocationRule
 
-DIRECT_ITEM_RULE
-  -> one messageId-correlated DIRECT request per Item
+ON_DEMAND_ITEM_RULE
+  -> one messageId-correlated on-demand acquisition request per Item
   -> TaskItem allocationRule
 ```
 
-Neither path falls back to the other. CandidateId-to-messageId binding is
-preserved through exact Item claim; Workers and Items are not flattened and
-re-zipped.
+Both paths use the same Matcher, Constraint evaluator, canonical Match and
+post-lease rematch. Neither path falls back to the other: a cached miss does
+not read HOT, and item-rule on-demand acquisition does not read Candidate
+Cache. CandidateId-to-messageId binding is preserved through exact Item claim;
+Workers and Items are not flattened and re-zipped.
 
 Each successful assignment produces one `DeliveryCommand`:
 
@@ -218,7 +220,7 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 - Do not infer idle disposition from Worker allocation mechanism.
 - Do not bypass `WorkerCandidateSelectionPolicy` to access Candidate Cache or
   Worker Score from `TaskDispatchPolicy`.
-- Do not add PRECOMPUTED-miss DIRECT fallback.
+- Do not add cached-miss on-demand fallback.
 - Do not call Worker Delivery Dispatch or Result Routing directly.
 - Group only by the current endpointManagerId carried by the post-lease
   `AcquiredWorkerCandidate`; do not read live Adapter, connection, or session

@@ -408,7 +408,7 @@ function entry(
     task: {
       taskId: "task-1",
       workerGroupId: "group-a",
-      workerAllocationMechanism: "DIRECT_ITEM_RULE",
+      workerAllocationMechanism: "ON_DEMAND_ITEM_RULE",
       idleDisposition: "PARK_WHEN_IDLE",
       allocationRule: null,
       config: {

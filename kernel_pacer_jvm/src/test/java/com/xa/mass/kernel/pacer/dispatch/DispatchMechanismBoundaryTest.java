@@ -83,6 +83,7 @@ class DispatchMechanismBoundaryTest {
                 "WorkerServiceabilityDispatchMechanism",
                 "DefaultWorkerServiceabilityDispatchMechanism",
                 "WorkerCandidateReference",
+                "WorkerCandidateAcquisitionStrategy",
                 "TaskSchedulingReference",
                 "TaskItemReference",
                 "WorkerSweepCursor"
@@ -107,6 +108,9 @@ class DispatchMechanismBoundaryTest {
                 "CandidateWorkerCache",
                 "WorkerCandidateRequest",
                 "AcquiredWorkerCandidate",
+                "WorkerAllocationMechanism",
+                "PRECOMPUTED_TASK_RULE",
+                "ON_DEMAND_ITEM_RULE",
                 "filterCandidateWorkerIds",
                 "matchLeasedWorkerCandidates",
                 "matchExplicitWorkerIds",
@@ -145,6 +149,7 @@ class DispatchMechanismBoundaryTest {
                             + forbidden
             );
         }
+        assertFalse(selection.contains("acquireWorkerCandidates("));
     }
 
     @Test

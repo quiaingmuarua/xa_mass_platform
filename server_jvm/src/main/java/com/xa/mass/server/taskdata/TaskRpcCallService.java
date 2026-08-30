@@ -64,7 +64,7 @@ public final class TaskRpcCallService {
         var submittedItems = new ArrayList<TaskItem>(requestedItems.size());
         try {
             requestedItems.values().forEach(item -> submittedItems.add(
-                    taskItems.directItem(item, createdAtMillis)
+                    taskItems.onDemandItem(item, createdAtMillis)
             ));
         } catch (IllegalArgumentException error) {
             throw new ServerException(
@@ -147,7 +147,7 @@ public final class TaskRpcCallService {
             );
         }
         if (descriptor.workerAllocationMechanism()
-                != WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                != WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                 || descriptor.idleDisposition()
                 != TaskIdleDisposition.PARK_WHEN_IDLE) {
             throw new ServerException(

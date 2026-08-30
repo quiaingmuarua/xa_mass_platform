@@ -111,7 +111,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         TaskDescriptor conflict = new TaskDescriptor(
                 "scenario-rpc-phone-tools",
                 "phone-tools",
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(
@@ -238,7 +238,7 @@ class WorkerGroupTaskCallRegistrationServiceTest {
         return new TaskDescriptor(
                 "scenario-rpc-phone-tools",
                 "phone-tools",
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(

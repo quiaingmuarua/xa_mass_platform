@@ -30,7 +30,7 @@ Producers:
 One descending Redis scan supplies an ordered `taskId -> opaque score` map.
 The Score Owner filters its INITIAL subset; the remaining NORMAL identities
 are loaded with Descriptors once. The Main Scheduler sends INITIAL directly to
-Initialization, PRECOMPUTED NORMAL Tasks to Allocation, all valid NORMAL Tasks
+Initialization, `PRECOMPUTED_TASK_RULE` NORMAL Tasks to Allocation, all valid NORMAL Tasks
 to Task Dispatch, and first-occurrence ordered WorkerGroup IDs to
 Serviceability. Producers have independent cadence and completion; there is no
 transaction or assignment lifecycle object. A busy Producer skips the source
@@ -54,10 +54,10 @@ acquisition, and candidate-cache matrix is defined by the
 `ResolvedTaskSchedulingProfile` is a non-persisted derivation of the
 Worker-acquisition contract. Idle disposition is the separate persisted
 `TaskIdleDisposition`; it does not alter rule owner, cache, allocation or
-acquisition strategy.
+candidate source.
 
 The profile does not assign priority. `PRECOMPUTED_TASK_RULE` is not above or below
-`DIRECT_ITEM_RULE`, and neither type implies RPC, batch, latency, or preemption
+`ON_DEMAND_ITEM_RULE`, and neither type implies RPC, batch, latency, or preemption
 semantics. Ordering comes only from explicit Task or candidate-request priority
 handled by the corresponding scheduling policy.
 
@@ -70,12 +70,23 @@ WorkerCandidateRequest(
     allocation_rule,
 )
 
-acquire_worker_candidates(
-    strategy: WorkerCandidateAcquisitionStrategy,
+acquire_shared_hot_candidates(
+    worker_group_id,
+    candidate_requests,
+    lease_until_millis,
+)
+
+renew_cached_candidates(
+    worker_group_id,
+    candidate_requests,
+    lease_until_millis,
+)
+
+acquire_on_demand_candidates(
     worker_group_id: WorkerGroupId,
     candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
     lease_until_millis,
-) -> WorkerCandidateAcquisition
+)
 ```
 
 One call is scoped to one WorkerGroup and one Worker score queue. Task creation
@@ -91,38 +102,39 @@ in one call.
 
 `allocation_rule` is the same constraint DSL used by Task and TaskItem
 metadata. `WorkerCandidateMatcher.prepare` normalizes every Candidate rule once
-into one call-local Match Plan. For DIRECT, Matcher places `{}` in the shared
-HOT source and derives bounded explicit Worker IDs only from `workerId`
+into one call-local Match Plan. For item-rule on-demand acquisition, Matcher
+places `{}` in the shared HOT source and derives bounded explicit Worker IDs
+only from `workerId`
 `$eq`/`$equal`/`$in`; other non-empty rules have no current source and fail
 closed. The complete rule
 may use only `workerId`, `worker.*`, and `platform.*`, all read from the bounded
 canonical Worker descriptor. Exact score lease and Match-Plan-based post-lease
 rematch remain the scheduling truth checks.
 
-## Acquisition Strategies
+## Candidate Source Operations
 
-`WorkerCandidateSelectionPolicy` preserves two isolated dispatch paths plus the
-explicit allocation entry. Scheduling Candidate Source, Matcher-derived
+`WorkerCandidateSelectionPolicy` exposes three fixed operations rather than a
+generic strategy switch. Scheduling Candidate Source, Matcher-derived
 identity range, canonical matching, selection and exact lease are separate
 steps. The evaluator and Match Plan are package-private fixed implementation,
 not public SPI, dynamic registry or stored state:
 
 ```text
-PRECOMPUTED Allocation
+Task-rule precomputation
   observe one bounded due-HOT pool for the WorkerGroup
   match that shared Worker pool against all Task Candidate rules
   apply Task priority, deficit/requested count and unique-Worker selection
   exact-acquire only selected Workers, rematch their original pairs
   publish the still-active lease subset to CandidateWorkerCache
 
-PRECOMPUTED
+Cached candidate renewal
   consume CandidateWorkerCache into one scoped WorkerId range per CandidateId
   canonical-match only those Candidate/Worker pairs
   exact-validate/renew the cached Worker lease fences through WorkerScoreCore
   canonical-rematch the original successful Candidate/Worker pairs
   return partial or empty on miss/stale/mismatch
 
-DIRECT
+Item-rule on-demand acquisition
   for any empty rule, issue one due-HOT Group query shared by the round
   derive bounded explicit Worker IDs from workerId EQ/IN conditions
   point-observe only those explicit IDs inside the Task WorkerGroup
@@ -134,13 +146,15 @@ DIRECT
   never read or write CandidateWorkerCache
 ```
 
-The allocation policy calls `acquire_hot_pool_candidates(...)` explicitly. It is not
-a third strategy and does not disguise a HOT scan as DIRECT. Neither strategy
-invokes the other; a PRECOMPUTED miss never becomes a DIRECT scan.
+The allocation policy calls `acquire_shared_hot_candidates(...)`, Task Dispatch
+calls either `renew_cached_candidates(...)` or
+`acquire_on_demand_candidates(...)`, and none calls another as fallback. A
+cached miss never becomes an on-demand HOT scan.
 
-The selection policy, request, and acquisition-strategy types are internal to
-Dispatch policy. They are not exported through Kernel Pacer Runtime, assembly,
-or the HTTP Task contract.
+The selection policy and request type are internal to Dispatch policy. The
+three operations are not exported through Kernel Pacer Runtime, assembly, or
+the HTTP Task contract. `WorkerAllocationMechanism` is a fixed Producer
+workflow label; it is not a Matcher mode.
 
 Candidate selection stays flat and keeps its source shape explicit:
 
@@ -148,7 +162,7 @@ Candidate selection stays flat and keeps its source shape explicit:
 WorkerCandidateMatcher.prepare
   -> CandidateId -> normalized Conditions reused for the complete call
 
-WorkerCandidateMatcher DIRECT source derivation
+WorkerCandidateMatcher on-demand identity source derivation
   -> unrestricted Candidate IDs + explicit CandidateId -> WorkerId[]
 
 Candidate Source
@@ -178,12 +192,13 @@ AcquiredWorkerCandidate
   exact Worker lease score evidence
 ```
 
-PRECOMPUTED Allocation matches one shared HOT pool against multiple Task rules;
+Task-rule precomputation matches one shared HOT pool against multiple Task rules;
 the same Worker may therefore appear in several Matcher results before
-Selection. PRECOMPUTED Dispatch instead consumes Task-local Cache entries and
-retains one Candidate-scoped Worker range per CandidateId. DIRECT uses one bounded
-Group score query for unrestricted rules or point-observes the bounded identity
-ranges returned by Matcher and never touches the Cache. Matcher-derived
+Selection. Cached candidate renewal instead consumes Task-local Cache entries
+and retains one Candidate-scoped Worker range per CandidateId. Item-rule
+on-demand acquisition uses one bounded Group score query for unrestricted rules
+or point-observes the bounded identity ranges returned by Matcher and never
+touches the Cache. Matcher-derived
 identity is not Score eligibility; Selection still obtains and preserves the
 opaque score evidence before choosing or leasing a Worker.
 
@@ -227,8 +242,8 @@ CandidateWorkerEntry
 ```
 
 The persisted JSON uses exactly these three fields. The Cache retains the
-exact Worker lease fence needed by PRECOMPUTED renewal, but does not persist a
-delivery address. `endpointManagerId` is resolved from the current canonical
+exact Worker lease fence needed by cached candidate renewal, but does not
+persist a delivery address. `endpointManagerId` is resolved from the current canonical
 Worker descriptor during the post-lease rematch.
 
 Owner surface:
@@ -247,11 +262,11 @@ xa_mass:<scope>:dispatch:candidate:<candidateId>:workers
 
 The ZSET score is cache expiry and matches the Worker lease deadline. The cache
 does not own rules, limits, Worker validity, lifecycle truth, or fallback.
-DIRECT Item results never enter this cache.
+Item-rule on-demand results never enter this cache.
 
-There is no Candidate scheduling index. A PRECOMPUTED Task remains visible to
-the Main Scheduler's RUNNING Source until Task Dispatch advances, parks, or
-closes it.
+There is no Candidate scheduling index. A `PRECOMPUTED_TASK_RULE` Task remains
+visible to the Main Scheduler's RUNNING Source until Task Dispatch advances,
+parks, or closes it.
 Allocation recomputes its deficit from Candidate Cache each observed round.
 
 ## Round Flows
@@ -275,7 +290,7 @@ Task dispatch:
 dispatch-visible RUNNING Tasks
   -> Policy reads due Item Score observations and canonical records
   -> Policy marks exhausted/expired Items and chooses Item/Worker pairing
-  -> PRECOMPUTED Cache or DIRECT Group-bounded source supplies Worker IDs
+  -> cached candidate renewal or item-rule on-demand source supplies Worker IDs
   -> WorkerCandidateMatcher validates complete canonical rules
   -> WorkerCandidateSelectionPolicy chooses and exact-validates Worker fences
   -> WorkerCandidateMatcher reloads only original successful pairs; Selection
@@ -304,8 +319,8 @@ checks, exact result fences, and natural expiry preserve owner truth. Mailbox
 consume, execute-before recheck, protocol forwarding, Worker invocation, and
 DeliveryReport append belong to Worker Delivery Dispatch.
 
-`workerAllocationMechanism` is fixed by the Task. The two rule locations cannot be mixed, and
-the dispatch round does not infer type or strategy from Item contents.
+`workerAllocationMechanism` is fixed by the Task. The two rule locations cannot
+be mixed, and the dispatch round does not infer its workflow from Item contents.
 `workerGroupId` always comes from `TaskDescriptor`.
 
 ## Owner And Failure Boundaries
@@ -313,7 +328,8 @@ the dispatch round does not infer type or strategy from Item contents.
 - `TaskInitializationCheck` receives only the INITIAL taskId-to-score map,
   checks due Items once, and asks the Task Score Owner for one exact batch
   promotion into NORMAL.
-- `TaskWorkerAllocationPolicy` receives only Main-selected PRECOMPUTED Task
+- `TaskWorkerAllocationPolicy` receives only Main-selected
+  `PRECOMPUTED_TASK_RULE` Task
   evidence and never reads or mutates Task score.
 - `TaskWorkerAllocationPolicy` owns deficit and may read bounded Candidate
   counts directly from `CandidateWorkerCache`.
@@ -371,8 +387,8 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not collapse the fixed Resource Producers into one Task mutation
   procedure.
 - Do not turn CandidateWorker cache into the universal dispatch mechanism.
-- Do not add PRECOMPUTED-miss DIRECT fallback.
-- Do not expose acquisition strategy, cache flags, or rule owner as independent
+- Do not add cached-miss on-demand fallback.
+- Do not expose candidate-source switches, cache flags, or rule owner as independent
   Task configuration.
 - Do not add a WorkerAllocationMechanism for a parameter variation or an imagined policy
   combination; require a named workload and vertical executable proof.

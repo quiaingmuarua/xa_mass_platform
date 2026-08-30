@@ -8,7 +8,7 @@ Status: active Kernel mechanism contract.
 already-verified due `RUNNING_VISIBLE` Task batch:
 
 ```text
-PRECOMPUTED DueTaskObservation[]
+PRECOMPUTED_TASK_RULE DueTaskObservation[]
   -> read current Candidate cache counts
   -> compute each Task deficit
   -> group requests by workerGroupId
@@ -18,7 +18,7 @@ PRECOMPUTED DueTaskObservation[]
 
 The policy does not discover or classify Tasks, read or rewrite Task score,
 activate Tasks, dispatch Items, or maintain a retry/warmup queue.
-`DIRECT_ITEM_RULE` Tasks are excluded by the Main Scheduler because they
+`ON_DEMAND_ITEM_RULE` Tasks are excluded by the Main Scheduler because they
 acquire Workers only while dispatching their Items. Receiving one here is an
 internal caller error.
 
@@ -41,7 +41,7 @@ uses exact Item claims.
 
 ## Candidate Request
 
-For each PRECOMPUTED Task:
+For each `PRECOMPUTED_TASK_RULE` Task:
 
 ```text
 candidateId = taskId
@@ -86,7 +86,7 @@ slot before it publishes the still-valid subset.
 
 ## Guardrails
 
-- Use `taskId` as the stable PRECOMPUTED CandidateId.
+- Use `taskId` as the stable Task-rule precomputation CandidateId.
 - Do not rediscover or revalidate Tasks inside this policy.
 - Do not mutate Task score or introduce a Candidate retry index.
 - Keep deficit, priority/count/unique selection and exact lease in Policy. Keep

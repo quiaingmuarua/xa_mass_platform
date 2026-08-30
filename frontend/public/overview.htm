@@ -670,7 +670,7 @@
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Worker acquisition</div>
-            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 可复用Task级PRECOMPUTED candidates；<strong>DIRECT_ITEM_RULE</strong> 在Item到来时DIRECT获取Worker。Idle行为独立选择立即关闭或Kernel私有park。</div>
+            <div class="flow-body"><strong>PRECOMPUTED_TASK_RULE</strong> 先预计算Task级候选、Dispatch再续租缓存候选；<strong>ON_DEMAND_ITEM_RULE</strong> 在Item调度时按需获取Worker。两者共用同一Matcher，Idle行为独立选择立即关闭或Kernel私有park。</div>
           </div>
           <div class="flow-row kernel">
             <div class="flow-label">Lease & claim</div>

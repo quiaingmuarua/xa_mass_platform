@@ -43,7 +43,7 @@ The config keys are exactly:
 | Key | Meaning | Validation |
 | --- | --- | --- |
 | `priority` | Task scheduling priority used by RUNNING INITIAL ordering and Worker contention | decimal text in `0..99`; `0` highest |
-| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `DIRECT_ITEM_RULE` in this slice |
+| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `ON_DEMAND_ITEM_RULE` in this slice |
 | `maxRetryTimes` | TaskItem retry budget source used when initializing Item scores | decimal text in `0..98` |
 
 All values are strings in the first cut. Supporting two representations for
@@ -62,10 +62,10 @@ Worker requirement: initialization must not reserve or count Workers.
 
 The Kernel contract supports exactly two Worker-allocation mechanisms:
 
-| Mechanism | Rule owner | Worker acquisition | Candidate cache |
+| Mechanism | Rule owner | Fixed workflow | Candidate cache |
 | --- | --- | --- | --- |
-| `PRECOMPUTED_TASK_RULE` | Task | `PRECOMPUTED` | enabled |
-| `DIRECT_ITEM_RULE` | TaskItem | `DIRECT` | forbidden |
+| `PRECOMPUTED_TASK_RULE` | Task | Task-rule precomputation, then cached candidate renewal | enabled |
+| `ON_DEMAND_ITEM_RULE` | TaskItem | Item-rule on-demand acquisition | forbidden |
 
 The rule-shape constraints are:
 
@@ -74,14 +74,15 @@ PRECOMPUTED_TASK_RULE
   TaskDescriptor.allocationRule is a Map; an empty object means no constraint
   TaskItems must not carry allocationRule
 
-DIRECT_ITEM_RULE
+ON_DEMAND_ITEM_RULE
   TaskDescriptor.allocationRule is null
   every appended TaskItem carries an allocationRule object
   an empty object means no Worker restriction within the Task WorkerGroup
 ```
 
-The mechanism derives rule owner, acquisition strategy, allocation participation
-and candidate-cache participation as one coherent allocation contract:
+The mechanism is a fixed Producer workflow label. It derives rule location,
+allocation participation and candidate-cache participation as one coherent
+contract; it is not a Matcher mode:
 
 ```text
 PRECOMPUTED_TASK_RULE
@@ -89,18 +90,21 @@ PRECOMPUTED_TASK_RULE
   candidate computation is reusable across Items and dispatch rounds
   precomputation and cache amortize repeated Worker-selection cost
 
-DIRECT_ITEM_RULE
+ON_DEMAND_ITEM_RULE
   every Item owns its complete Worker rule; an empty object is unrestricted
   Item rules may all be equal or may differ
   Worker selection is paid only when that Item is actually dispatched
 ```
 
-The distinction is rule ownership and candidate reuse, not traffic shape.
+The distinction is rule ownership and candidate reuse, not traffic shape. The
+workflows are mutually exclusive in the current descriptor shape. They use the
+same DSL, canonical Matcher and post-lease rematch, but they do not merge rules
+or exchange Candidate Cache entries.
 WorkerAllocationMechanism establishes no relative scheduling priority and does not imply a
 latency class, synchronous versus asynchronous execution, Worker exclusivity,
 or permission to preempt another Task's Worker lease. Task priority and
 candidate-request priority remain explicit scheduling inputs and are evaluated
-without deriving an ordering from `PRECOMPUTED_TASK_RULE` or `DIRECT_ITEM_RULE`.
+without deriving an ordering from `PRECOMPUTED_TASK_RULE` or `ON_DEMAND_ITEM_RULE`.
 
 ## Idle Disposition
 
@@ -135,7 +139,7 @@ Server exposes the two supported combinations through separate use cases:
 | Server use case | Worker allocation | Idle disposition |
 | --- | --- | --- |
 | Generic public Task create | `PRECOMPUTED_TASK_RULE` | `CLOSE_WHEN_IDLE` |
-| WorkerGroup registration-provisioned Task Call | `DIRECT_ITEM_RULE` | `PARK_WHEN_IDLE` |
+| WorkerGroup registration-provisioned Task Call | `ON_DEMAND_ITEM_RULE` | `PARK_WHEN_IDLE` |
 
 Generic creation has no profile or mechanism selector. WorkerGroup registration
 derives one managed Task coordinate and converges the exact descriptor plus
@@ -288,7 +292,7 @@ TaskRuntime rejects an already-expired append, while Task dispatch final-fails
 an Item that expires after append before acquiring a Worker. Existing claimed
 attempts remain governed by their claim lease.
 
-For `DIRECT_ITEM_RULE`, every TaskItem carries the complete Worker allocation rule
+For `ON_DEMAND_ITEM_RULE`, every TaskItem carries the complete Worker allocation rule
 for that Item. The rule is not a delta and does not merge with a Task rule,
 because no Task rule exists. It does not change `workerGroupId`, which always
 comes from `TaskDescriptor`.
@@ -305,12 +309,13 @@ would be a separate gang-reservation mechanism with a bundle identity,
 multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
-The public Java TaskData ingress treats an `DIRECT_ITEM_RULE` allocation rule as an
+The public Java TaskData ingress treats an `ON_DEMAND_ITEM_RULE` allocation rule as an
 opaque JSON-compatible map. It does not interpret or normalize operators. `{}` uses one
 bounded due-HOT Worker Score query within the Task's WorkerGroup; exact score
 CAS chooses at most the requested count. Matcher prepares one call-local Plan
 and currently derives bounded explicit IDs from `workerId $eq/$equal/$in`. A
-different non-empty rule has no DIRECT source and fails closed. The complete
+different non-empty rule has no current on-demand identity source and fails
+closed. The complete
 `workerId`, `worker.*` and `platform.*` rule is evaluated only over
 Score-eligible bounded candidate IDs. TaskRuntime owns canonical persistence,
 while Matcher owns DSL syntax, rule-derived identity range and canonical
@@ -387,10 +392,14 @@ Task dispatch:
 
 ```text
 due record-backed Items
-  -> PRECOMPUTED_TASK_RULE: PRECOMPUTED request using Task rule
-  -> DIRECT_ITEM_RULE: messageId-local DIRECT requests
+  -> PRECOMPUTED_TASK_RULE: cached candidate renewal using the Task rule
+  -> ON_DEMAND_ITEM_RULE: messageId-local on-demand acquisition using Item rules
   -> exact claim only after CandidateId-correlated acquisition results
 ```
+
+A cached candidate miss does not fall back to HOT acquisition, and item-rule
+on-demand acquisition never reads Candidate Cache. Unconsumed Task candidates
+remain disposable evidence and expire under the existing cache TTL.
 
 `TaskResourceCatalog` does not add status indexes, active-Task discovery,
 background scans, or candidate/result reads. Task score remains the sole Task
@@ -403,20 +412,26 @@ Descriptor construction and Redis decode enforce one schema:
 ```text
 taskId non-empty
 workerGroupId non-empty
-workerAllocationMechanism is PRECOMPUTED_TASK_RULE or DIRECT_ITEM_RULE
+workerAllocationMechanism is PRECOMPUTED_TASK_RULE or ON_DEMAND_ITEM_RULE
 idleDisposition is CLOSE_WHEN_IDLE or PARK_WHEN_IDLE
 PRECOMPUTED_TASK_RULE requires a mapping allocationRule; an empty map means no constraint
-DIRECT_ITEM_RULE requires null Task allocationRule
+ON_DEMAND_ITEM_RULE requires null Task allocationRule
 config is exactly map<string, string> with the three declared keys
 priority is decimal 0..99; lower values have higher priority
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
 PRECOMPUTED_TASK_RULE forbids TaskItem allocationRule
-DIRECT_ITEM_RULE requires a valid TaskItem allocationRule object; `{}` is unrestricted
+ON_DEMAND_ITEM_RULE requires a TaskItem allocationRule object; `{}` is unrestricted
+Task Owner validates JSON persistability and finite numbers, not Property or Operator semantics
+Matcher is the only DSL semantic owner; invalid stored rules fail closed per Candidate
 ```
 
 WorkerGroup existence is a cross-owner command/admission check. The Task
 catalog does not own WorkerGroup storage.
+
+The serialized mechanism enum is a clean cut. There is no compatibility alias
+or Redis migration reader; scopes containing descriptors from before this
+contract must be cleared or those Tasks must be recreated.
 
 ## Redis Shape
 
@@ -426,7 +441,7 @@ One Task descriptor is one Redis HASH:
 xa_mass:<scope>:task:<taskId>:descriptor
 
 workerGroupId       -> plain string
-workerAllocationMechanism -> `PRECOMPUTED_TASK_RULE` or `DIRECT_ITEM_RULE`
+workerAllocationMechanism -> `PRECOMPUTED_TASK_RULE` or `ON_DEMAND_ITEM_RULE`
 idleDisposition    -> `CLOSE_WHEN_IDLE` or `PARK_WHEN_IDLE`
 allocationRuleJson  -> JSON object or `null`
 configJson          -> JSON object

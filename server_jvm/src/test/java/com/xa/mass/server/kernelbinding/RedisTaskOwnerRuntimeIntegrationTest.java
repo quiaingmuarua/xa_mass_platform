@@ -192,7 +192,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
 
     @Test
     void catalogReadsTheCanonicalDescriptorAndMissingAppendIsNarrow() {
-        storeTask("task-1", "DIRECT_ITEM_RULE");
+        storeTask("task-1", "ON_DEMAND_ITEM_RULE");
 
         var descriptor = catalog.loadTaskAllocationDescriptors(
                 List.of("task-1", "missing")
@@ -220,7 +220,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     @Test
     void allocationRuleIsPersistedWithoutJvmDslInterpretation() {
         long createdAt = redisTimeMillis();
-        storeTask("task-1", "DIRECT_ITEM_RULE");
+        storeTask("task-1", "ON_DEMAND_ITEM_RULE");
         TaskItem item = new TaskItem(
                 "message-invalid",
                 "event",
@@ -257,7 +257,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 keyspace.base() + ":task:task-commands:descriptor"
         )).isEqualTo(Map.of(
                 "workerGroupId", "phone-tools",
-                "workerAllocationMechanism", "DIRECT_ITEM_RULE",
+                "workerAllocationMechanism", "ON_DEMAND_ITEM_RULE",
                 "idleDisposition", "PARK_WHEN_IDLE",
                 "allocationRuleJson", "null",
                 "configJson", "{\"maxRetryTimes\":\"3\","
@@ -335,7 +335,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void createRecoversScoreOnlyInterruptionAndRejectsInvalidDsl() {
+    void createRecoversScoreOnlyInterruptionAndPersistsOpaqueTaskRules() {
         assertThat(scoreCore.initializeScore("score-only", 1, 3_000)
                 .status()).isEqualTo(
                         TaskScoreBandCore.TaskScoreTransitionStatus
@@ -346,23 +346,31 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(runtime.createTask(descriptor("score-only", 3)).status())
                 .isEqualTo(TaskCreationStatus.CONFLICT);
 
-        TaskDescriptor invalidRule = new TaskDescriptor(
-                "invalid-rule",
+        Map<String, Object> opaqueRule = Map.of(
+                "worker.region", Map.of("$like", "cn-*"),
+                "worker.capacity", Map.of(
+                        "$range",
+                        List.of(1, 5)
+                )
+        );
+        TaskDescriptor taskWithOpaqueRule = new TaskDescriptor(
+                "opaque-rule",
                 "phone-tools",
                 WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 TaskIdleDisposition.CLOSE_WHEN_IDLE,
-                Map.of("worker.region", Map.of("$like", "cn-*")),
+                opaqueRule,
                 config(3)
         );
-        assertThat(runtime.createTask(invalidRule).status())
-                .isEqualTo(TaskCreationStatus.INVALID);
-        assertThat(redis.exists(
-                keyspace.base() + ":task:invalid-rule:descriptor"
-        )).isZero();
-        assertThat(redis.zscore(
-                keyspace.base() + ":task:score",
-                "invalid-rule"
-        )).isNull();
+        assertThat(runtime.createTask(taskWithOpaqueRule).status())
+                .isEqualTo(TaskCreationStatus.CREATED);
+        assertThat(redis.hget(
+                keyspace.base() + ":task:opaque-rule:descriptor",
+                "allocationRuleJson"
+        )).contains("\"$like\":\"cn-*\"")
+                .contains("\"$range\":[1,5]");
+        assertThat(catalog.loadTaskAllocationDescriptors(
+                List.of("opaque-rule")
+        ).get("opaque-rule").allocationRule()).isEqualTo(opaqueRule);
     }
 
     @Test
@@ -395,7 +403,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(redis.hgetall(
                 keyspace.base() + ":task:" + taskId + ":descriptor"
         )).containsEntry("workerGroupId", "phone-tools")
-                .containsEntry("workerAllocationMechanism", "DIRECT_ITEM_RULE")
+                .containsEntry("workerAllocationMechanism", "ON_DEMAND_ITEM_RULE")
                 .containsEntry("idleDisposition", "PARK_WHEN_IDLE");
     }
 
@@ -968,7 +976,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         return new TaskDescriptor(
                 taskId,
                 "phone-tools",
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 config(priority)

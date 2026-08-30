@@ -806,7 +806,7 @@ class RuntimeBoundaryIntegrationTest {
                     && workerGroupId.equals(
                             workerGroup.get("workerGroupId").asText()
                     )
-                    && "DIRECT_ITEM_RULE".equals(task.get(
+                    && "ON_DEMAND_ITEM_RULE".equals(task.get(
                             "workerAllocationMechanism"
                     ).asText())
                     && "PARK_WHEN_IDLE".equals(

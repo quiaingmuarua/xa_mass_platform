@@ -141,7 +141,7 @@ def _managed_task_id(base_url: str, worker_group_id: str) -> str:
             and isinstance(worker_group, dict)
             and task.get("workerGroupId") == worker_group_id
             and worker_group.get("workerGroupId") == worker_group_id
-            and task.get("workerAllocationMechanism") == "DIRECT_ITEM_RULE"
+            and task.get("workerAllocationMechanism") == "ON_DEMAND_ITEM_RULE"
             and task.get("idleDisposition") == "PARK_WHEN_IDLE"
             and entry.get("taskId") == task.get("taskId")
         ):

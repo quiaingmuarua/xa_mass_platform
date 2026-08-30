@@ -177,7 +177,7 @@ public final class TaskDataService {
 
     private static boolean isManagedCallTask(TaskDescriptor descriptor) {
         return descriptor.workerAllocationMechanism()
-                == WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                == WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                 && descriptor.idleDisposition()
                 == TaskRuntime.TaskIdleDisposition.PARK_WHEN_IDLE;
     }

@@ -127,7 +127,7 @@ prove a Task is executing. Search filters only the current browser window and
 does not issue another API request. Descriptor gaps remain visible and are never
 repaired or inferred by the browser.
 
-In API mode, each readable `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task with a
+In API mode, each readable `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` Task with a
 WorkerGroup descriptor exposes a single-Item `Task Call Debug` action. The
 debug composer
 accepts an advisory Event Name, a JSON Object Payload, and an Item-level JSON

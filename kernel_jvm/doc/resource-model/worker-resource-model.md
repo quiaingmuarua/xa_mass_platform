@@ -47,10 +47,11 @@ already match the control-plane catalog.
 
 WorkerGroup does not declare matching indexes, providers, or supported
 operators. Candidate sources remain separate scheduling policy: a shared HOT
-pool, Candidate Cache entries, or DIRECT explicit IDs supplies a bounded set
-inside the Task's fixed Group. Matching only validates canonical properties for
-those supplied Worker IDs. It does not choose a source, lease a Worker, apply
-requested counts, or allocate one Worker between competing Candidates.
+pool, Candidate Cache entries, or Matcher-derived explicit IDs for item-rule
+on-demand acquisition supplies a bounded set inside the Task's fixed Group.
+Matching only validates canonical properties for those supplied Worker IDs. It
+does not choose a source, lease a Worker, apply requested counts, or allocate
+one Worker between competing Candidates.
 
 ## Two Property Sources
 
@@ -162,32 +163,35 @@ are `workerId`, `worker.*`, and `platform.*`. The removed `index.*` namespace
 is rejected as an invalid allocation rule and never falls back to a same-named
 canonical property.
 
-### DIRECT
+### Item-Rule On-Demand Acquisition
 
-For an empty rule, DIRECT uses one bounded due-HOT score query in the explicit
-WorkerGroup. Matcher prepares one call-local rule Plan. The current fixed
-source derivation resolves `workerId $eq/$equal/$in` into a bounded
+For an empty Item rule, on-demand acquisition uses one bounded due-HOT score
+query in the explicit WorkerGroup. Matcher prepares one call-local rule Plan.
+The current fixed source derivation resolves `workerId $eq/$equal/$in` into a bounded
 request-local identity range; a different non-empty rule has no source and
 fails closed. Selection point-observes the explicit identities,
 then Matcher evaluates every `worker.*`, `platform.*` and Worker identity
 condition over the bounded canonical descriptors. Every leased original pair
 is fully rematched with the same Plan.
 
-DIRECT does not use `CandidateWorkerCache`, globally scan Worker descriptors,
-or fall back to PRECOMPUTED acquisition. A future Property index may add
+Item-rule on-demand acquisition does not use `CandidateWorkerCache`, globally
+scan Worker descriptors, or fall back to cached candidate renewal. A future
+Property index may add
 another internal Matcher source for bounded Worker identities;
 ordinary canonical property reads still do not discover candidates.
 
-One DIRECT acquisition round admits at most 100 unique WorkerIds across all
+One on-demand acquisition round admits at most 100 unique WorkerIds across all
 Item candidates in `(priority, candidateId)` order. A WorkerId already admitted
 may be reused by a later Item without consuming the budget again. New ids after
 the budget is exhausted wait for a later round; they do not trigger a scan or
 fallback.
 
-### PRECOMPUTED
+### Cached Candidate Renewal
 
-PRECOMPUTED consumes bounded WorkerIds from `CandidateWorkerCache`, validates
-the exact score fences, and rematches the complete Task rule.
+Cached candidate renewal consumes bounded WorkerIds from
+`CandidateWorkerCache`, validates the exact score fences, and rematches the
+complete Task rule. Task-rule precomputation is the separate Allocation
+Producer step that populated those entries from a shared HOT pool.
 
 For each rule field:
 
@@ -203,7 +207,7 @@ diagnostic per matcher call; the log does not contain rule or property values.
 
 Rules currently contain only required conditions. Priority or preference
 terms are a future rule-model change and must not be simulated by unsupported
-DIRECT predicates.
+on-demand predicates.
 
 ## Lifecycle Boundaries
 
@@ -235,7 +239,7 @@ separate milestones.
 - Do not let Platform writes modify `workerProperties`.
 - Do not accept `index.*` as a matching coordinate.
 - Do not use Properties as connectivity evidence.
-- Do not scan descriptors to satisfy DIRECT rules.
+- Do not scan descriptors to satisfy item-rule on-demand acquisition.
 - Do not infer physical truth from the latest canonical Properties snapshot.
 - Do not put score, lease, connection, or Task assignment state in a Worker
   descriptor.

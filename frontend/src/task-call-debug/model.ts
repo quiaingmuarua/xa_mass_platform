@@ -37,7 +37,7 @@ export function taskCallDebugAvailability(
       reason: "Task 描述符缺失，不能调用当前配置坐标。"
     };
   }
-  if (entry.task.workerAllocationMechanism !== "DIRECT_ITEM_RULE") {
+  if (entry.task.workerAllocationMechanism !== "ON_DEMAND_ITEM_RULE") {
     return {
       enabled: false,
       reason: "该 Task 不接受 Item 级 Allocation Rule。"

@@ -35,7 +35,7 @@ public final class TaskItemMapper {
         return item(request, createdAtMillis, null);
     }
 
-    public TaskItem directItem(
+    public TaskItem onDemandItem(
             TaskItemRequest request,
             long createdAtMillis
     ) {

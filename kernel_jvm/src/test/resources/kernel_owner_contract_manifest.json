@@ -319,7 +319,7 @@
     ],
     "WorkerAllocationMechanism": [
       "PRECOMPUTED_TASK_RULE",
-      "DIRECT_ITEM_RULE"
+      "ON_DEMAND_ITEM_RULE"
     ],
     "TaskIdleDisposition": [
       "CLOSE_WHEN_IDLE",

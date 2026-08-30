@@ -72,7 +72,7 @@ class DispatchConvergenceApplicationTest {
         verify(fixture.initialization).check(Map.of("task-initial", 100L));
         verify(fixture.taskCatalog).loadTaskAllocationDescriptors(List.of(
                 "task-precomputed",
-                "task-direct",
+                "task-on-demand",
                 "task-repeat-group",
                 "task-invalid"
         ));
@@ -80,7 +80,7 @@ class DispatchConvergenceApplicationTest {
         assertEquals(
                 List.of(
                         "task-precomputed",
-                        "task-direct",
+                        "task-on-demand",
                         "task-repeat-group"
                 ),
                 dispatchedTasks.get()
@@ -421,7 +421,7 @@ class DispatchConvergenceApplicationTest {
     private static void stubProjectedBatch(Fixture fixture) {
         LinkedHashMap<String, Long> scores = new LinkedHashMap<>();
         scores.put("task-precomputed", 104L);
-        scores.put("task-direct", 103L);
+        scores.put("task-on-demand", 103L);
         scores.put("task-repeat-group", 102L);
         scores.put("task-invalid", 101L);
         scores.put("task-initial", 100L);
@@ -438,23 +438,23 @@ class DispatchConvergenceApplicationTest {
                                 WorkerAllocationMechanism
                                         .PRECOMPUTED_TASK_RULE
                         ),
-                        "task-direct",
+                        "task-on-demand",
                         descriptor(
-                                "task-direct",
+                                "task-on-demand",
                                 "group-2",
-                                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                         ),
                         "task-repeat-group",
                         descriptor(
                                 "task-repeat-group",
                                 "group-1",
-                                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                         ),
                         "task-invalid",
                         descriptor(
                                 "other-task",
                                 "group-3",
-                                WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                         )
                 ));
     }

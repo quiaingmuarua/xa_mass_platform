@@ -110,7 +110,7 @@ final class TaskWorkerAllocationPolicy {
         for (Map.Entry<String, LinkedHashMap<String, WorkerCandidateRequest>>
                 group : requestsByGroup.entrySet()) {
             Map<String, List<AcquiredWorkerCandidate>> acquired =
-                    candidateSelection.acquireHotPoolCandidates(
+                    candidateSelection.acquireSharedHotCandidates(
                             group.getKey(),
                             group.getValue(),
                             leaseUntil

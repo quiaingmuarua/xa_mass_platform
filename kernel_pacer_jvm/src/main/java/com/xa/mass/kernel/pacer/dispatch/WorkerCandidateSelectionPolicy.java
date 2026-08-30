@@ -18,7 +18,7 @@ import java.util.Set;
 
 final class WorkerCandidateSelectionPolicy {
 
-    static final int MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND = 100;
+    static final int MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND = 100;
 
     private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
@@ -51,13 +51,11 @@ final class WorkerCandidateSelectionPolicy {
         this.hotEligibilityFloorMillis = hotEligibilityFloorMillis;
     }
 
-    Map<String, List<AcquiredWorkerCandidate>> acquireWorkerCandidates(
-            WorkerCandidateAcquisitionStrategy strategy,
+    Map<String, List<AcquiredWorkerCandidate>> renewCachedCandidates(
             String workerGroupId,
             Map<String, WorkerCandidateRequest> requests,
             long leaseUntilMillis
     ) {
-        Objects.requireNonNull(strategy, "strategy");
         Map<String, WorkerCandidateRequest> validated = validate(requests);
         if (validated.isEmpty()) {
             return empty(validated);
@@ -66,23 +64,15 @@ final class WorkerCandidateSelectionPolicy {
                 workerGroupId,
                 validated
         );
-        return switch (strategy) {
-            case PRECOMPUTED -> acquirePrecomputed(
-                    workerGroupId,
-                    validated,
-                    matchPlan,
-                    leaseUntilMillis
-            );
-            case DIRECT -> acquireDirect(
-                    workerGroupId,
-                    validated,
-                    matchPlan,
-                    leaseUntilMillis
-            );
-        };
+        return renewCachedCandidates(
+                workerGroupId,
+                validated,
+                matchPlan,
+                leaseUntilMillis
+        );
     }
 
-    Map<String, List<AcquiredWorkerCandidate>> acquireHotPoolCandidates(
+    Map<String, List<AcquiredWorkerCandidate>> acquireSharedHotCandidates(
             String workerGroupId,
             Map<String, WorkerCandidateRequest> requests,
             long leaseUntilMillis
@@ -125,7 +115,28 @@ final class WorkerCandidateSelectionPolicy {
         );
     }
 
-    private Map<String, List<AcquiredWorkerCandidate>> acquirePrecomputed(
+    Map<String, List<AcquiredWorkerCandidate>> acquireOnDemandCandidates(
+            String workerGroupId,
+            Map<String, WorkerCandidateRequest> requests,
+            long leaseUntilMillis
+    ) {
+        Map<String, WorkerCandidateRequest> validated = validate(requests);
+        if (validated.isEmpty()) {
+            return empty(validated);
+        }
+        WorkerCandidateMatcher.MatchPlan matchPlan = prepareMatchPlan(
+                workerGroupId,
+                validated
+        );
+        return acquireOnDemandCandidates(
+                workerGroupId,
+                validated,
+                matchPlan,
+                leaseUntilMillis
+        );
+    }
+
+    private Map<String, List<AcquiredWorkerCandidate>> renewCachedCandidates(
             String workerGroupId,
             Map<String, WorkerCandidateRequest> requests,
             WorkerCandidateMatcher.MatchPlan matchPlan,
@@ -140,7 +151,7 @@ final class WorkerCandidateSelectionPolicy {
             if (!matchPlan.isValid(request.getKey())) {
                 continue;
             }
-            Map<String, Long> cached = consumePrecomputed(
+            Map<String, Long> cached = consumeCachedCandidates(
                     request.getKey(),
                     workerGroupId,
                     request.getValue().requestedCount()
@@ -177,19 +188,20 @@ final class WorkerCandidateSelectionPolicy {
         );
     }
 
-    private Map<String, List<AcquiredWorkerCandidate>> acquireDirect(
-            String workerGroupId,
-            Map<String, WorkerCandidateRequest> requests,
-            WorkerCandidateMatcher.MatchPlan matchPlan,
-            long leaseUntilMillis
-    ) {
+    private Map<String, List<AcquiredWorkerCandidate>>
+            acquireOnDemandCandidates(
+                    String workerGroupId,
+                    Map<String, WorkerCandidateRequest> requests,
+                    WorkerCandidateMatcher.MatchPlan matchPlan,
+                    long leaseUntilMillis
+            ) {
         Set<String> unrestricted = matcher.unrestrictedCandidateIds(
                 matchPlan
         );
         Map<String, List<String>> explicitByCandidate =
                 matcher.explicitWorkerIdsByCandidate(
                         matchPlan,
-                        MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
+                        MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
                 );
         Map<String, Long> broad = unrestricted.isEmpty()
                 ? Map.of()
@@ -198,7 +210,7 @@ final class WorkerCandidateSelectionPolicy {
                         hotEligibilityFloorMillis,
                         Math.min(
                                 workerScanLimit,
-                                MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
+                                MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
                         )
                 );
         LinkedHashSet<String> explicitIds = new LinkedHashSet<>();
@@ -221,7 +233,7 @@ final class WorkerCandidateSelectionPolicy {
                 0,
                 Math.min(
                         explicitIds.size(),
-                        MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
+                        MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
                 )
         );
         Map<String, Long> explicit =
@@ -257,7 +269,7 @@ final class WorkerCandidateSelectionPolicy {
                 requests,
                 leaseUntilMillis,
                 false,
-                MAX_DIRECT_UNIQUE_WORKERS_PER_ROUND
+                MAX_ON_DEMAND_UNIQUE_WORKERS_PER_ROUND
         );
     }
 
@@ -341,7 +353,7 @@ final class WorkerCandidateSelectionPolicy {
         );
     }
 
-    private Map<String, Long> consumePrecomputed(
+    private Map<String, Long> consumeCachedCandidates(
             String candidateId,
             String workerGroupId,
             int limit

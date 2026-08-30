@@ -227,7 +227,7 @@ public final class WorkerGroupTaskCallRegistrationService {
         return new TaskDescriptor(
                 taskId(workerGroupId),
                 workerGroupId,
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 TASK_CONFIG

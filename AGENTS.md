@@ -150,6 +150,9 @@ architectures.
 - Server connection/health packages must not own Redis keys.
 - Candidate Cache remains a stable mechanical owner here;
   Pacer policy and loop code do not.
+- Task Owner enforces Task versus TaskItem rule location and JSON-safe finite
+  persistence only. It must not interpret Match Property names or operators;
+  stored rule semantics belong to the Pacer Matcher.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
@@ -169,12 +172,18 @@ kernel_jvm`.
   module outside `kernel_pacer_jvm` may import either bridge.
 - It owns fixed Assignment, Result Routing and Worker Serviceability policy,
   configuration interpretation, Pacer loops and their finite lifecycle.
-- `WorkerCandidateSelectionPolicy` owns bounded HOT/Cache scheduling sources,
-  Score eligibility, priority/count/unique selection and exact lease. The
+- `WorkerCandidateSelectionPolicy` owns the three fixed source operations:
+  shared HOT acquisition for Task-rule precomputation, cached candidate
+  renewal, and Item-rule on-demand acquisition. It also owns Score eligibility,
+  priority/count/unique selection and exact lease. There is no generic
+  acquisition Strategy or cached-to-on-demand fallback. The
   package-private `WorkerCandidateMatcher` owns one call-local Match Plan,
   rule-derived Worker identity ranges, canonical Rule Match and original-pair
   post-lease rematch. Selection must not interpret Property names or Constraint
-  operators; Matcher must not read Score, Candidate Cache or selection policy.
+  operators; Matcher must not read Score, Candidate Cache, workflow labels or
+  selection policy. `WorkerAllocationMechanism` is a fixed Producer workflow
+  label, not a Matcher mode; Task and TaskItem rule workflows are mutually
+  exclusive and do not exchange Candidate Cache entries.
 - It does not own Redis keys, mechanical owner state, Spring assembly, HTTP or
   deployment.
 - Do not add a Pacer SPI, dynamic registry, further public internal Pacer type,

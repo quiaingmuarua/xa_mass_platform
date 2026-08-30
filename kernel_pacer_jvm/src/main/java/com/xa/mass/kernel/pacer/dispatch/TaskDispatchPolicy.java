@@ -185,8 +185,7 @@ final class TaskDispatchPolicy {
         Map<String, List<AcquiredWorkerCandidate>> acquired;
         if (task.descriptor().workerAllocationMechanism()
                 == WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE) {
-            acquired = candidateSelection.acquireWorkerCandidates(
-                    WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+            acquired = candidateSelection.renewCachedCandidates(
                     task.descriptor().workerGroupId(),
                     Map.of(task.taskId(), new WorkerCandidateRequest(
                             priority,
@@ -216,8 +215,7 @@ final class TaskDispatchPolicy {
                         )
                 )
         ));
-        acquired = candidateSelection.acquireWorkerCandidates(
-                WorkerCandidateAcquisitionStrategy.DIRECT,
+        acquired = candidateSelection.acquireOnDemandCandidates(
                 task.descriptor().workerGroupId(),
                 requests,
                 leaseUntilMillis

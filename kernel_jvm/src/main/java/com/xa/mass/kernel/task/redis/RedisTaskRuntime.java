@@ -107,8 +107,8 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         } catch (IllegalArgumentException | JacksonException error) {
             return creation(
                     TaskCreationStatus.INVALID,
-                    "descriptor allocation rule is invalid or not JSON "
-                            + "serializable"
+                    "descriptor contains a non-finite or non-JSON-"
+                            + "serializable value"
             );
         }
 
@@ -222,9 +222,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             TaskDescriptor descriptor
     ) throws JacksonException {
         if (descriptor.allocationRule() != null) {
-            TaskConstraintRuleValidator.validate(
-                    descriptor.allocationRule()
-            );
             rejectNonFiniteNumbers(descriptor.allocationRule());
         }
         rejectNonFiniteNumbers(descriptor.config());

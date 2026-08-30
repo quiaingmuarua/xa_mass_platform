@@ -52,7 +52,7 @@ class WorkerCandidateSelectionPolicyTest {
         )).thenReturn(Map.of("east", worker("east", "east")));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
-                policy(scores, cache, catalog).acquireHotPoolCandidates(
+                policy(scores, cache, catalog).acquireSharedHotCandidates(
                         "group-1",
                         Map.of("candidate", new WorkerCandidateRequest(
                                 0,
@@ -76,6 +76,7 @@ class WorkerCandidateSelectionPolicyTest {
                 Map.of("east", 101L),
                 5_000L
         );
+        verifyNoInteractions(cache);
     }
 
     @Test
@@ -111,7 +112,7 @@ class WorkerCandidateSelectionPolicyTest {
         ));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
-                policy(scores, cache, catalog).acquireHotPoolCandidates(
+                policy(scores, cache, catalog).acquireSharedHotCandidates(
                         "group-1",
                         requests,
                         5_000L
@@ -171,7 +172,7 @@ class WorkerCandidateSelectionPolicyTest {
         ));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
-                policy(scores, cache, catalog).acquireHotPoolCandidates(
+                policy(scores, cache, catalog).acquireSharedHotCandidates(
                         "group-1",
                         requests,
                         5_000L
@@ -188,7 +189,7 @@ class WorkerCandidateSelectionPolicyTest {
     }
 
     @Test
-    void precomputedRenewsOnlyCachedWorkersWithoutHotFallback() {
+    void cachedRenewalUsesOnlyCachedWorkersWithoutHotFallback() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
@@ -206,8 +207,7 @@ class WorkerCandidateSelectionPolicyTest {
                 .thenReturn(Map.of("cached", worker("cached", "east")));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
-                policy(scores, cache, catalog).acquireWorkerCandidates(
-                        WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+                policy(scores, cache, catalog).renewCachedCandidates(
                         "group-1",
                         Map.of("candidate", new WorkerCandidateRequest(
                                 0,
@@ -227,6 +227,28 @@ class WorkerCandidateSelectionPolicyTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt()
         );
+    }
+
+    @Test
+    void cachedCandidateMissDoesNotAccessHotSource() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).renewCachedCandidates(
+                        "group-1",
+                        Map.of("candidate", new WorkerCandidateRequest(
+                                0,
+                                1,
+                                Map.of()
+                        )),
+                        5_000L
+                );
+
+        assertEquals(List.of(), acquired.get("candidate"));
+        verify(cache).consumeCandidateWorkers("candidate", 1);
+        verifyNoInteractions(scores, catalog);
     }
 
     @Test
@@ -251,25 +273,26 @@ class WorkerCandidateSelectionPolicyTest {
                 )
         );
 
-        assertEquals(List.of(), policy.acquireHotPoolCandidates(
+        assertEquals(List.of(), policy.acquireSharedHotCandidates(
                 "group-1",
                 requests,
                 5_000L
         ).get("invalid"));
-        for (WorkerCandidateAcquisitionStrategy strategy
-                : WorkerCandidateAcquisitionStrategy.values()) {
-            assertEquals(List.of(), policy.acquireWorkerCandidates(
-                    strategy,
-                    "group-1",
-                    requests,
-                    5_000L
-            ).get("invalid"));
-        }
+        assertEquals(List.of(), policy.renewCachedCandidates(
+                "group-1",
+                requests,
+                5_000L
+        ).get("invalid"));
+        assertEquals(List.of(), policy.acquireOnDemandCandidates(
+                "group-1",
+                requests,
+                5_000L
+        ).get("invalid"));
         verifyNoInteractions(scores, cache, catalog);
     }
 
     @Test
-    void directSelectionLeasesAtMostOneHundredUniqueWorkersPerRound() {
+    void onDemandSelectionLeasesAtMostOneHundredUniqueWorkersPerRound() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
@@ -306,8 +329,7 @@ class WorkerCandidateSelectionPolicyTest {
         ));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
-                policy(scores, cache, catalog).acquireWorkerCandidates(
-                        WorkerCandidateAcquisitionStrategy.DIRECT,
+                policy(scores, cache, catalog).acquireOnDemandCandidates(
                         "group-1",
                         requests,
                         5_000L
@@ -321,6 +343,7 @@ class WorkerCandidateSelectionPolicyTest {
                         && !workers.containsKey("explicit")),
                 eq(5_000L)
         );
+        verifyNoInteractions(cache);
     }
 
     private static WorkerCandidateSelectionPolicy policy(

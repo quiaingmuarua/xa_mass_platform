@@ -23,7 +23,7 @@ export function task(taskId: string, workerGroupId: string): TaskView {
   return {
     taskId,
     workerGroupId,
-    workerAllocationMechanism: "DIRECT_ITEM_RULE",
+    workerAllocationMechanism: "ON_DEMAND_ITEM_RULE",
     idleDisposition: "PARK_WHEN_IDLE",
     allocationRule: null,
     config: {

@@ -54,7 +54,7 @@ Task score acquire
   -> optional RUNNING candidate cache warming through HOT-pool acquisition
   -> Task Dispatch
      -> TaskItem observation
-     -> Task-scoped PRECOMPUTED or Item-scoped DIRECT candidate acquisition
+     -> Task-scoped cached candidate renewal or Item-scoped on-demand acquisition
      -> TaskItem exact claim
      -> direct DeliveryCommand construction
      -> endpointManagerId-partitioned sparse DeliveryCommand mailbox
@@ -81,8 +81,8 @@ Auxiliary Server direct path
 The public WorkerAllocationMechanism split is fixed:
 
 ```text
-PRECOMPUTED_TASK_RULE = Task rule + PRECOMPUTED Worker acquisition + candidate cache
-DIRECT_ITEM_RULE = TaskItem rule + DIRECT Worker acquisition + no candidate cache
+PRECOMPUTED_TASK_RULE = Task-rule precomputation + cached candidate renewal
+ON_DEMAND_ITEM_RULE = Item-rule on-demand acquisition + no candidate cache
 ```
 
 `TaskIdleDisposition` independently selects immediate `CLOSE_WHEN_IDLE` or the
@@ -97,13 +97,13 @@ contract.
 Generic public Server Task creation exposes only
 `PRECOMPUTED_TASK_RULE + CLOSE_WHEN_IDLE`. WorkerGroup registration provisions
 the fixed managed Task Call
-`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` assembly. Neither surface exposes an
+`ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` assembly. Neither surface exposes an
 arbitrary mechanism matrix.
 
-WorkerAllocationMechanism is the allocation boundary. It does not define a
-public Cartesian product of cache, acquisition, trigger, fairness, or retry
-modes. Scheduling tests therefore prove the
-`PRECOMPUTED_TASK_RULE` and `DIRECT_ITEM_RULE` vertical paths plus owner-local primitives,
+WorkerAllocationMechanism is a fixed Producer workflow label, not a Matcher
+mode. It does not define a public Cartesian product of cache, candidate source,
+trigger, fairness, or retry modes. Scheduling tests therefore prove the
+`PRECOMPUTED_TASK_RULE` and `ON_DEMAND_ITEM_RULE` vertical paths plus owner-local primitives,
 instead of manufacturing unsupported policy combinations.
 
 The score axes and bounded runtime handoffs provide liveness. Events may provide
@@ -215,19 +215,19 @@ Worker Delivery Dispatch
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, DIRECT bounded Group-or-point lease-match, PRECOMPUTED exact recheck-rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
+| Worker HOT_ACQUIRE lease protocol | Task-rule HOT-pool precomputation, Item-rule bounded Group-or-point on-demand lease-match, cached candidate exact renewal/rematch, exact result release, and one-WorkerId/one-slot invariant implemented | Serviceability polarity is owned by the independent evidence Pacer |
 | Worker serviceability | Process-local HOT eligibility floor, exact pre-Probe Score hold/Recovery advance, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and time-fenced polarity-only Result convergence implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
 | Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through direct bounded Candidate Cache and Worker Score Owner calls; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
-| Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
+| Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item-rule on-demand acquisition including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both WorkerAllocationMechanisms also have Runtime Boundary Redis E2E proof from
 Java control and Task data APIs through Java scheduling and the Java Server
 Worker Delivery API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transport;
-`DIRECT_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
+`ON_DEMAND_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
 the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker

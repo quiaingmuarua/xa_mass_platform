@@ -29,7 +29,7 @@ class FakeRuntimeApiClient:
                         "task": {
                             "taskId": "managed-task",
                             "workerGroupId": run_demo.WORKER_GROUP_ID,
-                            "workerAllocationMechanism": "DIRECT_ITEM_RULE",
+                            "workerAllocationMechanism": "ON_DEMAND_ITEM_RULE",
                             "idleDisposition": "PARK_WHEN_IDLE",
                         },
                         "workerGroup": {

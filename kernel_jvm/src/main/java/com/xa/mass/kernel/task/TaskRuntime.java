@@ -49,7 +49,7 @@ public interface TaskRuntime {
 
     enum WorkerAllocationMechanism {
         PRECOMPUTED_TASK_RULE,
-        DIRECT_ITEM_RULE
+        ON_DEMAND_ITEM_RULE
     }
 
     enum TaskIdleDisposition {
@@ -152,10 +152,10 @@ public interface TaskRuntime {
                 );
             }
             if (workerAllocationMechanism
-                    == WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                    == WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                     && allocationRule != null) {
                 throw new IllegalArgumentException(
-                        "DIRECT_ITEM_RULE forbids allocationRule"
+                        "ON_DEMAND_ITEM_RULE forbids allocationRule"
                 );
             }
             if (!config.keySet().equals(CONFIG_KEYS)) {

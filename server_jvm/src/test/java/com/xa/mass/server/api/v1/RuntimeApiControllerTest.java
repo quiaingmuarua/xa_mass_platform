@@ -1016,7 +1016,7 @@ class RuntimeApiControllerTest {
                 taskId,
                 "phone-tools",
                 scenarioRpc
-                        ? WorkerAllocationMechanism.DIRECT_ITEM_RULE
+                        ? WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE
                         : WorkerAllocationMechanism.PRECOMPUTED_TASK_RULE,
                 scenarioRpc
                         ? TaskIdleDisposition.PARK_WHEN_IDLE

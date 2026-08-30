@@ -148,7 +148,7 @@ Wait for `RUNNING`, then call all three capabilities through the managed Task:
 The driver reads the bounded Task Score window from
 `/api/v1/runtime-view/tasks:preview` and requires exactly one Task whose
 WorkerGroup is `android-demo-workers`, allocation mechanism is
-`DIRECT_ITEM_RULE`, and idle disposition is `PARK_WHEN_IDLE`. It then sends
+`ON_DEMAND_ITEM_RULE`, and idle disposition is `PARK_WHEN_IDLE`. It then sends
 three standard Items to
 `/api/v1/tasks/{taskId}/items:call` with `allocationRule: {}`. It prints the
 State, Battery, and parameterized string digest results. It does not create or

@@ -40,7 +40,7 @@ class AssignmentPacersTest {
         AcquiredWorkerCandidate candidate = worker("worker-1", 101L);
         when(candidateCache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.acquireHotPoolCandidates(
+        when(selection.acquireSharedHotCandidates(
                 eq("group-1"),
                 any(),
                 eq(6_000L)
@@ -87,7 +87,7 @@ class AssignmentPacersTest {
         );
         when(candidateCache.candidateWorkerCounts(List.of("task-1")))
                 .thenReturn(Map.of("task-1", 0));
-        when(selection.acquireHotPoolCandidates(
+        when(selection.acquireSharedHotCandidates(
                 eq("group-1"), any(), eq(6_000L)
         )).thenReturn(Map.of(
                 "task-1", List.of(worker("worker-1", 101L))
@@ -124,7 +124,7 @@ class AssignmentPacersTest {
                 policy.allocateCandidateWorkers(
                         List.of(due(
                                 "task-1",
-                                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                                 TaskIdleDisposition.PARK_WHEN_IDLE
                         )),
                         new TaskWorkerAllocationConfig(5_000)
@@ -153,8 +153,7 @@ class AssignmentPacersTest {
         when(taskRuntime.loadTaskItems(
                 "task-1", List.of("message-1")
         )).thenReturn(Map.of("message-1", item));
-        when(selection.acquireWorkerCandidates(
-                eq(WorkerCandidateAcquisitionStrategy.DIRECT),
+        when(selection.acquireOnDemandCandidates(
                 eq("group-1"),
                 any(),
                 eq(6_000L)
@@ -170,7 +169,7 @@ class AssignmentPacersTest {
         )).thenReturn(1);
         DueTaskObservation task = due(
                 "task-1",
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE
         );
 
@@ -220,7 +219,7 @@ class AssignmentPacersTest {
         ).dispatchTasks(
                 List.of(due(
                         "task-1",
-                        WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                        WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                         TaskIdleDisposition.PARK_WHEN_IDLE
                 )),
                 new TaskDispatchConfig(100, 5_000)

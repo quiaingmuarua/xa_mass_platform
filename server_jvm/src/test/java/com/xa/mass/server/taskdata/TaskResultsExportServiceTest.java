@@ -239,7 +239,7 @@ class TaskResultsExportServiceTest {
     private static TaskDescriptor managedTask(String taskId) {
         return descriptor(
                 taskId,
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null
         );

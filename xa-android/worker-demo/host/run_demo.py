@@ -139,7 +139,7 @@ def managed_task_id(client: RuntimeApiClient) -> str:
             and isinstance(worker_group, dict)
             and task.get("workerGroupId") == WORKER_GROUP_ID
             and worker_group.get("workerGroupId") == WORKER_GROUP_ID
-            and task.get("workerAllocationMechanism") == "DIRECT_ITEM_RULE"
+            and task.get("workerAllocationMechanism") == "ON_DEMAND_ITEM_RULE"
             and task.get("idleDisposition") == "PARK_WHEN_IDLE"
             and entry.get("taskId") == task.get("taskId")
         ):

@@ -203,7 +203,7 @@ Worker-property writes use bounded eventual convergence.
   wrap it in an update-time envelope or add timestamp arbitration.
 - Do not store score or decoded score coordinates in Worker metadata or
   Properties HASH values.
-- Do not scan Worker descriptors for DIRECT matching.
+- Do not scan Worker descriptors for item-rule on-demand matching.
 - Reject `index.*` allocation requirements rather than adding a hidden
   projection store.
 - Do not use the `worker:id_owners` HASH for global enumeration.

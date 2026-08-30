@@ -451,7 +451,7 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
                     "task": {
                         "taskId": "managed-task",
                         "workerGroupId": acceptance.WORKER_GROUP_ID,
-                        "workerAllocationMechanism": "DIRECT_ITEM_RULE",
+                        "workerAllocationMechanism": "ON_DEMAND_ITEM_RULE",
                         "idleDisposition": "PARK_WHEN_IDLE",
                     },
                     "workerGroup": {

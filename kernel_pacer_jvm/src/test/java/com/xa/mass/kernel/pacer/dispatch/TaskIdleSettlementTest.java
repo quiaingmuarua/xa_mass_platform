@@ -98,7 +98,7 @@ class TaskIdleSettlementTest {
                 new TaskDescriptor(
                         "task-1",
                         "group-1",
-                        WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                        WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                         TaskIdleDisposition.PARK_WHEN_IDLE,
                         null,
                         Map.of(

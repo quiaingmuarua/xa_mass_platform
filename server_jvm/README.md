@@ -72,7 +72,7 @@ Provider ownership is deliberately mixed but explicit:
 
 WorkerGroup registration creates no Server mapping or second Task catalog. In
 addition to the create-only Group declaration, it derives one internal Task
-coordinate, creates the fixed `DIRECT_ITEM_RULE + PARK_WHEN_IDLE` descriptor
+coordinate, creates the fixed `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` descriptor
 through Kernel owners, and approves it. Calls submit one Item through the
 Kernel Task Call command and observe last success through one shared probe;
 Finite Task input remains caller-owned and is appended through the ordinary
@@ -116,7 +116,7 @@ Task ID or Task type. Multiple finite Tasks may belong to the same Group.
 ```
 
 Every registered WorkerGroup also owns exactly one managed, approved
-`DIRECT_ITEM_RULE + PARK_WHEN_IDLE` Task. Registration returns its Task ID:
+`ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` Task. Registration returns its Task ID:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}:register

@@ -146,7 +146,7 @@ class RuntimeViewControllerTest {
                 ).value("beta"))
                 .andExpect(jsonPath(
                         "$.entries[0].task.workerAllocationMechanism"
-                ).value("DIRECT_ITEM_RULE"))
+                ).value("ON_DEMAND_ITEM_RULE"))
                 .andExpect(jsonPath("$.entries[0].task.idleDisposition")
                         .value("PARK_WHEN_IDLE"))
                 .andExpect(jsonPath(
@@ -830,7 +830,7 @@ class RuntimeViewControllerTest {
         return new TaskDescriptor(
                 taskId,
                 workerGroupId,
-                WorkerAllocationMechanism.DIRECT_ITEM_RULE,
+                WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
                 TaskIdleDisposition.PARK_WHEN_IDLE,
                 null,
                 Map.of(

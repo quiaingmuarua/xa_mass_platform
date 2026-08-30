@@ -20,7 +20,7 @@ due HOT observation
   -> Worker matcher validation
   -> CandidateWorkerEntry(workerLeaseScore)
   -> optional CandidateWorkerCache handoff
-  -> PRECOMPUTED acquisition exact validate/renew and rematch
+  -> cached candidate exact renewal and rematch
   -> ResultContext(workerLeaseScore)
   -> result exact release
 ```
@@ -39,7 +39,7 @@ a business batch operation receives the batch as a bounded collection inside
 that TaskItem payload. The kernel does not merge multiple TaskItems, create
 multiple Item claim fences behind one Worker lease, or release the slot early.
 
-## HOT-Pool And DIRECT Acquisition Lease
+## HOT-Pool And On-Demand Acquisition Lease
 
 ```text
 acquire_hot_acquire_candidates(
@@ -76,11 +76,11 @@ Owner operations directly while keeping Candidate Source, canonical Match,
 Selection and Lease as explicit stages:
 
 ```text
-acquire_hot_pool_candidates
+acquire_shared_hot_candidates
   one bounded HOT scan shared by Task-level Candidate rules
   canonical shared-pool match, then priority/count/unique selection
 
-DIRECT with an Item-owned rule
+Item-rule on-demand acquisition
   Matcher prepares one rule Plan and derives each Worker identity range
   unrestricted rule: one bounded due-HOT WorkerGroup score query
   resolved rule: point-observe bounded IDs inside the Task WorkerGroup
@@ -90,7 +90,8 @@ DIRECT with an Item-owned rule
   canonical rematch of only the original successful Candidate/Worker pairs
 ```
 
-HOT-pool and DIRECT observation do not read Candidate Cache; PRECOMPUTED does.
+Shared HOT and item-rule on-demand observation do not read Candidate Cache;
+cached candidate renewal does.
 Allocation cache publication reobserves the selected Worker IDs through the
 Score Owner at the expected lease slot, then appends only the still-active
 subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
@@ -107,9 +108,9 @@ Pre-match failures do not receive a lease. Post-lease mismatches and candidate
 publication failures are not actively released; their short leases expire
 naturally, preventing immediate hot-loop rematching from the same evidence.
 
-## PRECOMPUTED Acquisition Validation
+## Cached Candidate Renewal
 
-The `PRECOMPUTED` path consumes bounded cache evidence and calls:
+The cached renewal path consumes bounded cache evidence and calls:
 
 ```text
 renew_active_hot_score_leases(
@@ -140,10 +141,11 @@ against the current request. A successful rematch may proceed to Item claim.
 The returned fence, unchanged or renewed, is written into
 `forward`.
 
-PRECOMPUTED miss or rejected evidence never falls back to DIRECT acquisition.
-`TaskDispatchPolicy` chooses one path from
-`TaskDescriptor.workerAllocationMechanism`: PRECOMPUTED for Task-owned rules or
-DIRECT for Item-owned rules. Both paths carry raw Score evidence opaquely by
+Cached miss or rejected evidence never falls back to item-rule on-demand
+acquisition. `TaskDispatchPolicy` chooses one path from the fixed
+`TaskDescriptor.workerAllocationMechanism`: cached candidate renewal for
+Task-owned rules or on-demand acquisition for Item-owned rules. Both paths
+carry raw Score evidence opaquely by
 usage: they may associate and return it to exact Owner operations but never
 decode or calculate it. Neither path clears dirty or releases rejected
 candidates.
@@ -225,7 +227,7 @@ classification lag is allowed.
 | --- | --- | --- |
 | Allocation | lease CAS lost | exclude Worker |
 | Allocation | unmatched or publication failure | retain short lease until expiry |
-| PRECOMPUTED acquisition | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
+| Cached candidate renewal | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
 | Item dispatch | Item absent or claim lost | no release; leases expire |
 | Task Dispatch | mailbox residue replaced | publish the new lease-backed Seed; optional bounded residue metric |
 | Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
@@ -247,7 +249,7 @@ cross-owner transaction.
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
 | WorkerCandidateMatcher | one call-local Match Plan, rule-derived Worker identity range, shared-pool or Candidate-scoped canonical Rule Match and original-pair post-lease rematch | no HOT/Cache scheduling Source, priority, count, uniqueness, Score, lease or Candidate Cache access |
-| WorkerCandidateSelectionPolicy | bounded PRECOMPUTED/DIRECT scheduling Source, Score eligibility, request priority/count/unique selection, exact lease/renew, Matcher invocation and terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
+| WorkerCandidateSelectionPolicy | shared HOT, cached renewal and item-rule on-demand scheduling Sources; Score eligibility; request priority/count/unique selection; exact lease/renew; Matcher invocation; terminal Candidate assembly | no Property/Constraint interpretation, Score decoding, construction or arithmetic |
 | TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, reobserve active lease fences, and publish Candidate evidence | no Task discovery, Task-score write or result handling |
 | TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
 | TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
@@ -269,7 +271,7 @@ payload.
 - Do not lease negative `RECOVERY_RECHECK` scores through HOT primitives.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
-- Do not let PRECOMPUTED acquisition fall back to DIRECT acquisition.
+- Do not let cached candidate renewal fall back to item-rule on-demand acquisition.
 - Do not let `TaskDispatchPolicy` bypass `WorkerCandidateSelectionPolicy` to
   access Worker Score or Candidate Cache, or bypass `TaskAssignmentDispatcher`
   to claim Items and publish Commands. Direct bounded Owner calls inside the
