@@ -142,8 +142,9 @@ DispatchMainScheduler
   plans the complete root input of four fixed single-flight Resource Producers
 
 WorkerCandidateMatcher
-  owns bounded canonical descriptor pre-filter and post-lease rematch
-  produces the final endpoint-bearing AcquiredWorkerCandidate
+  owns only canonical Rule Match over shared or Candidate-scoped Worker IDs
+  and original-pair post-lease rematch; Selection owns priority/count/unique
+  assignment, exact lease and final endpoint-bearing Candidate assembly
 
 TaskAssignmentDispatcher / TaskIdleSettlement
   protect the two real cross-Owner Task Dispatch closures: Worker renew before

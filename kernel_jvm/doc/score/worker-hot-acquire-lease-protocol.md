@@ -72,20 +72,22 @@ Kernel process's HOT eligibility floor. With no Serviceability configuration,
 the optional floor is absent and the original full positive range remains.
 
 `WorkerCandidateSelectionPolicy` calls the bounded observation and exact-fence
-Owner operations directly while retaining matching and selection policy:
+Owner operations directly while keeping Candidate Source, canonical Match,
+Selection and Lease as explicit stages:
 
 ```text
 acquire_hot_pool_candidates
-  bounded HOT scan for Task-level cache warming
+  one bounded HOT scan shared by Task-level Candidate rules
+  canonical shared-pool match, then priority/count/unique selection
 
 DIRECT with an Item-owned rule
   empty rule: one bounded due-HOT WorkerGroup score query
   non-empty rule: bounded Worker ids from workerId $eq/$equal/$in
   non-empty rule without a Worker-id source fails closed
-  complete point pre-match over canonical Worker descriptors
-  use Group-query scores or observe only pre-matched explicit Workers
+  point-observe explicit IDs inside the Task WorkerGroup
+  canonical match over each Candidate's own source range
   exact lease at most requestedCount Workers per request
-  complete post-lease rematch
+  canonical rematch of only the original successful Candidate/Worker pairs
 ```
 
 HOT-pool and DIRECT observation do not read Candidate Cache; PRECOMPUTED does.
@@ -93,8 +95,11 @@ Allocation cache publication reobserves the selected Worker IDs through the
 Score Owner at the expected lease slot, then appends only the still-active
 subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
 Policy first matches and selects bounded Worker IDs, then exact-leases only
-those Workers. The Pacer-internal Matcher alone reloads canonical descriptors
-for the required post-lease rematch and resolves the final endpoint-bearing
+those Workers. The Pacer-internal Matcher depends only on the Worker Resource
+Catalog and Rule Evaluator: it does not know priority, requested count,
+uniqueness, Score, Cache or Lease. Its post-lease call reloads canonical
+descriptors only for the original Candidate/Worker pairs whose lease succeeded;
+Policy uses that descriptor's current endpoint to assemble the terminal
 Candidate.
 
 Pre-match failures do not receive a lease. Post-lease mismatches and candidate
@@ -137,9 +142,10 @@ The returned fence, unchanged or renewed, is written into
 PRECOMPUTED miss or rejected evidence never falls back to DIRECT acquisition.
 `TaskDispatchPolicy` chooses one path from
 `TaskDescriptor.workerAllocationMechanism`: PRECOMPUTED for Task-owned rules or
-DIRECT for Item-owned rules. It receives only opaque candidate/lease
-references; neither Policy path decodes scores, clears dirty, or releases
-rejected candidates.
+DIRECT for Item-owned rules. Both paths carry raw Score evidence opaquely by
+usage: they may associate and return it to exact Owner operations but never
+decode or calculate it. Neither path clears dirty or releases rejected
+candidates.
 
 ## Dirty Fence
 
@@ -239,8 +245,8 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateMatcher | bounded canonical descriptor pre-filter and post-lease rematch | no Score operation, lease or Candidate Cache access |
-| WorkerCandidateSelectionPolicy | request priority, bounded candidate choice, complete pre/post match, PRECOMPUTED/DIRECT strategy, and direct bounded Score/Cache calls | no Score decoding, construction or arithmetic |
+| WorkerCandidateMatcher | shared-pool or Candidate-scoped canonical Rule Match and original-pair post-lease rematch | no source choice, priority, count, uniqueness, Score, lease or Candidate Cache access |
+| WorkerCandidateSelectionPolicy | bounded PRECOMPUTED/DIRECT Candidate Source, request priority/count/unique selection, exact lease/renew, post-match invocation and terminal Candidate assembly | no Score decoding, construction or arithmetic |
 | TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, reobserve active lease fences, and publish Candidate evidence | no Task discovery, Task-score write or result handling |
 | TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
 | TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
@@ -263,10 +269,11 @@ payload.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
 - Do not let PRECOMPUTED acquisition fall back to DIRECT acquisition.
-- Do not let a Dispatch Policy call WorkerScoreCore, TaskScoreBandCore,
-  TaskItemScoreBandCore or WorkerCommandRuntime directly. A bounded
-  CandidateWorkerCache count read may remain in Allocation Policy because it
-  neither exposes a Score nor composes owners.
+- Do not let `TaskDispatchPolicy` bypass `WorkerCandidateSelectionPolicy` to
+  access Worker Score or Candidate Cache, or bypass `TaskAssignmentDispatcher`
+  to claim Items and publish Commands. Direct bounded Owner calls inside the
+  policy that owns that exact decision are allowed; Score remains opaque by
+  usage.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as Adapter rejection.
 - Do not let old result evidence mutate a newer Worker lease.

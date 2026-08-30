@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class WorkerCandidateMatcherTest {
 
     @Test
-    void filterUsesOneBoundedCanonicalLoadWithoutApplyingLimitsOrUniqueness() {
+    void sharedPoolUsesOneCanonicalLoadAndAllowsOverlappingMatches() {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         WorkerDescriptor east = worker("worker-east", "east");
         WorkerDescriptor west = worker("worker-west", "west");
@@ -27,25 +27,20 @@ class WorkerCandidateMatcherTest {
                 "worker-east", east,
                 "worker-west", west
         ));
-        LinkedHashMap<String, WorkerCandidateRequest> requests = requests();
+        LinkedHashMap<String, Map<String, Object>> rules = rules();
 
-        Map<String, List<String>> filtered =
+        Map<String, List<WorkerDescriptor>> matched =
                 new WorkerCandidateMatcher(catalog)
-                        .filterCandidateWorkerIds(
+                        .matchSharedWorkerPool(
                                 "group-1",
-                                Map.of(
-                                        "preferred",
-                                        List.of("worker-east", "worker-west"),
-                                        "fallback",
-                                        List.of("worker-east", "worker-west")
-                                ),
-                                requests
+                                List.of("worker-east", "worker-west"),
+                                rules
                         );
 
-        assertEquals(List.of("worker-east"), filtered.get("preferred"));
+        assertEquals(List.of(east), matched.get("preferred"));
         assertEquals(
-                List.of("worker-east", "worker-west"),
-                filtered.get("fallback")
+                List.of(east, west),
+                matched.get("fallback")
         );
         verify(catalog).getWorkerDescriptors(
                 "group-1",
@@ -54,23 +49,19 @@ class WorkerCandidateMatcherTest {
     }
 
     @Test
-    void leasedMatchAppliesPriorityLimitsAndUniqueWorkerOwnership() {
+    void candidateScopedRangesStayIndependentWithoutSelectionSemantics() {
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         when(catalog.getWorkerDescriptors(
                 "group-1",
-                List.of("worker-east", "worker-west")
+                List.of("worker-east", "worker-west", "outside-input")
         )).thenReturn(Map.of(
                 "worker-east", worker("worker-east", "east"),
                 "worker-west", worker("worker-west", "west")
         ));
-        Map<String, List<AcquiredWorkerCandidate>> matched =
+        Map<String, List<WorkerDescriptor>> matched =
                 new WorkerCandidateMatcher(catalog)
-                        .matchLeasedWorkerCandidates(
+                        .matchCandidateScopedWorkerIds(
                                 "group-1",
-                                Map.of(
-                                        "worker-east", 101L,
-                                        "worker-west", 102L
-                                ),
                                 Map.of(
                                         "preferred",
                                         List.of("worker-east", "worker-west"),
@@ -81,37 +72,62 @@ class WorkerCandidateMatcherTest {
                                                 "outside-input"
                                         )
                                 ),
-                                requests()
+                                rules()
                         );
 
         assertEquals(
                 List.of("worker-east"),
                 matched.get("preferred").stream()
-                        .map(AcquiredWorkerCandidate::workerId)
+                        .map(WorkerDescriptor::workerId)
                         .toList()
         );
         assertEquals(
-                List.of("worker-west"),
+                List.of("worker-east", "worker-west"),
                 matched.get("fallback").stream()
-                        .map(AcquiredWorkerCandidate::workerId)
+                        .map(WorkerDescriptor::workerId)
                         .toList()
         );
-        assertEquals(
-                "adapter-1",
-                matched.get("preferred").getFirst().endpointManagerId()
-        );
-        assertEquals(
-                "worker-east",
-                matched.get("preferred").getFirst().workerId()
-        );
-        assertEquals(
+        verify(catalog).getWorkerDescriptors(
                 "group-1",
-                matched.get("preferred").getFirst().workerGroupId()
+                List.of("worker-east", "worker-west", "outside-input")
         );
-        assertEquals(
-                101L,
-                matched.get("preferred").getFirst().workerLeaseScore()
-        );
+    }
+
+    @Test
+    void invalidRuleAndWrongGroupDescriptorAreIsolatedPerCandidate() {
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("worker-east", "worker-other")
+        )).thenReturn(Map.of(
+                "worker-east", worker("worker-east", "east"),
+                "worker-other", new WorkerDescriptor(
+                        "worker-other",
+                        "group-2",
+                        "adapter-2",
+                        Map.of("region", "east"),
+                        Map.of()
+                )
+        ));
+        LinkedHashMap<String, Map<String, Object>> rules =
+                new LinkedHashMap<>();
+        rules.put("invalid", Map.of(
+                "worker.region",
+                Map.of("$unknown", "east")
+        ));
+        rules.put("valid", Map.of());
+
+        Map<String, List<WorkerDescriptor>> matched =
+                new WorkerCandidateMatcher(catalog).matchSharedWorkerPool(
+                        "group-1",
+                        List.of("worker-east", "worker-other"),
+                        rules
+                );
+
+        assertEquals(List.of(), matched.get("invalid"));
+        assertEquals(List.of("worker-east"), matched.get("valid").stream()
+                .map(WorkerDescriptor::workerId)
+                .toList());
     }
 
     @Test
@@ -130,20 +146,15 @@ class WorkerCandidateMatcherTest {
         );
     }
 
-    private static LinkedHashMap<String, WorkerCandidateRequest> requests() {
-        LinkedHashMap<String, WorkerCandidateRequest> requests =
+    private static LinkedHashMap<String, Map<String, Object>> rules() {
+        LinkedHashMap<String, Map<String, Object>> rules =
                 new LinkedHashMap<>();
-        requests.put("preferred", new WorkerCandidateRequest(
-                0,
-                1,
+        rules.put(
+                "preferred",
                 Map.of("worker.region", Map.of("$eq", "east"))
-        ));
-        requests.put("fallback", new WorkerCandidateRequest(
-                1,
-                2,
-                Map.of()
-        ));
-        return requests;
+        );
+        rules.put("fallback", Map.of());
+        return rules;
     }
 
     private static WorkerDescriptor worker(String workerId, String region) {

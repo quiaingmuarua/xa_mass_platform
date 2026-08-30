@@ -781,12 +781,12 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ), "running-new");
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
-                nowSlot,
+                nowSlot + 100,
                 0
-        ), "running-current");
+        ), "running-not-due");
         redis.zadd(scoreKey, taskScore(
                 TaskScoreBandCore.RUNNING_VISIBLE_TAG,
-                nowSlot + 100,
+                nowSlot + 200,
                 0
         ), "running-future");
         redis.zadd(scoreKey, taskScore(

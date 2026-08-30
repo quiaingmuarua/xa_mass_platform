@@ -344,10 +344,12 @@ DispatchMainScheduler
   -> select workerAllocationMechanism=PRECOMPUTED_TASK_RULE as Allocation root input
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
-  -> WorkerCandidateSelectionPolicy matches and chooses bounded Workers
+  -> observe one shared bounded HOT Worker pool per Group
+  -> WorkerCandidateMatcher canonical-matches that pool against all Task rules
+  -> WorkerCandidateSelectionPolicy applies priority, deficit and unique-Worker choice
   -> WorkerCandidateSelectionPolicy exact-leases selected Workers through the
      Worker Score Owner
-  -> WorkerCandidateMatcher reloads canonical descriptors and rematches
+  -> WorkerCandidateMatcher rematches only original successful Candidate pairs
   -> reobserve active leases and append CandidateWorkerEntry evidence
 ```
 

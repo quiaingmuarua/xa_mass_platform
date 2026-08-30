@@ -5,6 +5,7 @@ import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -86,16 +87,16 @@ final class WorkerCandidateSelectionPolicy {
                         hotEligibilityFloorMillis,
                         workerScanLimit
                 );
-        LinkedHashMap<String, List<String>> candidateWorkerIds =
-                new LinkedHashMap<>();
-        validated.keySet().forEach(candidateId -> candidateWorkerIds.put(
-                candidateId,
-                List.copyOf(observed.keySet())
-        ));
+        Map<String, List<WorkerDescriptor>> matched =
+                matcher.matchSharedWorkerPool(
+                        workerGroupId,
+                        List.copyOf(observed.keySet()),
+                        rulesByCandidateId(validated)
+                );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
-                candidateWorkerIds,
+                matched,
                 validated,
                 leaseUntilMillis,
                 false,
@@ -126,10 +127,21 @@ final class WorkerCandidateSelectionPolicy {
             );
             cached.forEach(observed::putIfAbsent);
         }
+        Map<String, List<String>> boundedCandidateWorkerIds =
+                intersectWithObserved(
+                        candidateWorkerIds,
+                        observed.keySet()
+                );
+        Map<String, List<WorkerDescriptor>> matched =
+                matcher.matchCandidateScopedWorkerIds(
+                        workerGroupId,
+                        boundedCandidateWorkerIds,
+                        rulesByCandidateId(validated)
+                );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
-                candidateWorkerIds,
+                matched,
                 validated,
                 leaseUntilMillis,
                 true,
@@ -190,10 +202,21 @@ final class WorkerCandidateSelectionPolicy {
         LinkedHashMap<String, Long> observed =
                 new LinkedHashMap<>(broad);
         explicit.forEach(observed::putIfAbsent);
+        Map<String, List<String>> boundedCandidateWorkerIds =
+                intersectWithObserved(
+                        candidateWorkerIds,
+                        observed.keySet()
+                );
+        Map<String, List<WorkerDescriptor>> matched =
+                matcher.matchCandidateScopedWorkerIds(
+                        workerGroupId,
+                        boundedCandidateWorkerIds,
+                        rulesByCandidateId(validated)
+                );
         return selectLeaseAndRematch(
                 workerGroupId,
                 observed,
-                candidateWorkerIds,
+                matched,
                 validated,
                 leaseUntilMillis,
                 false,
@@ -205,7 +228,7 @@ final class WorkerCandidateSelectionPolicy {
             selectLeaseAndRematch(
                     String workerGroupId,
                     Map<String, Long> observed,
-                    Map<String, List<String>> candidateWorkerIds,
+                    Map<String, List<WorkerDescriptor>> matched,
                     Map<String, WorkerCandidateRequest> requests,
                     long leaseUntilMillis,
                     boolean renewal,
@@ -216,16 +239,8 @@ final class WorkerCandidateSelectionPolicy {
                     "maximumUniqueWorkers must be positive"
             );
         }
-        Map<String, List<String>> boundedCandidateWorkerIds =
-                intersectWithObserved(candidateWorkerIds, observed.keySet());
-        Map<String, List<String>> filtered =
-                matcher.filterCandidateWorkerIds(
-                        workerGroupId,
-                        boundedCandidateWorkerIds,
-                        requests
-                );
         Map<String, List<String>> selected = selectUniqueWorkerIds(
-                filtered,
+                matched,
                 requests,
                 maximumUniqueWorkers
         );
@@ -266,10 +281,18 @@ final class WorkerCandidateSelectionPolicy {
                 leased.put(workerId, result.score());
             }
         });
-        return matcher.matchLeasedWorkerCandidates(
+        Map<String, List<String>> leasedWorkerIdsByCandidate =
+                retainLeasedWorkerIds(selected, leased.keySet());
+        Map<String, List<WorkerDescriptor>> rematched =
+                matcher.matchCandidateScopedWorkerIds(
+                        workerGroupId,
+                        leasedWorkerIdsByCandidate,
+                        rulesByCandidateId(requests)
+                );
+        return acquiredCandidates(
                 workerGroupId,
                 leased,
-                selected,
+                rematched,
                 requests
         );
     }
@@ -311,7 +334,7 @@ final class WorkerCandidateSelectionPolicy {
     }
 
     private static Map<String, List<String>> selectUniqueWorkerIds(
-            Map<String, List<String>> filtered,
+            Map<String, List<WorkerDescriptor>> matched,
             Map<String, WorkerCandidateRequest> requests,
             int maximumUniqueWorkers
     ) {
@@ -324,10 +347,11 @@ final class WorkerCandidateSelectionPolicy {
         for (Map.Entry<String, WorkerCandidateRequest> request
                 : ordered(requests)) {
             List<String> matches = new ArrayList<>();
-            for (String workerId : filtered.getOrDefault(
+            for (WorkerDescriptor descriptor : matched.getOrDefault(
                     request.getKey(),
                     List.of()
             )) {
+                String workerId = descriptor.workerId();
                 if (usedWorkerIds.contains(workerId)) {
                     continue;
                 }
@@ -343,6 +367,59 @@ final class WorkerCandidateSelectionPolicy {
             selected.put(request.getKey(), List.copyOf(matches));
         }
         return Collections.unmodifiableMap(selected);
+    }
+
+    private static Map<String, List<String>> retainLeasedWorkerIds(
+            Map<String, List<String>> selectedWorkerIds,
+            Set<String> leasedWorkerIds
+    ) {
+        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
+        selectedWorkerIds.forEach((candidateId, workerIds) -> {
+            List<String> retained = workerIds.stream()
+                    .filter(leasedWorkerIds::contains)
+                    .toList();
+            result.put(candidateId, retained);
+        });
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, List<AcquiredWorkerCandidate>>
+            acquiredCandidates(
+                    String workerGroupId,
+                    Map<String, Long> leasedScores,
+                    Map<String, List<WorkerDescriptor>> rematched,
+                    Map<String, WorkerCandidateRequest> requests
+            ) {
+        LinkedHashMap<String, List<AcquiredWorkerCandidate>> result =
+                new LinkedHashMap<>();
+        requests.keySet().forEach(candidateId -> {
+            List<AcquiredWorkerCandidate> candidates = rematched.getOrDefault(
+                    candidateId,
+                    List.of()
+            ).stream().map(descriptor -> new AcquiredWorkerCandidate(
+                    descriptor.workerId(),
+                    workerGroupId,
+                    descriptor.endpointManagerId(),
+                    Objects.requireNonNull(
+                            leasedScores.get(descriptor.workerId()),
+                            "workerLeaseScore"
+                    )
+            )).toList();
+            result.put(candidateId, candidates);
+        });
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, Map<String, Object>> rulesByCandidateId(
+            Map<String, WorkerCandidateRequest> requests
+    ) {
+        LinkedHashMap<String, Map<String, Object>> result =
+                new LinkedHashMap<>();
+        requests.forEach((candidateId, request) -> result.put(
+                candidateId,
+                request.allocationRule()
+        ));
+        return Collections.unmodifiableMap(result);
     }
 
     private static List<String> workerIdCandidates(

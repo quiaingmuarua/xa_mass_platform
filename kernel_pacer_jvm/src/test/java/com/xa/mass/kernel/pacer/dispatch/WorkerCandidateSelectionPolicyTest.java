@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -77,41 +78,110 @@ class WorkerCandidateSelectionPolicyTest {
     }
 
     @Test
-    void postLeaseDescriptorChangeFailsClosedWithoutRefill() {
+    void sharedPoolSelectionAppliesPriorityCountAndWorkerUniqueness() {
         WorkerScoreCore scores = mock(WorkerScoreCore.class);
         CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
         WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         when(scores.acquireHotAcquireCandidates("group-1", null, 100))
-                .thenReturn(Map.of("east", 101L));
+                .thenReturn(linkedScores("east", 101L, "west", 102L));
+        when(catalog.getWorkerDescriptors(eq("group-1"), anyList()))
+                .thenAnswer(invocation -> descriptors(
+                        invocation.<List<String>>getArgument(1)
+                ));
         when(scores.acquireObservedHotScoreLeases(
                 "group-1",
-                Map.of("east", 101L),
+                linkedScores("east", 101L, "west", 102L),
                 5_000L
-        )).thenReturn(Map.of("east", transitioned(201L)));
-        when(catalog.getWorkerDescriptors("group-1", List.of("east")))
-                .thenReturn(
-                        Map.of("east", worker("east", "east")),
-                        Map.of("east", worker("east", "west"))
-                );
+        )).thenReturn(Map.of(
+                "east", transitioned(201L),
+                "west", transitioned(202L)
+        ));
+        LinkedHashMap<String, WorkerCandidateRequest> requests =
+                new LinkedHashMap<>();
+        requests.put("fallback", new WorkerCandidateRequest(
+                1,
+                2,
+                Map.of()
+        ));
+        requests.put("preferred", new WorkerCandidateRequest(
+                0,
+                1,
+                Map.of("workerId", Map.of("$eq", "east"))
+        ));
 
         Map<String, List<AcquiredWorkerCandidate>> acquired =
                 policy(scores, cache, catalog).acquireHotPoolCandidates(
                         "group-1",
-                        Map.of("candidate", new WorkerCandidateRequest(
-                                0,
-                                1,
-                                Map.of(
-                                        "worker.region",
-                                        Map.of("$eq", "east")
-                                )
-                        )),
+                        requests,
                         5_000L
                 );
 
-        assertEquals(List.of(), acquired.get("candidate"));
+        assertEquals(List.of("east"), acquired.get("preferred").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
+        assertEquals(List.of("west"), acquired.get("fallback").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
+        verify(scores, times(1)).acquireHotAcquireCandidates(
+                "group-1",
+                null,
+                100
+        );
+    }
+
+    @Test
+    void postLeaseRematchDoesNotMoveWorkerToAnotherCandidate() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.acquireHotAcquireCandidates("group-1", null, 100))
+                .thenReturn(linkedScores("east", 101L, "west", 102L));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1",
+                linkedScores("east", 101L, "west", 102L),
+                5_000L
+        )).thenReturn(Map.of(
+                "east", transitioned(201L),
+                "west", transitioned(202L)
+        ));
+        when(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("east", "west")
+        ))
+                .thenReturn(
+                        Map.of(
+                                "east", worker("east", "east"),
+                                "west", worker("west", "west")
+                        ),
+                        Map.of(
+                                "east", worker("east", "west"),
+                                "west", worker("west", "west")
+                        )
+                );
+        LinkedHashMap<String, WorkerCandidateRequest> requests =
+                new LinkedHashMap<>();
+        requests.put("preferred", new WorkerCandidateRequest(
+                0,
+                1,
+                Map.of("worker.region", Map.of("$eq", "east"))
+        ));
+        requests.put("fallback", new WorkerCandidateRequest(
+                1,
+                1,
+                Map.of()
+        ));
+
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).acquireHotPoolCandidates(
+                        "group-1",
+                        requests,
+                        5_000L
+                );
+
+        assertEquals(List.of(), acquired.get("preferred"));
+        assertEquals(List.of("west"), acquired.get("fallback").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
         verify(scores).acquireObservedHotScoreLeases(
                 "group-1",
-                Map.of("east", 101L),
+                linkedScores("east", 101L, "west", 102L),
                 5_000L
         );
     }

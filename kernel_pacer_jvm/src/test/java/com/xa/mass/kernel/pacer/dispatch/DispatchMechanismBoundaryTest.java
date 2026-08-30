@@ -96,15 +96,15 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void matcherUsesFlatScoreMapAndOwnsOnlyCanonicalReads()
+    void matcherOwnsOnlyCanonicalRuleMatching()
             throws IOException {
         String matcher = Files.readString(
                 ROOT.resolve("WorkerCandidateMatcher.java")
         );
         for (String required : List.of(
-                "filterCandidateWorkerIds(",
-                "matchLeasedWorkerCandidates(",
-                "Map<String, Long> leasedWorkers",
+                "matchSharedWorkerPool(",
+                "matchCandidateScopedWorkerIds(",
+                "Map<String, Map<String, Object>> rulesByCandidateId",
                 "WorkerResourceCatalog"
         )) {
             assertTrue(
@@ -117,6 +117,15 @@ class DispatchMechanismBoundaryTest {
                 "uniqueMatches",
                 "WorkerScoreCore",
                 "CandidateWorkerCache",
+                "WorkerCandidateRequest",
+                "AcquiredWorkerCandidate",
+                "filterCandidateWorkerIds",
+                "matchLeasedWorkerCandidates",
+                "matchExplicitWorkerIds",
+                "workerLeaseScore",
+                "priority",
+                "requestedCount",
+                "Lease",
                 "encodedScore()"
         )) {
             assertFalse(

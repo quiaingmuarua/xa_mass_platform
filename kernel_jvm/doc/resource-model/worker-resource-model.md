@@ -46,9 +46,11 @@ not move Workers, change scores, or assert that running Worker definitions
 already match the control-plane catalog.
 
 WorkerGroup does not declare matching indexes, providers, or supported
-operators. Candidate sources remain separate scheduling mechanisms; matching
-only reads canonical properties for the bounded Worker IDs already supplied by
-one of those sources.
+operators. Candidate sources remain separate scheduling policy: a shared HOT
+pool, Candidate Cache entries, or DIRECT explicit IDs supplies a bounded set
+inside the Task's fixed Group. Matching only validates canonical properties for
+those supplied Worker IDs. It does not choose a source, lease a Worker, apply
+requested counts, or allocate one Worker between competing Candidates.
 
 ## Two Property Sources
 

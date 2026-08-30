@@ -45,11 +45,12 @@ TaskDispatchPolicy
   CLOSE_WHEN_IDLE or PARK_WHEN_IDLE branch
 
 WorkerCandidateSelectionPolicy
-  bounded Score/Cache observation, matching and selected Worker lease/renew
+  bounded Candidate Source, priority/count/unique selection, exact lease/renew
+  and terminal Candidate assembly
 
 WorkerCandidateMatcher
-  bounded canonical pre-filter and post-lease rematch
-  final endpoint resolution into AcquiredWorkerCandidate
+  canonical Rule Match over shared or Candidate-scoped WorkerId ranges
+  canonical rematch of original successful Candidate/Worker lease pairs
 
 TaskAssignmentDispatcher
   exact Worker fence verification, exact Item claim, ResultContext and
