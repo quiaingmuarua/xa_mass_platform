@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 final class WorkerCandidateMatcher {
@@ -17,62 +18,200 @@ final class WorkerCandidateMatcher {
             WorkerCandidateMatcher.class.getName()
     );
 
-    Map<String, List<WorkerCandidateObservation>> match(
+    private final WorkerResourceCatalog workerCatalog;
+
+    WorkerCandidateMatcher(WorkerResourceCatalog workerCatalog) {
+        this.workerCatalog = Objects.requireNonNull(
+                workerCatalog,
+                "workerCatalog"
+        );
+    }
+
+    Map<String, List<String>> filterCandidateWorkerIds(
             String workerGroupId,
-            Map<String, List<WorkerCandidateObservation>> candidates,
-            Map<String, WorkerCandidateRequest> requests,
-            boolean limitMatches,
-            boolean uniqueMatches
+            Map<String, List<String>> candidateWorkerIds,
+            Map<String, WorkerCandidateRequest> requests
     ) {
         requireNonBlank(workerGroupId, "workerGroupId");
+        Objects.requireNonNull(candidateWorkerIds, "candidateWorkerIds");
         List<PreparedCandidate> prepared = prepare(requests, workerGroupId);
-        LinkedHashMap<String, List<WorkerCandidateObservation>> matched =
-                empty(requests);
-        Set<String> used = new LinkedHashSet<>();
+        LinkedHashMap<String, List<String>> filtered = emptyIds(requests);
+        Map<String, WorkerDescriptor> descriptors = loadDescriptors(
+                workerGroupId,
+                boundedWorkerIds(prepared, candidateWorkerIds)
+        );
         for (PreparedCandidate candidate : prepared) {
-            LinkedHashMap<String, WorkerCandidateObservation> ordered =
-                    new LinkedHashMap<>();
-            for (WorkerCandidateObservation worker : candidates.getOrDefault(
-                    candidate.candidateId(),
-                    List.of()
-            )) {
-                if (workerGroupId.equals(worker.workerGroupId())) {
-                    ordered.putIfAbsent(worker.workerId(), worker);
-                }
-            }
-            for (WorkerCandidateObservation worker : ordered.values()) {
-                if (uniqueMatches && used.contains(worker.workerId())) {
-                    continue;
-                }
-                if (!ConstraintEvaluator.evaluateMatchRules(
-                        context(worker),
+            LinkedHashSet<String> ordered = new LinkedHashSet<>(
+                    candidateWorkerIds.getOrDefault(
+                            candidate.candidateId(),
+                            List.of()
+                    )
+            );
+            List<String> matches = filtered.get(candidate.candidateId());
+            for (String workerId : ordered) {
+                WorkerDescriptor descriptor = descriptors.get(workerId);
+                if (descriptor != null && matches(
+                        workerId,
+                        descriptor,
                         candidate.compiledRule()
                 )) {
+                    matches.add(workerId);
+                }
+            }
+        }
+        return freezeIds(filtered);
+    }
+
+    Map<String, List<AcquiredWorkerCandidate>> matchLeasedWorkerCandidates(
+            String workerGroupId,
+            Map<String, Long> leasedWorkers,
+            Map<String, List<String>> selectedWorkerIds,
+            Map<String, WorkerCandidateRequest> requests
+    ) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        Map<String, Long> leased = validateScores(leasedWorkers);
+        Objects.requireNonNull(selectedWorkerIds, "selectedWorkerIds");
+        List<PreparedCandidate> prepared = prepare(requests, workerGroupId);
+        LinkedHashMap<String, List<AcquiredWorkerCandidate>> matched =
+                emptyCandidates(requests);
+        Map<String, WorkerDescriptor> descriptors = loadDescriptors(
+                workerGroupId,
+                boundedLeasedWorkerIds(
+                        prepared,
+                        selectedWorkerIds,
+                        leased.keySet()
+                )
+        );
+        Set<String> used = new LinkedHashSet<>();
+        for (PreparedCandidate candidate : prepared) {
+            LinkedHashSet<String> ordered = new LinkedHashSet<>(
+                    selectedWorkerIds.getOrDefault(
+                            candidate.candidateId(),
+                            List.of()
+                    )
+            );
+            List<AcquiredWorkerCandidate> matches = matched.get(
+                    candidate.candidateId()
+            );
+            for (String workerId : ordered) {
+                if (used.contains(workerId)) {
                     continue;
                 }
-                matched.get(candidate.candidateId()).add(worker);
-                if (uniqueMatches) {
-                    used.add(worker.workerId());
+                Long workerLeaseScore = leased.get(workerId);
+                WorkerDescriptor descriptor = descriptors.get(workerId);
+                if (workerLeaseScore == null
+                        || descriptor == null
+                        || !matches(
+                                workerId,
+                                descriptor,
+                                candidate.compiledRule()
+                        )) {
+                    continue;
                 }
-                if (limitMatches
-                        && matched.get(candidate.candidateId()).size()
+                matches.add(new AcquiredWorkerCandidate(
+                        workerId,
+                        workerGroupId,
+                        descriptor.endpointManagerId(),
+                        workerLeaseScore
+                ));
+                used.add(workerId);
+                if (matches.size()
                         >= candidate.request().requestedCount()) {
                     break;
                 }
             }
         }
-        return freeze(matched);
+        return freezeCandidates(matched);
+    }
+
+    private Map<String, WorkerDescriptor> loadDescriptors(
+            String workerGroupId,
+            List<String> workerIds
+    ) {
+        if (workerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, WorkerDescriptor> loaded =
+                workerCatalog.getWorkerDescriptors(
+                        workerGroupId,
+                        workerIds
+                );
+        LinkedHashMap<String, WorkerDescriptor> descriptors =
+                new LinkedHashMap<>();
+        for (String workerId : workerIds) {
+            WorkerDescriptor descriptor = loaded.get(workerId);
+            if (descriptor != null
+                    && workerId.equals(descriptor.workerId())
+                    && workerGroupId.equals(descriptor.workerGroupId())) {
+                descriptors.put(workerId, descriptor);
+            }
+        }
+        return Collections.unmodifiableMap(descriptors);
+    }
+
+    private static List<String> boundedWorkerIds(
+            List<PreparedCandidate> candidates,
+            Map<String, List<String>> candidateWorkerIds
+    ) {
+        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+        for (PreparedCandidate candidate : candidates) {
+            for (String workerId : candidateWorkerIds.getOrDefault(
+                    candidate.candidateId(),
+                    List.of()
+            )) {
+                requireNonBlank(workerId, "workerId");
+                workerIds.add(workerId);
+            }
+        }
+        return List.copyOf(workerIds);
+    }
+
+    private static List<String> boundedLeasedWorkerIds(
+            List<PreparedCandidate> candidates,
+            Map<String, List<String>> selectedWorkerIds,
+            Set<String> leasedWorkerIds
+    ) {
+        LinkedHashSet<String> workerIds = new LinkedHashSet<>();
+        for (PreparedCandidate candidate : candidates) {
+            for (String workerId : selectedWorkerIds.getOrDefault(
+                    candidate.candidateId(),
+                    List.of()
+            )) {
+                requireNonBlank(workerId, "workerId");
+                if (leasedWorkerIds.contains(workerId)) {
+                    workerIds.add(workerId);
+                }
+            }
+        }
+        return List.copyOf(workerIds);
+    }
+
+    private static Map<String, Long> validateScores(
+            Map<String, Long> source
+    ) {
+        Objects.requireNonNull(source, "leasedWorkers");
+        LinkedHashMap<String, Long> scores =
+                new LinkedHashMap<>();
+        source.forEach((workerId, score) -> {
+            requireNonBlank(workerId, "workerId");
+            scores.put(workerId, Objects.requireNonNull(score, "score"));
+        });
+        return Collections.unmodifiableMap(scores);
     }
 
     private static List<PreparedCandidate> prepare(
             Map<String, WorkerCandidateRequest> requests,
             String workerGroupId
     ) {
+        Objects.requireNonNull(requests, "requests");
         List<Map.Entry<String, WorkerCandidateRequest>> ordered =
                 new ArrayList<>(requests.entrySet());
         ordered.sort(Comparator
                 .comparingInt((Map.Entry<String, WorkerCandidateRequest> e)
-                        -> e.getValue().priority())
+                        -> Objects.requireNonNull(
+                                e.getValue(),
+                                "request"
+                        ).priority())
                 .thenComparing(Map.Entry::getKey));
         List<PreparedCandidate> candidates = new ArrayList<>();
         int invalid = 0;
@@ -109,6 +248,18 @@ final class WorkerCandidateMatcher {
         return List.copyOf(candidates);
     }
 
+    private static boolean matches(
+            String workerId,
+            WorkerDescriptor descriptor,
+            Map<String, Map<String, Object>> compiledRule
+    ) {
+        LinkedHashMap<String, Object> context = new LinkedHashMap<>();
+        context.put("workerId", workerId);
+        context.put("worker", descriptor.workerProperties());
+        context.put("platform", descriptor.platformProperties());
+        return ConstraintEvaluator.evaluateMatchRules(context, compiledRule);
+    }
+
     private static boolean validAllocationField(String field) {
         return "workerId".equals(field)
                 || field.startsWith("worker.")
@@ -117,29 +268,35 @@ final class WorkerCandidateMatcher {
                 && field.length() > "platform.".length();
     }
 
-    private static Map<String, Object> context(
-            WorkerCandidateObservation worker
+    private static LinkedHashMap<String, List<String>> emptyIds(
+            Map<String, WorkerCandidateRequest> requests
     ) {
-        WorkerDescriptor descriptor = worker.descriptor();
-        LinkedHashMap<String, Object> context = new LinkedHashMap<>();
-        context.put("workerId", worker.workerId());
-        context.put("worker", descriptor.workerProperties());
-        context.put("platform", descriptor.platformProperties());
-        return context;
+        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
+        requests.keySet().forEach(id -> result.put(id, new ArrayList<>()));
+        return result;
     }
 
-    private static LinkedHashMap<String, List<WorkerCandidateObservation>>
-            empty(Map<String, WorkerCandidateRequest> requests) {
-        LinkedHashMap<String, List<WorkerCandidateObservation>> result =
+    private static LinkedHashMap<String, List<AcquiredWorkerCandidate>>
+            emptyCandidates(Map<String, WorkerCandidateRequest> requests) {
+        LinkedHashMap<String, List<AcquiredWorkerCandidate>> result =
                 new LinkedHashMap<>();
         requests.keySet().forEach(id -> result.put(id, new ArrayList<>()));
         return result;
     }
 
-    private static Map<String, List<WorkerCandidateObservation>> freeze(
-            Map<String, List<WorkerCandidateObservation>> source
+    private static Map<String, List<String>> freezeIds(
+            Map<String, List<String>> source
     ) {
-        LinkedHashMap<String, List<WorkerCandidateObservation>> result =
+        LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
+        source.forEach((id, workers) -> result.put(id, List.copyOf(workers)));
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, List<AcquiredWorkerCandidate>>
+            freezeCandidates(
+                    Map<String, List<AcquiredWorkerCandidate>> source
+            ) {
+        LinkedHashMap<String, List<AcquiredWorkerCandidate>> result =
                 new LinkedHashMap<>();
         source.forEach((id, workers) -> result.put(id, List.copyOf(workers)));
         return Collections.unmodifiableMap(result);

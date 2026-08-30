@@ -1,5 +1,6 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
+import com.xa.mass.kernel.score.WorkerScoreCore;
 import java.util.List;
 
 record WorkerServiceabilityDispatchConfig(
@@ -23,8 +24,7 @@ record WorkerServiceabilityDispatchConfig(
             );
         }
         if (maxRecoveryAttempts < 1
-                || maxRecoveryAttempts > WorkerServiceabilityDispatchMechanism
-                .MAX_RECOVERY_ATTEMPTS) {
+                || maxRecoveryAttempts > WorkerScoreCore.MAX_LANE_RANK) {
             throw new IllegalArgumentException(
                     "maxRecoveryAttempts must be between 1 and 99"
             );

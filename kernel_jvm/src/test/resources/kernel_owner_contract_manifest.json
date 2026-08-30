@@ -154,6 +154,7 @@
       "hold_observed_hot_for_serviceability_probes",
       "initialize_hot_acquire_score",
       "mark_current_lease_dirty",
+      "observe_active_hot_score_leases",
       "observe_due_hot_scores",
       "release_completed_hot_score_holds",
       "release_score_holds",
@@ -166,7 +167,6 @@
     "CandidateWorkerEntry": [
       "worker_id",
       "worker_group_id",
-      "endpoint_manager_id",
       "worker_lease_score"
     ],
     "DeliveryReport": [

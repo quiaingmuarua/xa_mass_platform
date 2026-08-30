@@ -45,6 +45,12 @@ public interface WorkerScoreCore {
             @Nullable Long hotEligibilityFloorMillis
     );
 
+    Map<String, Long> observeActiveHotScoreLeases(
+            String homeBucketId,
+            List<String> workerIds,
+            long expectedLeaseUntilMillis
+    );
+
     List<WorkerScoreObservation> acquirePreEpochHotCandidates(
             String homeBucketId,
             long hotEligibilityFloorMillis,

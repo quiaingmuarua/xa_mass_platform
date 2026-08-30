@@ -114,8 +114,9 @@ those owners.
 - [`kernel_pacer_jvm/`](kernel_pacer_jvm/) is the Kernel-owned policy and
   lifecycle module. Its sole externally supported entry assembles fixed-lane
   Result Convergence and Task-demand Dispatch Convergence over `kernel_jvm`
-  owners and package-private dispatch mechanisms. The stability order is
-  `kernel_jvm > kernel_pacer_jvm > server_jvm`.
+  owners, direct bounded Owner calls and the two package-private exact Dispatch
+  closures. The stability order is `kernel_jvm > kernel_pacer_jvm >
+  server_jvm`.
 - [`server_jvm/`](server_jvm/) is the Spring Runtime API and incremental
   provider assembly. Task business HTTP terminates here. Server adapts the one
   Kernel Pacer Runtime lifecycle to Spring and owns Worker Identity,

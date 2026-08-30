@@ -384,10 +384,7 @@ final class DispatchMainScheduler {
             }
             tasks.add(new DueTaskObservation(
                     taskId,
-                    new TaskSchedulingReference(
-                            taskId,
-                            observedScores.get(taskId)
-                    ),
+                    observedScores.get(taskId),
                     descriptor
             ));
         }

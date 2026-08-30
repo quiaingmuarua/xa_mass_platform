@@ -2,15 +2,19 @@ package com.xa.mass.kernel.pacer.dispatch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.LeaseMode;
-import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
+import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,34 +22,35 @@ import java.util.Map;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("unchecked")
 class WorkerCandidateSelectionPolicyTest {
 
     @Test
     void leasesOnlyPreselectedMatchesAndRematchesCanonicalDescriptor() {
-        WorkerCandidateMechanism mechanism = mock(
-                WorkerCandidateMechanism.class
-        );
-        WorkerCandidateObservation east = worker("east", "east");
-        WorkerCandidateObservation west = worker("west", "west");
-        WorkerCandidateObservation leasedEast = worker("east", "east");
-        when(mechanism.observeHot("group-1", null, 100))
-                .thenReturn(List.of(east, west));
-        when(mechanism.leaseSelected(
-                eq("group-1"),
-                eq(List.of(east)),
-                eq(5_000L),
-                eq(LeaseMode.ACQUIRE)
-        )).thenReturn(List.of(leasedEast));
-        WorkerCandidateSelectionPolicy policy =
-                new WorkerCandidateSelectionPolicy(
-                        mechanism,
-                        new WorkerCandidateMatcher(),
-                        100,
-                        null
-                );
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.acquireHotAcquireCandidates("group-1", null, 100))
+                .thenReturn(linkedScores("east", 101L, "west", 102L));
+        when(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("east", "west")
+        )).thenReturn(Map.of(
+                "east", worker("east", "east"),
+                "west", worker("west", "west")
+        ));
+        when(scores.acquireObservedHotScoreLeases(
+                "group-1",
+                Map.of("east", 101L),
+                5_000L
+        )).thenReturn(Map.of("east", transitioned(201L)));
+        when(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("east")
+        )).thenReturn(Map.of("east", worker("east", "east")));
 
-        Map<String, List<WorkerCandidateObservation>> acquired =
-                policy.acquireHotPoolCandidates(
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).acquireHotPoolCandidates(
                         "group-1",
                         Map.of("candidate", new WorkerCandidateRequest(
                                 0,
@@ -58,40 +63,39 @@ class WorkerCandidateSelectionPolicyTest {
                         5_000L
                 );
 
-        assertEquals(List.of(leasedEast), acquired.get("candidate"));
-        verify(mechanism).leaseSelected(
+        assertEquals(List.of("east"), acquired.get("candidate").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
+        assertEquals(
+                201L,
+                acquired.get("candidate").getFirst().workerLeaseScore()
+        );
+        verify(scores).acquireObservedHotScoreLeases(
                 "group-1",
-                List.of(east),
-                5_000L,
-                LeaseMode.ACQUIRE
+                Map.of("east", 101L),
+                5_000L
         );
     }
 
     @Test
     void postLeaseDescriptorChangeFailsClosedWithoutRefill() {
-        WorkerCandidateMechanism mechanism = mock(
-                WorkerCandidateMechanism.class
-        );
-        WorkerCandidateObservation east = worker("east", "east");
-        WorkerCandidateObservation leasedWest = worker("east", "west");
-        when(mechanism.observeHot("group-1", null, 100))
-                .thenReturn(List.of(east));
-        when(mechanism.leaseSelected(
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(scores.acquireHotAcquireCandidates("group-1", null, 100))
+                .thenReturn(Map.of("east", 101L));
+        when(scores.acquireObservedHotScoreLeases(
                 "group-1",
-                List.of(east),
-                5_000L,
-                LeaseMode.ACQUIRE
-        )).thenReturn(List.of(leasedWest));
-        WorkerCandidateSelectionPolicy policy =
-                new WorkerCandidateSelectionPolicy(
-                        mechanism,
-                        new WorkerCandidateMatcher(),
-                        100,
-                        null
+                Map.of("east", 101L),
+                5_000L
+        )).thenReturn(Map.of("east", transitioned(201L)));
+        when(catalog.getWorkerDescriptors("group-1", List.of("east")))
+                .thenReturn(
+                        Map.of("east", worker("east", "east")),
+                        Map.of("east", worker("east", "west"))
                 );
 
-        Map<String, List<WorkerCandidateObservation>> acquired =
-                policy.acquireHotPoolCandidates(
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).acquireHotPoolCandidates(
                         "group-1",
                         Map.of("candidate", new WorkerCandidateRequest(
                                 0,
@@ -105,52 +109,94 @@ class WorkerCandidateSelectionPolicyTest {
                 );
 
         assertEquals(List.of(), acquired.get("candidate"));
+        verify(scores).acquireObservedHotScoreLeases(
+                "group-1",
+                Map.of("east", 101L),
+                5_000L
+        );
+    }
+
+    @Test
+    void precomputedRenewsOnlyCachedWorkersWithoutHotFallback() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        when(cache.consumeCandidateWorkers("candidate", 1)).thenReturn(
+                List.of(new CandidateWorkerEntry(
+                        "cached", "group-1", 101L
+                ))
+        );
+        when(scores.renewActiveHotScoreLeases(
+                "group-1",
+                Map.of("cached", 101L),
+                5_000L
+        )).thenReturn(Map.of("cached", transitioned(201L)));
+        when(catalog.getWorkerDescriptors("group-1", List.of("cached")))
+                .thenReturn(Map.of("cached", worker("cached", "east")));
+
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).acquireWorkerCandidates(
+                        WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+                        "group-1",
+                        Map.of("candidate", new WorkerCandidateRequest(
+                                0,
+                                1,
+                                Map.of(
+                                        "worker.region",
+                                        Map.of("$eq", "east")
+                                )
+                        )),
+                        5_000L
+                );
+
+        assertEquals(List.of("cached"), acquired.get("candidate").stream()
+                .map(AcquiredWorkerCandidate::workerId).toList());
+        verify(scores, never()).acquireHotAcquireCandidates(
+                eq("group-1"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt()
+        );
     }
 
     @Test
     void directSelectionLeasesAtMostOneHundredUniqueWorkersPerRound() {
-        WorkerCandidateMechanism mechanism = mock(
-                WorkerCandidateMechanism.class
-        );
-        List<WorkerCandidateObservation> broad = IntStream.range(0, 100)
-                .mapToObj(index -> worker("broad-" + index, "east"))
-                .toList();
-        WorkerCandidateObservation explicit = worker("explicit", "east");
-        when(mechanism.observeHot("group-1", null, 100))
-                .thenReturn(broad);
-        when(mechanism.observeExplicit(
-                "group-1",
-                List.of("explicit"),
-                null
-        )).thenReturn(List.of(explicit));
-        when(mechanism.leaseSelected(
-                anyString(),
-                anyList(),
-                eq(5_000L),
-                eq(LeaseMode.ACQUIRE)
-        )).thenAnswer(invocation -> invocation.getArgument(1));
-        WorkerCandidateSelectionPolicy policy =
-                new WorkerCandidateSelectionPolicy(
-                        mechanism,
-                        new WorkerCandidateMatcher(),
-                        100,
-                        null
-                );
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        CandidateWorkerCache cache = mock(CandidateWorkerCache.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        LinkedHashMap<String, Long> broad = new LinkedHashMap<>();
+        IntStream.range(0, 100).forEach(index ->
+                broad.put("broad-" + index, 100L + index));
+        when(scores.acquireHotAcquireCandidates("group-1", null, 100))
+                .thenReturn(java.util.Collections.unmodifiableMap(broad));
+        when(scores.observeDueHotScores(
+                "group-1", List.of("explicit"), null
+        )).thenReturn(Map.of("explicit", 301L));
+        when(scores.acquireObservedHotScoreLeases(
+                eq("group-1"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                eq(5_000L)
+        )).thenAnswer(invocation -> {
+            Map<String, Long> input = invocation.getArgument(1);
+            LinkedHashMap<String, WorkerScoreTransitionResult> result =
+                    new LinkedHashMap<>();
+            input.forEach((id, score) -> result.put(id, transitioned(score)));
+            return result;
+        });
+        when(catalog.getWorkerDescriptors(eq("group-1"), anyList()))
+                .thenAnswer(invocation -> descriptors(
+                        invocation.<List<String>>getArgument(1)
+                ));
         LinkedHashMap<String, WorkerCandidateRequest> requests =
                 new LinkedHashMap<>();
-        requests.put("broad", new WorkerCandidateRequest(
-                0,
-                100,
-                Map.of()
-        ));
+        requests.put("broad", new WorkerCandidateRequest(0, 100, Map.of()));
         requests.put("explicit", new WorkerCandidateRequest(
                 1,
                 1,
                 Map.of("workerId", Map.of("$eq", "explicit"))
         ));
 
-        Map<String, List<WorkerCandidateObservation>> acquired =
-                policy.acquireWorkerCandidates(
+        Map<String, List<AcquiredWorkerCandidate>> acquired =
+                policy(scores, cache, catalog).acquireWorkerCandidates(
                         WorkerCandidateAcquisitionStrategy.DIRECT,
                         "group-1",
                         requests,
@@ -159,31 +205,65 @@ class WorkerCandidateSelectionPolicyTest {
 
         assertEquals(100, acquired.get("broad").size());
         assertEquals(List.of(), acquired.get("explicit"));
-        verify(mechanism).leaseSelected(
+        verify(scores).acquireObservedHotScoreLeases(
                 eq("group-1"),
                 argThat(workers -> workers.size() == 100
-                        && workers.stream().noneMatch(worker ->
-                        "explicit".equals(worker.workerId()))),
-                eq(5_000L),
-                eq(LeaseMode.ACQUIRE)
+                        && !workers.containsKey("explicit")),
+                eq(5_000L)
         );
     }
 
-    private static WorkerCandidateObservation worker(
-            String workerId,
-            String region
+    private static WorkerCandidateSelectionPolicy policy(
+            WorkerScoreCore scores,
+            CandidateWorkerCache cache,
+            WorkerResourceCatalog catalog
     ) {
-        return new WorkerCandidateObservation(
+        return new WorkerCandidateSelectionPolicy(
+                scores,
+                cache,
+                new WorkerCandidateMatcher(catalog),
+                100,
+                null
+        );
+    }
+
+    private static LinkedHashMap<String, Long> linkedScores(
+            String firstId,
+            long firstScore,
+            String secondId,
+            long secondScore
+    ) {
+        LinkedHashMap<String, Long> result = new LinkedHashMap<>();
+        result.put(firstId, firstScore);
+        result.put(secondId, secondScore);
+        return result;
+    }
+
+    private static WorkerScoreTransitionResult transitioned(long score) {
+        return new WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                score
+        );
+    }
+
+    private static Map<String, WorkerDescriptor> descriptors(
+            List<String> workerIds
+    ) {
+        LinkedHashMap<String, WorkerDescriptor> result = new LinkedHashMap<>();
+        workerIds.forEach(workerId -> result.put(
+                workerId,
+                worker(workerId, "east")
+        ));
+        return result;
+    }
+
+    private static WorkerDescriptor worker(String workerId, String region) {
+        return new WorkerDescriptor(
                 workerId,
                 "group-1",
-                new WorkerDescriptor(
-                        workerId,
-                        "group-1",
-                        "adapter-1",
-                        Map.of("region", region),
-                        Map.of()
-                ),
-                mock(WorkerCandidateReference.class)
+                "adapter-1",
+                Map.of("region", region),
+                Map.of()
         );
     }
 }

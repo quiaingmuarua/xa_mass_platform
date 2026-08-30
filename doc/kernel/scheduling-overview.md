@@ -141,19 +141,19 @@ DispatchMainScheduler
   its INITIAL subset, loads Descriptors only for the NORMAL complement, and
   plans the complete root input of four fixed single-flight Resource Producers
 
-WorkerCandidateMechanism
-  internally protects bounded Worker observation, cached opaque lease
-  correlation, exact lease or renew, and canonical descriptor reload
+WorkerCandidateMatcher
+  owns bounded canonical descriptor pre-filter and post-lease rematch
+  produces the final endpoint-bearing AcquiredWorkerCandidate
 
-TaskExecutionMechanism
-  owns Item observation/finality, exact Worker fence and Item claim, Command
-  construction/publication, Task pacing and idle convergence
+TaskAssignmentDispatcher / TaskIdleSettlement
+  protect the two real cross-Owner Task Dispatch closures: Worker renew before
+  Item claim before Command publication, and complete ACTIVE recheck before
+  exact close or park repair
 
-WorkerServiceabilityDispatchMechanism
-  internally protects Worker sweep Score reads and exact excluded-endpoint
-  cold park; Policy visits demanded WorkerGroups in Task order under one
-  100-Probe hold budget and offers selected ids through
-  WorkerServiceabilityRuntime
+WorkerServiceabilityDispatchPolicy
+  directly composes bounded Worker Score, canonical Descriptor, and Probe
+  Request Owner operations; it visits demanded WorkerGroups in Task order
+  under one 100-Probe hold budget
 
 WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes, authoritative append, non-overwriting
@@ -216,7 +216,7 @@ Worker Delivery Dispatch
 | Worker serviceability | Process-local HOT eligibility floor, exact pre-Probe Score hold/Recovery advance, Adapter Route/delivery-expiry evidence, Adapter-scoped request HASH, bounded evidence LIST, due-Task-driven compensation Dispatch Pacer, lowest-priority Adapter snapshot bridge, and time-fenced polarity-only Result convergence implemented; absent configuration preserves the old HOT range | Polling wake/evidence, Binding generation fencing, and production policy tuning |
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
-| Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through the finite Candidate Mechanism; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
+| Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through direct bounded Candidate Cache and Worker Score Owner calls; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
 | Task dispatch | Implemented over the same verified RUNNING batch with PRECOMPUTED Task rules, DIRECT Item rules including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
 | Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |

@@ -734,6 +734,66 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void activeHotLeaseObservationReturnsOnlyCurrentCleanExpectedFences() {
+        long nowSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
+        long expectedSlot = nowSlot + 100;
+        long expectedLeaseUntilMillis = expectedSlot
+                * WorkerScoreCore.SLOT_MILLIS;
+        long active = workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                expectedSlot,
+                7,
+                WorkerScoreCore.MIN_DIRTY
+        );
+        redis.zadd(scoreKey("group-lease-observe"), active, "active");
+        redis.zadd(scoreKey("group-lease-observe"), workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                expectedSlot,
+                7,
+                WorkerScoreCore.MAX_DIRTY
+        ), "dirty");
+        redis.zadd(scoreKey("group-lease-observe"), workerScore(
+                WorkerScoreCore.RECOVERY_RECHECK_POLARITY,
+                expectedSlot,
+                7,
+                WorkerScoreCore.MIN_DIRTY
+        ), "recovery");
+        redis.zadd(scoreKey("group-lease-observe"), workerScore(
+                WorkerScoreCore.HOT_ACQUIRE_POLARITY,
+                expectedSlot + 1,
+                7,
+                WorkerScoreCore.MIN_DIRTY
+        ), "different-slot");
+
+        Map<String, Long> observed = scoreCore.observeActiveHotScoreLeases(
+                "group-lease-observe",
+                List.of(
+                        "dirty",
+                        "active",
+                        "recovery",
+                        "different-slot",
+                        "missing"
+                ),
+                expectedLeaseUntilMillis
+        );
+
+        assertThat(observed).containsExactlyEntriesOf(Map.of(
+                "active", active
+        ));
+
+        redis.zadd(
+                scoreKey("group-lease-observe"),
+                active + WorkerScoreCore.SLOT_FACTOR,
+                "active"
+        );
+        assertThat(scoreCore.observeActiveHotScoreLeases(
+                "group-lease-observe",
+                List.of("active"),
+                expectedLeaseUntilMillis
+        )).isEmpty();
+    }
+
+    @Test
     void serviceabilityHoldsAndEvidenceUseExactBatchFences() {
         long beforeSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
         long hot = workerScore(

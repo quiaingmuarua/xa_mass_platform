@@ -71,8 +71,8 @@ When Worker Serviceability is enabled, both reads exclude scores below that
 Kernel process's HOT eligibility floor. With no Serviceability configuration,
 the optional floor is absent and the original full positive range remains.
 
-`WorkerCandidateMechanism` exposes separate bounded observation and exact-fence
-semantics while `WorkerCandidateSelectionPolicy` owns matching and selection:
+`WorkerCandidateSelectionPolicy` calls the bounded observation and exact-fence
+Owner operations directly while retaining matching and selection policy:
 
 ```text
 acquire_hot_pool_candidates
@@ -89,11 +89,13 @@ DIRECT with an Item-owned rule
 ```
 
 HOT-pool and DIRECT observation do not read Candidate Cache; PRECOMPUTED does.
-Allocation cache publication also goes through the Mechanism. Each call is
-scoped to one explicit WorkerGroup and one score ZSET. Policy first matches and
-selects bounded observations, then Mechanism exact-leases only those Workers,
-reloads canonical descriptors, and returns opaque lease references for the
-required post-lease rematch.
+Allocation cache publication reobserves the selected Worker IDs through the
+Score Owner at the expected lease slot, then appends only the still-active
+subset. Each call is scoped to one explicit WorkerGroup and one score ZSET.
+Policy first matches and selects bounded Worker IDs, then exact-leases only
+those Workers. The Pacer-internal Matcher alone reloads canonical descriptors
+for the required post-lease rematch and resolves the final endpoint-bearing
+Candidate.
 
 Pre-match failures do not receive a lease. Post-lease mismatches and candidate
 publication failures are not actively released; their short leases expire
@@ -237,11 +239,12 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateMechanism | bounded HOT/point observations, cached opaque lease correlation, exact lease/renew and canonical descriptor reload | no priority, deficit, rule decision or fallback |
-| WorkerCandidateSelectionPolicy | request priority, bounded candidate choice, complete pre/post match and PRECOMPUTED/DIRECT strategy | no Score or lease internals |
-| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits and request Candidate publication | no Task discovery, Task-score write or result handling |
-| TaskExecutionMechanism | Item observation/finality, Worker fence verification, Item claim, Command publication and Task pacing/idle transitions | no expiry, pairing, limit or idle-disposition policy |
-| TaskDispatchPolicy | bounded Task batch, expiry/exhaustion, pairing, per-Task limit and idle-disposition choice | no Score, Candidate Cache, Command Runtime or ResultContext access |
+| WorkerCandidateMatcher | bounded canonical descriptor pre-filter and post-lease rematch | no Score operation, lease or Candidate Cache access |
+| WorkerCandidateSelectionPolicy | request priority, bounded candidate choice, complete pre/post match, PRECOMPUTED/DIRECT strategy, and direct bounded Score/Cache calls | no Score decoding, construction or arithmetic |
+| TaskWorkerAllocationPolicy | consume verified RUNNING Task evidence, read bounded Candidate counts, compute deficits, reobserve active lease fences, and publish Candidate evidence | no Task discovery, Task-score write or result handling |
+| TaskAssignmentDispatcher | exact Worker fence renewal, Item claim, ResultContext/Command construction and publication | no Item observation, expiry, pairing, limit, idle or pacing policy |
+| TaskIdleSettlement | complete ACTIVE check, ordinary pacing, exact close/park and post-park repair | no Item selection, Worker acquisition or Command publication |
+| TaskDispatchPolicy | bounded Task/Item observation, expiry/exhaustion, pairing, per-Task limit, ordinary pacing and idle-disposition choice | no Score decoding, construction or arithmetic |
 | Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and DeliveryReport append | no Worker selection or score parsing/mutation |
 | Long-lived Adapter | direct pre-execution rejection evidence | no inferred rejection from missing response or mailbox age |
 | ResultConvergenceApplication | weighted-fair bounded lane consume over ten shared Batch slots; Task lanes may execute concurrently and Adapter Evidence remains single-flight | no Redis ownership, dynamic lanes, Worker selection or exact subcode policy |

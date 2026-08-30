@@ -52,8 +52,8 @@ TaskRuntime / TaskResourceCatalog
 TaskScoreBandCore / TaskItemScoreBandCore
 WorkerRuntime / WorkerResourceCatalog / WorkerScoreCore
 TaskItemResultEvents / WorkerExecutionResultEvents / WorkerServiceabilityEvents
-TaskInitializationCheck / WorkerCandidateMechanism
-TaskExecutionMechanism / WorkerServiceabilityDispatchMechanism
+TaskInitializationCheck
+TaskAssignmentDispatcher / TaskIdleSettlement
 CandidateWorkerCache
 WorkerCommandRuntime / TaskResultRuntime
 WorkerServiceabilityRuntime

@@ -5,7 +5,7 @@ import java.util.Objects;
 
 record DueTaskObservation(
         String taskId,
-        TaskSchedulingReference reference,
+        long observedTaskScore,
         TaskDescriptor descriptor
 ) {
 
@@ -13,7 +13,6 @@ record DueTaskObservation(
         if (taskId == null || taskId.isEmpty()) {
             throw new IllegalArgumentException("taskId must be non-empty");
         }
-        Objects.requireNonNull(reference, "reference");
         Objects.requireNonNull(descriptor, "descriptor");
         if (!taskId.equals(descriptor.taskId())) {
             throw new IllegalArgumentException(

@@ -49,7 +49,10 @@ infer current behavior from `legacy-java-platform-final-2026-07-24`.
 - Keep cross-key fan-out, global discovery, owner-spanning aggregation and
   background coordination in the caller or policy unless a named invariant
   proves otherwise.
-- Keep scores opaque outside score-owner operations.
+- Keep scores opaque outside score-owner operations. Opaque is a usage
+  constraint, not a requirement to wrap every score in another class: a Pacer
+  may retain, associate, exact-compare and return a raw score to its Owner, but
+  must not decode, construct or calculate score coordinates.
 - Build Redis keys from the fixed `xa_mass:<scope>` `RedisKeyspace` base;
   each owner appends only its own domain suffix. Proofs use unique `test_*`
   scopes and may clean only that exact scope with `SCAN` plus `UNLINK`; never
@@ -79,7 +82,7 @@ lifecycle live in `kernel_pacer_jvm`.
   Mechanism only when one legal transition composes owners or must protect an
   opaque exact fence; never add one merely to hide a direct call. Mechanisms
   must not absorb priority, matching, deficit, retry cadence or lane lifecycle
-  policy.
+  policy. A set of Policy dependencies is not itself a Mechanism boundary.
 - Result Routing Policy owns evidence parsing, bounded grouping and semantic
   event publication; Transport only carries evidence. Finite TaskItem, Worker
   execution and Worker Serviceability Mechanism ports decide which legal
@@ -102,9 +105,11 @@ lifecycle live in `kernel_pacer_jvm`.
   fixed single-flight Resource Producers. The Main Scheduler plans the complete
   root input for Initialization, Allocation, Task Dispatch and optional
   Serviceability; a Producer may discover only vertical resources under those
-  supplied Task or WorkerGroup identities. Dispatch policies receive opaque
-  Task, Item, Worker and sweep references and must not read Score coordinates
-  or construct claimed Commands outside the exact dispatch mechanism.
+  supplied Task or WorkerGroup identities. Dispatch policies may retain and
+  return raw Score evidence to bounded Owner operations but must not decode or
+  calculate Score coordinates. Claimed Commands may be constructed only by
+  the package-private exact assignment closure after Worker renewal and Item
+  claim.
 - Do not add another language implementation without a named migration slice,
   one production owner and explicit proof of the cutover.
 

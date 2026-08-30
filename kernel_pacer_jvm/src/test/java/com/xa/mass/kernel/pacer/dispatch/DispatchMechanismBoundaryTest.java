@@ -1,7 +1,8 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,13 +12,29 @@ import org.junit.jupiter.api.Test;
 
 class DispatchMechanismBoundaryTest {
 
+    private static final Path ROOT = Path.of(
+            "src/main/java/com/xa/mass/kernel/pacer/dispatch"
+    );
+
+    @Test
+    void acquiredCandidateIsTheOnlyFlatTerminalCandidateRecord() {
+        assertEquals(
+                List.of(
+                        "workerId",
+                        "workerGroupId",
+                        "endpointManagerId",
+                        "workerLeaseScore"
+                ),
+                java.util.Arrays.stream(
+                        AcquiredWorkerCandidate.class.getRecordComponents()
+                ).map(component -> component.getName()).toList()
+        );
+    }
+
     @Test
     void onlyMainSchedulerOwnsTheRootTaskSource() throws IOException {
-        Path root = Path.of(
-                "src/main/java/com/xa/mass/kernel/pacer/dispatch"
-        );
         List<String> callers;
-        try (var files = Files.walk(root)) {
+        try (var files = Files.walk(ROOT)) {
             callers = files.filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> {
                         try {
@@ -40,10 +57,7 @@ class DispatchMechanismBoundaryTest {
     @Test
     void mainSchedulerPlansInputsWithoutOwningResourceOperations()
             throws IOException {
-        Path file = Path.of(
-                "src/main/java/com/xa/mass/kernel/pacer/dispatch/"
-                        + "DispatchMainScheduler.java"
-        );
+        Path file = ROOT.resolve("DispatchMainScheduler.java");
         String source = Files.readString(file);
         for (String token : List.of(
                 "CandidateWorkerCache",
@@ -61,53 +75,74 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void removedLaneAndGenericBatchTypesStayAbsent() {
-        Path root = Path.of(
-                "src/main/java/com/xa/mass/kernel/pacer/dispatch"
-        );
+    void passThroughFacadesAndOpaqueWrappersStayDeleted() {
         for (String type : List.of(
-                "DispatchLaneCoordinator",
-                "DispatchLaneDefinition",
-                "DispatchLaneId",
-                "DispatchBatchPolicy",
-                "WorkerServiceabilityDispatchLaneConfig",
-                "DispatchHandlerDefinition",
-                "TaskInitializationBatch",
-                "WorkerAllocationBatch",
-                "TaskDispatchBatch",
-                "WorkerServiceabilityBatch"
+                "WorkerCandidateMechanism",
+                "DefaultWorkerCandidateMechanism",
+                "TaskExecutionMechanism",
+                "DefaultTaskExecutionMechanism",
+                "WorkerServiceabilityDispatchMechanism",
+                "DefaultWorkerServiceabilityDispatchMechanism",
+                "WorkerCandidateReference",
+                "TaskSchedulingReference",
+                "TaskItemReference",
+                "WorkerSweepCursor"
         )) {
             assertFalse(
-                    Files.exists(root.resolve(type + ".java")),
-                    () -> type + " must remain absent"
+                    Files.exists(ROOT.resolve(type + ".java")),
+                    () -> type + " must remain deleted"
             );
         }
     }
 
     @Test
-    void dispatchPoliciesDoNotReadRawScoresOrOwnWireConstruction()
+    void matcherUsesFlatScoreMapAndOwnsOnlyCanonicalReads()
             throws IOException {
-        Path root = Path.of(
-                "src/main/java/com/xa/mass/kernel/pacer/dispatch"
+        String matcher = Files.readString(
+                ROOT.resolve("WorkerCandidateMatcher.java")
         );
-        List<String> forbidden = List.of(
-                "TaskScoreBandCore",
-                "TaskItemScoreBandCore",
+        for (String required : List.of(
+                "filterCandidateWorkerIds(",
+                "matchLeasedWorkerCandidates(",
+                "Map<String, Long> leasedWorkers",
+                "WorkerResourceCatalog"
+        )) {
+            assertTrue(
+                    matcher.contains(required),
+                    () -> "WorkerCandidateMatcher must contain " + required
+            );
+        }
+        for (String forbidden : List.of(
+                "limitMatches",
+                "uniqueMatches",
                 "WorkerScoreCore",
-                "WorkerCommandRuntime",
-                "ResultContextCodec",
-                "ResultContext",
-                "DeliveryCommand",
-                "CandidateWorkerEntry",
-                ".score()",
-                "encodedScore()",
-                "workerLeaseScore()"
-        );
-        try (var files = Files.walk(root)) {
-            for (Path file : files.filter(path -> path.toString()
-                    .endsWith("Policy.java")).toList()) {
-                String source = Files.readString(file);
-                for (String token : forbidden) {
+                "CandidateWorkerCache",
+                "encodedScore()"
+        )) {
+            assertFalse(
+                    matcher.contains(forbidden),
+                    () -> "WorkerCandidateMatcher must not contain "
+                            + forbidden
+            );
+        }
+    }
+
+    @Test
+    void dispatchCodeDoesNotDecodeOrCalculateScoreCoordinates()
+            throws IOException {
+        for (String token : List.of(
+                "SLOT_FACTOR",
+                "LANE_RANK_FACTOR",
+                "DIRTY_FACTOR",
+                "Math.abs(",
+                "absoluteScore(",
+                "decodeScore(",
+                "encodedScore()"
+        )) {
+            try (var files = Files.walk(ROOT)) {
+                for (Path file : files.filter(path -> path.toString()
+                        .endsWith(".java")).toList()) {
+                    String source = Files.readString(file);
                     assertFalse(
                             source.contains(token),
                             () -> file + " must not contain " + token
@@ -118,42 +153,24 @@ class DispatchMechanismBoundaryTest {
     }
 
     @Test
-    void dispatchMechanismsStayInternalToThePacerModule() throws IOException {
-        Path oldKernelPackage = Path.of(
-                "../kernel_jvm/src/main/java/com/xa/mass/kernel/dispatch"
-        );
-        if (Files.exists(oldKernelPackage)) {
-            try (var files = Files.walk(oldKernelPackage)) {
-                assertFalse(files.anyMatch(path -> path.toString()
-                        .endsWith(".java")));
-            }
-        }
-        Path root = Path.of(
-                "src/main/java/com/xa/mass/kernel/pacer/dispatch"
-        );
-        List<String> internalTypes = List.of(
+    void onlyRealCrossOwnerClosuresAndInitializationStrategyRemainInternal()
+            throws IOException {
+        for (String type : List.of(
                 "TaskInitializationCheck",
                 "DueActiveItemInitializationCheck",
+                "TaskAssignmentDispatcher",
+                "TaskIdleSettlement",
                 "DispatchMainScheduler",
                 "DispatchProducerId",
-                "WorkerCandidateMechanism",
-                "DefaultWorkerCandidateMechanism",
-                "TaskExecutionMechanism",
-                "DefaultTaskExecutionMechanism",
-                "WorkerServiceabilityDispatchMechanism",
-                "DefaultWorkerServiceabilityDispatchMechanism",
-                "TaskSchedulingReference",
-                "TaskItemReference",
-                "WorkerCandidateReference",
-                "WorkerSweepCursor"
-        );
-        for (String type : internalTypes) {
-            Path file = root.resolve(type + ".java");
+                "AcquiredWorkerCandidate"
+        )) {
+            Path file = ROOT.resolve(type + ".java");
             String source = Files.readString(file);
             for (String declaration : List.of(
                     "public interface " + type,
                     "public final class " + type,
-                    "public class " + type
+                    "public class " + type,
+                    "public record " + type
             )) {
                 assertFalse(
                         source.contains(declaration),

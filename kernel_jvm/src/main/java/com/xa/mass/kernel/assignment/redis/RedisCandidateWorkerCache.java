@@ -171,7 +171,6 @@ public final class RedisCandidateWorkerCache
             Map<String, Object> value = new TreeMap<>();
             value.put("workerId", entry.workerId());
             value.put("workerGroupId", entry.workerGroupId());
-            value.put("endpointManagerId", entry.endpointManagerId());
             value.put("workerLeaseScore", entry.workerLeaseScore());
             return mapper.writeValueAsString(value);
         } catch (JacksonException error) {
@@ -185,20 +184,16 @@ public final class RedisCandidateWorkerCache
     private CandidateWorkerEntry decode(String encoded) {
         try {
             JsonNode value = mapper.readTree(encoded);
-            if (value == null || !value.isObject() || value.size() != 4) {
+            if (value == null || !value.isObject() || value.size() != 3) {
                 return null;
             }
             JsonNode workerId = value.get("workerId");
             JsonNode workerGroupId = value.get("workerGroupId");
-            JsonNode endpointManagerId = value.get("endpointManagerId");
             JsonNode workerLeaseScore = value.get("workerLeaseScore");
             if (workerId == null || !workerId.isTextual()
                     || workerId.textValue().isEmpty()
                     || workerGroupId == null || !workerGroupId.isTextual()
                     || workerGroupId.textValue().isEmpty()
-                    || endpointManagerId == null
-                    || !endpointManagerId.isTextual()
-                    || endpointManagerId.textValue().isEmpty()
                     || workerLeaseScore == null
                     || !workerLeaseScore.isIntegralNumber()
                     || workerLeaseScore.longValue() <= 0) {
@@ -207,7 +202,6 @@ public final class RedisCandidateWorkerCache
             return new CandidateWorkerEntry(
                     workerId.textValue(),
                     workerGroupId.textValue(),
-                    endpointManagerId.textValue(),
                     workerLeaseScore.longValue()
             );
         } catch (JacksonException | IllegalArgumentException error) {
@@ -219,7 +213,6 @@ public final class RedisCandidateWorkerCache
         if (entry == null
                 || entry.workerId().isBlank()
                 || entry.workerGroupId().isBlank()
-                || entry.endpointManagerId().isBlank()
                 || entry.workerLeaseScore() <= 0) {
             throw new IllegalArgumentException(
                     "Candidate Worker entry is invalid"

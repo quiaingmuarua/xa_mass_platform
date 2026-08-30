@@ -35,7 +35,7 @@ TaskDispatchConfig(
 )
 ```
 
-Policy and Mechanism boundary:
+Policy and closure boundary:
 
 ```text
 TaskDispatchPolicy
@@ -44,35 +44,43 @@ TaskDispatchPolicy
   Item/Worker pairing and per-Task limit
   CLOSE_WHEN_IDLE or PARK_WHEN_IDLE branch
 
-WorkerCandidateMechanism
-  bounded observations and Candidate Cache
-  exact Worker lease/renew and canonical descriptor reload
+WorkerCandidateSelectionPolicy
+  bounded Score/Cache observation, matching and selected Worker lease/renew
 
-TaskExecutionMechanism
-  Item observation/finality and exact claim
-  Worker fence verification
-  ResultContext and DeliveryCommand construction/publication
-  Task pacing, ACTIVE recheck, close and idle park repair
+WorkerCandidateMatcher
+  bounded canonical pre-filter and post-lease rematch
+  final endpoint resolution into AcquiredWorkerCandidate
+
+TaskAssignmentDispatcher
+  exact Worker fence verification, exact Item claim, ResultContext and
+  DeliveryCommand construction/publication
+
+TaskIdleSettlement
+  complete ACTIVE recheck, ordinary pacing, exact close/park and post-park
+  repair
 ```
 
-The Policy has no mechanical Owner dependency. Score, Candidate Cache,
-canonical resource reload, Command publication and exact transition details
-remain behind the two finite Mechanisms.
+Policy directly calls bounded TaskItem, Task and Worker Candidate Owner
+operations. Scores remain opaque by usage: they may be associated and returned
+to an exact Owner call, but are never decoded or calculated. Only the two
+cross-Owner legal orderings above have concrete closure classes.
 
 ## Round Flow
 
 One round computes its dispatch time and Item claim deadline once:
 
 1. Consume the immutable verified RUNNING observation batch.
-2. Ask `TaskExecutionMechanism` to observe record-backed due ACTIVE Items.
-3. Policy identifies zero-budget and expired Items; Mechanism exact-promotes
-   the selected observations to `FINAL_FAILED`.
-4. Policy matches/selects Workers and pairs them with Items. Mechanisms
-   exact-validate Worker leases, exact-claim only Worker-backed Items, construct
-   DeliveryCommands, and publish endpoint-grouped sparse maps.
-5. In `finally`, Policy reports the semantic dispatch outcome to
-   `TaskExecutionMechanism`, which advances ordinary Task pacing or performs
-   complete ACTIVE recheck, exact close/park, and post-park repair.
+2. Read bounded Item Score observations and canonical TaskItem records from
+   their Owners.
+3. Policy identifies zero-budget and expired Items and promotes them directly
+   to `FINAL_FAILED` through the Item Score Owner.
+4. Policy matches/selects Workers and pairs them with Items.
+   `TaskAssignmentDispatcher` exact-renews Worker leases, exact-claims only
+   Worker-backed Items, constructs DeliveryCommands, and publishes
+   endpoint-grouped sparse maps.
+5. In `finally`, Policy advances ordinary Task pacing. With no claimable Item,
+   `TaskIdleSettlement` performs the complete ACTIVE recheck and exact
+   close/park repair.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item
 claim. Item claim precedes command identity generation and mailbox publication.
@@ -97,8 +105,8 @@ exists, not merely when no Item is currently due or claimable.
 
 ## Idle Transitions
 
-The Mechanism uses the exact opaque Task reference from the shared
-observation:
+`TaskIdleSettlement` returns the observed Task score from the shared
+observation unchanged to exact close or park operations:
 
 ```text
 ACTIVE exists
@@ -206,8 +214,10 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
 - Do not make ordinary Item append a hidden scheduling command.
 - Do not add a wake inbox, urgent set, priority queue, or second Task scan.
 - Do not infer idle disposition from Worker allocation mechanism.
-- Do not access CandidateWorker cache or Worker score directly.
+- Do not bypass `WorkerCandidateSelectionPolicy` to access Candidate Cache or
+  Worker Score from `TaskDispatchPolicy`.
 - Do not add PRECOMPUTED-miss DIRECT fallback.
 - Do not call Worker Delivery Dispatch or Result Routing directly.
-- Group only by the endpointManagerId snapshot in `CandidateWorkerEntry`; do
-  not read live Adapter, connection, or session state.
+- Group only by the current endpointManagerId carried by the post-lease
+  `AcquiredWorkerCandidate`; do not read live Adapter, connection, or session
+  state.

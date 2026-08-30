@@ -83,12 +83,12 @@ for the NORMAL complement. It does not issue a Task Score point recheck. The
 Main Scheduler derives unique WorkerGroup IDs in first-occurrence Task order
 and supplies that complete root input to the optional Worker Serviceability
 Producer. With no surviving due Task, the Producer is not invoked and therefore
-does not ask its Mechanism to read Worker state or offer Probe requests.
+does not read Worker state or offer Probe requests.
 
 One Serviceability round receives distinct WorkerGroups from the Main Scheduler
 and visits each Group in that order. The Policy cannot discover or add Groups.
 There is no process-local Group rotation cursor. HOT and RECOVERY each keep one
-process-local opaque score cursor for every Group in the bounded Task batch. A
+process-local scalar exclusive score cursor for every Group in the bounded Task batch. A
 Group absent from the next Task batch is not scanned and its hint is discarded;
 if demand exposes it later, scanning restarts from the full range.
 
@@ -113,13 +113,13 @@ The initial HOT Probe writes rank 0 and is not counted as a Recovery Probe.
 A due rank below `maxRecoveryAttempts` is advanced before the next request; a
 due rank already at the maximum is exact-cold-parked without another request.
 
-The policy chooses retry eligibility and endpoint exclusions from semantic
-observations. `WorkerServiceabilityDispatchMechanism` batch-loads current
-score states and Worker descriptors and exact-cold-parks excluded endpoints.
-Before any request is offered, the Mechanism atomically holds exact HOT
-observations as `RECOVERY(redisNow, rank=0)` or advances exact RECOVERY
-observations to `RECOVERY(redisNow, rank+1)`. Only successfully transitioned
-Workers are grouped by `endpointManagerId` and offered through the bounded
+The policy directly asks the Score and Resource Owners for bounded pages,
+current semantic states, and canonical Worker descriptors. It exact-cold-parks
+excluded endpoints through Score Owner operations. Before any request is
+offered, it asks that Owner to atomically hold exact HOT observations as
+`RECOVERY(redisNow, rank=0)` or advance exact RECOVERY observations to
+`RECOVERY(redisNow, rank+1)`. Only successfully transitioned Workers are
+grouped by `endpointManagerId` and offered through the bounded
 `WorkerServiceabilityRuntime.offerProbeRequests` Owner operation. An
 `ALREADY_REQUESTED` or `CAPACITY` result does not roll back the Score hold;
 later Recovery scanning supplies best-effort convergence.

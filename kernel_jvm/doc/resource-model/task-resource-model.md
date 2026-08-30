@@ -339,14 +339,16 @@ DispatchMainScheduler
   -> Task Score Owner scans taskId -> opaque score once with limit 100
   -> Task Score Owner filters the exact INITIAL subset
   -> load Descriptors once for only the NORMAL complement
-  -> expose NORMAL scores through opaque TaskSchedulingReference values
+  -> carry NORMAL observed scores unchanged beside their Task ids
   -> send the INITIAL taskId -> opaque score map directly to its check
   -> select workerAllocationMechanism=PRECOMPUTED_TASK_RULE as Allocation root input
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
   -> WorkerCandidateSelectionPolicy matches and chooses bounded Workers
-  -> WorkerCandidateMechanism exact-leases, reloads canonical descriptors,
-     rematches, and appends Candidate evidence
+  -> WorkerCandidateSelectionPolicy exact-leases selected Workers through the
+     Worker Score Owner
+  -> WorkerCandidateMatcher reloads canonical descriptors and rematches
+  -> reobserve active leases and append CandidateWorkerEntry evidence
 ```
 
 Every initialized Task enters NORMAL `RUNNING_VISIBLE` with suffix `0`. When the complete

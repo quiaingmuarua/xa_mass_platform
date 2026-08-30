@@ -75,13 +75,11 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
         CandidateWorkerEntry first = new CandidateWorkerEntry(
                 "worker-1",
                 "group-1",
-                "adapter-1",
                 101L
         );
         CandidateWorkerEntry second = new CandidateWorkerEntry(
                 "worker-2",
                 "group-1",
-                "adapter-1",
                 102L
         );
         candidateCache.appendCandidateWorkers(
@@ -108,6 +106,22 @@ class RedisAssignmentDispatchRuntimeIntegrationTest {
                 .containsExactlyInAnyOrder(first, second);
         assertThat(candidateCache.consumeCandidateWorkers(
                 "candidate-1",
+                10
+        )).isEmpty();
+
+        redis.zadd(
+                keyspace.base()
+                        + ":dispatch:candidate:old-shape:workers",
+                nowMillis + 60_000,
+                """
+                        {"workerId":"worker-old",\
+                        "workerGroupId":"group-1",\
+                        "endpointManagerId":"adapter-old",\
+                        "workerLeaseScore":103}
+                        """
+        );
+        assertThat(candidateCache.consumeCandidateWorkers(
+                "old-shape",
                 10
         )).isEmpty();
 

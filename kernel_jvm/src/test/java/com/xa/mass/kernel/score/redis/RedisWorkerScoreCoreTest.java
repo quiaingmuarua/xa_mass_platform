@@ -8,6 +8,8 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import io.lettuce.core.RedisClient;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -78,6 +80,50 @@ class RedisWorkerScoreCoreTest {
                     () -> scoreCore.markCurrentLeaseDirty(
                             "group-1",
                             "worker-1"
+                    )
+            );
+        } finally {
+            redisClient.shutdown();
+        }
+    }
+
+    @Test
+    void activeLeaseObservationValidatesBoundsBeforeRedisAccess() {
+        RedisClient redisClient = RedisClient.create(
+                "redis://127.0.0.1:1"
+        );
+        try {
+            RedisWorkerScoreCore scoreCore = new RedisWorkerScoreCore(
+                    redisClient,
+                    new RedisKeyspace("test_worker_score_unit")
+            );
+
+            assertEquals(Map.of(), scoreCore.observeActiveHotScoreLeases(
+                    "group-1",
+                    List.of(),
+                    1_000L
+            ));
+            assertEquals(Map.of(), scoreCore.observeActiveHotScoreLeases(
+                    "group-1",
+                    List.of("worker-1"),
+                    -1L
+            ));
+            assertThrows(IllegalArgumentException.class, () ->
+                    scoreCore.observeActiveHotScoreLeases(
+                            "group-1",
+                            List.of("worker-1", "worker-1"),
+                            1_000L
+                    )
+            );
+            List<String> tooMany = new ArrayList<>();
+            for (int index = 0; index < 101; index++) {
+                tooMany.add("worker-" + index);
+            }
+            assertThrows(IllegalArgumentException.class, () ->
+                    scoreCore.observeActiveHotScoreLeases(
+                            "group-1",
+                            tooMany,
+                            1_000L
                     )
             );
         } finally {

@@ -22,13 +22,11 @@ public interface CandidateWorkerCache {
     record CandidateWorkerEntry(
             String workerId,
             String workerGroupId,
-            String endpointManagerId,
             long workerLeaseScore
     ) {
         public CandidateWorkerEntry {
             Objects.requireNonNull(workerId, "workerId");
             Objects.requireNonNull(workerGroupId, "workerGroupId");
-            Objects.requireNonNull(endpointManagerId, "endpointManagerId");
         }
     }
 }

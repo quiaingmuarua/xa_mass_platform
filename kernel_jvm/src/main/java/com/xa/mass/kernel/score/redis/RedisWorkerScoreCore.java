@@ -387,6 +387,71 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
+    public Map<String, Long> observeActiveHotScoreLeases(
+            String homeBucketId,
+            List<String> workerIds,
+            long expectedLeaseUntilMillis
+    ) {
+        requireNonBlank(homeBucketId, "homeBucketId");
+        if (workerIds == null) {
+            throw new IllegalArgumentException(
+                    "workerIds must be present"
+            );
+        }
+        if (workerIds.size() > MAX_SERVICEABILITY_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "workerIds must contain at most "
+                            + MAX_SERVICEABILITY_BATCH_SIZE + " workers"
+            );
+        }
+        LinkedHashSet<String> uniqueWorkerIds = new LinkedHashSet<>();
+        for (String workerId : workerIds) {
+            requireNonBlank(workerId, "workerId");
+            if (!uniqueWorkerIds.add(workerId)) {
+                throw new IllegalArgumentException(
+                        "workerIds must be unique"
+                );
+            }
+        }
+        if (uniqueWorkerIds.isEmpty()
+                || !validTimeMillis(expectedLeaseUntilMillis)) {
+            return Map.of();
+        }
+
+        long nowTimeSlot = redisTimeMillis() / SLOT_MILLIS;
+        long expectedTimeSlot = expectedLeaseUntilMillis / SLOT_MILLIS;
+        if (expectedTimeSlot <= nowTimeSlot) {
+            return Map.of();
+        }
+
+        List<String> orderedWorkerIds = List.copyOf(uniqueWorkerIds);
+        List<Double> scores = commands().zmscore(
+                scoreKey(homeBucketId),
+                orderedWorkerIds.toArray(String[]::new)
+        );
+        LinkedHashMap<String, Long> observed = new LinkedHashMap<>();
+        for (int index = 0; index < orderedWorkerIds.size(); index++) {
+            Double raw = scores.get(index);
+            if (raw == null) {
+                continue;
+            }
+            WorkerScoreState state;
+            try {
+                state = decodeState(orderedWorkerIds.get(index), raw);
+            } catch (IllegalStateException error) {
+                continue;
+            }
+            if (state.polarity() == WorkerScorePolarity.HOT_ACQUIRE
+                    && state.dirty() == MIN_DIRTY
+                    && state.timeMillis() / SLOT_MILLIS
+                    == expectedTimeSlot) {
+                observed.put(state.workerId(), state.score());
+            }
+        }
+        return observed;
+    }
+
+    @Override
     public List<WorkerScoreObservation> acquirePreEpochHotCandidates(
             String homeBucketId,
             long hotEligibilityFloorMillis,

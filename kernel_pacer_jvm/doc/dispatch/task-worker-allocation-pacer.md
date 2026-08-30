@@ -31,7 +31,7 @@ containing:
 
 ```text
 taskId
-opaque exact TaskSchedulingReference
+observedTaskScore (opaque pass-through value)
 TaskDescriptor
 ```
 
@@ -74,20 +74,22 @@ TaskWorkerAllocationConfig(
 ```
 
 The Main Scheduler Task Source owns the fixed batch limit of 100. Worker scan
-bounds belong to the internal `WorkerCandidateMechanism`; selection and
-matching belong to `WorkerCandidateSelectionPolicy`. The Allocation Policy
-reads bounded Candidate counts directly from `CandidateWorkerCache` because
-the deficit decision and that read already share one Owner boundary.
+bounds, selection and exact lease calls belong to
+`WorkerCandidateSelectionPolicy`; canonical filtering belongs to
+`WorkerCandidateMatcher`. The Allocation Policy reads bounded Candidate counts
+directly from `CandidateWorkerCache`, then asks `WorkerScoreCore` to reobserve
+the selected Worker ids at the expected lease slot before it publishes the
+still-valid subset.
 
 ## Guardrails
 
 - Use `taskId` as the stable PRECOMPUTED CandidateId.
 - Do not rediscover or revalidate Tasks inside this policy.
 - Do not mutate Task score or introduce a Candidate retry index.
-- Keep HOT observation, exact lease and canonical descriptor reload inside the
-  Mechanism; keep deficit, complete matching and selection in Policy. Cached
-  opaque lease consume/append remains internal to the Mechanism, while bounded
-  count observation may be called directly by Allocation Policy.
+- Keep deficit and bounded selection in Policy, and keep both canonical
+  descriptor reads inside the Matcher. Direct bounded Score/Cache Owner calls
+  are intentional; raw scores are correlation values and must not be decoded
+  or calculated in Pacer code.
 - Keep Candidate Cache disposable; it owns no Task or Worker truth.
 - Do not release unmatched or publication-failed Worker leases; expiry is the
   recovery mechanism.

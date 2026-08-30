@@ -64,26 +64,6 @@ public final class DispatchConvergenceRuntime {
             ResultContextCodec resultContextCodec
     ) {
         Objects.requireNonNull(preset, "preset");
-        WorkerCandidateMechanism candidateMechanism =
-                new DefaultWorkerCandidateMechanism(
-                        candidateCache,
-                        workerScores,
-                        workerCatalog
-                );
-        TaskExecutionMechanism taskExecution =
-                new DefaultTaskExecutionMechanism(
-                        taskScores,
-                        itemScores,
-                        workerScores,
-                        taskRuntime,
-                        workerCommands,
-                        resultContextCodec
-                );
-        WorkerServiceabilityDispatchMechanism serviceabilityMechanism =
-                new DefaultWorkerServiceabilityDispatchMechanism(
-                        workerScores,
-                        workerCatalog
-                );
         Objects.requireNonNull(
                 resultContextCodec,
                 "resultContextCodec"
@@ -99,8 +79,9 @@ public final class DispatchConvergenceRuntime {
                 );
         WorkerCandidateSelectionPolicy candidateSelection =
                 new WorkerCandidateSelectionPolicy(
-                        candidateMechanism,
-                        new WorkerCandidateMatcher(),
+                        workerScores,
+                        candidateCache,
+                        new WorkerCandidateMatcher(workerCatalog),
                         AssignmentDispatchConfig.WORKER_SCAN_LIMIT,
                         serviceabilityConfig.enabled()
                                 ? serviceabilityConfig
@@ -110,7 +91,7 @@ public final class DispatchConvergenceRuntime {
         TaskWorkerAllocationPolicy allocation =
                 new TaskWorkerAllocationPolicy(
                         candidateSelection,
-                        candidateMechanism,
+                        workerScores,
                         candidateCache
                 );
         TaskInitializationCheck initialization =
@@ -118,13 +99,29 @@ public final class DispatchConvergenceRuntime {
                         itemScores,
                         taskScores
                 );
+        TaskAssignmentDispatcher assignmentDispatcher =
+                new TaskAssignmentDispatcher(
+                        itemScores,
+                        workerScores,
+                        workerCommands,
+                        resultContextCodec
+                );
+        TaskIdleSettlement idleSettlement = new TaskIdleSettlement(
+                taskScores,
+                itemScores
+        );
         TaskDispatchPolicy dispatch = new TaskDispatchPolicy(
-                taskExecution,
+                taskScores,
+                itemScores,
+                taskRuntime,
+                assignmentDispatcher,
+                idleSettlement,
                 candidateSelection
         );
         WorkerServiceabilityDispatchPolicy serviceabilityDispatch =
                 new WorkerServiceabilityDispatchPolicy(
-                        serviceabilityMechanism,
+                        workerScores,
+                        workerCatalog,
                         serviceability
                 );
         DispatchConvergenceApplication application =

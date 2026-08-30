@@ -1,7 +1,8 @@
 package com.xa.mass.kernel.pacer.dispatch;
 
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.pacer.dispatch.WorkerCandidateMechanism.WorkerCandidateObservation;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache.CandidateWorkerEntry;
+import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.LinkedHashMap;
@@ -13,18 +14,18 @@ import java.util.function.LongSupplier;
 final class TaskWorkerAllocationPolicy {
 
     private final WorkerCandidateSelectionPolicy candidateSelection;
-    private final WorkerCandidateMechanism candidateMechanism;
+    private final WorkerScoreCore workerScores;
     private final CandidateWorkerCache candidateCache;
     private final LongSupplier currentTimeMillis;
 
     TaskWorkerAllocationPolicy(
             WorkerCandidateSelectionPolicy candidateSelection,
-            WorkerCandidateMechanism candidateMechanism,
+            WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache
     ) {
         this(
                 candidateSelection,
-                candidateMechanism,
+                workerScores,
                 candidateCache,
                 System::currentTimeMillis
         );
@@ -32,7 +33,7 @@ final class TaskWorkerAllocationPolicy {
 
     TaskWorkerAllocationPolicy(
             WorkerCandidateSelectionPolicy candidateSelection,
-            WorkerCandidateMechanism candidateMechanism,
+            WorkerScoreCore workerScores,
             CandidateWorkerCache candidateCache,
             LongSupplier currentTimeMillis
     ) {
@@ -40,9 +41,9 @@ final class TaskWorkerAllocationPolicy {
                 candidateSelection,
                 "candidateSelection"
         );
-        this.candidateMechanism = Objects.requireNonNull(
-                candidateMechanism,
-                "candidateMechanism"
+        this.workerScores = Objects.requireNonNull(
+                workerScores,
+                "workerScores"
         );
         this.candidateCache = Objects.requireNonNull(
                 candidateCache,
@@ -105,22 +106,43 @@ final class TaskWorkerAllocationPolicy {
                 currentTimeMillis.getAsLong(),
                 config.workerLeaseDurationMillis()
         );
-        LinkedHashMap<String, List<WorkerCandidateObservation>> acquired =
-                new LinkedHashMap<>();
-        requestsByGroup.forEach((workerGroupId, requests) -> acquired.putAll(
-                candidateSelection.acquireHotPoolCandidates(
-                        workerGroupId,
-                        requests,
-                        leaseUntil
-                )
-        ));
         int published = 0;
-        for (Map.Entry<String, List<WorkerCandidateObservation>> entry
-                : acquired.entrySet()) {
-            if (!entry.getValue().isEmpty()) {
-                candidateMechanism.appendCandidates(
-                        entry.getKey(),
-                        entry.getValue(),
+        for (Map.Entry<String, LinkedHashMap<String, WorkerCandidateRequest>>
+                group : requestsByGroup.entrySet()) {
+            Map<String, List<AcquiredWorkerCandidate>> acquired =
+                    candidateSelection.acquireHotPoolCandidates(
+                            group.getKey(),
+                            group.getValue(),
+                            leaseUntil
+                    );
+            for (Map.Entry<String, List<AcquiredWorkerCandidate>> candidate
+                    : acquired.entrySet()) {
+                List<String> workerIds = candidate.getValue().stream()
+                        .map(AcquiredWorkerCandidate::workerId)
+                        .toList();
+                if (workerIds.isEmpty()) {
+                    continue;
+                }
+                Map<String, Long> activeLeases =
+                        workerScores.observeActiveHotScoreLeases(
+                                group.getKey(),
+                                workerIds,
+                                leaseUntil
+                        );
+                List<CandidateWorkerEntry> entries = activeLeases.entrySet()
+                        .stream()
+                        .map(entry -> new CandidateWorkerEntry(
+                                entry.getKey(),
+                                group.getKey(),
+                                entry.getValue()
+                        ))
+                        .toList();
+                if (entries.isEmpty()) {
+                    continue;
+                }
+                candidateCache.appendCandidateWorkers(
+                        candidate.getKey(),
+                        entries,
                         leaseUntil
                 );
                 published++;

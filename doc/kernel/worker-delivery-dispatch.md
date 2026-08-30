@@ -194,7 +194,7 @@ coordination owner and is not implied here.
 ## Task Dispatch
 
 After Policy has paired an Item with a Worker,
-`TaskExecutionMechanism` exact-validates the Worker fence, exact-claims the
+`TaskAssignmentDispatcher` exact-validates the Worker fence, exact-claims the
 Item, constructs one `DeliveryCommand`, and returns:
 
 ```text
@@ -205,7 +205,7 @@ endpointManagerId -> workerId -> DeliveryCommand
 is the mailbox field and active-channel route. Neither is duplicated inside
 the command.
 
-`TaskExecutionMechanism` appends one Map per endpoint-manager bucket. A Worker lease
+`TaskAssignmentDispatcher` appends one Map per endpoint-manager bucket. A Worker lease
 prevents a second valid concurrent assignment. If a mailbox field still
 exists, it is stale transport residue; append first uses `HSETNX`, then replaces
 the occupied residue. The new lease-backed command is authoritative, including
