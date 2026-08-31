@@ -39,7 +39,7 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
 
     synchronized boolean schedule(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             long delayMillis
     ) {
         ensureOpen();
@@ -49,10 +49,10 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
                             + MAX_DELAY_MILLIS
             );
         }
-        workers.workerSnapshot(workerGroupId, clientWorkerKey, false);
+        workers.workerSnapshot(workerGroupId, labWorkerKey, false);
         WorkerCoordinate coordinate = new WorkerCoordinate(
                 workerGroupId,
-                clientWorkerKey
+                labWorkerKey
         );
         if (scheduled.containsKey(coordinate)) {
             return false;
@@ -75,13 +75,13 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
 
     synchronized boolean cancel(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         ensureOpen();
-        workers.workerSnapshot(workerGroupId, clientWorkerKey, false);
+        workers.workerSnapshot(workerGroupId, labWorkerKey, false);
         ScheduledStop removed = scheduled.remove(new WorkerCoordinate(
                 workerGroupId,
-                clientWorkerKey
+                labWorkerKey
         ));
         if (removed == null) {
             return false;
@@ -92,11 +92,11 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
 
     synchronized Long scheduledStopAtEpochMillis(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         ScheduledStop value = scheduled.get(new WorkerCoordinate(
                 workerGroupId,
-                clientWorkerKey
+                labWorkerKey
         ));
         return value == null ? null : value.stopAtEpochMillis();
     }
@@ -135,7 +135,7 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
         try {
             workers.stopWorker(
                     coordinate.workerGroupId(),
-                    coordinate.clientWorkerKey()
+                    coordinate.labWorkerKey()
             );
         } catch (RuntimeException error) {
             LOGGER.log(
@@ -156,7 +156,7 @@ final class ScenarioWorkerScheduledStops implements AutoCloseable {
 
     private record WorkerCoordinate(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
     }
 

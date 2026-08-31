@@ -16,7 +16,7 @@ import java.util.Set;
 
 record FleetSpec(
         String endpointManagerId,
-        Map<String, List<String>> clientWorkerKeysByGroup
+        Map<String, List<String>> labWorkerKeysByGroup
 ) {
 
     private static final Set<String> ROOT_FIELDS = Set.of(
@@ -24,7 +24,7 @@ record FleetSpec(
             "groups"
     );
     private static final Set<String> GROUP_FIELDS = Set.of(
-            "clientWorkerKeys"
+            "labWorkerKeys"
     );
 
     FleetSpec {
@@ -32,8 +32,8 @@ record FleetSpec(
                 endpointManagerId,
                 "endpointManagerId"
         );
-        if (clientWorkerKeysByGroup == null
-                || clientWorkerKeysByGroup.isEmpty()) {
+        if (labWorkerKeysByGroup == null
+                || labWorkerKeysByGroup.isEmpty()) {
             throw new IllegalArgumentException(
                     "fleet groups must not be empty"
             );
@@ -41,7 +41,7 @@ record FleetSpec(
         Map<String, List<String>> copied = new LinkedHashMap<>();
         int total = 0;
         for (Map.Entry<String, List<String>> entry
-                : clientWorkerKeysByGroup.entrySet()) {
+                : labWorkerKeysByGroup.entrySet()) {
             String groupId = Identifiers.require(
                     entry.getKey(),
                     "workerGroupId"
@@ -49,16 +49,16 @@ record FleetSpec(
             List<String> values = entry.getValue();
             if (values == null || values.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "clientWorkerKeys must not be empty for " + groupId
+                        "labWorkerKeys must not be empty for " + groupId
                 );
             }
             List<String> keys = new ArrayList<>(values.size());
             Set<String> unique = new HashSet<>();
             for (String value : values) {
-                String key = Identifiers.require(value, "clientWorkerKey");
+                String key = requireLabWorkerKey(value);
                 if (!unique.add(key)) {
                     throw new IllegalArgumentException(
-                            "duplicate clientWorkerKey for " + groupId
+                            "duplicate labWorkerKey for " + groupId
                     );
                 }
                 keys.add(key);
@@ -71,7 +71,7 @@ record FleetSpec(
                     "fleet proof supports at most 100 Workers"
             );
         }
-        clientWorkerKeysByGroup = Collections.unmodifiableMap(copied);
+        labWorkerKeysByGroup = Collections.unmodifiableMap(copied);
     }
 
     static FleetSpec load(Path path) throws IOException {
@@ -102,20 +102,20 @@ record FleetSpec(
             );
             if (!group.keySet().equals(GROUP_FIELDS)) {
                 throw new IllegalArgumentException(
-                        "fleet group must contain only clientWorkerKeys"
+                        "fleet group must contain only labWorkerKeys"
                 );
             }
-            Object rawKeys = group.get("clientWorkerKeys");
+            Object rawKeys = group.get("labWorkerKeys");
             if (!(rawKeys instanceof List<?> values)) {
                 throw new IllegalArgumentException(
-                        "clientWorkerKeys must be an array"
+                        "labWorkerKeys must be an array"
                 );
             }
             List<String> keys = new ArrayList<>(values.size());
             for (Object value : values) {
                 if (!(value instanceof String key)) {
                     throw new IllegalArgumentException(
-                            "clientWorkerKeys must contain strings"
+                            "labWorkerKeys must contain strings"
                     );
                 }
                 keys.add(key);
@@ -125,15 +125,15 @@ record FleetSpec(
         return new FleetSpec(endpointManagerId, parsed);
     }
 
-    List<String> allClientWorkerKeys() {
-        return clientWorkerKeysByGroup.values().stream()
+    List<String> allLabWorkerKeys() {
+        return labWorkerKeysByGroup.values().stream()
                 .flatMap(List::stream)
                 .toList();
     }
 
     Set<String> groupIds() {
         return Collections.unmodifiableSet(
-                new LinkedHashSet<>(clientWorkerKeysByGroup.keySet())
+                new LinkedHashSet<>(labWorkerKeysByGroup.keySet())
         );
     }
 
@@ -154,5 +154,14 @@ record FleetSpec(
             copied.put(key, entry.getValue());
         }
         return copied;
+    }
+
+    private static String requireLabWorkerKey(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                    "labWorkerKey must be non-blank"
+            );
+        }
+        return value;
     }
 }

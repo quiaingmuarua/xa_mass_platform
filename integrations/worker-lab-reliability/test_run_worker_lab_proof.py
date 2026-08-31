@@ -26,13 +26,13 @@ class WorkerLabProofRunnerTest(unittest.TestCase):
                 "initialWorkers": [
                     {
                         "workerGroupId": PROOF.STRING_GROUP,
-                        "clientWorkerKey": PROOF.STRING_ONE[1],
+                        "labWorkerKey": PROOF.STRING_ONE[1],
                     }
                 ],
                 "scheduledStops": [
                     {
                         "workerGroupId": PROOF.STRING_GROUP,
-                        "clientWorkerKey": PROOF.STRING_ONE[1],
+                        "labWorkerKey": PROOF.STRING_ONE[1],
                         "delayMillis": 5000,
                     }
                 ],
@@ -43,24 +43,42 @@ class WorkerLabProofRunnerTest(unittest.TestCase):
     def test_offline_property_replace_preserves_state_document(self):
         with tempfile.TemporaryDirectory() as temporary:
             sandbox = Path(temporary)
-            path = sandbox / PROOF.STRING_GROUP / f"{PROOF.STRING_TWO[1]}.json"
+            filename = PROOF.STRING_TWO[1].rsplit(":", 1)[0]
+            path = sandbox / PROOF.STRING_GROUP / filename
             path.parent.mkdir(parents=True)
             path.write_text(
-                json.dumps(
-                    {
+                "\n".join((
+                    json.dumps({
                         "schemaVersion": 2,
-                        "workerProperties": {"runtime": "java", "labSlot": 2},
-                    }
-                ),
+                        "workerProperties": {
+                            "runtime": "java",
+                            "labInventoryKey": filename,
+                            "labInventoryLine": 1,
+                            "labSlot": 1,
+                        },
+                    }),
+                    json.dumps({
+                        "schemaVersion": 2,
+                        "workerProperties": {
+                            "runtime": "java",
+                            "labInventoryKey": filename,
+                            "labInventoryLine": 2,
+                            "labSlot": 2,
+                        },
+                    }),
+                )) + "\n",
                 encoding="utf-8",
             )
 
-            PROOF._replace_worker_lab_slot(sandbox, PROOF.STRING_TWO, 1)
+            PROOF._replace_worker_lab_slot(sandbox, PROOF.STRING_TWO, 9)
 
-            value = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(2, value["schemaVersion"])
-            self.assertEqual("java", value["workerProperties"]["runtime"])
-            self.assertEqual(1, value["workerProperties"]["labSlot"])
+            lines = path.read_text(encoding="utf-8").splitlines()
+            first = json.loads(lines[0])
+            second = json.loads(lines[1])
+            self.assertEqual(1, first["workerProperties"]["labSlot"])
+            self.assertEqual(2, second["schemaVersion"])
+            self.assertEqual("java", second["workerProperties"]["runtime"])
+            self.assertEqual(9, second["workerProperties"]["labSlot"])
 
     def test_redis_response_parser_handles_scan_shape(self):
         response = PROOF._read_redis_response(io.BytesIO(

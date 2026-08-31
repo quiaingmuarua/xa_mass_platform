@@ -68,16 +68,21 @@ final class RuntimeApiClient {
                     worker.get("workerProperties"),
                     "Worker Runtime preview properties"
             );
-            Object rawClientKey = properties.get("clientWorkerKey");
-            if (!(rawClientKey instanceof String clientWorkerKey)
-                    || clientWorkerKey.isBlank()) {
+            Object rawInventoryKey = properties.get("labInventoryKey");
+            Object rawInventoryLine = properties.get("labInventoryLine");
+            if (!(rawInventoryKey instanceof String inventoryKey)
+                    || inventoryKey.isBlank()
+                    || !(rawInventoryLine instanceof Number line)
+                    || line.longValue() < 1L
+                    || line.longValue() > 100L) {
                 throw new IllegalStateException(
-                        "Worker Runtime preview has no clientWorkerKey"
+                        "Worker Runtime preview has no Lab inventory coordinate"
                 );
             }
-            if (identities.putIfAbsent(clientWorkerKey, workerId) != null) {
+            String labWorkerKey = inventoryKey + ":" + line.longValue();
+            if (identities.putIfAbsent(labWorkerKey, workerId) != null) {
                 throw new IllegalStateException(
-                        "Worker Runtime preview has duplicate clientWorkerKey"
+                        "Worker Runtime preview has duplicate labWorkerKey"
                 );
             }
         }

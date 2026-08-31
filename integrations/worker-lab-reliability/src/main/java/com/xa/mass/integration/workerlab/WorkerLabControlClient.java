@@ -35,32 +35,32 @@ final class WorkerLabControlClient {
         return List.copyOf(workers);
     }
 
-    WorkerSnapshot worker(String workerGroupId, String clientWorkerKey) {
+    WorkerSnapshot worker(String workerGroupId, String labWorkerKey) {
         JsonHttpClient.Response response = http.send(
                 "GET",
-                workerPath(workerGroupId, clientWorkerKey),
+                workerPath(workerGroupId, labWorkerKey),
                 null
         );
         requireStatus(response, 200, "load worker");
         return decodeSnapshot(response.body());
     }
 
-    WorkerSnapshot start(String workerGroupId, String clientWorkerKey) {
-        return action(workerGroupId, clientWorkerKey, ":start", "POST", 202);
+    WorkerSnapshot start(String workerGroupId, String labWorkerKey) {
+        return action(workerGroupId, labWorkerKey, ":start", "POST", 202);
     }
 
-    WorkerSnapshot stop(String workerGroupId, String clientWorkerKey) {
-        return action(workerGroupId, clientWorkerKey, ":stop", "POST", 202);
+    WorkerSnapshot stop(String workerGroupId, String labWorkerKey) {
+        return action(workerGroupId, labWorkerKey, ":stop", "POST", 202);
     }
 
     WorkerSnapshot scheduleStop(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             long delayMillis
     ) {
         JsonHttpClient.Response response = http.send(
                 "POST",
-                workerPath(workerGroupId, clientWorkerKey)
+                workerPath(workerGroupId, labWorkerKey)
                         + ":schedule-stop",
                 Map.of("delayMillis", delayMillis)
         );
@@ -70,11 +70,11 @@ final class WorkerLabControlClient {
 
     void cancelScheduledStop(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         JsonHttpClient.Response response = http.send(
                 "DELETE",
-                workerPath(workerGroupId, clientWorkerKey)
+                workerPath(workerGroupId, labWorkerKey)
                         + ":scheduled-stop",
                 null
         );
@@ -83,12 +83,12 @@ final class WorkerLabControlClient {
 
     WorkerSnapshot replaceProperties(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             Map<String, Object> workerProperties
     ) {
         JsonHttpClient.Response response = http.send(
                 "PUT",
-                workerPath(workerGroupId, clientWorkerKey),
+                workerPath(workerGroupId, labWorkerKey),
                 Map.of(
                         "schemaVersion", 2,
                         "workerProperties", workerProperties
@@ -100,13 +100,13 @@ final class WorkerLabControlClient {
 
     CommandCheckpoint armCommandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String checkpointToken,
             long maximumHoldMillis
     ) {
         JsonHttpClient.Response response = http.send(
                 "PUT",
-                workerPath(workerGroupId, clientWorkerKey)
+                workerPath(workerGroupId, labWorkerKey)
                         + ":command-checkpoint",
                 Map.of(
                         "checkpointToken", checkpointToken,
@@ -119,11 +119,11 @@ final class WorkerLabControlClient {
 
     CommandCheckpoint commandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         JsonHttpClient.Response response = http.send(
                 "GET",
-                workerPath(workerGroupId, clientWorkerKey)
+                workerPath(workerGroupId, labWorkerKey)
                         + ":command-checkpoint",
                 null
         );
@@ -133,11 +133,11 @@ final class WorkerLabControlClient {
 
     void releaseCommandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         JsonHttpClient.Response response = http.send(
                 "DELETE",
-                workerPath(workerGroupId, clientWorkerKey)
+                workerPath(workerGroupId, labWorkerKey)
                         + ":command-checkpoint",
                 null
         );
@@ -146,14 +146,14 @@ final class WorkerLabControlClient {
 
     private WorkerSnapshot action(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String suffix,
             String method,
             int expectedStatus
     ) {
         JsonHttpClient.Response response = http.send(
                 method,
-                workerPath(workerGroupId, clientWorkerKey) + suffix,
+                workerPath(workerGroupId, labWorkerKey) + suffix,
                 null
         );
         requireStatus(response, expectedStatus, suffix.substring(1));
@@ -175,7 +175,7 @@ final class WorkerLabControlClient {
                 );
         return new WorkerSnapshot(
                 JsonValues.requiredString(value, "workerGroupId"),
-                JsonValues.requiredString(value, "clientWorkerKey"),
+                JsonValues.requiredString(value, "labWorkerKey"),
                 JsonValues.requiredString(value, "desiredState"),
                 JsonValues.requiredString(value, "runtimeState"),
                 JsonValues.optionalString(value, "workerId"),
@@ -193,7 +193,7 @@ final class WorkerLabControlClient {
                 : JsonValues.requiredLong(value, "enteredAtEpochMillis");
         return new CommandCheckpoint(
                 JsonValues.requiredString(value, "workerGroupId"),
-                JsonValues.requiredString(value, "clientWorkerKey"),
+                JsonValues.requiredString(value, "labWorkerKey"),
                 JsonValues.requiredString(value, "checkpointToken"),
                 JsonValues.requiredLong(value, "maximumHoldMillis"),
                 JsonValues.requiredString(value, "state"),
@@ -216,11 +216,11 @@ final class WorkerLabControlClient {
 
     private static String workerPath(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         return WORKERS_PATH
                 + "/" + segment(workerGroupId)
-                + "/" + segment(clientWorkerKey);
+                + "/" + segment(labWorkerKey);
     }
 
     private static String segment(String value) {
@@ -235,7 +235,7 @@ final class WorkerLabControlClient {
 
     record WorkerSnapshot(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String desiredState,
             String runtimeState,
             String workerId,
@@ -254,7 +254,7 @@ final class WorkerLabControlClient {
 
     record CommandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String checkpointToken,
             long maximumHoldMillis,
             String state,

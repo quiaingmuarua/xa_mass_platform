@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,13 +33,13 @@ class ScenarioWorkerLabTest {
     }
 
     @Test
-    void missingConfiguredGroupDirectoriesInitializeTwentyDefaults()
+    void missingGroupsInitializeTwoFiveLineInventoriesPerGroup()
             throws Exception {
         Path root = labRoot();
-        Files.createDirectories(root.resolve("legacy-worker"));
+        Files.createDirectories(root.resolve("unconfigured-data"));
         Files.writeString(
-                root.resolve("legacy-worker/identity.json"),
-                "legacy",
+                root.resolve("unconfigured-data/preserved.txt"),
+                "preserved",
                 StandardCharsets.UTF_8
         );
 
@@ -51,27 +52,42 @@ class ScenarioWorkerLabTest {
         assertThat(groups).hasSize(2);
         assertThat(groups.get(0).workers()).hasSize(10);
         assertThat(groups.get(1).workers()).hasSize(10);
-        assertThat(root.resolve("legacy-worker/identity.json"))
-                .content().isEqualTo("legacy");
-        assertThat(groups.get(0).workers().get(0).clientWorkerKey())
-                .isEqualTo("scenario-phone-number-worker-001");
-        assertThat(groups.get(0).workers().get(0).workerProperties())
-                .containsEntry("labSlot", 1L);
+        assertThat(groups.get(0).workers())
+                .extracting(ScenarioWorkerStateFile::labWorkerKey)
+                .containsExactly(
+                        "scenario-phone-number-worker-a.jsonl:1",
+                        "scenario-phone-number-worker-a.jsonl:2",
+                        "scenario-phone-number-worker-a.jsonl:3",
+                        "scenario-phone-number-worker-a.jsonl:4",
+                        "scenario-phone-number-worker-a.jsonl:5",
+                        "scenario-phone-number-worker-b.jsonl:1",
+                        "scenario-phone-number-worker-b.jsonl:2",
+                        "scenario-phone-number-worker-b.jsonl:3",
+                        "scenario-phone-number-worker-b.jsonl:4",
+                        "scenario-phone-number-worker-b.jsonl:5"
+                );
+        assertThat(groups.get(0).workers().get(5).workerProperties())
+                .containsEntry(
+                        "labInventoryKey",
+                        "scenario-phone-number-worker-b.jsonl"
+                )
+                .containsEntry("labInventoryLine", 1L)
+                .containsEntry("labSlot", 6L);
+        assertThat(root.resolve("unconfigured-data/preserved.txt"))
+                .content().isEqualTo("preserved");
     }
 
     @Test
-    void existingGroupDirectoriesPreserveExactFilesAndAllowZeroWorkers()
+    void existingGroupDirectoriesPreserveFilesAndAllowZeroWorkers()
             throws Exception {
         Path root = labRoot();
         Files.createDirectories(root.resolve(PHONE_GROUP));
         Files.createDirectories(root.resolve(STRING_GROUP));
-        Files.createDirectories(root.resolve("unconfigured-group"));
-        Path custom = root.resolve(PHONE_GROUP).resolve("custom.json");
-        writeWorker(custom, Map.of("region", "edited"));
-        writeWorker(
-                root.resolve("unconfigured-group/ignored.json"),
-                Map.of()
-        );
+        Path custom = root.resolve(PHONE_GROUP).resolve("custom.jsonl");
+        writeInventory(custom, List.of(
+                Map.of("region", "first"),
+                Map.of("region", "second")
+        ));
 
         List<ScenarioWorkerLab.DiscoveredGroup> groups =
                 new ScenarioWorkerLab(root.toString()).prepare(List.of(
@@ -80,31 +96,19 @@ class ScenarioWorkerLabTest {
                 ));
 
         assertThat(groups.get(0).workers())
-                .extracting(ScenarioWorkerStateFile::clientWorkerKey)
-                .containsExactly("custom");
+                .extracting(ScenarioWorkerStateFile::labWorkerKey)
+                .containsExactly("custom.jsonl:1", "custom.jsonl:2");
         assertThat(groups.get(1).workers()).isEmpty();
-        assertThat(custom).content().contains("edited");
-        assertThat(root.resolve(PHONE_GROUP)
-                .resolve("scenario-phone-number-worker-001.json"))
-                .doesNotExist();
-        assertThat(root.resolve("unconfigured-group/ignored.json"))
-                .exists();
+        assertThat(custom).content().contains("second");
     }
 
     @Test
-    void deletingOneGroupDirectoryRestoresOnlyThatGroupsDefaults()
+    void deletingOneGroupRestoresOnlyThatGroupsDefaults()
             throws Exception {
         Path root = labRoot();
-        Files.createDirectories(root.resolve(PHONE_GROUP));
         Files.createDirectories(root.resolve(STRING_GROUP));
-        writeWorker(
-                root.resolve(PHONE_GROUP).resolve("custom.json"),
-                Map.of()
-        );
-        Path preserved = root.resolve(STRING_GROUP).resolve("custom.json");
-        writeWorker(preserved, Map.of("region", "preserved"));
-        Files.delete(root.resolve(PHONE_GROUP).resolve("custom.json"));
-        Files.delete(root.resolve(PHONE_GROUP));
+        Path preserved = root.resolve(STRING_GROUP).resolve("custom.jsonl");
+        writeInventory(preserved, List.of(Map.of("region", "preserved")));
 
         List<ScenarioWorkerLab.DiscoveredGroup> groups =
                 new ScenarioWorkerLab(root.toString()).prepare(
@@ -113,40 +117,42 @@ class ScenarioWorkerLabTest {
 
         assertThat(groups.get(0).workers()).hasSize(10);
         assertThat(groups.get(1).workers())
-                .extracting(ScenarioWorkerStateFile::clientWorkerKey)
-                .containsExactly("custom");
+                .extracting(ScenarioWorkerStateFile::labWorkerKey)
+                .containsExactly("custom.jsonl:1");
         assertThat(preserved).content().contains("preserved");
-        assertThat(root.resolve(STRING_GROUP)
-                .resolve("scenario-string-utils-worker-001.json"))
-                .doesNotExist();
     }
 
     @Test
-    void malformedFileOrMoreThanOneHundredWorkersFailsDiscovery()
-            throws Exception {
+    void malformedOversizedFileOrGroupFailsDiscovery() throws Exception {
         Path root = labRoot();
         Path group = root.resolve(PHONE_GROUP);
         Files.createDirectories(group);
         Files.writeString(
-                group.resolve("broken.json"),
-                "not-json",
+                group.resolve("broken.jsonl"),
+                "not-json\n",
                 StandardCharsets.UTF_8
         );
+        assertInvalid(root);
 
-        assertThatThrownBy(() -> new ScenarioWorkerLab(
-                root.toString()
-        ).prepare(List.of(group(PHONE_GROUP))))
-                .isInstanceOf(ScenarioWorkerAssemblyException.class);
-
-        Files.delete(group.resolve("broken.json"));
+        Files.delete(group.resolve("broken.jsonl"));
+        List<Map<String, Object>> tooManyLines = new ArrayList<>();
         for (int index = 0;
-             index <= ScenarioWorkerLab.MAX_WORKERS_PER_GROUP;
+             index <= ScenarioWorkerStateFile.MAX_RECORDS_PER_FILE;
              index++) {
-            writeWorker(
-                    group.resolve("worker-%03d.json".formatted(index)),
-                    Map.of()
-            );
+            tooManyLines.add(Map.of("labSlot", index));
         }
+        writeInventory(group.resolve("too-many.jsonl"), tooManyLines);
+        assertInvalid(root);
+
+        Files.delete(group.resolve("too-many.jsonl"));
+        writeInventory(
+                group.resolve("first.jsonl"),
+                properties(60)
+        );
+        writeInventory(
+                group.resolve("second.jsonl"),
+                properties(41)
+        );
         assertThatThrownBy(() -> new ScenarioWorkerLab(
                 root.toString()
         ).prepare(List.of(group(PHONE_GROUP))))
@@ -165,6 +171,21 @@ class ScenarioWorkerLabTest {
                 .hasMessageContaining("data/scenario-workers");
     }
 
+    private void assertInvalid(Path root) {
+        assertThatThrownBy(() -> new ScenarioWorkerLab(
+                root.toString()
+        ).prepare(List.of(group(PHONE_GROUP))))
+                .isInstanceOf(ScenarioWorkerAssemblyException.class);
+    }
+
+    private static List<Map<String, Object>> properties(int count) {
+        List<Map<String, Object>> values = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            values.add(Map.of("labSlot", index + 1));
+        }
+        return values;
+    }
+
     private Path labRoot() {
         return temporaryDirectory.resolve("data/scenario-workers");
     }
@@ -178,18 +199,24 @@ class ScenarioWorkerLabTest {
         );
     }
 
-    private static void writeWorker(
+    private static void writeInventory(
             Path path,
-            Map<String, Object> properties
+            List<Map<String, Object>> properties
     ) throws Exception {
+        List<String> lines = new ArrayList<>();
+        for (int index = 0; index < properties.size(); index++) {
+            Map<String, Object> complete = new java.util.LinkedHashMap<>();
+            complete.put("labInventoryKey", path.getFileName().toString());
+            complete.put("labInventoryLine", index + 1);
+            complete.putAll(properties.get(index));
+            lines.add(Jsons.toJson(Map.of(
+                    "schemaVersion", 2,
+                    "workerProperties", complete
+            )));
+        }
         Files.writeString(
                 path,
-                Jsons.toJson(Map.of(
-                        "schemaVersion",
-                        1,
-                        "workerProperties",
-                        properties
-                )),
+                String.join("\n", lines) + "\n",
                 StandardCharsets.UTF_8
         );
     }

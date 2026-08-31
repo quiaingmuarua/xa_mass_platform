@@ -32,9 +32,6 @@ class ScenarioWorkersTest {
     private static final URI RUNTIME_API =
             URI.create("http://127.0.0.1:18082");
     private static final String GROUP = "scenario-group";
-    private static final String WORKER_ID_1 =
-            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
-
     @TempDir
     Path temporaryDirectory;
 
@@ -71,14 +68,12 @@ class ScenarioWorkersTest {
         writeWorker(
                 GROUP,
                 "client-2",
-                Map.of("region", "second"),
-                null
+                Map.of("region", "second")
         );
         writeWorker(
                 GROUP,
                 "client-1",
-                Map.of("region", "first"),
-                null
+                Map.of("region", "first")
         );
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         List<ScenarioWorkers.PreparedGroup> preparedGroups =
@@ -103,13 +98,18 @@ class ScenarioWorkersTest {
                 .extracting(WorkerEventDefinition::eventName)
                 .containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
         assertThat(prepared.replicas())
-                .extracting(ScenarioWorkers.PreparedReplica::clientWorkerKey)
-                .containsExactly("client-1", "client-2");
+                .extracting(ScenarioWorkers.PreparedReplica::labWorkerKey)
+                .containsExactly("client-1.jsonl:1", "client-2.jsonl:1");
         assertThat(prepared.replicas().get(0).stateFile().workerProperties())
                 .containsEntry("region", "first");
 
         InOrder lifecycle = inOrder(manager);
-        lifecycle.verify(manager).start();
+        lifecycle.verify(manager).prepareAndStart(
+                List.of("client-1.jsonl:1")
+        );
+        lifecycle.verify(manager).prepareAndStart(
+                List.of("client-2.jsonl:1")
+        );
         lifecycle.verify(manager).close();
     }
 
@@ -136,10 +136,10 @@ class ScenarioWorkersTest {
     void noneModeAssemblesWithoutStartingAndControlsOneReplica()
             throws Exception {
         createLabRoot();
-        writeWorker(GROUP, "client-1", Map.of("slot", 1), null);
-        writeWorker(GROUP, "client-2", Map.of("slot", 2), null);
+        writeWorker(GROUP, "client-1", Map.of("slot", 1));
+        writeWorker(GROUP, "client-2", Map.of("slot", 2));
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
-        when(manager.snapshot("client-1")).thenReturn(
+        when(manager.snapshot("client-1.jsonl:1")).thenReturn(
                 new com.xa.mass.worker.runtime.WorkerLifecycle.Snapshot(
                         com.xa.mass.worker.runtime.WorkerLifecycle.State.STOPPED,
                         "worker-1",
@@ -147,7 +147,7 @@ class ScenarioWorkersTest {
                         null
                 )
         );
-        when(manager.desiredRunning("client-1")).thenReturn(true);
+        when(manager.desiredRunning("client-1.jsonl:1")).thenReturn(true);
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
                 (runtimeApiBaseUrl, preparedGroup) -> manager
@@ -160,15 +160,17 @@ class ScenarioWorkersTest {
                   "scheduledStops":[]
                 }
                 """));
-        verify(manager, never()).start();
+        verify(manager, never()).prepareAndStart(
+                org.mockito.ArgumentMatchers.anyCollection()
+        );
 
-        workers.startWorker(GROUP, "client-1");
-        workers.stopWorker(GROUP, "client-1");
+        workers.startWorker(GROUP, "client-1.jsonl:1");
+        workers.stopWorker(GROUP, "client-1.jsonl:1");
         ScenarioWorkers.WorkerControlSnapshot snapshot =
-                workers.workerSnapshot(GROUP, "client-1", true);
+                workers.workerSnapshot(GROUP, "client-1.jsonl:1", true);
 
-        verify(manager).start("client-1");
-        verify(manager).stop("client-1");
+        verify(manager).prepareAndStart(List.of("client-1.jsonl:1"));
+        verify(manager).stop("client-1.jsonl:1");
         assertThat(snapshot.runtime().workerId()).isEqualTo("worker-1");
         assertThat(snapshot.desiredRunning()).isTrue();
         assertThat(snapshot.workerProperties()).containsEntry("slot", 1L);
@@ -182,7 +184,7 @@ class ScenarioWorkersTest {
     void startupPlanValidatesEveryCoordinateBeforeStartingAnyReplica()
             throws Exception {
         createLabRoot();
-        writeWorker(GROUP, "client-1", Map.of("slot", 1), null);
+        writeWorker(GROUP, "client-1", Map.of("slot", 1));
         JavaWorkerManager manager = mock(JavaWorkerManager.class);
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
@@ -194,11 +196,11 @@ class ScenarioWorkersTest {
                   "initialWorkers":[
                     {
                       "workerGroupId":"scenario-group",
-                      "clientWorkerKey":"client-1"
+                      "labWorkerKey":"client-1.jsonl:1"
                     },
                     {
                       "workerGroupId":"scenario-group",
-                      "clientWorkerKey":"missing"
+                      "labWorkerKey":"missing"
                     }
                   ],
                   "scheduledStops":[]
@@ -209,7 +211,9 @@ class ScenarioWorkersTest {
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .hasMessageContaining("Could not start Scenario Workers");
 
-        verify(manager, never()).start("client-1");
+        verify(manager, never()).prepareAndStart(
+                org.mockito.ArgumentMatchers.anyCollection()
+        );
         verify(manager).close();
     }
 
@@ -220,7 +224,7 @@ class ScenarioWorkersTest {
         Path group = labRoot().resolve(GROUP);
         Files.createDirectories(group);
         Files.writeString(
-                group.resolve("broken.json"),
+                group.resolve("broken.jsonl"),
                 "not-json",
                 StandardCharsets.UTF_8
         );
@@ -239,41 +243,39 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void legacyWorkerIdentityIsRemovedBeforeManagerAssembly()
+    void legacyWorkerDocumentIsRejectedBeforeManagerAssembly()
             throws Exception {
         createLabRoot();
-        writeWorker(
-                GROUP,
-                "client-1",
-                Map.of("region", "persistent"),
-                WORKER_ID_1
+        Path group = labRoot().resolve(GROUP);
+        Files.createDirectories(group);
+        Files.writeString(
+                group.resolve("client-1.jsonl"),
+                Jsons.toJson(Map.of(
+                        "schemaVersion", 1,
+                        "workerProperties", Map.of("region", "legacy")
+                )) + "\n",
+                StandardCharsets.UTF_8
         );
-        JavaWorkerManager manager = mock(JavaWorkerManager.class);
+        AtomicInteger managers = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
-                (runtimeApiBaseUrl, preparedGroup) -> manager
+                (runtimeApiBaseUrl, preparedGroup) -> {
+                    managers.incrementAndGet();
+                    return mock(JavaWorkerManager.class);
+                }
         );
 
-        workers.start();
-        workers.close();
-
-        assertThat(Jsons.parseObject(Files.readString(
-                labRoot().resolve(GROUP).resolve("client-1.json"),
-                StandardCharsets.UTF_8
-        ))).containsEntry("schemaVersion", 2L)
-                .containsEntry(
-                        "workerProperties",
-                        Map.of("region", "persistent")
-                )
-                .doesNotContainKey("workerId");
+        assertThatThrownBy(workers::start)
+                .isInstanceOf(ScenarioWorkerAssemblyException.class);
+        assertThat(managers).hasValue(0);
     }
 
     @Test
     void groupAssemblyFailureClosesEarlierManagersWithoutStartingAny()
             throws Exception {
         createLabRoot();
-        writeWorker("group-1", "client-1", Map.of(), null);
-        writeWorker("group-2", "client-2", Map.of(), null);
+        writeWorker("group-1", "client-1", Map.of());
+        writeWorker("group-2", "client-2", Map.of());
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
@@ -290,7 +292,9 @@ class ScenarioWorkersTest {
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .hasMessageContaining("Could not start");
 
-        verify(first, never()).start();
+        verify(first, never()).prepareAndStart(
+                org.mockito.ArgumentMatchers.anyCollection()
+        );
         verify(first).close();
     }
 
@@ -298,12 +302,12 @@ class ScenarioWorkersTest {
     void synchronousGroupStartFailureStillAttemptsAndClosesEveryGroup()
             throws Exception {
         createLabRoot();
-        writeWorker("group-1", "client-1", Map.of(), null);
-        writeWorker("group-2", "client-2", Map.of(), null);
+        writeWorker("group-1", "client-1", Map.of());
+        writeWorker("group-2", "client-2", Map.of());
         JavaWorkerManager first = mock(JavaWorkerManager.class);
         JavaWorkerManager second = mock(JavaWorkerManager.class);
         doThrow(new IllegalStateException("start first"))
-                .when(first).start();
+                .when(first).prepareAndStart(List.of("client-1.jsonl:1"));
         AtomicInteger groups = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 twoGroupConfig(),
@@ -314,8 +318,8 @@ class ScenarioWorkersTest {
         assertThatThrownBy(workers::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class);
 
-        verify(first).start();
-        verify(second).start();
+        verify(first).prepareAndStart(List.of("client-1.jsonl:1"));
+        verify(second).prepareAndStart(List.of("client-2.jsonl:1"));
         InOrder closeOrder = inOrder(first, second);
         closeOrder.verify(second).close();
         closeOrder.verify(first).close();
@@ -341,21 +345,21 @@ class ScenarioWorkersTest {
 
     private void writeWorker(
             String workerGroupId,
-            String clientWorkerKey,
-            Map<String, Object> properties,
-            String workerId
+            String labWorkerKey,
+            Map<String, Object> properties
     ) throws Exception {
         Path group = labRoot().resolve(workerGroupId);
         Files.createDirectories(group);
         Map<String, Object> value = new LinkedHashMap<>();
-        value.put("schemaVersion", 1);
-        if (workerId != null) {
-            value.put("workerId", workerId);
-        }
-        value.put("workerProperties", properties);
+        value.put("schemaVersion", 2);
+        Map<String, Object> complete = new LinkedHashMap<>();
+        complete.put("labInventoryKey", labWorkerKey + ".jsonl");
+        complete.put("labInventoryLine", 1);
+        complete.putAll(properties);
+        value.put("workerProperties", complete);
         Files.writeString(
-                group.resolve(clientWorkerKey + ".json"),
-                Jsons.toJson(value),
+                group.resolve(labWorkerKey + ".jsonl"),
+                Jsons.toJson(value) + "\n",
                 StandardCharsets.UTF_8
         );
     }

@@ -46,22 +46,36 @@ final class RuntimeApiClient {
                     value.get("workerProperties"),
                     "workerProperties"
             );
-            String clientWorkerKey = JsonValues.requiredString(
-                    properties,
-                    "clientWorkerKey"
-            );
+            String labWorkerKey = labWorkerKey(properties);
             WorkerView previous = workers.putIfAbsent(
-                    clientWorkerKey,
+                    labWorkerKey,
                     new WorkerView(
                             JsonValues.requiredString(value, "workerId"),
                             Collections.unmodifiableMap(properties)
                     )
             );
             if (previous != null) {
-                throw JsonValues.invalid("Duplicate clientWorkerKey");
+                throw JsonValues.invalid("Duplicate labWorkerKey");
             }
         }
         return Collections.unmodifiableMap(workers);
+    }
+
+    private static String labWorkerKey(Map<String, Object> properties) {
+        String inventoryKey = JsonValues.requiredString(
+                properties,
+                "labInventoryKey"
+        );
+        long inventoryLine = JsonValues.requiredLong(
+                properties,
+                "labInventoryLine"
+        );
+        if (inventoryLine < 1L || inventoryLine > 100L) {
+            throw JsonValues.invalid(
+                    "labInventoryLine must be in 1..100"
+            );
+        }
+        return inventoryKey + ":" + inventoryLine;
     }
 
     Map<String, String> observeNetwork(

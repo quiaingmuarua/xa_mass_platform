@@ -78,8 +78,8 @@ class WorkerStateConvergenceTest {
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("workerGroupId", group);
             snapshot.put(
-                    "clientWorkerKey",
-                    "scenario-" + capability + "-worker-%03d".formatted(index)
+                    "labWorkerKey",
+                    "scenario-" + capability + "-worker-a.jsonl:" + index
             );
             snapshot.put("desiredState", "RUNNING");
             snapshot.put("runtimeState", "RUNNING");

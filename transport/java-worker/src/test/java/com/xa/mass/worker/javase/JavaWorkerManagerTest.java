@@ -26,6 +26,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import mockwebserver3.MockResponse;
+import mockwebserver3.MockWebServer;
+import mockwebserver3.RecordedRequest;
 import org.junit.jupiter.api.Test;
 
 class JavaWorkerManagerTest {
@@ -133,6 +136,196 @@ class JavaWorkerManagerTest {
             assertEquals(1, worker.startCalls.get());
         } finally {
             manager.close();
+        }
+    }
+
+    @Test
+    void batchPrepareLoadsEachStoppedReplicaOnceAndInjectsCoordinates()
+            throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.start();
+        AtomicInteger firstLoads = new AtomicInteger();
+        AtomicInteger secondLoads = new AtomicInteger();
+        JavaWorkerManager manager = null;
+        try {
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .body("{\"workers\":["
+                            + batchItem(
+                            "worker-1",
+                            "ws://127.0.0.1:1/one"
+                    ) + "," + batchItem(
+                            "worker-2",
+                            "ws://127.0.0.1:1/two"
+                    ) + "]}")
+                    .build());
+            manager = JavaWorkerManager.builder(
+                            URI.create(server.url("/").toString()),
+                            "group-1",
+                            WorkerTransportType.WEBSOCKET
+                    )
+                    .batchWorkerKind("SCENARIO_LAB")
+                    .replica("workers.jsonl:1", () -> {
+                        firstLoads.incrementAndGet();
+                        return Map.of(
+                                "labInventoryKey", "workers.jsonl",
+                                "labInventoryLine", 1,
+                                "labSlot", 1
+                        );
+                    })
+                    .replica("workers.jsonl:2", () -> {
+                        secondLoads.incrementAndGet();
+                        return Map.of(
+                                "labInventoryKey", "workers.jsonl",
+                                "labInventoryLine", 2,
+                                "labSlot", 2
+                        );
+                    })
+                    .build();
+
+            manager.prepareAndStart(List.of(
+                    "workers.jsonl:1",
+                    "workers.jsonl:2"
+            ));
+            awaitWorkerId(manager, "workers.jsonl:1", "worker-1");
+            awaitWorkerId(manager, "workers.jsonl:2", "worker-2");
+
+            assertEquals(1, firstLoads.get());
+            assertEquals(1, secondLoads.get());
+            RecordedRequest request = server.takeRequest(
+                    1,
+                    TimeUnit.SECONDS
+            );
+            assertEquals(
+                    "/api/v1/worker-groups/group-1/"
+                            + "workers:prepare-batch",
+                    request.getTarget()
+            );
+
+            manager.prepareAndStart(List.of(
+                    "workers.jsonl:1",
+                    "workers.jsonl:2"
+            ));
+            assertEquals(1, server.getRequestCount());
+            assertEquals(1, firstLoads.get());
+            assertEquals(1, secondLoads.get());
+        } finally {
+            if (manager != null) {
+                manager.close();
+            }
+            server.close();
+        }
+    }
+
+    @Test
+    void stopDuringBatchPreparePreventsTheReturnedCoordinateFromStarting()
+            throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.start();
+        JavaWorkerManager manager = null;
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .body("{\"workers\":[" + batchItem(
+                            "worker-1",
+                            "ws://127.0.0.1:1/one"
+                    ) + "]}")
+                    .bodyDelay(250L, TimeUnit.MILLISECONDS)
+                    .build());
+            manager = JavaWorkerManager.builder(
+                            URI.create(server.url("/").toString()),
+                            "group-1",
+                            WorkerTransportType.WEBSOCKET
+                    )
+                    .batchWorkerKind("SCENARIO_LAB")
+                    .replica("workers.jsonl:1", () -> Map.of(
+                            "labInventoryKey", "workers.jsonl",
+                            "labInventoryLine", 1,
+                            "labSlot", 1
+                    ))
+                    .build();
+
+            JavaWorkerManager controlledManager = manager;
+            Future<?> preparing = caller.submit(() ->
+                    controlledManager.prepareAndStart(List.of(
+                            "workers.jsonl:1"
+                    )));
+            assertEquals(
+                    "/api/v1/worker-groups/group-1/"
+                            + "workers:prepare-batch",
+                    server.takeRequest(1, TimeUnit.SECONDS).getTarget()
+            );
+
+            manager.stop("workers.jsonl:1");
+            preparing.get(1, TimeUnit.SECONDS);
+
+            assertEquals(false, manager.desiredRunning("workers.jsonl:1"));
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    manager.snapshot("workers.jsonl:1").state()
+            );
+            assertEquals(
+                    null,
+                    manager.snapshot("workers.jsonl:1").workerId()
+            );
+        } finally {
+            caller.shutdownNow();
+            if (manager != null) {
+                manager.close();
+            }
+            server.close();
+        }
+    }
+
+    @Test
+    void disjointBatchPreparationsDoNotShareAManagerGate()
+            throws Exception {
+        MockWebServer server = new MockWebServer();
+        server.start();
+        JavaWorkerManager manager = null;
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .body("{\"workers\":[" + batchItem(
+                            "worker-1",
+                            "ws://127.0.0.1:1/one"
+                    ) + "]}")
+                    .bodyDelay(500L, TimeUnit.MILLISECONDS)
+                    .build());
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .body("{\"workers\":[" + batchItem(
+                            "worker-2",
+                            "ws://127.0.0.1:1/two"
+                    ) + "]}")
+                    .build());
+            manager = batchManager(server);
+
+            JavaWorkerManager controlledManager = manager;
+            Future<?> first = callers.submit(() ->
+                    controlledManager.prepareAndStart(List.of(
+                            "workers.jsonl:1"
+                    )));
+            assertTrue(server.takeRequest(1, TimeUnit.SECONDS) != null);
+
+            Future<?> second = callers.submit(() ->
+                    controlledManager.prepareAndStart(List.of(
+                            "workers.jsonl:2"
+                    )));
+            assertTrue(server.takeRequest(1, TimeUnit.SECONDS) != null);
+            second.get(1, TimeUnit.SECONDS);
+            first.get(1, TimeUnit.SECONDS);
+
+            awaitWorkerId(manager, "workers.jsonl:1", "worker-1");
+            awaitWorkerId(manager, "workers.jsonl:2", "worker-2");
+        } finally {
+            callers.shutdownNow();
+            if (manager != null) {
+                manager.close();
+            }
+            server.close();
         }
     }
 
@@ -639,5 +832,54 @@ class JavaWorkerManagerTest {
         if (interrupted) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static void awaitWorkerId(
+            JavaWorkerManager manager,
+            String clientWorkerKey,
+            String expectedWorkerId
+    ) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (expectedWorkerId.equals(
+                    manager.snapshot(clientWorkerKey).workerId()
+            )) {
+                return;
+            }
+            Thread.sleep(10L);
+        }
+        assertEquals(
+                expectedWorkerId,
+                manager.snapshot(clientWorkerKey).workerId()
+        );
+    }
+
+    private static String batchItem(
+            String workerId,
+            String endpointUri
+    ) {
+        return "{\"workerId\":\"" + workerId + "\","
+                + "\"transportType\":\"WEBSOCKET\","
+                + "\"endpointUri\":\"" + endpointUri + "\"}";
+    }
+
+    private static JavaWorkerManager batchManager(MockWebServer server) {
+        return JavaWorkerManager.builder(
+                        URI.create(server.url("/").toString()),
+                        "group-1",
+                        WorkerTransportType.WEBSOCKET
+                )
+                .batchWorkerKind("SCENARIO_LAB")
+                .replica("workers.jsonl:1", () -> Map.of(
+                        "labInventoryKey", "workers.jsonl",
+                        "labInventoryLine", 1,
+                        "labSlot", 1
+                ))
+                .replica("workers.jsonl:2", () -> Map.of(
+                        "labInventoryKey", "workers.jsonl",
+                        "labInventoryLine", 2,
+                        "labSlot", 2
+                ))
+                .build();
     }
 }

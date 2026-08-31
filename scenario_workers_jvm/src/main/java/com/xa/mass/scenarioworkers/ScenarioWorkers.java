@@ -8,10 +8,12 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public final class ScenarioWorkers implements AutoCloseable {
 
@@ -110,10 +112,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                 createManagers(preparedGroups);
                 List<ScenarioWorkerCoordinate> initialWorkers =
                         resolveInitialWorkers(startupPlan);
-                RuntimeException startFailure = startWorkers(
-                        startupPlan.startAll(),
-                        initialWorkers
-                );
+                RuntimeException startFailure = startWorkers(initialWorkers);
                 if (startFailure != null) {
                     throw startFailure;
                 }
@@ -166,46 +165,60 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     synchronized WorkerControlSnapshot workerSnapshot(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             boolean includeProperties
     ) {
         ensureControllable();
         ManagedGroup group = requireManagedGroup(workerGroupId);
         return snapshot(
                 group,
-                requireReplica(group, clientWorkerKey),
+                requireReplica(group, labWorkerKey),
                 includeProperties
         );
     }
 
-    synchronized void startWorker(
+    void startWorker(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
-        ensureControllable();
-        requireManagedGroup(workerGroupId)
-                .manager()
-                .start(requireClientWorkerKey(workerGroupId, clientWorkerKey));
+        ManagedGroup group;
+        String replicaKey;
+        synchronized (this) {
+            ensureControllable();
+            group = requireManagedGroup(workerGroupId);
+            replicaKey = requireLabWorkerKey(
+                    workerGroupId,
+                    labWorkerKey
+            );
+        }
+        group.manager().prepareAndStart(List.of(replicaKey));
     }
 
-    synchronized void stopWorker(
+    void stopWorker(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
-        ensureControllable();
-        requireManagedGroup(workerGroupId)
-                .manager()
-                .stop(requireClientWorkerKey(workerGroupId, clientWorkerKey));
+        ManagedGroup group;
+        String replicaKey;
+        synchronized (this) {
+            ensureControllable();
+            group = requireManagedGroup(workerGroupId);
+            replicaKey = requireLabWorkerKey(
+                    workerGroupId,
+                    labWorkerKey
+            );
+        }
+        group.manager().stop(replicaKey);
     }
 
     synchronized void replaceWorkerState(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String encodedDocument
     ) {
         ensureControllable();
         ManagedGroup group = requireManagedGroup(workerGroupId);
-        requireReplica(group, clientWorkerKey)
+        requireReplica(group, labWorkerKey)
                 .stateFile()
                 .replace(encodedDocument);
     }
@@ -217,14 +230,14 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     synchronized void armCommandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             String checkpointToken,
             long maximumHoldMillis
     ) {
         ensureControllable();
         ManagedGroup group = requireManagedGroup(workerGroupId);
         requireCheckpointCapable(group);
-        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        PreparedReplica replica = requireReplica(group, labWorkerKey);
         commandCheckpoints.arm(
                 coordinate(group, replica),
                 checkpointToken,
@@ -235,23 +248,23 @@ public final class ScenarioWorkers implements AutoCloseable {
     synchronized ScenarioWorkerCommandCheckpoints.Snapshot
     commandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         ensureControllable();
         ManagedGroup group = requireManagedGroup(workerGroupId);
         requireCheckpointCapable(group);
-        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        PreparedReplica replica = requireReplica(group, labWorkerKey);
         return commandCheckpoints.snapshot(coordinate(group, replica));
     }
 
     synchronized void releaseCommandCheckpoint(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         ensureControllable();
         ManagedGroup group = requireManagedGroup(workerGroupId);
         requireCheckpointCapable(group);
-        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        PreparedReplica replica = requireReplica(group, labWorkerKey);
         commandCheckpoints.release(coordinate(group, replica));
     }
 
@@ -287,7 +300,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             for (ScenarioWorkerStateFile worker
                     : discoveredGroup.workers()) {
                 replicas.add(new PreparedReplica(
-                        worker.clientWorkerKey(),
+                        worker.labWorkerKey(),
                         worker
                 ));
             }
@@ -335,33 +348,40 @@ public final class ScenarioWorkers implements AutoCloseable {
         for (ScenarioWorkerCoordinate worker
                 : startupPlan.initialWorkers()) {
             ManagedGroup group = requireManagedGroup(worker.workerGroupId());
-            requireReplica(group, worker.clientWorkerKey());
+            requireReplica(group, worker.labWorkerKey());
         }
         return startupPlan.initialWorkers();
     }
 
     private RuntimeException startWorkers(
-            boolean startAll,
             List<ScenarioWorkerCoordinate> initialWorkers
     ) {
         RuntimeException failure = null;
-        if (startAll) {
-            for (ManagedGroup managedGroup : managedGroups) {
+        Set<ScenarioWorkerCoordinate> selected = new HashSet<>(
+                initialWorkers
+        );
+        for (ManagedGroup managedGroup : managedGroups) {
+            Map<String, List<String>> keysByInventory =
+                    new LinkedHashMap<>();
+            for (PreparedReplica replica
+                    : managedGroup.preparedGroup().replicas()) {
+                if (!selected.contains(coordinate(
+                        managedGroup,
+                        replica
+                ))) {
+                    continue;
+                }
+                keysByInventory.computeIfAbsent(
+                        replica.stateFile().inventoryFileName(),
+                        ignored -> new ArrayList<>()
+                ).add(replica.labWorkerKey());
+            }
+            for (List<String> keys : keysByInventory.values()) {
                 try {
-                    managedGroup.manager().start();
+                    managedGroup.manager().prepareAndStart(keys);
                 } catch (RuntimeException error) {
                     failure = accumulate(failure, error);
                 }
-            }
-            return failure;
-        }
-        for (ScenarioWorkerCoordinate worker : initialWorkers) {
-            try {
-                requireManagedGroup(worker.workerGroupId())
-                        .manager()
-                        .start(worker.clientWorkerKey());
-            } catch (RuntimeException error) {
-                failure = accumulate(failure, error);
             }
         }
         return failure;
@@ -389,12 +409,12 @@ public final class ScenarioWorkers implements AutoCloseable {
     ) {
         JavaWorkerManager manager = group.manager();
         WorkerLifecycle.Snapshot runtime = manager.snapshot(
-                replica.clientWorkerKey()
+                replica.labWorkerKey()
         );
         return new WorkerControlSnapshot(
                 group.preparedGroup().group().config().workerGroupId(),
-                replica.clientWorkerKey(),
-                manager.desiredRunning(replica.clientWorkerKey()),
+                replica.labWorkerKey(),
+                manager.desiredRunning(replica.labWorkerKey()),
                 runtime,
                 includeProperties
                         ? replica.stateFile().workerProperties()
@@ -418,14 +438,14 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     private PreparedReplica requireReplica(
             ManagedGroup group,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
-        String key = requireClientWorkerKey(
+        String key = requireLabWorkerKey(
                 group.preparedGroup().group().config().workerGroupId(),
-                clientWorkerKey
+                labWorkerKey
         );
         for (PreparedReplica replica : group.preparedGroup().replicas()) {
-            if (replica.clientWorkerKey().equals(key)) {
+            if (replica.labWorkerKey().equals(key)) {
                 return replica;
             }
         }
@@ -434,24 +454,24 @@ public final class ScenarioWorkers implements AutoCloseable {
         );
     }
 
-    private String requireClientWorkerKey(
+    private String requireLabWorkerKey(
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) {
         ManagedGroup group = requireManagedGroup(workerGroupId);
         ScenarioWorkerGroupConfig.requireNonBlank(
-                clientWorkerKey,
-                "clientWorkerKey"
+                labWorkerKey,
+                "labWorkerKey"
         );
         boolean present = group.preparedGroup().replicas().stream()
-                .anyMatch(replica -> replica.clientWorkerKey()
-                        .equals(clientWorkerKey));
+                .anyMatch(replica -> replica.labWorkerKey()
+                        .equals(labWorkerKey));
         if (!present) {
             throw new UnknownWorkerException(
-                    "Unknown Scenario Worker: " + clientWorkerKey
+                    "Unknown Scenario Worker: " + labWorkerKey
             );
         }
-        return clientWorkerKey;
+        return labWorkerKey;
     }
 
     private void ensureControllable() {
@@ -474,13 +494,14 @@ public final class ScenarioWorkers implements AutoCloseable {
                         WorkerTransportType.WEBSOCKET
                 )
                 .extendEventDefinitions(group.definitionExtensions())
+                .batchWorkerKind("SCENARIO_LAB")
                 .options(WorkerConnectionOptions.of(
                         config.requestTimeout(),
                         config.reconnectPolicy()
                 ));
         for (PreparedReplica replica : preparedGroup.replicas()) {
             builder.replica(
-                    replica.clientWorkerKey(),
+                    replica.labWorkerKey(),
                     replica.stateFile()::workerProperties
             );
         }
@@ -525,7 +546,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     ) {
         return new ScenarioWorkerCoordinate(
                 group.preparedGroup().group().config().workerGroupId(),
-                replica.clientWorkerKey()
+                replica.labWorkerKey()
         );
     }
 
@@ -643,7 +664,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     record PreparedReplica(
-            String clientWorkerKey,
+            String labWorkerKey,
             ScenarioWorkerStateFile stateFile
     ) {
     }
@@ -656,7 +677,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     record WorkerControlSnapshot(
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             boolean desiredRunning,
             WorkerLifecycle.Snapshot runtime,
             Map<String, Object> workerProperties

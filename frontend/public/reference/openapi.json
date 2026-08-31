@@ -376,6 +376,31 @@
         },
         "type" : "object"
       },
+      "WorkerBatchPreparationRequest" : {
+        "properties" : {
+          "workers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerPreparationRequest"
+            },
+            "maxItems" : 100,
+            "minItems" : 1,
+            "type" : "array"
+          }
+        },
+        "required" : [ "workers" ],
+        "type" : "object"
+      },
+      "WorkerBatchPreparationResponse" : {
+        "properties" : {
+          "workers" : {
+            "items" : {
+              "$ref" : "#/components/schemas/WorkerPreparationResponse"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
       "WorkerCommandConsumeRequest" : {
         "properties" : {
           "limit" : {
@@ -595,6 +620,11 @@
         "properties" : {
           "transportType" : {
             "enum" : [ "POLLING", "WEBSOCKET", "SOCKET" ],
+            "type" : "string"
+          },
+          "workerKind" : {
+            "default" : "CLIENT_KEY",
+            "enum" : [ "CLIENT_KEY", "SCENARIO_LAB" ],
             "type" : "string"
           },
           "workerProperties" : {
@@ -2099,6 +2129,64 @@
           }
         },
         "summary" : "Prepare a Worker identity and Endpoint Binding",
+        "tags" : [ "Worker Resources" ]
+      }
+    },
+    "/api/v1/worker-groups/{workerGroupId}/workers:prepare-batch" : {
+      "post" : {
+        "operationId" : "prepareWorkers",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "workerGroupId",
+          "required" : true,
+          "schema" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/WorkerBatchPreparationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WorkerBatchPreparationResponse"
+                }
+              }
+            },
+            "description" : "Worker batch preparation completed"
+          },
+          "400" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker batch preparation was rejected"
+          },
+          "503" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "Worker preparation Owner is unavailable"
+          }
+        },
+        "summary" : "Prepare multiple Worker identities and bindings",
         "tags" : [ "Worker Resources" ]
       }
     },

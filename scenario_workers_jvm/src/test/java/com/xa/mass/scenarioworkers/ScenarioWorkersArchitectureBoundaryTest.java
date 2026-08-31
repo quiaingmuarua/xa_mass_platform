@@ -76,11 +76,11 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)
-                .containsOnlyOnce("Executors.newSingleThreadExecutor")
+                .containsOnlyOnce("Executors.newFixedThreadPool")
                 .containsOnlyOnce(
                         "Executors.newSingleThreadScheduledExecutor"
                 )
-                .doesNotContain("Executors.newFixedThreadPool")
+                .doesNotContain("Executors.newSingleThreadExecutor")
                 .doesNotContain("Executors.newCachedThreadPool");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")

@@ -308,7 +308,7 @@
           <thead>
             <tr>
               <th>Worker group</th>
-              <th>Client key</th>
+              <th>Lab Worker key</th>
               <th>Desired</th>
               <th>Runtime</th>
               <th>Worker ID</th>
@@ -398,12 +398,12 @@
     };
 
     function coordinate(worker) {
-      return worker.workerGroupId + "\u0000" + worker.clientWorkerKey;
+      return worker.workerGroupId + "\u0000" + worker.labWorkerKey;
     }
 
     function workerPath(worker) {
       return API + "/" + encodeURIComponent(worker.workerGroupId)
-        + "/" + encodeURIComponent(worker.clientWorkerKey);
+        + "/" + encodeURIComponent(worker.labWorkerKey);
     }
 
     function selectedWorker() {
@@ -463,7 +463,7 @@
       button.textContent = label;
       button.dataset.action = action;
       button.dataset.workerGroupId = worker.workerGroupId;
-      button.dataset.clientWorkerKey = worker.clientWorkerKey;
+      button.dataset.labWorkerKey = worker.labWorkerKey;
       button.disabled = state.busyWorkers.has(coordinate(worker));
       if (className) button.className = className;
       return button;
@@ -491,7 +491,7 @@
         const row = document.createElement("tr");
         if (coordinate(worker) === state.selected) row.className = "selected";
         row.appendChild(textCell(worker.workerGroupId));
-        row.appendChild(textCell(worker.clientWorkerKey, "mono"));
+        row.appendChild(textCell(worker.labWorkerKey, "mono"));
         row.appendChild(stateCell(worker.desiredState));
         row.appendChild(stateCell(worker.runtimeState));
         row.appendChild(textCell(worker.workerId, "mono"));
@@ -552,7 +552,7 @@
       elements.dirtyState.textContent = "";
       elements.detailEmpty.hidden = true;
       elements.detailContent.hidden = false;
-      elements.detailKey.textContent = worker.workerGroupId + " / " + worker.clientWorkerKey;
+      elements.detailKey.textContent = worker.workerGroupId + " / " + worker.labWorkerKey;
       renderWorkers();
       try {
         const detail = await request(workerPath(worker));
@@ -658,7 +658,7 @@
       if (!button) return;
       const worker = state.workers.find(candidate =>
         candidate.workerGroupId === button.dataset.workerGroupId
-        && candidate.clientWorkerKey === button.dataset.clientWorkerKey
+        && candidate.labWorkerKey === button.dataset.labWorkerKey
       );
       if (!worker) return;
       if (button.dataset.action === "details") openDetails(worker);

@@ -2,6 +2,7 @@ package com.xa.mass.scenarioworkers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,6 +22,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,7 +35,8 @@ import org.junit.jupiter.api.io.TempDir;
 class ScenarioWorkerControlServerTest {
 
     private static final String GROUP = "scenario-group";
-    private static final String CLIENT = "client-1";
+    private static final String INVENTORY = "client-1.jsonl";
+    private static final String CLIENT = INVENTORY + ":1";
 
     @TempDir
     Path temporaryDirectory;
@@ -47,11 +54,15 @@ class ScenarioWorkerControlServerTest {
         Path group = root.resolve(GROUP);
         Files.createDirectories(group);
         Files.writeString(
-                group.resolve(CLIENT + ".json"),
+                group.resolve(INVENTORY),
                 Jsons.toJson(Map.of(
                         "schemaVersion", 2,
-                        "workerProperties", Map.of("labSlot", 1)
-                )),
+                        "workerProperties", Map.of(
+                                "labInventoryKey", INVENTORY,
+                                "labInventoryLine", 1,
+                                "labSlot", 1
+                        )
+                )) + "\n",
                 StandardCharsets.UTF_8
         );
 
@@ -176,12 +187,16 @@ class ScenarioWorkerControlServerTest {
                 .statusCode()).isEqualTo(202);
         assertThat(request("POST", workerPath() + ":stop", null)
                 .statusCode()).isEqualTo(202);
-        verify(manager).start(CLIENT);
+        verify(manager).prepareAndStart(List.of(CLIENT));
         verify(manager).stop(CLIENT);
 
         String replacement = Jsons.toJson(Map.of(
                 "schemaVersion", 2,
-                "workerProperties", Map.of("labSlot", 41)
+                "workerProperties", Map.of(
+                        "labInventoryKey", INVENTORY,
+                        "labInventoryLine", 1,
+                        "labSlot", 41
+                )
         ));
         HttpResponse<String> replaced = request(
                 "PUT",
@@ -234,7 +249,7 @@ class ScenarioWorkerControlServerTest {
             throws Exception {
         doThrow(new IllegalStateException("still stopping"))
                 .when(manager)
-                .start(CLIENT);
+                .prepareAndStart(List.of(CLIENT));
 
         HttpResponse<String> response = request(
                 "POST",
@@ -244,6 +259,42 @@ class ScenarioWorkerControlServerTest {
 
         assertThat(response.statusCode()).isEqualTo(409);
         assertThat(response.body()).contains("state_conflict");
+    }
+
+    @Test
+    void slowPrepareDoesNotBlockAStopRequestForTheSameWorker()
+            throws Exception {
+        CountDownLatch prepareEntered = new CountDownLatch(1);
+        CountDownLatch releasePrepare = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            prepareEntered.countDown();
+            if (!releasePrepare.await(2, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Prepare was not released");
+            }
+            return null;
+        }).when(manager).prepareAndStart(List.of(CLIENT));
+
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            Future<HttpResponse<String>> starting = caller.submit(() ->
+                    request("POST", workerPath() + ":start", null));
+            assertThat(prepareEntered.await(1, TimeUnit.SECONDS)).isTrue();
+
+            HttpResponse<String> stopped = request(
+                    "POST",
+                    workerPath() + ":stop",
+                    null
+            );
+            assertThat(stopped.statusCode()).isEqualTo(202);
+            verify(manager).stop(CLIENT);
+
+            releasePrepare.countDown();
+            assertThat(starting.get(1, TimeUnit.SECONDS).statusCode())
+                    .isEqualTo(202);
+        } finally {
+            releasePrepare.countDown();
+            caller.shutdownNow();
+        }
     }
 
     @Test

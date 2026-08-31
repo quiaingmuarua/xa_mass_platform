@@ -56,6 +56,20 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     @Override
     public void start() {
+        requestStart(null);
+    }
+
+    /**
+     * Starts one run from a coordinate prepared by the owning Host.
+     */
+    public void start(PreparedWorker preparedWorker) {
+        requestStart(Objects.requireNonNull(
+                preparedWorker,
+                "preparedWorker"
+        ));
+    }
+
+    private void requestStart(PreparedWorker suppliedPreparedWorker) {
         synchronized (stateLock) {
             if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
@@ -67,13 +81,15 @@ public final class WorkerRunController implements WorkerLifecycle {
             }
             phase = Phase.PREPARING;
             discardPreparedResult = false;
-            preparedWorker = null;
+            this.preparedWorker = null;
             activeTransport = null;
             diagnosticMessage = null;
         }
         publish();
         try {
-            controlExecutor.execute(this::runStart);
+            controlExecutor.execute(
+                    () -> runStart(suppliedPreparedWorker)
+            );
         } catch (RuntimeException | Error failure) {
             rejectStart(failure);
             throw failure;
@@ -163,12 +179,14 @@ public final class WorkerRunController implements WorkerLifecycle {
         publish(closingListeners, closingSnapshot);
     }
 
-    private void runStart() {
+    private void runStart(PreparedWorker suppliedPreparedWorker) {
         TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
             PreparedWorker prepared = Objects.requireNonNull(
-                    preparation.prepare(),
+                    suppliedPreparedWorker == null
+                            ? preparation.prepare()
+                            : suppliedPreparedWorker,
                     "preparation returned null"
             );
             if (finishDiscardedPreparation()) {

@@ -3,6 +3,7 @@ package com.xa.mass.server.workeridentity;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.workerpreparation.WorkerRegistrationKind;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,12 +29,107 @@ public final class WorkerIdentityService {
             String workerGroupId,
             Map<String, Object> workerProperties
     ) {
+        return register(
+                workerGroupId,
+                WorkerRegistrationKind.CLIENT_KEY,
+                workerProperties
+        );
+    }
+
+    public String register(
+            String workerGroupId,
+            WorkerRegistrationKind workerKind,
+            Map<String, Object> workerProperties
+    ) {
         String operation = "workerIdentity.register";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
-        String clientWorkerKey = requireClientWorkerKey(
+        String registrationKey = registrationKey(
+                workerKind,
                 workerProperties,
                 operation
         );
+        return registerResolved(
+                workerGroupId,
+                registrationKey,
+                operation
+        );
+    }
+
+    public void requireRegistration(
+            String workerGroupId,
+            Map<String, Object> workerProperties,
+            String workerId
+    ) {
+        requireRegistration(
+                workerGroupId,
+                WorkerRegistrationKind.CLIENT_KEY,
+                workerProperties,
+                workerId
+        );
+    }
+
+    public void requireRegistration(
+            String workerGroupId,
+            WorkerRegistrationKind workerKind,
+            Map<String, Object> workerProperties,
+            String workerId
+    ) {
+        String operation = "workerIdentity.requireRegistration";
+        requireNonBlank(workerGroupId, "workerGroupId", operation);
+        String registrationKey = registrationKey(
+                workerKind,
+                workerProperties,
+                operation
+        );
+        requireResolvedRegistration(
+                workerGroupId,
+                registrationKey,
+                workerId,
+                operation
+        );
+    }
+
+    public String registrationKey(
+            WorkerRegistrationKind workerKind,
+            Map<String, Object> workerProperties
+    ) {
+        return registrationKey(
+                workerKind,
+                workerProperties,
+                "workerIdentity.registrationKey"
+        );
+    }
+
+    private String registrationKey(
+            WorkerRegistrationKind workerKind,
+            Map<String, Object> workerProperties,
+            String operation
+    ) {
+        Objects.requireNonNull(workerKind, "workerKind");
+        if (workerProperties == null) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties must be present",
+                    null
+            );
+        }
+        return switch (workerKind) {
+            case CLIENT_KEY -> clientKeyRegistrationKey(
+                    requireClientWorkerKey(workerProperties, operation)
+            );
+            case SCENARIO_LAB -> scenarioLabRegistrationKey(
+                    workerProperties,
+                    operation
+            );
+        };
+    }
+
+    private String registerResolved(
+            String workerGroupId,
+            String registrationKey,
+            String operation
+    ) {
         try {
             if (workerCatalog.getWorkerGroupDescriptors(
                     List.of(workerGroupId)
@@ -47,7 +143,7 @@ public final class WorkerIdentityService {
             }
             String workerId = registry.register(
                     workerGroupId,
-                    clientWorkerKey
+                    registrationKey
             );
             if (!isCanonicalUuid(workerId)) {
                 throw failure(
@@ -70,17 +166,12 @@ public final class WorkerIdentityService {
         }
     }
 
-    public void requireRegistration(
+    private void requireResolvedRegistration(
             String workerGroupId,
-            Map<String, Object> workerProperties,
-            String workerId
+            String registrationKey,
+            String workerId,
+            String operation
     ) {
-        String operation = "workerIdentity.requireRegistration";
-        requireNonBlank(workerGroupId, "workerGroupId", operation);
-        String clientWorkerKey = requireClientWorkerKey(
-                workerProperties,
-                operation
-        );
         if (!isCanonicalUuid(workerId)) {
             throw failure(
                     ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
@@ -92,7 +183,7 @@ public final class WorkerIdentityService {
         try {
             if (!registry.matches(
                     workerGroupId,
-                    clientWorkerKey,
+                    registrationKey,
                     workerId
             )) {
                 throw failure(
@@ -112,6 +203,64 @@ public final class WorkerIdentityService {
                     error
             );
         }
+    }
+
+    private static String scenarioLabRegistrationKey(
+            Map<String, Object> workerProperties,
+            String operation
+    ) {
+        if (workerProperties.containsKey("clientWorkerKey")) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "SCENARIO_LAB workerProperties must not contain clientWorkerKey",
+                    null
+            );
+        }
+        Object rawInventoryKey = workerProperties.get("labInventoryKey");
+        if (!(rawInventoryKey instanceof String inventoryKey)
+                || inventoryKey.isBlank()) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties.labInventoryKey must be a non-blank string",
+                    null
+            );
+        }
+        Object rawLine = workerProperties.get("labInventoryLine");
+        if (!(rawLine instanceof Byte
+                || rawLine instanceof Short
+                || rawLine instanceof Integer
+                || rawLine instanceof Long)) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties.labInventoryLine must be an integer",
+                    null
+            );
+        }
+        long line = ((Number) rawLine).longValue();
+        if (line < 1L || line > 100L) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties.labInventoryLine must be between 1 and 100",
+                    null
+            );
+        }
+        return "scenario-lab:"
+                + inventoryKey.length()
+                + ":"
+                + inventoryKey
+                + ":"
+                + line;
+    }
+
+    private static String clientKeyRegistrationKey(String clientWorkerKey) {
+        return "client-key:"
+                + clientWorkerKey.length()
+                + ":"
+                + clientWorkerKey;
     }
 
     private static void requireNonBlank(

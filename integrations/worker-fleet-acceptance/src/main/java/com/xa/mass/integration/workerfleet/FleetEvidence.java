@@ -29,13 +29,13 @@ final class FleetEvidence {
         this.proofId = proofId;
         this.phase = phase;
         endpointManagerId = spec.endpointManagerId();
-        spec.clientWorkerKeysByGroup().forEach((groupId, keys) ->
+        spec.labWorkerKeysByGroup().forEach((groupId, keys) ->
                 groups.put(groupId, new GroupEvidence(keys)));
     }
 
     void inventory(Map<String, Map<String, String>> inventory) {
         inventory.forEach((groupId, workers) ->
-                groups.get(groupId).workerIdsByClientWorkerKey =
+                groups.get(groupId).workerIdsByLabWorkerKey =
                         new LinkedHashMap<>(workers));
     }
 
@@ -110,26 +110,26 @@ final class FleetEvidence {
     private static final class GroupEvidence {
 
         private final int expectedReplicaCount;
-        private final List<String> expectedClientWorkerKeys;
-        private Map<String, String> workerIdsByClientWorkerKey = Map.of();
+        private final List<String> expectedLabWorkerKeys;
+        private Map<String, String> workerIdsByLabWorkerKey = Map.of();
         private List<String> connectedWorkerIds = List.of();
         private List<String> probeObservedWorkerIds = List.of();
         private List<String> propertiesMatchedWorkerIds = List.of();
 
-        private GroupEvidence(List<String> expectedClientWorkerKeys) {
-            this.expectedClientWorkerKeys = List.copyOf(
-                    expectedClientWorkerKeys
+        private GroupEvidence(List<String> expectedLabWorkerKeys) {
+            this.expectedLabWorkerKeys = List.copyOf(
+                    expectedLabWorkerKeys
             );
-            expectedReplicaCount = expectedClientWorkerKeys.size();
+            expectedReplicaCount = expectedLabWorkerKeys.size();
         }
 
         private Map<String, Object> toMap() {
             Map<String, Object> encoded = new LinkedHashMap<>();
             encoded.put("expectedReplicaCount", expectedReplicaCount);
-            encoded.put("expectedClientWorkerKeys", expectedClientWorkerKeys);
+            encoded.put("expectedLabWorkerKeys", expectedLabWorkerKeys);
             encoded.put(
-                    "workerIdsByClientWorkerKey",
-                    workerIdsByClientWorkerKey
+                    "workerIdsByLabWorkerKey",
+                    workerIdsByLabWorkerKey
             );
             encoded.put("connectedWorkerIds", connectedWorkerIds);
             encoded.put("probeObservedWorkerIds", probeObservedWorkerIds);

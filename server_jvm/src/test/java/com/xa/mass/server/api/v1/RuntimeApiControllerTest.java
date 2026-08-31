@@ -58,6 +58,7 @@ import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
 import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
 import com.xa.mass.server.workerpreparation.WorkerPreparationService;
+import com.xa.mass.server.workerpreparation.WorkerRegistrationKind;
 import com.xa.mass.server.workerresource.WorkerResourceCommandService;
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -120,7 +121,17 @@ class RuntimeApiControllerTest {
                 });
         when(workerIdentity.register(any(), any()))
                 .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
+        when(workerIdentity.registrationKey(any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(1).toString());
+        when(workerIdentity.register(any(), any(), any()))
+                .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
         when(workerBinding.bind(any(), any(), any(), any()))
+                .thenReturn(new WorkerEndpointBinding(
+                        "scenario-websocket",
+                        WorkerTransportType.WEBSOCKET,
+                        URI.create("ws://127.0.0.1:18083/connect")
+                ));
+        when(workerBinding.bind(any(), any(), any(), any(), any()))
                 .thenReturn(new WorkerEndpointBinding(
                         "scenario-websocket",
                         WorkerTransportType.WEBSOCKET,
@@ -329,6 +340,7 @@ class RuntimeApiControllerTest {
                 ));
         verify(workerIdentity).register(
                 "phone-tools",
+                WorkerRegistrationKind.CLIENT_KEY,
                 Map.of(
                         "clientWorkerKey",
                         "installation-1",
@@ -341,6 +353,7 @@ class RuntimeApiControllerTest {
         verify(workerBinding).bind(
                 "phone-tools",
                 "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
+                WorkerRegistrationKind.CLIENT_KEY,
                 WorkerTransportType.WEBSOCKET,
                 Map.of(
                         "clientWorkerKey",
@@ -351,6 +364,65 @@ class RuntimeApiControllerTest {
                         "local"
                 )
         );
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:prepare-batch"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "workers":[
+                                    {
+                                      "workerKind":"SCENARIO_LAB",
+                                      "transportType":"WEBSOCKET",
+                                      "workerProperties":{
+                                      "labInventoryKey":"workers-a.jsonl",
+                                      "labInventoryLine":1
+                                    }},
+                                    {
+                                      "workerKind":"SCENARIO_LAB",
+                                      "transportType":"WEBSOCKET",
+                                      "workerProperties":{
+                                      "labInventoryKey":"workers-a.jsonl",
+                                      "labInventoryLine":2
+                                    }}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workers.length()").value(2))
+                .andExpect(jsonPath("$.workers[0].workerId").exists())
+                .andExpect(jsonPath("$.workers[0].labWorkerKey")
+                        .doesNotExist());
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:prepare-batch"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "workers":[
+                                    {
+                                      "workerKind":"SCENARIO_LAB",
+                                      "transportType":"WEBSOCKET",
+                                      "workerProperties":{
+                                      "labInventoryKey":"workers-a.jsonl",
+                                      "labInventoryLine":1
+                                    }},
+                                    {
+                                      "workerKind":"SCENARIO_LAB",
+                                      "transportType":"WEBSOCKET",
+                                      "workerProperties":{
+                                      "labInventoryKey":"workers-a.jsonl",
+                                      "labInventoryLine":1
+                                    }}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(14001));
 
         mockMvc.perform(put("/api/v1/worker-groups/phone-tools")
                         .contentType(MediaType.APPLICATION_JSON)

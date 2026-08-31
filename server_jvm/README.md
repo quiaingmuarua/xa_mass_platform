@@ -258,20 +258,56 @@ A missing descriptor remains a `null` projection; the read does not create,
 approve, close or repair a Task. It has no total, cursor, paging or completeness
 meaning, and its order is not business priority or execution evidence.
 
-One Worker start uses one public control call:
+An ordinary Worker start uses one public control call:
 
 ```text
 POST /api/v1/worker-groups/{workerGroupId}/workers:prepare
 ```
 
-Prepare requires an existing Group and a non-blank
+A Java Manager may optionally prepare `1..100` Workers with one bounded call:
+
+```text
+POST /api/v1/worker-groups/{workerGroupId}/workers:prepare-batch
+```
+
+Single and batch calls use the same Prepare item DTO:
+
+```json
+{"workerKind":"SCENARIO_LAB","transportType":"WEBSOCKET","workerProperties":{}}
+```
+
+`workerKind` is optional and defaults to `CLIENT_KEY`, preserving existing
+ordinary callers. Android supplies `CLIENT_KEY` explicitly; ordinary Java may
+omit it. `SCENARIO_LAB` derives its
+Server-owned registration coordinate from immutable
+`labInventoryKey + labInventoryLine` properties and strictly rejects
+`clientWorkerKey`; mutable fields such as `labSlot` do not participate in
+identity. A batch wraps `1..100` ordered Prepare items that must share one kind
+and transport type. Both HTTP routes enter the same Server `prepareAll` path;
+the single route supplies a one-item list. Server validates the batch shape and
+every registration coordinate before side effects, then invokes the same
+identity, Binding, and Properties owners sequentially.
+The response is an ordered list of the ordinary Prepare response DTO. Only a
+complete response returns `200`; completed side effects are not rolled back,
+so callers may retry through the same derived coordinates.
+
+`workerKind` only selects the Server-owned registration-key algorithm. It is
+not part of the Redis key address: all identities for one WorkerGroup are
+fields in the same Group identity Hash. Each algorithm emits a typed,
+unambiguous field value, so an arbitrary `CLIENT_KEY` input cannot alias a
+`SCENARIO_LAB` coordinate. This cutover intentionally provides no legacy field
+fallback or workerId migration; test and deployment scopes may clear old
+identity data before using the new contract.
+
+`CLIENT_KEY` Prepare requires an existing Group and a non-blank
 `workerProperties.clientWorkerKey`. It resolves or creates the Server-owned
 Worker identity, selects or reuses the persistent Endpoint Binding, upserts the
 complete Worker Properties snapshot and initializes missing scheduling truth.
 These are separate owners and Redis keys, not one transaction; a repeated
-Prepare converges interrupted stages. Workers persist only their Group/client
-key coordinate and never send a Worker ID hint. Transparent reconnect reuses
-the current in-memory identity and Endpoint without preparing again.
+Prepare converges interrupted stages. Ordinary Workers retain only their
+Group/client key coordinate and never send a Worker ID hint. Transparent
+reconnect reuses the current in-memory identity and Endpoint without preparing
+again.
 
 Worker scheduling control and platform Properties changes use resource-shaped
 success responses:

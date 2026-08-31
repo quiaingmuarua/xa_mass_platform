@@ -37,7 +37,9 @@ extensions and/or use default connection options. Android generates and stores
 a canonical UUID client key together with its WorkerGroup coordinate. It never
 stores the platform-issued Worker ID; any legacy preference value for that ID
 is ignored. The Properties function cannot override the reserved
-`clientWorkerKey` field.
+`clientWorkerKey` field. Its ordinary Prepare request explicitly selects the
+Server `CLIENT_KEY` registration policy; it does not use Scenario Lab inventory
+coordinates or the optional batch endpoint.
 
 The supplied Definitions are business extensions, not a complete Handler map.
 Assembly delegates to Core's static Definition assembly, which adds

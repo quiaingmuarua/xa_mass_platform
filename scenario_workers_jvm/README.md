@@ -68,13 +68,13 @@ The optional startup plan is validated completely before any replica starts:
   "initialWorkers": [
     {
       "workerGroupId": "scenario-string-utils-workers",
-      "clientWorkerKey": "scenario-string-utils-worker-001"
+      "labWorkerKey": "scenario-string-utils-worker-a.jsonl:1"
     }
   ],
   "scheduledStops": [
     {
       "workerGroupId": "scenario-string-utils-workers",
-      "clientWorkerKey": "scenario-string-utils-worker-001",
+      "labWorkerKey": "scenario-string-utils-worker-a.jsonl:1",
       "delayMillis": 5000
     }
   ]
@@ -93,11 +93,11 @@ One standalone Host process exclusively owns this writable local directory:
 ```text
 data/scenario-workers/
 ├── scenario-phone-number-workers/
-│   ├── scenario-phone-number-worker-001.json
-│   └── ...
+│   ├── scenario-phone-number-worker-a.jsonl
+│   └── scenario-phone-number-worker-b.jsonl
 └── scenario-string-utils-workers/
-    ├── scenario-string-utils-worker-001.json
-    └── ...
+    ├── scenario-string-utils-worker-a.jsonl
+    └── scenario-string-utils-worker-b.jsonl
 ```
 
 Initialization is decided independently for each configured WorkerGroup:
@@ -120,35 +120,35 @@ newly configured Group is initialized only when its directory is absent.
 Unconfigured directories, including older top-level sandbox directories, are
 ignored. There is no flag file, template version, default-set merge, file
 watcher, or multi-process lock. The only file-schema transition is the bounded
-v1-to-v2 migration described below.
+reset obtained by deleting a configured Group directory or the complete Lab
+root; old Worker file layouts are not migrated.
 
 The Lab root must end in `data/scenario-workers` and must not pass through a
-symbolic link. Only direct, non-symlink lowercase `*.json` children of configured
+symbolic link. Only direct, non-symlink `*.jsonl` children of configured
 Group directories are discovered. Files are sorted by name; each group is
-bounded to 100 Workers. Any discovered invalid file fails aggregate startup
+bounded to 100 Worker records, and each file contains `1..100` records. Any
+discovered invalid file fails aggregate startup
 before a Manager or network Client is created.
 
-Each filename without `.json` is its `clientWorkerKey`; its parent directory is
-the configured `workerGroupId`. One file owns the complete persistent local
-snapshot:
+Each physical line is one complete persistent local snapshot. Immutable
+`labInventoryKey` and `labInventoryLine` Properties must match its filename and
+one-based physical line. `<filename>:<line>` is the Lab-local `labWorkerKey`
+used by the control API; it is not `clientWorkerKey` or a general Transport
+identity field. The parent directory supplies the configured `workerGroupId`:
 
 ```json
-{
-  "schemaVersion": 2,
-  "workerProperties": {
-    "runtime": "java",
-    "region": "local"
-  }
-}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"scenario-string-utils-worker-a.jsonl","labInventoryLine":1,"runtime":"java","labSlot":1}}
+{"schemaVersion":2,"workerProperties":{"labInventoryKey":"scenario-string-utils-worker-a.jsonl","labInventoryLine":2,"runtime":"java","labSlot":2}}
 ```
 
-`schemaVersion` must be integer `2`; `workerProperties` defaults to `{}` and
-unknown fields are rejected. A legal v1 file is read once, preserves its
-Properties, drops its former `workerId`, and is atomically rewritten as v2. The
-filename and parent directory are the only client-key and group coordinates,
-so those values are not duplicated inside the JSON. Scenario never persists a
-platform-issued Worker ID; the Server identity registry resolves it from the
-Group and client key on every explicit Worker start.
+Blank lines, comments, multi-line objects, missing `workerProperties`, schema
+versions other than integer `2`, and unknown fields are rejected. A Lab PUT
+validates the complete file, replaces only the selected line, preserves every
+other physical line and line count, then atomically replaces the file. A PUT
+cannot change either inventory field. Scenario never persists a
+platform-issued Worker ID; `workerKind=SCENARIO_LAB` tells Server to derive its
+private registration coordinate from Group plus the inventory fields. Mutable
+Properties such as `labSlot` do not participate in identity.
 
 ## Runtime lifecycle
 
@@ -157,9 +157,9 @@ then performs:
 
 ```text
 one JavaWorkerManager for each non-empty configured WorkerGroup
--> start its fixed replica set
--> Prepare once with Group, client key and complete Properties
--> receive workerId and WEBSOCKET Endpoint
+-> group the selected initial replicas by inventory file
+-> batch Prepare each file's selected records, at most 100 per call
+-> inject each returned workerId and WEBSOCKET Endpoint into its replica
 -> connect through the public Adapter URI returned by Prepare
 -> return without waiting for initial Adapter verification
 ```
@@ -167,8 +167,9 @@ one JavaWorkerManager for each non-empty configured WorkerGroup
 An empty Group owns no Manager. Every Manager owns one bounded daemon Platform
 shared only by its replicas. Preparation or endpoint termination stops that
 Worker until an explicit later Host start. Prepare in that explicit start is
-the only canonical Properties refresh. Each Prepare reopens the Worker's JSON
-file, so an atomic file update does not affect the current run and becomes
+the only canonical Properties refresh. Initial file batches and later
+one-record batches both reopen the Worker's inventory file, so an atomic file
+update does not affect the current run and becomes
 visible on the next explicit start. A start requested while an earlier stop is
 still converging is rejected with `409`; the caller must observe `STOPPED` and
 retry instead of relying on an implicit restart.
@@ -184,15 +185,15 @@ The Host exposes a loopback-only JDK `HttpServer` control surface:
 
 ```text
 GET    /lab/v1/workers
-GET    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}
-PUT    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}
-POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:start
-POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:stop
-POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:schedule-stop
-DELETE /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:scheduled-stop
-PUT    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
-GET    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
-DELETE /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
+GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
+PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}
+POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:start
+POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:stop
+POST   /lab/v1/workers/{workerGroupId}/{labWorkerKey}:schedule-stop
+DELETE /lab/v1/workers/{workerGroupId}/{labWorkerKey}:scheduled-stop
+PUT    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:command-checkpoint
+GET    /lab/v1/workers/{workerGroupId}/{labWorkerKey}:command-checkpoint
+DELETE /lab/v1/workers/{workerGroupId}/{labWorkerKey}:command-checkpoint
 ```
 
 `PUT` accepts the complete schema-v2 state document and atomically replaces
@@ -223,9 +224,14 @@ stop, scheduled stop, and complete schema-v2 Properties replacement to the
 APIs above. Its desired/runtime fields are only local Host state; the page does
 not claim Adapter connectivity, Kernel score, or schedulability. Automatic
 list refresh never reloads a Properties document while it is being edited.
+The loopback server uses a bounded four-thread control executor. A slow
+single-Worker Prepare does not hold the Scenario inventory monitor, allowing a
+stop or local snapshot request to reach its independent replica. This is
+control-plane responsiveness, not a claim that Lab actions are transactional
+or distributed truth.
 
 `close()` closes Managers in reverse group order and leaves every Worker JSON
-unchanged. Persistent Lab state means stable client keys, Properties, and
+unchanged. Persistent Lab state means stable Lab Worker keys, Properties, and
 replica topology. With Server identity Redis retained, repeated Prepare maps
 those coordinates back to the same Worker IDs; the files themselves do not
 store IDs. The Lab does not persist Endpoint URI, Binding, Channels, connection
@@ -250,7 +256,7 @@ independent clients then prove the boundary:
 
 - [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
   the exact two-by-ten replica topology, schema-v2 Lab files, Runtime Preview
-  client-key identity mapping, Adapter routes, probe execution, Properties
+  Lab-coordinate identity mapping, Adapter routes, probe execution, Properties
   observation, and identity reuse across a real standalone Host restart while
   Server, Pacer, Redis and Lab remain available;
 - [`worker-capability-task`](../integrations/worker-capability-task/) proves two

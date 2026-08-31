@@ -94,9 +94,17 @@ recovery limits are current Kernel policy, not cross-module contracts.
 The Adapter may also retain the latest explicitly observed Worker properties
 as a process-local timestamped projection. It is queried through an Adapter
 DIRECT_CALL and is deliberately not copied into Server or Kernel truth.
-Canonical Worker Properties are refreshed only when an explicit Worker start
-performs one Prepare request; transparent Client reconnect sends only
-connection identity. WorkerGroup declarations are create-only control-plane
+Canonical Worker Properties are refreshed only by Prepare; an ordinary
+explicit Worker start performs one request, while a Java Manager may explicitly
+batch up to 100 stopped replicas before injecting their prepared coordinates.
+Prepare items have an optional Worker kind. `CLIENT_KEY` is the default for
+ordinary Java and Android Workers; Scenario Lab selects its inventory policy.
+The kind selects the Server-owned registration-key algorithm; it is not part
+of the Redis address. All identities for one WorkerGroup remain fields in one
+Group Hash, and each algorithm emits a typed registration key so its output
+cannot alias another algorithm's output.
+Transparent Client reconnect sends only connection identity. WorkerGroup
+declarations are create-only control-plane
 resources, and Worker IDs remain Server-owned rather than Host-persisted.
 
 The stable cuts are independent Task/TaskItem/Worker score owners, score as a

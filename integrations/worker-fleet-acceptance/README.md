@@ -10,15 +10,15 @@ Kernel implementations.
 
 The checked [`fleet-spec.json`](fleet-spec.json) names the
 `scenario-websocket` Endpoint Manager and the exact ten configured
-`clientWorkerKey` values in each of the two Scenario WorkerGroups. It does not
+`labWorkerKey` values in each of the two Scenario WorkerGroups. It does not
 freeze Worker IDs, Worker Properties, timestamps, or business Result payloads.
 
 The `initial` phase proves these relationships:
 
 ```text
-checked clientWorkerKeys
-  <-> exact schema-v2 Scenario Lab files without Worker IDs
-  <-> Runtime Worker Preview client-key mapping
+checked labWorkerKeys
+  <-> exact schema-v2 Scenario Lab line records without Worker IDs
+  <-> Runtime Worker Preview Lab-coordinate mapping
   <-> 20 globally unique Server-owned Worker IDs
   <-> public Network Runtime View reports connected
   <-> one probe Direct Call returns observed/200 for every target
@@ -27,7 +27,7 @@ checked clientWorkerKeys
 
 The `restart` phase repeats the same checks after only the standalone Scenario
 Worker Host process is restarted and additionally requires the complete
-`clientWorkerKey -> workerId` mapping to equal the successful initial evidence.
+`labWorkerKey -> workerId` mapping to equal the successful initial evidence.
 Only Network observation is retried. Probe and Properties Direct Calls are each
 issued once after all routes are connected, so a missing Command or Result is
 not hidden by an integration retry.
@@ -35,7 +35,7 @@ not hidden by an integration retry.
 ## Evidence
 
 Each phase writes schema-versioned JSON containing only the proof ID, phase,
-Endpoint Manager ID, expected counts and client keys, Worker identity mapping,
+Endpoint Manager ID, expected counts and Lab Worker keys, Worker identity mapping,
 matched Worker ID sets, and safe differences. It never writes opaque Direct
 Call payloads, full Results, complete Properties, or concrete observation
 timestamps. Failure attempts to write partial evidence before exiting nonzero.

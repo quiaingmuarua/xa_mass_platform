@@ -167,6 +167,12 @@ RUNNING
   -> STOPPED
 ```
 
+Java Manager hosts may instead call `start(PreparedWorker)` with a coordinate
+returned by their own explicit batch Prepare. That run uses the same state
+fence and Transport creation path but does not invoke the Controller's
+`WorkerPreparation`; the injected coordinate is not retained for a later run.
+Core does not own the batch protocol or Properties aggregation.
+
 `WorkerControlPreparation` owns `WorkerPropertiesProvider` and
 `WorkerControlClient`. Each call loads one Properties map, validates and
 recursively copies it, and performs exactly one Prepare request. Server resolves

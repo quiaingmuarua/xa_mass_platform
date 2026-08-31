@@ -133,6 +133,18 @@ final class JavaWorkerPlatform implements AutoCloseable {
     WorkerControlClient controlClient(
             URI runtimeApiBaseUrl
     ) {
+        return workerControlClient(runtimeApiBaseUrl);
+    }
+
+    JavaOkHttpWorkerControlClient batchControlClient(
+            URI runtimeApiBaseUrl
+    ) {
+        return workerControlClient(runtimeApiBaseUrl);
+    }
+
+    private JavaOkHttpWorkerControlClient workerControlClient(
+            URI runtimeApiBaseUrl
+    ) {
         requireOpen();
         return new JavaOkHttpWorkerControlClient(
                 httpClient,

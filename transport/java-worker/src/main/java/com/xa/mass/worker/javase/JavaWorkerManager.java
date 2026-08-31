@@ -2,14 +2,21 @@ package com.xa.mass.worker.javase;
 
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+import com.xa.mass.worker.runtime.WorkerRunController;
 
+import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,22 +34,33 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     private final LinkedHashMap<String, ManagedReplica> replicas;
     private final JavaWorkerPlatform platform;
+    private final JavaOkHttpWorkerControlClient batchControlClient;
+    private final String workerGroupId;
+    private final WorkerTransportType transportType;
+    private final Duration requestTimeout;
+    private final String batchWorkerKind;
 
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private JavaWorkerManager(
-            LinkedHashMap<String, WorkerLifecycle> replicas,
-            JavaWorkerPlatform platform
+            LinkedHashMap<String, ManagedReplica> replicas,
+            JavaWorkerPlatform platform,
+            JavaOkHttpWorkerControlClient batchControlClient,
+            String workerGroupId,
+            WorkerTransportType transportType,
+            Duration requestTimeout,
+            String batchWorkerKind
     ) {
-        this.replicas = new LinkedHashMap<>();
-        replicas.forEach((clientWorkerKey, worker) -> this.replicas.put(
-                clientWorkerKey,
-                new ManagedReplica(worker)
-        ));
+        this.replicas = new LinkedHashMap<>(replicas);
         this.platform = Objects.requireNonNull(
                 platform,
                 "platform"
         );
+        this.batchControlClient = batchControlClient;
+        this.workerGroupId = workerGroupId;
+        this.transportType = transportType;
+        this.requestTimeout = requestTimeout;
+        this.batchWorkerKind = batchWorkerKind;
     }
 
     public static Builder builder(
@@ -59,14 +77,20 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     public void start() {
         ensureOpen();
+        if (batchWorkerKind != null) {
+            prepareAndStart(replicas.keySet());
+            return;
+        }
         RuntimeException failure = null;
         for (Map.Entry<String, ManagedReplica> entry
                 : replicas.entrySet()) {
             try {
-                requestStart(entry.getKey(), entry.getValue());
                 failure = accumulateNullable(
                         failure,
-                        reconcile(entry.getValue())
+                        requestStartAndReconcile(
+                                entry.getKey(),
+                                entry.getValue()
+                        )
                 );
             } catch (RuntimeException error) {
                 failure = accumulate(failure, error);
@@ -75,60 +99,144 @@ public final class JavaWorkerManager implements AutoCloseable {
         throwIfPresent(failure);
     }
 
-    public void start(String clientWorkerKey) {
+    public void start(String replicaKey) {
         ensureOpen();
-        ManagedReplica replica = requireReplica(clientWorkerKey);
-        requestStart(clientWorkerKey, replica);
-        throwIfPresent(reconcile(replica));
+        if (batchWorkerKind != null) {
+            prepareAndStart(List.of(replicaKey));
+            return;
+        }
+        ManagedReplica replica = requireReplica(replicaKey);
+        throwIfPresent(requestStartAndReconcile(replicaKey, replica));
+    }
+
+    /**
+     * Prepares the selected stopped replicas in one control request and starts
+     * each returned runtime coordinate without invoking per-replica prepare.
+     */
+    public void prepareAndStart(
+            Collection<String> replicaKeys
+    ) {
+        prepareAndStart(replicaKeys, true);
+    }
+
+    private void prepareAndStart(
+            Collection<String> replicaKeys,
+            boolean requestRunning
+    ) {
+        ensureOpen();
+        if (batchWorkerKind == null) {
+            throw new IllegalStateException(
+                    "Java Worker manager has no batch worker kind"
+            );
+        }
+        List<ManagedReplica> targets = selectBatchTargets(
+                replicaKeys,
+                requestRunning
+        );
+        if (targets.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> properties = new ArrayList<>();
+        for (ManagedReplica target : targets) {
+            properties.add(loadBatchProperties(target));
+        }
+
+        List<PreparedWorker> prepared;
+        try {
+            prepared = Objects.requireNonNull(
+                    batchControlClient,
+                    "batchControlClient"
+            ).prepareBatch(
+                    batchWorkerKind,
+                    workerGroupId,
+                    transportType,
+                    properties,
+                    requestTimeout
+            );
+        } catch (IOException error) {
+            throw new WorkerException(
+                    WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
+                    "workerControl.prepareBatch",
+                    "Worker batch preparation is unavailable",
+                    error
+            );
+        }
+
+        for (int index = 0; index < targets.size(); index++) {
+            installPreparedWorker(
+                    targets.get(index),
+                    prepared.get(index)
+            );
+        }
     }
 
     public void stop() {
         ensureOpen();
         RuntimeException failure = null;
         for (ManagedReplica replica : replicas.values()) {
-            replica.desiredRunning.set(false);
-            failure = accumulateNullable(failure, reconcile(replica));
+            failure = accumulateNullable(
+                    failure,
+                    requestStopAndReconcile(replica)
+            );
         }
         throwIfPresent(failure);
     }
 
-    public void stop(String clientWorkerKey) {
+    public void stop(String replicaKey) {
         ensureOpen();
-        ManagedReplica replica = requireReplica(clientWorkerKey);
-        replica.desiredRunning.set(false);
-        throwIfPresent(reconcile(replica));
+        ManagedReplica replica = requireReplica(replicaKey);
+        throwIfPresent(requestStopAndReconcile(replica));
     }
 
     public void reconcile() {
         ensureOpen();
+        if (batchWorkerKind != null) {
+            List<String> stoppedDesired = stoppedDesiredReplicaKeys();
+            if (!stoppedDesired.isEmpty()) {
+                prepareAndStart(stoppedDesired, false);
+            }
+            reconcileStops();
+            return;
+        }
         RuntimeException failure = null;
         for (ManagedReplica replica : replicas.values()) {
-            failure = accumulateNullable(failure, reconcile(replica));
+            failure = accumulateNullable(
+                    failure,
+                    reconcileReplica(replica)
+            );
         }
         throwIfPresent(failure);
     }
 
-    public void reconcile(String clientWorkerKey) {
+    public void reconcile(String replicaKey) {
         ensureOpen();
-        throwIfPresent(reconcile(requireReplica(clientWorkerKey)));
+        ManagedReplica replica = requireReplica(replicaKey);
+        if (batchWorkerKind != null
+                && replica.desiredRunning.get()
+                && replica.worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED) {
+            prepareAndStart(List.of(replicaKey), false);
+            return;
+        }
+        throwIfPresent(reconcileReplica(replica));
     }
 
-    public boolean desiredRunning(String clientWorkerKey) {
+    public boolean desiredRunning(String replicaKey) {
         ensureOpen();
-        return requireReplica(clientWorkerKey).desiredRunning.get();
+        return requireReplica(replicaKey).desiredRunning.get();
     }
 
     public WorkerLifecycle.Snapshot snapshot(
-            String clientWorkerKey
+            String replicaKey
     ) {
-        return requireReplica(clientWorkerKey).worker.snapshot();
+        return requireReplica(replicaKey).worker.snapshot();
     }
 
     public Map<String, WorkerLifecycle.Snapshot> snapshots() {
         Map<String, WorkerLifecycle.Snapshot> snapshots =
                 new LinkedHashMap<>();
-        replicas.forEach((clientWorkerKey, replica) -> snapshots.put(
-                clientWorkerKey,
+        replicas.forEach((replicaKey, replica) -> snapshots.put(
+                replicaKey,
                 replica.worker.snapshot()
         ));
         return Collections.unmodifiableMap(snapshots);
@@ -156,6 +264,13 @@ public final class JavaWorkerManager implements AutoCloseable {
                 failure = accumulate(failure, error);
             }
         }
+        if (batchControlClient != null) {
+            try {
+                batchControlClient.close();
+            } catch (RuntimeException error) {
+                failure = accumulate(failure, error);
+            }
+        }
         try {
             platform.close();
         } catch (RuntimeException error) {
@@ -164,8 +279,27 @@ public final class JavaWorkerManager implements AutoCloseable {
         throwIfPresent(failure);
     }
 
+    private RuntimeException requestStartAndReconcile(
+            String replicaKey,
+            ManagedReplica replica
+    ) {
+        requestStart(replicaKey, replica);
+        return reconcile(replica);
+    }
+
+    private RuntimeException requestStopAndReconcile(
+            ManagedReplica replica
+    ) {
+        replica.desiredRunning.set(false);
+        return reconcile(replica);
+    }
+
+    private RuntimeException reconcileReplica(ManagedReplica replica) {
+        return reconcile(replica);
+    }
+
     private void requestStart(
-            String clientWorkerKey,
+            String replicaKey,
             ManagedReplica replica
     ) {
         if (!replica.desiredRunning.get()
@@ -173,7 +307,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                 == WorkerLifecycle.State.RUNNING) {
             throw new IllegalStateException(
                     "Java Worker replica is still stopping: "
-                            + clientWorkerKey
+                            + replicaKey
             );
         }
         replica.desiredRunning.set(true);
@@ -205,8 +339,8 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
     }
 
-    private ManagedReplica requireReplica(String clientWorkerKey) {
-        String key = requireNonBlank(clientWorkerKey, "clientWorkerKey");
+    private ManagedReplica requireReplica(String replicaKey) {
+        String key = requireNonBlank(replicaKey, "replicaKey");
         ManagedReplica replica = replicas.get(key);
         if (replica == null) {
             throw new IllegalArgumentException(
@@ -216,12 +350,119 @@ public final class JavaWorkerManager implements AutoCloseable {
         return replica;
     }
 
+    private List<ManagedReplica> selectBatchTargets(
+            Collection<String> replicaKeys,
+            boolean requestRunning
+    ) {
+        if (replicaKeys == null
+                || replicaKeys.isEmpty()
+                || replicaKeys.size() > 100) {
+            throw new IllegalArgumentException(
+                    "replicaKeys must contain 1..100 entries"
+            );
+        }
+        List<ManagedReplica> requested = new ArrayList<>();
+        HashSet<String> seen = new HashSet<>();
+        for (String rawKey : replicaKeys) {
+            String key = requireNonBlank(rawKey, "replicaKey");
+            if (!seen.add(key)) {
+                throw new IllegalArgumentException(
+                        "replicaKeys must be unique"
+                );
+            }
+            ManagedReplica replica = requireReplica(key);
+            requested.add(replica);
+        }
+
+        if (requestRunning) {
+            for (ManagedReplica replica : requested) {
+                if (!replica.desiredRunning.get()
+                        && replica.worker.snapshot().state()
+                        == WorkerLifecycle.State.RUNNING) {
+                    throw new IllegalStateException(
+                            "Java Worker replica is still stopping: "
+                            + replica.replicaKey
+                    );
+                }
+            }
+            for (ManagedReplica replica : requested) {
+                replica.desiredRunning.set(true);
+            }
+        }
+
+        List<ManagedReplica> targets = new ArrayList<>();
+        for (ManagedReplica replica : requested) {
+            if (replica.desiredRunning.get()
+                    && replica.worker.snapshot().state()
+                    == WorkerLifecycle.State.STOPPED) {
+                targets.add(replica);
+            }
+        }
+        return targets;
+    }
+
+    private void installPreparedWorker(
+            ManagedReplica target,
+            PreparedWorker preparedWorker
+    ) {
+        if (closed.get()
+                || !target.desiredRunning.get()
+                || target.worker.snapshot().state()
+                != WorkerLifecycle.State.STOPPED) {
+            return;
+        }
+        target.preparedStarter.start(preparedWorker);
+        throwIfPresent(reconcile(target));
+    }
+
+    private static Map<String, Object> loadBatchProperties(
+            ManagedReplica target
+    ) {
+        try {
+            return target.batchProperties.loadProperties();
+        } catch (RuntimeException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new WorkerException(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
+                    "workerControl.prepareBatch",
+                    "Worker properties could not be loaded",
+                    error
+            );
+        }
+    }
+
     private void ensureOpen() {
         if (closed.get()) {
             throw new IllegalStateException(
                     "Java Worker manager is closed"
             );
         }
+    }
+
+    private List<String> stoppedDesiredReplicaKeys() {
+        List<String> keys = new ArrayList<>();
+        replicas.forEach((key, replica) -> {
+            if (replica.desiredRunning.get()
+                    && replica.worker.snapshot().state()
+                    == WorkerLifecycle.State.STOPPED) {
+                keys.add(key);
+            }
+        });
+        return keys;
+    }
+
+    private void reconcileStops() {
+        RuntimeException failure = null;
+        for (ManagedReplica replica : replicas.values()) {
+            if (!replica.desiredRunning.get()) {
+                failure = accumulateNullable(
+                        failure,
+                        reconcileReplica(replica)
+                );
+            }
+        }
+        throwIfPresent(failure);
     }
 
     private static RuntimeException accumulate(
@@ -253,7 +494,7 @@ public final class JavaWorkerManager implements AutoCloseable {
 
         WorkerLifecycle assemble(
                 JavaWorkerPlatform platform,
-                String clientWorkerKey,
+                String replicaKey,
                 WorkerPropertiesProvider workerProperties
         );
     }
@@ -270,6 +511,7 @@ public final class JavaWorkerManager implements AutoCloseable {
                 new ArrayList<>();
         private WorkerConnectionOptions options =
                 WorkerConnectionOptions.defaults();
+        private String batchWorkerKind;
         private WorkerAssembler workerAssembler;
 
         private Builder(
@@ -310,13 +552,18 @@ public final class JavaWorkerManager implements AutoCloseable {
             return this;
         }
 
+        public Builder batchWorkerKind(String value) {
+            batchWorkerKind = requireNonBlank(value, "batchWorkerKind");
+            return this;
+        }
+
         public Builder replica(
-                String clientWorkerKey,
+                String replicaKey,
                 WorkerPropertiesProvider workerProperties
         ) {
             String key = requireNonBlank(
-                    clientWorkerKey,
-                    "clientWorkerKey"
+                    replicaKey,
+                    "replicaKey"
             );
             if (replicas.containsKey(key)) {
                 throw new IllegalArgumentException(
@@ -340,43 +587,91 @@ public final class JavaWorkerManager implements AutoCloseable {
                 );
             }
 
-            LinkedHashMap<String, WorkerLifecycle> assembled =
+            LinkedHashMap<String, ManagedReplica> assembled =
                     new LinkedHashMap<>();
             JavaWorkerPlatform platform = JavaWorkerPlatform.managed(
                     workerGroupId,
                     replicas.size()
             );
+            JavaOkHttpWorkerControlClient batchControlClient = null;
             try {
+                if (batchWorkerKind != null) {
+                    batchControlClient = platform.batchControlClient(
+                            runtimeApiBaseUrl
+                    );
+                }
                 for (ReplicaSpec replica : replicas.values()) {
-                    WorkerLifecycle worker = workerAssembler == null
-                            ? JavaWorkerAssembly.assemble(
+                    WorkerPropertiesProvider batchProperties =
+                            JavaWorkerProperties.snapshotProvider(
+                                    replica.workerProperties
+                            );
+                    WorkerPropertiesProvider completeProperties =
+                            JavaWorkerProperties.completeProvider(
+                                    replica.replicaKey,
+                                    replica.workerProperties
+                            );
+                    WorkerLifecycle worker;
+                    PreparedStarter preparedStarter;
+                    if (workerAssembler == null) {
+                        WorkerRunController controller =
+                                JavaWorkerAssembly.assembleComplete(
                                     runtimeApiBaseUrl,
                                     workerGroupId,
-                                    replica.clientWorkerKey,
                                     transportType,
                                     replica.workerProperties,
+                                    completeProperties,
                                     definitionExtensions,
                                     options,
                                     platform
-                            )
-                            : workerAssembler.assemble(
+                            );
+                        worker = controller;
+                        preparedStarter = controller::start;
+                    } else {
+                        worker = workerAssembler.assemble(
                                     platform,
-                                    replica.clientWorkerKey,
+                                    replica.replicaKey,
                                     replica.workerProperties
                             );
+                        preparedStarter = prepared -> {
+                            throw new UnsupportedOperationException(
+                                    "Custom Worker assembler does not support "
+                                            + "batch preparation"
+                            );
+                        };
+                    }
                     if (worker == null) {
                         throw new IllegalStateException(
                                 "Java Worker assembler returned null"
                         );
                     }
-                    assembled.put(replica.clientWorkerKey, worker);
+                    assembled.put(
+                            replica.replicaKey,
+                            new ManagedReplica(
+                                    replica.replicaKey,
+                                    worker,
+                                    batchProperties,
+                                    preparedStarter
+                            )
+                    );
                 }
                 return new JavaWorkerManager(
                         assembled,
-                        platform
+                        platform,
+                        batchControlClient,
+                        workerGroupId,
+                        transportType,
+                        options.requestTimeout(),
+                        batchWorkerKind
                 );
             } catch (RuntimeException | Error failure) {
                 closeAssembledAndSuppress(assembled, failure);
+                if (batchControlClient != null) {
+                    try {
+                        batchControlClient.close();
+                    } catch (RuntimeException closeFailure) {
+                        failure.addSuppressed(closeFailure);
+                    }
+                }
                 try {
                     platform.close();
                 } catch (RuntimeException closeFailure) {
@@ -395,15 +690,15 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
 
         private static void closeAssembledAndSuppress(
-                LinkedHashMap<String, WorkerLifecycle> assembled,
+                LinkedHashMap<String, ManagedReplica> assembled,
                 Throwable failure
         ) {
-            List<WorkerLifecycle> closing =
+            List<ManagedReplica> closing =
                     new ArrayList<>(assembled.values());
             Collections.reverse(closing);
-            for (WorkerLifecycle worker : closing) {
+            for (ManagedReplica replica : closing) {
                 try {
-                    worker.close();
+                    replica.worker.close();
                 } catch (RuntimeException closeFailure) {
                     failure.addSuppressed(closeFailure);
                 }
@@ -413,26 +708,52 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     private static final class ReplicaSpec {
 
-        private final String clientWorkerKey;
+        private final String replicaKey;
         private final WorkerPropertiesProvider workerProperties;
 
         private ReplicaSpec(
-                String clientWorkerKey,
+                String replicaKey,
                 WorkerPropertiesProvider workerProperties
         ) {
-            this.clientWorkerKey = clientWorkerKey;
+            this.replicaKey = replicaKey;
             this.workerProperties = workerProperties;
         }
     }
 
     private static final class ManagedReplica {
 
+        private final String replicaKey;
         private final WorkerLifecycle worker;
+        private final WorkerPropertiesProvider batchProperties;
+        private final PreparedStarter preparedStarter;
         private final AtomicBoolean desiredRunning = new AtomicBoolean();
 
-        private ManagedReplica(WorkerLifecycle worker) {
+        private ManagedReplica(
+                String replicaKey,
+                WorkerLifecycle worker,
+                WorkerPropertiesProvider batchProperties,
+                PreparedStarter preparedStarter
+        ) {
+            this.replicaKey = Objects.requireNonNull(
+                    replicaKey,
+                    "replicaKey"
+            );
             this.worker = Objects.requireNonNull(worker, "worker");
+            this.batchProperties = Objects.requireNonNull(
+                    batchProperties,
+                    "batchProperties"
+            );
+            this.preparedStarter = Objects.requireNonNull(
+                    preparedStarter,
+                    "preparedStarter"
+            );
         }
+    }
+
+    @FunctionalInterface
+    private interface PreparedStarter {
+
+        void start(PreparedWorker preparedWorker);
     }
 
     private static URI requireRuntimeApiBaseUrl(URI value) {

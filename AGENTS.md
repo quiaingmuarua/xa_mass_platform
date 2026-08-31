@@ -333,11 +333,20 @@ the `WorkerDeliveryAdapter` contract.
 - Transport owns identity/Command/Result protocol and synchronous event
   execution.
 - `WorkerRunController` owns only the `RUNNING/STOPPED` run lifecycle.
-- Each explicit `start()` preparation loads the complete Worker Properties and
-  refreshes canonical truth through one Prepare call. Worker identity remains
-  Server-owned and is resolved from WorkerGroup plus clientWorkerKey; Workers
-  do not persist or hint workerId. Transparent Client reconnect sends only
-  connection identity; there is no runtime Properties-change event.
+- Each ordinary explicit `start()` loads the complete Worker Properties and
+  refreshes canonical truth through one Prepare call. A Java Manager may
+  optionally batch up to 100 stopped replicas and inject the returned
+  `PreparedWorker` coordinates into those runs; Core owns neither that HTTP
+  batch nor Host Properties aggregation. Ordinary Java and Android identity
+  uses the default `CLIENT_KEY` Worker kind and `clientWorkerKey`; Android
+  sends that kind explicitly. A tagged batch may select another bounded
+  Server-owned identity policy; Core and Manager do not interpret it. Workers
+  do not persist or hint workerId. Worker kind only selects the Server-owned
+  typed registration-key algorithm; it never enters the Redis key address.
+  One WorkerGroup has one identity Hash, and the typed registration-key output
+  prevents one algorithm from aliasing another. Transparent Client
+  reconnect sends only connection identity; there is no runtime
+  Properties-change event.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
 - Active `stop()` revokes the current run before closing its Client outside
@@ -379,6 +388,19 @@ system.
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
+- Each direct `.jsonl` child is a strict line inventory: one schema-v2 Worker
+  record per physical line and at most 100 lines per file. Every record carries
+  immutable `labInventoryKey` and `labInventoryLine` Properties matching its
+  physical location. `<filename>:<line>` is only the Lab-local `labWorkerKey`,
+  not a universal Worker identity field. Scenario uses `SCENARIO_LAB` batch
+  Prepare for initial file batches and one-record Lab HTTP starts; ordinary
+  Prepare remains available to other Java and Android Workers.
+- Batch Prepare holds no Manager lifecycle lock or cross-replica gate.
+  Concurrent requests may repeat the Server-owned idempotent Prepare for one
+  stopped replica, while its Controller still installs at most one run.
+  Scenario resolves a control target under its short inventory gate, then
+  performs Manager Prepare outside that gate so a slow control request cannot
+  block scheduled stops or Host shutdown from entering their own owners.
 - An optional strict startup plan selects the initial finite Worker set and
   startup-only scheduled stops. It is validated completely before any replica
   starts and does not contain Properties, Worker IDs, Tasks or Kernel claims.

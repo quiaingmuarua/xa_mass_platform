@@ -97,7 +97,7 @@ final class WorkerStateConvergence {
                 "startup-scheduled-worker-identified",
                 options.maximumWait(),
                 () -> runtime.previewWorkers(STRING_GROUP)
-                        .get(STRING_ONE.clientWorkerKey()),
+                        .get(STRING_ONE.labWorkerKey()),
                 view -> view != null
                         && view.workerId() != null
                         && !view.workerId().isBlank()
@@ -106,7 +106,7 @@ final class WorkerStateConvergence {
         workerIds.put(STRING_ONE, scheduledWorkerId);
         WorkerSnapshot scheduledWorker = lab.worker(
                 STRING_ONE.groupId(),
-                STRING_ONE.clientWorkerKey()
+                STRING_ONE.labWorkerKey()
         );
         evidence.record("startup", "scheduled-worker-identified", Map.of(
                 "workerId", scheduledWorkerId,
@@ -124,7 +124,7 @@ final class WorkerStateConvergence {
                 options.maximumWait(),
                 () -> lab.worker(
                         STRING_ONE.groupId(),
-                        STRING_ONE.clientWorkerKey()
+                        STRING_ONE.labWorkerKey()
                 ),
                 WorkerLabConvergenceSupport::isStopped
         );
@@ -133,7 +133,7 @@ final class WorkerStateConvergence {
                 "local-scheduled-stop-observed",
                 Map.of(
                         "workerGroupId", STRING_ONE.groupId(),
-                        "clientWorkerKey", STRING_ONE.clientWorkerKey(),
+                        "labWorkerKey", STRING_ONE.labWorkerKey(),
                         "desiredState", startupStopped.desiredState(),
                         "runtimeState", startupStopped.runtimeState()
                 )
@@ -163,7 +163,7 @@ final class WorkerStateConvergence {
         recordMutation(
                 "start",
                 STRING_ONE,
-                lab.start(STRING_ONE.groupId(), STRING_ONE.clientWorkerKey()),
+                lab.start(STRING_ONE.groupId(), STRING_ONE.labWorkerKey()),
                 evidence
         );
         Map<WorkerRef, String> restarted = awaitConnected(
@@ -191,13 +191,13 @@ final class WorkerStateConvergence {
         Map<String, Object> changed = new LinkedHashMap<>(
                 lab.worker(
                         STRING_TWO.groupId(),
-                        STRING_TWO.clientWorkerKey()
+                        STRING_TWO.labWorkerKey()
                 ).requireWorkerProperties()
         );
         changed.put("labSlot", MUTATED_LAB_SLOT);
         WorkerSnapshot replaced = lab.replaceProperties(
                 STRING_TWO.groupId(),
-                STRING_TWO.clientWorkerKey(),
+                STRING_TWO.labWorkerKey(),
                 changed
         );
         require(
@@ -209,7 +209,7 @@ final class WorkerStateConvergence {
         );
         recordMutation("replace-properties", STRING_TWO, replaced, evidence);
         var beforePrepare = runtime.previewWorkers(STRING_GROUP)
-                .get(STRING_TWO.clientWorkerKey());
+                .get(STRING_TWO.labWorkerKey());
         require(
                 beforePrepare != null
                         && propertyWorkerId.equals(beforePrepare.workerId())
@@ -227,7 +227,7 @@ final class WorkerStateConvergence {
         recordMutation(
                 "start",
                 STRING_TWO,
-                lab.start(STRING_TWO.groupId(), STRING_TWO.clientWorkerKey()),
+                lab.start(STRING_TWO.groupId(), STRING_TWO.labWorkerKey()),
                 evidence
         );
         Map<WorkerRef, String> propertyRestart = awaitConnected(
@@ -246,7 +246,7 @@ final class WorkerStateConvergence {
                 "runtime-properties-refreshed",
                 options.maximumWait(),
                 () -> runtime.previewWorkers(STRING_GROUP)
-                        .get(STRING_TWO.clientWorkerKey()),
+                        .get(STRING_TWO.labWorkerKey()),
                 view -> view != null
                         && propertyWorkerId.equals(view.workerId())
                         && numberEquals(
@@ -328,7 +328,7 @@ final class WorkerStateConvergence {
         recordMutation(
                 "start",
                 STRING_TWO,
-                lab.start(STRING_TWO.groupId(), STRING_TWO.clientWorkerKey()),
+                lab.start(STRING_TWO.groupId(), STRING_TWO.labWorkerKey()),
                 evidence
         );
         awaitConnected(
@@ -352,7 +352,7 @@ final class WorkerStateConvergence {
         Collections.sort(messageIds);
         Map<String, String> identityEvidence = new LinkedHashMap<>();
         workerIds.forEach((worker, workerId) -> identityEvidence.put(
-                worker.clientWorkerKey(),
+                worker.labWorkerKey(),
                 workerId
         ));
         return Map.of(
@@ -392,20 +392,20 @@ final class WorkerStateConvergence {
     ) {
         WorkerSnapshot accepted = lab.stop(
                 worker.groupId(),
-                worker.clientWorkerKey()
+                worker.labWorkerKey()
         );
         recordMutation("stop", worker, accepted, evidence);
         await(
-                "worker-stopped-" + worker.clientWorkerKey(),
+                "worker-stopped-" + worker.labWorkerKey(),
                 options.maximumWait(),
                 () -> lab.worker(
                         worker.groupId(),
-                        worker.clientWorkerKey()
+                        worker.labWorkerKey()
                 ),
                 WorkerLabConvergenceSupport::isStopped
         );
         awaitNetworkState(
-                "worker-disconnected-" + worker.clientWorkerKey(),
+                "worker-disconnected-" + worker.labWorkerKey(),
                 options.maximumWait(),
                 runtime,
                 options.endpointManagerId(),
@@ -423,7 +423,7 @@ final class WorkerStateConvergence {
         evidence.record("mutation", "operation-accepted", Map.of(
                 "operation", action,
                 "workerGroupId", worker.groupId(),
-                "clientWorkerKey", worker.clientWorkerKey(),
+                "labWorkerKey", worker.labWorkerKey(),
                 "desiredState", snapshot.desiredState(),
                 "runtimeState", snapshot.runtimeState()
         ));

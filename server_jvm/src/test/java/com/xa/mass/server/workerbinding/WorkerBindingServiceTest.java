@@ -19,6 +19,7 @@ import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerbinding.WorkerBindingProperties.EndpointProperties;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import com.xa.mass.server.workerpreparation.WorkerRegistrationKind;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +73,7 @@ class WorkerBindingServiceTest {
         ));
         verify(identities).requireRegistration(
                 "group-1",
+                WorkerRegistrationKind.CLIENT_KEY,
                 properties("local"),
                 WORKER_ID
         );

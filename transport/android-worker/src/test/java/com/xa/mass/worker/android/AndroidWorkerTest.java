@@ -130,6 +130,7 @@ public class AndroidWorkerTest {
         Map<String, Object> preparationBody = Jsons.parseObject(
                 preparation.getBody().utf8()
         );
+        assertEquals("CLIENT_KEY", preparationBody.get("workerKind"));
         @SuppressWarnings("unchecked")
         Map<String, Object> registeredProperties =
                 (Map<String, Object>) preparationBody.get("workerProperties");
@@ -309,7 +310,7 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void processLeaseIsReleasedOnlyAfterStoppingHandlerFinishes()
+    public void processLeaseIsReleasedWhenTheWorkerRunStops()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -349,14 +350,9 @@ public class AndroidWorkerTest {
 
             worker.stop();
             assertEquals(
-                    WorkerLifecycle.State.RUNNING,
+                    WorkerLifecycle.State.STOPPED,
                     worker.snapshot().state()
             );
-            assertThrows(IllegalStateException.class, duplicate::start);
-
-            release.countDown();
-            await(() -> worker.snapshot().state()
-                    == WorkerLifecycle.State.STOPPED);
 
             enqueuePrepare();
             server.enqueue(webSocketSession(new ClosingWebSocketListener() {
@@ -369,7 +365,7 @@ public class AndroidWorkerTest {
                 }
 
             }));
-            await(() -> startWhenLeaseIsAvailable(duplicate));
+            duplicate.start();
             assertEquals(
                     WorkerLifecycle.State.RUNNING,
                     duplicate.snapshot().state()
@@ -414,15 +410,6 @@ public class AndroidWorkerTest {
                         )
                 )
         );
-    }
-
-    private static boolean startWhenLeaseIsAvailable(AndroidWorker worker) {
-        try {
-            worker.start();
-            return true;
-        } catch (IllegalStateException unavailable) {
-            return false;
-        }
     }
 
     private void enqueuePrepare() {

@@ -25,6 +25,7 @@ import okhttp3.Response;
 final class AndroidOkHttpWorkerControlClient
         implements WorkerControlClient {
 
+    private static final String WORKER_KIND = "CLIENT_KEY";
     private static final MediaType JSON =
             MediaType.get("application/json; charset=utf-8");
 
@@ -60,6 +61,7 @@ final class AndroidOkHttpWorkerControlClient
                 .addPathSegment("workers:prepare")
                 .build();
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("workerKind", WORKER_KIND);
         body.put("transportType", transportType.name());
         body.put("workerProperties", workerProperties);
         Map<String, Object> response = executeObject(

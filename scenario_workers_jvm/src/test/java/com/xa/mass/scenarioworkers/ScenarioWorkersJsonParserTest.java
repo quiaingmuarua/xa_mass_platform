@@ -61,7 +61,7 @@ class ScenarioWorkersJsonParserTest {
                 {
                   "group": {
                     "eventCodes":["event.one"],
-                    "workers":[{"clientWorkerKey":"worker-1"}]
+                    "workers":[{"labWorkerKey":"worker-1"}]
                   }
                 }
                 """))

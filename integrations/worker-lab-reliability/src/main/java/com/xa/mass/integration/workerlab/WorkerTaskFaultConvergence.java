@@ -68,7 +68,7 @@ final class WorkerTaskFaultConvergence {
             String token = "checkpoint-" + UUID.randomUUID();
             lab.armCommandCheckpoint(
                     STRING_ONE.groupId(),
-                    STRING_ONE.clientWorkerKey(),
+                    STRING_ONE.labWorkerKey(),
                     token,
                     Math.min(120_000L, options.maximumWaitMillis())
             );
@@ -90,7 +90,7 @@ final class WorkerTaskFaultConvergence {
                     options.maximumWait(),
                     () -> lab.commandCheckpoint(
                             STRING_ONE.groupId(),
-                            STRING_ONE.clientWorkerKey()
+                            STRING_ONE.labWorkerKey()
                     ),
                     checkpoint -> "ENTERED".equals(checkpoint.state())
             );
@@ -122,7 +122,7 @@ final class WorkerTaskFaultConvergence {
                 try {
                     lab.releaseCommandCheckpoint(
                             STRING_ONE.groupId(),
-                            STRING_ONE.clientWorkerKey()
+                            STRING_ONE.labWorkerKey()
                     );
                 } catch (RuntimeException releaseFailure) {
                     error.addSuppressed(releaseFailure);
@@ -205,7 +205,7 @@ final class WorkerTaskFaultConvergence {
                 "backup-properties-observed",
                 options.maximumWait(),
                 () -> runtime.previewWorkers(STRING_GROUP)
-                        .get(STRING_TWO.clientWorkerKey()),
+                        .get(STRING_TWO.labWorkerKey()),
                 worker -> worker != null
                         && recoveredWorkerId.equals(worker.workerId())
                         && numberEquals(
@@ -309,7 +309,7 @@ final class WorkerTaskFaultConvergence {
         });
         Map<String, Object> targetProperties = lab.worker(
                 STRING_ONE.groupId(),
-                STRING_ONE.clientWorkerKey()
+                STRING_ONE.labWorkerKey()
         ).requireWorkerProperties();
         require(
                 numberEquals(targetProperties.get("labSlot"), TARGET_LAB_SLOT),

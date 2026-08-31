@@ -66,7 +66,7 @@ class WorkerFleetAcceptanceMainTest {
                 fixture.workerIds()
         )) {
             run(server.baseUri(), fixture, "initial", initial, null);
-            replaceWorkerId(fixture, "group-a", "client-1");
+            replaceWorkerId(fixture, "group-a", "workers.jsonl:1");
 
             assertThrows(
                     IllegalStateException.class,
@@ -196,8 +196,8 @@ class WorkerFleetAcceptanceMainTest {
         );
         Files.createDirectories(lab);
         Map<String, List<String>> keys = new LinkedHashMap<>();
-        keys.put("group-a", List.of("client-1", "client-2"));
-        keys.put("group-b", List.of("client-3", "client-4"));
+        keys.put("group-a", List.of("workers.jsonl:1", "workers.jsonl:2"));
+        keys.put("group-b", List.of("workers.jsonl:1", "workers.jsonl:2"));
         Map<String, Map<String, String>> workerIds = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> group : keys.entrySet()) {
             Path directory = Files.createDirectories(lab.resolve(
@@ -207,15 +207,18 @@ class WorkerFleetAcceptanceMainTest {
             for (String clientKey : group.getValue()) {
                 String workerId = UUID.randomUUID().toString();
                 groupIds.put(clientKey, workerId);
-                writeState(directory.resolve(clientKey + ".json"));
             }
+            writeStates(
+                    directory.resolve("workers.jsonl"),
+                    group.getValue().size()
+            );
             workerIds.put(group.getKey(), groupIds);
         }
         Path spec = temporaryDirectory.resolve("fleet-spec.json");
         Map<String, Object> encodedGroups = new LinkedHashMap<>();
         keys.forEach((groupId, clientKeys) -> encodedGroups.put(
                 groupId,
-                Map.of("clientWorkerKeys", clientKeys)
+                Map.of("labWorkerKeys", clientKeys)
         ));
         Files.writeString(
                 spec,
@@ -260,14 +263,22 @@ class WorkerFleetAcceptanceMainTest {
         fixture.workerIds().get(groupId).put(clientKey, workerId);
     }
 
-    private static void writeState(Path path)
+    private static void writeStates(Path path, int count)
             throws Exception {
+        List<String> states = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            states.add(Jsons.toJson(Map.of(
+                    "schemaVersion", 2,
+                    "workerProperties", Map.of(
+                            "labInventoryKey", path.getFileName().toString(),
+                            "labInventoryLine", index + 1,
+                            "dynamic", true
+                    )
+            )));
+        }
         Files.writeString(
                 path,
-                Jsons.toJson(Map.of(
-                        "schemaVersion", 2,
-                        "workerProperties", Map.of("dynamic", true)
-                )),
+                String.join("\n", states) + "\n",
                 StandardCharsets.UTF_8
         );
     }
@@ -355,10 +366,7 @@ class WorkerFleetAcceptanceMainTest {
                     .map(entry -> Map.<String, Object>of(
                             "workerId", entry.getValue(),
                             "workerGroupId", groupId,
-                            "workerProperties", Map.of(
-                                    "clientWorkerKey",
-                                    entry.getKey()
-                            )
+                            "workerProperties", labProperties(entry.getKey())
                     ))
                     .toList();
             respond(exchange, 200, Map.of(
@@ -368,6 +376,18 @@ class WorkerFleetAcceptanceMainTest {
                     "unreadableCount", 0,
                     "workers", workers
             ));
+        }
+
+        private static Map<String, Object> labProperties(
+                String labWorkerKey
+        ) {
+            int separator = labWorkerKey.lastIndexOf(':');
+            return Map.of(
+                    "labInventoryKey",
+                    labWorkerKey.substring(0, separator),
+                    "labInventoryLine",
+                    Long.parseLong(labWorkerKey.substring(separator + 1))
+            );
         }
 
         private void network(HttpExchange exchange) throws IOException {

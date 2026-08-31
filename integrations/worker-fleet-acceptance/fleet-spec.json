@@ -2,31 +2,31 @@
   "endpointManagerId": "scenario-websocket",
   "groups": {
     "scenario-phone-number-workers": {
-      "clientWorkerKeys": [
-        "scenario-phone-number-worker-001",
-        "scenario-phone-number-worker-002",
-        "scenario-phone-number-worker-003",
-        "scenario-phone-number-worker-004",
-        "scenario-phone-number-worker-005",
-        "scenario-phone-number-worker-006",
-        "scenario-phone-number-worker-007",
-        "scenario-phone-number-worker-008",
-        "scenario-phone-number-worker-009",
-        "scenario-phone-number-worker-010"
+      "labWorkerKeys": [
+        "scenario-phone-number-worker-a.jsonl:1",
+        "scenario-phone-number-worker-a.jsonl:2",
+        "scenario-phone-number-worker-a.jsonl:3",
+        "scenario-phone-number-worker-a.jsonl:4",
+        "scenario-phone-number-worker-a.jsonl:5",
+        "scenario-phone-number-worker-b.jsonl:1",
+        "scenario-phone-number-worker-b.jsonl:2",
+        "scenario-phone-number-worker-b.jsonl:3",
+        "scenario-phone-number-worker-b.jsonl:4",
+        "scenario-phone-number-worker-b.jsonl:5"
       ]
     },
     "scenario-string-utils-workers": {
-      "clientWorkerKeys": [
-        "scenario-string-utils-worker-001",
-        "scenario-string-utils-worker-002",
-        "scenario-string-utils-worker-003",
-        "scenario-string-utils-worker-004",
-        "scenario-string-utils-worker-005",
-        "scenario-string-utils-worker-006",
-        "scenario-string-utils-worker-007",
-        "scenario-string-utils-worker-008",
-        "scenario-string-utils-worker-009",
-        "scenario-string-utils-worker-010"
+      "labWorkerKeys": [
+        "scenario-string-utils-worker-a.jsonl:1",
+        "scenario-string-utils-worker-a.jsonl:2",
+        "scenario-string-utils-worker-a.jsonl:3",
+        "scenario-string-utils-worker-a.jsonl:4",
+        "scenario-string-utils-worker-a.jsonl:5",
+        "scenario-string-utils-worker-b.jsonl:1",
+        "scenario-string-utils-worker-b.jsonl:2",
+        "scenario-string-utils-worker-b.jsonl:3",
+        "scenario-string-utils-worker-b.jsonl:4",
+        "scenario-string-utils-worker-b.jsonl:5"
       ]
     }
   }

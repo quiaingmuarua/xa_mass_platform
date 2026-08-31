@@ -24,23 +24,26 @@ final class RedisWorkerIdentityRegistry
     }
 
     @Override
-    public String register(String workerGroupId, String clientWorkerKey) {
+    public String register(
+            String workerGroupId,
+            String registrationKey
+    ) {
         String candidate = UUID.randomUUID().toString();
         String key = workerIdsKey(workerGroupId);
-        commands().hsetnx(key, clientWorkerKey, candidate);
-        return commands().hget(key, clientWorkerKey);
+        commands().hsetnx(key, registrationKey, candidate);
+        return commands().hget(key, registrationKey);
     }
 
     @Override
     public boolean matches(
             String workerGroupId,
-            String clientWorkerKey,
+            String registrationKey,
             String workerId
     ) {
         return workerId.equals(
                 commands().hget(
                         workerIdsKey(workerGroupId),
-                        clientWorkerKey
+                        registrationKey
                 )
         );
     }

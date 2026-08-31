@@ -2,7 +2,7 @@ package com.xa.mass.scenarioworkers;
 
 record ScenarioWorkerCoordinate(
         String workerGroupId,
-        String clientWorkerKey
+        String labWorkerKey
 ) {
 
     ScenarioWorkerCoordinate {
@@ -11,8 +11,8 @@ record ScenarioWorkerCoordinate(
                 "workerGroupId"
         );
         ScenarioWorkerGroupConfig.requireNonBlank(
-                clientWorkerKey,
-                "clientWorkerKey"
+                labWorkerKey,
+                "labWorkerKey"
         );
     }
 }

@@ -26,10 +26,22 @@ final class WorkerLabConvergenceSupport {
     static final String CHECKPOINT_EVENT =
             "extension.worker.lab.checkpoint";
 
-    static final WorkerRef PHONE_ONE = worker(PHONE_GROUP, "phone-number", 1);
-    static final WorkerRef PHONE_TWO = worker(PHONE_GROUP, "phone-number", 2);
-    static final WorkerRef STRING_ONE = worker(STRING_GROUP, "string-utils", 1);
-    static final WorkerRef STRING_TWO = worker(STRING_GROUP, "string-utils", 2);
+    static final WorkerRef PHONE_ONE = new WorkerRef(
+            PHONE_GROUP,
+            "scenario-phone-number-worker-a.jsonl:1"
+    );
+    static final WorkerRef PHONE_TWO = new WorkerRef(
+            PHONE_GROUP,
+            "scenario-phone-number-worker-a.jsonl:2"
+    );
+    static final WorkerRef STRING_ONE = new WorkerRef(
+            STRING_GROUP,
+            "scenario-string-utils-worker-a.jsonl:1"
+    );
+    static final WorkerRef STRING_TWO = new WorkerRef(
+            STRING_GROUP,
+            "scenario-string-utils-worker-a.jsonl:2"
+    );
     static final List<WorkerRef> CONTROLLED = List.of(
             PHONE_ONE,
             PHONE_TWO,
@@ -51,7 +63,7 @@ final class WorkerLabConvergenceSupport {
         workers.forEach(snapshot -> {
             WorkerRef coordinate = new WorkerRef(
                     snapshot.workerGroupId(),
-                    snapshot.clientWorkerKey()
+                    snapshot.labWorkerKey()
             );
             require(
                     byCoordinate.putIfAbsent(coordinate, snapshot) == null,
@@ -89,7 +101,7 @@ final class WorkerLabConvergenceSupport {
                 "worker-connected",
                 Map.of(
                         "workerGroupId", worker.groupId(),
-                        "clientWorkerKey", worker.clientWorkerKey(),
+                        "labWorkerKey", worker.labWorkerKey(),
                         "workerId", workerId
                 )
         ));
@@ -106,7 +118,7 @@ final class WorkerLabConvergenceSupport {
         for (WorkerRef worker : workers) {
             WorkerSnapshot local = lab.worker(
                     worker.groupId(),
-                    worker.clientWorkerKey()
+                    worker.labWorkerKey()
             );
             if (!"RUNNING".equals(local.desiredState())
                     || !"RUNNING".equals(local.runtimeState())
@@ -115,7 +127,7 @@ final class WorkerLabConvergenceSupport {
                 continue;
             }
             WorkerView view = runtime.previewWorkers(worker.groupId())
-                    .get(worker.clientWorkerKey());
+                    .get(worker.labWorkerKey());
             if (view == null || !local.workerId().equals(view.workerId())) {
                 continue;
             }
@@ -317,17 +329,6 @@ final class WorkerLabConvergenceSupport {
         }
     }
 
-    private static WorkerRef worker(
-            String group,
-            String capability,
-            int replica
-    ) {
-        return new WorkerRef(
-                group,
-                "scenario-" + capability + "-worker-%03d".formatted(replica)
-        );
-    }
-
     private static void sleep() {
         try {
             Thread.sleep(OBSERVATION_INTERVAL_MILLIS);
@@ -352,7 +353,7 @@ final class WorkerLabConvergenceSupport {
         return value.getClass().getSimpleName();
     }
 
-    record WorkerRef(String groupId, String clientWorkerKey) {
+    record WorkerRef(String groupId, String labWorkerKey) {
     }
 
     record TaskProof(

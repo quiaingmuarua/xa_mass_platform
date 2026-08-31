@@ -19,9 +19,9 @@ class FleetSpecTest {
         FleetSpec spec = FleetSpec.load(Path.of("fleet-spec.json"));
 
         assertEquals("scenario-websocket", spec.endpointManagerId());
-        assertEquals(2, spec.clientWorkerKeysByGroup().size());
-        assertEquals(20, spec.allClientWorkerKeys().size());
-        spec.clientWorkerKeysByGroup().values().forEach(keys ->
+        assertEquals(2, spec.labWorkerKeysByGroup().size());
+        assertEquals(20, spec.allLabWorkerKeys().size());
+        spec.labWorkerKeysByGroup().values().forEach(keys ->
                 assertEquals(10, keys.size()));
     }
 
@@ -32,7 +32,7 @@ class FleetSpecTest {
                 """
                         {
                           "endpointManagerId":"adapter",
-                          "groups":{"group":{"clientWorkerKeys":["a","a"]}}
+                          "groups":{"group":{"labWorkerKeys":["a","a"]}}
                         }
                         """
         );
@@ -41,7 +41,7 @@ class FleetSpecTest {
                 """
                         {
                           "endpointManagerId":"adapter",
-                          "groups":{"group":{"clientWorkerKeys":["a"]}},
+                          "groups":{"group":{"labWorkerKeys":["a"]}},
                           "extra":true
                         }
                         """

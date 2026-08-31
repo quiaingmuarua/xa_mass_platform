@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 
 final class ScenarioWorkerLab {
@@ -61,7 +62,7 @@ final class ScenarioWorkerLab {
         validateOwnedRoot(groups);
         ensureRootDirectory();
 
-        Map<String, Map<String, Map<String, Object>>> defaults = null;
+        Map<String, Map<String, List<Map<String, Object>>>> defaults = null;
         List<DiscoveredGroup> discovered = new ArrayList<>(groups.size());
         for (ScenarioWorkerGroupConfig group : groups) {
             Path directory = groupDirectory(group.workerGroupId());
@@ -92,7 +93,7 @@ final class ScenarioWorkerLab {
     private void initializeGroup(
             ScenarioWorkerGroupConfig group,
             Path target,
-            Map<String, Map<String, Object>> defaults
+            Map<String, List<Map<String, Object>>> defaults
     ) {
         Path temporary = null;
         try {
@@ -100,17 +101,33 @@ final class ScenarioWorkerLab {
                     root,
                     ".initializing-"
             );
-            for (Map.Entry<String, Map<String, Object>> worker
+            for (Map.Entry<String, List<Map<String, Object>>> inventory
                     : defaults.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .toList()) {
-                Path workerFile = workerPath(
+                Path workerFile = inventoryPath(
                         temporary,
-                        worker.getKey()
+                        inventory.getKey()
                 );
+                List<String> encodedRecords = new ArrayList<>();
+                for (int index = 0;
+                     index < inventory.getValue().size();
+                     index++) {
+                    encodedRecords.add(seedDocument(
+                            inventory.getValue().get(index),
+                            inventory.getKey(),
+                            index + 1
+                    ));
+                }
+                if (encodedRecords.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Default Worker inventory must not be empty: "
+                                    + inventory.getKey()
+                    );
+                }
                 Files.writeString(
                         workerFile,
-                        Jsons.toJson(worker.getValue()),
+                        String.join("\n", encodedRecords) + "\n",
                         StandardCharsets.UTF_8
                 );
             }
@@ -166,7 +183,7 @@ final class ScenarioWorkerLab {
         try (Stream<Path> children = Files.list(directory)) {
             workerFiles = children
                     .filter(path -> path.getFileName()
-                            .toString().endsWith(".json"))
+                            .toString().endsWith(".jsonl"))
                     .filter(path -> Files.isRegularFile(
                             path,
                             LinkOption.NOFOLLOW_LINKS
@@ -181,33 +198,19 @@ final class ScenarioWorkerLab {
                     error
             );
         }
-        if (workerFiles.size() > MAX_WORKERS_PER_GROUP) {
+        List<ScenarioWorkerStateFile> workers = new ArrayList<>();
+        for (Path workerFile : workerFiles) {
+            workers.addAll(ScenarioWorkerStateFile.open(workerFile));
+        }
+        if (workers.size() > MAX_WORKERS_PER_GROUP) {
             throw invalid(
                     "Scenario WorkerGroup "
                             + group.workerGroupId()
                             + " contains more than "
                             + MAX_WORKERS_PER_GROUP
-                            + " Worker files",
+                            + " Worker records",
                     null
             );
-        }
-
-        List<ScenarioWorkerStateFile> workers =
-                new ArrayList<>(workerFiles.size());
-        for (Path workerFile : workerFiles) {
-            String filename = workerFile.getFileName().toString();
-            String clientWorkerKey = filename.substring(
-                    0,
-                    filename.length() - ".json".length()
-            );
-            ScenarioWorkerGroupConfig.requireNonBlank(
-                    clientWorkerKey,
-                    "clientWorkerKey"
-            );
-            workers.add(ScenarioWorkerStateFile.open(
-                    workerFile,
-                    clientWorkerKey
-            ));
         }
         return List.copyOf(workers);
     }
@@ -296,25 +299,70 @@ final class ScenarioWorkerLab {
         return directory;
     }
 
-    private static Path workerPath(
+    private static Path inventoryPath(
             Path groupDirectory,
-            String clientWorkerKey
+            String filename
     ) {
         Path segment = singleSegment(
-                clientWorkerKey,
-                "clientWorkerKey"
+                filename,
+                "inventory filename"
         );
-        Path target = groupDirectory.resolve(
-                segment.toString() + ".json"
-        ).normalize();
-        if (!groupDirectory.equals(target.getParent())) {
+        Path target = groupDirectory.resolve(segment).normalize();
+        if (!filename.endsWith(".jsonl")
+                || !groupDirectory.equals(target.getParent())) {
             throw invalid(
-                    "clientWorkerKey must map to one Worker file: "
-                            + clientWorkerKey,
+                    "inventory filename must map to one JSONL file: "
+                            + filename,
                     null
             );
         }
         return target;
+    }
+
+    private static String seedDocument(
+            Map<String, Object> document,
+            String inventoryFileName,
+            int lineNumber
+    ) {
+        if (document == null
+                || !document.keySet().equals(Set.of(
+                "schemaVersion",
+                "workerProperties"
+        ))
+                || !(document.get("schemaVersion") instanceof Long)
+                || ((Long) document.get("schemaVersion")) != 2L
+                || !(document.get("workerProperties") instanceof Map<?, ?>)) {
+            throw invalid(
+                    "Default Worker inventory record is invalid: "
+                            + inventoryFileName
+                            + ":"
+                            + lineNumber,
+                    null
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sourceProperties =
+                (Map<String, Object>) document.get("workerProperties");
+        if (sourceProperties.containsKey("labInventoryKey")
+                || sourceProperties.containsKey("labInventoryLine")) {
+            throw invalid(
+                    "Default Worker inventory must not define derived "
+                            + "Lab identity fields: "
+                            + inventoryFileName
+                            + ":"
+                            + lineNumber,
+                    null
+            );
+        }
+        Map<String, Object> properties = new LinkedHashMap<>(
+                sourceProperties
+        );
+        properties.put("labInventoryKey", inventoryFileName);
+        properties.put("labInventoryLine", (long) lineNumber);
+        Map<String, Object> seeded = new LinkedHashMap<>();
+        seeded.put("schemaVersion", 2L);
+        seeded.put("workerProperties", properties);
+        return Jsons.toJson(seeded);
     }
 
     private static Path singleSegment(String value, String name) {
@@ -362,7 +410,7 @@ final class ScenarioWorkerLab {
         });
     }
 
-    private static Map<String, Map<String, Map<String, Object>>>
+    private static Map<String, Map<String, List<Map<String, Object>>>>
     loadDefaultsForInitialization() {
         try {
             return loadDefaults();
@@ -376,7 +424,7 @@ final class ScenarioWorkerLab {
         }
     }
 
-    private static Map<String, Map<String, Map<String, Object>>>
+    private static Map<String, Map<String, List<Map<String, Object>>>>
     loadDefaults() throws IOException {
         try (InputStream input = ScenarioWorkerLab.class
                 .getResourceAsStream(DEFAULT_WORKERS_RESOURCE)) {
@@ -389,30 +437,51 @@ final class ScenarioWorkerLab {
                     input.readAllBytes(),
                     StandardCharsets.UTF_8
             ));
-            Map<String, Map<String, Map<String, Object>>> defaults =
+            Map<String, Map<String, List<Map<String, Object>>>> defaults =
                     new LinkedHashMap<>();
             for (Map.Entry<String, Object> group : root.entrySet()) {
                 Map<String, Object> workers = requireObject(
                         group.getValue(),
                         "default WorkerGroup " + group.getKey()
                 );
-                Map<String, Map<String, Object>> copiedWorkers =
+                Map<String, List<Map<String, Object>>> copiedInventories =
                         new LinkedHashMap<>();
-                for (Map.Entry<String, Object> worker
+                for (Map.Entry<String, Object> inventory
                         : workers.entrySet()) {
-                    Map<String, Object> value = requireObject(
-                            worker.getValue(),
-                            "default Worker " + worker.getKey()
-                    );
-                    if (value.containsKey("workerId")) {
+                    inventoryPath(Path.of("inventory"), inventory.getKey());
+                    if (!(inventory.getValue() instanceof List<?> rawRecords)
+                            || rawRecords.isEmpty()
+                            || rawRecords.size()
+                            > ScenarioWorkerStateFile.MAX_RECORDS_PER_FILE) {
                         throw new IllegalArgumentException(
-                                "Default Worker must not contain workerId: "
-                                        + worker.getKey()
+                                "Default Worker inventory must contain "
+                                        + "1..100 records: "
+                                        + inventory.getKey()
                         );
                     }
-                    copiedWorkers.put(worker.getKey(), value);
+                    List<Map<String, Object>> records = new ArrayList<>();
+                    for (Object rawRecord : rawRecords) {
+                        Map<String, Object> record = requireObject(
+                                rawRecord,
+                                "default Worker " + inventory.getKey()
+                        );
+                        if (record.containsKey("workerId")) {
+                            throw new IllegalArgumentException(
+                                    "Default Worker must not contain workerId: "
+                                            + inventory.getKey()
+                            );
+                        }
+                        records.add(record);
+                    }
+                    copiedInventories.put(
+                            inventory.getKey(),
+                            List.copyOf(records)
+                    );
                 }
-                defaults.put(group.getKey(), Map.copyOf(copiedWorkers));
+                defaults.put(
+                        group.getKey(),
+                        Map.copyOf(copiedInventories)
+                );
             }
             return Map.copyOf(defaults);
         }

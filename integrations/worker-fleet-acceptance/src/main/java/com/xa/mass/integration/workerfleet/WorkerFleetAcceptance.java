@@ -219,7 +219,7 @@ final class WorkerFleetAcceptance {
             Map<String, String> states,
             FleetEvidence evidence
     ) {
-        for (String groupId : spec.clientWorkerKeysByGroup().keySet()) {
+        for (String groupId : spec.labWorkerKeysByGroup().keySet()) {
             List<String> connected = inventory.get(groupId).values().stream()
                     .filter(workerId -> "connected".equals(
                             states.get(workerId)
@@ -235,7 +235,7 @@ final class WorkerFleetAcceptance {
             Map<String, Map<String, String>> inventory,
             FleetEvidence evidence
     ) {
-        for (String groupId : spec.clientWorkerKeysByGroup().keySet()) {
+        for (String groupId : spec.labWorkerKeysByGroup().keySet()) {
             List<String> expectedIds = List.copyOf(
                     inventory.get(groupId).values()
             );
@@ -271,7 +271,7 @@ final class WorkerFleetAcceptance {
             FleetEvidence evidence
     ) {
         Map<String, Map<String, Object>> snapshots = new LinkedHashMap<>();
-        for (String groupId : spec.clientWorkerKeysByGroup().keySet()) {
+        for (String groupId : spec.labWorkerKeysByGroup().keySet()) {
             List<String> expectedIds = List.copyOf(
                     inventory.get(groupId).values()
             );
@@ -352,7 +352,7 @@ final class WorkerFleetAcceptance {
                 matched.add(workerId);
             }
         }
-        for (String groupId : spec.clientWorkerKeysByGroup().keySet()) {
+        for (String groupId : spec.labWorkerKeysByGroup().keySet()) {
             List<String> groupMatched = inventory.get(groupId).values().stream()
                     .filter(matched::contains)
                     .toList();
@@ -403,30 +403,30 @@ final class WorkerFleetAcceptance {
         }
         Map<String, Map<String, String>> baseline = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> group
-                : spec.clientWorkerKeysByGroup().entrySet()) {
+                : spec.labWorkerKeysByGroup().entrySet()) {
             Map<String, Object> encodedGroup = RuntimeApiClient.objectMap(
                     encodedGroups.get(group.getKey()),
                     "Restart baseline group"
             );
             Map<String, Object> rawWorkers = RuntimeApiClient.objectMap(
-                    encodedGroup.get("workerIdsByClientWorkerKey"),
+                    encodedGroup.get("workerIdsByLabWorkerKey"),
                     "Restart baseline identities"
             );
             if (!rawWorkers.keySet().equals(
                     new LinkedHashSet<>(group.getValue()))) {
                 throw new IllegalArgumentException(
-                        "Restart baseline client keys do not match fleet spec"
+                        "Restart baseline Lab Worker keys do not match fleet spec"
                 );
             }
             Map<String, String> workers = new LinkedHashMap<>();
-            for (String clientWorkerKey : group.getValue()) {
-                Object rawWorkerId = rawWorkers.get(clientWorkerKey);
+            for (String labWorkerKey : group.getValue()) {
+                Object rawWorkerId = rawWorkers.get(labWorkerKey);
                 if (!(rawWorkerId instanceof String workerId)) {
                     throw new IllegalArgumentException(
                             "Restart baseline Worker ID must be a string"
                     );
                 }
-                workers.put(clientWorkerKey, workerId);
+                workers.put(labWorkerKey, workerId);
             }
             baseline.put(
                     group.getKey(),
@@ -441,7 +441,7 @@ final class WorkerFleetAcceptance {
             Map<String, Map<String, String>> inventory
     ) {
         List<String> workerIds = new ArrayList<>();
-        spec.clientWorkerKeysByGroup().keySet().forEach(groupId ->
+        spec.labWorkerKeysByGroup().keySet().forEach(groupId ->
                 workerIds.addAll(inventory.get(groupId).values()));
         return List.copyOf(workerIds);
     }

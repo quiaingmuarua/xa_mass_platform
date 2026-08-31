@@ -132,6 +132,38 @@ JavaWorkerManager manager = JavaWorkerManager.builder(
         .build();
 ```
 
+Without a batch kind, `start`, keyed `start`, and `reconcile` retain the
+ordinary client-key Prepare path. A Host with a bounded, kind-specific replica
+inventory may opt into batch preparation during assembly:
+
+```java
+JavaWorkerManager manager = JavaWorkerManager.builder(...)
+        .batchWorkerKind("SCENARIO_LAB")
+        .replica("workers-a.jsonl:1", properties1)
+        .replica("workers-a.jsonl:2", properties2)
+        .build();
+
+manager.prepareAndStart(List.of(
+        "workers-a.jsonl:1",
+        "workers-a.jsonl:2"
+));
+```
+
+`prepareAndStart` loads each selected stopped replica's complete Properties
+once, sends one batch of at most 100 entries, correlates the ordered response
+by request position, and injects each returned workerId/Endpoint into that
+replica's Controller. The configured batch kind tells Server how to derive
+identity from the complete Properties; Java Worker does not interpret that
+strategy. Running replicas are untouched. Batch failure does not fall back to
+per-replica Prepare, and a concurrent stop prevents the returned coordinate
+from starting that replica. On a batch-configured Manager, `start` and
+`reconcile` use the same batch path; a keyed start is a one-record batch.
+Batch preparation holds no Manager lock or cross-replica gate. Concurrent
+requests may repeat the idempotent Prepare call for the same stopped replica;
+the replica Controller still installs at most one run. Properties loading and
+the control HTTP call therefore remain suitable for a Host executor backed by
+ordinary threads or Java 21 virtual threads.
+
 Topology is immutable after build. Repeated `extendEventDefinitions` calls
 append in order, and zero business
 extensions are valid. The effective registry is still finalized and checked

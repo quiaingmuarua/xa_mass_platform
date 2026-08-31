@@ -6,6 +6,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import com.xa.mass.server.workerpreparation.WorkerRegistrationKind;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,17 +41,50 @@ public final class WorkerBindingService {
             WorkerTransportType transportType,
             Map<String, Object> workerProperties
     ) {
+        return bind(
+                workerGroupId,
+                workerId,
+                WorkerRegistrationKind.CLIENT_KEY,
+                transportType,
+                workerProperties
+        );
+    }
+
+    public WorkerEndpointBinding bind(
+            String workerGroupId,
+            String workerId,
+            WorkerRegistrationKind workerKind,
+            WorkerTransportType transportType,
+            Map<String, Object> workerProperties
+    ) {
         String operation = "workerBinding.bind";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
         requireNonBlank(workerId, "workerId", operation);
+        Objects.requireNonNull(workerKind, "workerKind");
         Objects.requireNonNull(transportType, "transportType");
         Objects.requireNonNull(workerProperties, "workerProperties");
         identities.requireRegistration(
                 workerGroupId,
+                workerKind,
                 workerProperties,
                 workerId
         );
+        return bindRegistered(
+                workerGroupId,
+                workerId,
+                transportType,
+                workerProperties,
+                operation
+        );
+    }
 
+    private WorkerEndpointBinding bindRegistered(
+            String workerGroupId,
+            String workerId,
+            WorkerTransportType transportType,
+            Map<String, Object> workerProperties,
+            String operation
+    ) {
         String endpointManagerId;
         try {
             endpointManagerId = registry.getEndpointManagerId(workerId);

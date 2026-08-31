@@ -12,14 +12,10 @@ import com.xa.mass.worker.runtime.WorkerRunController;
 
 import java.net.URI;
 import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 
 /** Assembles one Java Worker against a caller-owned platform. */
 final class JavaWorkerAssembly {
-
-    private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
 
     private JavaWorkerAssembly() {
     }
@@ -41,24 +37,38 @@ final class JavaWorkerAssembly {
                 workerProperties,
                 "workerProperties"
         );
-        WorkerPropertiesProvider completeProperties = () -> {
-            Map<String, Object> supplied = liveProperties.loadProperties();
-            if (supplied == null) {
-                throw new IllegalArgumentException(
-                        "workerProperties must be present"
+        WorkerPropertiesProvider completeProperties =
+                JavaWorkerProperties.completeProvider(
+                        clientWorkerKey,
+                        liveProperties
                 );
-            }
-            if (supplied.containsKey(CLIENT_WORKER_KEY)) {
-                throw new IllegalArgumentException(
-                        "workerProperties must not override "
-                                + CLIENT_WORKER_KEY
-                );
-            }
-            Map<String, Object> complete = new LinkedHashMap<>();
-            complete.put(CLIENT_WORKER_KEY, clientWorkerKey);
-            complete.putAll(supplied);
-            return complete;
-        };
+        return assembleComplete(
+                runtimeApiBaseUrl,
+                workerGroupId,
+                transportType,
+                liveProperties,
+                completeProperties,
+                definitionExtensions,
+                options,
+                platform
+        );
+    }
+
+    static WorkerRunController assembleComplete(
+            URI runtimeApiBaseUrl,
+            String workerGroupId,
+            WorkerTransportType transportType,
+            WorkerPropertiesProvider liveProperties,
+            WorkerPropertiesProvider completeProperties,
+            Collection<? extends WorkerEventDefinition<?>>
+                    definitionExtensions,
+            WorkerConnectionOptions options,
+            JavaWorkerPlatform platform
+    ) {
+        Objects.requireNonNull(platform, "platform");
+        Objects.requireNonNull(options, "options");
+        Objects.requireNonNull(liveProperties, "workerProperties");
+        Objects.requireNonNull(completeProperties, "completeProperties");
         WorkerCommandDispatcher dispatcher = WorkerCommandDispatcher.forWorker(
                 WorkerManagementEventDefinitions.assemble(
                         liveProperties,

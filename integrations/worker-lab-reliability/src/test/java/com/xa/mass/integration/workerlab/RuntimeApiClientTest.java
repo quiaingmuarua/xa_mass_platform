@@ -38,7 +38,8 @@ class RuntimeApiClientTest {
                                 "workerGroupId", "group-1",
                                 "workerId", "worker-1",
                                 "workerProperties", Map.of(
-                                        "clientWorkerKey", "client-1",
+                                        "labInventoryKey", "workers.jsonl",
+                                        "labInventoryLine", 1,
                                         "labSlot", 901
                                 )
                         ))
@@ -94,7 +95,8 @@ class RuntimeApiClientTest {
                     new JsonHttpClient(baseUri(server), Duration.ofSeconds(2))
             );
 
-            assertThat(client.previewWorkers("group-1").get("client-1")
+            assertThat(client.previewWorkers("group-1")
+                    .get("workers.jsonl:1")
                     .workerProperties()).containsEntry("labSlot", 901L);
             assertThat(client.observeNetwork(
                     "adapter-1",

@@ -116,14 +116,14 @@ public final class ScenarioWorkerHostMain {
             ScenarioWorkerCoordinate worker = stop.worker();
             if (!scheduledStops.schedule(
                     worker.workerGroupId(),
-                    worker.clientWorkerKey(),
+                    worker.labWorkerKey(),
                     stop.delayMillis()
             )) {
                 throw new IllegalStateException(
                         "Duplicate startup scheduled stop for "
                                 + worker.workerGroupId()
                                 + "/"
-                                + worker.clientWorkerKey()
+                                + worker.labWorkerKey()
                 );
             }
         }

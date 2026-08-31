@@ -24,11 +24,11 @@ final class ScenarioWorkerStartupPlan {
     );
     private static final Set<String> WORKER_FIELDS = Set.of(
             "workerGroupId",
-            "clientWorkerKey"
+            "labWorkerKey"
     );
     private static final Set<String> STOP_FIELDS = Set.of(
             "workerGroupId",
-            "clientWorkerKey",
+            "labWorkerKey",
             "delayMillis"
     );
 
@@ -125,7 +125,7 @@ final class ScenarioWorkerStartupPlan {
                         "startup plan contains duplicate initial Worker "
                                 + coordinate.workerGroupId()
                                 + "/"
-                                + coordinate.clientWorkerKey()
+                                + coordinate.labWorkerKey()
                 );
             }
             workers.add(coordinate);
@@ -151,7 +151,7 @@ final class ScenarioWorkerStartupPlan {
                         "scheduled stop must reference an initial Worker: "
                                 + coordinate.workerGroupId()
                                 + "/"
-                                + coordinate.clientWorkerKey()
+                                + coordinate.labWorkerKey()
                 );
             }
             if (!unique.add(coordinate)) {
@@ -159,7 +159,7 @@ final class ScenarioWorkerStartupPlan {
                         "startup plan contains duplicate scheduled stop for "
                                 + coordinate.workerGroupId()
                                 + "/"
-                                + coordinate.clientWorkerKey()
+                                + coordinate.labWorkerKey()
                 );
             }
             Object rawDelay = stop.get("delayMillis");
@@ -182,7 +182,7 @@ final class ScenarioWorkerStartupPlan {
     ) {
         return new ScenarioWorkerCoordinate(
                 requiredString(value, "workerGroupId"),
-                requiredString(value, "clientWorkerKey")
+                requiredString(value, "labWorkerKey")
         );
     }
 

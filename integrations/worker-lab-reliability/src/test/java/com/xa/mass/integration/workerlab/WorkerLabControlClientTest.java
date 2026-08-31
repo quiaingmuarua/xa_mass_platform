@@ -115,7 +115,7 @@ class WorkerLabControlClientTest {
     private static Map<String, Object> checkpoint() {
         return Map.of(
                 "workerGroupId", "group-one",
-                "clientWorkerKey", "worker-encoded",
+                "labWorkerKey", "worker-encoded",
                 "checkpointToken", "token-one",
                 "maximumHoldMillis", 1_000,
                 "state", "ENTERED",
@@ -127,7 +127,7 @@ class WorkerLabControlClientTest {
         java.util.LinkedHashMap<String, Object> value =
                 new java.util.LinkedHashMap<>();
         value.put("workerGroupId", "group-one");
-        value.put("clientWorkerKey", "worker-encoded");
+        value.put("labWorkerKey", "worker-encoded");
         value.put("desiredState", "STOPPED");
         value.put("runtimeState", "STOPPED");
         value.put("workerId", null);

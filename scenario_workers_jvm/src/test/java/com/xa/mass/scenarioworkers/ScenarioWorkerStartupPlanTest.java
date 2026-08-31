@@ -22,13 +22,13 @@ class ScenarioWorkerStartupPlanTest {
                   "initialWorkers":[
                     {
                       "workerGroupId":"group",
-                      "clientWorkerKey":"worker-1"
+                      "labWorkerKey":"worker-1"
                     }
                   ],
                   "scheduledStops":[
                     {
                       "workerGroupId":"group",
-                      "clientWorkerKey":"worker-1",
+                      "labWorkerKey":"worker-1",
                       "delayMillis":5000
                     }
                   ]
@@ -73,8 +73,8 @@ class ScenarioWorkerStartupPlanTest {
                 {
                   "schemaVersion":1,
                   "initialWorkers":[
-                    {"workerGroupId":"g","clientWorkerKey":"w"},
-                    {"workerGroupId":"g","clientWorkerKey":"w"}
+                    {"workerGroupId":"g","labWorkerKey":"w"},
+                    {"workerGroupId":"g","labWorkerKey":"w"}
                   ],
                   "scheduledStops":[]
                 }
@@ -88,7 +88,7 @@ class ScenarioWorkerStartupPlanTest {
                   "scheduledStops":[
                     {
                       "workerGroupId":"g",
-                      "clientWorkerKey":"w",
+                      "labWorkerKey":"w",
                       "delayMillis":1
                     }
                   ]

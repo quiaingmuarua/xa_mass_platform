@@ -2,11 +2,14 @@ package com.xa.mass.server.workeridentity;
 
 interface WorkerIdentityRegistry {
 
-    String register(String workerGroupId, String clientWorkerKey);
+    String register(
+            String workerGroupId,
+            String registrationKey
+    );
 
     boolean matches(
             String workerGroupId,
-            String clientWorkerKey,
+            String registrationKey,
             String workerId
     );
 }

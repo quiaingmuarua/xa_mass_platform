@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Loopback-only HTTP adapter for the Scenario Worker Lab. */
 final class ScenarioWorkerControlServer implements AutoCloseable {
@@ -30,6 +31,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     private static final String CONSOLE_RESOURCE =
             "/com/xa/mass/scenarioworkers/worker-lab.html";
     private static final int MAX_REQUEST_BYTES = 64 * 1024;
+    private static final int CONTROL_THREADS = 4;
 
     private final ScenarioWorkers workers;
     private final ScenarioWorkerScheduledStops scheduledStops;
@@ -56,10 +58,12 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 consoleHtml,
                 "consoleHtml"
         ).clone();
-        executor = Executors.newSingleThreadExecutor(task -> {
+        AtomicInteger threadSequence = new AtomicInteger();
+        executor = Executors.newFixedThreadPool(CONTROL_THREADS, task -> {
             Thread thread = new Thread(
                     task,
-                    "scenario-worker-lab-http"
+                    "scenario-worker-lab-http-"
+                            + threadSequence.incrementAndGet()
             );
             thread.setDaemon(true);
             return thread;
@@ -236,7 +240,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 || separator == remainder.length() - 1
                 || remainder.indexOf('/', separator + 1) >= 0) {
             throw new IllegalArgumentException(
-                    "Worker route requires WorkerGroup and client key"
+                    "Worker route requires WorkerGroup and Lab Worker key"
             );
         }
         String workerGroupId = decodeSegment(
@@ -244,11 +248,11 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         );
         String workerAndAction = remainder.substring(separator + 1);
         Action action = Action.parse(workerAndAction);
-        String clientWorkerKey = decodeSegment(action.encodedClientWorkerKey());
+        String labWorkerKey = decodeSegment(action.encodedLabWorkerKey());
         handleWorker(
                 exchange,
                 workerGroupId,
-                clientWorkerKey,
+                labWorkerKey,
                 action
         );
     }
@@ -256,7 +260,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     private void handleWorker(
             HttpExchange exchange,
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             Action action
     ) throws IOException {
         switch (action.kind()) {
@@ -264,37 +268,37 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 String method = exchange.getRequestMethod();
                 if ("GET".equals(method)) {
                     respondSnapshot(exchange, 200, workerGroupId,
-                            clientWorkerKey, true);
+                            labWorkerKey, true);
                 } else if ("PUT".equals(method)) {
                     workers.replaceWorkerState(
                             workerGroupId,
-                            clientWorkerKey,
+                            labWorkerKey,
                             readBody(exchange)
                     );
                     respondSnapshot(exchange, 200, workerGroupId,
-                            clientWorkerKey, true);
+                            labWorkerKey, true);
                 } else {
                     methodNotAllowed(exchange, "GET, PUT");
                 }
             }
             case START -> {
                 requireMethod(exchange, "POST");
-                workers.startWorker(workerGroupId, clientWorkerKey);
+                workers.startWorker(workerGroupId, labWorkerKey);
                 respondSnapshot(exchange, 202, workerGroupId,
-                        clientWorkerKey, false);
+                        labWorkerKey, false);
             }
             case STOP -> {
                 requireMethod(exchange, "POST");
-                workers.stopWorker(workerGroupId, clientWorkerKey);
+                workers.stopWorker(workerGroupId, labWorkerKey);
                 respondSnapshot(exchange, 202, workerGroupId,
-                        clientWorkerKey, false);
+                        labWorkerKey, false);
             }
             case SCHEDULE_STOP -> {
                 requireMethod(exchange, "POST");
                 long delayMillis = requiredDelayMillis(readBody(exchange));
                 if (!scheduledStops.schedule(
                         workerGroupId,
-                        clientWorkerKey,
+                        labWorkerKey,
                         delayMillis
                 )) {
                     respondError(
@@ -306,17 +310,17 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     return;
                 }
                 respondSnapshot(exchange, 202, workerGroupId,
-                        clientWorkerKey, false);
+                        labWorkerKey, false);
             }
             case CANCEL_SCHEDULED_STOP -> {
                 requireMethod(exchange, "DELETE");
-                scheduledStops.cancel(workerGroupId, clientWorkerKey);
+                scheduledStops.cancel(workerGroupId, labWorkerKey);
                 exchange.sendResponseHeaders(204, -1L);
             }
             case COMMAND_CHECKPOINT -> handleCommandCheckpoint(
                     exchange,
                     workerGroupId,
-                    clientWorkerKey
+                    labWorkerKey
             );
         }
     }
@@ -324,7 +328,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     private void handleCommandCheckpoint(
             HttpExchange exchange,
             String workerGroupId,
-            String clientWorkerKey
+            String labWorkerKey
     ) throws IOException {
         switch (exchange.getRequestMethod()) {
             case "GET" -> respondJson(
@@ -332,7 +336,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     200,
                     encodeCheckpoint(workers.commandCheckpoint(
                             workerGroupId,
-                            clientWorkerKey
+                            labWorkerKey
                     ))
             );
             case "PUT" -> {
@@ -341,7 +345,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 );
                 workers.armCommandCheckpoint(
                         workerGroupId,
-                        clientWorkerKey,
+                        labWorkerKey,
                         request.checkpointToken(),
                         request.maximumHoldMillis()
                 );
@@ -350,14 +354,14 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                         201,
                         encodeCheckpoint(workers.commandCheckpoint(
                                 workerGroupId,
-                                clientWorkerKey
+                                labWorkerKey
                         ))
                 );
             }
             case "DELETE" -> {
                 workers.releaseCommandCheckpoint(
                         workerGroupId,
-                        clientWorkerKey
+                        labWorkerKey
                 );
                 exchange.sendResponseHeaders(204, -1L);
             }
@@ -369,7 +373,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             HttpExchange exchange,
             int status,
             String workerGroupId,
-            String clientWorkerKey,
+            String labWorkerKey,
             boolean includeProperties
     ) throws IOException {
         respondJson(
@@ -377,7 +381,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 status,
                 encodeSnapshot(workers.workerSnapshot(
                         workerGroupId,
-                        clientWorkerKey,
+                        labWorkerKey,
                         includeProperties
                 ))
         );
@@ -388,7 +392,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     ) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("workerGroupId", snapshot.workerGroupId());
-        value.put("clientWorkerKey", snapshot.clientWorkerKey());
+        value.put("labWorkerKey", snapshot.labWorkerKey());
         value.put(
                 "desiredState",
                 snapshot.desiredRunning() ? "RUNNING" : "STOPPED"
@@ -403,7 +407,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 "scheduledStopAtEpochMillis",
                 scheduledStops.scheduledStopAtEpochMillis(
                         snapshot.workerGroupId(),
-                        snapshot.clientWorkerKey()
+                        snapshot.labWorkerKey()
                 )
         );
         if (snapshot.workerProperties() != null) {
@@ -417,7 +421,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     ) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("workerGroupId", snapshot.worker().workerGroupId());
-        value.put("clientWorkerKey", snapshot.worker().clientWorkerKey());
+        value.put("labWorkerKey", snapshot.worker().labWorkerKey());
         value.put("checkpointToken", snapshot.checkpointToken());
         value.put("maximumHoldMillis", snapshot.maximumHoldMillis());
         value.put("state", snapshot.state().name());
@@ -586,7 +590,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     }
 
     private record Action(
-            String encodedClientWorkerKey,
+            String encodedLabWorkerKey,
             ActionKind kind
     ) {
 

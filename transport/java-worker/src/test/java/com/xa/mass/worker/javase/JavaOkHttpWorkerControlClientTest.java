@@ -14,6 +14,7 @@ import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import mockwebserver3.MockResponse;
@@ -115,6 +116,105 @@ class JavaOkHttpWorkerControlClientTest {
                         + "\"endpointUri\":\"tcp://127.0.0.1:18084\"}")
                 .build());
         assertThrows(WorkerException.class, () -> prepare());
+    }
+
+    @Test
+    void preparesBatchAndCorrelatesStrictResultsByRequestOrder()
+            throws Exception {
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workers\":["
+                        + "{\"workerId\":\"worker-a\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"ws://127.0.0.1:18083/a\"},"
+                        + "{\"workerId\":\"worker-b\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"ws://127.0.0.1:18083/b\"}"
+                        + "]}")
+                .build());
+
+        List<PreparedWorker> prepared = client.prepareBatch(
+                "SCENARIO_LAB",
+                "group a",
+                WorkerTransportType.WEBSOCKET,
+                List.of(
+                        Map.of(
+                                "labInventoryKey", "worker-a.jsonl",
+                                "labInventoryLine", 1,
+                                "labSlot", 1
+                        ),
+                        Map.of(
+                                "labInventoryKey", "worker-a.jsonl",
+                                "labInventoryLine", 2,
+                                "labSlot", 2
+                        )
+                ),
+                Duration.ofSeconds(2)
+        );
+
+        assertEquals("worker-a", prepared.get(0).workerId());
+        assertEquals("worker-b", prepared.get(1).workerId());
+        RecordedRequest request = server.takeRequest(1, TimeUnit.SECONDS);
+        assertNotNull(request);
+        assertEquals(
+                "/api/v1/worker-groups/group%20a/workers:prepare-batch",
+                request.getTarget()
+        );
+        assertEquals(
+                Map.of(
+                        "workers", List.of(
+                                Map.of(
+                                        "workerKind", "SCENARIO_LAB",
+                                        "transportType", "WEBSOCKET",
+                                        "workerProperties", Map.of(
+                                                "labInventoryKey", "worker-a.jsonl",
+                                                "labInventoryLine", 1L,
+                                                "labSlot", 1L
+                                        )
+                                ),
+                                Map.of(
+                                        "workerKind", "SCENARIO_LAB",
+                                        "transportType", "WEBSOCKET",
+                                        "workerProperties", Map.of(
+                                                "labInventoryKey", "worker-a.jsonl",
+                                                "labInventoryLine", 2L,
+                                                "labSlot", 2L
+                                        )
+                                )
+                        )
+                ),
+                Jsons.parseObject(request.getBody().utf8())
+        );
+    }
+
+    @Test
+    void rejectsIncompleteDuplicateOrExtraBatchResults() {
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workers\":[]}")
+                .build());
+        assertThrows(WorkerException.class, () -> client.prepareBatch(
+                "SCENARIO_LAB",
+                "group",
+                WorkerTransportType.WEBSOCKET,
+                List.of(Map.of("labSlot", 1)),
+                Duration.ofSeconds(2)
+        ));
+
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workers\":[{\"clientWorkerKey\":\"legacy\","
+                        + "\"workerId\":\"worker-a\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"ws://127.0.0.1:18083\"}]}")
+                .build());
+        assertThrows(WorkerException.class, () -> client.prepareBatch(
+                "SCENARIO_LAB",
+                "group",
+                WorkerTransportType.WEBSOCKET,
+                List.of(Map.of("labSlot", 1)),
+                Duration.ofSeconds(2)
+        ));
     }
 
     @Test

@@ -29,10 +29,10 @@ LAB_CONTROL = "http://127.0.0.1:18086"
 ENDPOINT_MANAGER = "scenario-websocket"
 PHONE_GROUP = "scenario-phone-number-workers"
 STRING_GROUP = "scenario-string-utils-workers"
-PHONE_ONE = (PHONE_GROUP, "scenario-phone-number-worker-001")
-PHONE_TWO = (PHONE_GROUP, "scenario-phone-number-worker-002")
-STRING_ONE = (STRING_GROUP, "scenario-string-utils-worker-001")
-STRING_TWO = (STRING_GROUP, "scenario-string-utils-worker-002")
+PHONE_ONE = (PHONE_GROUP, "scenario-phone-number-worker-a.jsonl:1")
+PHONE_TWO = (PHONE_GROUP, "scenario-phone-number-worker-a.jsonl:2")
+STRING_ONE = (STRING_GROUP, "scenario-string-utils-worker-a.jsonl:1")
+STRING_TWO = (STRING_GROUP, "scenario-string-utils-worker-a.jsonl:2")
 CONTROLLED = (PHONE_ONE, PHONE_TWO, STRING_ONE, STRING_TWO)
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
 REDIS_BATCH_SIZE = 100
@@ -331,13 +331,13 @@ def _startup_plan(
     return {
         "schemaVersion": 1,
         "initialWorkers": [
-            {"workerGroupId": group, "clientWorkerKey": key}
+            {"workerGroupId": group, "labWorkerKey": key}
             for group, key in initial_workers
         ],
         "scheduledStops": [
             {
                 "workerGroupId": worker[0],
-                "clientWorkerKey": worker[1],
+                "labWorkerKey": worker[1],
                 "delayMillis": delay,
             }
             for worker, delay in scheduled_stops
@@ -350,19 +350,44 @@ def _replace_worker_lab_slot(
     worker: tuple[str, str],
     lab_slot: int,
 ) -> None:
-    path = sandbox / worker[0] / f"{worker[1]}.json"
-    value = json.loads(path.read_text(encoding="utf-8"))
+    filename, separator, raw_line_number = worker[1].rpartition(":")
+    if separator != ":" or not filename.endswith(".jsonl"):
+        raise RuntimeError(f"Worker key is not filename:line: {worker[1]}")
+    try:
+        line_number = int(raw_line_number)
+    except ValueError as error:
+        raise RuntimeError(
+            f"Worker key has an invalid line number: {worker[1]}"
+        ) from error
+    if line_number < 1:
+        raise RuntimeError(f"Worker key has an invalid line number: {worker[1]}")
+
+    path = sandbox / worker[0] / filename
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if line_number > len(lines):
+        raise RuntimeError(f"Worker state line does not exist: {worker[1]}")
+    value = json.loads(lines[line_number - 1])
     if set(value) != {"schemaVersion", "workerProperties"}:
-        raise RuntimeError(f"Worker state file has unexpected fields: {path}")
+        raise RuntimeError(f"Worker state line has unexpected fields: {worker[1]}")
     if value["schemaVersion"] != 2 or not isinstance(
         value["workerProperties"], dict
     ):
-        raise RuntimeError(f"Worker state file is invalid: {path}")
+        raise RuntimeError(f"Worker state line is invalid: {worker[1]}")
     value["workerProperties"]["labSlot"] = lab_slot
-    _atomic_write_json(path, value)
+    lines[line_number - 1] = json.dumps(
+        value, separators=(",", ":"), sort_keys=True
+    )
+    _atomic_write_text(path, "\n".join(lines) + "\n")
 
 
 def _atomic_write_json(path: Path, value: object) -> None:
+    _atomic_write_text(
+        path,
+        json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n",
+    )
+
+
+def _atomic_write_text(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -370,8 +395,7 @@ def _atomic_write_json(path: Path, value: object) -> None:
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
-            json.dump(value, output, separators=(",", ":"), sort_keys=True)
-            output.write("\n")
+            output.write(value)
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, path)

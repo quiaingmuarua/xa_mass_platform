@@ -58,7 +58,10 @@ class RedisWorkerIdentityRegistryIntegrationTest {
             var futures = new ArrayList<Future<String>>();
             for (int index = 0; index < 32; index++) {
                 futures.add(executor.submit(() ->
-                        registry.register("group-1", "installation-1")));
+                        registry.register(
+                                "group-1",
+                                "client-key:14:installation-1"
+                        )));
             }
             var workerIds = new HashSet<String>();
             for (Future<String> future : futures) {
@@ -70,27 +73,64 @@ class RedisWorkerIdentityRegistryIntegrationTest {
                     .isEqualTo(workerId);
             assertThat(registry.matches(
                     "group-1",
-                    "installation-1",
+                    "client-key:14:installation-1",
                     workerId
             )).isTrue();
             assertThat(connection.sync().hget(
                     testScope.keyspace().base()
                             + ":worker:identity:group-1",
-                    "installation-1"
+                    "client-key:14:installation-1"
             )).isEqualTo(workerId);
         }
     }
 
     @Test
     void theSameClientKeyIsNamespacedByWorkerGroup() {
-        String first = registry.register("group-1", "installation-1");
-        String second = registry.register("group-2", "installation-1");
+        String first = registry.register(
+                "group-1",
+                "client-key:14:installation-1"
+        );
+        String second = registry.register(
+                "group-2",
+                "client-key:14:installation-1"
+        );
 
         assertThat(first).isNotEqualTo(second);
         assertThat(registry.matches(
                 "group-1",
-                "installation-1",
+                "client-key:14:installation-1",
                 second
         )).isFalse();
+    }
+
+    @Test
+    void typedRegistrationKeysShareTheGroupIdentityHash() {
+        String clientKey = "client-key:14:installation-1";
+        String scenarioKey = "scenario-lab:15:workers-a.jsonl:1";
+
+        String clientWorker = registry.register(
+                "group-1",
+                clientKey
+        );
+        String scenarioWorker = registry.register(
+                "group-1",
+                scenarioKey
+        );
+
+        assertThat(clientWorker).isNotEqualTo(scenarioWorker);
+        assertThat(registry.matches(
+                "group-1",
+                clientKey,
+                clientWorker
+        )).isTrue();
+        assertThat(registry.matches(
+                "group-1",
+                scenarioKey,
+                scenarioWorker
+        )).isTrue();
+        assertThat(connection.sync().hlen(
+                testScope.keyspace().base()
+                        + ":worker:identity:group-1"
+        )).isEqualTo(2L);
     }
 }

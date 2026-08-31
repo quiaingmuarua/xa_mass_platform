@@ -210,33 +210,33 @@ final class WorkerConvergenceCampaign {
             switch (action.type()) {
                 case START -> snapshot = lab.start(
                             worker.groupId(),
-                            worker.clientWorkerKey()
+                            worker.labWorkerKey()
                     );
                 case STOP -> snapshot = lab.stop(
                             worker.groupId(),
-                            worker.clientWorkerKey()
+                            worker.labWorkerKey()
                     );
                 case SCHEDULE_STOP -> snapshot = lab.scheduleStop(
                             worker.groupId(),
-                            worker.clientWorkerKey(),
+                            worker.labWorkerKey(),
                             SCHEDULED_STOP_DELAY_MILLIS
                     );
                 case CANCEL_SCHEDULED_STOP -> {
                     lab.cancelScheduledStop(
                             worker.groupId(),
-                            worker.clientWorkerKey()
+                            worker.labWorkerKey()
                     );
                     facts.put("response", "accepted");
                 }
                 case REPROPERTY -> {
                     Map<String, Object> properties = lab.worker(
                             worker.groupId(),
-                            worker.clientWorkerKey()
+                            worker.labWorkerKey()
                     ).requireWorkerProperties();
                     properties.put("labSlot", action.labSlot());
                     snapshot = lab.replaceProperties(
                             worker.groupId(),
-                            worker.clientWorkerKey(),
+                            worker.labWorkerKey(),
                             properties
                     );
                 }
@@ -283,7 +283,7 @@ final class WorkerConvergenceCampaign {
             observeIdentity(worker, snapshot, observedWorkerIds);
             evidence.record("final-world", "local-worker-observed", Map.of(
                     "workerGroupId", worker.groupId(),
-                    "clientWorkerKey", worker.clientWorkerKey(),
+                    "labWorkerKey", worker.labWorkerKey(),
                     "desiredState", snapshot.desiredState(),
                     "runtimeState", snapshot.runtimeState()
             ));
@@ -296,7 +296,7 @@ final class WorkerConvergenceCampaign {
                 stopped++;
                 String network = awaitNetworkState(
                         "campaign-final-disconnected-"
-                                + worker.clientWorkerKey(),
+                                + worker.labWorkerKey(),
                         options.maximumWait(),
                         runtime,
                         options.endpointManagerId(),
@@ -305,7 +305,7 @@ final class WorkerConvergenceCampaign {
                 );
                 String scheduling = awaitUnavailableScheduling(
                         "campaign-final-unavailable-"
-                                + worker.clientWorkerKey(),
+                                + worker.labWorkerKey(),
                         options.maximumWait(),
                         runtime,
                         worker,
@@ -325,7 +325,7 @@ final class WorkerConvergenceCampaign {
             }
             running++;
             String network = awaitNetworkState(
-                    "campaign-final-connected-" + worker.clientWorkerKey(),
+                    "campaign-final-connected-" + worker.labWorkerKey(),
                     options.maximumWait(),
                     runtime,
                     options.endpointManagerId(),
@@ -333,7 +333,7 @@ final class WorkerConvergenceCampaign {
                     "connected"
             );
             String scheduling = awaitHotScheduling(
-                    "campaign-final-hot-" + worker.clientWorkerKey(),
+                    "campaign-final-hot-" + worker.labWorkerKey(),
                     options.maximumWait(),
                     runtime,
                     worker,
@@ -341,10 +341,10 @@ final class WorkerConvergenceCampaign {
             );
             assertions += 2;
             WorkerView view = await(
-                    "campaign-final-preview-" + worker.clientWorkerKey(),
+                    "campaign-final-preview-" + worker.labWorkerKey(),
                     options.maximumWait(),
                     () -> runtime.previewWorkers(worker.groupId())
-                            .get(worker.clientWorkerKey()),
+                            .get(worker.labWorkerKey()),
                     value -> value != null && workerId.equals(value.workerId())
             );
             Object slotValue = view.workerProperties().get("labSlot");
@@ -481,7 +481,7 @@ final class WorkerConvergenceCampaign {
                     "round", round,
                     "operation", type.name(),
                     "workerGroupId", worker.groupId(),
-                    "clientWorkerKey", worker.clientWorkerKey(),
+                    "labWorkerKey", worker.labWorkerKey(),
                     "labSlot", labSlot
             );
         }

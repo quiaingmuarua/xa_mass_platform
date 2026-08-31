@@ -61,7 +61,9 @@ class WorkerRunControllerTest {
             }
         });
 
-        Future<?> request = startExecutor.submit(controller::start);
+        Future<?> request = startExecutor.submit(
+                () -> controller.start()
+        );
         request.get(5, TimeUnit.SECONDS);
         assertTrue(runningObserved.await(5, TimeUnit.SECONDS));
         assertTrue(preparation.entered.await(5, TimeUnit.SECONDS));
@@ -106,6 +108,34 @@ class WorkerRunControllerTest {
         assertEquals(
                 WorkerLifecycle.State.RUNNING,
                 controller.snapshot().state()
+        );
+    }
+
+    @Test
+    void injectedPreparationStartsOneRunWithoutCallingPreparation()
+            throws Exception {
+        ScriptedPreparation preparation = new ScriptedPreparation(0);
+        RecordingClientCreator networks = new RecordingClientCreator();
+        WorkerRunController controller = controller(
+                preparation,
+                networks
+        );
+        PreparedWorker injected = new PreparedWorker(
+                "server-issued-worker",
+                URI.create("ws://127.0.0.1:18083/batch")
+        );
+
+        controller.start(injected);
+        networks.awaitClient(0);
+
+        assertEquals(0, preparation.calls.get());
+        assertEquals(
+                "server-issued-worker",
+                controller.snapshot().workerId()
+        );
+        assertEquals(
+                URI.create("ws://127.0.0.1:18083/batch"),
+                controller.snapshot().endpointUri()
         );
     }
 
