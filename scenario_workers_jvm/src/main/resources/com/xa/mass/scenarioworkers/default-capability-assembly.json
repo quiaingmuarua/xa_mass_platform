@@ -10,7 +10,8 @@
     "eventCodes": [
       "extension.worker.string.md5",
       "extension.worker.string.sha1",
-      "extension.worker.string.base64.encode"
+      "extension.worker.string.base64.encode",
+      "extension.worker.lab.checkpoint"
     ]
   }
 }

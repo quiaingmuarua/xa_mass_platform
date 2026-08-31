@@ -145,6 +145,22 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             route(exchange);
         } catch (ScenarioWorkers.UnknownWorkerException error) {
             respondError(exchange, 404, "worker_not_found", error.getMessage());
+        } catch (ScenarioWorkerCommandCheckpoints.UnknownCheckpointException
+                 error) {
+            respondError(
+                    exchange,
+                    404,
+                    "checkpoint_not_found",
+                    error.getMessage()
+            );
+        } catch (ScenarioWorkerCommandCheckpoints.CheckpointConflictException
+                 error) {
+            respondError(
+                    exchange,
+                    409,
+                    "checkpoint_conflict",
+                    error.getMessage()
+            );
         } catch (ScenarioWorkerAssemblyException error) {
             int status = error.errorCode() == 14013 ? 400 : 500;
             respondError(
@@ -297,6 +313,55 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 scheduledStops.cancel(workerGroupId, clientWorkerKey);
                 exchange.sendResponseHeaders(204, -1L);
             }
+            case COMMAND_CHECKPOINT -> handleCommandCheckpoint(
+                    exchange,
+                    workerGroupId,
+                    clientWorkerKey
+            );
+        }
+    }
+
+    private void handleCommandCheckpoint(
+            HttpExchange exchange,
+            String workerGroupId,
+            String clientWorkerKey
+    ) throws IOException {
+        switch (exchange.getRequestMethod()) {
+            case "GET" -> respondJson(
+                    exchange,
+                    200,
+                    encodeCheckpoint(workers.commandCheckpoint(
+                            workerGroupId,
+                            clientWorkerKey
+                    ))
+            );
+            case "PUT" -> {
+                CheckpointRequest request = requiredCheckpointRequest(
+                        readBody(exchange)
+                );
+                workers.armCommandCheckpoint(
+                        workerGroupId,
+                        clientWorkerKey,
+                        request.checkpointToken(),
+                        request.maximumHoldMillis()
+                );
+                respondJson(
+                        exchange,
+                        201,
+                        encodeCheckpoint(workers.commandCheckpoint(
+                                workerGroupId,
+                                clientWorkerKey
+                        ))
+                );
+            }
+            case "DELETE" -> {
+                workers.releaseCommandCheckpoint(
+                        workerGroupId,
+                        clientWorkerKey
+                );
+                exchange.sendResponseHeaders(204, -1L);
+            }
+            default -> methodNotAllowed(exchange, "GET, PUT, DELETE");
         }
     }
 
@@ -347,6 +412,19 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         return value;
     }
 
+    private static Map<String, Object> encodeCheckpoint(
+            ScenarioWorkerCommandCheckpoints.Snapshot snapshot
+    ) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("workerGroupId", snapshot.worker().workerGroupId());
+        value.put("clientWorkerKey", snapshot.worker().clientWorkerKey());
+        value.put("checkpointToken", snapshot.checkpointToken());
+        value.put("maximumHoldMillis", snapshot.maximumHoldMillis());
+        value.put("state", snapshot.state().name());
+        value.put("enteredAtEpochMillis", snapshot.enteredAtEpochMillis());
+        return value;
+    }
+
     private static long requiredDelayMillis(String encoded) {
         Map<String, Object> value = Jsons.parseObject(encoded);
         if (!value.keySet().equals(java.util.Set.of("delayMillis"))
@@ -356,6 +434,25 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             );
         }
         return (Long) value.get("delayMillis");
+    }
+
+    private static CheckpointRequest requiredCheckpointRequest(
+            String encoded
+    ) {
+        Map<String, Object> value = Jsons.parseObject(encoded);
+        if (!value.keySet().equals(java.util.Set.of(
+                "checkpointToken",
+                "maximumHoldMillis"
+        ))
+                || !(value.get("checkpointToken") instanceof String token)
+                || token.isBlank()
+                || !(value.get("maximumHoldMillis") instanceof Long hold)) {
+            throw new IllegalArgumentException(
+                    "command checkpoint requires checkpointToken and "
+                            + "integer maximumHoldMillis"
+            );
+        }
+        return new CheckpointRequest(token, hold);
     }
 
     private static String readBody(HttpExchange exchange) throws IOException {
@@ -484,7 +581,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         START,
         STOP,
         SCHEDULE_STOP,
-        CANCEL_SCHEDULED_STOP
+        CANCEL_SCHEDULED_STOP,
+        COMMAND_CHECKPOINT
     }
 
     private record Action(
@@ -497,7 +595,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     ":start", ActionKind.START,
                     ":stop", ActionKind.STOP,
                     ":schedule-stop", ActionKind.SCHEDULE_STOP,
-                    ":scheduled-stop", ActionKind.CANCEL_SCHEDULED_STOP
+                    ":scheduled-stop", ActionKind.CANCEL_SCHEDULED_STOP,
+                    ":command-checkpoint", ActionKind.COMMAND_CHECKPOINT
             ).entrySet()) {
                 if (value.endsWith(suffix.getKey())) {
                     return new Action(
@@ -511,6 +610,12 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             }
             return new Action(value, ActionKind.SNAPSHOT);
         }
+    }
+
+    private record CheckpointRequest(
+            String checkpointToken,
+            long maximumHoldMillis
+    ) {
     }
 
     private static final class ResponseSentException

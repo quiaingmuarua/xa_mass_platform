@@ -98,6 +98,52 @@ final class WorkerLabControlClient {
         return decodeSnapshot(response.body());
     }
 
+    CommandCheckpoint armCommandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey,
+            String checkpointToken,
+            long maximumHoldMillis
+    ) {
+        JsonHttpClient.Response response = http.send(
+                "PUT",
+                workerPath(workerGroupId, clientWorkerKey)
+                        + ":command-checkpoint",
+                Map.of(
+                        "checkpointToken", checkpointToken,
+                        "maximumHoldMillis", maximumHoldMillis
+                )
+        );
+        requireStatus(response, 201, "arm command checkpoint");
+        return decodeCheckpoint(response.body());
+    }
+
+    CommandCheckpoint commandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        JsonHttpClient.Response response = http.send(
+                "GET",
+                workerPath(workerGroupId, clientWorkerKey)
+                        + ":command-checkpoint",
+                null
+        );
+        requireStatus(response, 200, "load command checkpoint");
+        return decodeCheckpoint(response.body());
+    }
+
+    void releaseCommandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        JsonHttpClient.Response response = http.send(
+                "DELETE",
+                workerPath(workerGroupId, clientWorkerKey)
+                        + ":command-checkpoint",
+                null
+        );
+        requireStatus(response, 204, "release command checkpoint");
+    }
+
     private WorkerSnapshot action(
             String workerGroupId,
             String clientWorkerKey,
@@ -136,6 +182,22 @@ final class WorkerLabControlClient {
                 JsonValues.optionalString(value, "diagnosticMessage"),
                 scheduledStop,
                 properties
+        );
+    }
+
+    private static CommandCheckpoint decodeCheckpoint(
+            Map<String, Object> value
+    ) {
+        Long enteredAt = value.get("enteredAtEpochMillis") == null
+                ? null
+                : JsonValues.requiredLong(value, "enteredAtEpochMillis");
+        return new CommandCheckpoint(
+                JsonValues.requiredString(value, "workerGroupId"),
+                JsonValues.requiredString(value, "clientWorkerKey"),
+                JsonValues.requiredString(value, "checkpointToken"),
+                JsonValues.requiredLong(value, "maximumHoldMillis"),
+                JsonValues.requiredString(value, "state"),
+                enteredAt
         );
     }
 
@@ -188,5 +250,15 @@ final class WorkerLabControlClient {
             }
             return new LinkedHashMap<>(workerProperties);
         }
+    }
+
+    record CommandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey,
+            String checkpointToken,
+            long maximumHoldMillis,
+            String state,
+            Long enteredAtEpochMillis
+    ) {
     }
 }

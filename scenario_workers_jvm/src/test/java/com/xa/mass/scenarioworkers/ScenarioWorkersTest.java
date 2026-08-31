@@ -153,7 +153,13 @@ class ScenarioWorkersTest {
                 (runtimeApiBaseUrl, preparedGroup) -> manager
         );
 
-        workers.start(ScenarioWorkers.InitialWorkers.NONE);
+        workers.start(ScenarioWorkerStartupPlan.parse("""
+                {
+                  "schemaVersion":1,
+                  "initialWorkers":[],
+                  "scheduledStops":[]
+                }
+                """));
         verify(manager, never()).start();
 
         workers.startWorker(GROUP, "client-1");
@@ -170,6 +176,41 @@ class ScenarioWorkersTest {
                 .isInstanceOf(ScenarioWorkers.UnknownWorkerException.class);
 
         workers.close();
+    }
+
+    @Test
+    void startupPlanValidatesEveryCoordinateBeforeStartingAnyReplica()
+            throws Exception {
+        createLabRoot();
+        writeWorker(GROUP, "client-1", Map.of("slot", 1), null);
+        JavaWorkerManager manager = mock(JavaWorkerManager.class);
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                (runtimeApiBaseUrl, preparedGroup) -> manager
+        );
+        ScenarioWorkerStartupPlan plan = ScenarioWorkerStartupPlan.parse("""
+                {
+                  "schemaVersion":1,
+                  "initialWorkers":[
+                    {
+                      "workerGroupId":"scenario-group",
+                      "clientWorkerKey":"client-1"
+                    },
+                    {
+                      "workerGroupId":"scenario-group",
+                      "clientWorkerKey":"missing"
+                    }
+                  ],
+                  "scheduledStops":[]
+                }
+                """);
+
+        assertThatThrownBy(() -> workers.start(plan))
+                .isInstanceOf(ScenarioWorkerAssemblyException.class)
+                .hasMessageContaining("Could not start Scenario Workers");
+
+        verify(manager, never()).start("client-1");
+        verify(manager).close();
     }
 
     @Test
@@ -289,7 +330,8 @@ class ScenarioWorkersTest {
                 labRoot().toString(),
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
-                managerFactory
+                managerFactory,
+                new ScenarioWorkerCommandCheckpoints()
         );
     }
 

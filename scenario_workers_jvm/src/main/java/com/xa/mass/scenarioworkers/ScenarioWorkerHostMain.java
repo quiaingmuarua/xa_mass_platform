@@ -29,6 +29,10 @@ public final class ScenarioWorkerHostMain {
 
     public static void main(String[] arguments) throws Exception {
         HostOptions options = HostOptions.parse(arguments);
+        ScenarioWorkerStartupPlan startupPlan = options.startupPlanPath()
+                == null
+                ? ScenarioWorkerStartupPlan.defaults()
+                : ScenarioWorkerStartupPlan.load(options.startupPlanPath());
         ScenarioWorkers workers = ScenarioWorkers.fromJson(
                 loadDefaultCapabilityAssembly(),
                 options.sandboxRoot(),
@@ -38,8 +42,9 @@ public final class ScenarioWorkerHostMain {
         ScenarioWorkerControlServer controlServer = null;
         Thread shutdownHook = null;
         try {
-            workers.start(options.initialWorkers());
+            workers.start(startupPlan);
             scheduledStops = new ScenarioWorkerScheduledStops(workers);
+            scheduleStartupStops(startupPlan, scheduledStops);
             controlServer = ScenarioWorkerControlServer.open(
                     options.controlPort(),
                     workers,
@@ -61,11 +66,10 @@ public final class ScenarioWorkerHostMain {
             LOGGER.log(
                     System.Logger.Level.INFO,
                     "SCENARIO_WORKER_LAB_READY control={0} "
-                            + "initialWorkers={1}",
+                            + "initialWorkerCount={1} scheduledStopCount={2}",
                     controlServer.baseUri(),
-                    options.initialWorkers().name().toLowerCase(
-                            java.util.Locale.ROOT
-                    )
+                    workers.initialWorkerCount(),
+                    startupPlan.scheduledStops().size()
             );
             new CountDownLatch(1).await();
         } catch (InterruptedException interrupted) {
@@ -100,6 +104,28 @@ public final class ScenarioWorkerHostMain {
             Runtime.getRuntime().removeShutdownHook(shutdownHook);
         } catch (IllegalStateException ignoredDuringShutdown) {
             // The registered hook owns the same idempotent close operation.
+        }
+    }
+
+    private static void scheduleStartupStops(
+            ScenarioWorkerStartupPlan startupPlan,
+            ScenarioWorkerScheduledStops scheduledStops
+    ) {
+        for (ScenarioWorkerStartupPlan.ScheduledStop stop
+                : startupPlan.scheduledStops()) {
+            ScenarioWorkerCoordinate worker = stop.worker();
+            if (!scheduledStops.schedule(
+                    worker.workerGroupId(),
+                    worker.clientWorkerKey(),
+                    stop.delayMillis()
+            )) {
+                throw new IllegalStateException(
+                        "Duplicate startup scheduled stop for "
+                                + worker.workerGroupId()
+                                + "/"
+                                + worker.clientWorkerKey()
+                );
+            }
         }
     }
 
@@ -148,15 +174,14 @@ public final class ScenarioWorkerHostMain {
             URI runtimeApiBaseUrl,
             String sandboxRoot,
             int controlPort,
-            ScenarioWorkers.InitialWorkers initialWorkers
+            String startupPlanPath
     ) {
 
         private static final String RUNTIME_API_ARGUMENT =
                 "--runtime-api-base-url";
         private static final String SANDBOX_ROOT_ARGUMENT = "--sandbox-root";
         private static final String CONTROL_PORT_ARGUMENT = "--control-port";
-        private static final String INITIAL_WORKERS_ARGUMENT =
-                "--initial-workers";
+        private static final String STARTUP_PLAN_ARGUMENT = "--startup-plan";
 
         HostOptions {
             requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
@@ -170,8 +195,10 @@ public final class ScenarioWorkerHostMain {
                         "control-port must be between 0 and 65535"
                 );
             }
-            if (initialWorkers == null) {
-                throw new NullPointerException("initialWorkers");
+            if (startupPlanPath != null && startupPlanPath.isBlank()) {
+                throw new IllegalArgumentException(
+                        "startup-plan must be non-blank"
+                );
             }
         }
 
@@ -197,7 +224,7 @@ public final class ScenarioWorkerHostMain {
                 if (!RUNTIME_API_ARGUMENT.equals(name)
                         && !SANDBOX_ROOT_ARGUMENT.equals(name)
                         && !CONTROL_PORT_ARGUMENT.equals(name)
-                        && !INITIAL_WORKERS_ARGUMENT.equals(name)) {
+                        && !STARTUP_PLAN_ARGUMENT.equals(name)) {
                     throw new IllegalArgumentException(
                             "Unknown Scenario Worker Host argument: " + name
                     );
@@ -221,10 +248,7 @@ public final class ScenarioWorkerHostMain {
                             CONTROL_PORT_ARGUMENT,
                             Integer.toString(DEFAULT_CONTROL_PORT)
                     )),
-                    parseInitialWorkers(values.getOrDefault(
-                            INITIAL_WORKERS_ARGUMENT,
-                            "all"
-                    ))
+                    values.get(STARTUP_PLAN_ARGUMENT)
             );
         }
 
@@ -237,18 +261,6 @@ public final class ScenarioWorkerHostMain {
                         error
                 );
             }
-        }
-
-        private static ScenarioWorkers.InitialWorkers parseInitialWorkers(
-                String value
-        ) {
-            return switch (value) {
-                case "all" -> ScenarioWorkers.InitialWorkers.ALL;
-                case "none" -> ScenarioWorkers.InitialWorkers.NONE;
-                default -> throw new IllegalArgumentException(
-                        "initial-workers must be all or none"
-                );
-            };
         }
 
         private static void requireRuntimeApiBaseUrl(URI value) {

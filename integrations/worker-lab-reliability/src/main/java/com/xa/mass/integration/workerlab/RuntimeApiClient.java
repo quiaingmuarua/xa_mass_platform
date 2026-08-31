@@ -94,6 +94,19 @@ final class RuntimeApiClient {
             String workerGroupId,
             Map<String, Object> allocationRule
     ) {
+        return createTask(workerGroupId, allocationRule, 3);
+    }
+
+    String createTask(
+            String workerGroupId,
+            Map<String, Object> allocationRule,
+            int maxRetryTimes
+    ) {
+        if (maxRetryTimes < 0 || maxRetryTimes > 98) {
+            throw new IllegalArgumentException(
+                    "maxRetryTimes must be in 0..98"
+            );
+        }
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks",
@@ -102,7 +115,7 @@ final class RuntimeApiClient {
                         "allocationRule", allocationRule,
                         "priority", 50,
                         "maximumCandidateWorkers", 10,
-                        "maxRetryTimes", 3
+                        "maxRetryTimes", maxRetryTimes
                 )
         );
         requireStatus(response, 200, "create Task");

@@ -9,31 +9,66 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-final class ReliabilityEvidence {
-
-    static final String SUMMARY_FILE =
-            "worker-lab-reliability-summary.json";
-    static final String TIMELINE_FILE =
-            "worker-lab-reliability-timeline.jsonl";
+final class ConvergenceEvidence {
 
     private final String proofId;
+    private final String lane;
     private final Path directory;
     private final Path timeline;
     private final Instant startedAt;
 
-    ReliabilityEvidence(String proofId, Path directory) throws IOException {
+    static ConvergenceEvidence begin(
+            String proofId,
+            String lane,
+            Path directory
+    ) throws IOException {
+        return new ConvergenceEvidence(
+                proofId,
+                lane,
+                directory,
+                Instant.now(),
+                true
+        );
+    }
+
+    static ConvergenceEvidence resume(
+            String proofId,
+            String lane,
+            Path directory,
+            Instant startedAt
+    ) throws IOException {
+        return new ConvergenceEvidence(
+                proofId,
+                lane,
+                directory,
+                startedAt,
+                false
+        );
+    }
+
+    private ConvergenceEvidence(
+            String proofId,
+            String lane,
+            Path directory,
+            Instant startedAt,
+            boolean resetTimeline
+    ) throws IOException {
         this.proofId = requireNonBlank(proofId, "proofId");
+        this.lane = requireLane(lane);
         this.directory = Objects.requireNonNull(
                 directory,
                 "directory"
         ).toAbsolutePath().normalize();
+        this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
         Files.createDirectories(this.directory);
-        timeline = this.directory.resolve(TIMELINE_FILE);
-        Files.deleteIfExists(timeline);
-        startedAt = Instant.now();
+        timeline = this.directory.resolve(timelineFileName(lane));
+        if (resetTimeline) {
+            Files.deleteIfExists(timeline);
+        }
     }
 
     synchronized void record(
@@ -43,6 +78,7 @@ final class ReliabilityEvidence {
     ) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("observedAt", Instant.now().toString());
+        row.put("lane", lane);
         row.put("phase", requireNonBlank(phase, "phase"));
         row.put("action", requireNonBlank(action, "action"));
         putFacts(row, facts);
@@ -56,7 +92,7 @@ final class ReliabilityEvidence {
             );
         } catch (IOException error) {
             throw new IllegalStateException(
-                    "Could not append Worker Lab reliability timeline",
+                    "Could not append Worker Lab convergence timeline",
                     error
             );
         }
@@ -68,16 +104,17 @@ final class ReliabilityEvidence {
     ) throws IOException {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("proofId", proofId);
+        value.put("lane", lane);
         value.put("status", requireNonBlank(status, "status"));
         value.put("startedAt", startedAt.toString());
         value.put("completedAt", Instant.now().toString());
-        value.put("timelineFile", TIMELINE_FILE);
+        value.put("timelineFile", timelineFileName(lane));
         putFacts(value, facts);
 
-        Path target = directory.resolve(SUMMARY_FILE);
+        Path target = summaryFile();
         Path temporary = Files.createTempFile(
                 directory,
-                ".worker-lab-reliability-summary-",
+                ".worker-lab-" + lane + "-summary-",
                 ".tmp"
         );
         try {
@@ -86,27 +123,27 @@ final class ReliabilityEvidence {
                     Jsons.toJson(value) + System.lineSeparator(),
                     StandardCharsets.UTF_8
             );
-            try {
-                Files.move(
-                        temporary,
-                        target,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-                Files.move(
-                        temporary,
-                        target,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-            }
+            Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
         } finally {
             Files.deleteIfExists(temporary);
         }
     }
 
     Path summaryFile() {
-        return directory.resolve(SUMMARY_FILE);
+        return directory.resolve(summaryFileName(lane));
+    }
+
+    static String summaryFileName(String lane) {
+        return "worker-lab-" + requireLane(lane) + "-summary.json";
+    }
+
+    static String timelineFileName(String lane) {
+        return "worker-lab-" + requireLane(lane) + "-timeline.jsonl";
     }
 
     private static void putFacts(
@@ -119,10 +156,11 @@ final class ReliabilityEvidence {
                         "Evidence fact names must be non-blank"
                 );
             }
-            String normalized = key.toLowerCase(java.util.Locale.ROOT);
-            if (normalized.contains("payload")) {
+            String normalized = key.toLowerCase(Locale.ROOT);
+            if (normalized.contains("payload")
+                    || normalized.contains("properties")) {
                 throw new IllegalArgumentException(
-                        "Evidence must not record payload"
+                        "Evidence must not record payload or Properties"
                 );
             }
             if (target.putIfAbsent(key, value) != null) {
@@ -131,6 +169,16 @@ final class ReliabilityEvidence {
                 );
             }
         });
+    }
+
+    private static String requireLane(String value) {
+        String lane = requireNonBlank(value, "lane");
+        if (!lane.matches("[a-z0-9]+(?:-[a-z0-9]+)*")) {
+            throw new IllegalArgumentException(
+                    "lane must contain lowercase words separated by hyphens"
+            );
+        }
+        return lane;
     }
 
     private static String requireNonBlank(String value, String name) {

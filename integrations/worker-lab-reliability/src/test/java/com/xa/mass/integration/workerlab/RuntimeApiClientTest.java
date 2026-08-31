@@ -106,7 +106,8 @@ class RuntimeApiClientTest {
             )).containsEntry("worker-1", "recovery");
             assertThat(client.createTask(
                     "group-1",
-                    Map.of("worker.labSlot", Map.of("$eq", 901))
+                    Map.of("worker.labSlot", Map.of("$eq", 901)),
+                    98
             )).isEqualTo("task-1");
             client.appendItems("task-1", List.of(
                     new TaskItem("message-1", "event.one", Map.of()),
@@ -120,6 +121,7 @@ class RuntimeApiClientTest {
 
             assertThat(requests).anySatisfy(body -> assertThat(body)
                     .containsEntry("workerGroupId", "group-1")
+                    .containsEntry("maxRetryTimes", 98L)
                     .containsKey("allocationRule"));
         } finally {
             server.stop(0);

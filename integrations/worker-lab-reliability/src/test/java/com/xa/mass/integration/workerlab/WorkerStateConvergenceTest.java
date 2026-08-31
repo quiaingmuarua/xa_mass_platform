@@ -12,23 +12,21 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class WorkerLabReliabilityTest {
+class WorkerStateConvergenceTest {
 
     @TempDir
-    Path temporaryDirectory;
+    Path directory;
 
     @Test
-    void failedInitialWorkersPrecheckDoesNotMutateTheLab() throws Exception {
-        List<String> requests = Collections.synchronizedList(
-                new ArrayList<>()
-        );
+    void uncontrolledWorkersAreNotAProofPreconditionOrMutationTarget()
+            throws Exception {
+        List<String> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(
                 new InetSocketAddress("127.0.0.1", 0),
                 0
@@ -36,49 +34,60 @@ class WorkerLabReliabilityTest {
         server.createContext("/lab/v1/workers", exchange -> {
             requests.add(exchange.getRequestMethod() + " "
                     + exchange.getRequestURI().getRawPath());
-            respond(exchange, 200, Map.of("workers", runningInventory()));
+            respond(exchange, 200, Map.of("workers", inventoryWithExtraRun()));
         });
         server.start();
         try {
-            URI labBase = URI.create(
+            URI base = URI.create(
                     "http://127.0.0.1:" + server.getAddress().getPort()
             );
-            WorkerLabReliabilityMain.Options options =
-                    new WorkerLabReliabilityMain.Options(
-                            labBase,
-                            labBase,
-                            "adapter-1",
-                            "failed-precheck",
-                            temporaryDirectory,
-                            1_000,
-                            500,
-                            10
-                    );
+            WorkerLabHarnessOptions options = new WorkerLabHarnessOptions(
+                    base,
+                    base,
+                    "adapter-one",
+                    "failed-state-world",
+                    directory,
+                    1_000,
+                    500
+            );
 
-            assertThatThrownBy(() -> WorkerLabReliability.execute(options))
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("initial-workers=none");
-
-            assertThat(requests).containsExactly("GET /lab/v1/workers");
+            assertThatThrownBy(() -> WorkerStateConvergence.execute(options))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(requests)
+                    .hasSizeGreaterThan(1)
+                    .allMatch(request -> request.startsWith("GET "));
         } finally {
             server.stop(0);
         }
     }
 
-    private static List<Map<String, Object>> runningInventory() {
+    private static List<Map<String, Object>> inventoryWithExtraRun() {
         List<Map<String, Object>> workers = new ArrayList<>();
-        for (int index = 1; index <= 20; index++) {
+        addGroup(workers, "scenario-phone-number-workers", "phone-number");
+        addGroup(workers, "scenario-string-utils-workers", "string-utils");
+        return workers;
+    }
+
+    private static void addGroup(
+            List<Map<String, Object>> workers,
+            String group,
+            String capability
+    ) {
+        int workerCount = "phone-number".equals(capability) ? 3 : 2;
+        for (int index = 1; index <= workerCount; index++) {
             Map<String, Object> snapshot = new LinkedHashMap<>();
-            snapshot.put("workerGroupId", "group-" + index);
-            snapshot.put("clientWorkerKey", "worker-" + index);
+            snapshot.put("workerGroupId", group);
+            snapshot.put(
+                    "clientWorkerKey",
+                    "scenario-" + capability + "-worker-%03d".formatted(index)
+            );
             snapshot.put("desiredState", "RUNNING");
             snapshot.put("runtimeState", "RUNNING");
-            snapshot.put("workerId", "worker-id-" + index);
+            snapshot.put("workerId", "worker-" + index);
             snapshot.put("diagnosticMessage", null);
             snapshot.put("scheduledStopAtEpochMillis", null);
             workers.add(snapshot);
         }
-        return workers;
     }
 
     private static void respond(
@@ -87,10 +96,6 @@ class WorkerLabReliabilityTest {
             Map<String, ?> value
     ) throws IOException {
         byte[] body = Jsons.toJson(value).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set(
-                "Content-Type",
-                "application/json"
-        );
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();

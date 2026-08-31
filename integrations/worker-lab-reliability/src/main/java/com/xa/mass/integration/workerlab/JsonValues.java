@@ -60,7 +60,7 @@ final class JsonValues {
 
     static IllegalStateException invalid(String message) {
         return new IllegalStateException(
-                "Worker Lab reliability response is invalid: " + message
+                "Worker Lab convergence response is invalid: " + message
         );
     }
 }

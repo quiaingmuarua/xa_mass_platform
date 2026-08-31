@@ -21,11 +21,27 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.register('runWorkerLabReliability', JavaExec) {
-    description = 'Runs the external Worker Lab reliability proof.'
+tasks.register('runWorkerStateConvergence', JavaExec) {
+    description = 'Runs Worker state convergence proof.'
     group = 'application'
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.xa.mass.integration.workerlab.WorkerLabReliabilityMain'
+    mainClass = 'com.xa.mass.integration.workerlab.WorkerStateConvergenceMain'
+    workingDir = project.projectDir
+}
+
+tasks.register('runWorkerTaskFaultConvergence', JavaExec) {
+    description = 'Runs one phase of Worker task-fault convergence proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.workerlab.WorkerTaskFaultConvergenceMain'
+    workingDir = project.projectDir
+}
+
+tasks.register('runWorkerConvergenceCampaign', JavaExec) {
+    description = 'Runs the seeded Worker convergence campaign.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.workerlab.WorkerConvergenceCampaignMain'
     workingDir = project.projectDir
 }
 

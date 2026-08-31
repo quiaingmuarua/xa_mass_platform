@@ -22,6 +22,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final URI runtimeApiBaseUrl;
     private final List<GroupAssembly> groups;
     private final ScenarioWorkerLab lab;
+    private final ScenarioWorkerCommandCheckpoints commandCheckpoints;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
     private final Map<String, ManagedGroup> managedGroupsById =
@@ -29,6 +30,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     private boolean started;
     private boolean closed;
+    private int initialWorkerCount;
 
     ScenarioWorkers(
             URI runtimeApiBaseUrl,
@@ -36,7 +38,8 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<ScenarioWorkerGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>>
                     availableExtensionsByEventCode,
-            GroupManagerFactory groupManagerFactory
+            GroupManagerFactory groupManagerFactory,
+            ScenarioWorkerCommandCheckpoints commandCheckpoints
     ) {
         this.runtimeApiBaseUrl = Objects.requireNonNull(
                 runtimeApiBaseUrl,
@@ -53,6 +56,10 @@ public final class ScenarioWorkers implements AutoCloseable {
                 groupManagerFactory,
                 "groupManagerFactory"
         );
+        this.commandCheckpoints = Objects.requireNonNull(
+                commandCheckpoints,
+                "commandCheckpoints"
+        );
     }
 
     public static ScenarioWorkers fromJson(
@@ -63,12 +70,15 @@ public final class ScenarioWorkers implements AutoCloseable {
         try {
             List<ScenarioWorkerGroupConfig> configs =
                     ScenarioWorkersJsonParser.parse(capabilityAssemblyJson);
+            ScenarioWorkerCommandCheckpoints checkpoints =
+                    new ScenarioWorkerCommandCheckpoints();
             return new ScenarioWorkers(
                     runtimeApiBaseUrl,
                     sandboxRoot,
                     configs,
-                    availableDefinitionExtensions(),
-                    ScenarioWorkers::createManager
+                    availableDefinitionExtensions(checkpoints),
+                    ScenarioWorkers::createManager,
+                    checkpoints
             );
         } catch (IllegalArgumentException error) {
             throw new ScenarioWorkerAssemblyException(
@@ -82,11 +92,11 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     public synchronized void start() {
-        start(InitialWorkers.ALL);
+        start(ScenarioWorkerStartupPlan.defaults());
     }
 
-    synchronized void start(InitialWorkers initialWorkers) {
-        Objects.requireNonNull(initialWorkers, "initialWorkers");
+    synchronized void start(ScenarioWorkerStartupPlan startupPlan) {
+        Objects.requireNonNull(startupPlan, "startupPlan");
         if (closed) {
             throw new IllegalStateException("Scenario Workers are closed");
         }
@@ -98,16 +108,21 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<PreparedGroup> preparedGroups = prepareGroups();
             if (!preparedGroups.isEmpty()) {
                 createManagers(preparedGroups);
-                if (initialWorkers == InitialWorkers.ALL) {
-                    RuntimeException startFailure = startManagers();
-                    if (startFailure != null) {
-                        throw startFailure;
-                    }
+                List<ScenarioWorkerCoordinate> initialWorkers =
+                        resolveInitialWorkers(startupPlan);
+                RuntimeException startFailure = startWorkers(
+                        startupPlan.startAll(),
+                        initialWorkers
+                );
+                if (startFailure != null) {
+                    throw startFailure;
                 }
+                initialWorkerCount = initialWorkers.size();
             }
             started = true;
         } catch (RuntimeException failure) {
             closed = true;
+            commandCheckpoints.close();
             RuntimeException closeFailure = closeManagers(null);
             if (closeFailure != null) {
                 failure.addSuppressed(closeFailure);
@@ -130,6 +145,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             return;
         }
         closed = true;
+        commandCheckpoints.close();
         RuntimeException failure = closeManagers(null);
         if (failure != null) {
             throw failure;
@@ -192,6 +208,51 @@ public final class ScenarioWorkers implements AutoCloseable {
         requireReplica(group, clientWorkerKey)
                 .stateFile()
                 .replace(encodedDocument);
+    }
+
+    synchronized int initialWorkerCount() {
+        ensureControllable();
+        return initialWorkerCount;
+    }
+
+    synchronized void armCommandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey,
+            String checkpointToken,
+            long maximumHoldMillis
+    ) {
+        ensureControllable();
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        requireCheckpointCapable(group);
+        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        commandCheckpoints.arm(
+                coordinate(group, replica),
+                checkpointToken,
+                maximumHoldMillis
+        );
+    }
+
+    synchronized ScenarioWorkerCommandCheckpoints.Snapshot
+    commandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        ensureControllable();
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        requireCheckpointCapable(group);
+        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        return commandCheckpoints.snapshot(coordinate(group, replica));
+    }
+
+    synchronized void releaseCommandCheckpoint(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        ensureControllable();
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        requireCheckpointCapable(group);
+        PreparedReplica replica = requireReplica(group, clientWorkerKey);
+        commandCheckpoints.release(coordinate(group, replica));
     }
 
     private List<PreparedGroup> prepareGroups() {
@@ -258,11 +319,47 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
     }
 
-    private RuntimeException startManagers() {
+    private List<ScenarioWorkerCoordinate> resolveInitialWorkers(
+            ScenarioWorkerStartupPlan startupPlan
+    ) {
+        if (startupPlan.startAll()) {
+            List<ScenarioWorkerCoordinate> coordinates = new ArrayList<>();
+            for (ManagedGroup group : managedGroups) {
+                for (PreparedReplica replica
+                        : group.preparedGroup().replicas()) {
+                    coordinates.add(coordinate(group, replica));
+                }
+            }
+            return List.copyOf(coordinates);
+        }
+        for (ScenarioWorkerCoordinate worker
+                : startupPlan.initialWorkers()) {
+            ManagedGroup group = requireManagedGroup(worker.workerGroupId());
+            requireReplica(group, worker.clientWorkerKey());
+        }
+        return startupPlan.initialWorkers();
+    }
+
+    private RuntimeException startWorkers(
+            boolean startAll,
+            List<ScenarioWorkerCoordinate> initialWorkers
+    ) {
         RuntimeException failure = null;
-        for (ManagedGroup managedGroup : managedGroups) {
+        if (startAll) {
+            for (ManagedGroup managedGroup : managedGroups) {
+                try {
+                    managedGroup.manager().start();
+                } catch (RuntimeException error) {
+                    failure = accumulate(failure, error);
+                }
+            }
+            return failure;
+        }
+        for (ScenarioWorkerCoordinate worker : initialWorkers) {
             try {
-                managedGroup.manager().start();
+                requireManagedGroup(worker.workerGroupId())
+                        .manager()
+                        .start(worker.clientWorkerKey());
             } catch (RuntimeException error) {
                 failure = accumulate(failure, error);
             }
@@ -402,7 +499,9 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     private static Map<String, WorkerEventDefinition<?>>
-    availableDefinitionExtensions() {
+    availableDefinitionExtensions(
+            ScenarioWorkerCommandCheckpoints checkpoints
+    ) {
         Map<String, WorkerEventDefinition<?>> definitions =
                 new LinkedHashMap<>();
         addDefinitionExtensions(
@@ -413,7 +512,36 @@ public final class ScenarioWorkers implements AutoCloseable {
                 definitions,
                 StringUtilityWorkerEvents.definitions()
         );
+        addDefinitionExtensions(
+                definitions,
+                List.of(ScenarioWorkerLabEvents.checkpoint(checkpoints))
+        );
         return Collections.unmodifiableMap(definitions);
+    }
+
+    private static ScenarioWorkerCoordinate coordinate(
+            ManagedGroup group,
+            PreparedReplica replica
+    ) {
+        return new ScenarioWorkerCoordinate(
+                group.preparedGroup().group().config().workerGroupId(),
+                replica.clientWorkerKey()
+        );
+    }
+
+    private static void requireCheckpointCapable(ManagedGroup group) {
+        boolean supported = group.preparedGroup()
+                .group()
+                .definitionExtensions()
+                .stream()
+                .anyMatch(definition -> ScenarioWorkerLabEvents
+                        .CHECKPOINT_EVENT_CODE
+                        .equals(definition.eventName()));
+        if (!supported) {
+            throw new IllegalArgumentException(
+                    "WorkerGroup does not install the Lab checkpoint event"
+            );
+        }
     }
 
     private static void addDefinitionExtensions(
@@ -524,11 +652,6 @@ public final class ScenarioWorkers implements AutoCloseable {
             GroupAssembly group,
             List<PreparedReplica> replicas
     ) {
-    }
-
-    enum InitialWorkers {
-        ALL,
-        NONE
     }
 
     record WorkerControlSnapshot(

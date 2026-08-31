@@ -20,8 +20,7 @@ class ScenarioWorkerHostMainTest {
         assertThat(options.sandboxRoot())
                 .isEqualTo("data/scenario-workers");
         assertThat(options.controlPort()).isEqualTo(18086);
-        assertThat(options.initialWorkers())
-                .isEqualTo(ScenarioWorkers.InitialWorkers.ALL);
+        assertThat(options.startupPlanPath()).isNull();
     }
 
     @Test
@@ -31,7 +30,7 @@ class ScenarioWorkerHostMainTest {
                         "--runtime-api-base-url=http://127.0.0.1:19082",
                         "--sandbox-root=C:/proof/data/scenario-workers",
                         "--control-port=0",
-                        "--initial-workers=none"
+                        "--startup-plan=C:/proof/startup-plan.json"
                 });
 
         assertThat(options.runtimeApiBaseUrl())
@@ -39,8 +38,8 @@ class ScenarioWorkerHostMainTest {
         assertThat(options.sandboxRoot())
                 .isEqualTo("C:/proof/data/scenario-workers");
         assertThat(options.controlPort()).isZero();
-        assertThat(options.initialWorkers())
-                .isEqualTo(ScenarioWorkers.InitialWorkers.NONE);
+        assertThat(options.startupPlanPath())
+                .isEqualTo("C:/proof/startup-plan.json");
     }
 
     @Test
@@ -62,9 +61,9 @@ class ScenarioWorkerHostMainTest {
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("control-port");
         assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(
-                new String[]{"--initial-workers=some"}
+                new String[]{"--initial-workers=none"}
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("all or none");
+                .hasMessageContaining("Unknown");
     }
 
     @Test

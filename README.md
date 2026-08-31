@@ -136,8 +136,9 @@ those owners.
   acceptance driver.
 - [`integrations/`](integrations/) contains external acceptance clients; it
   owns no Kernel, Server or Transport mechanism. Worker Fleet and Capability
-  Task retain exact topology/result proofs; Worker Lab Reliability exercises
-  controlled failure and eventual convergence through public HTTP boundaries.
+  Task retain exact topology/result proofs; Worker Lab Convergence relates
+  controlled local mutations to Adapter, Kernel and Task observations through
+  public HTTP boundaries.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture

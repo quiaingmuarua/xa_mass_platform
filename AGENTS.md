@@ -371,6 +371,12 @@ system.
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
+- An optional strict startup plan selects the initial finite Worker set and
+  startup-only scheduled stops. It is validated completely before any replica
+  starts and does not contain Properties, Worker IDs, Tasks or Kernel claims.
+- The String Lab command checkpoint is a bounded Scenario-only fault fixture.
+  It must not become a Worker Core hook, generic action DSL or production
+  lifecycle mechanism.
 - Its loopback Lab HTTP surface may atomically replace discovered Worker files,
   explicitly start/stop one replica, and own nonpersistent scheduled stops.
   Lab desired/runtime state is local observation, never Adapter or Kernel truth.
@@ -384,6 +390,14 @@ system.
   launcher and proof lanes own the two independent process lifecycles.
 - Existing Group directories are not seeded or repaired; missing configured
   directories may receive checked defaults.
+- State, task-fault and seeded-campaign convergence are independent Integration
+  lanes. Their runner owns process failure and phase progression; the Host must
+  not infer Adapter connectivity or Kernel serviceability from local state.
+- The Lab is a mutation source and local witness, not a reconcile robot or
+  distributed consistency Owner. Each Harness action is issued once; the
+  Harness records whether its local effect was established and only then compares
+  independent Runtime projections. They must not retry, compensate, restore or
+  reshape the Lab merely to make a convergence assertion pass.
 
 Android capability modules own concrete immutable Definitions and Android data
 access. They must not receive Worker identity, Endpoint, Task, Client,
@@ -395,9 +409,12 @@ controls.
 
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
-- Worker Lab Reliability may combine the loopback Lab API with independent
+- Worker Lab Convergence may combine the loopback Lab API with independent
   Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
-  record identities and projected states but never business payload.
+  record identities and projected states but never business payload. Failed or
+  ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
+  seeded campaigns stop mutation injection and evaluate the actual observed
+  local world instead of installing a preferred final world.
 - Capability Task inputs are caller-owned local files. Integrations and the
   frontend turn lines into ordinary finite TaskItems through public Task APIs;
   Server owns no Lab input/output directory.

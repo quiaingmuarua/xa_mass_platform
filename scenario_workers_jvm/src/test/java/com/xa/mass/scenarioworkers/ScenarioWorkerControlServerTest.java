@@ -62,19 +62,36 @@ class ScenarioWorkerControlServerTest {
                 null,
                 null
         ));
+        ScenarioWorkerCommandCheckpoints checkpoints =
+                new ScenarioWorkerCommandCheckpoints();
         WorkerEventDefinition<?> definition =
                 StringUtilityWorkerEvents.definitions().get(0);
+        WorkerEventDefinition<?> checkpointDefinition =
+                ScenarioWorkerLabEvents.checkpoint(checkpoints);
         workers = new ScenarioWorkers(
                 URI.create("http://127.0.0.1:18082"),
                 root.toString(),
                 ScenarioWorkersJsonParser.parse(Jsons.toJson(Map.of(
                         GROUP,
-                        Map.of("eventCodes", List.of(definition.eventName()))
+                        Map.of("eventCodes", List.of(
+                                definition.eventName(),
+                                checkpointDefinition.eventName()
+                        ))
                 ))),
-                Map.of(definition.eventName(), definition),
-                (runtimeApiBaseUrl, preparedGroup) -> manager
+                Map.of(
+                        definition.eventName(), definition,
+                        checkpointDefinition.eventName(), checkpointDefinition
+                ),
+                (runtimeApiBaseUrl, preparedGroup) -> manager,
+                checkpoints
         );
-        workers.start(ScenarioWorkers.InitialWorkers.NONE);
+        workers.start(ScenarioWorkerStartupPlan.parse("""
+                {
+                  "schemaVersion":1,
+                  "initialWorkers":[],
+                  "scheduledStops":[]
+                }
+                """));
         scheduledStops = new ScenarioWorkerScheduledStops(workers);
         server = ScenarioWorkerControlServer.open(
                 0,
@@ -227,6 +244,27 @@ class ScenarioWorkerControlServerTest {
 
         assertThat(response.statusCode()).isEqualTo(409);
         assertThat(response.body()).contains("state_conflict");
+    }
+
+    @Test
+    void armsReadsAndReleasesCommandCheckpoint() throws Exception {
+        String path = workerPath() + ":command-checkpoint";
+        String body = Jsons.toJson(Map.of(
+                "checkpointToken", "checkpoint-1",
+                "maximumHoldMillis", 30_000
+        ));
+
+        HttpResponse<String> armed = request("PUT", path, body);
+        assertThat(armed.statusCode()).isEqualTo(201);
+        assertThat(armed.body()).contains(
+                "checkpoint-1",
+                "ARMED"
+        );
+        assertThat(request("PUT", path, body).statusCode()).isEqualTo(409);
+        assertThat(request("GET", path, null).statusCode()).isEqualTo(200);
+        assertThat(request("DELETE", path, null).statusCode())
+                .isEqualTo(204);
+        assertThat(request("GET", path, null).statusCode()).isEqualTo(404);
     }
 
     @Test

@@ -24,16 +24,17 @@ The supported process entry is:
 .\gradlew.bat :scenario_workers_jvm:runScenarioWorkers `
   --args="--runtime-api-base-url=http://127.0.0.1:18082 `
   --sandbox-root=D:\proof\data\scenario-workers `
-  --control-port=18086 --initial-workers=all"
+  --control-port=18086 `
+  --startup-plan=D:\proof\startup-plan.json"
 ```
 
 `ScenarioWorkerHostMain` loads the checked
 `default-capability-assembly.json`; callers cannot replace it with dynamic
 classes, Spring configuration, Redis coordinates or Adapter URIs. The only
-arguments are the Runtime API base URL, Lab root, loopback control port, and
-initial Worker mode. `--control-port=18086` and `--initial-workers=all` are the
-defaults. Port `0` selects an ephemeral test port; `initial-workers=none`
-assembles the complete inventory without starting a Worker. The fixed assembly
+arguments are the Runtime API base URL, Lab root, loopback control port, and an
+optional strict startup plan. `--control-port=18086` is the default. Port `0`
+selects an ephemeral test port. When no startup plan is supplied, all discovered
+Workers start, preserving ordinary Fleet and Capability behavior. The fixed assembly
 declares the two locally hosted Groups, their concrete Event Definitions and
 local reconnect options. It never lists individual Workers:
 
@@ -58,6 +59,32 @@ local reconnect options. It never lists individual Workers:
 are required and unknown fields are rejected. The omitted request timeout uses
 10 seconds. The old inline `workers`, `sandboxDirectory`, retry-policy, and
 Adapter URI fields are rejected.
+
+The optional startup plan is validated completely before any replica starts:
+
+```json
+{
+  "schemaVersion": 1,
+  "initialWorkers": [
+    {
+      "workerGroupId": "scenario-string-utils-workers",
+      "clientWorkerKey": "scenario-string-utils-worker-001"
+    }
+  ],
+  "scheduledStops": [
+    {
+      "workerGroupId": "scenario-string-utils-workers",
+      "clientWorkerKey": "scenario-string-utils-worker-001",
+      "delayMillis": 5000
+    }
+  ]
+}
+```
+
+Coordinates must name the discovered inventory, duplicates are rejected, and a
+startup scheduled stop may reference only an initial Worker. The plan owns only
+this process's initial desired state and startup stop schedule. It does not own
+Properties, Worker identity, Tasks, Adapter state, or Kernel expectations.
 
 ## Persistent Worker Lab
 
@@ -146,6 +173,13 @@ visible on the next explicit start. A start requested while an earlier stop is
 still converging is rejected with `409`; the caller must observe `STOPPED` and
 retry instead of relying on an implicit restart.
 
+The control surface does not promise idempotent orchestration or eventual
+completion of an accepted request. It reports the immediate local Lab snapshot;
+callers may observe later local state, but the Host does not retry, compensate,
+or reconcile an operation until a preferred external projection appears. A
+failed or ambiguous operation is simply not a valid mutation anchor for a
+convergence proof.
+
 The Host exposes a loopback-only JDK `HttpServer` control surface:
 
 ```text
@@ -156,6 +190,9 @@ POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:start
 POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:stop
 POST   /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:schedule-stop
 DELETE /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:scheduled-stop
+PUT    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
+GET    /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
+DELETE /lab/v1/workers/{workerGroupId}/{clientWorkerKey}:command-checkpoint
 ```
 
 `PUT` accepts the complete schema-v2 state document and atomically replaces
@@ -164,11 +201,15 @@ or Worker. Filesystems that cannot provide `ATOMIC_MOVE` fail the write rather
 than silently weakening this contract. `schedule-stop` accepts one
 `delayMillis` in `1..86400000`; one
 Host-wide daemon scheduler owns at most one nonpersistent plan per Worker.
-These endpoints expose Lab desired/runtime state only. They do not claim
+The command checkpoint is a String-Worker-only reliability fixture for
+`extension.worker.lab.checkpoint`. One opaque token can hold one target Handler
+for at most 120 seconds; release, timeout, or Host close opens the gate. It is
+not a Core hook, generic fault DSL, Worker identity context, or production
+control event. These endpoints expose Lab desired/runtime state only. They do not claim
 Adapter connectivity, Kernel score, or schedulability. The stable ready line is:
 
 ```text
-SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port> initialWorkers=<all|none>
+SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port> initialWorkerCount=<n> scheduledStopCount=<n>
 ```
 
 The same loopback control server exposes a dependency-free local console at:
@@ -215,10 +256,12 @@ independent clients then prove the boundary:
 - [`worker-capability-task`](../integrations/worker-capability-task/) proves two
   finite Tasks close 60 submitted Items across six Group/Event combinations to
   60 uniquely correlated exported success Results;
-- [`worker-lab-reliability`](../integrations/worker-lab-reliability/) controls
-  four fixed replicas and proves explicit stop/restart, scheduling
-  serviceability convergence, next-Prepare Properties refresh, Group isolation,
-  and eventual completion of a previously unserviceable Task.
+- [`worker-lab-reliability`](../integrations/worker-lab-reliability/) owns three
+  isolated convergence lanes: Worker state propagation, execution-time Host
+  loss with Task recovery, and a finite seeded multi-round campaign. The Lab is
+  only the mutation source and local witness; the Harness compares established
+  local facts with independent Adapter, Kernel, and Task observations without
+  repairing the Lab into an expected final world.
 
 Capability Task evidence deliberately does not claim which Worker executed an
 Item. Fleet acceptance does not freeze dynamic Properties or business Result

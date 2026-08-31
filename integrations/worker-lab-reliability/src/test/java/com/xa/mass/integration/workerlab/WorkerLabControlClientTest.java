@@ -40,6 +40,18 @@ class WorkerLabControlClientTest {
                 exchange.close();
                 return;
             }
+            if (path.endsWith(":command-checkpoint")) {
+                if ("DELETE".equals(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(204, -1L);
+                    exchange.close();
+                    return;
+                }
+                int status = "PUT".equals(exchange.getRequestMethod())
+                        ? 201
+                        : 200;
+                respond(exchange, status, checkpoint());
+                return;
+            }
             if ("PUT".equals(exchange.getRequestMethod())) {
                 Map<String, Object> body = Jsons.parseObject(new String(
                         exchange.getRequestBody().readAllBytes(),
@@ -75,16 +87,40 @@ class WorkerLabControlClientTest {
                     "worker-encoded",
                     Map.of("labSlot", 2)
             );
+            assertThat(client.armCommandCheckpoint(
+                    "group-one",
+                    "worker-encoded",
+                    "token-one",
+                    1_000
+            ).state()).isEqualTo("ENTERED");
+            assertThat(client.commandCheckpoint(
+                    "group-one",
+                    "worker-encoded"
+            ).enteredAtEpochMillis()).isEqualTo(123L);
+            client.releaseCommandCheckpoint("group-one", "worker-encoded");
 
             assertThat(requests).contains(
                     "GET /lab/v1/workers/group-one/worker-encoded",
                     "POST /lab/v1/workers/group-one/worker-encoded:start",
                     "DELETE /lab/v1/workers/group-one/"
-                            + "worker-encoded:scheduled-stop"
+                            + "worker-encoded:scheduled-stop",
+                    "PUT /lab/v1/workers/group-one/"
+                            + "worker-encoded:command-checkpoint"
             );
         } finally {
             server.stop(0);
         }
+    }
+
+    private static Map<String, Object> checkpoint() {
+        return Map.of(
+                "workerGroupId", "group-one",
+                "clientWorkerKey", "worker-encoded",
+                "checkpointToken", "token-one",
+                "maximumHoldMillis", 1_000,
+                "state", "ENTERED",
+                "enteredAtEpochMillis", 123
+        );
     }
 
     private static Map<String, Object> snapshot(boolean properties) {
