@@ -125,11 +125,13 @@ NanoHTTP Events; Worker and Adapter observations use public Runtime APIs. The
 proof checks initial execution and Properties observation, explicit
 stop/start, retry exhaustion while the Server is down, absence of automatic
 restart, explicit recovery, and Worker ID continuity after App process
-restart. Before the process-restart Task call, it independently observes both
-the Adapter route and a HOT Kernel scheduling projection; network reachability
-alone is not treated as schedulability. It fixes relationship and count
-invariants without storing Battery, device Properties, opaque Results, or
-business Payloads.
+restart. During process restart it first observes the old Adapter route become
+disconnected and the Worker scheduling projection reach `recovery` or `cold`.
+Only then does it relaunch the App, observe the new route, and require a fresh
+`hot-score-overdue` projection before the final Task call. Network reachability
+or stale pre-restart HOT evidence alone is not treated as schedulability. It
+fixes relationship and count invariants without storing Battery, device
+Properties, opaque Results, or business Payloads.
 
 ## Local Commands
 

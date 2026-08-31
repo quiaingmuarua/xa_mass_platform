@@ -356,7 +356,7 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             device = FakeDevice()
             runtime = FakeRuntime(device)
             runtime.network_value = "disconnected"
-            runtime.scheduling_values = ["recovery", "held-hot"]
+            runtime.scheduling_values = ["recovery", "hot-score-overdue"]
             device.connect_on_health = True
             output = io.StringIO()
             runner = self.runner(
@@ -382,9 +382,41 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             )
             self.assertEqual(2, runtime.scheduling_calls)
             self.assertEqual(
-                "held-hot",
+                "recovery",
+                runner.evidence.checks["processStopSchedulingState"],
+            )
+            self.assertEqual(
+                "hot-score-overdue",
                 runner.evidence.checks["processRestartSchedulingState"],
             )
+
+    def test_process_restart_does_not_relaunch_while_kernel_is_still_hot(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = self.baseline(Path(directory))
+            device = FakeDevice()
+            runtime = FakeRuntime(device)
+            runtime.network_value = "disconnected"
+            runtime.scheduling_values = ["held-hot"]
+            device.connect_on_health = True
+            output = io.StringIO()
+
+            with contextlib.redirect_stdout(output):
+                with self.assertRaisesRegex(
+                    acceptance.ProofFailure,
+                    "remained schedulable",
+                ):
+                    self.runner(
+                        "process-restart",
+                        device,
+                        runtime,
+                        baseline_file=baseline,
+                        maximum_wait_millis=100,
+                    ).run()
+
+            self.assertEqual("", output.getvalue())
+            self.assertEqual([], runtime.task_calls)
 
     def test_process_restart_does_not_submit_task_before_scheduling_is_hot(
         self,
@@ -394,7 +426,7 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             device = FakeDevice()
             runtime = FakeRuntime(device)
             runtime.network_value = "disconnected"
-            runtime.scheduling_values = ["recovery"]
+            runtime.scheduling_values = ["recovery", "held-hot"]
             device.connect_on_health = True
 
             with contextlib.redirect_stdout(io.StringIO()):

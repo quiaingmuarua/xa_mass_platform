@@ -711,12 +711,20 @@ class AndroidWorkerAcceptance:
         self._await_not_connected(baseline_worker_id)
         self.evidence.worker_id = baseline_worker_id
         self.evidence.check("processStopDisconnected", True)
+        stopped_scheduling_state = self._await_unavailable_scheduling(
+            baseline_worker_id
+        )
+        self.evidence.check(
+            "processStopSchedulingState",
+            stopped_scheduling_state,
+        )
         print(PROCESS_STOP_OBSERVED_MARKER, flush=True)
         self._await_health()
         snapshot = self._await_snapshot("RUNNING", baseline_worker_id)
         self._await_connected(baseline_worker_id)
         self._verify_probe(baseline_worker_id)
-        scheduling_state = self._await_hot_scheduling(baseline_worker_id)
+        scheduling_state = self._await_due_hot_scheduling(baseline_worker_id)
+        self.evidence.check("processRestartSchedulingState", scheduling_state)
         message_id = self.runtime.task_call(
             STRING_DIGEST_EVENT,
             {"algorithm": "MD5", "value": "process-restart"},
@@ -725,7 +733,6 @@ class AndroidWorkerAcceptance:
         self.evidence.baseline_identity_matched = True
         self.evidence.check("processRestartConnected", True)
         self.evidence.check("processRestartProbeObserved", True)
-        self.evidence.check("processRestartSchedulingState", scheduling_state)
         self.evidence.check("processRestartEventCode", STRING_DIGEST_EVENT)
         self.evidence.check("processRestartMessageId", message_id)
         self.evidence.check("processRestartResultCount", 1)
@@ -834,7 +841,7 @@ class AndroidWorkerAcceptance:
             inconsistent_ids=(worker_id,),
         )
 
-    def _await_hot_scheduling(self, worker_id: str) -> str:
+    def _await_unavailable_scheduling(self, worker_id: str) -> str:
         deadline = self._monotonic() + self._wait_seconds
         while self._monotonic() < deadline:
             try:
@@ -842,7 +849,26 @@ class AndroidWorkerAcceptance:
                     WORKER_GROUP_ID,
                     worker_id,
                 )
-                if state in {"held-hot", "hot-score-overdue"}:
+                if state in {"recovery", "cold"}:
+                    return state
+            except RuntimeError:
+                pass
+            self._sleep(0.1)
+        raise ProofFailure(
+            "scheduling.unavailable",
+            "Stopped Android Worker remained schedulable",
+            inconsistent_ids=(worker_id,),
+        )
+
+    def _await_due_hot_scheduling(self, worker_id: str) -> str:
+        deadline = self._monotonic() + self._wait_seconds
+        while self._monotonic() < deadline:
+            try:
+                state = self.runtime.scheduling_state(
+                    WORKER_GROUP_ID,
+                    worker_id,
+                )
+                if state == "hot-score-overdue":
                     return state
             except RuntimeError:
                 pass

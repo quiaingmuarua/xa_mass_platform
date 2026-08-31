@@ -180,8 +180,14 @@ The proof has four safe-evidence phases:
 3. Server restart with three seconds of no automatic Worker restart, followed
    by explicit start;
 4. App process restart with retained data, the same Worker ID, a new Probe,
-   Kernel scheduling convergence back to a HOT projection, and one business
-   Command.
+   Kernel scheduling convergence through `recovery` or `cold` and back to
+   `hot-score-overdue`, and one business Command.
+
+The process-restart proof does not relaunch the App as soon as the Adapter
+route becomes disconnected. It first observes the stopped Worker leave the
+HOT scheduling projection, then relaunches and requires a fresh due-HOT
+observation before submitting the Task call. This phase fence prevents stale
+pre-restart HOT evidence from being promoted to schedulability.
 
 The terminal phase does not treat Server process exit as immediate Worker
 termination. It waits for the Android Client's finite unstable-connection
