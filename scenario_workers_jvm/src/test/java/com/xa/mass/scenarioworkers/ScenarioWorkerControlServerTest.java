@@ -101,6 +101,44 @@ class ScenarioWorkerControlServerTest {
     }
 
     @Test
+    void servesSelfContainedLabConsoleOnExactRoutes() throws Exception {
+        HttpResponse<String> console = request("GET", "/lab", null);
+
+        assertThat(console.statusCode()).isEqualTo(200);
+        assertThat(console.headers().firstValue("Content-Type"))
+                .hasValue("text/html; charset=utf-8");
+        assertThat(console.headers().firstValue("Cache-Control"))
+                .hasValue("no-store");
+        assertThat(console.headers().firstValue("X-Content-Type-Options"))
+                .hasValue("nosniff");
+        assertThat(console.headers().firstValue("Content-Security-Policy"))
+                .hasValueSatisfying(value -> assertThat(value)
+                        .contains("connect-src 'self'", "frame-ancestors 'none'"));
+        assertThat(console.body())
+                .contains(
+                        "Scenario Worker Lab",
+                        "/lab/v1/workers",
+                        "Save properties",
+                        "Schedule stop"
+                )
+                .doesNotContain(
+                        "https://",
+                        "http://",
+                        "<script src=",
+                        "<link rel=\"stylesheet\""
+                );
+
+        assertThat(request("GET", "/lab/", null).statusCode())
+                .isEqualTo(200);
+        HttpResponse<String> wrongMethod = request("POST", "/lab", null);
+        assertThat(wrongMethod.statusCode()).isEqualTo(405);
+        assertThat(wrongMethod.headers().firstValue("Allow"))
+                .hasValue("GET");
+        assertThat(request("GET", "/lab/not-found", null).statusCode())
+                .isEqualTo(404);
+    }
+
+    @Test
     void exposesInventoryControlsAndAtomicStateReplacement()
             throws Exception {
         HttpResponse<String> list = request("GET", "/lab/v1/workers", null);

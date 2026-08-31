@@ -25,13 +25,17 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
 
     static final int DEFAULT_PORT = 18086;
 
+    private static final String LAB_PATH = "/lab";
     private static final String WORKERS_PATH = "/lab/v1/workers";
+    private static final String CONSOLE_RESOURCE =
+            "/com/xa/mass/scenarioworkers/worker-lab.html";
     private static final int MAX_REQUEST_BYTES = 64 * 1024;
 
     private final ScenarioWorkers workers;
     private final ScenarioWorkerScheduledStops scheduledStops;
     private final HttpServer server;
     private final ExecutorService executor;
+    private final byte[] consoleHtml;
 
     private boolean started;
     private boolean closed;
@@ -39,7 +43,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
     private ScenarioWorkerControlServer(
             ScenarioWorkers workers,
             ScenarioWorkerScheduledStops scheduledStops,
-            HttpServer server
+            HttpServer server,
+            byte[] consoleHtml
     ) {
         this.workers = Objects.requireNonNull(workers, "workers");
         this.scheduledStops = Objects.requireNonNull(
@@ -47,6 +52,10 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                 "scheduledStops"
         );
         this.server = Objects.requireNonNull(server, "server");
+        this.consoleHtml = Objects.requireNonNull(
+                consoleHtml,
+                "consoleHtml"
+        ).clone();
         executor = Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(
                     task,
@@ -56,6 +65,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
             return thread;
         });
         server.setExecutor(executor);
+        server.createContext(LAB_PATH, this::handleConsole);
         server.createContext(WORKERS_PATH, this::handle);
     }
 
@@ -69,6 +79,7 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     "control-port must be between 0 and 65535"
             );
         }
+        byte[] consoleHtml = loadConsoleHtml();
         HttpServer server = HttpServer.create(
                 new InetSocketAddress(
                         InetAddress.getLoopbackAddress(),
@@ -79,7 +90,8 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         return new ScenarioWorkerControlServer(
                 workers,
                 scheduledStops,
-                server
+                server,
+                consoleHtml
         );
     }
 
@@ -154,6 +166,32 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
                     "lab_failure",
                     "Scenario Worker Lab operation failed"
             );
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private void handleConsole(HttpExchange exchange) throws IOException {
+        try {
+            if (exchange.getRequestURI().getRawQuery() != null) {
+                respondError(exchange, 400, "invalid_request",
+                        "Query parameters are not supported");
+                return;
+            }
+            String path = exchange.getRequestURI().getRawPath();
+            if (!LAB_PATH.equals(path) && !(LAB_PATH + "/").equals(path)) {
+                respondError(
+                        exchange,
+                        404,
+                        "route_not_found",
+                        "Unknown Lab route"
+                );
+                return;
+            }
+            requireMethod(exchange, "GET");
+            respondHtml(exchange, consoleHtml);
+        } catch (ResponseSentException ignored) {
+            // The method-specific response has already been written.
         } finally {
             exchange.close();
         }
@@ -402,6 +440,43 @@ final class ScenarioWorkerControlServer implements AutoCloseable {
         );
         exchange.sendResponseHeaders(status, encoded.length);
         exchange.getResponseBody().write(encoded);
+    }
+
+    private static void respondHtml(
+            HttpExchange exchange,
+            byte[] encoded
+    ) throws IOException {
+        exchange.getResponseHeaders().set(
+                "Content-Type",
+                "text/html; charset=utf-8"
+        );
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.getResponseHeaders().set(
+                "X-Content-Type-Options",
+                "nosniff"
+        );
+        exchange.getResponseHeaders().set(
+                "Content-Security-Policy",
+                "default-src 'none'; connect-src 'self'; "
+                        + "script-src 'unsafe-inline'; "
+                        + "style-src 'unsafe-inline'; "
+                        + "img-src 'self' data:; base-uri 'none'; "
+                        + "form-action 'none'; frame-ancestors 'none'"
+        );
+        exchange.sendResponseHeaders(200, encoded.length);
+        exchange.getResponseBody().write(encoded);
+    }
+
+    private static byte[] loadConsoleHtml() throws IOException {
+        try (InputStream input = ScenarioWorkerControlServer.class
+                .getResourceAsStream(CONSOLE_RESOURCE)) {
+            if (input == null) {
+                throw new IOException(
+                        "Scenario Worker Lab console resource is missing"
+                );
+            }
+            return input.readAllBytes();
+        }
     }
 
     private enum ActionKind {

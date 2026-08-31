@@ -171,6 +171,18 @@ Adapter connectivity, Kernel score, or schedulability. The stable ready line is:
 SCENARIO_WORKER_LAB_READY control=http://127.0.0.1:<port> initialWorkers=<all|none>
 ```
 
+The same loopback control server exposes a dependency-free local console at:
+
+```text
+http://127.0.0.1:<control-port>/lab
+```
+
+The console lists the fixed Lab inventory and delegates single-Worker start,
+stop, scheduled stop, and complete schema-v2 Properties replacement to the
+APIs above. Its desired/runtime fields are only local Host state; the page does
+not claim Adapter connectivity, Kernel score, or schedulability. Automatic
+list refresh never reloads a Properties document while it is being edited.
+
 `close()` closes Managers in reverse group order and leaves every Worker JSON
 unchanged. Persistent Lab state means stable client keys, Properties, and
 replica topology. With Server identity Redis retained, repeated Prepare maps
