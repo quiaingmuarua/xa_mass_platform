@@ -84,7 +84,13 @@ jobs:
           :integrations:worker-capability-task:build
           :integrations:worker-fleet-acceptance:build
           :integrations:worker-lab-reliability:build
+          :integrations:worker-websocket-scale:build
           :distribution:server:verifyPlatformDiagnosticCodes
+      - name: Verify Worker WebSocket scale runner contract
+        run: >-
+          python3 -m unittest discover
+          -s integrations/worker-websocket-scale
+          -p 'test_*.py'
       - name: Summarize JVM proof
         if: always()
         run: >-

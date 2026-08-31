@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 class JavaWorkerArchitectureTest {
 
     @Test
-    void moduleContainsJavaAssemblyAndJavaElevenNetworkImplementations()
+    void moduleContainsJavaTwentyOneAssemblyAndNetworkImplementations()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(project.resolve("src/main/java"));
@@ -41,7 +41,7 @@ class JavaWorkerArchitectureTest {
         assertTrue(build.contains(
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"
         ));
-        assertTrue(build.contains("options.release = 11"));
+        assertTrue(build.contains("options.release = 21"));
         assertFalse(build.contains("worker-delivery-contract"));
 
         for (String forbidden : new String[]{
@@ -179,6 +179,12 @@ class JavaWorkerArchitectureTest {
         assertFalse(manager.contains("new Thread"));
         assertFalse(manager.contains("shutdown"));
         assertTrue(resources.contains("Executors.newFixedThreadPool"));
+        assertTrue(resources.contains("Executors.newThreadPerTaskExecutor"));
+        assertTrue(resources.contains("Thread.ofVirtual()"));
+        assertTrue(resources.contains("dispatcher.setMaxRequests("));
+        assertTrue(resources.contains("new TaskRunner.RealBackend("));
+        assertTrue(resources.contains(".taskRunner$okhttp(taskRunner)"));
+        assertFalse(resources.contains("new Dispatcher();"));
         assertTrue(resources.contains("ScheduledExecutorService"));
         assertFalse(resources.contains("commandExecutor"));
         assertFalse(resources.contains("maxConcurrentCommands"));

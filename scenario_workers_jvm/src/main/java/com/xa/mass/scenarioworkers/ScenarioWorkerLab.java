@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 
 final class ScenarioWorkerLab {
 
-    static final int MAX_WORKERS_PER_GROUP = 100;
+    static final int MAX_WORKERS_PER_GROUP = 10_000;
 
     private static final int LAB_INVALID = 14013;
     private static final int LAB_UNAVAILABLE = 14014;

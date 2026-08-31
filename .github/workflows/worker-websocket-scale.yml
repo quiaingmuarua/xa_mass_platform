@@ -1,0 +1,68 @@
+name: Worker WebSocket Scale
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-websocket-scale
+  cancel-in-progress: false
+
+jobs:
+  worker-websocket-scale:
+    name: Java WebSocket 10k Workers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Verify scale owner contracts
+        run: |
+          ./gradlew --no-daemon \
+            :transport:java-worker:test \
+            :scenario_workers_jvm:test \
+            :integrations:worker-websocket-scale:test
+          python -m unittest discover \
+            -s integrations/worker-websocket-scale \
+            -p 'test_*.py'
+      - name: Run Java WebSocket Worker scale proof
+        run: |
+          python integrations/worker-websocket-scale/run_worker_websocket_scale.py \
+            --workers 10000 \
+            --minimum-converged 9900 \
+            --redis-url redis://127.0.0.1:6379/15 \
+            --output-root build/worker-websocket-scale-proof
+      - name: Upload safe scale evidence and process logs
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-websocket-scale-${{ github.run_attempt }}
+          path: |
+            build/worker-websocket-scale-proof/evidence/**
+            build/worker-websocket-scale-proof/process-resources.jsonl
+            build/worker-websocket-scale-proof/*.log
+            integrations/worker-websocket-scale/build/test-results/test/**
+            integrations/worker-websocket-scale/build/reports/tests/test/**
+          if-no-files-found: ignore
+          retention-days: 7

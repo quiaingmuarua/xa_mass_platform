@@ -12,6 +12,7 @@ jvm_contracts:
   - 'integrations/worker-capability-task/**'
   - 'integrations/worker-fleet-acceptance/**'
   - 'integrations/worker-lab-reliability/**'
+  - 'integrations/worker-websocket-scale/**'
   - 'build.gradle'
   - 'settings.gradle'
   - 'gradle.properties'

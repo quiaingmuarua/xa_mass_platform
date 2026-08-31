@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.Dispatcher;
 import okhttp3.OkHttpClient;
+import okhttp3.internal.concurrent.TaskRunner;
 
 /** Owns network and control resources for one Java Worker assembly. */
 final class JavaWorkerPlatform implements AutoCloseable {
@@ -27,13 +28,15 @@ final class JavaWorkerPlatform implements AutoCloseable {
     private final ExecutorService controlExecutor;
     private final ScheduledExecutorService networkScheduler;
     private final ExecutorService socketExecutor;
+    private final TaskRunner.RealBackend httpTaskBackend;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private JavaWorkerPlatform(
             OkHttpClient httpClient,
             ExecutorService controlExecutor,
             ScheduledExecutorService networkScheduler,
-            ExecutorService socketExecutor
+            ExecutorService socketExecutor,
+            TaskRunner.RealBackend httpTaskBackend
     ) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.controlExecutor = Objects.requireNonNull(
@@ -47,6 +50,10 @@ final class JavaWorkerPlatform implements AutoCloseable {
         this.socketExecutor = Objects.requireNonNull(
                 socketExecutor,
                 "socketExecutor"
+        );
+        this.httpTaskBackend = Objects.requireNonNull(
+                httpTaskBackend,
+                "httpTaskBackend"
         );
     }
 
@@ -84,6 +91,8 @@ final class JavaWorkerPlatform implements AutoCloseable {
         ExecutorService control = null;
         ScheduledExecutorService network = null;
         ExecutorService sockets = null;
+        ExecutorService webSockets = null;
+        TaskRunner.RealBackend httpTasks = null;
         OkHttpClient http = null;
         try {
             control = Executors.newFixedThreadPool(
@@ -106,18 +115,40 @@ final class JavaWorkerPlatform implements AutoCloseable {
                             daemonThreads
                     )
             );
-            Dispatcher dispatcher = new Dispatcher();
-            http = new OkHttpClient.Builder()
+            webSockets = Executors.newThreadPerTaskExecutor(
+                    Thread.ofVirtual()
+                            .name(prefix + "-websocket-", 1)
+                            .factory()
+            );
+            Dispatcher dispatcher = new Dispatcher(webSockets);
+            dispatcher.setMaxRequests(workerCapacity);
+            // WebSocket writer/close work uses TaskRunner, not Dispatcher.
+            httpTasks = new TaskRunner.RealBackend(
+                    Thread.ofVirtual()
+                            .name(prefix + "-okhttp-task-", 1)
+                            .factory()
+            );
+            TaskRunner taskRunner = new TaskRunner(
+                    httpTasks,
+                    TaskRunner.Companion.getLogger()
+            );
+            OkHttpClient.Builder httpBuilder = new OkHttpClient.Builder()
                     .dispatcher(dispatcher)
-                    .build();
+                    .taskRunner$okhttp(taskRunner);
+            http = httpBuilder.build();
             return new JavaWorkerPlatform(
                     http,
                     control,
                     network,
-                    sockets
+                    sockets,
+                    httpTasks
             );
         } catch (RuntimeException | Error failure) {
             closeHttp(http);
+            closeTaskBackend(httpTasks);
+            if (http == null) {
+                shutdown(webSockets);
+            }
             shutdown(sockets);
             shutdown(network);
             shutdown(control);
@@ -208,6 +239,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
         networkScheduler.shutdownNow();
         controlExecutor.shutdownNow();
         closeHttp(httpClient);
+        closeTaskBackend(httpTaskBackend);
     }
 
     private void requireOpen() {
@@ -248,6 +280,12 @@ final class JavaWorkerPlatform implements AutoCloseable {
     private static void shutdown(ExecutorService executor) {
         if (executor != null) {
             executor.shutdownNow();
+        }
+    }
+
+    private static void closeTaskBackend(TaskRunner.RealBackend backend) {
+        if (backend != null) {
+            backend.shutdown();
         }
     }
 

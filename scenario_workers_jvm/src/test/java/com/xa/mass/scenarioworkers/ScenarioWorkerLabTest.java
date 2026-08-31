@@ -145,19 +145,18 @@ class ScenarioWorkerLabTest {
         assertInvalid(root);
 
         Files.delete(group.resolve("too-many.jsonl"));
-        writeInventory(
-                group.resolve("first.jsonl"),
-                properties(60)
-        );
-        writeInventory(
-                group.resolve("second.jsonl"),
-                properties(41)
-        );
+        for (int file = 0; file < 100; file++) {
+            writeInventory(
+                    group.resolve("inventory-" + file + ".jsonl"),
+                    properties(100)
+            );
+        }
+        writeInventory(group.resolve("overflow.jsonl"), properties(1));
         assertThatThrownBy(() -> new ScenarioWorkerLab(
                 root.toString()
         ).prepare(List.of(group(PHONE_GROUP))))
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .hasMessageContaining("more than 100");
+                .hasMessageContaining("more than 10000");
     }
 
     @Test

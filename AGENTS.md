@@ -373,8 +373,14 @@ the `WorkerDeliveryAdapter` contract.
 - Endpoint termination ends the current run; only an explicit Host `start()`
   begins another preparation.
 
-`transport/java-worker` owns JVM networking/platform resources and exposes no
-OkHttp types. `transport/android-worker` owns Android networking and
+`transport/java-worker` is Java 21 and owns JVM networking/platform resources.
+Its Manager Platform supplies virtual-thread executors for active OkHttp
+WebSocket readers and OkHttp's internal WebSocket TaskRunner, and sets
+Dispatcher capacity from the fixed replica count. The latter prevents a
+reconnect burst from expanding OkHttp's default unbounded platform-thread
+backend. Control and reconnect scheduling remain bounded ordinary threads. Do
+not move virtual threads, Dispatcher, OkHttp or connection capacity into Core.
+It exposes no OkHttp types. `transport/android-worker` owns Android networking and
 HandlerThread resources and must not depend on Java Worker. Neither may import
 Server, Kernel, Redis, score, Pacer or platform business handlers.
 
@@ -389,7 +395,8 @@ system.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
 - Each direct `.jsonl` child is a strict line inventory: one schema-v2 Worker
-  record per physical line and at most 100 lines per file. Every record carries
+  record per physical line, at most 100 lines per file and at most 10,000
+  records per configured Group. Every record carries
   immutable `labInventoryKey` and `labInventoryLine` Properties matching its
   physical location. `<filename>:<line>` is only the Lab-local `labWorkerKey`,
   not a universal Worker identity field. Scenario uses `SCENARIO_LAB` batch
@@ -445,6 +452,12 @@ controls.
   ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
   seeded campaigns stop mutation injection and evaluate the actual observed
   local world instead of installing a preferred final world.
+- Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
+  It may generate one 10,000-record Scenario Group, observe existing Runtime
+  APIs in 100-ID pages, restart Server once while retaining the Host, and record
+  `/proc` resource evidence. Its fixed claim is 10,000 prepared identities and
+  at least 9,900 connected-and-HOT Workers, not exact online convergence,
+  Handler concurrency, throughput, latency, or soak behavior.
 - Capability Task inputs are caller-owned local files. Integrations and the
   frontend turn lines into ordinary finite TaskItems through public Task APIs;
   Server owns no Lab input/output directory.

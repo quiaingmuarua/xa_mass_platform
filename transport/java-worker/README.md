@@ -1,6 +1,6 @@
 # XA Mass Java Worker
 
-`transport:java-worker` is the Java 11 Worker assembly and Java networking
+`transport:java-worker` is the Java 21 Worker assembly and Java networking
 implementation for [`transport:worker-core`](../worker-core/README.md).
 
 ```text
@@ -18,6 +18,8 @@ JavaWorkerManager
 
 JavaWorkerPlatform (package-private)
   -> shared OkHttp infrastructure
+  -> virtual-thread OkHttp WebSocket Dispatcher
+  -> virtual-thread OkHttp TaskRunner backend
   -> shared WebSocket reconnect scheduler
   -> bounded line-Socket execution pool
   -> bounded Control pool
@@ -98,8 +100,14 @@ execution capacity. Its threads are non-daemon so a standalone Worker cannot
 silently disappear when `main` returns. `close()` closes the Controller first
 and then all Platform resources.
 
-There is no Host Command pool. OkHttp WebSocket callbacks pass through a
-physical connection directly into the Core Transport and Handler. A single
+There is no Host Command pool. Each active OkHttp WebSocket reader runs on a
+virtual thread supplied by the owning Platform Dispatcher; Dispatcher
+`maxRequests` equals the fixed Worker capacity rather than OkHttp's default
+64. The same Platform supplies a virtual-thread backend for OkHttp's internal
+WebSocket TaskRunner. This matters during reconnect bursts, when identify,
+writer and close tasks must not expand OkHttp's default unbounded platform
+thread pool. OkHttp WebSocket callbacks pass through a physical connection
+directly into the Core Transport and Handler. A single
 atomic current-Attempt state owns the WebSocket connection, reconnect count
 and terminal transition; there is no callback gate or separate open/finished
 state. The shared scheduler only creates or reconnects Attempts and never runs
@@ -107,6 +115,11 @@ business Handlers. The line-Socket implementation continues to invoke the
 Transport from its blocking reader thread. One physical connection preserves
 protocol order; replaced Attempts and different Workers are not globally
 serialized.
+
+OkHttp does not expose TaskRunner backend selection as a public Java API. The
+5.3.0 internal call is isolated inside package-private `JavaWorkerPlatform`;
+an OkHttp upgrade must re-prove both the 128-connection owner test and the real
+10k reconnect lane.
 
 Closing a WebSocket Client atomically makes it terminal, immediately
 closes/cancels the current socket, and returns without waiting for an admitted
@@ -161,8 +174,10 @@ from starting that replica. On a batch-configured Manager, `start` and
 Batch preparation holds no Manager lock or cross-replica gate. Concurrent
 requests may repeat the idempotent Prepare call for the same stopped replica;
 the replica Controller still installs at most one run. Properties loading and
-the control HTTP call therefore remain suitable for a Host executor backed by
-ordinary threads or Java 21 virtual threads.
+the control HTTP call remain ordinary bounded startup work. Virtual threads in
+this module are confined to OkHttp WebSocket execution: Dispatcher readers and
+TaskRunner writer/close work. They do not replace Control, reconnect scheduling
+or line-Socket resources.
 
 Topology is immutable after build. Repeated `extendEventDefinitions` calls
 append in order, and zero business
@@ -193,3 +208,11 @@ no Command or its current run ends normally.
 ```text
 ./gradlew :transport:java-worker:test
 ```
+
+The focused test includes 128 simultaneous local WebSockets, verifies that
+their listeners and OkHttp TaskRunner execute on virtual threads, proves the
+Dispatcher is not limited to 64 calls, and verifies Platform shutdown releases
+the shared connections and both virtual-thread Executors. The separate
+[`worker-websocket-scale`](../../integrations/worker-websocket-scale/) lane
+offers 10,000 connections and proves a 9,900 connected-and-HOT threshold across
+one Server restart; it is not a throughput or soak claim.

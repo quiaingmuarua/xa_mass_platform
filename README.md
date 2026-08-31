@@ -134,8 +134,9 @@ those owners.
   business codes; framework routing/protocol failures remain ordinary HTTP
   concerns, and Worker Delivery additionally retains its machine-protocol
   `202/204` successes. It does not start Worker processes.
-- [`transport/`](transport/) contains the Java 11 delivery contract, Worker
-  Core, Netty Adapter, Java Worker and Android Worker implementations.
+- [`transport/`](transport/) contains the Java 11-compatible delivery contract
+  and Worker Core, plus the Netty Adapter, Java 21 Worker and Android Worker
+  implementations.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/) is the independently launched
   finite JVM Scenario Worker Host. It owns the checked capabilities and
   persistent local Lab Worker assembly.
@@ -146,7 +147,9 @@ those owners.
   owns no Kernel, Server or Transport mechanism. Worker Fleet and Capability
   Task retain exact topology/result proofs; Worker Lab Convergence relates
   controlled local mutations to Adapter, Kernel and Task observations through
-  public HTTP boundaries.
+  public HTTP boundaries. The independent Worker WebSocket Scale lane offers
+  10,000 Java Worker connections and checks a 9,900 connected-and-HOT threshold
+  across one Server restart without claiming Task throughput.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture

@@ -16,6 +16,7 @@ boundary named below.
 | Runtime Boundary | One Java Server context starts Result and Dispatch Convergence without an auxiliary Kernel process; a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab Worker keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
 | Worker Lab Convergence | Three isolated lanes relate established local Worker mutations to independent Adapter, Kernel and Task observations: state propagation, execution-time Host loss with recovery/finality, and a finite seeded multi-round world evaluated after mutation injection stops | Redis 7, Java Server and Scenario Worker Host; Python owns one-shot process orchestration | `python integrations/worker-lab-reliability/run_worker_lab_proof.py --lane all --redis-url redis://127.0.0.1:6379/15` |
+| Worker WebSocket Scale | One Java 21 Host prepares exactly 10,000 identities and offers 10,000 WebSockets; at least 9,900 must remain both connected and HOT through a stable window, finite Task samples, and one Server restart without Host restart or Prepare | Linux, Redis 7.4, Java 21, Server and Scenario Worker Host; nightly/manual only | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` |
 | Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Java Server, API 33 x86_64 Emulator; Python is only the checked acceptance driver | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
@@ -83,6 +84,7 @@ capacity invariant.
 | Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
 | Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
 | Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, per-replica start/stop, partial failure and reverse close | Worker Fleet and Worker Lab Convergence | dynamic scaling or automatic reconcile |
+| Java WebSocket connection scale | Java 21 Platform/Dispatcher/TaskRunner architecture and 128-connection focused test | Server restart with retained Host and bounded Client reconnect | Worker WebSocket Scale | exact 10,000 online, throughput, concurrent Handler load or soak |
 | Task and Result correlation | Java Kernel Owner, Pacer and Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary, Capability Task and Worker Lab Convergence | throughput SLA, per-Task fairness, soak or crash recovery |
 | Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
 
@@ -117,6 +119,18 @@ does not require the Harness to observe all startup Workers connected before a
 startup-planned stop fires; stable identity and the resulting independent
 projections are the proof boundary. Exact Fleet 2x10 and Capability 60-Result
 proofs remain fault-free and independent.
+
+The separate `Worker WebSocket Scale` lane generates 100 strict JSONL files of
+100 Workers for one Group and retains that single Host process across one
+Runtime Server restart. The Java Harness reads the complete identity set from
+Lab, pages existing Network and Scheduling observations in groups of 100,
+requires three consecutive scans with at least 9,900 Workers in their
+intersection, and rejects HOT-without-connection evidence in the converged
+scan. The initial phase holds the threshold for 60 seconds and each phase
+closes 100 finite TaskItems. Linux sampling requires fewer than 512 native Host
+threads. This proves offered connection scale and finite reconnect recovery,
+not an exact 10,000-online invariant, Task throughput, Handler concurrency,
+latency SLA or soak stability.
 
 The `Android Emulator Worker` lane installs the Demo APK on one API 33
 Emulator. ADB is limited to installation, process lifecycle, and loopback port
@@ -194,6 +208,7 @@ Non-Android JVM contracts:
   :integrations:worker-capability-task:build `
   :integrations:worker-fleet-acceptance:build `
   :integrations:worker-lab-reliability:build `
+  :integrations:worker-websocket-scale:build `
   :distribution:server:verifyPlatformDiagnosticCodes
 ```
 
@@ -263,6 +278,7 @@ Android Emulator/real-device acceptance are documented by their owning modules:
 
 - [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
 - [`integrations/worker-lab-reliability`](integrations/worker-lab-reliability/README.md)
+- [`integrations/worker-websocket-scale`](integrations/worker-websocket-scale/README.md)
 - [`integrations/worker-capability-task`](integrations/worker-capability-task/README.md)
 - [`xa-android/worker-demo`](xa-android/worker-demo/README.md)
 
@@ -357,6 +373,10 @@ and manual dispatch. Its first job selects proof lanes from changed paths.
 Manual dispatch selects every lane. The final `Proof Gate` succeeds only when
 every selected lane succeeds and every unselected lane is explicitly skipped.
 
+`.github/workflows/worker-websocket-scale.yml` is deliberately separate. It
+runs nightly and by manual dispatch on Linux with Java 21 and Redis 7.4; it is
+not selected by pull requests and does not participate in `Proof Gate`.
+
 Selection rules live in `.github/proof-paths.yml`, separate from Workflow
 orchestration. Before selecting a lane, CI runs the standard-library
 `check_proof_selection.py` contract. It requires every positive pattern to
@@ -408,7 +428,8 @@ Payload. Failures are not automatically retried.
 ## Deliberate Non-Goals
 
 There is no coverage threshold, multi-JDK or multi-OS matrix, flaky-test retry,
-browser visual regression, Android API matrix, UI automation, performance
-test, or soak lane. The Android real-device managed Task Call remains a separate
+browser visual regression, Android API matrix, UI automation, throughput
+benchmark, or soak lane. The nightly/manual WebSocket lane is an offered
+connection-scale proof only. The Android real-device managed Task Call remains a separate
 manual proof for vendor systems, physical Battery behavior, and background
 execution limits; the hosted Emulator lane does not claim those properties.

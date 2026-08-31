@@ -25,18 +25,20 @@ The supported process entry is:
   --args="--runtime-api-base-url=http://127.0.0.1:18082 `
   --sandbox-root=D:\proof\data\scenario-workers `
   --control-port=18086 `
+  --capability-assembly=D:\proof\capability-assembly.json `
   --startup-plan=D:\proof\startup-plan.json"
 ```
 
-`ScenarioWorkerHostMain` loads the checked
-`default-capability-assembly.json`; callers cannot replace it with dynamic
-classes, Spring configuration, Redis coordinates or Adapter URIs. The only
-arguments are the Runtime API base URL, Lab root, loopback control port, and an
-optional strict startup plan. `--control-port=18086` is the default. Port `0`
-selects an ephemeral test port. When no startup plan is supplied, all discovered
-Workers start, preserving ordinary Fleet and Capability behavior. The fixed assembly
-declares the two locally hosted Groups, their concrete Event Definitions and
-local reconnect options. It never lists individual Workers:
+Without `--capability-assembly`, `ScenarioWorkerHostMain` loads the checked
+`default-capability-assembly.json`. A caller may instead supply one strict
+assembly JSON file to select a finite subset of the Host's compiled Groups,
+Event Definitions, request timeout, and reconnect policy. It cannot name
+dynamic classes, Spring configuration, Redis coordinates or Adapter URIs. The
+other arguments are the Runtime API base URL, Lab root, loopback control port,
+and an optional strict startup plan. `--control-port=18086` is the default.
+Port `0` selects an ephemeral test port. When no startup plan is supplied, all
+discovered Workers start, preserving ordinary Fleet and Capability behavior.
+An assembly never lists individual Workers:
 
 ```json
 {
@@ -126,7 +128,7 @@ root; old Worker file layouts are not migrated.
 The Lab root must end in `data/scenario-workers` and must not pass through a
 symbolic link. Only direct, non-symlink `*.jsonl` children of configured
 Group directories are discovered. Files are sorted by name; each group is
-bounded to 100 Worker records, and each file contains `1..100` records. Any
+bounded to 10,000 Worker records, and each file contains `1..100` records. Any
 discovered invalid file fails aggregate startup
 before a Manager or network Client is created.
 
@@ -268,6 +270,11 @@ independent clients then prove the boundary:
   only the mutation source and local witness; the Harness compares established
   local facts with independent Adapter, Kernel, and Task observations without
   repairing the Lab into an expected final world.
+- [`worker-websocket-scale`](../integrations/worker-websocket-scale/) generates
+  one 10,000-record Group and proves at least 9,900 Workers converge to both
+  connected and HOT before and after one Server restart while the Host stays
+  alive. It is a nightly/manual connection-scale lane, not part of the fixed
+  default Lab inventory.
 
 Capability Task evidence deliberately does not claim which Worker executed an
 Item. Fleet acceptance does not freeze dynamic Properties or business Result

@@ -27,7 +27,8 @@ module map and common implementation boundaries.
   -> no concrete network or platform implementation
 
 :transport:java-worker
-  -> JavaWorker WebSocket/line-Socket assembly
+  -> Java 21 Worker WebSocket/line-Socket assembly
+  -> virtual-thread OkHttp WebSocket readers and internal tasks
   -> shared Java network, Control, and Socket resources
 
 :transport:android-worker

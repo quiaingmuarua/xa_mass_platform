@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -34,7 +36,7 @@ public final class ScenarioWorkerHostMain {
                 ? ScenarioWorkerStartupPlan.defaults()
                 : ScenarioWorkerStartupPlan.load(options.startupPlanPath());
         ScenarioWorkers workers = ScenarioWorkers.fromJson(
-                loadDefaultCapabilityAssembly(),
+                loadCapabilityAssembly(options.capabilityAssemblyPath()),
                 options.sandboxRoot(),
                 options.runtimeApiBaseUrl()
         );
@@ -94,6 +96,34 @@ public final class ScenarioWorkerHostMain {
         } catch (IOException error) {
             throw new IllegalStateException(
                     "Could not load default Scenario capability assembly",
+                    error
+            );
+        }
+    }
+
+    static String loadCapabilityAssembly(String configuredPath) {
+        if (configuredPath == null) {
+            return loadDefaultCapabilityAssembly();
+        }
+        Path path;
+        try {
+            path = Path.of(configuredPath).toAbsolutePath().normalize();
+        } catch (RuntimeException error) {
+            throw new IllegalArgumentException(
+                    "capability-assembly must be a valid path",
+                    error
+            );
+        }
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException(
+                    "capability-assembly must identify a regular file"
+            );
+        }
+        try {
+            return Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException error) {
+            throw new IllegalStateException(
+                    "Could not load Scenario capability assembly " + path,
                     error
             );
         }
@@ -174,7 +204,8 @@ public final class ScenarioWorkerHostMain {
             URI runtimeApiBaseUrl,
             String sandboxRoot,
             int controlPort,
-            String startupPlanPath
+            String startupPlanPath,
+            String capabilityAssemblyPath
     ) {
 
         private static final String RUNTIME_API_ARGUMENT =
@@ -182,6 +213,8 @@ public final class ScenarioWorkerHostMain {
         private static final String SANDBOX_ROOT_ARGUMENT = "--sandbox-root";
         private static final String CONTROL_PORT_ARGUMENT = "--control-port";
         private static final String STARTUP_PLAN_ARGUMENT = "--startup-plan";
+        private static final String CAPABILITY_ASSEMBLY_ARGUMENT =
+                "--capability-assembly";
 
         HostOptions {
             requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
@@ -198,6 +231,12 @@ public final class ScenarioWorkerHostMain {
             if (startupPlanPath != null && startupPlanPath.isBlank()) {
                 throw new IllegalArgumentException(
                         "startup-plan must be non-blank"
+                );
+            }
+            if (capabilityAssemblyPath != null
+                    && capabilityAssemblyPath.isBlank()) {
+                throw new IllegalArgumentException(
+                        "capability-assembly must be non-blank"
                 );
             }
         }
@@ -224,7 +263,8 @@ public final class ScenarioWorkerHostMain {
                 if (!RUNTIME_API_ARGUMENT.equals(name)
                         && !SANDBOX_ROOT_ARGUMENT.equals(name)
                         && !CONTROL_PORT_ARGUMENT.equals(name)
-                        && !STARTUP_PLAN_ARGUMENT.equals(name)) {
+                        && !STARTUP_PLAN_ARGUMENT.equals(name)
+                        && !CAPABILITY_ASSEMBLY_ARGUMENT.equals(name)) {
                     throw new IllegalArgumentException(
                             "Unknown Scenario Worker Host argument: " + name
                     );
@@ -248,7 +288,8 @@ public final class ScenarioWorkerHostMain {
                             CONTROL_PORT_ARGUMENT,
                             Integer.toString(DEFAULT_CONTROL_PORT)
                     )),
-                    values.get(STARTUP_PLAN_ARGUMENT)
+                    values.get(STARTUP_PLAN_ARGUMENT),
+                    values.get(CAPABILITY_ASSEMBLY_ARGUMENT)
             );
         }
 

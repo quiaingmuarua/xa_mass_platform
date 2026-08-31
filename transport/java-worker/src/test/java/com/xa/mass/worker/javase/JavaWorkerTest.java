@@ -2,6 +2,7 @@ package com.xa.mass.worker.javase;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -18,6 +19,7 @@ import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import mockwebserver3.MockResponse;
@@ -197,6 +201,72 @@ class JavaWorkerTest {
         assertTrue(worker.snapshot().diagnosticMessage().contains(
                 "IllegalArgumentException"
         ));
+    }
+
+    @Test
+    void websocketBusinessHandlerRunsOnTheOkHttpVirtualReader()
+            throws Exception {
+        CountDownLatch handled = new CountDownLatch(1);
+        AtomicReference<Boolean> virtualHandler = new AtomicReference<>();
+        AtomicBoolean commandSent = new AtomicBoolean();
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        URI endpoint = URI.create(server.url(
+                "/api/v1/worker-delivery/websocket"
+        ).toString().replaceFirst("^http", "ws"));
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"" + endpoint + "\"}")
+                .build());
+        server.enqueue(new MockResponse.Builder()
+                .webSocketUpgrade(new WebSocketListener() {
+                    @Override
+                    public void onMessage(
+                            okhttp3.WebSocket webSocket,
+                            String text
+                    ) {
+                        if (commandSent.compareAndSet(false, true)) {
+                            DeliveryCommand command = DeliveryCommand.create(
+                                    TASK,
+                                    WORKER,
+                                    "extension.worker.test.observe",
+                                    System.currentTimeMillis() + 10_000,
+                                    "{}",
+                                    "task-correlation"
+                            );
+                            webSocket.send(codec.encodeDeliveryCommand(command));
+                        }
+                    }
+                })
+                .build());
+        worker = JavaWorker.create(
+                URI.create(server.url("/").toString()),
+                "group-1",
+                "fixed-installation",
+                WorkerTransportType.WEBSOCKET,
+                () -> Map.of("runtime", "java"),
+                List.of(WorkerEventDefinition.extension(
+                        "test.observe",
+                        WorkerEventParameterResolvers.jsonMap(),
+                        ignored -> {
+                            virtualHandler.set(Thread.currentThread().isVirtual());
+                            handled.countDown();
+                            return "null";
+                        }
+                )),
+                WorkerConnectionOptions.of(
+                        Duration.ofSeconds(2),
+                        reconnectPolicy()
+                )
+        );
+
+        worker.start();
+        takeRequest();
+        takeRequest();
+
+        assertTrue(handled.await(5, TimeUnit.SECONDS));
+        assertEquals(Boolean.TRUE, virtualHandler.get());
     }
 
     private JavaWorker worker(Map<String, Object> properties) {

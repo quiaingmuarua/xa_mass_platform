@@ -1,0 +1,19 @@
+xa:
+  mass:
+    worker-delivery:
+      adapter:
+        instances:
+          scenario-websocket:
+            route-cache:
+              reconnect-verification-retention: 10m
+              maximum-disconnected-workers: 100000
+            properties-cache:
+              maximum-encoded-bytes: 67108864
+            processes:
+              - type: DELIVERY_COMMAND
+                interval: 100ms
+                consume-limit: 100
+                queue-capacity: 1000
+              - type: DELIVERY_REPORT
+                interval: 100ms
+                queue-capacity: 20000
