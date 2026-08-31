@@ -4,6 +4,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,6 +24,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final ScenarioWorkerLab lab;
     private final GroupManagerFactory groupManagerFactory;
     private final List<ManagedGroup> managedGroups = new ArrayList<>();
+    private final Map<String, ManagedGroup> managedGroupsById =
+            new LinkedHashMap<>();
 
     private boolean started;
     private boolean closed;
@@ -79,6 +82,11 @@ public final class ScenarioWorkers implements AutoCloseable {
     }
 
     public synchronized void start() {
+        start(InitialWorkers.ALL);
+    }
+
+    synchronized void start(InitialWorkers initialWorkers) {
+        Objects.requireNonNull(initialWorkers, "initialWorkers");
         if (closed) {
             throw new IllegalStateException("Scenario Workers are closed");
         }
@@ -90,9 +98,11 @@ public final class ScenarioWorkers implements AutoCloseable {
             List<PreparedGroup> preparedGroups = prepareGroups();
             if (!preparedGroups.isEmpty()) {
                 createManagers(preparedGroups);
-                RuntimeException startFailure = startManagers();
-                if (startFailure != null) {
-                    throw startFailure;
+                if (initialWorkers == InitialWorkers.ALL) {
+                    RuntimeException startFailure = startManagers();
+                    if (startFailure != null) {
+                        throw startFailure;
+                    }
                 }
             }
             started = true;
@@ -124,6 +134,64 @@ public final class ScenarioWorkers implements AutoCloseable {
         if (failure != null) {
             throw failure;
         }
+    }
+
+    synchronized List<WorkerControlSnapshot> workerSnapshots() {
+        ensureControllable();
+        List<WorkerControlSnapshot> snapshots = new ArrayList<>();
+        for (ManagedGroup managedGroup : managedGroups) {
+            for (PreparedReplica replica
+                    : managedGroup.preparedGroup().replicas()) {
+                snapshots.add(snapshot(managedGroup, replica, false));
+            }
+        }
+        return List.copyOf(snapshots);
+    }
+
+    synchronized WorkerControlSnapshot workerSnapshot(
+            String workerGroupId,
+            String clientWorkerKey,
+            boolean includeProperties
+    ) {
+        ensureControllable();
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        return snapshot(
+                group,
+                requireReplica(group, clientWorkerKey),
+                includeProperties
+        );
+    }
+
+    synchronized void startWorker(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        ensureControllable();
+        requireManagedGroup(workerGroupId)
+                .manager()
+                .start(requireClientWorkerKey(workerGroupId, clientWorkerKey));
+    }
+
+    synchronized void stopWorker(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        ensureControllable();
+        requireManagedGroup(workerGroupId)
+                .manager()
+                .stop(requireClientWorkerKey(workerGroupId, clientWorkerKey));
+    }
+
+    synchronized void replaceWorkerState(
+            String workerGroupId,
+            String clientWorkerKey,
+            String encodedDocument
+    ) {
+        ensureControllable();
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        requireReplica(group, clientWorkerKey)
+                .stateFile()
+                .replace(encodedDocument);
     }
 
     private List<PreparedGroup> prepareGroups() {
@@ -159,7 +227,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                     : discoveredGroup.workers()) {
                 replicas.add(new PreparedReplica(
                         worker.clientWorkerKey(),
-                        worker.workerProperties()
+                        worker
                 ));
             }
             preparedGroups.add(new PreparedGroup(
@@ -183,6 +251,10 @@ public final class ScenarioWorkers implements AutoCloseable {
                     preparedGroup,
                     manager
             ));
+            managedGroupsById.put(
+                    preparedGroup.group().config().workerGroupId(),
+                    managedGroups.get(managedGroups.size() - 1)
+            );
         }
     }
 
@@ -201,6 +273,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private RuntimeException closeManagers(RuntimeException failure) {
         List<ManagedGroup> closing = new ArrayList<>(managedGroups);
         managedGroups.clear();
+        managedGroupsById.clear();
         Collections.reverse(closing);
         for (ManagedGroup managedGroup : closing) {
             try {
@@ -210,6 +283,86 @@ public final class ScenarioWorkers implements AutoCloseable {
             }
         }
         return failure;
+    }
+
+    private WorkerControlSnapshot snapshot(
+            ManagedGroup group,
+            PreparedReplica replica,
+            boolean includeProperties
+    ) {
+        JavaWorkerManager manager = group.manager();
+        WorkerLifecycle.Snapshot runtime = manager.snapshot(
+                replica.clientWorkerKey()
+        );
+        return new WorkerControlSnapshot(
+                group.preparedGroup().group().config().workerGroupId(),
+                replica.clientWorkerKey(),
+                manager.desiredRunning(replica.clientWorkerKey()),
+                runtime,
+                includeProperties
+                        ? replica.stateFile().workerProperties()
+                        : null
+        );
+    }
+
+    private ManagedGroup requireManagedGroup(String workerGroupId) {
+        ScenarioWorkerGroupConfig.requireNonBlank(
+                workerGroupId,
+                "workerGroupId"
+        );
+        ManagedGroup group = managedGroupsById.get(workerGroupId);
+        if (group == null) {
+            throw new UnknownWorkerException(
+                    "Unknown Scenario WorkerGroup: " + workerGroupId
+            );
+        }
+        return group;
+    }
+
+    private PreparedReplica requireReplica(
+            ManagedGroup group,
+            String clientWorkerKey
+    ) {
+        String key = requireClientWorkerKey(
+                group.preparedGroup().group().config().workerGroupId(),
+                clientWorkerKey
+        );
+        for (PreparedReplica replica : group.preparedGroup().replicas()) {
+            if (replica.clientWorkerKey().equals(key)) {
+                return replica;
+            }
+        }
+        throw new UnknownWorkerException(
+                "Unknown Scenario Worker: " + key
+        );
+    }
+
+    private String requireClientWorkerKey(
+            String workerGroupId,
+            String clientWorkerKey
+    ) {
+        ManagedGroup group = requireManagedGroup(workerGroupId);
+        ScenarioWorkerGroupConfig.requireNonBlank(
+                clientWorkerKey,
+                "clientWorkerKey"
+        );
+        boolean present = group.preparedGroup().replicas().stream()
+                .anyMatch(replica -> replica.clientWorkerKey()
+                        .equals(clientWorkerKey));
+        if (!present) {
+            throw new UnknownWorkerException(
+                    "Unknown Scenario Worker: " + clientWorkerKey
+            );
+        }
+        return clientWorkerKey;
+    }
+
+    private void ensureControllable() {
+        if (!started || closed) {
+            throw new IllegalStateException(
+                    "Scenario Workers are not running"
+            );
+        }
     }
 
     private static JavaWorkerManager createManager(
@@ -231,7 +384,7 @@ public final class ScenarioWorkers implements AutoCloseable {
         for (PreparedReplica replica : preparedGroup.replicas()) {
             builder.replica(
                     replica.clientWorkerKey(),
-                    replica::workerProperties
+                    replica.stateFile()::workerProperties
             );
         }
         return builder.build();
@@ -363,7 +516,7 @@ public final class ScenarioWorkers implements AutoCloseable {
 
     record PreparedReplica(
             String clientWorkerKey,
-            Map<String, Object> workerProperties
+            ScenarioWorkerStateFile stateFile
     ) {
     }
 
@@ -371,6 +524,28 @@ public final class ScenarioWorkers implements AutoCloseable {
             GroupAssembly group,
             List<PreparedReplica> replicas
     ) {
+    }
+
+    enum InitialWorkers {
+        ALL,
+        NONE
+    }
+
+    record WorkerControlSnapshot(
+            String workerGroupId,
+            String clientWorkerKey,
+            boolean desiredRunning,
+            WorkerLifecycle.Snapshot runtime,
+            Map<String, Object> workerProperties
+    ) {
+    }
+
+    static final class UnknownWorkerException
+            extends IllegalArgumentException {
+
+        private UnknownWorkerException(String message) {
+            super(message);
+        }
     }
 
     private record ManagedGroup(

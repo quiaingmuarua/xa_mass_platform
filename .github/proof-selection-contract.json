@@ -24,6 +24,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "runtime_distribution"
       ],
       "reason": "Kernel mechanical-owner changes require deterministic JVM, Redis, and every Java runtime consumer proof."
@@ -36,6 +37,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_emulator",
         "runtime_distribution"
       ],
@@ -48,6 +50,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_host",
         "android_emulator",
         "runtime_distribution"
@@ -61,6 +64,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_host"
       ],
       "reason": "Core test changes run deterministic hosts but do not claim an Emulator production change."
@@ -72,6 +76,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_emulator",
         "runtime_distribution"
       ],
@@ -126,6 +131,14 @@
       "reason": "Fleet acceptance code owns no Capability Task business proof."
     },
     {
+      "path": "integrations/worker-lab-reliability/src/main/java/com/xa/mass/integration/workerlab/WorkerLabReliabilityMain.java",
+      "lanes": [
+        "jvm_contracts",
+        "worker_lab_reliability"
+      ],
+      "reason": "Reliability acceptance code owns controlled failure and convergence proof without Worker or Server implementation access."
+    },
+    {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
       "lanes": [
         "jvm_contracts",
@@ -133,6 +146,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "runtime_distribution"
       ],
       "reason": "The current conservative Server boundary reaches every JVM runtime proof."
@@ -145,6 +159,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_emulator",
         "runtime_distribution"
       ],
@@ -158,6 +173,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_emulator",
         "runtime_distribution"
       ],
@@ -197,6 +213,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_host",
         "android_emulator",
         "frontend",
@@ -212,6 +229,7 @@
         "runtime_boundary",
         "capability_task",
         "worker_fleet",
+        "worker_lab_reliability",
         "android_host",
         "android_emulator",
         "frontend",

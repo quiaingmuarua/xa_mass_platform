@@ -7,6 +7,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.javase.JavaWorkerManager;
@@ -104,7 +105,7 @@ class ScenarioWorkersTest {
         assertThat(prepared.replicas())
                 .extracting(ScenarioWorkers.PreparedReplica::clientWorkerKey)
                 .containsExactly("client-1", "client-2");
-        assertThat(prepared.replicas().get(0).workerProperties())
+        assertThat(prepared.replicas().get(0).stateFile().workerProperties())
                 .containsEntry("region", "first");
 
         InOrder lifecycle = inOrder(manager);
@@ -129,6 +130,46 @@ class ScenarioWorkersTest {
 
         assertThat(managersCreated).hasValue(0);
         assertThat(labRoot().resolve(GROUP)).isDirectory();
+    }
+
+    @Test
+    void noneModeAssemblesWithoutStartingAndControlsOneReplica()
+            throws Exception {
+        createLabRoot();
+        writeWorker(GROUP, "client-1", Map.of("slot", 1), null);
+        writeWorker(GROUP, "client-2", Map.of("slot", 2), null);
+        JavaWorkerManager manager = mock(JavaWorkerManager.class);
+        when(manager.snapshot("client-1")).thenReturn(
+                new com.xa.mass.worker.runtime.WorkerLifecycle.Snapshot(
+                        com.xa.mass.worker.runtime.WorkerLifecycle.State.STOPPED,
+                        "worker-1",
+                        null,
+                        null
+                )
+        );
+        when(manager.desiredRunning("client-1")).thenReturn(true);
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                (runtimeApiBaseUrl, preparedGroup) -> manager
+        );
+
+        workers.start(ScenarioWorkers.InitialWorkers.NONE);
+        verify(manager, never()).start();
+
+        workers.startWorker(GROUP, "client-1");
+        workers.stopWorker(GROUP, "client-1");
+        ScenarioWorkers.WorkerControlSnapshot snapshot =
+                workers.workerSnapshot(GROUP, "client-1", true);
+
+        verify(manager).start("client-1");
+        verify(manager).stop("client-1");
+        assertThat(snapshot.runtime().workerId()).isEqualTo("worker-1");
+        assertThat(snapshot.desiredRunning()).isTrue();
+        assertThat(snapshot.workerProperties()).containsEntry("slot", 1L);
+        assertThatThrownBy(() -> workers.startWorker(GROUP, "missing"))
+                .isInstanceOf(ScenarioWorkers.UnknownWorkerException.class);
+
+        workers.close();
     }
 
     @Test

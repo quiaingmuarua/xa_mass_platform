@@ -15,6 +15,7 @@ boundary named below.
 | Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, exact pre-Probe hold/advance, multi-Group 100-attempt round budgeting, time-fenced polarity Evidence and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
 | Runtime Boundary | One Java Server context starts Result and Dispatch Convergence without an auxiliary Kernel process; a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
 | Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab client keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
+| Worker Lab Reliability | A loopback-controlled Scenario Host starts selected replicas, injects a scheduled stop, explicitly restores the same identity, refreshes file-backed Properties on the next Prepare, isolates an unavailable Group, and observes finite Tasks converge through Runtime Network and Scheduling projections | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-lab-reliability:runWorkerLabReliability` |
 | Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
 | Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
 | Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Java Server, API 33 x86_64 Emulator; Python is only the checked acceptance driver | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
@@ -81,8 +82,8 @@ capacity invariant.
 | Worker run and text protocol | Core dependency, API and zero-resource architecture tests | prepare/stop/close, terminal/result, executor rejection and stale-Transport suppression | Runtime Boundary and Android Emulator | reliable Result delivery after endpoint loss |
 | Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
 | Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
-| Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, partial failure and reverse close | Worker Fleet | dynamic scaling or automatic reconcile |
-| Task and Result correlation | Java Kernel Owner, Pacer and Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary and Capability Task | throughput SLA, per-Task fairness, soak or crash recovery |
+| Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, per-replica start/stop, partial failure and reverse close | Worker Fleet and Worker Lab Reliability | dynamic scaling or automatic reconcile |
+| Task and Result correlation | Java Kernel Owner, Pacer and Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary, Capability Task and Worker Lab Reliability | throughput SLA, per-Task fairness, soak or crash recovery |
 | Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
 
 The separate `Worker Fleet` lane first starts Server and proves both JVM Group
@@ -95,6 +96,21 @@ then terminates the Host, requires Server and its Java Pacers to remain ready,
 restarts the same Host with Redis, Kernel, Server and Lab retained, and requires
 the complete client-key-to-Worker-ID mapping and all live relationships to
 close again.
+
+The separate `Worker Lab Reliability` lane starts the same fixed inventory with
+`initial-workers=none`. It controls four replicas through the loopback Lab API
+and relates local desired/runtime state to independent Runtime Preview,
+Adapter Network, Kernel Scheduling, and finite Task observations. A scheduled
+stop must leave the Worker disconnected and eventually in `recovery` or
+`cold`; only an explicit start may restore it. A stopped Worker's atomically
+replaced `labSlot` becomes visible only after the next Prepare and must
+participate in `worker.labSlot/$eq` matching. The selected Group's registered
+Workers must all reach `recovery/cold` before its parked Task is created. One
+unavailable Group must not block the other Group, while its parked Task must
+complete after the matching Worker is explicitly restored. The lane acquires
+its cleanup authority only after a complete stopped baseline and verifies its
+final local restoration. It does not freeze intermediate score order, exact
+latency, executing Worker, or capability payload.
 
 The `Android Emulator Worker` lane installs the Demo APK on one API 33
 Emulator. ADB is limited to installation, process lifecycle, and loopback port
@@ -118,11 +134,12 @@ Redis scope     test_runtime_boundary_<unique run token>
 
 The test starts one Java Spring context. Its `KernelPacerAssembly` delegates to
 the `kernel_pacer_jvm` Runtime, which starts Java Result Convergence and Java
-Dispatch Convergence from the fixed `RUNTIME_BOUNDARY_PROOF` preset. Scenario, Capability
-Task, Worker Fleet and Android Emulator proofs use `SCENARIO_LAB`; default and
-AgentForge runtime assembly use `DEFAULT`. No Java proof reads a Pacer policy
-file. The proof-only preset is rejected unless the Server Redis scope starts
-with `test_`. Redis remains an external dependency;
+Dispatch Convergence from the fixed `RUNTIME_BOUNDARY_PROOF` preset. Scenario,
+Capability Task, Worker Fleet, Worker Lab Reliability and Android Emulator
+proofs use `SCENARIO_LAB`; default and AgentForge runtime assembly use
+`DEFAULT`. No Java proof reads a Pacer policy file. The proof-only preset is
+rejected unless the Server Redis scope starts with `test_`. Redis remains an
+external dependency;
 failure to start any required application or connect to Redis fails the proof.
 Each run generates one
 unique `test_*` scope. It plants a sentinel in a different scope and proves the
@@ -131,7 +148,7 @@ cursor `SCAN` plus bounded `UNLINK` only
 for the exact run-owned scope; it never clears Redis DB 15.
 
 Redis Owner tests generate the same kind of exact scope inside their fixtures.
-Worker Fleet, Capability Task, and Android Emulator CI set
+Worker Fleet, Worker Lab Reliability, Capability Task, and Android Emulator CI set
 `XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
 process trees, retain that scope across an intentional restart, then clean only
 that scope after all writers stop. A proof may share the URL and DB with a
@@ -165,6 +182,7 @@ Non-Android JVM contracts:
   :server_jvm:build `
   :integrations:worker-capability-task:build `
   :integrations:worker-fleet-acceptance:build `
+  :integrations:worker-lab-reliability:build `
   :distribution:server:verifyPlatformDiagnosticCodes
 ```
 
@@ -229,10 +247,11 @@ retry/cold policy, or the final meaning of positive and negative evidence. It
 also does not prove distributed Direct Call waiter correlation, Binding
 generation fencing, clock synchronization, or reliable evidence delivery.
 
-Worker Fleet, Capability Task process startup, and Android Emulator/real-device
-acceptance are documented by their owning modules:
+Worker Fleet, Worker Lab Reliability, Capability Task process startup, and
+Android Emulator/real-device acceptance are documented by their owning modules:
 
 - [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
+- [`integrations/worker-lab-reliability`](integrations/worker-lab-reliability/README.md)
 - [`integrations/worker-capability-task`](integrations/worker-capability-task/README.md)
 - [`xa-android/worker-demo`](xa-android/worker-demo/README.md)
 
@@ -347,15 +366,18 @@ Representative selection rules:
 - Docs Contract runs on every workflow invocation; documentation-only changes
   otherwise reach only `Proof Gate`;
 - the human overview additionally runs the Frontend lane;
-- Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet, and
-  Capability Task; WebSocket/Route production changes also run Android Emulator
-  Worker;
+- Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet,
+  Worker Lab Reliability, and Capability Task; WebSocket/Route production
+  changes also run Android Emulator Worker;
 - Capability-Task-only changes run JVM Contracts and Capability Task;
 - Worker-Fleet-only changes run JVM Contracts and Worker Fleet;
+- Worker-Lab-Reliability-only changes run JVM Contracts and Worker Lab
+  Reliability;
 - Android test-only changes run Android Host; Android production, Manifest,
   build, or Emulator driver changes also run Android Emulator Worker;
 - Worker Core or Delivery contract changes also run their downstream Runtime,
-  Worker Fleet, Capability Task, Android Host, and Android Emulator proofs;
+  Worker Fleet, Worker Lab Reliability, Capability Task, Android Host, and
+  Android Emulator proofs;
 - Kernel mechanical Owner changes run JVM Contracts, Redis Owner and their
   downstream Runtime proofs; Pacer changes additionally select every
   Java-hosted scheduling acceptance lane;
@@ -366,11 +388,11 @@ Representative selection rules:
   part of the archive ABI.
 
 CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
-Capability Task, and Android Emulator upload only schema-versioned safe evidence:
-IDs, relation sets, run summaries, counts, and differences. Android adds
-filtered logs but no screenshot or video. These lanes do not upload full
-Worker Result, Task output, Properties content, or business Payload. Failures
-are not automatically retried.
+Worker Lab Reliability, Capability Task, and Android Emulator upload only safe
+evidence: IDs, relation sets, state timelines, run summaries, counts, and
+differences. Android adds filtered logs but no screenshot or video. These lanes
+do not upload full Worker Result, Task output, Properties content, or business
+Payload. Failures are not automatically retried.
 
 ## Deliberate Non-Goals
 

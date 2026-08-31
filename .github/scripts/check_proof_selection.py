@@ -20,6 +20,7 @@ EXPECTED_LANES = {
     "runtime_boundary",
     "capability_task",
     "worker_fleet",
+    "worker_lab_reliability",
     "android_host",
     "android_emulator",
     "frontend",

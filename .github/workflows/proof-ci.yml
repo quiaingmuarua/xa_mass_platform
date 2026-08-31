@@ -25,6 +25,7 @@ jobs:
       redis_owner: ${{ steps.filter.outputs.redis_owner }}
       runtime_boundary: ${{ steps.filter.outputs.runtime_boundary }}
       worker_fleet: ${{ steps.filter.outputs.worker_fleet }}
+      worker_lab_reliability: ${{ steps.filter.outputs.worker_lab_reliability }}
       capability_task: ${{ steps.filter.outputs.capability_task }}
       android_host: ${{ steps.filter.outputs.android_host }}
       android_emulator: ${{ steps.filter.outputs.android_emulator }}
@@ -82,6 +83,7 @@ jobs:
           :server_jvm:build
           :integrations:worker-capability-task:build
           :integrations:worker-fleet-acceptance:build
+          :integrations:worker-lab-reliability:build
           :distribution:server:verifyPlatformDiagnosticCodes
       - name: Summarize JVM proof
         if: always()
@@ -395,6 +397,149 @@ jobs:
             fleet-server.log
             fleet-host-initial.log
             fleet-host-restart.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  worker-lab-reliability:
+    name: Worker Lab Reliability
+    needs: changes
+    if: >-
+      needs.changes.outputs.worker_lab_reliability == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.4.10
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      XA_MASS_REDIS_SCOPE: test_worker_lab_reliability_${{ github.run_id }}_${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install -r .github/scripts/requirements.txt
+      - name: Build Worker Lab reliability artifacts
+        run: >-
+          ./gradlew --no-daemon
+          :server_jvm:bootJar
+          :scenario_workers_jvm:installDist
+          :integrations:worker-lab-reliability:classes
+      - name: Prepare isolated Worker Lab
+        run: |
+          proof_root="$GITHUB_WORKSPACE/build/worker-lab-reliability-proof"
+          mkdir -p "$proof_root/data" "$proof_root/evidence"
+          test ! -e "$proof_root/data/scenario-workers"
+      - name: Start Server
+        run: |
+          server_jar=$(find server_jvm/build/libs \
+            -name 'xa-mass-server-jvm-*.jar' \
+            ! -name '*-plain.jar' -print -quit)
+          test -n "$server_jar"
+          java -jar "$server_jar" \
+            --spring.profiles.active=scenario-workers \
+            > worker-lab-server.log 2>&1 &
+          echo $! > worker-lab-server.pid
+          for _ in $(seq 1 90); do
+            if python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/actuator/health/readiness')" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat worker-lab-server.log
+          exit 1
+      - name: Start Scenario Host with all Workers stopped
+        run: |
+          proof_root="$GITHUB_WORKSPACE/build/worker-lab-reliability-proof"
+          java -cp "scenario_workers_jvm/build/install/xa-mass-scenario-workers/lib/*" \
+            com.xa.mass.scenarioworkers.ScenarioWorkerHostMain \
+            --runtime-api-base-url=http://127.0.0.1:18082 \
+            --sandbox-root="$proof_root/data/scenario-workers" \
+            --control-port=18086 \
+            --initial-workers=none \
+            > worker-lab-host.log 2>&1 &
+          echo $! > worker-lab-host.pid
+          for _ in $(seq 1 90); do
+            if python -c \
+              "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18086/lab/v1/workers')" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat worker-lab-host.log
+          exit 1
+      - name: Prove Worker reliability and convergence
+        run: >-
+          ./gradlew --no-daemon
+          :integrations:worker-lab-reliability:runWorkerLabReliability
+          --args="--proof-id=ci-worker-lab-reliability
+          --runtime-api-base-url=http://127.0.0.1:18082
+          --lab-control-base-url=http://127.0.0.1:18086
+          --endpoint-manager-id=scenario-websocket
+          --evidence-dir=$GITHUB_WORKSPACE/build/worker-lab-reliability-proof/evidence
+          --maximum-wait-millis=120000
+          --request-timeout-millis=10000
+          --scheduled-stop-delay-millis=500"
+      - name: Summarize Worker Lab reliability proof
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "- **Worker Lab Reliability:** stop/restart, properties refresh, Group isolation and Task convergence proved" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- **Worker Lab Reliability:** failed; inspect safe timeline and process logs" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Stop Worker Lab processes
+        if: always()
+        run: |
+          for pid_file in worker-lab-host.pid worker-lab-server.pid; do
+            if [ ! -f "$pid_file" ]; then
+              continue
+            fi
+            pid=$(cat "$pid_file")
+            kill "$pid" 2>/dev/null || true
+            for _ in $(seq 1 15); do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                break
+              fi
+              sleep 1
+            done
+            kill -9 "$pid" 2>/dev/null || true
+          done
+      - name: Clean exact Worker Lab Redis scope
+        if: always()
+        run: >-
+          python .github/scripts/cleanup_redis_test_scope.py
+          --redis-url redis://127.0.0.1:6379/15
+          --scope "$XA_MASS_REDIS_SCOPE"
+      - name: Upload Worker Lab reliability evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: worker-lab-reliability-${{ github.run_attempt }}
+          path: |
+            build/worker-lab-reliability-proof/evidence/**
+            worker-lab-server.log
+            worker-lab-host.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -807,6 +952,7 @@ jobs:
       - redis-owner
       - runtime-boundary
       - worker-fleet
+      - worker-lab-reliability
       - capability-task
       - android-host
       - android-emulator-worker
@@ -826,6 +972,8 @@ jobs:
       RUNTIME_BOUNDARY_RESULT: ${{ needs.runtime-boundary.result }}
       WORKER_FLEET_SELECTED: ${{ needs.changes.outputs.worker_fleet }}
       WORKER_FLEET_RESULT: ${{ needs.worker-fleet.result }}
+      WORKER_LAB_RELIABILITY_SELECTED: ${{ needs.changes.outputs.worker_lab_reliability }}
+      WORKER_LAB_RELIABILITY_RESULT: ${{ needs.worker-lab-reliability.result }}
       CAPABILITY_TASK_SELECTED: ${{ needs.changes.outputs.capability_task }}
       CAPABILITY_TASK_RESULT: ${{ needs.capability-task.result }}
       ANDROID_HOST_SELECTED: ${{ needs.changes.outputs.android_host == 'true' || needs.changes.outputs.android_emulator == 'true' }}
@@ -875,6 +1023,8 @@ jobs:
             "Runtime Boundary" "$RUNTIME_BOUNDARY_SELECTED" "$RUNTIME_BOUNDARY_RESULT"
           check_lane \
             "Worker Fleet" "$WORKER_FLEET_SELECTED" "$WORKER_FLEET_RESULT"
+          check_lane \
+            "Worker Lab Reliability" "$WORKER_LAB_RELIABILITY_SELECTED" "$WORKER_LAB_RELIABILITY_RESULT"
           check_lane \
             "Capability Task" "$CAPABILITY_TASK_SELECTED" "$CAPABILITY_TASK_RESULT"
           check_lane \

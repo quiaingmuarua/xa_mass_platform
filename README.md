@@ -135,7 +135,9 @@ those owners.
   capability/Host control surface, the demo Worker host, and its Emulator
   acceptance driver.
 - [`integrations/`](integrations/) contains external acceptance clients; it
-  owns no Kernel, Server or Transport mechanism.
+  owns no Kernel, Server or Transport mechanism. Worker Fleet and Capability
+  Task retain exact topology/result proofs; Worker Lab Reliability exercises
+  controlled failure and eventual convergence through public HTTP boundaries.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
   Task file client, a best-effort single-Worker Direct Debug client over the
   public DIRECT_CALL API, a build-time Scalar API Reference and architecture
@@ -209,12 +211,14 @@ Commands, prerequisites and CI selection rules live in
   :scenario_workers_jvm:build \
   :server_jvm:build \
   :integrations:worker-capability-task:build \
-  :integrations:worker-fleet-acceptance:build
+  :integrations:worker-fleet-acceptance:build \
+  :integrations:worker-lab-reliability:build
 ```
 
-Real Redis, cross-process Runtime Boundary, Worker Fleet, Capability Task, Android
-Emulator, real-device Android, and frontend proofs have separate prerequisites
-and commands in the proof registry. Strict owner/capability tests fix
+Real Redis, cross-process Runtime Boundary, Worker Fleet, Worker Lab
+Reliability, Capability Task, Android Emulator, real-device Android, and
+frontend proofs have separate prerequisites and commands in the proof
+registry. Strict owner/capability tests fix
 structures and business values; cross-process acceptance fixes stable
 identity, count, ownership, correlation, protocol-status, and restart
 relationships without freezing evolving payloads.

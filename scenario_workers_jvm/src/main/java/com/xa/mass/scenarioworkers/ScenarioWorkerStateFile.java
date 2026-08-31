@@ -3,7 +3,6 @@ package com.xa.mass.scenarioworkers;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -30,18 +29,15 @@ final class ScenarioWorkerStateFile {
             "workerProperties"
     );
 
+    private final Path path;
     private final String clientWorkerKey;
-    private final Map<String, Object> workerProperties;
 
     private ScenarioWorkerStateFile(
-            String clientWorkerKey,
-            Map<String, Object> workerProperties
+            Path path,
+            String clientWorkerKey
     ) {
+        this.path = path;
         this.clientWorkerKey = clientWorkerKey;
-        this.workerProperties = immutableJsonMap(
-                workerProperties,
-                "workerProperties"
-        );
     }
 
     static ScenarioWorkerStateFile open(
@@ -53,6 +49,48 @@ final class ScenarioWorkerStateFile {
                 "clientWorkerKey"
         );
         Path normalized = path.toAbsolutePath().normalize();
+        readDocument(normalized, true);
+        return new ScenarioWorkerStateFile(
+                normalized,
+                clientWorkerKey
+        );
+    }
+
+    String clientWorkerKey() {
+        return clientWorkerKey;
+    }
+
+    Map<String, Object> workerProperties() {
+        return readDocument(path, true).workerProperties();
+    }
+
+    void replace(String encodedDocument) {
+        Map<String, Object> value;
+        try {
+            value = Jsons.parseObject(encodedDocument);
+        } catch (IllegalArgumentException error) {
+            throw invalid(path, error);
+        }
+        if (!FIELDS.equals(value.keySet())
+                || !(value.get("schemaVersion") instanceof Long)
+                || ((Long) value.get("schemaVersion")) != SCHEMA_VERSION) {
+            throw invalid(path, null);
+        }
+        Map<String, Object> workerProperties = optionalObject(
+                value,
+                "workerProperties",
+                path
+        );
+        Map<String, Object> canonical = new LinkedHashMap<>();
+        canonical.put("schemaVersion", SCHEMA_VERSION);
+        canonical.put("workerProperties", workerProperties);
+        writeJson(path, canonical);
+    }
+
+    private static StateDocument readDocument(
+            Path normalized,
+            boolean migrateLegacy
+    ) {
         Map<String, Object> value;
         try {
             value = Jsons.parseObject(Files.readString(
@@ -97,24 +135,15 @@ final class ScenarioWorkerStateFile {
                 throw invalid(normalized, null);
             }
         }
-        if (schemaVersion == LEGACY_SCHEMA_VERSION) {
+        if (schemaVersion == LEGACY_SCHEMA_VERSION && migrateLegacy) {
             Map<String, Object> migrated = new LinkedHashMap<>();
             migrated.put("schemaVersion", SCHEMA_VERSION);
             migrated.put("workerProperties", workerProperties);
             writeJson(normalized, migrated);
         }
-        return new ScenarioWorkerStateFile(
-                clientWorkerKey,
-                workerProperties
+        return new StateDocument(
+                immutableJsonMap(workerProperties, "workerProperties")
         );
-    }
-
-    String clientWorkerKey() {
-        return clientWorkerKey;
-    }
-
-    Map<String, Object> workerProperties() {
-        return workerProperties;
     }
 
     private static void writeJson(
@@ -135,24 +164,16 @@ final class ScenarioWorkerStateFile {
                     StandardOpenOption.WRITE,
                     StandardOpenOption.TRUNCATE_EXISTING
             );
-            try {
-                Files.move(
-                        temporary,
-                        target,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-            } catch (AtomicMoveNotSupportedException error) {
-                Files.move(
-                        temporary,
-                        target,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-            }
+            Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
         } catch (IOException | IllegalArgumentException error) {
             throw new ScenarioWorkerAssemblyException(
                     LAB_PERSIST_FAILED,
-                    "scenarioWorkerStateFile.migrate",
+                    "scenarioWorkerStateFile.persist",
                     "Could not persist Scenario Worker file " + target,
                     error
             );
@@ -205,5 +226,8 @@ final class ScenarioWorkerStateFile {
                 "Scenario Worker file is invalid: " + path,
                 cause
         );
+    }
+
+    private record StateDocument(Map<String, Object> workerProperties) {
     }
 }

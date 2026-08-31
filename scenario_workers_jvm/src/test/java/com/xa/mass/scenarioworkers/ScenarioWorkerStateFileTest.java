@@ -104,6 +104,74 @@ class ScenarioWorkerStateFileTest {
         assertInvalid(path);
     }
 
+    @Test
+    void reloadsPropertiesAndAtomicallyReplacesVersionTwoDocument()
+            throws Exception {
+        Path path = temporaryDirectory.resolve("client-1.json");
+        Files.writeString(
+                path,
+                Jsons.toJson(Map.of(
+                        "schemaVersion", 2,
+                        "workerProperties", Map.of("region", "first")
+                )),
+                StandardCharsets.UTF_8
+        );
+        ScenarioWorkerStateFile state = ScenarioWorkerStateFile.open(
+                path,
+                "client-1"
+        );
+
+        Files.writeString(
+                path,
+                Jsons.toJson(Map.of(
+                        "schemaVersion", 2,
+                        "workerProperties", Map.of("region", "external")
+                )),
+                StandardCharsets.UTF_8
+        );
+        assertThat(state.workerProperties())
+                .containsExactlyEntriesOf(Map.of("region", "external"));
+
+        state.replace(Jsons.toJson(Map.of(
+                "schemaVersion", 2,
+                "workerProperties", Map.of("region", "replacement")
+        )));
+
+        assertThat(Jsons.parseObject(Files.readString(
+                path,
+                StandardCharsets.UTF_8
+        ))).containsEntry(
+                "workerProperties",
+                Map.of("region", "replacement")
+        );
+        try (var files = Files.list(temporaryDirectory)) {
+            assertThat(files.map(item -> item.getFileName().toString()))
+                    .containsExactly("client-1.json");
+        }
+    }
+
+    @Test
+    void invalidReplacementDoesNotModifyExistingDocument()
+            throws Exception {
+        Path path = temporaryDirectory.resolve("client-1.json");
+        String original = Jsons.toJson(Map.of(
+                "schemaVersion", 2,
+                "workerProperties", Map.of("region", "original")
+        ));
+        Files.writeString(path, original, StandardCharsets.UTF_8);
+        ScenarioWorkerStateFile state = ScenarioWorkerStateFile.open(
+                path,
+                "client-1"
+        );
+
+        assertThatThrownBy(() -> state.replace(
+                "{\"schemaVersion\":2,\"extra\":true}"
+        )).isInstanceOf(ScenarioWorkerAssemblyException.class);
+
+        assertThat(Files.readString(path, StandardCharsets.UTF_8))
+                .isEqualTo(original);
+    }
+
     private void assertInvalid(Path path) {
         assertThatThrownBy(() -> ScenarioWorkerStateFile.open(
                 path,

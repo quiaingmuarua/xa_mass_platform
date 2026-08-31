@@ -24,17 +24,20 @@ import java.util.Objects;
  */
 public final class JavaWorkerManager implements AutoCloseable {
 
-    private final LinkedHashMap<String, WorkerLifecycle> replicas;
+    private final LinkedHashMap<String, ManagedReplica> replicas;
     private final JavaWorkerPlatform platform;
 
-    private boolean desiredRunning;
     private boolean closed;
 
     private JavaWorkerManager(
             LinkedHashMap<String, WorkerLifecycle> replicas,
             JavaWorkerPlatform platform
     ) {
-        this.replicas = new LinkedHashMap<>(replicas);
+        this.replicas = new LinkedHashMap<>();
+        replicas.forEach((clientWorkerKey, worker) -> this.replicas.put(
+                clientWorkerKey,
+                new ManagedReplica(worker)
+        ));
         this.platform = Objects.requireNonNull(
                 platform,
                 "platform"
@@ -55,14 +58,30 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     public synchronized void start() {
         ensureOpen();
-        desiredRunning = true;
+        replicas.forEach(this::ensureStartAllowed);
+        replicas.values().forEach(replica -> replica.desiredRunning = true);
         throwIfPresent(reconcileLocked());
+    }
+
+    public synchronized void start(String clientWorkerKey) {
+        ensureOpen();
+        ManagedReplica replica = requireReplica(clientWorkerKey);
+        ensureStartAllowed(clientWorkerKey, replica);
+        replica.desiredRunning = true;
+        throwIfPresent(reconcileLocked(replica));
     }
 
     public synchronized void stop() {
         ensureOpen();
-        desiredRunning = false;
+        replicas.values().forEach(replica -> replica.desiredRunning = false);
         throwIfPresent(reconcileLocked());
+    }
+
+    public synchronized void stop(String clientWorkerKey) {
+        ensureOpen();
+        ManagedReplica replica = requireReplica(clientWorkerKey);
+        replica.desiredRunning = false;
+        throwIfPresent(reconcileLocked(replica));
     }
 
     public synchronized void reconcile() {
@@ -70,18 +89,28 @@ public final class JavaWorkerManager implements AutoCloseable {
         throwIfPresent(reconcileLocked());
     }
 
+    public synchronized void reconcile(String clientWorkerKey) {
+        ensureOpen();
+        throwIfPresent(reconcileLocked(requireReplica(clientWorkerKey)));
+    }
+
+    public synchronized boolean desiredRunning(String clientWorkerKey) {
+        ensureOpen();
+        return requireReplica(clientWorkerKey).desiredRunning;
+    }
+
     public synchronized WorkerLifecycle.Snapshot snapshot(
             String clientWorkerKey
     ) {
-        return requireReplica(clientWorkerKey).snapshot();
+        return requireReplica(clientWorkerKey).worker.snapshot();
     }
 
     public synchronized Map<String, WorkerLifecycle.Snapshot> snapshots() {
         Map<String, WorkerLifecycle.Snapshot> snapshots =
                 new LinkedHashMap<>();
-        replicas.forEach((clientWorkerKey, worker) -> snapshots.put(
+        replicas.forEach((clientWorkerKey, replica) -> snapshots.put(
                 clientWorkerKey,
-                worker.snapshot()
+                replica.worker.snapshot()
         ));
         return Collections.unmodifiableMap(snapshots);
     }
@@ -92,10 +121,12 @@ public final class JavaWorkerManager implements AutoCloseable {
             return;
         }
         closed = true;
-        desiredRunning = false;
+        replicas.values().forEach(replica -> replica.desiredRunning = false);
 
-        List<WorkerLifecycle> closing =
-                new ArrayList<>(replicas.values());
+        List<WorkerLifecycle> closing = new ArrayList<>();
+        for (ManagedReplica replica : replicas.values()) {
+            closing.add(replica.worker);
+        }
         Collections.reverse(closing);
         RuntimeException failure = null;
         for (WorkerLifecycle worker : closing) {
@@ -115,34 +146,54 @@ public final class JavaWorkerManager implements AutoCloseable {
 
     private RuntimeException reconcileLocked() {
         RuntimeException failure = null;
-        for (Map.Entry<String, WorkerLifecycle> replica
-                : replicas.entrySet()) {
-            WorkerLifecycle worker = replica.getValue();
-            try {
-                WorkerLifecycle.State actual = worker.snapshot().state();
-                if (desiredRunning
-                        && actual == WorkerLifecycle.State.STOPPED) {
-                    worker.start();
-                } else if (!desiredRunning
-                        && actual == WorkerLifecycle.State.RUNNING) {
-                    worker.stop();
-                }
-            } catch (RuntimeException error) {
-                failure = accumulate(failure, error);
-            }
+        for (ManagedReplica replica : replicas.values()) {
+            failure = accumulateNullable(
+                    failure,
+                    reconcileLocked(replica)
+            );
         }
         return failure;
     }
 
-    private WorkerLifecycle requireReplica(String clientWorkerKey) {
+    private RuntimeException reconcileLocked(ManagedReplica replica) {
+        try {
+            WorkerLifecycle.State actual = replica.worker.snapshot().state();
+            if (replica.desiredRunning
+                    && actual == WorkerLifecycle.State.STOPPED) {
+                replica.worker.start();
+            } else if (!replica.desiredRunning
+                    && actual == WorkerLifecycle.State.RUNNING) {
+                replica.worker.stop();
+            }
+            return null;
+        } catch (RuntimeException error) {
+            return error;
+        }
+    }
+
+    private void ensureStartAllowed(
+            String clientWorkerKey,
+            ManagedReplica replica
+    ) {
+        if (!replica.desiredRunning
+                && replica.worker.snapshot().state()
+                == WorkerLifecycle.State.RUNNING) {
+            throw new IllegalStateException(
+                    "Java Worker replica is still stopping: "
+                            + clientWorkerKey
+            );
+        }
+    }
+
+    private ManagedReplica requireReplica(String clientWorkerKey) {
         String key = requireNonBlank(clientWorkerKey, "clientWorkerKey");
-        WorkerLifecycle worker = replicas.get(key);
-        if (worker == null) {
+        ManagedReplica replica = replicas.get(key);
+        if (replica == null) {
             throw new IllegalArgumentException(
                     "Unknown Java Worker replica: " + key
             );
         }
-        return worker;
+        return replica;
     }
 
     private void ensureOpen() {
@@ -162,6 +213,13 @@ public final class JavaWorkerManager implements AutoCloseable {
         }
         current.addSuppressed(addition);
         return current;
+    }
+
+    private static RuntimeException accumulateNullable(
+            RuntimeException current,
+            RuntimeException addition
+    ) {
+        return addition == null ? current : accumulate(current, addition);
     }
 
     private static void throwIfPresent(RuntimeException failure) {
@@ -344,6 +402,16 @@ public final class JavaWorkerManager implements AutoCloseable {
         ) {
             this.clientWorkerKey = clientWorkerKey;
             this.workerProperties = workerProperties;
+        }
+    }
+
+    private static final class ManagedReplica {
+
+        private final WorkerLifecycle worker;
+        private boolean desiredRunning;
+
+        private ManagedReplica(WorkerLifecycle worker) {
+            this.worker = Objects.requireNonNull(worker, "worker");
         }
     }
 

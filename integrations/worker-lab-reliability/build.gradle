@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+}
+
+base {
+    archivesName.set('xa-mass-worker-lab-reliability')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    implementation project(':transport:worker-delivery-contract')
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.register('runWorkerLabReliability', JavaExec) {
+    description = 'Runs the external Worker Lab reliability proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.workerlab.WorkerLabReliabilityMain'
+    workingDir = project.projectDir
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    workingDir = project.projectDir
+}

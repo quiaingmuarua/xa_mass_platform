@@ -71,6 +71,53 @@ class JavaWorkerManagerTest {
     }
 
     @Test
+    void controlsReplicaDesiredStateIndependently() {
+        FakeWorker first = new FakeWorker("first", new ArrayList<>());
+        FakeWorker second = new FakeWorker("second", new ArrayList<>());
+        JavaWorkerManager manager = manager(first, second);
+        try {
+            manager.start("client-1");
+
+            assertTrue(manager.desiredRunning("client-1"));
+            assertEquals(false, manager.desiredRunning("client-2"));
+            assertEquals(1, first.startCalls.get());
+            assertEquals(0, second.startCalls.get());
+
+            first.terminate();
+            assertEquals(1, first.startCalls.get());
+
+            manager.start("client-1");
+            assertEquals(2, first.startCalls.get());
+
+            manager.stop("client-1");
+            assertEquals(false, manager.desiredRunning("client-1"));
+            assertEquals(1, first.stopCalls.get());
+            assertEquals(0, second.stopCalls.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void reconcileTargetsOnlyTheRequestedReplica() {
+        FakeWorker first = new FakeWorker("first", new ArrayList<>());
+        FakeWorker second = new FakeWorker("second", new ArrayList<>());
+        JavaWorkerManager manager = manager(first, second);
+        try {
+            manager.start();
+            first.terminate();
+            second.terminate();
+
+            manager.reconcile("client-2");
+
+            assertEquals(1, first.startCalls.get());
+            assertEquals(2, second.startCalls.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
     void repeatedStartDoesNotStartRunningReplicaAgain() {
         FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
         JavaWorkerManager manager = manager(worker);
@@ -80,6 +127,56 @@ class JavaWorkerManagerTest {
             manager.reconcile();
 
             assertEquals(1, worker.startCalls.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void startRejectsReplicaUntilPriorStopReachesStopped() {
+        FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
+        JavaWorkerManager manager = manager(worker);
+        try {
+            manager.start("client-1");
+            worker.deferStop = true;
+            manager.stop("client-1");
+
+            assertEquals(false, manager.desiredRunning("client-1"));
+            assertEquals(WorkerLifecycle.State.RUNNING,
+                    manager.snapshot("client-1").state());
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> manager.start("client-1")
+            );
+            assertEquals(false, manager.desiredRunning("client-1"));
+            assertEquals(1, worker.startCalls.get());
+
+            worker.completeStop();
+            manager.start("client-1");
+
+            assertTrue(manager.desiredRunning("client-1"));
+            assertEquals(2, worker.startCalls.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void groupStartDoesNotPartiallyChangeDesiredStateWhileReplicaStops() {
+        FakeWorker first = new FakeWorker("first", new ArrayList<>());
+        FakeWorker second = new FakeWorker("second", new ArrayList<>());
+        JavaWorkerManager manager = manager(first, second);
+        try {
+            manager.start();
+            first.deferStop = true;
+            manager.stop("client-1");
+
+            assertThrows(IllegalStateException.class, manager::start);
+
+            assertEquals(false, manager.desiredRunning("client-1"));
+            assertTrue(manager.desiredRunning("client-2"));
+            assertEquals(1, first.startCalls.get());
+            assertEquals(1, second.startCalls.get());
         } finally {
             manager.close();
         }
@@ -280,6 +377,7 @@ class JavaWorkerManagerTest {
                 new LinkedHashMap<>();
         private State state = State.STOPPED;
         private boolean failClose;
+        private boolean deferStop;
         private boolean closed;
 
         private FakeWorker(String name, List<String> events) {
@@ -300,6 +398,12 @@ class JavaWorkerManagerTest {
         @Override
         public void stop() {
             stopCalls.incrementAndGet();
+            if (!deferStop) {
+                completeStop();
+            }
+        }
+
+        private void completeStop() {
             state = State.STOPPED;
             publish();
         }

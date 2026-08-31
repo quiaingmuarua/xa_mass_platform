@@ -371,6 +371,14 @@ system.
   Redis, reflection or configurable class names.
 - It owns local capability definitions, persistent Lab files and one
   `JavaWorkerManager` per configured non-empty WorkerGroup.
+- Its loopback Lab HTTP surface may atomically replace discovered Worker files,
+  explicitly start/stop one replica, and own nonpersistent scheduled stops.
+  Lab desired/runtime state is local observation, never Adapter or Kernel truth.
+- Atomic Worker file replacement fails closed when the filesystem cannot honor
+  `ATOMIC_MOVE`. A start issued while the Manager's previous stop is still
+  converging is a conflict; callers observe `STOPPED` before retrying.
+- Every explicit Worker start reopens its complete Properties file. There is no
+  watcher, automatic reconcile, dynamic inventory, or generic fault DSL.
 - Server owns profile coordinates and create-only advisory WorkerGroup seeds.
 - Server never depends on, constructs, starts or stops the Host. The root local
   launcher and proof lanes own the two independent process lifecycles.
@@ -387,6 +395,9 @@ controls.
 
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
+- Worker Lab Reliability may combine the loopback Lab API with independent
+  Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
+  record identities and projected states but never business payload.
 - Capability Task inputs are caller-owned local files. Integrations and the
   frontend turn lines into ordinary finite TaskItems through public Task APIs;
   Server owns no Lab input/output directory.

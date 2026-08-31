@@ -19,6 +19,9 @@ class ScenarioWorkerHostMainTest {
                 .isEqualTo(URI.create("http://127.0.0.1:18082"));
         assertThat(options.sandboxRoot())
                 .isEqualTo("data/scenario-workers");
+        assertThat(options.controlPort()).isEqualTo(18086);
+        assertThat(options.initialWorkers())
+                .isEqualTo(ScenarioWorkers.InitialWorkers.ALL);
     }
 
     @Test
@@ -26,13 +29,18 @@ class ScenarioWorkerHostMainTest {
         ScenarioWorkerHostMain.HostOptions options =
                 ScenarioWorkerHostMain.HostOptions.parse(new String[]{
                         "--runtime-api-base-url=http://127.0.0.1:19082",
-                        "--sandbox-root=C:/proof/data/scenario-workers"
+                        "--sandbox-root=C:/proof/data/scenario-workers",
+                        "--control-port=0",
+                        "--initial-workers=none"
                 });
 
         assertThat(options.runtimeApiBaseUrl())
                 .isEqualTo(URI.create("http://127.0.0.1:19082"));
         assertThat(options.sandboxRoot())
                 .isEqualTo("C:/proof/data/scenario-workers");
+        assertThat(options.controlPort()).isZero();
+        assertThat(options.initialWorkers())
+                .isEqualTo(ScenarioWorkers.InitialWorkers.NONE);
     }
 
     @Test
@@ -49,6 +57,14 @@ class ScenarioWorkerHostMainTest {
                 new String[]{"--runtime-api-base-url=redis://127.0.0.1"}
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTP(S)");
+        assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(
+                new String[]{"--control-port=65536"}
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("control-port");
+        assertThatThrownBy(() -> ScenarioWorkerHostMain.HostOptions.parse(
+                new String[]{"--initial-workers=some"}
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("all or none");
     }
 
     @Test

@@ -67,7 +67,6 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("HostResources")
                 .doesNotContain("hostResources")
                 .doesNotContain("WorkerExecutionResources")
-                .doesNotContain("Executors.new")
                 .doesNotContain("interface WorkerHost")
                 .doesNotContain("interface WorkerReference")
                 .doesNotContain("FileLock")
@@ -76,6 +75,13 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("java.net.http.HttpClient")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
+        assertThat(sources)
+                .containsOnlyOnce("Executors.newSingleThreadExecutor")
+                .containsOnlyOnce(
+                        "Executors.newSingleThreadScheduledExecutor"
+                )
+                .doesNotContain("Executors.newFixedThreadPool")
+                .doesNotContain("Executors.newCachedThreadPool");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")
@@ -111,6 +117,10 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("transport:netty-adapter")
                 .doesNotContain("server_jvm")
                 .doesNotContain("spring");
+        assertThat(Files.readString(Path.of(
+                "src/main/java/com/xa/mass/scenarioworkers/"
+                        + "ScenarioWorkerStateFile.java"
+        ))).doesNotContain("AtomicMoveNotSupportedException");
     }
 
     @Test
