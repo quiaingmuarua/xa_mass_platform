@@ -180,7 +180,8 @@ The proof has four safe-evidence phases:
 3. Server restart with three seconds of no automatic Worker restart, followed
    by explicit start;
 4. App process restart with retained data, the same Worker ID, a new Probe,
-   and one business Command.
+   Kernel scheduling convergence back to a HOT projection, and one business
+   Command.
 
 The terminal phase does not treat Server process exit as immediate Worker
 termination. It waits for the Android Client's finite unstable-connection

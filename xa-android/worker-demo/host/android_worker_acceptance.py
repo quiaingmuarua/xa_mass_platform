@@ -277,6 +277,38 @@ class RuntimeApiClient:
             raise ProofFailure(
                 "network.state.shape",
                 "Worker Network state is invalid",
+        )
+        return value
+
+    def scheduling_state(
+        self,
+        worker_group_id: str,
+        worker_id: str,
+    ) -> str | None:
+        response = self._http.request(
+            "POST",
+            "/api/v1/runtime-view/worker-groups/"
+            f"{quote(worker_group_id, safe='')}"
+            "/workers:scheduling-observe",
+            {"workerIds": [worker_id]},
+            "workerScheduling.observe",
+        )
+        states = require_object(
+            response.get("statesByWorkerId"),
+            "Worker Scheduling states",
+        )
+        unexpected = sorted(set(states) - {worker_id})
+        if unexpected:
+            raise ProofFailure(
+                "scheduling.observed-identities",
+                "Worker Scheduling returned unexpected identities",
+                unexpected_ids=tuple(unexpected),
+            )
+        value = states.get(worker_id)
+        if value is not None and not isinstance(value, str):
+            raise ProofFailure(
+                "scheduling.state.shape",
+                "Worker Scheduling state is invalid",
             )
         return value
 
@@ -684,6 +716,7 @@ class AndroidWorkerAcceptance:
         snapshot = self._await_snapshot("RUNNING", baseline_worker_id)
         self._await_connected(baseline_worker_id)
         self._verify_probe(baseline_worker_id)
+        scheduling_state = self._await_hot_scheduling(baseline_worker_id)
         message_id = self.runtime.task_call(
             STRING_DIGEST_EVENT,
             {"algorithm": "MD5", "value": "process-restart"},
@@ -692,6 +725,7 @@ class AndroidWorkerAcceptance:
         self.evidence.baseline_identity_matched = True
         self.evidence.check("processRestartConnected", True)
         self.evidence.check("processRestartProbeObserved", True)
+        self.evidence.check("processRestartSchedulingState", scheduling_state)
         self.evidence.check("processRestartEventCode", STRING_DIGEST_EVENT)
         self.evidence.check("processRestartMessageId", message_id)
         self.evidence.check("processRestartResultCount", 1)
@@ -798,6 +832,25 @@ class AndroidWorkerAcceptance:
             "network.disconnected",
             "Android Worker remained connected",
             inconsistent_ids=(worker_id,),
+        )
+
+    def _await_hot_scheduling(self, worker_id: str) -> str:
+        deadline = self._monotonic() + self._wait_seconds
+        while self._monotonic() < deadline:
+            try:
+                state = self.runtime.scheduling_state(
+                    WORKER_GROUP_ID,
+                    worker_id,
+                )
+                if state in {"held-hot", "hot-score-overdue"}:
+                    return state
+            except RuntimeError:
+                pass
+            self._sleep(0.1)
+        raise ProofFailure(
+            "scheduling.hot",
+            "Android Worker did not become schedulable",
+            missing_ids=(worker_id,),
         )
 
     def _verify_probe(self, worker_id: str) -> None:

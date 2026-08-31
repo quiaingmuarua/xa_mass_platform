@@ -110,6 +110,8 @@ class FakeRuntime:
         self.adapter_properties = dict(self.worker_properties)
         self.worker_calls: list[str] = []
         self.task_calls: list[str] = []
+        self.scheduling_values = ["held-hot"]
+        self.scheduling_calls = 0
         device.runtime = self
 
     def network_state(self, endpoint_manager_id: str, worker_id: str):
@@ -118,6 +120,15 @@ class FakeRuntime:
         if worker_id != self.device.worker_id:
             return None
         return self.network_value
+
+    def scheduling_state(self, worker_group_id: str, worker_id: str):
+        if worker_group_id != acceptance.WORKER_GROUP_ID:
+            raise AssertionError(worker_group_id)
+        if worker_id != self.device.worker_id:
+            return None
+        self.scheduling_calls += 1
+        index = min(self.scheduling_calls - 1, len(self.scheduling_values) - 1)
+        return self.scheduling_values[index]
 
     def call_worker(
         self, endpoint_manager_id: str, worker_id: str, message_type: str
@@ -345,6 +356,7 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             device = FakeDevice()
             runtime = FakeRuntime(device)
             runtime.network_value = "disconnected"
+            runtime.scheduling_values = ["recovery", "held-hot"]
             device.connect_on_health = True
             output = io.StringIO()
             runner = self.runner(
@@ -368,6 +380,38 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
                 [acceptance.STRING_DIGEST_EVENT],
                 runtime.task_calls,
             )
+            self.assertEqual(2, runtime.scheduling_calls)
+            self.assertEqual(
+                "held-hot",
+                runner.evidence.checks["processRestartSchedulingState"],
+            )
+
+    def test_process_restart_does_not_submit_task_before_scheduling_is_hot(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = self.baseline(Path(directory))
+            device = FakeDevice()
+            runtime = FakeRuntime(device)
+            runtime.network_value = "disconnected"
+            runtime.scheduling_values = ["recovery"]
+            device.connect_on_health = True
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(
+                    acceptance.ProofFailure,
+                    "did not become schedulable",
+                ):
+                    self.runner(
+                        "process-restart",
+                        device,
+                        runtime,
+                        baseline_file=baseline,
+                        maximum_wait_millis=100,
+                    ).run()
+
+            self.assertEqual([], runtime.task_calls)
+            self.assertGreater(runtime.scheduling_calls, 0)
 
     def test_execute_writes_safe_partial_evidence_before_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -435,6 +479,38 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             acceptance.DEFAULT_SERVER_BASE_URL
             + "/api/v1/runtime-view/endpoint-managers/"
             "scenario-websocket/workers:network-observe",
+            request.full_url,
+        )
+        self.assertEqual(
+            {"workerIds": [WORKER_ID]},
+            json.loads(request.data),
+        )
+
+    def test_runtime_client_uses_public_scheduling_view_contract(self) -> None:
+        response = FakeHttpResponse(
+            {"statesByWorkerId": {WORKER_ID: "hot-score-overdue"}}
+        )
+        with patch.object(
+            acceptance,
+            "urlopen",
+            return_value=response,
+        ) as urlopen:
+            client = acceptance.RuntimeApiClient(
+                acceptance.DEFAULT_SERVER_BASE_URL,
+                1_000,
+            )
+
+            state = client.scheduling_state(
+                acceptance.WORKER_GROUP_ID,
+                WORKER_ID,
+            )
+
+        self.assertEqual("hot-score-overdue", state)
+        request = urlopen.call_args.args[0]
+        self.assertEqual(
+            acceptance.DEFAULT_SERVER_BASE_URL
+            + "/api/v1/runtime-view/worker-groups/"
+            "android-demo-workers/workers:scheduling-observe",
             request.full_url,
         )
         self.assertEqual(
