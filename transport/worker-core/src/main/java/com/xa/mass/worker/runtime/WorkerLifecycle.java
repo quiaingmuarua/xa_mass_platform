@@ -16,6 +16,7 @@ public interface WorkerLifecycle extends AutoCloseable {
     @FunctionalInterface
     interface Listener {
 
+        /** Receives a best-effort level observation, not an ordered log. */
         void onSnapshot(Snapshot snapshot);
     }
 
@@ -27,6 +28,10 @@ public interface WorkerLifecycle extends AutoCloseable {
 
     /**
      * Requests that the current startup attempt or runtime stop.
+     *
+     * <p>An active runtime is revoked before its Client is closed. A
+     * preparation already in progress remains single-flight, but its result
+     * cannot install a Transport after this request.
      */
     void stop();
 

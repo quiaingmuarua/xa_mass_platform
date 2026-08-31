@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_CLOSE_EVENT_CODE;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WORKER_CONNECTION_IDENTIFY_EVENT_CODE;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.ADAPTER;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint.WORKER;
 
@@ -18,9 +18,7 @@ import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Runs Worker Delivery text protocol over one prepared endpoint.
- */
+/** Runs Worker Delivery text protocol over one prepared endpoint. */
 final class TextMessageWorkerTransport
         implements AutoCloseable, TextMessageClient.Listener {
 
@@ -33,13 +31,6 @@ final class TextMessageWorkerTransport
         );
     }
 
-    private enum State {
-        NEW,
-        RUNNING,
-        TERMINATING,
-        CLOSED
-    }
-
     private static final Logger LOGGER = Logger.getLogger(
             TextMessageWorkerTransport.class.getName()
     );
@@ -49,11 +40,6 @@ final class TextMessageWorkerTransport
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandDispatcher;
     private final Listener listener;
-
-    private State state = State.NEW;
-    private boolean terminationNotified;
-    private boolean clientClosed;
-    private Throwable terminationFailure;
 
     TextMessageWorkerTransport(
             TextMessageClient client,
@@ -71,49 +57,16 @@ final class TextMessageWorkerTransport
     }
 
     void start() {
-        synchronized (this) {
-            if (state == State.CLOSED || state == State.TERMINATING) {
-                return;
-            }
-            if (state == State.RUNNING) {
-                return;
-            }
-            state = State.RUNNING;
-        }
-        try {
-            client.start(this);
-        } catch (RuntimeException | Error failure) {
-            synchronized (this) {
-                if (state == State.RUNNING) {
-                    state = State.NEW;
-                }
-            }
-            throw failure;
-        }
+        client.start(this);
     }
 
     @Override
     public void onOpen() {
-        synchronized (this) {
-            if (state != State.RUNNING) {
-                client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
-                return;
-            }
-        }
-
         Throwable failure = sendIdentity();
         if (failure != null) {
-            closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             rethrowError(failure);
-            return;
         }
-
-        synchronized (this) {
-            if (state == State.RUNNING) {
-                return;
-            }
-        }
-        client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
     }
 
     @Override
@@ -133,7 +86,7 @@ final class TextMessageWorkerTransport
             if (isConnectionClose(command)) {
                 if (System.currentTimeMillis()
                         < command.executeBeforeMillis()) {
-                    requestTermination(null, true);
+                    terminateFromAdapter();
                 }
                 return;
             }
@@ -173,21 +126,16 @@ final class TextMessageWorkerTransport
 
     @Override
     public void onEndpointTerminated() {
-        requestTermination(null, false);
+        notifyTerminated();
     }
 
-    void requestStop() {
-        requestTermination(null, true);
+    private void terminateFromAdapter() {
+        closeClientQuietly();
+        notifyTerminated();
     }
 
     @Override
     public void close() {
-        synchronized (this) {
-            if (state == State.CLOSED) {
-                return;
-            }
-            state = State.CLOSED;
-        }
         closeClientQuietly();
     }
 
@@ -212,55 +160,11 @@ final class TextMessageWorkerTransport
         }
     }
 
-    private void requestTermination(
-            Throwable failure,
-            boolean closeClient
-    ) {
-        Throwable reportedFailure = null;
-        boolean notify = false;
-        synchronized (this) {
-            if (state == State.CLOSED || terminationNotified) {
-                return;
-            }
-            if (state != State.TERMINATING) {
-                state = State.TERMINATING;
-                terminationFailure = failure;
-            }
-        }
-        if (closeClient) {
-            closeClientQuietly();
-        }
-        synchronized (this) {
-            if (terminationReadyLocked()) {
-                terminationNotified = true;
-                reportedFailure = terminationFailure;
-                notify = true;
-            }
-        }
-        if (notify) {
-            notifyTerminated(reportedFailure);
-        }
-    }
-
-    private boolean terminationReadyLocked() {
-        return state == State.TERMINATING
-                && !terminationNotified;
-    }
-
-    private void closeCurrent(TextMessageClient.CloseReason reason) {
-        synchronized (this) {
-            if (state != State.RUNNING) {
-                return;
-            }
-        }
-        client.closeCurrent(reason);
-    }
-
-    private void notifyTerminated(Throwable failure) {
+    private void notifyTerminated() {
         try {
-            listener.onTerminated(this, failure);
+            listener.onTerminated(this, null);
         } catch (RuntimeException ignored) {
-            // The controller owns current-transport callback suppression.
+            // The controller owns current-run callback suppression.
         }
     }
 
@@ -284,16 +188,10 @@ final class TextMessageWorkerTransport
     }
 
     private void closeClientQuietly() {
-        synchronized (this) {
-            if (clientClosed) {
-                return;
-            }
-            clientClosed = true;
-        }
         try {
             client.close();
         } catch (RuntimeException ignored) {
-            // Terminal notification must not depend on network teardown.
+            // Current-run revocation does not depend on network teardown.
         }
     }
 

@@ -179,7 +179,8 @@ class JavaOkHttpTextWebSocketClientTest {
     }
 
     @Test
-    void externalCloseWaitsForCurrentCallback() throws Exception {
+    void externalCloseReturnsWhileCurrentCallbackFinishes()
+            throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         JavaOkHttpTextWebSocketClient blockingClient =
@@ -201,17 +202,75 @@ class JavaOkHttpTextWebSocketClientTest {
             assertTrue(entered.await(1, TimeUnit.SECONDS));
 
             Future<?> closing = callers.submit(blockingClient::close);
-            Thread.sleep(50L);
-            assertFalse(closing.isDone());
+            closing.get(1, TimeUnit.SECONDS);
+            assertTrue(connection.socket.cancelled);
+            assertFalse(handling.isDone());
 
             release.countDown();
             handling.get(3, TimeUnit.SECONDS);
-            closing.get(3, TimeUnit.SECONDS);
-            assertTrue(connection.socket.cancelled);
         } finally {
             release.countDown();
             callers.shutdownNow();
             blockingClient.close();
+        }
+    }
+
+    @Test
+    void replacementAttemptMayDeliverWhileOldCallbackFinishes()
+            throws Exception {
+        client.close();
+        int firstIndex = connector.connections.size();
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondDelivered = new CountDownLatch(1);
+        client = new JavaOkHttpTextWebSocketClient(
+                connector,
+                networkExecutor,
+                URI.create("ws://127.0.0.1:18083/overlap"),
+                reconnectPolicy()
+        );
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+            }
+
+            @Override
+            public void onMessage(String message) {
+                if ("first".equals(message)) {
+                    firstEntered.countDown();
+                    awaitLatch(releaseFirst);
+                } else if ("second".equals(message)) {
+                    secondDelivered.countDown();
+                }
+            }
+
+            @Override
+            public void onEndpointTerminated() {
+            }
+        });
+        await(() -> connector.connections.size() > firstIndex);
+        FakeConnection first = connector.connections.get(firstIndex);
+        first.open();
+        ExecutorService callback = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> handling = callback.submit(() -> first.text("first"));
+            assertTrue(firstEntered.await(1, TimeUnit.SECONDS));
+
+            client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+            await(() -> connector.connections.size() > firstIndex + 1);
+            FakeConnection second = connector.connections.get(
+                    firstIndex + 1
+            );
+            second.open();
+            second.text("second");
+
+            assertTrue(secondDelivered.await(1, TimeUnit.SECONDS));
+            assertFalse(handling.isDone());
+            releaseFirst.countDown();
+            handling.get(3, TimeUnit.SECONDS);
+        } finally {
+            releaseFirst.countDown();
+            callback.shutdownNow();
         }
     }
 
@@ -259,11 +318,89 @@ class JavaOkHttpTextWebSocketClientTest {
 
         client.close();
         client.close();
+        first.open();
+        first.text("late");
 
         assertFalse(client.send("late"));
         assertTrue(first.socket.cancelled);
         assertFalse(networkExecutor.isShutdown());
         assertEquals(0, listener.terminations.get());
+        assertEquals(1, listener.opens.get());
+        assertTrue(listener.messages.isEmpty());
+    }
+
+    @Test
+    void competingAttemptCompletionSchedulesOneReconnect()
+            throws Exception {
+        FakeConnection first = connector.connections.get(0);
+        first.open();
+        ExecutorService callers = Executors.newFixedThreadPool(3);
+        CountDownLatch ready = new CountDownLatch(3);
+        CountDownLatch race = new CountDownLatch(1);
+        try {
+            List<Future<?>> completions = List.of(
+                    callers.submit(() -> raceAttempt(
+                            ready,
+                            race,
+                            first::fail
+                    )),
+                    callers.submit(() -> raceAttempt(
+                            ready,
+                            race,
+                            first::fail
+                    )),
+                    callers.submit(() -> raceAttempt(
+                            ready,
+                            race,
+                            () -> client.closeCurrent(
+                                    TextMessageClient.CloseReason.NORMAL
+                            )
+                    ))
+            );
+            assertTrue(ready.await(1, TimeUnit.SECONDS));
+            race.countDown();
+            for (Future<?> completion : completions) {
+                completion.get(1, TimeUnit.SECONDS);
+            }
+            await(() -> connector.connections.size() == 2);
+            Thread.sleep(30L);
+
+            assertEquals(2, connector.connections.size());
+            assertEquals(0, listener.terminations.get());
+        } finally {
+            race.countDown();
+            callers.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentSendAndCloseRemainBestEffort() throws Exception {
+        FakeConnection first = connector.connections.get(0);
+        first.open();
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        CountDownLatch race = new CountDownLatch(1);
+        try {
+            Future<?> sending = callers.submit(() -> {
+                awaitRace(race);
+                for (int index = 0; index < 100; index++) {
+                    client.send("result-" + index);
+                }
+            });
+            Future<?> closing = callers.submit(() -> {
+                awaitRace(race);
+                client.close();
+            });
+            race.countDown();
+            sending.get(1, TimeUnit.SECONDS);
+            closing.get(1, TimeUnit.SECONDS);
+
+            assertFalse(client.send("late"));
+            assertTrue(first.socket.cancelled);
+            assertEquals(0, listener.terminations.get());
+        } finally {
+            race.countDown();
+            callers.shutdownNow();
+        }
     }
 
     @Test
@@ -335,6 +472,44 @@ class JavaOkHttpTextWebSocketClientTest {
             public void onEndpointTerminated() {
             }
         };
+    }
+
+    private static void raceAttempt(
+            CountDownLatch ready,
+            CountDownLatch race,
+            Runnable action
+    ) {
+        ready.countDown();
+        try {
+            race.await();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        action.run();
+    }
+
+    private static void awaitRace(CountDownLatch race) {
+        try {
+            race.await();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException error) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static void await(Check check) throws Exception {

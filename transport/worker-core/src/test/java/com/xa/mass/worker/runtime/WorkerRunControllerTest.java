@@ -132,6 +132,34 @@ class WorkerRunControllerTest {
     }
 
     @Test
+    void currentRunAcceptsOnlyOneTerminalTransition()
+            throws Exception {
+        RecordingClientCreator networks = new RecordingClientCreator();
+        WorkerRunController controller = controller(
+                new ScriptedPreparation(0),
+                networks
+        );
+
+        controller.start();
+        FakeTextMessageClient client = networks.awaitClient(0);
+        AtomicInteger stoppedNotifications = new AtomicInteger();
+        controller.addListener(snapshot -> {
+            if (snapshot.state() == WorkerLifecycle.State.STOPPED) {
+                stoppedNotifications.incrementAndGet();
+            }
+        });
+
+        client.terminate();
+        client.terminate();
+
+        assertEquals(1, stoppedNotifications.get());
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                controller.snapshot().state()
+        );
+    }
+
+    @Test
     void terminatedTransportCannotStopAnExplicitNewRun()
             throws Exception {
         ScriptedPreparation preparation = new ScriptedPreparation(0);
@@ -176,6 +204,8 @@ class WorkerRunControllerTest {
                 WorkerLifecycle.State.RUNNING,
                 controller.snapshot().state()
         );
+        controller.start();
+        assertEquals(1, preparation.calls.get());
 
         preparation.release.countDown();
         awaitStopped(controller);
@@ -203,7 +233,8 @@ class WorkerRunControllerTest {
     }
 
     @Test
-    void stopRequestsCurrentRuntimeTermination() throws Exception {
+    void activeStopRevokesRunAndClosesTransportImmediately()
+            throws Exception {
         RecordingClientCreator networks = new RecordingClientCreator();
         WorkerRunController controller = controller(
                 new ScriptedPreparation(0),
@@ -213,10 +244,48 @@ class WorkerRunControllerTest {
         controller.start();
         FakeTextMessageClient client = networks.awaitClient(0);
         controller.stop();
-        awaitStopped(controller);
 
+        assertEquals(
+                WorkerLifecycle.State.STOPPED,
+                controller.snapshot().state()
+        );
         assertEquals(1, client.closeCalls.get());
         assertEquals(null, controller.snapshot().diagnosticMessage());
+    }
+
+    @Test
+    void activeStopDoesNotUseBlockedControlExecutor()
+            throws Exception {
+        ExecutorService control = Executors.newSingleThreadExecutor();
+        CountDownLatch blocked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            RecordingClientCreator networks = new RecordingClientCreator();
+            WorkerRunController controller = controller(
+                    new ScriptedPreparation(0),
+                    networks,
+                    control
+            );
+
+            controller.start();
+            FakeTextMessageClient client = networks.awaitClient(0);
+            control.execute(() -> {
+                blocked.countDown();
+                awaitLatch(release);
+            });
+            assertTrue(blocked.await(5, TimeUnit.SECONDS));
+
+            controller.stop();
+
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    controller.snapshot().state()
+            );
+            assertEquals(1, client.closeCalls.get());
+        } finally {
+            release.countDown();
+            control.shutdownNow();
+        }
     }
 
     @Test

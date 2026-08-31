@@ -8,6 +8,8 @@ import java.util.Objects;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -19,24 +21,38 @@ import okio.ByteString;
 final class JavaOkHttpTextWebSocketClient
         implements TextMessageClient {
 
+    private enum Phase {
+        NEW,
+        RUNNING,
+        TERMINAL
+    }
+
     private static final int NORMAL_CLOSE = 1000;
     private static final int UNSUPPORTED_DATA = 1003;
     private static final int INVALID_DATA = 1007;
     private static final int INTERNAL_FAILURE = 1011;
+    private static final long NOT_OPEN = Long.MIN_VALUE;
 
-    private final Object stateLock = new Object();
-    private final Object callbackGate = new Object();
+    private static final ClientState NEW = new ClientState(
+            Phase.NEW,
+            null,
+            null,
+            0
+    );
+    private static final ClientState TERMINAL = new ClientState(
+            Phase.TERMINAL,
+            null,
+            null,
+            0
+    );
+
     private final WebSocketConnector connector;
     private final ScheduledExecutorService networkScheduler;
     private final URI socketUri;
     private final TextMessageReconnectPolicy reconnectPolicy;
-
-    private Listener listener;
-    private ConnectionAttempt currentAttempt;
-    private int unstableAttempts;
-    private boolean running;
-    private boolean closed;
-    private boolean endpointTerminated;
+    private final long stableConnectionNanos;
+    private final AtomicReference<ClientState> currentAttempt =
+            new AtomicReference<>(NEW);
 
     JavaOkHttpTextWebSocketClient(
             OkHttpClient httpClient,
@@ -76,28 +92,32 @@ final class JavaOkHttpTextWebSocketClient
                 reconnectPolicy,
                 "reconnectPolicy"
         );
+        stableConnectionNanos = TimeUnit.MILLISECONDS.toNanos(
+                reconnectPolicy.stableConnectionDuration().toMillis()
+        );
     }
 
     @Override
-    public void start(Listener value) {
-        Objects.requireNonNull(value, "listener");
-        synchronized (stateLock) {
-            if (closed) {
+    public void start(Listener listener) {
+        Objects.requireNonNull(listener, "listener");
+        ClientState running;
+        while (true) {
+            ClientState state = currentAttempt.get();
+            if (state.phase == Phase.TERMINAL) {
                 throw new IllegalStateException(
                         "JavaOkHttpTextWebSocketClient is closed"
                 );
             }
-            if (running) {
+            if (state.phase == Phase.RUNNING) {
                 return;
             }
-            listener = value;
-            running = true;
+            running = ClientState.running(listener, null, 0);
+            if (currentAttempt.compareAndSet(state, running)) {
+                break;
+            }
         }
         if (!execute(this::connect)) {
-            synchronized (stateLock) {
-                running = false;
-                listener = null;
-            }
+            currentAttempt.compareAndSet(running, NEW);
             throw new IllegalStateException(
                     "Unable to start Java WebSocket client"
             );
@@ -107,18 +127,14 @@ final class JavaOkHttpTextWebSocketClient
     @Override
     public boolean send(String message) {
         Objects.requireNonNull(message, "message");
-        WebSocket socket;
-        synchronized (stateLock) {
-            ConnectionAttempt attempt = currentAttempt;
-            if (!running
-                    || closed
-                    || attempt == null
-                    || !attempt.open
-                    || attempt.finished) {
-                return false;
-            }
-            socket = attempt.socket;
+        ClientState state = currentAttempt.get();
+        ConnectionAttempt attempt = state.attempt;
+        if (state.phase != Phase.RUNNING
+                || attempt == null
+                || attempt.openedAtNanos.get() == NOT_OPEN) {
+            return false;
         }
+        WebSocket socket = attempt.socket.get();
         try {
             return socket != null && socket.send(message);
         } catch (RuntimeException error) {
@@ -129,15 +145,13 @@ final class JavaOkHttpTextWebSocketClient
     @Override
     public void closeCurrent(CloseReason reason) {
         Objects.requireNonNull(reason, "reason");
-        ConnectionAttempt attempt;
-        synchronized (stateLock) {
-            attempt = currentAttempt;
-            if (!running || closed || attempt == null) {
-                return;
-            }
+        ClientState state = currentAttempt.get();
+        ConnectionAttempt attempt = state.attempt;
+        if (state.phase != Phase.RUNNING || attempt == null) {
+            return;
         }
         closeSocket(
-                attempt.socket,
+                attempt.socket.get(),
                 closeCode(reason),
                 closeMessage(reason)
         );
@@ -147,36 +161,34 @@ final class JavaOkHttpTextWebSocketClient
     @Override
     public void close() {
         ConnectionAttempt attempt;
-        synchronized (stateLock) {
-            if (closed) {
+        while (true) {
+            ClientState state = currentAttempt.get();
+            if (state.phase == Phase.TERMINAL) {
                 return;
             }
-            closed = true;
-            running = false;
-            attempt = currentAttempt;
-            currentAttempt = null;
-            if (attempt != null) {
-                attempt.finished = true;
-                attempt.open = false;
+            attempt = state.attempt;
+            if (currentAttempt.compareAndSet(state, TERMINAL)) {
+                break;
             }
         }
-        closeAndCancel(attempt == null ? null : attempt.socket);
-        synchronized (callbackGate) {
-            synchronized (stateLock) {
-                listener = null;
-            }
-        }
+        closeAndCancel(attempt == null ? null : attempt.socket.get());
     }
 
     private void connect() {
-        ConnectionAttempt attempt;
-        synchronized (stateLock) {
-            if (!running || closed || currentAttempt != null) {
+        ConnectionAttempt attempt = new ConnectionAttempt();
+        while (true) {
+            ClientState state = currentAttempt.get();
+            if (state.phase != Phase.RUNNING || state.attempt != null) {
                 return;
             }
-            attempt = new ConnectionAttempt();
-            currentAttempt = attempt;
+            if (currentAttempt.compareAndSet(
+                    state,
+                    state.withAttempt(attempt)
+            )) {
+                break;
+            }
         }
+
         try {
             WebSocket socket = Objects.requireNonNull(
                     connector.connect(
@@ -185,14 +197,9 @@ final class JavaOkHttpTextWebSocketClient
                     ),
                     "connector returned null"
             );
-            synchronized (stateLock) {
-                if (currentAttempt == attempt && !attempt.finished) {
-                    if (attempt.socket == null) {
-                        attempt.socket = socket;
-                    }
-                } else {
-                    socket.cancel();
-                }
+            attempt.socket.compareAndSet(null, socket);
+            if (!isCurrent(attempt)) {
+                socket.cancel();
             }
         } catch (RuntimeException error) {
             finishAttempt(attempt);
@@ -203,30 +210,28 @@ final class JavaOkHttpTextWebSocketClient
             ConnectionAttempt attempt,
             WebSocket socket
     ) {
-        synchronized (stateLock) {
-            if (!isCurrentLocked(attempt)) {
-                socket.cancel();
-                return;
-            }
-            attempt.socket = socket;
-            attempt.open = true;
+        attempt.socket.compareAndSet(null, socket);
+        if (!isCurrent(attempt)) {
+            socket.cancel();
+            return;
         }
-        scheduleStable(attempt);
+        attempt.openedAtNanos.compareAndSet(
+                NOT_OPEN,
+                System.nanoTime()
+        );
         emit(attempt, Listener::onOpen);
     }
 
     private void message(ConnectionAttempt attempt, String text) {
-        emit(attempt, callback -> callback.onMessage(text));
+        emit(attempt, listener -> listener.onMessage(text));
     }
 
     private void binary(ConnectionAttempt attempt) {
-        synchronized (stateLock) {
-            if (!isOpenLocked(attempt)) {
-                return;
-            }
+        if (!isCurrentOpen(attempt)) {
+            return;
         }
         closeSocket(
-                attempt.socket,
+                attempt.socket.get(),
                 UNSUPPORTED_DATA,
                 "Text messages only"
         );
@@ -239,10 +244,8 @@ final class JavaOkHttpTextWebSocketClient
             int code,
             String reason
     ) {
-        synchronized (stateLock) {
-            if (!isCurrentLocked(attempt)) {
-                return;
-            }
+        if (!isCurrent(attempt)) {
+            return;
         }
         if (!closeSocket(socket, code, reason)) {
             finishAttempt(attempt);
@@ -250,88 +253,68 @@ final class JavaOkHttpTextWebSocketClient
     }
 
     private void finishAttempt(ConnectionAttempt attempt) {
-        boolean terminate;
-        synchronized (stateLock) {
-            if (!isCurrentLocked(attempt)) {
+        while (true) {
+            ClientState state = currentAttempt.get();
+            if (state.phase != Phase.RUNNING
+                    || state.attempt != attempt) {
                 return;
             }
-            attempt.finished = true;
-            attempt.open = false;
-            currentAttempt = null;
-            if (!running || closed) {
-                return;
-            }
-            unstableAttempts++;
-            terminate = unstableAttempts
+            int unstableAttempts = isStable(attempt)
+                    ? 1
+                    : state.unstableAttempts + 1;
+            boolean exhausted = unstableAttempts
                     >= reconnectPolicy.maxUnstableAttempts();
-            if (terminate) {
-                running = false;
-                endpointTerminated = true;
+            ClientState next = exhausted
+                    ? TERMINAL
+                    : ClientState.running(
+                            state.listener,
+                            null,
+                            unstableAttempts
+                    );
+            if (!currentAttempt.compareAndSet(state, next)) {
+                continue;
             }
+            if (exhausted) {
+                state.listener.onEndpointTerminated();
+            } else {
+                schedule(
+                        this::connect,
+                        reconnectPolicy.reconnectInterval().toMillis()
+                );
+            }
+            return;
         }
-        if (terminate) {
-            emitEndpointTerminated();
-        } else {
-            schedule(this::connect,
-                    reconnectPolicy.reconnectInterval().toMillis());
-        }
-    }
-
-    private void scheduleStable(ConnectionAttempt attempt) {
-        schedule(
-                () -> {
-                    synchronized (stateLock) {
-                        if (isOpenLocked(attempt)) {
-                            unstableAttempts = 0;
-                        }
-                    }
-                },
-                reconnectPolicy.stableConnectionDuration().toMillis()
-        );
     }
 
     private void emit(
             ConnectionAttempt attempt,
             ListenerCallback callback
     ) {
-        synchronized (callbackGate) {
-            Listener current;
-            synchronized (stateLock) {
-                if (!isOpenLocked(attempt)) {
-                    return;
-                }
-                current = listener;
-            }
-            if (current != null) {
-                callback.invoke(current);
-            }
+        ClientState state = currentAttempt.get();
+        if (state.phase != Phase.RUNNING
+                || state.attempt != attempt
+                || attempt.openedAtNanos.get() == NOT_OPEN) {
+            return;
         }
+        callback.invoke(state.listener);
     }
 
-    private void emitEndpointTerminated() {
-        synchronized (callbackGate) {
-            Listener current;
-            synchronized (stateLock) {
-                if (closed || !endpointTerminated) {
-                    return;
-                }
-                current = listener;
-            }
-            if (current != null) {
-                current.onEndpointTerminated();
-            }
-        }
+    private boolean isCurrent(ConnectionAttempt attempt) {
+        ClientState state = currentAttempt.get();
+        return state.phase == Phase.RUNNING
+                && state.attempt == attempt;
     }
 
-    private boolean isCurrentLocked(ConnectionAttempt attempt) {
-        return !closed
-                && running
-                && currentAttempt == attempt
-                && !attempt.finished;
+    private boolean isCurrentOpen(ConnectionAttempt attempt) {
+        return isCurrent(attempt)
+                && attempt.openedAtNanos.get() != NOT_OPEN;
     }
 
-    private boolean isOpenLocked(ConnectionAttempt attempt) {
-        return isCurrentLocked(attempt) && attempt.open;
+    private boolean isStable(ConnectionAttempt attempt) {
+        long openedAt = attempt.openedAtNanos.get();
+        return openedAt != NOT_OPEN
+                && System.nanoTime() - openedAt
+                        >= stableConnectionNanos;
     }
 
     private boolean execute(Runnable action) {
@@ -406,11 +389,49 @@ final class JavaOkHttpTextWebSocketClient
         }
     }
 
+    private static final class ClientState {
+
+        private final Phase phase;
+        private final Listener listener;
+        private final ConnectionAttempt attempt;
+        private final int unstableAttempts;
+
+        private ClientState(
+                Phase phase,
+                Listener listener,
+                ConnectionAttempt attempt,
+                int unstableAttempts
+        ) {
+            this.phase = phase;
+            this.listener = listener;
+            this.attempt = attempt;
+            this.unstableAttempts = unstableAttempts;
+        }
+
+        private static ClientState running(
+                Listener listener,
+                ConnectionAttempt attempt,
+                int unstableAttempts
+        ) {
+            return new ClientState(
+                    Phase.RUNNING,
+                    listener,
+                    attempt,
+                    unstableAttempts
+            );
+        }
+
+        private ClientState withAttempt(ConnectionAttempt value) {
+            return running(listener, value, unstableAttempts);
+        }
+    }
+
     private static final class ConnectionAttempt {
 
-        private WebSocket socket;
-        private boolean open;
-        private boolean finished;
+        private final AtomicReference<WebSocket> socket =
+                new AtomicReference<>();
+        private final AtomicLong openedAtNanos =
+                new AtomicLong(NOT_OPEN);
     }
 
     @FunctionalInterface
@@ -450,6 +471,8 @@ final class JavaOkHttpTextWebSocketClient
         }
         try {
             socket.close(NORMAL_CLOSE, "Worker stopped");
+        } catch (RuntimeException ignored) {
+            // Cancellation below is the terminal fallback.
         } finally {
             socket.cancel();
         }

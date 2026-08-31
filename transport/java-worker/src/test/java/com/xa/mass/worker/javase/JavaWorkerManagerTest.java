@@ -20,7 +20,11 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -162,12 +166,12 @@ class JavaWorkerManagerTest {
     }
 
     @Test
-    void groupStartDoesNotPartiallyChangeDesiredStateWhileReplicaStops() {
+    void groupStartContinuesAfterReplicaConflict() {
         FakeWorker first = new FakeWorker("first", new ArrayList<>());
         FakeWorker second = new FakeWorker("second", new ArrayList<>());
         JavaWorkerManager manager = manager(first, second);
         try {
-            manager.start();
+            manager.start("client-1");
             first.deferStop = true;
             manager.stop("client-1");
 
@@ -178,6 +182,132 @@ class JavaWorkerManagerTest {
             assertEquals(1, first.startCalls.get());
             assertEquals(1, second.startCalls.get());
         } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void keyedOperationsOnDifferentReplicasDoNotShareAGate()
+            throws Exception {
+        FakeWorker first = new FakeWorker("first", new ArrayList<>());
+        FakeWorker second = new FakeWorker("second", new ArrayList<>());
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        first.blockStart(firstEntered, releaseFirst);
+        JavaWorkerManager manager = manager(first, second);
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> blocked = callers.submit(
+                    () -> manager.start("client-1")
+            );
+            assertTrue(firstEntered.await(1, TimeUnit.SECONDS));
+
+            Future<?> independent = callers.submit(
+                    () -> manager.start("client-2")
+            );
+            independent.get(1, TimeUnit.SECONDS);
+
+            assertEquals(1, second.startCalls.get());
+            releaseFirst.countDown();
+            blocked.get(1, TimeUnit.SECONDS);
+        } finally {
+            releaseFirst.countDown();
+            callers.shutdownNow();
+            manager.close();
+        }
+    }
+
+    @Test
+    void explicitReconcileConvergesCurrentConcurrentIntent()
+            throws Exception {
+        FakeWorker worker = new FakeWorker("worker", new ArrayList<>());
+        CountDownLatch startEntered = new CountDownLatch(1);
+        CountDownLatch releaseStart = new CountDownLatch(1);
+        worker.blockStart(startEntered, releaseStart);
+        JavaWorkerManager manager = manager(worker);
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> starting = caller.submit(
+                    () -> manager.start("client-1")
+            );
+            assertTrue(startEntered.await(1, TimeUnit.SECONDS));
+
+            manager.stop("client-1");
+            releaseStart.countDown();
+            starting.get(1, TimeUnit.SECONDS);
+            manager.reconcile("client-1");
+
+            assertEquals(false, manager.desiredRunning("client-1"));
+            assertEquals(
+                    WorkerLifecycle.State.STOPPED,
+                    manager.snapshot("client-1").state()
+            );
+            assertEquals(1, worker.startCalls.get());
+            assertEquals(1, worker.stopCalls.get());
+        } finally {
+            releaseStart.countDown();
+            caller.shutdownNow();
+            manager.close();
+        }
+    }
+
+    @Test
+    void groupOperationAggregatesFailuresAndContinuesAllReplicas() {
+        FakeWorker first = new FakeWorker("first", new ArrayList<>());
+        FakeWorker second = new FakeWorker("second", new ArrayList<>());
+        FakeWorker third = new FakeWorker("third", new ArrayList<>());
+        first.failStart = true;
+        second.failStart = true;
+        JavaWorkerManager manager = manager(first, second, third);
+        try {
+            IllegalStateException failure = assertThrows(
+                    IllegalStateException.class,
+                    manager::start
+            );
+
+            assertEquals("start first", failure.getMessage());
+            assertEquals(1, failure.getSuppressed().length);
+            assertEquals(
+                    "start second",
+                    failure.getSuppressed()[0].getMessage()
+            );
+            assertEquals(1, third.startCalls.get());
+        } finally {
+            manager.close();
+        }
+    }
+
+    @Test
+    void closeRejectsNewEntryWhileReverseTeardownContinues()
+            throws Exception {
+        List<String> events = new ArrayList<>();
+        FakeWorker first = new FakeWorker("first", events);
+        FakeWorker second = new FakeWorker("second", events);
+        CountDownLatch closeEntered = new CountDownLatch(1);
+        CountDownLatch releaseClose = new CountDownLatch(1);
+        second.blockClose(closeEntered, releaseClose);
+        JavaWorkerManager manager = manager(first, second);
+        JavaWorkerPlatform platform = managerPlatform(manager);
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> closing = caller.submit(manager::close);
+            assertTrue(closeEntered.await(1, TimeUnit.SECONDS));
+
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> manager.start("client-1")
+            );
+            releaseClose.countDown();
+            closing.get(1, TimeUnit.SECONDS);
+
+            assertEquals(
+                    List.of("close:second", "close:first"),
+                    events
+            );
+            assertTrue(controlExecutor(platform).isShutdown());
+        } finally {
+            releaseClose.countDown();
+            caller.shutdownNow();
             manager.close();
         }
     }
@@ -367,6 +497,14 @@ class JavaWorkerManagerTest {
         return (ExecutorService) field.get(platform);
     }
 
+    private static JavaWorkerPlatform managerPlatform(
+            JavaWorkerManager manager
+    ) throws Exception {
+        Field field = JavaWorkerManager.class.getDeclaredField("platform");
+        field.setAccessible(true);
+        return (JavaWorkerPlatform) field.get(manager);
+    }
+
     private static final class FakeWorker implements WorkerLifecycle {
 
         private final String name;
@@ -375,10 +513,15 @@ class JavaWorkerManagerTest {
         private final AtomicInteger stopCalls = new AtomicInteger();
         private final Map<Listener, Boolean> listeners =
                 new LinkedHashMap<>();
-        private State state = State.STOPPED;
-        private boolean failClose;
-        private boolean deferStop;
-        private boolean closed;
+        private volatile State state = State.STOPPED;
+        private volatile boolean failStart;
+        private volatile boolean failClose;
+        private volatile boolean deferStop;
+        private volatile boolean closed;
+        private volatile CountDownLatch startEntered;
+        private volatile CountDownLatch startRelease;
+        private volatile CountDownLatch closeEntered;
+        private volatile CountDownLatch closeRelease;
 
         private FakeWorker(String name, List<String> events) {
             this.name = name;
@@ -391,8 +534,27 @@ class JavaWorkerManagerTest {
                 throw new IllegalStateException("closed");
             }
             startCalls.incrementAndGet();
+            CountDownLatch entered = startEntered;
+            CountDownLatch release = startRelease;
+            if (entered != null) {
+                entered.countDown();
+            }
+            if (release != null) {
+                awaitLatch(release);
+            }
+            if (failStart) {
+                throw new IllegalStateException("start " + name);
+            }
             state = State.RUNNING;
             publish();
+        }
+
+        private void blockStart(
+                CountDownLatch entered,
+                CountDownLatch release
+        ) {
+            startEntered = entered;
+            startRelease = release;
         }
 
         @Override
@@ -436,15 +598,46 @@ class JavaWorkerManagerTest {
             }
             closed = true;
             events.add("close:" + name);
+            CountDownLatch entered = closeEntered;
+            CountDownLatch release = closeRelease;
+            if (entered != null) {
+                entered.countDown();
+            }
+            if (release != null) {
+                awaitLatch(release);
+            }
             if (failClose) {
                 throw new IllegalStateException("close " + name);
             }
+        }
+
+        private void blockClose(
+                CountDownLatch entered,
+                CountDownLatch release
+        ) {
+            closeEntered = entered;
+            closeRelease = release;
         }
 
         private void publish() {
             for (Listener listener : listeners.keySet()) {
                 listener.onSnapshot(snapshot());
             }
+        }
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException error) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 }

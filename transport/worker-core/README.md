@@ -26,7 +26,9 @@ Redis, or Kernel scheduling.
 WorkerRunController
   -> one asynchronous start request on a platform-injected Control Executor
   -> exactly one Preparation per accepted start
-  -> one current TextMessageWorkerTransport
+  -> one short owner-local run state and at most one installed Transport
+  -> discarded Prepare results and stale Transport callbacks cannot install
+     or end another run
   -> STOPPED/RUNNING observation
 
 TextMessageWorkerTransportFactory
@@ -38,11 +40,12 @@ TextMessageWorkerTransport
   -> direct Adapter connection-close termination
   -> synchronous Dispatcher execution
   -> one-shot DeliveryReport send
-  -> exact-once endpoint termination
+  -> direct terminal callback delegated to the current Run owner
 
 TextMessageClient
   -> protocol connection and framing
-  -> ordered, non-overlapping Listener callbacks
+  -> protocol read order within one physical connection
+  -> terminal close with no callback-completion guarantee
   -> bounded reconnect within one prepared Endpoint
 
 WorkerCommandDispatcher
@@ -52,8 +55,9 @@ WorkerCommandDispatcher
 ```
 
 Core creates or closes no execution resource. `WorkerRunController` submits
-start and stop work only to its injected Control `Executor`; platform
-assemblies own that Executor and all networking threads.
+only Preparation to its injected Control `Executor`; active stop revokes the
+run and closes its Client directly outside the state gate. Platform assemblies
+own that Executor and all networking threads.
 
 ## Message Path
 
@@ -70,11 +74,12 @@ Client protocol callback
   -> one send attempt on the current connection
 ```
 
-The Client contract serializes Listener callbacks for one Client. Therefore a
-single Worker connection processes Commands in callback order without a Core
-queue or Command executor. Different Worker connections can execute on their
-respective protocol callback threads, so Definitions shared by Worker
-instances must still be thread-safe.
+A physical Client connection preserves its protocol read order, so its
+callbacks directly process Commands without a Core queue or Command executor.
+Core does not serialize callbacks across replaced physical Attempts or Worker
+runs. A callback admitted before close may finish after the Run is revoked,
+and a new Run may execute concurrently with that old Handler. Definitions and
+side effects shared by Worker instances or runs must therefore be thread-safe.
 
 `WorkerCommandDispatcher` compares the Command deadline with the local system
 epoch-millisecond clock, resolves the immutable `messageType` Event Name, and
@@ -158,7 +163,7 @@ RUNNING
   -> PreparedWorker(workerId, endpointUri)
   -> create and start one TextMessageWorkerTransport
   -> Client reconnects within that Endpoint budget
-  -> exact-once Transport terminal callback
+  -> current Transport identity accepts one terminal transition
   -> STOPPED
 ```
 
@@ -182,22 +187,33 @@ Preparation, schedule restart, or persist the Endpoint URI. A Host may
 explicitly call `start()` again. Temporary disconnects remain inside the
 current `TextMessageClient` and reuse the current URI.
 
-`stop()` first prevents new Commands and closes the Client. A Handler already
-running on the Client callback completes, but its Result is discarded; the
-Transport then terminates exactly once. `close()` is terminal and follows the
-same Client callback fence. There is no cross-run pending Result.
+During Preparation, `stop()` marks that one side-effectful Prepare result for
+discard and keeps the call single-flight until it returns; no Transport can be
+installed from that result. This is control-call convergence, not a paused
+Worker. After a Transport is installed, `stop()` first commits `STOPPED` and
+detaches the current Transport, then closes its Client outside the state gate.
+It does not enter the Control Executor or wait for Adapter acknowledgement.
+The Java WebSocket Client also does not wait for a Handler or Transport
+callback: an admitted Handler may finish later and its Result uses the old
+Client best-effort. `close()` is terminal, closes Preparation and the current
+Client, and Core adds no callback-completion fence or cross-run pending Result.
 
 ## Lifecycle
 
 `WorkerLifecycle` exposes `start`, `stop`, `close`, `snapshot`, and Listener
-registration. `start()` and `stop()` are non-blocking requests. Its observable
-state is only `STOPPED / RUNNING`; `RUNNING` includes a queued or executing
-Preparation, Client connection and reconnect, Handler execution, and
-cooperative stop. It does not assert physical connectivity, Adapter route
-verification, Kernel online truth, or scheduling availability.
+registration. `start()` submits control work without waiting for Prepare;
+active `stop()` commits its state before Client teardown. Its observable state
+is only `STOPPED / RUNNING`; `RUNNING` includes a queued or executing
+Preparation, a discarded Prepare result waiting for that one call to return,
+Client connection and reconnect, and synchronous Handler execution. An active
+stop commits `STOPPED` directly; endpoint exhaustion and Adapter close Commands
+also end the current run. The state does not assert physical connectivity,
+Adapter route verification, Kernel online truth, scheduling availability, or
+pause state.
 
-Lifecycle Listener calls are synchronous level observations outside the
-lifecycle lock. Notifications may repeat; `snapshot()` is authoritative.
+Lifecycle Listener calls are synchronous best-effort level observations after
+the owner transition. Notifications may repeat or race; `snapshot()` is
+authoritative.
 Hosts move UI or blocking observation work to their own platform execution
 mechanism.
 
@@ -205,9 +221,11 @@ There is no local Command injection or Properties-refresh lifecycle method.
 Platform and extension capabilities use statically assembled
 `WorkerEventDefinition` values delivered through ordinary `DeliveryCommand`
 messages. SYSTEM and TASK Commands share the same immutable Event Name map and
-serialized Client callback lane. A Direct Command therefore cannot preempt an
-already running TASK Handler. Worker Core neither reads score nor implements
-authority priority; a synchronous Handler must remain bounded and thread-safe.
+physical connection callback path. A Direct Command cannot preempt a TASK
+Handler already executing on that same physical protocol path, but Core does
+not prevent overlap with a replaced Attempt or a newly started Run. Worker
+Core neither reads score nor implements authority priority; a synchronous
+Handler must remain bounded and thread-safe.
 
 ## Client Boundary
 
@@ -216,14 +234,17 @@ JDK-type-only `WorkerControlClient`. Per-run Client creation remains local to
 `TextMessageWorkerTransportFactory` because the Endpoint URI is only known
 after preparation.
 Concrete Clients own I/O, framing, reconnect timers, physical-attempt
-filtering, and callback serialization. Their expensive infrastructure comes
-from the platform assembly; closing one Client closes only that connection.
+filtering, and callback admission. Their expensive infrastructure comes from
+the platform assembly; closing one Client closes only that connection.
 
 `TextMessageClient.Listener` exposes only `onOpen`, `onMessage`, and
-exact-once `onEndpointTerminated`. A Client suppresses superseded physical
-connection callbacks. External `close()` waits for a callback already in
-progress; reentrant close from that callback is permitted. `send()` reports
-only whether the current network stack accepted the frame.
+`onEndpointTerminated`. A Client suppresses callbacks not yet admitted from
+superseded physical connections. `close()` establishes no callback-
+completion fence; callbacks already admitted may finish naturally, including
+a callback that closes its own Client. The Java WebSocket implementation
+returns immediately after committing terminal state and requesting socket
+teardown. Different physical Attempts are not globally serialized. `send()`
+reports only whether the current network stack accepted the frame.
 
 `TextMessageReconnectPolicy` defaults to 20 unstable attempts, a 500
 millisecond interval, and a 10 second stable window. The threadless

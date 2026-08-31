@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import okhttp3.Dispatcher;
@@ -26,7 +27,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
     private final ExecutorService controlExecutor;
     private final ScheduledExecutorService networkScheduler;
     private final ExecutorService socketExecutor;
-    private boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     private JavaWorkerPlatform(
             OkHttpClient httpClient,
@@ -124,12 +125,12 @@ final class JavaWorkerPlatform implements AutoCloseable {
         }
     }
 
-    synchronized Executor controlExecutor() {
+    Executor controlExecutor() {
         requireOpen();
         return controlExecutor;
     }
 
-    synchronized WorkerControlClient controlClient(
+    WorkerControlClient controlClient(
             URI runtimeApiBaseUrl
     ) {
         requireOpen();
@@ -139,7 +140,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
         );
     }
 
-    synchronized TextMessageClient textClient(
+    TextMessageClient textClient(
             WorkerTransportType transportType,
             URI endpointUri,
             Duration requestTimeout,
@@ -187,11 +188,10 @@ final class JavaWorkerPlatform implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) {
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
         socketExecutor.shutdownNow();
         networkScheduler.shutdownNow();
         controlExecutor.shutdownNow();
@@ -199,7 +199,7 @@ final class JavaWorkerPlatform implements AutoCloseable {
     }
 
     private void requireOpen() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException("Java Worker platform is closed");
         }
     }

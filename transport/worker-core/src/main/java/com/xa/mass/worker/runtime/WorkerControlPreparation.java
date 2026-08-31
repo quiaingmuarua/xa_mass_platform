@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Loads complete Worker Properties and performs one control preparation. */
 public final class WorkerControlPreparation implements WorkerPreparation {
@@ -20,7 +21,7 @@ public final class WorkerControlPreparation implements WorkerPreparation {
     private final WorkerPropertiesProvider propertiesProvider;
     private final WorkerControlClient controlClient;
     private final Duration requestTimeout;
-    private boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     public WorkerControlPreparation(
             String workerGroupId,
@@ -52,7 +53,7 @@ public final class WorkerControlPreparation implements WorkerPreparation {
     }
 
     @Override
-    public synchronized PreparedWorker prepare() throws Exception {
+    public PreparedWorker prepare() throws Exception {
         requireOpen();
         Map<String, Object> properties = immutableProperties(
                 propertiesProvider.loadProperties()
@@ -69,16 +70,15 @@ public final class WorkerControlPreparation implements WorkerPreparation {
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) {
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
         controlClient.close();
     }
 
     private void requireOpen() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException(
                     "WorkerControlPreparation is closed"
             );

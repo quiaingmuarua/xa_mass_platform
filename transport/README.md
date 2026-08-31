@@ -19,8 +19,8 @@ module map and common implementation boundaries.
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
-  -> WorkerPreparation + two-state WorkerRunController + single-run Transport
-  -> synchronous single Preparation on the Host calling thread
+  -> WorkerPreparation + owner-local two-state WorkerRunController
+  -> one Preparation per accepted start on an injected Control Executor
   -> synchronous WorkerCommandExecutor and TextMessageClient ports
   -> Polling remains a separate request-response mechanism
   -> network Client, Properties, and one-shot Prepare contracts
@@ -63,16 +63,21 @@ reconnect, the package-private Transport owns identity/Command/Result protocol, 
 `WorkerRunController` owns only the two-state Worker run. Java and Android
 hosts compose `WorkerControlPreparation` with one Controller and expose the
 same `WorkerLifecycle` contract. One accepted `start()` performs exactly one
-Preparation synchronously and, if successful, starts one reconnecting endpoint
-Client. Platform modules provide the one-shot control Client, concrete network
-Clients, shared network resources, and any asynchronous Host scheduling. A Client's
-ordered protocol callback synchronously enters the Transport, Dispatcher, and
-Handler; there is no long-connection Command executor or queue. Worker Core
-creates and closes no thread, executor, or scheduler.
+Preparation on the injected Control Executor and, if successful, starts one
+reconnecting endpoint Client. Platform modules provide the one-shot control
+Client, concrete network Clients, shared network resources, and asynchronous
+execution. A physical connection's protocol callback synchronously enters the
+Transport, Dispatcher, and Handler; there is no long-connection Command
+executor or queue. The Java WebSocket Client closes without waiting for an
+admitted callback, and Core adds no cross-Attempt or cross-run Handler fence.
+Worker Core creates and closes no thread, executor, or scheduler.
 Preparation failure or Client reconnect exhaustion ends that run; only another
-explicit Host `start()` prepares again. Reconnect and physical connection state are not Worker
-lifecycle events or queries. No Endpoint URI or Worker business message is
-persisted.
+explicit Host `start()` prepares again. Active stop revokes the run before
+closing its Client outside the run-state gate; the Java WebSocket Client does
+not wait for callback completion. Reconnect and physical connection state are
+not Worker lifecycle events or queries. Worker
+owns no pause or delivery-admission state; those remain Kernel and Adapter
+concerns. No Endpoint URI or Worker business message is persisted.
 The Netty Adapter is Netty-specific rather than a generic transport framework.
 Its shared connection mechanism owns identity, route verification, Command
 routing, and Result ingress; its WebSocket and Socket Servers independently

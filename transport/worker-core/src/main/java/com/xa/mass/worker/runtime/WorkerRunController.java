@@ -18,19 +18,19 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private enum Phase {
         STOPPED,
-        STARTING,
+        PREPARING,
         ACTIVE,
-        STOPPING,
         CLOSED
     }
 
-    private final Object lock = new Object();
+    private final Object stateLock = new Object();
     private final WorkerPreparation preparation;
     private final TextMessageWorkerTransportFactory transportFactory;
     private final Executor controlExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
 
     private Phase phase = Phase.STOPPED;
+    private boolean discardPreparedResult;
     private PreparedWorker preparedWorker;
     private TextMessageWorkerTransport activeTransport;
     private String diagnosticMessage;
@@ -56,7 +56,7 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     @Override
     public void start() {
-        synchronized (lock) {
+        synchronized (stateLock) {
             if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
                         "WorkerRunController is closed"
@@ -65,7 +65,8 @@ public final class WorkerRunController implements WorkerLifecycle {
             if (phase != Phase.STOPPED) {
                 return;
             }
-            phase = Phase.STARTING;
+            phase = Phase.PREPARING;
+            discardPreparedResult = false;
             preparedWorker = null;
             activeTransport = null;
             diagnosticMessage = null;
@@ -81,30 +82,30 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     @Override
     public void stop() {
-        TextMessageWorkerTransport transport;
-        synchronized (lock) {
-            if (phase == Phase.STOPPED
-                    || phase == Phase.STOPPING
-                    || phase == Phase.CLOSED) {
-                return;
+        TextMessageWorkerTransport transport = null;
+        boolean changed = false;
+        synchronized (stateLock) {
+            if (phase == Phase.PREPARING) {
+                if (!discardPreparedResult) {
+                    discardPreparedResult = true;
+                    changed = true;
+                }
+            } else if (phase == Phase.ACTIVE) {
+                transport = activeTransport;
+                activeTransport = null;
+                transitionStoppedLocked(null);
+                changed = true;
             }
-            phase = Phase.STOPPING;
-            transport = activeTransport;
         }
-        publish();
-        if (transport != null) {
-            try {
-                controlExecutor.execute(transport::requestStop);
-            } catch (RuntimeException | Error failure) {
-                transport.requestStop();
-                throw failure;
-            }
+        closeQuietly(transport);
+        if (changed) {
+            publish();
         }
     }
 
     @Override
     public Snapshot snapshot() {
-        synchronized (lock) {
+        synchronized (stateLock) {
             return new Snapshot(
                     lifecycleStateLocked(),
                     preparedWorker == null
@@ -121,7 +122,7 @@ public final class WorkerRunController implements WorkerLifecycle {
     @Override
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
-        synchronized (lock) {
+        synchronized (stateLock) {
             if (phase == Phase.CLOSED) {
                 throw new IllegalStateException(
                         "WorkerRunController is closed"
@@ -142,11 +143,12 @@ public final class WorkerRunController implements WorkerLifecycle {
     @Override
     public void close() {
         TextMessageWorkerTransport transport;
-        synchronized (lock) {
+        synchronized (stateLock) {
             if (phase == Phase.CLOSED) {
                 return;
             }
             phase = Phase.CLOSED;
+            discardPreparedResult = false;
             transport = activeTransport;
             activeTransport = null;
             preparedWorker = null;
@@ -165,15 +167,11 @@ public final class WorkerRunController implements WorkerLifecycle {
         TextMessageWorkerTransport transport = null;
         boolean installed = false;
         try {
-            if (abortStartIfRequested()) {
-                return;
-            }
-
             PreparedWorker prepared = Objects.requireNonNull(
                     preparation.prepare(),
                     "preparation returned null"
             );
-            if (abortStartIfRequested()) {
+            if (finishDiscardedPreparation()) {
                 return;
             }
 
@@ -181,7 +179,6 @@ public final class WorkerRunController implements WorkerLifecycle {
                     prepared,
                     this::transportTerminated
             );
-
             installed = installTransport(prepared, transport);
             if (!installed) {
                 return;
@@ -196,7 +193,6 @@ public final class WorkerRunController implements WorkerLifecycle {
                 failStart(error);
             }
             rethrowError(error);
-            return;
         } finally {
             if (!installed) {
                 closeQuietly(transport);
@@ -206,11 +202,13 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private void rejectStart(Throwable failure) {
         boolean stopped = false;
-        synchronized (lock) {
-            if (phase == Phase.STARTING) {
+        synchronized (stateLock) {
+            if (phase == Phase.PREPARING) {
                 transitionStoppedLocked(
-                        "Worker start request rejected: "
-                                + safeFailureType(failure)
+                        discardPreparedResult
+                                ? null
+                                : "Worker start request rejected: "
+                                        + safeFailureType(failure)
                 );
                 stopped = true;
             }
@@ -225,13 +223,15 @@ public final class WorkerRunController implements WorkerLifecycle {
             TextMessageWorkerTransport transport
     ) {
         boolean stopped = false;
-        synchronized (lock) {
-            if (phase == Phase.STARTING) {
+        synchronized (stateLock) {
+            if (phase == Phase.PREPARING
+                    && !discardPreparedResult) {
                 activeTransport = transport;
                 preparedWorker = prepared;
                 phase = Phase.ACTIVE;
                 return true;
-            } else if (phase == Phase.STOPPING) {
+            }
+            if (phase == Phase.PREPARING) {
                 transitionStoppedLocked(null);
                 stopped = true;
             }
@@ -244,15 +244,14 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private void failStart(Throwable error) {
         boolean stopped = false;
-        synchronized (lock) {
-            if (phase == Phase.STARTING) {
+        synchronized (stateLock) {
+            if (phase == Phase.PREPARING) {
                 transitionStoppedLocked(
-                        "Worker start failed: "
-                                + safeFailureType(error)
+                        discardPreparedResult
+                                ? null
+                                : "Worker start failed: "
+                                        + safeFailureType(error)
                 );
-                stopped = true;
-            } else if (phase == Phase.STOPPING) {
-                transitionStoppedLocked(null);
                 stopped = true;
             }
         }
@@ -261,13 +260,14 @@ public final class WorkerRunController implements WorkerLifecycle {
         }
     }
 
-    private boolean abortStartIfRequested() {
+    private boolean finishDiscardedPreparation() {
         boolean stopped = false;
-        synchronized (lock) {
-            if (phase == Phase.STARTING) {
+        synchronized (stateLock) {
+            if (phase == Phase.PREPARING
+                    && !discardPreparedResult) {
                 return false;
             }
-            if (phase == Phase.STOPPING) {
+            if (phase == Phase.PREPARING) {
                 transitionStoppedLocked(null);
                 stopped = true;
             }
@@ -283,20 +283,16 @@ public final class WorkerRunController implements WorkerLifecycle {
             Throwable failure
     ) {
         boolean current;
-        synchronized (lock) {
-            current = activeTransport == transport
-                    && (phase == Phase.ACTIVE
-                    || phase == Phase.STOPPING);
+        synchronized (stateLock) {
+            current = phase == Phase.ACTIVE
+                    && activeTransport == transport;
             if (current) {
-                boolean requestedStop = phase == Phase.STOPPING;
                 activeTransport = null;
                 transitionStoppedLocked(
-                        requestedStop
-                                ? null
-                                : failure == null
-                                        ? "Endpoint terminated"
-                                        : "Worker transport failed: "
-                                                + safeFailureType(failure)
+                        failure == null
+                                ? "Endpoint terminated"
+                                : "Worker transport failed: "
+                                        + safeFailureType(failure)
                 );
             }
         }
@@ -308,6 +304,7 @@ public final class WorkerRunController implements WorkerLifecycle {
 
     private void transitionStoppedLocked(String message) {
         phase = Phase.STOPPED;
+        discardPreparedResult = false;
         preparedWorker = null;
         diagnosticMessage = message;
     }

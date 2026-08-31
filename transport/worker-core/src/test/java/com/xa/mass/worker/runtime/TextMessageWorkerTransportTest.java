@@ -283,7 +283,7 @@ class TextMessageWorkerTransportTest {
         assertSame(failure, thrown);
         assertEquals(1, client.sent.size());
         assertTrue(client.closeReasons.isEmpty());
-        transport.requestStop();
+        transport.close();
     }
 
     @Test
@@ -430,7 +430,7 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void stopDropsResultFromAlreadyStartedHandler() throws Exception {
+    void closeDropsResultFromAlreadyStartedHandler() throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         FakeTextMessageClient client = new FakeTextMessageClient();
@@ -453,13 +453,13 @@ class TextMessageWorkerTransportTest {
             ));
             assertTrue(entered.await(5, TimeUnit.SECONDS));
 
-            transport.requestStop();
-            assertEquals(1, listener.terminations.get());
+            transport.close();
+            assertEquals(0, listener.terminations.get());
             assertEquals(1, client.closeCalls.get());
 
             release.countDown();
             handling.get(5, TimeUnit.SECONDS);
-            assertEquals(1, listener.terminations.get());
+            assertEquals(0, listener.terminations.get());
             assertEquals(1, client.sent.size());
         } finally {
             release.countDown();
@@ -468,7 +468,7 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void endpointTerminationNotifiesExactlyOnceWhileHandlerFinishes()
+    void endpointTerminationDelegatesWhileHandlerFinishes()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -494,11 +494,11 @@ class TextMessageWorkerTransportTest {
 
             client.terminate();
             client.terminate();
-            assertEquals(1, listener.terminations.get());
+            assertEquals(2, listener.terminations.get());
 
             release.countDown();
             handling.get(5, TimeUnit.SECONDS);
-            assertEquals(1, listener.terminations.get());
+            assertEquals(2, listener.terminations.get());
             assertSame(transport, listener.lastTransport.get());
             assertEquals(1, client.sent.size());
         } finally {
@@ -508,7 +508,7 @@ class TextMessageWorkerTransportTest {
     }
 
     @Test
-    void terminalTransportRejectsLateMessages() {
+    void clientSuppressesLateMessagesAfterEndpointTermination() {
         FakeTextMessageClient client = new FakeTextMessageClient();
         AtomicInteger executions = new AtomicInteger();
         RecordingListener listener = new RecordingListener();

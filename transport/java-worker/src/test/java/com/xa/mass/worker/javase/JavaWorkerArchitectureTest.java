@@ -86,6 +86,18 @@ class JavaWorkerArchitectureTest {
                 "execute(() -> message"
         ));
         assertTrue(webSocketClient.contains("message(attempt, text);"));
+        for (String forbidden : new String[]{
+                "callbackGate",
+                "inFlight",
+                "BlockingQueue",
+                "channelId",
+                "runVersion",
+                "PAUSED",
+                "pause(",
+                "resume("
+        }) {
+            assertFalse(webSocketClient.contains(forbidden), forbidden);
+        }
     }
 
     @Test
@@ -177,7 +189,6 @@ class JavaWorkerArchitectureTest {
         assertTrue(manager.contains("extendEventDefinitions("));
         assertFalse(manager.contains("eventDefinitions("));
         assertTrue(manager.contains("WorkerConnectionOptions"));
-        assertTrue(manager.contains("desiredRunning"));
         assertFalse(manager.contains("scheduledStarts"));
         assertFalse(manager.contains("submitStart"));
         assertFalse(manager.contains("class WorkerKey"));
@@ -190,6 +201,10 @@ class JavaWorkerArchitectureTest {
         assertFalse(manager.contains(".schedule("));
         assertFalse(manager.contains("generation"));
         assertFalse(manager.contains("runId"));
+        assertFalse(manager.contains("channelId"));
+        assertFalse(manager.contains("PAUSED"));
+        assertFalse(manager.contains("pause("));
+        assertFalse(manager.contains("resume("));
     }
 
     private static void assertNarrow(String signature) {

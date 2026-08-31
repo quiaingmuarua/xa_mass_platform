@@ -340,8 +340,16 @@ the `WorkerDeliveryAdapter` contract.
   connection identity; there is no runtime Properties-change event.
 - Core may use an injected Control Executor but creates and closes no thread,
   Executor or Scheduler.
-- One Client callback lane serializes Commands. Do not add Command queues,
-  in-flight registries or result caches.
+- Active `stop()` revokes the current run before closing its Client outside
+  the run-state gate. The Java WebSocket Client does not wait for a Handler or
+  Transport callback. Stop during Prepare only discards that single-flight
+  Prepare result; it is not a paused Worker.
+- Worker owns no pause or delivery-admission state. Any future pause remains
+  Kernel scheduling truth and Adapter delivery or Route behavior.
+- One physical Client attempt preserves protocol callback order. Core adds no
+  cross-Attempt or cross-run Handler fence; a callback admitted before close
+  may finish after the run ends. Do not add Command queues, in-flight
+  registries or result caches.
 - Event definitions are keyed by full Event Name and assembled before the
   Transport starts. Host code supplies short capability names through
   `WorkerEventDefinition.extension(...)`; Command `src` is evidence rather

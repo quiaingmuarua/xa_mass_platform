@@ -1,6 +1,7 @@
 package com.xa.mass.worker.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,6 +13,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class WorkerControlPreparationTest {
@@ -84,6 +91,64 @@ class WorkerControlPreparationTest {
         assertThrows(IllegalStateException.class, preparation::prepare);
     }
 
+    @Test
+    void closeCancelsBlockedControlWithoutWaitingForPrepare()
+            throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger closeCalls = new AtomicInteger();
+        WorkerControlClient control = new WorkerControlClient() {
+            @Override
+            public PreparedWorker prepare(
+                    String workerGroupId,
+                    WorkerTransportType transportType,
+                    Map<String, Object> workerProperties,
+                    Duration timeout
+            ) {
+                entered.countDown();
+                awaitLatch(release);
+                return PREPARED;
+            }
+
+            @Override
+            public void close() {
+                closeCalls.incrementAndGet();
+            }
+        };
+        WorkerControlPreparation preparation =
+                new WorkerControlPreparation(
+                        "group-1",
+                        WorkerTransportType.WEBSOCKET,
+                        () -> Map.of(
+                                "clientWorkerKey",
+                                "installation-1"
+                        ),
+                        control,
+                        Duration.ofSeconds(1)
+                );
+        ExecutorService callers = Executors.newFixedThreadPool(2);
+        try {
+            Future<PreparedWorker> preparing =
+                    callers.submit(preparation::prepare);
+            assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+            Future<?> closing = callers.submit(preparation::close);
+            closing.get(1, TimeUnit.SECONDS);
+
+            assertEquals(1, closeCalls.get());
+            assertFalse(preparing.isDone());
+            release.countDown();
+            assertEquals(PREPARED, preparing.get(1, TimeUnit.SECONDS));
+            assertThrows(
+                    IllegalStateException.class,
+                    preparation::prepare
+            );
+        } finally {
+            release.countDown();
+            callers.shutdownNow();
+        }
+    }
+
     private static WorkerControlPreparation preparation(
             WorkerPropertiesProvider propertiesProvider,
             FakeControlClient control
@@ -95,6 +160,21 @@ class WorkerControlPreparationTest {
                 control,
                 Duration.ofSeconds(1)
         );
+    }
+
+    private static void awaitLatch(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try {
+                latch.await();
+                break;
+            } catch (InterruptedException error) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static final class FakeControlClient
