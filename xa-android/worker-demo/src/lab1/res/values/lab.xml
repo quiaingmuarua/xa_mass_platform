@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">XA Mass Android Worker Lab 1</string>
+    <string name="capability_http_url">http://127.0.0.1:18184</string>
+    <integer name="capability_http_port">18184</integer>
+</resources>

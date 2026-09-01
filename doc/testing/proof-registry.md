@@ -155,24 +155,28 @@ stable repository-wide identity.
 
 - **Primary owner:** `:integrations:android-worker-proof`; the shell owns only
   external process choreography.
-- **Claim:** one API 33 Worker proves exact ten-Item Correctness and bounded
-  Convergence after Worker failure, physical route loss, endpoint exhaustion,
-  explicit restart, and App process restart.
-- **Failure model:** Handler failure terminates the run, in-flight route loss
-  cannot recover, endpoint loss auto-restarts, stale serviceability, identity
-  drift, or Task finality loss.
-- **World:** KVM Android Emulator, Redis, Server and Demo APK.
-- **Workload:** ten sequential DELAY Task Items plus named FAIL, in-flight DELAY,
-  Probe and recovery witnesses.
-- **Mutation:** explicit stop/start, Adapter close-current, Server loss and App
-  process restart.
+- **Claim:** one API 33 Debug App proves exact ten-Item lifecycle Correctness and
+  bounded Convergence; three fixed Lab application IDs additionally prove
+  same-Group identity isolation, identity-bounded Property matching, partial
+  process outage and identity-stable recovery.
+- **Failure model:** Handler failure terminates a run, in-flight route loss cannot
+  recover, endpoint loss auto-restarts, one App loss degrades its peers, stale
+  serviceability, identity drift, or Task finality loss.
+- **World:** one KVM Android Emulator with cached-app freezing disabled, Redis,
+  Server, one Debug APK and three Debug-derived Lab APKs in the same
+  WorkerGroup.
+- **Workload:** ten sequential single-App DELAY Items, three Triad-targeted DELAY
+  Items, plus named FAIL, in-flight DELAY, Probe and recovery witnesses.
+- **Mutation:** explicit stop/start, Adapter close-current, Server loss, Debug
+  App process restart and one `lab2` force-stop/restart.
 - **Oracle:** device-local state only establishes local mutations; independent
   Network, Scheduling, Direct Call, `items:call`, and `results:load` APIs prove
   system behavior. Result payloads remain opaque.
 - **Prerequisites:** Linux KVM and Android artifacts.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
-  attempts, transient Score sequence, UI behavior, multi-device compatibility,
-  and physical-device background policy.
+  attempts, transient Score sequence, UI behavior, arbitrary replica counts,
+  multi-device compatibility, cached-process survival, and physical-device
+  background policy.
 - **Command:** `Android Worker Proof` in Proof CI.
 - **CI cost:** high.
 

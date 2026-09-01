@@ -91,6 +91,14 @@
       "reason": "Android test-only changes stay on the deterministic Android Host lane."
     },
     {
+      "path": "xa-android/worker-demo/src/lab2/res/values/lab.xml",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "Android Lab topology resources require deterministic assembly and the fixed three-App emulator proof."
+    },
+    {
       "path": "integrations/worker-correctness/src/main/java/com/xa/mass/integration/workercorrectness/WorkerCorrectnessMain.java",
       "lanes": [
         "jvm_contracts",

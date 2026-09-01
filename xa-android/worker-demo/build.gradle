@@ -18,6 +18,24 @@ android {
         versionName = '0.1.0'
     }
 
+    buildTypes {
+        lab1 {
+            initWith debug
+            applicationIdSuffix = '.lab1'
+            matchingFallbacks = ['debug']
+        }
+        lab2 {
+            initWith debug
+            applicationIdSuffix = '.lab2'
+            matchingFallbacks = ['debug']
+        }
+        lab3 {
+            initWith debug
+            applicationIdSuffix = '.lab3'
+            matchingFallbacks = ['debug']
+        }
+    }
+
     compileOptions {
         coreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11

@@ -4,9 +4,22 @@ set -euo pipefail
 
 workspace=${GITHUB_WORKSPACE:?GITHUB_WORKSPACE must be set}
 proof_root=${ANDROID_WORKER_PROOF_ROOT:-$workspace/build/android-emulator-proof}
-apk=${ANDROID_WORKER_APK:-$proof_root/apk/xa-mass-android-worker-demo-debug.apk}
+apk_root=${ANDROID_WORKER_APK_ROOT:-$proof_root/apk}
+apk=${ANDROID_WORKER_APK:-$apk_root/xa-mass-android-worker-demo-debug.apk}
 application_id=com.xa.mass.integration.androidworker
 activity_component="$application_id/com.xa.mass.android.workerdemo.MainActivity"
+lab_application_ids=(
+    com.xa.mass.integration.androidworker.lab1
+    com.xa.mass.integration.androidworker.lab2
+    com.xa.mass.integration.androidworker.lab3
+)
+lab_apks=(
+    "$apk_root/xa-mass-android-worker-demo-lab1.apk"
+    "$apk_root/xa-mass-android-worker-demo-lab2.apk"
+    "$apk_root/xa-mass-android-worker-demo-lab3.apk"
+)
+lab_ports=(18184 18185 18186)
+lab_outage_index=1
 endpoint_manager_id=scenario-websocket
 server_base_url=http://127.0.0.1:18082
 device_base_url=http://127.0.0.1:18084
@@ -14,6 +27,8 @@ maximum_wait_millis=${ANDROID_WORKER_MAXIMUM_WAIT_MILLIS:-60000}
 scope_base=${XA_MASS_REDIS_SCOPE:-test_android_emulator}
 correctness_scope="${scope_base}_correctness"
 convergence_scope="${scope_base}_convergence"
+triad_correctness_scope="${scope_base}_triad_correctness"
+triad_convergence_scope="${scope_base}_triad_convergence"
 evidence_root="$proof_root/evidence"
 log_root="$proof_root/logs"
 server_pid=
@@ -27,6 +42,9 @@ fi
 
 mkdir -p "$proof_root/data" "$evidence_root" "$log_root"
 test -f "$apk"
+for lab_apk in "${lab_apks[@]}"; do
+    test -f "$lab_apk"
+done
 
 collect_android_log() {
     {
@@ -70,11 +88,19 @@ cleanup() {
     collect_android_log
     stop_process "$server_pid" 15
     adb shell am force-stop "$application_id" >/dev/null 2>&1
+    for lab_application_id in "${lab_application_ids[@]}"; do
+        adb shell am force-stop "$lab_application_id" >/dev/null 2>&1
+    done
     adb forward --remove tcp:18084 >/dev/null 2>&1
+    for lab_port in "${lab_ports[@]}"; do
+        adb forward --remove "tcp:$lab_port" >/dev/null 2>&1
+    done
     adb reverse --remove tcp:18082 >/dev/null 2>&1
     adb reverse --remove tcp:18083 >/dev/null 2>&1
     clear_scope "$correctness_scope"
     clear_scope "$convergence_scope"
+    clear_scope "$triad_correctness_scope"
+    clear_scope "$triad_convergence_scope"
     exit "$status"
 }
 trap cleanup EXIT
@@ -89,6 +115,37 @@ wait_for_url() {
         sleep 1
     done
     return 1
+}
+
+wait_for_android_boot() {
+    adb wait-for-device
+    for _ in $(seq 1 180); do
+        if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; then
+            adb shell input keyevent 82 >/dev/null 2>&1 || true
+            return 0
+        fi
+        sleep 1
+    done
+    echo "Android Emulator did not complete reboot"
+    return 1
+}
+
+disable_cached_app_freezer() {
+    local current
+    current=$(adb shell device_config get \
+        activity_manager_native_boot use_freezer | tr -d '\r')
+    if [ "$current" != "false" ]; then
+        adb shell device_config put \
+            activity_manager_native_boot use_freezer false
+        adb reboot
+        wait_for_android_boot
+    fi
+    current=$(adb shell device_config get \
+        activity_manager_native_boot use_freezer | tr -d '\r')
+    if [ "$current" != "false" ]; then
+        echo "Android cached-app freezer remained enabled"
+        return 1
+    fi
 }
 
 start_server() {
@@ -136,13 +193,34 @@ stop_server_gracefully() {
 }
 
 start_application() {
-    adb shell am start -W -n "$activity_component" >/dev/null
+    start_application_id "$application_id"
+}
+
+start_application_id() {
+    local requested_application_id=$1
+    adb shell am start -W -n \
+        "$requested_application_id/com.xa.mass.android.workerdemo.MainActivity" \
+        >/dev/null
 }
 
 reset_application() {
     adb shell am force-stop "$application_id" >/dev/null 2>&1 || true
     adb shell pm clear "$application_id" >/dev/null
     start_application
+}
+
+reset_triad_applications() {
+    for lab_application_id in "${lab_application_ids[@]}"; do
+        adb shell am force-stop "$lab_application_id" >/dev/null 2>&1 || true
+        adb shell pm clear "$lab_application_id" >/dev/null
+        start_application_id "$lab_application_id"
+    done
+}
+
+stop_triad_applications() {
+    for lab_application_id in "${lab_application_ids[@]}"; do
+        adb shell am force-stop "$lab_application_id" >/dev/null 2>&1 || true
+    done
 }
 
 run_proof_phase() {
@@ -189,10 +267,19 @@ await_process_stop_marker() {
     return 1
 }
 
+disable_cached_app_freezer
+
 adb install -r "$apk" >/dev/null
+for index in "${!lab_apks[@]}"; do
+    adb install -r "${lab_apks[$index]}" >/dev/null
+    adb shell pm path "${lab_application_ids[$index]}" >/dev/null
+done
 adb reverse tcp:18082 tcp:18082 >/dev/null
 adb reverse tcp:18083 tcp:18083 >/dev/null
 adb forward tcp:18084 tcp:18084 >/dev/null
+for lab_port in "${lab_ports[@]}"; do
+    adb forward "tcp:$lab_port" "tcp:$lab_port" >/dev/null
+done
 adb logcat -c
 
 correctness_id=ci-android-worker-correctness
@@ -261,3 +348,52 @@ run_proof_phase \
 adb shell am force-stop "$application_id"
 stop_server_gracefully
 clear_scope "$convergence_scope"
+
+triad_correctness_id=ci-android-worker-triad-correctness
+triad_correctness_evidence="$evidence_root/triad-correctness.json"
+
+start_server triad-correctness "$triad_correctness_scope"
+reset_triad_applications
+run_proof_phase \
+    runAndroidWorkerTriadCorrectness \
+    "$triad_correctness_id" \
+    initial \
+    "$triad_correctness_evidence"
+
+stop_triad_applications
+stop_server_gracefully
+clear_scope "$triad_correctness_scope"
+
+triad_convergence_id=ci-android-worker-triad-convergence-health
+triad_baseline="$evidence_root/triad-convergence-baseline.json"
+triad_outage="$evidence_root/triad-convergence-outage.json"
+triad_recovery="$evidence_root/triad-convergence-recovery.json"
+
+start_server triad-convergence "$triad_convergence_scope"
+reset_triad_applications
+run_proof_phase \
+    runAndroidWorkerTriadConvergenceHealth \
+    "$triad_convergence_id" \
+    baseline \
+    "$triad_baseline"
+
+adb shell am force-stop \
+    "${lab_application_ids[$lab_outage_index]}" >/dev/null
+run_proof_phase \
+    runAndroidWorkerTriadConvergenceHealth \
+    "$triad_convergence_id" \
+    outage \
+    "$triad_outage" \
+    "$triad_baseline"
+
+start_application_id "${lab_application_ids[$lab_outage_index]}"
+run_proof_phase \
+    runAndroidWorkerTriadConvergenceHealth \
+    "$triad_convergence_id" \
+    recovery \
+    "$triad_recovery" \
+    "$triad_baseline"
+
+stop_triad_applications
+stop_server_gracefully
+clear_scope "$triad_convergence_scope"

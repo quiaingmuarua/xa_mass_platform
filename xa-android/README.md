@@ -40,8 +40,8 @@ capability resolver and Handler. It owns no Worker identity or connection
 truth and is not a substitute for the managed Task Call end-to-end proof. The
 path-selected Android Worker Proof relates that local surface to real Worker
 identity, Adapter route, Command/Result, Properties observation, explicit
-lifecycle, endpoint exhaustion, and App process-restart behavior without UI
-automation.
+lifecycle, endpoint exhaustion, App process restart, and a fixed three-App
+same-Group isolation scenario without UI automation.
 Real-device acceptance remains separate for vendor systems, physical Battery
 behavior, and background execution limits.
 

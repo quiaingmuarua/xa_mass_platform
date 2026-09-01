@@ -78,7 +78,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
-            android:text="http://127.0.0.1:18084"
+            android:text="@string/capability_http_url"
             android:textColor="#102A22"
             android:textIsSelectable="true"
             android:textSize="14sp" />

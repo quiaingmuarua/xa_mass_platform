@@ -79,7 +79,7 @@ python .github/scripts/check_proof_selection.py
 | Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
 | Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
-| Android Host | Android Debug tasks plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
+| Android Host | Android Debug/Lab builds plus `:integrations:android-worker-proof:test` | Robolectric, MockWebServer, JDK HttpServer |
 | Android Worker Proof | `Android Worker Proof` in Proof CI | Redis, KVM API 33 Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
 | Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |

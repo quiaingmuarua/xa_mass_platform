@@ -36,6 +36,22 @@ tasks.register('runAndroidWorkerConvergenceHealth', JavaExec) {
     workingDir = project.projectDir
 }
 
+tasks.register('runAndroidWorkerTriadCorrectness', JavaExec) {
+    description = 'Runs the fixed three-application Android correctness proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.androidworkerproof.AndroidWorkerTriadCorrectnessMain'
+    workingDir = project.projectDir
+}
+
+tasks.register('runAndroidWorkerTriadConvergenceHealth', JavaExec) {
+    description = 'Runs one phase of the fixed Android triad convergence proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.androidworkerproof.AndroidWorkerTriadConvergenceHealthMain'
+    workingDir = project.projectDir
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     workingDir = project.projectDir

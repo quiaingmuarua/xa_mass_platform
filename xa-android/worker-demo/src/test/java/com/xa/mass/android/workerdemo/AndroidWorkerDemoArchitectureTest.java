@@ -35,6 +35,9 @@ public class AndroidWorkerDemoArchitectureTest {
         String debugManifest = read(project.resolve(
                 "src/debug/AndroidManifest.xml"
         ));
+        String mainValues = read(project.resolve(
+                "src/main/res/values/strings.xml"
+        ));
         String backupRules = read(project.resolve(
                 "src/main/res/xml/backup_rules.xml"
         ));
@@ -54,14 +57,42 @@ public class AndroidWorkerDemoArchitectureTest {
         ));
         assertFalse(build.contains("project(':transport:worker-core')"));
         assertFalse(build.contains("project(':transport:java-worker')"));
+        for (int index = 1; index <= 3; index++) {
+            assertTrue(build.contains("lab" + index + " {"));
+            assertTrue(build.contains(
+                    "applicationIdSuffix = '.lab" + index + "'"
+            ));
+            assertTrue(read(project.resolve(
+                    "src/lab" + index + "/AndroidManifest.xml"
+            )).contains("android:usesCleartextTraffic=\"true\""));
+            String labValues = read(project.resolve(
+                    "src/lab" + index + "/res/values/lab.xml"
+            ));
+            assertTrue(labValues.contains(
+                    ">XA Mass Android Worker Lab " + index + "<"
+            ));
+            assertTrue(labValues.contains(
+                    ">" + (18_183 + index) + "</integer>"
+            ));
+            assertTrue(labValues.contains(
+                    ">http://127.0.0.1:" + (18_183 + index) + "</string>"
+            ));
+        }
 
         assertTrue(mainManifest.contains("android.permission.INTERNET"));
         assertTrue(mainManifest.contains(
                 "android:name=\".AndroidWorkerDemoApplication\""
         ));
+        assertTrue(mainManifest.contains("android:label=\"@string/app_name\""));
         assertFalse(mainManifest.contains("usesCleartextTraffic"));
         assertTrue(debugManifest.contains(
                 "android:usesCleartextTraffic=\"true\""
+        ));
+        assertTrue(mainValues.contains(
+                "<integer name=\"capability_http_port\">18084</integer>"
+        ));
+        assertTrue(mainValues.contains(
+                ">http://127.0.0.1:18084</string>"
         ));
         assertTrue(backupRules.contains(
                 "path=\"xa-mass-android-worker.xml\""
@@ -76,6 +107,9 @@ public class AndroidWorkerDemoArchitectureTest {
         assertTrue(application.contains("AndroidWorker.create("));
         assertTrue(application.contains("new AndroidWorkerLabEvents()"));
         assertTrue(application.contains("AndroidCapabilityHttpServer.create("));
+        assertTrue(application.contains(
+                "R.integer.capability_http_port"
+        ));
         assertTrue(application.contains("worker.start();"));
         assertTrue(application.contains("worker.close();"));
 

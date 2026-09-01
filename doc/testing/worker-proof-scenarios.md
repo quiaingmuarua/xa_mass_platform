@@ -107,6 +107,30 @@ Each Lab action is issued once. A failed or ambiguous local action is not
 evidence against Adapter or Kernel convergence; the scenario fails at that
 phase rather than retrying or constructing a preferred world.
 
+## Android Emulator: One Worker And Fixed Triad
+
+```text
+World       one API 33 Emulator; one Debug App plus three Lab application IDs
+Topology    one Android Worker per App, one Group, one WebSocket Adapter
+Workload    10 single-App DELAY Items plus 3 Triad-targeted DELAY Items
+Mutation    single-App lifecycle faults plus one lab2 process outage
+Oracle      local mutation evidence, Network, Scheduling, Direct Call and Task
+```
+
+The Debug App remains the Primary Proof for one Android Worker lifecycle:
+explicit stop/start, App restart, Handler failure isolation, Adapter physical
+route loss, endpoint retry exhaustion, Server restart and explicit recovery.
+
+The fixed Triad adds only the multi-process claim. Three application IDs create
+three independent Android sandboxes and worker identities in the same Group.
+Correctness directs one Item to each through a `workerId` candidate bound plus
+the matching `worker.packageName` constraint. Convergence force-stops `lab2`,
+requires `lab1` and `lab3` to remain serviceable, then
+restarts `lab2` and requires its original worker ID. It does not generalize N,
+repeat Server restart, or claim Android background survival. The disposable
+Emulator disables cached-app freezing so platform process policy does not
+invalidate this fixed topology.
+
 ## Capacity: 10,000 Workers
 
 ```text

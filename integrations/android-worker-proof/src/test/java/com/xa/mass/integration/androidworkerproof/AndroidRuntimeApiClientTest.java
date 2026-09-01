@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,8 @@ final class AndroidRuntimeApiClientTest {
 
     private HttpServer server;
     private AndroidRuntimeApiClient client;
+    private final AtomicReference<Map<String, Object>> lastItemsCall =
+            new AtomicReference<>();
 
     @BeforeEach
     void startServer() throws IOException {
@@ -62,7 +65,11 @@ final class AndroidRuntimeApiClientTest {
                         "worker-1"
                 )
         );
-        client.requirePropertiesRelation("scenario-websocket", "worker-1");
+        client.requirePropertiesRelation(
+                "scenario-websocket",
+                "worker-1",
+                Map.of("packageName", "test.application")
+        );
 
         AndroidRuntimeApiClient.TaskCall call = client.callItem(
                 AndroidWorkerProofConstants.DELAY_EVENT,
@@ -71,6 +78,61 @@ final class AndroidRuntimeApiClientTest {
         );
         assertEquals(AndroidRuntimeApiClient.CallStatus.SUCCEEDED, call.status());
         assertTrue(client.resultObserved(call.messageId()));
+    }
+
+    @Test
+    void submitsOneBatchWithCallerOwnedAllocationRules() {
+        List<AndroidRuntimeApiClient.TaskCall> calls = client.callItems(
+                List.of(
+                        new AndroidRuntimeApiClient.TaskItemCall(
+                                AndroidWorkerProofConstants.DELAY_EVENT,
+                                Map.of("delayMillis", 100L),
+                                Map.of(
+                                        "worker.packageName",
+                                        Map.of("$eq", "app.lab1")
+                                )
+                        ),
+                        new AndroidRuntimeApiClient.TaskItemCall(
+                                AndroidWorkerProofConstants.DELAY_EVENT,
+                                Map.of("delayMillis", 100L),
+                                Map.of(
+                                        "worker.packageName",
+                                        Map.of("$eq", "app.lab2")
+                                )
+                        )
+                ),
+                1_000L
+        );
+
+        assertEquals(2, calls.size());
+        assertTrue(calls.stream().allMatch(call ->
+                call.status() == AndroidRuntimeApiClient.CallStatus.SUCCEEDED
+        ));
+        Map<String, Object> request = lastItemsCall.get();
+        List<Object> items = JsonValues.array(request.get("items"), "items");
+        assertEquals(2, items.size());
+        assertEquals(
+                Map.of(
+                        "worker.packageName",
+                        Map.of("$eq", "app.lab1")
+                ),
+                JsonValues.object(
+                        JsonValues.object(items.get(0), "item")
+                                .get("allocationRule"),
+                        "allocationRule"
+                )
+        );
+        assertEquals(
+                Map.of(
+                        "worker.packageName",
+                        Map.of("$eq", "app.lab2")
+                ),
+                JsonValues.object(
+                        JsonValues.object(items.get(1), "item")
+                                .get("allocationRule"),
+                        "allocationRule"
+                )
+        );
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -93,16 +155,18 @@ final class AndroidRuntimeApiClientTest {
         } else if (path.endsWith("/direct-calls")) {
             response = directCall(request);
         } else if (path.endsWith("/items:call")) {
-            Map<String, Object> item = JsonValues.object(
-                    JsonValues.array(request.get("items"), "items").get(0),
-                    "item"
-            );
+            lastItemsCall.set(Map.copyOf(request));
+            Map<String, Object> results = new LinkedHashMap<>();
+            for (Object rawItem : JsonValues.array(request.get("items"), "items")) {
+                Map<String, Object> item = JsonValues.object(rawItem, "item");
+                results.put(
+                        JsonValues.requiredString(item, "messageId"),
+                        Map.of("status", "succeeded")
+                );
+            }
             response = Map.of(
                     "results",
-                    Map.of(
-                            JsonValues.requiredString(item, "messageId"),
-                            Map.of("status", "succeeded")
-                    )
+                    results
             );
         } else if (path.endsWith("/results:load")) {
             String messageId = (String) JsonValues.array(
@@ -127,7 +191,10 @@ final class AndroidRuntimeApiClientTest {
             )) {
                 payload = Jsons.toJson(Map.of(
                         "properties",
-                        Map.of("runtime", "android")
+                        Map.of(
+                                "runtime", "android",
+                                "packageName", "test.application"
+                        )
                 ));
             } else {
                 payload = "null";
@@ -146,7 +213,10 @@ final class AndroidRuntimeApiClientTest {
                 observation.put("updatedAtMillis", 1L);
                 observation.put(
                         "properties",
-                        Map.of("runtime", "android")
+                        Map.of(
+                                "runtime", "android",
+                                "packageName", "test.application"
+                        )
                 );
                 payload = Jsons.toJson(Map.of(
                         "propertiesByWorkerId",

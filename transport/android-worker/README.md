@@ -134,7 +134,8 @@ The repository demo excludes the Android Worker preference file from backup.
 
 There is no instrumentation or UI-automation source set. The path-selected
 `Android Worker Proof` belongs to `:integrations:android-worker-proof` and uses
-the Demo APK to prove independent Correctness and Convergence Health through a
-real API 33 process, Server, Adapter, Kernel projection, and managed Task Call.
+the Debug Demo plus three fixed application-ID Lab variants to prove one-Worker
+lifecycle behavior and same-Group process isolation through a real API 33
+emulator, Server, Adapter, Kernel projection, and managed Task Call.
 Real-device runs remain the manual proof for vendor systems, physical Battery
 behavior, and background execution limits.

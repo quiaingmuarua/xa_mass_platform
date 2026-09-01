@@ -362,7 +362,22 @@ jobs:
           :xa-android:capability-http:assembleDebug
           :xa-android:worker-demo:testDebugUnitTest
           :xa-android:worker-demo:assembleDebug
+          :xa-android:worker-demo:assembleLab1
+          :xa-android:worker-demo:assembleLab2
+          :xa-android:worker-demo:assembleLab3
           :integrations:android-worker-proof:test
+      - name: Stage Android Worker APKs
+        if: >-
+          needs.changes.outputs.android_emulator == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p build/android-worker-apks
+          cp xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk \
+            build/android-worker-apks/
+          for variant in lab1 lab2 lab3; do
+            cp "xa-android/worker-demo/build/outputs/apk/$variant/xa-mass-android-worker-demo-$variant.apk" \
+              build/android-worker-apks/
+          done
       - name: Upload Android Worker Demo APK
         if: >-
           needs.changes.outputs.android_emulator == 'true' ||
@@ -370,7 +385,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: android-worker-demo-apk
-          path: xa-android/worker-demo/build/outputs/apk/debug/xa-mass-android-worker-demo-debug.apk
+          path: build/android-worker-apks/*.apk
           if-no-files-found: error
           retention-days: 1
           overwrite: true
@@ -412,7 +427,7 @@ jobs:
       github.event_name == 'workflow_dispatch') &&
       needs.android-host.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     concurrency:
       group: android-emulator-worker-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
@@ -429,6 +444,7 @@ jobs:
     env:
       ANDROID_API_LEVEL: "33"
       ANDROID_WORKER_PROOF_ROOT: ${{ github.workspace }}/build/android-emulator-proof
+      ANDROID_WORKER_APK_ROOT: ${{ github.workspace }}/build/android-emulator-proof/apk
       ANDROID_WORKER_APK: ${{ github.workspace }}/build/android-emulator-proof/apk/xa-mass-android-worker-demo-debug.apk
       XA_MASS_REDIS_SCOPE: test_android_emulator_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
@@ -473,7 +489,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Android Worker Proof:** API=33, correctness=10/10, identity=stable, connectionMutation=converged, endpointExhaustion=explicit-restart" \
+            echo "- **Android Worker Proof:** API=33, singleCorrectness=10/10, singleLifecycle=converged, triadCorrectness=3/3, partialOutage=converged" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- **Android Worker Proof:** failed; inspect scenario evidence and filtered logs" \

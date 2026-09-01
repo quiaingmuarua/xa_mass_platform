@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -110,19 +111,50 @@ final class AndroidRuntimeApiClient {
             Map<String, Object> payload,
             long waitTimeoutMillis
     ) {
-        String messageId = UUID.randomUUID().toString();
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("messageId", messageId);
-        item.put("eventCode", eventName);
-        item.put("payload", Map.copyOf(payload));
-        item.put("allocationRule", Map.of());
+        return callItems(
+                List.of(new TaskItemCall(eventName, payload, Map.of())),
+                waitTimeoutMillis
+        ).get(0);
+    }
+
+    TaskCall callItem(
+            String eventName,
+            Map<String, Object> payload,
+            Map<String, Object> allocationRule,
+            long waitTimeoutMillis
+    ) {
+        return callItems(
+                List.of(new TaskItemCall(eventName, payload, allocationRule)),
+                waitTimeoutMillis
+        ).get(0);
+    }
+
+    List<TaskCall> callItems(
+            List<TaskItemCall> calls,
+            long waitTimeoutMillis
+    ) {
+        if (calls == null || calls.isEmpty() || calls.size() > 100) {
+            throw new IllegalArgumentException("calls must contain 1..100 items");
+        }
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        List<String> messageIds = new java.util.ArrayList<>();
+        for (TaskItemCall call : calls) {
+            String messageId = UUID.randomUUID().toString();
+            messageIds.add(messageId);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("messageId", messageId);
+            item.put("eventCode", call.eventName());
+            item.put("payload", call.payload());
+            item.put("allocationRule", call.allocationRule());
+            items.add(Map.copyOf(item));
+        }
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/"
                         + segment(managedTaskId())
                         + "/items:call",
                 Map.of(
-                        "items", List.of(item),
+                        "items", List.copyOf(items),
                         "waitTimeoutMillis", waitTimeoutMillis
                 ),
                 "androidWorker.items.call"
@@ -132,25 +164,35 @@ final class AndroidRuntimeApiClient {
                 response.body().get("results"),
                 "Task call results"
         );
-        if (!results.keySet().equals(Set.of(messageId))) {
-            throw identityFailure(
+        Set<String> expectedIds = Set.copyOf(messageIds);
+        if (!results.keySet().equals(expectedIds)) {
+            throw new ProofFailure(
                     "task-call.identities",
                     "Task call result identities do not match",
-                    messageId,
-                    results.keySet()
+                    expectedIds.stream()
+                            .filter(id -> !results.containsKey(id))
+                            .toList(),
+                    results.keySet().stream()
+                            .filter(id -> !expectedIds.contains(id))
+                            .toList(),
+                    List.of()
             );
         }
-        Map<String, Object> result = JsonValues.object(
-                results.get(messageId),
-                "Task call result"
-        );
-        return new TaskCall(
-                messageId,
-                CallStatus.fromWire(JsonValues.requiredString(
-                        result,
-                        "status"
-                ))
-        );
+        List<TaskCall> resolved = new java.util.ArrayList<>();
+        for (String messageId : messageIds) {
+            Map<String, Object> result = JsonValues.object(
+                    results.get(messageId),
+                    "Task call result"
+            );
+            resolved.add(new TaskCall(
+                    messageId,
+                    CallStatus.fromWire(JsonValues.requiredString(
+                            result,
+                            "status"
+                    ))
+            ));
+        }
+        return List.copyOf(resolved);
     }
 
     boolean resultObserved(String messageId) {
@@ -191,6 +233,14 @@ final class AndroidRuntimeApiClient {
     void requirePropertiesRelation(
             String endpointManagerId,
             String workerId
+    ) {
+        requirePropertiesRelation(endpointManagerId, workerId, Map.of());
+    }
+
+    void requirePropertiesRelation(
+            String endpointManagerId,
+            String workerId,
+            Map<String, Object> expectedProperties
     ) {
         DirectTarget worker = callWorker(
                 endpointManagerId,
@@ -245,6 +295,22 @@ final class AndroidRuntimeApiClient {
                     List.of(),
                     List.of(workerId)
             );
+        }
+        for (Map.Entry<String, Object> expected : Map.copyOf(
+                expectedProperties
+        ).entrySet()) {
+            if (!Objects.equals(
+                    expected.getValue(),
+                    workerProperties.get(expected.getKey())
+            )) {
+                throw new ProofFailure(
+                        "properties.expected",
+                        "Worker properties do not contain the expected value",
+                        List.of(),
+                        List.of(),
+                        List.of(workerId)
+                );
+            }
         }
     }
 
@@ -385,6 +451,23 @@ final class AndroidRuntimeApiClient {
     }
 
     record TaskCall(String messageId, CallStatus status) {
+    }
+
+    record TaskItemCall(
+            String eventName,
+            Map<String, Object> payload,
+            Map<String, Object> allocationRule
+    ) {
+        TaskItemCall {
+            if (eventName == null || eventName.isBlank()) {
+                throw new IllegalArgumentException("eventName must be non-blank");
+            }
+            payload = Map.copyOf(Objects.requireNonNull(payload, "payload"));
+            allocationRule = Map.copyOf(Objects.requireNonNull(
+                    allocationRule,
+                    "allocationRule"
+            ));
+        }
     }
 
     enum CallStatus {

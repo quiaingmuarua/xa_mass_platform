@@ -16,7 +16,6 @@ import java.util.List;
 public final class AndroidWorkerDemoApplication extends Application {
 
     private static final String WORKER_GROUP_ID = "android-demo-workers";
-    private static final int CAPABILITY_HTTP_PORT = 18_084;
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
@@ -46,7 +45,7 @@ public final class AndroidWorkerDemoApplication extends Application {
                 workerDefinitions
         );
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
-                CAPABILITY_HTTP_PORT,
+                getResources().getInteger(R.integer.capability_http_port),
                 AndroidWorkerHostEvents.assemble(
                         workerDefinitions,
                         worker,

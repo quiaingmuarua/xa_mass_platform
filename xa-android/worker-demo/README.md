@@ -15,7 +15,7 @@ AndroidWorkerDemoApplication
      -> extension.worker.lab.delay
      -> extension.worker.lab.fail
   -> AndroidCapabilityHttpServer
-     -> 127.0.0.1:18084
+     -> build-variant loopback port
      -> the same business Definitions
      -> local-only host.snapshot / host.start / host.stop Definitions
 
@@ -64,7 +64,7 @@ outcome `3303` without stopping the run. The Host snapshot exposes
 `activeDelayCount` only to establish that DELAY entered the Demo Handler; this
 local count is not route, Kernel, or scheduling truth.
 
-The application ID remains:
+The ordinary application ID remains:
 
 ```text
 com.xa.mass.integration.androidworker
@@ -80,9 +80,23 @@ data before registering a replacement identity:
 adb shell pm clear com.xa.mass.integration.androidworker
 ```
 
+The API 33 proof also builds three fixed Debug-derived Lab variants:
+
+| Variant | applicationId | loopback Host port |
+| --- | --- | ---: |
+| `lab1` | `com.xa.mass.integration.androidworker.lab1` | 18184 |
+| `lab2` | `com.xa.mass.integration.androidworker.lab2` | 18185 |
+| `lab3` | `com.xa.mass.integration.androidworker.lab3` | 18186 |
+
+They keep the same WorkerGroup and Runtime endpoints. Separate application
+sandboxes provide separate persistent client keys; the existing `packageName`
+Worker Property is their scheduling discriminator. This is a fixed proof
+topology, not a general replica facility.
+
 ## Device-local capability and Host API
 
-The App owns the probe port and passes `18084` to the reusable HTTP module. It
+The Debug App owns probe port `18084`; each Lab variant uses the port in the
+table above. The selected value is passed to the reusable HTTP module. It
 listens only on the device loopback address. This path does not require Redis,
 the platform Kernel, Java Server, or an Adapter. Install and open the App, then
 forward a host loopback port to the device:
@@ -166,9 +180,10 @@ failure choreography is owned by the hosted shell described below.
 ## Hosted Emulator proof
 
 `Android Worker Proof` is the primary Android platform E2E lane in Proof CI.
-It reuses the Debug APK produced by `Android Host`, boots one API 33 x86_64
-Emulator, and uses ADB only to install/start/force-stop the App and map ports
-`18082`, `18083`, and `18084`. All device-side Worker controls use the three
+It reuses the Debug and three Lab APKs produced by `Android Host`, boots one API
+33 x86_64 Emulator, and uses ADB only to install/start/force-stop the Apps and
+map shared Runtime ports plus the four distinct Host ports. All device-side
+Worker controls use the three
 local Host Events above. The Java 21 `:integrations:android-worker-proof`
 module owns workload, assertions, and evidence; the shell owns only Emulator,
 ADB, Server, App, and Redis-scope lifecycles.
@@ -189,6 +204,20 @@ Convergence Health proves:
    `STOPPED`;
 4. Server restart does not automatically Prepare; one explicit local start
    restores the original identity, route, Scheduling state, and DELAY witness.
+
+The fixed Triad supplement proves:
+
+1. three application IDs establish three distinct Worker identities in one
+   WorkerGroup;
+2. identity-bounded Allocation Rules require each App's
+   `worker.packageName` before directing one DELAY Item to it;
+3. force-stopping `lab2` does not remove service from `lab1` or `lab3`;
+4. restarting `lab2` restores its original worker ID and scheduling service.
+
+The disposable API 33 Emulator runs this topology with the cached-app freezer
+disabled. The setting prevents Android process-freezing policy from replacing
+the Worker isolation mechanism under test; it does not make a background
+execution or process-survival claim for production hosts.
 
 The process-restart proof does not relaunch the App as soon as the Adapter
 route becomes disconnected. It first observes the stopped Worker leave the
@@ -214,6 +243,9 @@ Payloads, opaque Results, screenshots, and video. The lane does not automate UI.
 ```powershell
 .\gradlew.bat :xa-android:worker-demo:testDebugUnitTest
 .\gradlew.bat :xa-android:worker-demo:assembleDebug
+.\gradlew.bat :xa-android:worker-demo:assembleLab1
+.\gradlew.bat :xa-android:worker-demo:assembleLab2
+.\gradlew.bat :xa-android:worker-demo:assembleLab3
 .\gradlew.bat :xa-android:capability-http:testDebugUnitTest
 .\gradlew.bat :xa-android:capability-http:assembleDebug
 .\gradlew.bat :integrations:android-worker-proof:test

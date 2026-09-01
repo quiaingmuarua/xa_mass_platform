@@ -1,6 +1,8 @@
 package com.xa.mass.integration.androidworkerproof;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -41,6 +43,7 @@ final class AndroidDeviceHostClientTest {
     @Test
     void readsHealthEventsSnapshotAndLifecycleResponses() {
         client.requireHealth();
+        assertFalse(client.isUnavailable());
         assertEquals(
                 AndroidWorkerProofConstants.DEVICE_EVENTS,
                 client.events()
@@ -52,6 +55,13 @@ final class AndroidDeviceHostClientTest {
 
         client.stop();
         client.start();
+    }
+
+    @Test
+    void distinguishesAStoppedLocalHostFromAHealthyHost() {
+        server.stop(0);
+
+        assertTrue(client.isUnavailable());
     }
 
     private void handle(HttpExchange exchange) throws IOException {

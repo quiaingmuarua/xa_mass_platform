@@ -30,6 +30,18 @@ final class AndroidDeviceHostClient {
         }
     }
 
+    boolean isUnavailable() {
+        try {
+            requireHealth();
+            return false;
+        } catch (ProofFailure failure) {
+            if ("androidDevice.health.request".equals(failure.invariant())) {
+                return true;
+            }
+            throw failure;
+        }
+    }
+
     Set<String> events() {
         JsonHttpClient.Response response = http.send(
                 "GET",

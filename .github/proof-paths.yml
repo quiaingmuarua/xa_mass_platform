@@ -148,6 +148,7 @@ android_emulator:
   - 'transport/netty-adapter/build.gradle'
   - 'xa-android/**/src/main/**'
   - 'xa-android/**/src/debug/**'
+  - 'xa-android/**/src/lab*/**'
   - 'xa-android/**/build.gradle'
   - 'integrations/android-worker-proof/src/main/**'
   - 'integrations/android-worker-proof/build.gradle'
