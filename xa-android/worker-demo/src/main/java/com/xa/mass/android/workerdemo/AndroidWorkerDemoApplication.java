@@ -5,9 +5,13 @@ import android.app.Application;
 import com.xa.mass.android.capabilityhttp.AndroidCapabilityHttpServer;
 import com.xa.mass.android.capabilities.AndroidDemoCapabilities;
 import com.xa.mass.worker.android.AndroidWorker;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public final class AndroidWorkerDemoApplication extends Application {
 
@@ -16,6 +20,7 @@ public final class AndroidWorkerDemoApplication extends Application {
 
     private AndroidWorker worker;
     private AndroidDemoCapabilities demoCapabilities;
+    private AndroidWorkerLabEvents labEvents;
     private AndroidCapabilityHttpServer capabilityHttpServer;
     private String capabilityHttpDiagnostic;
 
@@ -28,19 +33,25 @@ public final class AndroidWorkerDemoApplication extends Application {
         AndroidDeviceProperties deviceProperties =
                 new AndroidDeviceProperties(this);
         demoCapabilities = new AndroidDemoCapabilities(this);
+        labEvents = new AndroidWorkerLabEvents();
+        List<WorkerEventDefinition<?>> workerDefinitions = new ArrayList<>();
+        workerDefinitions.addAll(demoCapabilities.definitions());
+        workerDefinitions.addAll(labEvents.definitions());
+        workerDefinitions = Collections.unmodifiableList(workerDefinitions);
         worker = AndroidWorker.create(
                 this,
                 runtimeApiBaseUrl,
                 WORKER_GROUP_ID,
                 deviceProperties,
-                demoCapabilities.definitions()
+                workerDefinitions
         );
         capabilityHttpServer = AndroidCapabilityHttpServer.create(
                 CAPABILITY_HTTP_PORT,
                 AndroidWorkerHostEvents.assemble(
-                        demoCapabilities.definitions(),
+                        workerDefinitions,
                         worker,
-                        demoCapabilities
+                        demoCapabilities,
+                        labEvents
                 )
         );
         try {

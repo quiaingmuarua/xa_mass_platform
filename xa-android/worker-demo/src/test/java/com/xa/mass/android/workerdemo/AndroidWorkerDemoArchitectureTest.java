@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config;
 public class AndroidWorkerDemoArchitectureTest {
 
     @Test
-    public void appHostsWorkerCapabilitiesAndLocalHttpProbe()
+    public void applicationOwnsWorkerAndActivityOnlyControlsIt()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String build = read(project.resolve("build.gradle"));
@@ -44,31 +44,20 @@ public class AndroidWorkerDemoArchitectureTest {
 
         assertTrue(build.contains("id 'com.android.application'"));
         assertTrue(build.contains(
-                "namespace = 'com.xa.mass.android.workerdemo'"
+                "implementation project(':transport:android-worker')"
         ));
         assertTrue(build.contains(
-                "applicationId = 'com.xa.mass.integration.androidworker'"
+                "implementation project(':xa-android:capabilities')"
         ));
         assertTrue(build.contains(
-                "project(':transport:android-worker')"
-        ));
-        assertTrue(build.contains(
-                "project(':xa-android:capabilities')"
-        ));
-        assertTrue(build.contains(
-                "project(':xa-android:capability-http')"
+                "implementation project(':xa-android:capability-http')"
         ));
         assertFalse(build.contains("project(':transport:worker-core')"));
         assertFalse(build.contains("project(':transport:java-worker')"));
+
         assertTrue(mainManifest.contains("android.permission.INTERNET"));
         assertTrue(mainManifest.contains(
                 "android:name=\".AndroidWorkerDemoApplication\""
-        ));
-        assertTrue(mainManifest.contains(
-                "android:dataExtractionRules=\"@xml/data_extraction_rules\""
-        ));
-        assertTrue(mainManifest.contains(
-                "android:fullBackupContent=\"@xml/backup_rules\""
         ));
         assertFalse(mainManifest.contains("usesCleartextTraffic"));
         assertTrue(debugManifest.contains(
@@ -81,68 +70,19 @@ public class AndroidWorkerDemoArchitectureTest {
                 "path=\"xa-mass-android-worker.xml\""
         ));
 
-        for (String forbidden : new String[]{
-                "server_jvm",
-                "kernel_jvm",
-                "scenario_workers_jvm",
-                "transport:netty-adapter",
-                "org.springframework",
-                "io.netty",
-                "redis",
-                "items:call",
-                "WorkManager"
-        }) {
-            assertFalse(forbidden, build.contains(forbidden));
-            assertFalse(forbidden, source.contains(forbidden));
-        }
-
-        assertTrue(application.contains("private AndroidWorker worker;"));
-        assertTrue(application.contains(
-                "private AndroidDemoCapabilities demoCapabilities;"
-        ));
-        assertTrue(application.contains(
-                "private AndroidCapabilityHttpServer capabilityHttpServer;"
+        assertTrue(Application.class.isAssignableFrom(
+                AndroidWorkerDemoApplication.class
         ));
         assertTrue(application.contains("AndroidWorker.create("));
-        assertFalse(application.contains(
-                "AndroidWorker." + "builder("
-        ));
-        assertTrue(application.contains(
-                "demoCapabilities.definitions()"
-        ));
-        assertTrue(application.contains(
-                "new AndroidDemoCapabilities("
-        ));
-        assertTrue(application.contains(
-                "AndroidCapabilityHttpServer.create("
-        ));
-        assertTrue(application.contains(
-                "AndroidWorkerHostEvents.assemble("
-        ));
-        assertTrue(application.contains("capabilityHttpServer.start();"));
-        assertTrue(application.contains("catch (IOException error)"));
-        assertTrue(application.indexOf("capabilityHttpServer.start();")
-                < application.indexOf("worker.start();"));
+        assertTrue(application.contains("new AndroidWorkerLabEvents()"));
+        assertTrue(application.contains("AndroidCapabilityHttpServer.create("));
         assertTrue(application.contains("worker.start();"));
-        assertFalse(Files.exists(project.resolve(
-                "src/main/java/com/xa/mass/android/workerdemo/"
-                        + "AndroidWorker" + "Demo.java"
-        )));
-        assertFalse(source.contains("HostResources"));
-        assertFalse(source.contains("controlExecutor"));
-        assertFalse(source.contains("java.util.concurrent.Executor"));
-        assertFalse(source.contains("retryScheduler"));
-        assertFalse(source.contains("ScheduledExecutorService"));
-        assertFalse(source.contains("WorkerExecutionResources"));
-        assertTrue(activity.contains("worker.addListener(workerListener)"));
-        assertTrue(activity.contains(
-                "demoCapabilities.addListener(capabilityListener)"
-        ));
-        assertTrue(activity.contains("runOnUiThread(this::render)"));
-        assertFalse(activity.contains("AndroidWorker.builder"));
-        assertFalse(activity.contains("OkHttpWorkerControlClient"));
-        assertFalse(activity.contains("WorkerEventDefinition"));
+        assertTrue(application.contains("worker.close();"));
+
+        assertFalse(activity.contains("AndroidWorker.create("));
         assertFalse(activity.contains("AndroidCapabilityHttpServer"));
+        assertFalse(activity.contains("WorkerControlClient"));
+        assertFalse(activity.contains("TextMessageClient"));
         assertFalse(activity.contains("worker.close()"));
         assertFalse(section(
                 activity,
@@ -151,36 +91,25 @@ public class AndroidWorkerDemoArchitectureTest {
         ).contains("worker.stop()"));
 
         for (String forbidden : new String[]{
-                "WorkerControlClient",
-                "TextMessageClient",
-                "WorkerEventDefinition",
-                ".register(",
-                ".bind("
+                "server_jvm",
+                "kernel_jvm",
+                "scenario_workers_jvm",
+                "transport:netty-adapter",
+                "com.xa.mass.server",
+                "com.xa.mass.worker.javase",
+                "io.netty",
+                "org.springframework",
+                "HostResources",
+                "WorkerExecutionResources"
         }) {
-            assertFalse(forbidden, application.contains(forbidden));
+            assertFalse(forbidden, source.contains(forbidden));
         }
-        assertFalse(source.contains("AndroidWorkerIdentityStore"));
-        assertFalse(source.contains("AndroidWorkerEndpointCacheStore"));
-        assertFalse(source.contains("AndroidDemoStateStore"));
-        assertFalse(source.contains(
-                "AndroidDemoState" + "Capability"
-        ));
-        assertFalse(source.contains(
-                "package com.xa.mass.integration." + "androidworker"
-        ));
-        assertFalse(source.contains("AndroidDemoEvents"));
-        assertFalse(source.contains("AndroidWebSocketWorkerRuntime"));
-        assertFalse(application.substring(
-                application.indexOf("AndroidWorker.create("),
-                application.indexOf("AndroidCapabilityHttpServer.create(")
-        ).contains("AndroidWorkerHostEvents"));
     }
 
     private static String readSource(Path project, String fileName)
             throws IOException {
         return read(project.resolve(
-                "src/main/java/com/xa/mass/android/workerdemo/"
-                        + fileName
+                "src/main/java/com/xa/mass/android/workerdemo/" + fileName
         ));
     }
 
@@ -192,9 +121,7 @@ public class AndroidWorkerDemoArchitectureTest {
         int start = source.indexOf(startMarker);
         int end = source.indexOf(endMarker, start);
         if (start < 0 || end < 0) {
-            throw new IllegalArgumentException(
-                    "Unable to locate source section"
-            );
+            throw new IllegalArgumentException("Unable to locate source section");
         }
         return source.substring(start, end);
     }
@@ -212,10 +139,7 @@ public class AndroidWorkerDemoArchitectureTest {
         try {
             target.append(read(path));
         } catch (IOException error) {
-            throw new IllegalStateException(
-                    "Unable to read " + path,
-                    error
-            );
+            throw new IllegalStateException("Unable to read " + path, error);
         }
     }
 

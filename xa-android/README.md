@@ -16,7 +16,11 @@ transport mechanics.
 :xa-android:worker-demo
   -> installable demo Application and Activity
   -> AndroidWorker plus business and local-only Host Event composition
-  -> API 33 Emulator acceptance and real-device WorkerGroup drivers
+  -> APK Host for API 33 proof and real-device runs
+
+:integrations:android-worker-proof
+  -> Java 21 Android Correctness and Convergence assertions
+  -> public device Host and Runtime APIs only
 
 :transport:android-worker
   -> client-key persistence, Prepare, networking, reconnect, and lifecycle
@@ -34,9 +38,10 @@ Hook state into a generic capability layer.
 Capability HTTP proves only that the installed App can execute its local
 capability resolver and Handler. It owns no Worker identity or connection
 truth and is not a substitute for the managed Task Call end-to-end proof. The
-path-selected Emulator CI relates that local surface to real Worker identity,
-Adapter route, Command/Result, Properties observation, explicit lifecycle,
-Server terminal, and App process-restart behavior without UI automation.
+path-selected Android Worker Proof relates that local surface to real Worker
+identity, Adapter route, Command/Result, Properties observation, explicit
+lifecycle, endpoint exhaustion, and App process-restart behavior without UI
+automation.
 Real-device acceptance remains separate for vendor systems, physical Battery
 behavior, and background execution limits.
 
@@ -48,3 +53,4 @@ reverse-engineering projects remain outside this repository domain.
 - [Android Capability HTTP](capability-http/README.md)
 - [Android Worker demo](worker-demo/README.md)
 - [Android Worker transport](../transport/android-worker/README.md)
+- [Android Worker proof](../integrations/android-worker-proof/README.md)

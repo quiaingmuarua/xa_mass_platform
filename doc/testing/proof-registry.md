@@ -137,33 +137,43 @@ stable repository-wide identity.
 
 - **Primary owner:** Android Worker and XA Android modules.
 - **Claim:** Android assembly, identity persistence, capability Definitions,
-  local lifecycle and host driver remain compatible.
+  local lifecycle, Control HTTP and Java proof clients remain compatible.
 - **Failure model:** lifecycle race, callback ordering, persistence conflict or
   assembly drift.
-- **World:** Robolectric, MockWebServer and host Python tests.
+- **World:** Robolectric, MockWebServer and JDK HttpServer.
 - **Workload:** minimal deterministic calls.
 - **Mutation:** lifecycle and network callback controls.
 - **Oracle:** Android state, mock HTTP/WebSocket evidence and host contracts.
 - **Prerequisites:** Android SDK 36.
 - **Deliberate nonclaims:** real process, Doze, vendor policy and physical
   device behavior.
-- **Command:** Android Debug tasks plus host Python tests.
+- **Command:** Android Debug tasks plus
+  `:integrations:android-worker-proof:test`.
 - **CI cost:** medium.
 
 ## android_emulator
 
-- **Primary owner:** `.github/scripts/run_android_emulator_worker.sh`.
-- **Claim:** one API 33 process closes identity, route, Direct Call,
-  Properties, explicit restart and process-restart relations.
-- **Failure model:** process loss, route termination, stale serviceability and
-  identity drift.
+- **Primary owner:** `:integrations:android-worker-proof`; the shell owns only
+  external process choreography.
+- **Claim:** one API 33 Worker proves exact ten-Item Correctness and bounded
+  Convergence after Worker failure, physical route loss, endpoint exhaustion,
+  explicit restart, and App process restart.
+- **Failure model:** Handler failure terminates the run, in-flight route loss
+  cannot recover, endpoint loss auto-restarts, stale serviceability, identity
+  drift, or Task finality loss.
 - **World:** KVM Android Emulator, Redis, Server and Demo APK.
-- **Workload:** finite diagnostic calls.
-- **Mutation:** explicit stop/start, Server loss and App process restart.
-- **Oracle:** device-local controls plus public Runtime APIs.
+- **Workload:** ten sequential DELAY Task Items plus named FAIL, in-flight DELAY,
+  Probe and recovery witnesses.
+- **Mutation:** explicit stop/start, Adapter close-current, Server loss and App
+  process restart.
+- **Oracle:** device-local state only establishes local mutations; independent
+  Network, Scheduling, Direct Call, `items:call`, and `results:load` APIs prove
+  system behavior. Result payloads remain opaque.
 - **Prerequisites:** Linux KVM and Android artifacts.
-- **Deliberate nonclaims:** physical-device background policy.
-- **Command:** `Android Emulator Worker` in Proof CI.
+- **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
+  attempts, transient Score sequence, UI behavior, multi-device compatibility,
+  and physical-device background policy.
+- **Command:** `Android Worker Proof` in Proof CI.
 - **CI cost:** high.
 
 ## frontend

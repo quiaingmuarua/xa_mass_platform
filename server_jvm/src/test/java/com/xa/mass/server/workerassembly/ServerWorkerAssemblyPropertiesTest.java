@@ -99,6 +99,8 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("\"extension.worker.string.md5\"")
                     .contains("\"extension.worker.android.state.read\"")
                     .contains("\"extension.worker.android.battery.read\"")
+                    .contains("\"extension.worker.lab.delay\"")
+                    .contains("\"extension.worker.lab.fail\"")
                     .doesNotContain("\"workers\"");
             assertThat(context.getBean(
                     ServerWorkerAssemblyManifest.class
@@ -119,7 +121,9 @@ class ServerWorkerAssemblyPropertiesTest {
                     .isEqualTo(List.of(
                             "extension.worker.android.state.read",
                             "extension.worker.android.battery.read",
-                            "extension.worker.android.string.digest"
+                            "extension.worker.android.string.digest",
+                            "extension.worker.lab.delay",
+                            "extension.worker.lab.fail"
                     ));
         });
     }

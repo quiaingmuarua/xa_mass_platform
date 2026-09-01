@@ -150,12 +150,12 @@
       "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
     },
     {
-      "path": "xa-android/worker-demo/host/android_worker_acceptance.py",
+      "path": "integrations/android-worker-proof/src/main/java/com/xa/mass/integration/androidworkerproof/AndroidWorkerCorrectnessMain.java",
       "lanes": [
         "android_host",
         "android_emulator"
       ],
-      "reason": "The Android acceptance driver is unit-tested and exercised in the emulator."
+      "reason": "The Java Android Worker proof is owner-tested and exercised against the API 33 emulator."
     },
     {
       "path": "frontend/src/views/WorkerRuntimeView.vue",

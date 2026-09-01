@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+}
+
+base {
+    archivesName.set('xa-mass-android-worker-proof')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    implementation project(':transport:worker-delivery-contract')
+
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.register('runAndroidWorkerCorrectness', JavaExec) {
+    description = 'Runs one phase of the Android Worker correctness proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.androidworkerproof.AndroidWorkerCorrectnessMain'
+    workingDir = project.projectDir
+}
+
+tasks.register('runAndroidWorkerConvergenceHealth', JavaExec) {
+    description = 'Runs one phase of the Android Worker convergence proof.'
+    group = 'application'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.xa.mass.integration.androidworkerproof.AndroidWorkerConvergenceHealthMain'
+    workingDir = project.projectDir
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    workingDir = project.projectDir
+}

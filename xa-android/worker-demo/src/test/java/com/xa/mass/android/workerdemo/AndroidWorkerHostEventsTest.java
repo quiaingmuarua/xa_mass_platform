@@ -46,7 +46,8 @@ public final class AndroidWorkerHostEventsTest {
                 AndroidWorkerHostEvents.assemble(
                         List.of(business),
                         worker,
-                        capabilities
+                        capabilities,
+                        new AndroidWorkerLabEvents()
                 );
         List<String> eventNames = new ArrayList<>();
         for (WorkerEventDefinition<?> definition : assembled) {
@@ -73,7 +74,8 @@ public final class AndroidWorkerHostEventsTest {
                 AndroidWorkerHostEvents.assemble(
                         List.of(),
                         worker,
-                        capabilities
+                        capabilities,
+                        new AndroidWorkerLabEvents()
                 )
         );
 
@@ -90,6 +92,7 @@ public final class AndroidWorkerHostEventsTest {
         assertNull(initial.get("diagnosticMessage"));
         assertEquals(0L, initial.get("processedCommands"));
         assertNull(initial.get("lastEvent"));
+        assertEquals(0L, initial.get("activeDelayCount"));
 
         Map<String, Object> started = result(
                 dispatcher,
@@ -119,7 +122,8 @@ public final class AndroidWorkerHostEventsTest {
                 AndroidWorkerHostEvents.assemble(
                         List.of(),
                         new FakeWorker(),
-                        capabilities
+                        capabilities,
+                        new AndroidWorkerLabEvents()
                 );
 
         assertFalse(assembled.isEmpty());
@@ -144,7 +148,8 @@ public final class AndroidWorkerHostEventsTest {
                         worker,
                         new AndroidDemoCapabilities(
                                 RuntimeEnvironment.getApplication()
-                        )
+                        ),
+                        new AndroidWorkerLabEvents()
                 )
         );
 

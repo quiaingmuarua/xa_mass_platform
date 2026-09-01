@@ -11,6 +11,9 @@ AndroidWorkerDemoApplication
      -> extension.worker.android.state.read
      -> extension.worker.android.battery.read
      -> extension.worker.android.string.digest
+  -> AndroidWorkerLabEvents
+     -> extension.worker.lab.delay
+     -> extension.worker.lab.fail
   -> AndroidCapabilityHttpServer
      -> 127.0.0.1:18084
      -> the same business Definitions
@@ -36,14 +39,15 @@ Worker ID is held only for the current run and resolved again by Server from
 the same client key on a later start. The App stores no Worker ID or Endpoint
 URI and does not interpret network connection state as Worker online truth.
 
-The Application separately owns `AndroidDemoCapabilities` and passes its three
-immutable business Definitions into both `AndroidWorker.create(...)` and the
+The Application separately owns `AndroidDemoCapabilities` and
+`AndroidWorkerLabEvents`. It passes the three Android capability Definitions and
+the two fixed Lab Definitions into both `AndroidWorker.create(...)` and the
 local Capability HTTP server. It appends three fixed Host lifecycle Definitions
 only for HTTP assembly; those Definitions are never passed to `AndroidWorker`,
-never appear in `platform.worker.events.snapshot`, and never become
-WorkerGroup capability truth. HTTP startup failure is diagnostic-only and does
-not prevent the Worker from starting. The Activity only observes Worker
-lifecycle, capability state, and the fixed probe endpoint while visible.
+never appear in `platform.worker.events.snapshot`, and never become WorkerGroup
+capability truth. HTTP startup failure is diagnostic-only and does not prevent
+the Worker from starting. The Activity only observes Worker lifecycle,
+capability state, and the fixed probe endpoint while visible.
 Leaving the Activity stops neither owner; Android may still kill the process
 because this demo installs no Service or WorkManager.
 
@@ -52,6 +56,13 @@ The Battery command reads `BatteryManager` once per command and returns
 availability, capacity percentage, and charging state. It does not install a
 battery receiver or background monitor. Both handlers execute synchronously on
 the Worker's serialized callback lane.
+
+`extension.worker.lab.delay` strictly accepts
+`{"delayMillis":1..30000}` and blocks the current Handler before returning JSON
+`null`. `extension.worker.lab.fail` strictly accepts `{}` and produces Worker
+outcome `3303` without stopping the run. The Host snapshot exposes
+`activeDelayCount` only to establish that DELAY entered the Demo Handler; this
+local count is not route, Kernel, or scheduling truth.
 
 The application ID remains:
 
@@ -139,52 +150,45 @@ adb shell am start -n `
   com.xa.mass.integration.androidworker/com.xa.mass.android.workerdemo.MainActivity
 ```
 
-Wait for `RUNNING`, then call all three capabilities through the managed Task:
+Wait for `RUNNING`, then run the Java correctness phase. It sends ten sequential
+DELAY Items through the managed Task and also proves explicit stop/start:
 
 ```powershell
-.\gradlew.bat :xa-android:worker-demo:runDemoRpc
+.\gradlew.bat :integrations:android-worker-proof:runAndroidWorkerCorrectness `
+  --args="--phase=initial --proof-id=manual-android-correctness --evidence-file=build/android-correctness.json --android-api-level=33"
 ```
 
-The driver reads the bounded Task Score window from
-`/api/v1/runtime-view/tasks:preview` and requires exactly one Task whose
-WorkerGroup is `android-demo-workers`, allocation mechanism is
-`ON_DEMAND_ITEM_RULE`, and idle disposition is `PARK_WHEN_IDLE`. It then sends
-three standard Items to
-`/api/v1/tasks/{taskId}/items:call` with `allocationRule: {}`. It prints the
-State, Battery, and parameterized string digest results. It does not create or
-close a Task, derive the managed Task ID, enumerate Tasks, or select a Worker
-ID. The 100-entry window is an explicit Lab-scale acceptance assumption, not a
-complete Task directory.
+The Java proof reads no business Result payload. It relates the App snapshot to
+public Adapter Network, Kernel Scheduling, Direct Call, Properties observation,
+`items:call`, and `results:load` APIs. The complete process-restart and Server
+failure choreography is owned by the hosted shell described below.
 
-Because an empty allocation rule may select any schedulable Worker in the
-Group, this acceptance assumes `android-demo-workers` contains only active Lab
-devices. If a success is not observed before the bounded wait ends, the batch
-request still returns HTTP `200` and the entry is `not_observed`; the driver
-does not resubmit or silently switch to a targeted Worker. The hosted proof
-may use the same Task ID and caller-owned Message ID to observe that one
-accepted Item through the public `results:load` API for one additional bounded
-wait.
+## Hosted Emulator proof
 
-## Hosted Emulator acceptance
-
-`Android Emulator Worker` is the primary Android Worker E2E lane in Proof CI.
+`Android Worker Proof` is the primary Android platform E2E lane in Proof CI.
 It reuses the Debug APK produced by `Android Host`, boots one API 33 x86_64
 Emulator, and uses ADB only to install/start/force-stop the App and map ports
 `18082`, `18083`, and `18084`. All device-side Worker controls use the three
-local Host Events above. The standard-library driver then relates the App's
-snapshot to public Adapter Network, Direct Call, Properties observation, and
-managed Task Call APIs.
+local Host Events above. The Java 21 `:integrations:android-worker-proof`
+module owns workload, assertions, and evidence; the shell owns only Emulator,
+ADB, Server, App, and Redis-scope lifecycles.
 
-The proof has four safe-evidence phases:
+Correctness proves:
 
-1. initial connection, Probe, same-round Properties observation, local and
-   WorkerGroup business execution, and explicit stop/start;
-2. endpoint terminal after graceful Server shutdown;
-3. Server restart with three seconds of no automatic Worker restart, followed
-   by explicit start;
-4. App process restart with retained data, the same Worker ID, a new Probe,
-   Kernel scheduling convergence through `recovery` or `cold` and back to
-   `hot-score-overdue`, and one business Command.
+1. one Worker ID closes Prepare, route, Properties, Probe, and Scheduling;
+2. ten sequential DELAY Task Items return ten exact `SUCCEEDED` statuses;
+3. explicit stop/start retains identity and restores the route;
+4. App process restart retains identity and completes another DELAY Item.
+
+Convergence Health proves:
+
+1. FAIL produces Worker `3xxx` while the run and a later Probe remain usable;
+2. an in-flight DELAY plus Adapter close-current eventually converges to one
+   visible Task success and a connected route for the same Worker ID;
+3. Server absence exhausts the Client endpoint budget and leaves the Worker
+   `STOPPED`;
+4. Server restart does not automatically Prepare; one explicit local start
+   restores the original identity, route, Scheduling state, and DELAY witness.
 
 The process-restart proof does not relaunch the App as soon as the Adapter
 route becomes disconnected. It first observes the stopped Worker leave the
@@ -201,9 +205,9 @@ once to the complete retry sequence. Changes to the Client retry policy must
 therefore be reviewed together with the workflow's
 `ANDROID_WORKER_MAXIMUM_WAIT_MILLIS` budget.
 
-It asserts IDs, states, Event names, message IDs, counts, and cross-stage
-relations. Evidence excludes full Properties, business Payloads, opaque
-Results, timestamps, screenshots, and video. The lane does not automate UI.
+It asserts IDs, states, Event names, message IDs, counts, established mutations,
+and cross-stage relations. Evidence excludes full Properties, business
+Payloads, opaque Results, screenshots, and video. The lane does not automate UI.
 
 ## Verification
 
@@ -212,12 +216,10 @@ Results, timestamps, screenshots, and video. The lane does not automate UI.
 .\gradlew.bat :xa-android:worker-demo:assembleDebug
 .\gradlew.bat :xa-android:capability-http:testDebugUnitTest
 .\gradlew.bat :xa-android:capability-http:assembleDebug
-python -m unittest discover `
-  -s xa-android/worker-demo/host `
-  -p "test_*.py"
+.\gradlew.bat :integrations:android-worker-proof:test
 ```
 
 `minSdk 24` is the build baseline. Hosted CI runs both the lightweight Android
-Host contract lane and the path-selected API 33 Emulator E2E lane. The
+Host contract lane and the path-selected API 33 Worker Proof lane. The
 documented real-device flow remains the manual proof for vendor behavior,
 physical Battery readings, and background execution limits.

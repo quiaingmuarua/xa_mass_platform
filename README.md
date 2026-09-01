@@ -226,11 +226,12 @@ Commands, prerequisites and CI selection rules live in
   :server_jvm:build \
   :integrations:worker-correctness:build \
   :integrations:worker-convergence-health:build \
-  :integrations:worker-websocket-scale:build
+  :integrations:worker-websocket-scale:build \
+  :integrations:android-worker-proof:build
 ```
 
 Real Redis, cross-process Runtime Boundary, Worker Correctness, Worker
-Convergence Health, Worker Capacity, Android Emulator, real-device Android and
+Convergence Health, Worker Capacity, Android Worker Proof, real-device Android and
 frontend proofs have separate prerequisites and commands in the proof
 registry. Strict owner/capability tests fix
 structures and business values; cross-process acceptance fixes stable

@@ -38,7 +38,8 @@ final class AndroidWorkerHostEvents {
             Collection<? extends WorkerEventDefinition<?>>
                     businessDefinitions,
             WorkerLifecycle worker,
-            AndroidDemoCapabilities capabilities
+            AndroidDemoCapabilities capabilities,
+            AndroidWorkerLabEvents labEvents
     ) {
         Objects.requireNonNull(businessDefinitions, "businessDefinitions");
         WorkerLifecycle resolvedWorker = Objects.requireNonNull(
@@ -47,6 +48,10 @@ final class AndroidWorkerHostEvents {
         );
         AndroidDemoCapabilities resolvedCapabilities =
                 Objects.requireNonNull(capabilities, "capabilities");
+        AndroidWorkerLabEvents resolvedLabEvents = Objects.requireNonNull(
+                labEvents,
+                "labEvents"
+        );
 
         List<WorkerEventDefinition<?>> definitions = new ArrayList<>(
                 businessDefinitions.size() + 3
@@ -60,7 +65,11 @@ final class AndroidWorkerHostEvents {
         definitions.add(WorkerEventDefinition.extension(
                 SNAPSHOT_CAPABILITY,
                 WorkerEventParameterResolvers.jsonMap(),
-                ignored -> snapshot(resolvedWorker, resolvedCapabilities)
+                ignored -> snapshot(
+                        resolvedWorker,
+                        resolvedCapabilities,
+                        resolvedLabEvents
+                )
         ));
         definitions.add(WorkerEventDefinition.extension(
                 START_CAPABILITY,
@@ -77,7 +86,8 @@ final class AndroidWorkerHostEvents {
 
     private static String snapshot(
             WorkerLifecycle worker,
-            AndroidDemoCapabilities capabilities
+            AndroidDemoCapabilities capabilities,
+            AndroidWorkerLabEvents labEvents
     ) {
         WorkerLifecycle.Snapshot workerSnapshot = worker.snapshot();
         AndroidDemoCapabilities.Snapshot capabilitySnapshot =
@@ -99,6 +109,7 @@ final class AndroidWorkerHostEvents {
                 capabilitySnapshot.processedCommands()
         );
         result.put("lastEvent", capabilitySnapshot.lastEvent());
+        result.put("activeDelayCount", labEvents.activeDelayCount());
         return Jsons.toJson(result);
     }
 

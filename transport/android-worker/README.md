@@ -129,10 +129,12 @@ The repository demo excludes the Android Worker preference file from backup.
 ```text
 ./gradlew :transport:android-worker:testDebugUnitTest
 ./gradlew :transport:android-worker:assembleDebug
+./gradlew :integrations:android-worker-proof:test
 ```
 
 There is no instrumentation or UI-automation source set. The path-selected
-API 33 Emulator Worker acceptance belongs to `xa-android/worker-demo` and
-proves this assembly through the real Server/Adapter route. Real-device
-Managed Task Call remains a separate manual proof for vendor systems, physical
-Battery behavior, and background execution limits.
+`Android Worker Proof` belongs to `:integrations:android-worker-proof` and uses
+the Demo APK to prove independent Correctness and Convergence Health through a
+real API 33 process, Server, Adapter, Kernel projection, and managed Task Call.
+Real-device runs remain the manual proof for vendor systems, physical Battery
+behavior, and background execution limits.

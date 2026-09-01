@@ -377,6 +377,83 @@ public class AndroidWorkerTest {
         }
     }
 
+    @Test
+    public void stopDuringPreparationDiscardsThePreparedEndpoint()
+            throws Exception {
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"" + endpointUri() + "\"}")
+                .bodyDelay(300L, TimeUnit.MILLISECONDS)
+                .build());
+        worker = worker(context -> properties.get());
+
+        worker.start();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        worker.stop();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
+        Thread.sleep(100L);
+
+        assertEquals(1, server.getRequestCount());
+        assertEquals(WorkerLifecycle.State.STOPPED, worker.snapshot().state());
+    }
+
+    @Test
+    public void closeDuringPreparationCancelsControlAndReleasesLease()
+            throws Exception {
+        server.enqueue(new MockResponse.Builder()
+                .code(200)
+                .body("{\"workerId\":\"" + WORKER_ID + "\","
+                        + "\"transportType\":\"WEBSOCKET\","
+                        + "\"endpointUri\":\"" + endpointUri() + "\"}")
+                .bodyDelay(30L, TimeUnit.SECONDS)
+                .build());
+        worker = worker(context -> properties.get());
+
+        worker.start();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        worker.close();
+        worker = null;
+
+        AndroidWorker replacement = worker(context -> properties.get());
+        replacement.close();
+        assertEquals(1, server.getRequestCount());
+    }
+
+    @Test
+    public void endpointExhaustionStopsWithoutAutomaticPreparation()
+            throws Exception {
+        enqueuePrepare();
+        server.enqueue(new MockResponse.Builder().code(503).build());
+        worker = worker(
+                context -> properties.get(),
+                parameters -> Jsons.toJson(Map.of(
+                        "observed",
+                        parameters.get("value")
+                )),
+                TextMessageReconnectPolicy.of(
+                        1,
+                        Duration.ofMillis(20),
+                        Duration.ofMillis(100)
+                )
+        );
+
+        worker.start();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED
+                && worker.snapshot().diagnosticMessage() != null);
+        int completedRequests = server.getRequestCount();
+        Thread.sleep(200L);
+
+        assertEquals(2, completedRequests);
+        assertEquals(completedRequests, server.getRequestCount());
+        assertTrue(worker.snapshot().diagnosticMessage().contains(
+                "Endpoint terminated"
+        ));
+    }
+
     private AndroidWorker worker(AndroidWorkerProperties provider) {
         return worker(
                 provider,
@@ -391,6 +468,22 @@ public class AndroidWorkerTest {
             AndroidWorkerProperties provider,
             WorkerEventHandler<Map<String, Object>> handler
     ) {
+        return worker(
+                provider,
+                handler,
+                TextMessageReconnectPolicy.of(
+                        20,
+                        Duration.ofMillis(20),
+                        Duration.ofMillis(100)
+                )
+        );
+    }
+
+    private AndroidWorker worker(
+            AndroidWorkerProperties provider,
+            WorkerEventHandler<Map<String, Object>> handler,
+            TextMessageReconnectPolicy reconnectPolicy
+    ) {
         return AndroidWorker.create(
                 application,
                 URI.create(server.url("/").toString()),
@@ -403,11 +496,7 @@ public class AndroidWorkerTest {
                 )),
                 WorkerConnectionOptions.of(
                         Duration.ofSeconds(2),
-                        TextMessageReconnectPolicy.of(
-                                20,
-                                Duration.ofMillis(20),
-                                Duration.ofMillis(100)
-                        )
+                        reconnectPolicy
                 )
         );
     }

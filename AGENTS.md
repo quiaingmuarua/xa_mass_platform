@@ -443,12 +443,21 @@ Android capability modules own concrete immutable Definitions and Android data
 access. They must not receive Worker identity, Endpoint, Task, Client,
 Transport, Executor or Scheduler state. The demo Application is the assembly
 and lifecycle owner; its Activity only observes and issues explicit local
-controls.
+controls. Demo-only `extension.worker.lab.delay` and `.fail` Definitions are
+finite Android proof fixtures, not Android Worker SDK APIs. Their local active
+Handler count establishes only a Lab mutation and must not be promoted to
+Adapter connectivity, Kernel state or schedulability.
 
 ## Integration And Frontend
 
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
+- `:integrations:android-worker-proof` is the Java 21 assertion Owner for the
+  single API 33 Android Worker Correctness and Convergence Health lane. Its
+  shell owns only Emulator, ADB, Server, App and Redis-scope processes. The Java
+  Harness uses device-local state to establish mutations, then independently
+  observes public Network, Scheduling, Direct Call and finite Task APIs. It
+  never asserts business Result payloads and is not a Java Worker witness.
 - One-shot Python proof runners may own process orchestration, but not database
   protocols. Redis scope cleanup uses
   `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a

@@ -362,11 +362,7 @@ jobs:
           :xa-android:capability-http:assembleDebug
           :xa-android:worker-demo:testDebugUnitTest
           :xa-android:worker-demo:assembleDebug
-      - name: Verify Android Task RPC host driver
-        run: >-
-          python -m unittest discover
-          -s xa-android/worker-demo/host
-          -p "test_*.py"
+          :integrations:android-worker-proof:test
       - name: Upload Android Worker Demo APK
         if: >-
           needs.changes.outputs.android_emulator == 'true' ||
@@ -384,6 +380,7 @@ jobs:
           python .github/scripts/summarize_junit.py
           --label "Android Host"
           "**/build/test-results/testDebugUnitTest/TEST-*.xml"
+          "integrations/android-worker-proof/build/test-results/test/TEST-*.xml"
       - name: Upload Android failure reports
         if: failure()
         uses: actions/upload-artifact@v7.0.1
@@ -398,12 +395,14 @@ jobs:
             xa-android/capability-http/build/reports/tests/testDebugUnitTest/**
             xa-android/worker-demo/build/test-results/testDebugUnitTest/**
             xa-android/worker-demo/build/reports/tests/testDebugUnitTest/**
+            integrations/android-worker-proof/build/test-results/test/**
+            integrations/android-worker-proof/build/reports/tests/test/**
             build/reports/problems/**
           if-no-files-found: ignore
           retention-days: 7
 
   android-emulator-worker:
-    name: Android Emulator Worker
+    name: Android Worker Proof
     needs:
       - changes
       - android-host
@@ -470,27 +469,21 @@ jobs:
             -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
             -no-boot-anim -camera-back none
           script: bash .github/scripts/run_android_emulator_worker.sh
-      - name: Clean exact Android Redis scope
-        if: always()
-        run: >-
-          python .github/scripts/cleanup_redis_test_scope.py
-          --redis-url redis://127.0.0.1:6379/15
-          --scope "$XA_MASS_REDIS_SCOPE"
-      - name: Summarize Android Emulator Worker proof
+      - name: Summarize Android Worker proof
         if: always()
         run: |
           if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Android Emulator Worker:** API=33, lifecycle=closed, identity=stable, route=connected, probe=observed, processRestart=matched" \
+            echo "- **Android Worker Proof:** API=33, correctness=10/10, identity=stable, connectionMutation=converged, endpointExhaustion=explicit-restart" \
               >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Android Emulator Worker:** failed; inspect safe evidence and filtered logs" \
+            echo "- **Android Worker Proof:** failed; inspect scenario evidence and filtered logs" \
               >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Android Emulator Worker evidence
+      - name: Upload Android Worker proof evidence
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: android-emulator-worker-${{ github.run_attempt }}
+          name: android-worker-proof-${{ github.run_attempt }}
           path: |
             build/android-emulator-proof/evidence/*.json
             build/android-emulator-proof/logs/server-*.log
@@ -693,7 +686,7 @@ jobs:
           check_lane \
             "Android Host" "$ANDROID_HOST_SELECTED" "$ANDROID_HOST_RESULT"
           check_lane \
-            "Android Emulator Worker" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
+            "Android Worker Proof" "$ANDROID_EMULATOR_SELECTED" "$ANDROID_EMULATOR_RESULT"
           check_lane \
             "Frontend" "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
           check_lane \
