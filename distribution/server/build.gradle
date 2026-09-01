@@ -164,14 +164,25 @@ tasks.register('distZip', Zip) {
 
 tasks.register('sourceLauncherTest', Exec) {
     group = 'verification'
-    description = 'Runs standard-library tests for the source local Runtime launcher.'
+    description = 'Runs standard-library tests for Runtime source and proof helpers.'
     workingDir repositoryRoot
-    inputs.file(rootProject.file('run_local_runtime.py'))
-    inputs.file(rootProject.file('.github/scripts/test_run_local_runtime.py'))
+    inputs.files(
+            rootProject.file('run_local_runtime.py'),
+            rootProject.file('.github/scripts/run_runtime_distribution_proof.py'),
+            rootProject.file('.github/scripts/test_run_local_runtime.py'),
+            rootProject.file(
+                    '.github/scripts/test_run_runtime_distribution_proof.py'
+            )
+    )
     commandLine(
             pythonExecutable.get(),
-            rootProject.file('.github/scripts/test_run_local_runtime.py')
-                    .absolutePath,
+            '-m',
+            'unittest',
+            'discover',
+            '-s',
+            rootProject.file('.github/scripts').absolutePath,
+            '-p',
+            'test_run_*runtime*.py',
             '-v'
     )
 }

@@ -54,7 +54,7 @@ def _free_port() -> int:
 def _request(
     method: str,
     url: str,
-    body: dict[str, Any] | None = None,
+    body: object | None = None,
     *,
     timeout: float = 5.0,
 ) -> tuple[int, bytes, str]:
@@ -102,7 +102,7 @@ def _preview_worker_count(base_url: str, worker_group_id: str) -> int:
         "POST",
         f"{base_url}/api/v1/runtime-view/worker-groups/"
         f"{worker_group_id}/workers:preview",
-        {"sampleLimit": 100},
+        100,
     )
     if status != 200:
         raise RuntimeError(
@@ -118,7 +118,7 @@ def _preview_tasks(base_url: str) -> list[dict[str, Any]]:
     status, payload, _ = _request(
         "POST",
         f"{base_url}/api/v1/runtime-view/tasks:preview",
-        {"sampleLimit": 100},
+        100,
     )
     if status != 200:
         raise RuntimeError(f"Task preview returned HTTP {status}")
@@ -128,6 +128,24 @@ def _preview_tasks(base_url: str) -> list[dict[str, Any]]:
     ):
         raise RuntimeError("Task preview entries are invalid")
     return entries
+
+
+def _preview_worker_groups(base_url: str) -> dict[str, Any]:
+    status, payload, _ = _request(
+        "POST",
+        f"{base_url}/api/v1/runtime-view/worker-groups:preview",
+        100,
+    )
+    if status != 200:
+        raise RuntimeError(f"WorkerGroup preview returned HTTP {status}")
+    preview = json.loads(payload)
+    worker_groups = preview.get("workerGroups")
+    if not isinstance(worker_groups, list) or any(
+        not isinstance(worker_group, dict)
+        for worker_group in worker_groups
+    ):
+        raise RuntimeError("WorkerGroup preview is invalid")
+    return preview
 
 
 def _managed_task_id(base_url: str, worker_group_id: str) -> str:
@@ -408,15 +426,9 @@ def _prove_agentforge_profile(
                 raise RuntimeError(
                     "AgentForge Profile must not seed Tasks"
                 )
-            status, preview_payload, _ = _request(
-                "POST",
-                f"{base_url}/api/v1/runtime-view/worker-groups:preview",
-                {"sampleLimit": 100},
-            )
-            preview = json.loads(preview_payload)
+            preview = _preview_worker_groups(base_url)
             if (
-                status != 200
-                or preview.get("returnedCount") != 0
+                preview.get("returnedCount") != 0
                 or preview.get("workerGroups") != []
             ):
                 raise RuntimeError(
