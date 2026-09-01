@@ -212,28 +212,33 @@ public interface TaskRuntime {
     }
 
     record TaskItemResult(
-            boolean succeeded,
-            @Nullable String opaqueResultPayload
+            String code,
+            String opaqueResultPayload
     ) {
+
+        private static final String SUCCESS_CODE = "200";
+        private static final String FAILED_CODE = "failed";
+        private static final String FAILED_PAYLOAD =
+                "TaskItem ended without a successful result";
+
         public TaskItemResult {
-            if (succeeded) {
-                requireNonBlank(
-                        opaqueResultPayload,
-                        "opaqueResultPayload"
-                );
-            } else if (opaqueResultPayload != null) {
-                throw new IllegalArgumentException(
-                        "failed Result must not contain a payload"
-                );
-            }
+            requireNonBlank(code, "code");
+            requireNonBlank(
+                    opaqueResultPayload,
+                    "opaqueResultPayload"
+            );
+        }
+
+        public boolean succeeded() {
+            return SUCCESS_CODE.equals(code);
         }
 
         public static TaskItemResult succeeded(String payload) {
-            return new TaskItemResult(true, payload);
+            return new TaskItemResult(SUCCESS_CODE, payload);
         }
 
         public static TaskItemResult failed() {
-            return new TaskItemResult(false, null);
+            return new TaskItemResult(FAILED_CODE, FAILED_PAYLOAD);
         }
     }
 

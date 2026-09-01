@@ -9,6 +9,8 @@ import java.util.Set;
 
 final class AndroidWorkerProofOptions {
 
+    private static final long DEFAULT_MAXIMUM_WAIT_MILLIS = 120_000L;
+
     private static final Set<String> ALLOWED = Set.of(
             "phase",
             "proof-id",
@@ -30,7 +32,7 @@ final class AndroidWorkerProofOptions {
         phaseDeadlineNanos = System.nanoTime()
                 + Duration.ofMillis(boundedLong(
                         "maximum-wait-millis",
-                        60_000L,
+                        DEFAULT_MAXIMUM_WAIT_MILLIS,
                         300_000L
                 )).toNanos();
     }
@@ -125,7 +127,7 @@ final class AndroidWorkerProofOptions {
     Duration maximumWait() {
         return Duration.ofMillis(boundedLong(
                 "maximum-wait-millis",
-                60_000L,
+                DEFAULT_MAXIMUM_WAIT_MILLIS,
                 300_000L
         ));
     }

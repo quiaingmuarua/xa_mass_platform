@@ -51,9 +51,9 @@ public interface WorkerScoreCore {
             long expectedLeaseUntilMillis
     );
 
-    List<WorkerScoreObservation> acquirePreEpochHotCandidates(
+    List<WorkerScoreObservation> acquireHotCandidatesBefore(
             String homeBucketId,
-            long hotEligibilityFloorMillis,
+            long hotCutoffMillis,
             long maximumScoreExclusive,
             int limit
     );

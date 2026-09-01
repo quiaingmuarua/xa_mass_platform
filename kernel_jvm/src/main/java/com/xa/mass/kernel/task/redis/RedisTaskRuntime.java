@@ -46,7 +46,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
     private static final long DEFAULT_ITEM_TTL_MILLIS =
             365L * 24 * 60 * 60 * 1_000;
     private static final int ITEM_PRIORITY_STEP_MILLIS = 100;
-    private static final String FAILED_RESULT_MARKER = "failed";
     private static final String CREATE_DESCRIPTOR_SCRIPT = """
             local key = KEYS[1]
             if redis.call("EXISTS", key) == 1 then
@@ -63,45 +62,21 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             )
             return 1
             """;
-    private static final String STORE_SUCCESS_RESULTS_SCRIPT = """
-            local results_key = KEYS[1]
-            local success_key = KEYS[2]
-            local results_type = redis.call("TYPE", results_key).ok
-            local success_type = redis.call("TYPE", success_key).ok
-            if results_type ~= "none" and results_type ~= "hash" then
-              return redis.error_reply("Task results key must be a hash")
-            end
-            if success_type ~= "none" and success_type ~= "set" then
-              return redis.error_reply(
-                "Task success results key must be a set"
-              )
-            end
-            for index = 1, #ARGV, 2 do
-              redis.call("HSET", results_key, ARGV[index], ARGV[index + 1])
-              redis.call("SADD", success_key, ARGV[index])
-            end
-            return #ARGV / 2
-            """;
     private static final String STORE_FAILED_RESULTS_SCRIPT = """
             local results_key = KEYS[1]
-            local success_key = KEYS[2]
-            local failed_marker = ARGV[1]
+            local failed_result = ARGV[1]
             local results_type = redis.call("TYPE", results_key).ok
-            local success_type = redis.call("TYPE", success_key).ok
             if results_type ~= "none" and results_type ~= "hash" then
               return redis.error_reply("Task results key must be a hash")
-            end
-            if success_type ~= "none" and success_type ~= "set" then
-              return redis.error_reply(
-                "Task success results key must be a set"
-              )
             end
             local stored = 0
             for index = 2, #ARGV do
-              if redis.call("SISMEMBER", success_key, ARGV[index]) == 0 then
-                redis.call("HSET", results_key, ARGV[index], failed_marker)
-                stored = stored + 1
-              end
+              stored = stored + redis.call(
+                "HSETNX",
+                results_key,
+                ARGV[index],
+                failed_result
+              )
             end
             return stored
             """;
@@ -461,23 +436,16 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
         if (results.isEmpty()) {
             return;
         }
-        LinkedHashMap<String, String> validated = new LinkedHashMap<>();
+        LinkedHashMap<String, String> encoded = new LinkedHashMap<>();
         results.forEach((messageId, payload) -> {
             requireNonBlank(messageId, "messageId");
             requireNonBlank(payload, "payload");
-            validated.put(messageId, payload);
+            encoded.put(
+                    messageId,
+                    encodeTaskItemResult(TaskItemResult.succeeded(payload))
+            );
         });
-        List<String> arguments = new ArrayList<>(validated.size() * 2);
-        validated.forEach((messageId, payload) -> {
-            arguments.add(messageId);
-            arguments.add(payload);
-        });
-        commands().eval(
-                STORE_SUCCESS_RESULTS_SCRIPT,
-                ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId), successResultsKey(taskId)},
-                arguments.toArray(String[]::new)
-        );
+        commands().hset(resultsKey(taskId), encoded);
     }
 
     @Override
@@ -503,12 +471,12 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
             );
         }
         List<String> arguments = new ArrayList<>(uniqueIds.size() + 1);
-        arguments.add(FAILED_RESULT_MARKER);
+        arguments.add(encodeTaskItemResult(TaskItemResult.failed()));
         arguments.addAll(uniqueIds);
         commands().eval(
                 STORE_FAILED_RESULTS_SCRIPT,
                 ScriptOutputType.INTEGER,
-                new String[]{resultsKey(taskId), successResultsKey(taskId)},
+                new String[]{resultsKey(taskId)},
                 arguments.toArray(String[]::new)
         );
     }
@@ -539,26 +507,15 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 resultsKey(taskId),
                 uniqueIds.toArray(String[]::new)
         );
-        List<Boolean> succeeded = commands().smismember(
-                successResultsKey(taskId),
-                uniqueIds.toArray(String[]::new)
-        );
-        Map<String, String> successPayloads = reloadSuccessPayloads(
-                resultsKey(taskId),
-                uniqueIds,
-                succeeded
-        );
         var results = new LinkedHashMap<String, TaskItemResult>();
         for (int index = 0; index < uniqueIds.size(); index++) {
             String messageId = uniqueIds.get(index);
             KeyValue<String, String> value = loaded.get(index);
             results.put(
                     messageId,
-                    succeeded.get(index)
-                            ? successResult(successPayloads.get(messageId))
-                            : value.hasValue()
-                                    ? TaskItemResult.failed()
-                                    : null
+                    value.hasValue()
+                            ? decodeTaskItemResult(value.getValue())
+                            : null
             );
         }
         return results;
@@ -587,64 +544,37 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
                 ScanCursor.of(cursor),
                 new ScanArgs().limit(countHint)
         );
-        List<String> messageIds = List.copyOf(page.getMap().keySet());
-        List<Boolean> succeeded = messageIds.isEmpty()
-                ? List.of()
-                : commands().smismember(
-                        successResultsKey(taskId),
-                        messageIds.toArray(String[]::new)
-                );
-        Map<String, String> successPayloads = reloadSuccessPayloads(
-                resultsKey(taskId),
-                messageIds,
-                succeeded
-        );
         LinkedHashMap<String, TaskItemResult> results = new LinkedHashMap<>();
-        for (int index = 0; index < messageIds.size(); index++) {
-            String messageId = messageIds.get(index);
-            TaskItemResult result = succeeded.get(index)
-                    ? successResult(successPayloads.get(messageId))
-                    : TaskItemResult.failed();
-            if (result != null) {
-                results.put(messageId, result);
-            }
-        }
+        page.getMap().forEach((messageId, encoded) -> results.put(
+                messageId,
+                decodeTaskItemResult(encoded)
+        ));
         return new TaskItemResultPage(
                 page.getCursor(),
                 results
         );
     }
 
-    private Map<String, String> reloadSuccessPayloads(
-            String resultsKey,
-            List<String> messageIds,
-            List<Boolean> succeeded
-    ) {
-        List<String> successIds = new ArrayList<>();
-        for (int index = 0; index < messageIds.size(); index++) {
-            if (succeeded.get(index)) {
-                successIds.add(messageIds.get(index));
-            }
+    private String encodeTaskItemResult(TaskItemResult result) {
+        try {
+            return mapper.writeValueAsString(result);
+        } catch (JacksonException error) {
+            throw new IllegalStateException(
+                    "TaskItem Result cannot be encoded",
+                    error
+            );
         }
-        if (successIds.isEmpty()) {
-            return Map.of();
-        }
-        List<KeyValue<String, String>> loaded = commands().hmget(
-                resultsKey,
-                successIds.toArray(String[]::new)
-        );
-        LinkedHashMap<String, String> payloads = new LinkedHashMap<>();
-        for (int index = 0; index < successIds.size(); index++) {
-            KeyValue<String, String> value = loaded.get(index);
-            if (value.hasValue()) {
-                payloads.put(successIds.get(index), value.getValue());
-            }
-        }
-        return payloads;
     }
 
-    private static TaskItemResult successResult(String payload) {
-        return payload == null ? null : TaskItemResult.succeeded(payload);
+    private TaskItemResult decodeTaskItemResult(String encoded) {
+        try {
+            return mapper.readValue(encoded, TaskItemResult.class);
+        } catch (JacksonException | IllegalArgumentException error) {
+            throw new IllegalStateException(
+                    "TaskItem Result is corrupt",
+                    error
+            );
+        }
     }
 
     private Integer loadMaxRetryTimes(String taskId) {
@@ -859,10 +789,6 @@ public final class RedisTaskRuntime implements TaskRuntime, AutoCloseable {
 
     private String resultsKey(String taskId) {
         return keyspace.base() + ":task:" + taskId + ":results";
-    }
-
-    private String successResultsKey(String taskId) {
-        return resultsKey(taskId) + ":success";
     }
 
     private static KernelOperationNotImplementedException notImplemented(

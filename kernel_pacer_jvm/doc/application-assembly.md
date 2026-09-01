@@ -41,7 +41,9 @@ When Serviceability is enabled, Runtime mints one Worker-Score-slot-aligned
 `hotEligibilityFloorMillis`. Serviceability Dispatch and Assignment candidate
 acquisition receive the same immutable value. Adapter Evidence changes only
 polarity and does not receive the floor. It is not stored in Redis or exposed
-through Health or Runtime APIs.
+through Health or Runtime APIs. Serviceability may widen only its own bounded
+HOT discovery up to the stale-HOT cutoff derived from its Probe retry interval;
+Assignment continues to use the immutable floor.
 
 ## Mechanical Owners
 

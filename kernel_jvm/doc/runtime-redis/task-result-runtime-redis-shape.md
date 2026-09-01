@@ -39,25 +39,23 @@ Ingress LISTs are transient evidence. TaskItem result projection is owned by
 
 ```text
 xa_mass:<scope>:task:<taskId>:results
-  HASH messageId -> success payload | internal failed marker
-
-xa_mass:<scope>:task:<taskId>:results:success
-  SET messageId
+  HASH messageId -> encoded TaskItemResult(code, opaqueResultPayload)
 ```
 
-One owner-local Lua operation stores a success payload in the HASH and adds
-the same Message ID to the Success SET. Failed-result storage writes the fixed
-internal marker only when the Message ID is not in that SET. Therefore a late
-SUCCESS may replace failed, while a later failed write cannot replace success.
-The marker is never returned as an opaque payload.
+Exact code `200` is success. Success encodes the complete Result before one
+multi-field `HSET`, so it may replace an earlier terminal failed value or an
+earlier success payload. Terminal failed storage encodes
+`{"code":"failed","opaqueResultPayload":"TaskItem ended without a successful result"}`
+and applies `HSETNX` to each bounded Message ID in one owner-local, single-key
+Lua operation. Every observed Result therefore has a non-empty payload. A
+later SUCCESS replaces failed, while a later failed write cannot replace any
+observed Result.
 
-Point reads use bounded `HMGET` plus `SMISMEMBER`. Scan reads use bounded
-`HSCAN COUNT 1000` pages plus one page-local `SMISMEMBER`. Payloads classified
-as successful are re-read after classification so a concurrent failed-to-
-success replacement cannot expose the internal marker as a success payload. A
-present HASH field is `succeeded` or `failed` according to the SET; an absent
-field is not observed. The SET is a TaskRuntime-private classification index,
-not scheduling truth, a queue, or a second lifecycle Owner.
+Point reads use one bounded `HMGET`; scan reads use bounded
+`HSCAN COUNT 1000` pages. Each present field is decoded without another Redis
+lookup and classified by its own code; an absent field is not observed.
+Malformed or legacy raw values fail closed as corrupt Owner data instead of
+being guessed as success or failure.
 
 The SUCCESS Result policy stores success then promotes the TaskItem to
 `FINAL_SUCCESS`. Ordinary retryable FAILURE evidence does not store an Item
@@ -94,7 +92,7 @@ WorkerExecutionResultEvents
   layer allowed to unwrap WorkerLeaseReference into the score-owner fence
 
 TaskRuntime
-  owns the Task-scoped unified Result HASH and private Success SET
+  owns the Task-scoped self-describing Result HASH
 
 TaskDispatchPolicy
   owns exhaustion/TTL classification and orders failed-result storage before
@@ -106,5 +104,6 @@ TaskItemScoreBandCore / WorkerScoreCore
 
 The old `worker-failure` and `adapter-rejection` LISTs are not read or migrated.
 They were transient best-effort evidence and have no compatibility alias. The
-unified Result shape is also a clean cut: a scope containing legacy HASH
-entries without the Success SET must be cleared or recreated before use.
+self-describing Result shape is also a clean cut: scopes containing legacy raw
+HASH values or the retired `results:success` SET must be cleared or recreated
+before use. Runtime code does not read, migrate or delete either legacy shape.

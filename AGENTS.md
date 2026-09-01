@@ -155,10 +155,12 @@ architectures.
 - Task Owner enforces Task versus TaskItem rule location and JSON-safe finite
   persistence only. It must not interpret Match Property names or operators;
   stored rule semantics belong to the Pacer Matcher.
-- TaskRuntime owns the Task-scoped unified Result HASH and private Success SET.
-  Success atomically writes payload plus classification. Failed writes only
-  when success is absent; point/page reads expose succeeded or failed and use
-  missing as not observed. The SET is not scheduling or lifecycle truth.
+- TaskRuntime owns the Task-scoped self-describing Result HASH. Each value
+  contains `code + non-empty opaqueResultPayload`; exact `200` is success.
+  Success replaces an earlier failed value, while terminal failed storage uses
+  one fixed internal failure description with `HSETNX` and cannot replace any
+  observed Result. Missing remains not observed; there is no companion
+  classification key.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.

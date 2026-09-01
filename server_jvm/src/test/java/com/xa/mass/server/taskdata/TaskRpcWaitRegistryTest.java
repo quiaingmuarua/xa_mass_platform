@@ -67,7 +67,7 @@ class TaskRpcWaitRegistryTest {
         registry.completeResult(
                 "task-1",
                 "message-1",
-                TaskItemResult.failed()
+                new TaskItemResult("3303", "private failure payload")
         );
 
         var response = result(deferred).results().get("message-1");

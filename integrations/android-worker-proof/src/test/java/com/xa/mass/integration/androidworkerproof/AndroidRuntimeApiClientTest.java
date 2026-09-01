@@ -25,6 +25,10 @@ final class AndroidRuntimeApiClientTest {
     private AndroidRuntimeApiClient client;
     private final AtomicReference<Map<String, Object>> lastItemsCall =
             new AtomicReference<>();
+    private final AtomicReference<String> loadedResultStatus =
+            new AtomicReference<>("succeeded");
+    private final AtomicReference<String> nextLoadedResultStatus =
+            new AtomicReference<>("succeeded");
 
     @BeforeEach
     void startServer() throws IOException {
@@ -77,7 +81,31 @@ final class AndroidRuntimeApiClientTest {
                 1_000L
         );
         assertEquals(AndroidRuntimeApiClient.CallStatus.SUCCEEDED, call.status());
-        assertTrue(client.resultObserved(call.messageId()));
+        assertEquals(
+                AndroidRuntimeApiClient.CallStatus.SUCCEEDED,
+                client.resultStatus(call.messageId())
+        );
+    }
+
+    @Test
+    void failedSnapshotCanBeOverwrittenByLateSuccess() {
+        loadedResultStatus.set("failed");
+        nextLoadedResultStatus.set("succeeded");
+        AndroidRuntimeApiClient.TaskCall call =
+                new AndroidRuntimeApiClient.TaskCall(
+                        "message-1",
+                        AndroidRuntimeApiClient.CallStatus.NOT_OBSERVED
+                );
+
+        AndroidWorkerProofAssertions.awaitSucceededCall(
+                client,
+                call,
+                Duration.ofSeconds(1)
+        );
+        assertEquals(
+                AndroidRuntimeApiClient.CallStatus.SUCCEEDED,
+                client.resultStatus(call.messageId())
+        );
     }
 
     @Test
@@ -173,12 +201,20 @@ final class AndroidRuntimeApiClientTest {
                     request.get("messageIds"),
                     "messageIds"
             ).get(0);
+            String status = loadedResultStatus.getAndSet(
+                    nextLoadedResultStatus.get()
+            );
+            Map<String, Object> loadedResult = new LinkedHashMap<>();
+            loadedResult.put("status", status);
+            if ("succeeded".equals(status)) {
+                loadedResult.put(
+                        "opaqueResultPayload",
+                        "opaque-result"
+                );
+            }
             response = Map.of("results", Map.of(
                     messageId,
-                    Map.of(
-                            "status", "succeeded",
-                            "opaqueResultPayload", "opaque-result"
-                    )
+                    loadedResult
             ));
         } else {
             throw new AssertionError("Unexpected path: " + path);

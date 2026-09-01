@@ -156,7 +156,7 @@ final class AndroidWorkerConvergenceHealth {
                     "Adapter did not establish the physical close mutation"
             );
         }
-        AndroidWorkerProofAssertions.awaitResult(
+        AndroidWorkerProofAssertions.awaitSucceededResult(
                 runtime,
                 delayed.messageId(),
                 maximumWait
@@ -284,7 +284,7 @@ final class AndroidWorkerConvergenceHealth {
                 workerId,
                 maximumWait
         );
-        AndroidWorkerProofAssertions.awaitResult(
+        AndroidWorkerProofAssertions.awaitSucceededResult(
                 runtime,
                 messageId,
                 maximumWait

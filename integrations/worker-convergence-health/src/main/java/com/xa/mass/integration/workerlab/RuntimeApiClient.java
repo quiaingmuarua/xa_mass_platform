@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 final class RuntimeApiClient {
 
@@ -158,7 +157,10 @@ final class RuntimeApiClient {
         return Collections.unmodifiableMap(statuses);
     }
 
-    Set<String> loadResults(String taskId, List<String> messageIds) {
+    Map<String, CallStatus> loadResultStatuses(
+            String taskId,
+            List<String> messageIds
+    ) {
         if (messageIds == null || messageIds.isEmpty()
                 || messageIds.size() > 1_000) {
             throw new IllegalArgumentException(
@@ -175,12 +177,13 @@ final class RuntimeApiClient {
                 response.body().get("results"),
                 "loaded results"
         );
-        Set<String> expected = Set.copyOf(messageIds);
+        var expected = java.util.Set.copyOf(messageIds);
         if (!results.keySet().equals(expected)) {
             throw JsonValues.invalid("Loaded result identities changed");
         }
-        var observed = new java.util.LinkedHashSet<String>();
-        results.forEach((messageId, rawResult) -> {
+        Map<String, CallStatus> statuses = new LinkedHashMap<>();
+        for (String messageId : messageIds) {
+            Object rawResult = results.get(messageId);
             Map<String, Object> result = JsonValues.object(
                     rawResult,
                     "loaded result"
@@ -188,11 +191,9 @@ final class RuntimeApiClient {
             CallStatus status = CallStatus.fromWire(
                     JsonValues.requiredString(result, "status")
             );
-            if (status == CallStatus.SUCCEEDED) {
-                observed.add(messageId);
-            }
-        });
-        return Set.copyOf(observed);
+            statuses.put(messageId, status);
+        }
+        return Collections.unmodifiableMap(statuses);
     }
 
     static String managedTaskId(String workerGroupId) {

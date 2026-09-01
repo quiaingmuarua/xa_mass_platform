@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -206,6 +207,22 @@ final class WorkerLabConvergenceSupport {
             Supplier<T> observation,
             Predicate<T> accepted
     ) {
+        return await(
+                phase,
+                maximumWait,
+                observation,
+                accepted,
+                WorkerLabConvergenceSupport::safeObservation
+        );
+    }
+
+    static <T> T await(
+            String phase,
+            Duration maximumWait,
+            Supplier<T> observation,
+            Predicate<T> accepted,
+            Function<T, String> describeObservation
+    ) {
         long deadline = System.nanoTime() + maximumWait.toNanos();
         RuntimeException latestFailure = null;
         T latest = null;
@@ -222,7 +239,10 @@ final class WorkerLabConvergenceSupport {
         } while (System.nanoTime() < deadline);
         IllegalStateException timeout = new IllegalStateException(
                 "Worker Lab convergence phase timed out: " + phase
-                        + " (latest=" + safeObservation(latest) + ")"
+                        + " (latest=" + describeSafely(
+                                latest,
+                                describeObservation
+                        ) + ")"
         );
         if (latestFailure != null) {
             timeout.addSuppressed(latestFailure);
@@ -247,6 +267,29 @@ final class WorkerLabConvergenceSupport {
     static boolean isHotSchedulingState(String state) {
         return "held-hot".equals(state)
                 || "hot-score-overdue".equals(state);
+    }
+
+    static String describeUnexpectedStates(
+            List<String> expectedWorkerIds,
+            Map<String, String> observedStates,
+            Predicate<String> accepted
+    ) {
+        LinkedHashMap<String, String> unexpected = new LinkedHashMap<>();
+        for (String workerId : expectedWorkerIds) {
+            String state = observedStates.get(workerId);
+            if (state == null || !accepted.test(state)) {
+                unexpected.put(
+                        workerId,
+                        state == null ? "missing" : state
+                );
+            }
+        }
+        observedStates.forEach((workerId, state) -> {
+            if (!expectedWorkerIds.contains(workerId)) {
+                unexpected.put(workerId, "unexpected:" + state);
+            }
+        });
+        return "unexpectedStates=" + unexpected;
     }
 
     static boolean numberEquals(Object value, long expected) {
@@ -289,6 +332,20 @@ final class WorkerLabConvergenceSupport {
             return String.valueOf(value);
         }
         return value.getClass().getSimpleName();
+    }
+
+    private static <T> String describeSafely(
+            T value,
+            Function<T, String> describeObservation
+    ) {
+        if (value == null) {
+            return "null";
+        }
+        try {
+            return describeObservation.apply(value);
+        } catch (RuntimeException ignored) {
+            return safeObservation(value);
+        }
     }
 
     record WorkerRef(String groupId, String labWorkerKey) {

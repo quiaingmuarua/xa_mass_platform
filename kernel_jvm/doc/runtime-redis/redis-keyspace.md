@@ -37,7 +37,6 @@ Task score            xa_mass:<scope>:task:score
 Task Items            xa_mass:<scope>:task:<taskId>:items
 TaskItem score        xa_mass:<scope>:task:<taskId>:item_score
 Task results          xa_mass:<scope>:task:<taskId>:results
-Task success results  xa_mass:<scope>:task:<taskId>:results:success
 
 WorkerGroup catalog   xa_mass:<scope>:worker:groups
 Worker metadata       xa_mass:<scope>:worker:metadata:<workerGroupId>

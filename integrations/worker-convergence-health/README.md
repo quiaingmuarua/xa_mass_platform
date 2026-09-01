@@ -74,6 +74,10 @@ these background Items execute once, produce a terminal Result or determine a
 specific Worker state. There is no random campaign, seed, round count, fault
 DSL or automatic compensation.
 
+Timeout diagnostics retain only the unresolved Worker IDs and their latest
+Network or Scheduling states, or the named witness's latest Result status.
+They do not record Worker Properties or result payloads.
+
 ## Run
 
 Redis 7 must already be reachable. With Python 3.11 or newer, install the shared

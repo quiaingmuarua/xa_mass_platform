@@ -71,6 +71,7 @@ final class AndroidWorkerProofOptionsTest {
                 }
         );
         assertEquals(5_000L, defaults.requestTimeout().toMillis());
+        assertEquals(120_000L, defaults.maximumWait().toMillis());
 
         assertThrows(IllegalArgumentException.class, () ->
                 AndroidWorkerProofOptions.parse(new String[]{

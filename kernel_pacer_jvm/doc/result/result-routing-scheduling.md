@@ -142,7 +142,7 @@ guard this Java production layering.
 
 ```text
 TaskItemResultEvents.onItemsSucceeded
-  -> atomically store payload and successful Message ID classification
+  -> atomically store self-describing code=200 Results
   -> promote the same Item IDs to FINAL_SUCCESS
 
 WorkerExecutionResultEvents.onTaskSucceeded
@@ -150,11 +150,11 @@ WorkerExecutionResultEvents.onTaskSucceeded
 ```
 
 Result storage precedes Item promotion, so a promoted success has stored
-result truth. One TaskRuntime operation writes the payload HASH and Success SET
-classification. A later success may replace a failed marker or an earlier
-payload and may promote an Item from `FINAL_FAILED` according to the existing
-Item owner contract. Once the Success SET contains the Message ID, later
-failed-result storage cannot replace its payload.
+result truth. One TaskRuntime operation encodes each payload with code `200`
+and writes the Result HASH. A later success may replace a terminal failed value
+or an earlier success payload and may promote an Item from `FINAL_FAILED`
+according to the existing Item owner contract. Terminal failed storage uses
+`HSETNX` and therefore cannot replace any observed success.
 
 The current Worker event implementation uses
 `releaseCompletedHotScoreHolds`. It accepts only:
@@ -180,8 +180,9 @@ WorkerExecutionResultEvents.onTaskFailed
 Worker handler failure and Adapter rejection are identical to Result Routing.
 The Result policy neither stores a TaskItem result nor changes its score. The
 Item remains at its existing claim coordinate and normal claim expiry provides
-retry. Only Task Dispatch writes the failed marker when existing retry budget
-is exhausted or TTL expires, before requesting `FINAL_FAILED`. Active
+retry. Only Task Dispatch writes the fixed self-describing `failed` Result when
+existing retry budget is exhausted or TTL expires, before requesting
+`FINAL_FAILED`. Active
 connection evidence and delivery-expiry serviceability policy remain owned by
 the separate Adapter Evidence Pacer.
 

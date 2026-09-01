@@ -303,10 +303,11 @@ final class WorkerTaskFaultConvergence {
                     "disconnected"
             );
             require(
-                    runtime.loadResults(
+                    runtime.loadResultStatuses(
                             RuntimeApiClient.managedTaskId(STRING_GROUP),
                             List.of(state.checkpointMessageId())
-                    ).contains(state.checkpointMessageId()),
+                    ).get(state.checkpointMessageId())
+                            == RuntimeApiClient.CallStatus.SUCCEEDED,
                     "Checkpoint witness disappeared after Worker loss"
             );
             evidence.record("finality", "results-remained-final", Map.of(
@@ -403,7 +404,12 @@ final class WorkerTaskFaultConvergence {
                 () -> runtime.observeScheduling(groupId, workerIds),
                 states -> states.size() == workerIds.size()
                         && states.values().stream().allMatch(
-                        WorkerLabConvergenceSupport::isUnavailableSchedulingState)
+                        WorkerLabConvergenceSupport::isUnavailableSchedulingState),
+                states -> WorkerLabConvergenceSupport.describeUnexpectedStates(
+                        workerIds,
+                        states,
+                        WorkerLabConvergenceSupport::isUnavailableSchedulingState
+                )
         );
     }
 
@@ -423,7 +429,12 @@ final class WorkerTaskFaultConvergence {
                 () -> runtime.observeScheduling(groupId, workerIds),
                 states -> states.size() == workerIds.size()
                         && states.values().stream().allMatch(
-                        WorkerLabConvergenceSupport::isHotSchedulingState)
+                        WorkerLabConvergenceSupport::isHotSchedulingState),
+                states -> WorkerLabConvergenceSupport.describeUnexpectedStates(
+                        workerIds,
+                        states,
+                        WorkerLabConvergenceSupport::isHotSchedulingState
+                )
         ));
     }
 

@@ -521,7 +521,12 @@ final class WorkerStateConvergence {
                 () -> runtime.observeScheduling(groupId, workerIds),
                 states -> states.size() == workerIds.size()
                         && states.values().stream().allMatch(
-                        WorkerLabConvergenceSupport::isHotSchedulingState)
+                        WorkerLabConvergenceSupport::isHotSchedulingState),
+                states -> WorkerLabConvergenceSupport.describeUnexpectedStates(
+                        workerIds,
+                        states,
+                        WorkerLabConvergenceSupport::isHotSchedulingState
+                )
         ));
     }
 

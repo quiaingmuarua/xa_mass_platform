@@ -276,12 +276,12 @@ and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
 
 The scan operation exposes one Task's existing Result HASH in bounded owner
-pages. One call performs one Redis `HSCAN` with a `1..1000` COUNT hint and one
-page-local Success SET classification query. It returns the next cursor plus
+pages. One call performs one Redis `HSCAN` with a `1..1000` COUNT hint and
+decodes each self-describing value locally. It returns the next cursor plus
 `messageId -> TaskItemResult` entries. COUNT is not a strict page-size
 contract, ordering is undefined, and callers must deduplicate across pages.
-This supports caller-owned success-only export without adding a second result
-store or allowing Server to read Redis directly.
+This supports caller-owned success-only export without another classification
+lookup, a second result store or a Server Redis bypass.
 
 `eventCode` stores the full opaque Event Name and is passed through to the
 selected Worker's local handler dispatch. Kernel Task initialization, matching, and
@@ -323,21 +323,21 @@ Score-eligible bounded candidate IDs. TaskRuntime owns canonical persistence,
 while Matcher owns DSL syntax, rule-derived identity range and canonical
 evaluation.
 
-The Result HASH stores either an opaque success payload or the fixed internal
-failed marker. The companion `results:success` SET classifies successful
-Message IDs. Success atomically writes both structures; failed writes the HASH
-only when the SET does not contain the ID. This makes success absorbing
-relative to later failure writes while allowing a late success to replace an
-earlier failed snapshot. The marker never leaves TaskRuntime as payload.
+The Result HASH stores one encoded `TaskItemResult` per observed Message ID.
+Each value contains a non-empty string code and non-empty opaque payload; exact
+`200` is the only success code. Success uses one multi-field `HSET`, while the
+fixed terminal `failed` Result carries the internal description
+`TaskItem ended without a successful result` and uses one bounded single-key
+Lua operation with `HSETNX`. Success is therefore absorbing relative to later
+failed writes, and a late success may still replace an earlier failed snapshot.
 
 The owner exposes one bounded, Task-scoped point read of requested
-`messageId` values. It uses bounded `HMGET` and `SMISMEMBER`, then re-observes
-payloads classified successful to close the concurrent late-success window;
-cross-Task batching remains caller orchestration rather than a TaskRuntime
-contract. The read returns `succeeded`, `failed`, or a missing value. The
-Success SET is classification infrastructure, not Item finality or scheduling
-truth. This shape is a clean cut and does not classify legacy HASH-only success
-rows.
+`messageId` values through one `HMGET`; cross-Task batching remains caller
+orchestration rather than a TaskRuntime contract. Each present DTO is
+classified from its own code and a missing field remains not observed. This
+shape is a clean cut: legacy raw payload/marker values are corrupt rather than
+implicitly classified, and the retired `results:success` SET is not read or
+migrated.
 
 The Server RPC wait path uses only this projection. It does not read the
 TaskItem record, Item score, or Task score while waiting. Both succeeded and

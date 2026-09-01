@@ -37,7 +37,7 @@ final class ProofWait {
                 : List.of(identity);
         ProofFailure failure = new ProofFailure(
                 invariant,
-                failureMessage,
+                failureMessage + " (latest=" + safeObservation(latest) + ")",
                 List.of(),
                 List.of(),
                 inconsistent
@@ -89,5 +89,18 @@ final class ProofWait {
 
     private static <T> T fail(ProofFailure failure) {
         throw failure;
+    }
+
+    private static String safeObservation(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean
+                || value instanceof Enum<?>) {
+            return String.valueOf(value);
+        }
+        return value.getClass().getSimpleName();
     }
 }

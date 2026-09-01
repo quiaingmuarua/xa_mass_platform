@@ -988,19 +988,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void serviceabilityRangesAreDescendingExclusiveAndExcludeColdScores() {
+    void serviceabilityRangesUseExclusiveHotCutoffAndExcludeColdScores() {
         long nowSlot = redisTimeMillis() / WorkerScoreCore.SLOT_MILLIS;
-        long floorMillis = (nowSlot - 20) * WorkerScoreCore.SLOT_MILLIS;
-        long floorSlot = floorMillis / WorkerScoreCore.SLOT_MILLIS;
+        long hotCutoffMillis = (nowSlot - 20) * WorkerScoreCore.SLOT_MILLIS;
+        long hotCutoffSlot = hotCutoffMillis / WorkerScoreCore.SLOT_MILLIS;
         long hotHigher = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
-                floorSlot - 1,
+                hotCutoffSlot - 1,
                 0,
                 0
         );
         long hotLower = workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
-                floorSlot - 2,
+                hotCutoffSlot - 2,
                 0,
                 0
         );
@@ -1008,16 +1008,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.zadd(scoreKey("group-range"), hotLower, "hot-lower");
         redis.zadd(scoreKey("group-range"), workerScore(
                 WorkerScoreCore.HOT_ACQUIRE_POLARITY,
-                floorSlot,
+                hotCutoffSlot,
                 0,
                 0
         ), "hot-at-floor");
 
-        var firstHot = scoreCore.acquirePreEpochHotCandidates(
-                "group-range", floorMillis, 0, 1
+        var firstHot = scoreCore.acquireHotCandidatesBefore(
+                "group-range", hotCutoffMillis, 0, 1
         );
-        var secondHot = scoreCore.acquirePreEpochHotCandidates(
-                "group-range", floorMillis, firstHot.getFirst().score(), 2
+        var secondHot = scoreCore.acquireHotCandidatesBefore(
+                "group-range",
+                hotCutoffMillis,
+                firstHot.getFirst().score(),
+                2
         );
         assertThat(firstHot).extracting(
                 WorkerScoreCore.WorkerScoreObservation::workerId

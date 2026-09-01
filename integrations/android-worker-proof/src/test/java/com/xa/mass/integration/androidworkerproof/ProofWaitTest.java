@@ -2,6 +2,7 @@ package com.xa.mass.integration.androidworkerproof;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -57,5 +58,20 @@ final class ProofWaitTest {
 
         assertEquals("observation.contract", failure.invariant());
         assertEquals(1, observations.get());
+    }
+
+    @Test
+    void timeoutReportsTheLatestSafeObservation() {
+        ProofFailure failure = assertThrows(ProofFailure.class, () ->
+                ProofWait.until(
+                        Duration.ofMillis(150L),
+                        () -> "recovery",
+                        "hot-score-overdue"::equals,
+                        "wait.state",
+                        "Scheduling state did not converge",
+                        "worker-1"
+                ));
+
+        assertTrue(failure.safeMessage().contains("latest=recovery"));
     }
 }

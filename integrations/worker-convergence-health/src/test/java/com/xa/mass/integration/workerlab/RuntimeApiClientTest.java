@@ -119,10 +119,23 @@ class RuntimeApiClientTest {
                             RuntimeApiClient.CallStatus.NOT_OBSERVED
                     )
             );
-            assertThat(client.loadResults(
+            assertThat(client.loadResultStatuses(
                     "task-1",
                     List.of("message-1", "message-2", "message-3")
-            )).containsExactly("message-1");
+            )).containsExactly(
+                    Map.entry(
+                            "message-1",
+                            RuntimeApiClient.CallStatus.SUCCEEDED
+                    ),
+                    Map.entry(
+                            "message-2",
+                            RuntimeApiClient.CallStatus.NOT_OBSERVED
+                    ),
+                    Map.entry(
+                            "message-3",
+                            RuntimeApiClient.CallStatus.FAILED
+                    )
+            );
 
             assertThat(requests).anySatisfy(body -> {
                 assertThat(body).containsEntry("waitTimeoutMillis", 250L);

@@ -23,7 +23,7 @@ import java.util.Objects;
 public final class DispatchConvergenceRuntime {
 
     private static final long LAB_INTERVAL_MILLIS = 20;
-    private static final long BOUNDARY_RECOVERY_RETRY_MILLIS = 10;
+    private static final long BOUNDARY_PROBE_RETRY_MILLIS = 10;
 
     private final DispatchConvergenceApplication application;
     private final AssignmentDispatchConfig assignmentConfig;
@@ -201,7 +201,7 @@ public final class DispatchConvergenceRuntime {
                             WorkerServiceabilityDispatchAssemblyConfig
                                     .DEFAULT_INTERVAL_MILLIS,
                             new WorkerServiceabilityDispatchConfig(
-                                    BOUNDARY_RECOVERY_RETRY_MILLIS,
+                                    BOUNDARY_PROBE_RETRY_MILLIS,
                                     WorkerServiceabilityDispatchConfig
                                             .DEFAULT_PROBE_SWEEP_RESTART_DELAY_MILLIS,
                                     WorkerServiceabilityDispatchConfig

@@ -66,7 +66,7 @@ class DispatchConvergenceRuntimeTest {
         assertEquals(1_000, config.intervalMillis());
         assertEquals(
                 expectedRecoveryInterval,
-                config.dispatch().recoveryRetryIntervalMillis()
+                config.dispatch().probeRetryIntervalMillis()
         );
         assertEquals(
                 10_000,

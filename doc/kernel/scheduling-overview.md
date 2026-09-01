@@ -261,10 +261,7 @@ xa_mass:<scope>:worker:score:<workerGroupId>
 xa_mass:<scope>:task:<taskId>:item_score
 xa_mass:<scope>:task:<taskId>:items
 xa_mass:<scope>:task:<taskId>:results
-  Task-local Item score and record/result HASHes
-
-xa_mass:<scope>:task:<taskId>:results:success
-  Task-local successful Message ID classification SET
+  Task-local Item score, record and self-describing Result HASHes
 
 xa_mass:<scope>:delivery:commands:<endpointManagerId>
   one shared sparse DeliveryCommand HASH per Adapter route; TASK append may

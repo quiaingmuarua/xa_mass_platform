@@ -160,11 +160,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         assertThat(redis.hget(
                 keyspace.base() + ":task:task-1:results",
                 "message-1"
-        )).isEqualTo("{\"valid\":true}");
-        assertThat(redis.sismember(
-                keyspace.base() + ":task:task-1:results:success",
-                "message-1"
-        )).isTrue();
+        )).isEqualTo(
+                "{\"code\":\"200\","
+                        + "\"opaqueResultPayload\":"
+                        + "\"{\\\"valid\\\":true}\"}"
+        );
+        assertThat(redis.exists(
+                keyspace.base() + ":task:task-1:results:success"
+        )).isZero();
         assertThat(itemScoreCore.promoteItemOutcomes(
                 "task-1",
                 List.of("message-1"),
@@ -213,6 +216,15 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 List.of("message-failed")
         );
 
+        assertThat(redis.hget(
+                keyspace.base() + ":task:task-1:results",
+                "message-failed"
+        )).isEqualTo(
+                "{\"code\":\"failed\","
+                        + "\"opaqueResultPayload\":"
+                        + "\"TaskItem ended without a successful result\"}"
+        );
+
         var initiallyLoaded = runtime.loadTaskItemResults(
                 "task-1",
                 List.of("message-failed", "message-late", "missing")
@@ -226,6 +238,10 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "task-1",
                 Map.of("message-late", "late-success")
         );
+        runtime.storeTaskItemSuccessResults(
+                "task-1",
+                Map.of("message-late", "newer-success")
+        );
         runtime.storeTaskItemFailedResults(
                 "task-1",
                 List.of("message-late")
@@ -238,33 +254,69 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 Map.entry("message-failed", TaskItemResult.failed()),
                 Map.entry(
                         "message-late",
-                        TaskItemResult.succeeded("late-success")
+                        TaskItemResult.succeeded("newer-success")
                 )
         );
         assertThat(runtime.scanTaskItemResults("task-1", "0", 1000)
                 .results()).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "message-failed", TaskItemResult.failed(),
                         "message-late",
-                        TaskItemResult.succeeded("late-success")
+                        TaskItemResult.succeeded("newer-success")
                 ));
     }
 
     @Test
-    void successWriteTypeFailureDoesNotLeaveAResultWithoutClassification() {
-        String successKey = keyspace.base()
-                + ":task:task-1:results:success";
-        redis.set(successKey, "corrupt-type");
+    void successValidationFailureDoesNotPartiallyWriteTheBatch() {
+        var results = new java.util.LinkedHashMap<String, String>();
+        results.put("message-valid", "payload");
+        results.put("message-invalid", " ");
 
         assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults(
                 "task-1",
-                Map.of("message-1", "payload")
+                results
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(redis.hlen(
+                keyspace.base() + ":task:task-1:results"
+        )).isZero();
+    }
+
+    @Test
+    void resultWritesRejectAWrongRedisTypeWithoutReplacingIt() {
+        String resultsKey = keyspace.base() + ":task:task-1:results";
+        redis.set(resultsKey, "corrupt-type");
+
+        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults(
+                "task-1",
+                Map.of("message-success", "payload")
+        )).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> runtime.storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-failed")
         )).isInstanceOf(RuntimeException.class);
 
-        assertThat(redis.hget(
-                keyspace.base() + ":task:task-1:results",
-                "message-1"
-        )).isNull();
-        assertThat(redis.get(successKey)).isEqualTo("corrupt-type");
+        assertThat(redis.get(resultsKey)).isEqualTo("corrupt-type");
+    }
+
+    @Test
+    void legacyAndCorruptResultValuesFailClosed() {
+        String resultsKey = keyspace.base() + ":task:task-1:results";
+        redis.hset(resultsKey, "legacy", "legacy-payload");
+
+        assertThatThrownBy(() -> runtime.loadTaskItemResults(
+                "task-1",
+                List.of("legacy")
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessage("TaskItem Result is corrupt");
+
+        redis.hdel(resultsKey, "legacy");
+        redis.hset(resultsKey, "corrupt", "{");
+        assertThatThrownBy(() -> runtime.scanTaskItemResults(
+                "task-1",
+                "0",
+                1000
+        )).isInstanceOf(IllegalStateException.class)
+                .hasMessage("TaskItem Result is corrupt");
     }
 
     @Test

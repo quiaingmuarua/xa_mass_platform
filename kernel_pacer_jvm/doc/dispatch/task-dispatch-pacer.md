@@ -95,7 +95,7 @@ Failed Result storage is the precondition for `FINAL_FAILED` promotion. A
 storage exception fails the current Dispatch round before score mutation, so a
 later round can retry the same owner-local write and promotion. TaskRuntime
 does not replace a successful Result with failed; a late SUCCESS may replace a
-failed marker, and the Item Score Owner's existing ordering still lets
+fixed failed Result, and the Item Score Owner's existing ordering still lets
 `FINAL_SUCCESS` win over `FINAL_FAILED`.
 
 ## ACTIVE Item Truth

@@ -452,29 +452,29 @@ public final class RedisWorkerScoreCore
     }
 
     @Override
-    public List<WorkerScoreObservation> acquirePreEpochHotCandidates(
+    public List<WorkerScoreObservation> acquireHotCandidatesBefore(
             String homeBucketId,
-            long hotEligibilityFloorMillis,
+            long hotCutoffMillis,
             long maximumScoreExclusive,
             int limit
     ) {
         requireNonBlank(homeBucketId, "homeBucketId");
         if (limit <= 0
                 || maximumScoreExclusive < ZERO_SCORE
-                || !validTimeMillis(hotEligibilityFloorMillis)) {
+                || !validTimeMillis(hotCutoffMillis)) {
             return List.of();
         }
-        long floorScore = absoluteScore(
-                hotEligibilityFloorMillis / SLOT_MILLIS,
+        long cutoffScore = absoluteScore(
+                hotCutoffMillis / SLOT_MILLIS,
                 MIN_LANE_RANK,
                 MIN_DIRTY
         );
-        if (floorScore <= MIN_BASE) {
+        if (cutoffScore <= MIN_BASE) {
             return List.of();
         }
         long pageMaximumExclusive = maximumScoreExclusive == ZERO_SCORE
-                ? floorScore
-                : Math.min(floorScore, maximumScoreExclusive);
+                ? cutoffScore
+                : Math.min(cutoffScore, maximumScoreExclusive);
         if (pageMaximumExclusive <= MIN_BASE) {
             return List.of();
         }

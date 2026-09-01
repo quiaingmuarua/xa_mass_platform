@@ -195,7 +195,7 @@ final class AndroidRuntimeApiClient {
         return List.copyOf(resolved);
     }
 
-    boolean resultObserved(String messageId) {
+    CallStatus resultStatus(String messageId) {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/"
@@ -224,7 +224,7 @@ final class AndroidRuntimeApiClient {
         return CallStatus.fromWire(JsonValues.requiredString(
                 result,
                 "status"
-        )) == CallStatus.SUCCEEDED;
+        ));
     }
 
     void requirePropertiesRelation(

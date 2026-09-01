@@ -30,7 +30,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 WorkerServiceabilityRuntime.class
         );
         long opaqueScore = 777_777_777L;
-        when(scores.acquirePreEpochHotCandidates(
+        when(scores.acquireHotCandidatesBefore(
                 "group-1", 10_000L, 0L, 100
         )).thenReturn(List.of(new WorkerScoreObservation(
                 "worker-1", opaqueScore
@@ -77,7 +77,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 WorkerServiceabilityRuntime.class
         );
         long opaqueScore = -888_888_888L;
-        when(scores.acquirePreEpochHotCandidates(
+        when(scores.acquireHotCandidatesBefore(
                 "group-1", 10_000L, 0L, 100
         )).thenReturn(List.of());
         when(scores.acquireRecoveryRecheckCandidates(
@@ -122,7 +122,7 @@ class WorkerServiceabilityDispatchPolicyTest {
                 WorkerServiceabilityRuntime.class
         );
         long opaqueScore = 999_999_999L;
-        when(scores.acquirePreEpochHotCandidates(
+        when(scores.acquireHotCandidatesBefore(
                 "group-1", 10_000L, 0L, 100
         )).thenReturn(List.of(new WorkerScoreObservation(
                 "worker-1", opaqueScore
@@ -172,7 +172,7 @@ class WorkerServiceabilityDispatchPolicyTest {
         WorkerServiceabilityRuntime runtime = mock(
                 WorkerServiceabilityRuntime.class
         );
-        when(scores.acquirePreEpochHotCandidates(
+        when(scores.acquireHotCandidatesBefore(
                 "group-1", 10_000L, 0L, 100
         )).thenReturn(List.of(new WorkerScoreObservation(
                 "worker-1", 123_456_789L
@@ -186,9 +186,51 @@ class WorkerServiceabilityDispatchPolicyTest {
         policy.dispatchProbes(List.of("group-1"), config(), 10_000L);
         policy.dispatchProbes(List.of("group-1"), config(), 10_000L);
 
-        verify(scores).acquirePreEpochHotCandidates(
+        verify(scores).acquireHotCandidatesBefore(
                 "group-1", 10_000L, 123_456_789L, 100
         );
+    }
+
+    @Test
+    void stalePostEpochHotCandidateEntersProbeCompensation() {
+        WorkerScoreCore scores = mock(WorkerScoreCore.class);
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
+        WorkerServiceabilityRuntime runtime = mock(
+                WorkerServiceabilityRuntime.class
+        );
+        long opaqueScore = 444_444_444L;
+        when(scores.acquireHotCandidatesBefore(
+                "group-1", 19_000L, 0L, 100
+        )).thenReturn(List.of(new WorkerScoreObservation(
+                "worker-1", opaqueScore
+        )));
+        when(scores.getScoreStates("group-1", List.of("worker-1")))
+                .thenReturn(Map.of("worker-1", new WorkerScoreState(
+                        "worker-1",
+                        opaqueScore,
+                        WorkerScorePolarity.HOT_ACQUIRE,
+                        18_000L,
+                        0,
+                        0
+                )));
+        when(catalog.getWorkerDescriptors(
+                "group-1", List.of("worker-1")
+        )).thenReturn(Map.of("worker-1", worker("worker-1", "adapter-1")));
+        when(scores.holdObservedHotForServiceabilityProbes(
+                "group-1", Map.of("worker-1", opaqueScore)
+        )).thenReturn(Map.of("worker-1", transitioned(-123L)));
+        when(runtime.offerProbeRequests(
+                "adapter-1", List.of("worker-1")
+        )).thenReturn(Map.of("worker-1", ProbeRequestOfferStatus.OFFERED));
+
+        int offered = policy(
+                scores,
+                catalog,
+                runtime,
+                20_000L
+        ).dispatchProbes(List.of("group-1"), config(), 10_000L);
+
+        assertEquals(1, offered);
     }
 
     private static WorkerServiceabilityDispatchPolicy policy(
@@ -196,11 +238,20 @@ class WorkerServiceabilityDispatchPolicyTest {
             WorkerResourceCatalog catalog,
             WorkerServiceabilityRuntime runtime
     ) {
+        return policy(scores, catalog, runtime, 10_000L);
+    }
+
+    private static WorkerServiceabilityDispatchPolicy policy(
+            WorkerScoreCore scores,
+            WorkerResourceCatalog catalog,
+            WorkerServiceabilityRuntime runtime,
+            long currentTimeMillis
+    ) {
         return new WorkerServiceabilityDispatchPolicy(
                 scores,
                 catalog,
                 runtime,
-                () -> 10_000L
+                () -> currentTimeMillis
         );
     }
 

@@ -183,15 +183,15 @@ final class AndroidWorkerProofAssertions {
         ).requireSuccessful("Android Worker probe");
     }
 
-    static void awaitResult(
+    static void awaitSucceededResult(
             AndroidRuntimeApiClient runtime,
             String messageId,
             Duration maximumWait
     ) {
         ProofWait.until(
                 maximumWait,
-                () -> runtime.resultObserved(messageId),
-                Boolean.TRUE::equals,
+                () -> runtime.resultStatus(messageId),
+                AndroidRuntimeApiClient.CallStatus.SUCCEEDED::equals,
                 "task-result.observed",
                 "Android Worker Task result was not observed",
                 messageId
@@ -206,7 +206,7 @@ final class AndroidWorkerProofAssertions {
         if (call.status() == AndroidRuntimeApiClient.CallStatus.SUCCEEDED) {
             return;
         }
-        awaitResult(runtime, call.messageId(), maximumWait);
+        awaitSucceededResult(runtime, call.messageId(), maximumWait);
     }
 
     private static AndroidDeviceHostClient.Snapshot requireExpectedWorkerId(

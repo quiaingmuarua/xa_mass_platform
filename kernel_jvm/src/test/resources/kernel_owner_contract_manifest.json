@@ -145,8 +145,8 @@
     ],
     "WorkerScoreCore": [
       "acquire_hot_acquire_candidates",
+      "acquire_hot_candidates_before",
       "acquire_observed_hot_score_leases",
-      "acquire_pre_epoch_hot_candidates",
       "acquire_recovery_recheck_candidates",
       "advance_observed_recovery_rechecks",
       "apply_serviceability_polarity_evidence",
@@ -205,7 +205,7 @@
       "reason"
     ],
     "TaskItemResult": [
-      "succeeded",
+      "code",
       "opaque_result_payload"
     ],
     "TaskItemResultPage": [

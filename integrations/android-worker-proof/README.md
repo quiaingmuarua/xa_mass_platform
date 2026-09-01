@@ -82,9 +82,11 @@ Temporary HTTP connection, read and request-timeout failures from observation
 reads may be observed again until the phase deadline. Mutation requests are
 issued once and an ambiguous transport failure fails the phase. Invalid JSON,
 unexpected HTTP status, invalid state or identity drift fails immediately.
-Defaults are 60 seconds for the phase wait and 5 seconds for one request, with
-`requestTimeout <= maximumWait`. A phase can therefore exit at most one
-in-progress request timeout after its maximum wait budget.
+Defaults are 120 seconds for the whole phase and 5 seconds for one request,
+with `requestTimeout <= maximumWait`. The phase budget intentionally spans the
+default 60-second Serviceability retry plus the final workload witness; it is
+not reset for each observation. A phase can exit at most one in-progress
+request timeout after its maximum wait budget.
 
 ## Three-application isolation
 

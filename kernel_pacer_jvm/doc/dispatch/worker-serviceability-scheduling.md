@@ -19,7 +19,7 @@ exact Route change or expired Worker delivery
   -> WorkerServiceabilityEvents
   -> Worker resource and score-owner primitives
 
-or pre-epoch HOT / due RECOVERY score
+or pre-epoch or stale ordinary HOT / due RECOVERY score
   -> Adapter-scoped snapshot request
   -> platform.adapter.worker-connections.snapshot
   -> the same Adapter Evidence policy
@@ -52,6 +52,18 @@ the active floor.
 The floor is not an evidence timestamp or persistent generation. This cut
 assumes one active Kernel scheduling application per Redis scope.
 
+Serviceability also computes one call-local, slot-aligned HOT Probe cutoff:
+
+```text
+max(hotEligibilityFloorMillis, now - probeRetryIntervalMillis)
+```
+
+It may observe ordinary due HOT coordinates older than that cutoff as
+loss-compensation candidates. This range deliberately overlaps Assignment:
+the exact observed-score hold wins only when the Worker has remained unchanged;
+a concurrent lease makes the hold stale. Fresh ordinary HOT, future leases and
+PAUSE remain outside the Probe range.
+
 ## Best-Effort Runtime
 
 `WorkerServiceabilityRuntime` owns only two bounded handoffs:
@@ -73,7 +85,9 @@ There is no dispatched state, deadline index, batch registry, ack, retry queue,
 durable claim, global pending counter, or backlog watermark. Dispatch advances
 the exact Worker check coordinate before offering a request. If the HASH offer
 or later Report is lost, the retained RECOVERY coordinate becomes eligible
-through the ordinary retry scan.
+through the ordinary retry scan. If Route evidence is lost before an ordinary
+HOT coordinate changes polarity, the unchanged coordinate eventually enters
+the stale-HOT compensation range.
 
 ## Resource Producer
 
@@ -94,7 +108,8 @@ if demand exposes it later, scanning restarts from the full range.
 
 The whole batch shares a budget of 100 successfully held Probe attempts. For
 each Group, the policy first reads at most the remaining budget from
-`[MIN_BASE, hotEligibilityFloor)`. RECOVERY is read only when that Group's raw
+`[MIN_BASE, hotProbeCutoff)`, where the cutoff is the later of the process floor
+and the stale-HOT threshold above. RECOVERY is read only when that Group's raw
 HOT page is empty or its HOT range is in empty-range cooldown. A non-empty HOT
 page suppresses RECOVERY only for that Group; unused budget continues to later
 Groups. A successful exact Score hold consumes budget even when the subsequent
@@ -106,7 +121,7 @@ cooldowns; the former 80/20 split no longer exists.
 RECOVERY retry `laneRank=n` is due only after:
 
 ```text
-(n + 1) * recoveryRetryIntervalMillis
+(n + 1) * probeRetryIntervalMillis
 ```
 
 The initial HOT Probe writes rank 0 and is not counted as a Recovery Probe.

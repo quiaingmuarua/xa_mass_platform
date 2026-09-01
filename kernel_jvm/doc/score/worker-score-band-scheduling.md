@@ -355,9 +355,9 @@ observe_due_hot_scores(
 )
   -> map[dueHotWorkerId, observedScore]
 
-acquire_pre_epoch_hot_candidates(
+acquire_hot_candidates_before(
   homeBucketId,
-  hotEligibilityFloorMillis,
+  hotCutoffMillis,
   maximumScoreExclusive,
   limit
 )
@@ -379,12 +379,14 @@ Assignment-dispatch may pass a Worker into bounded matching only after an exact
 observed-score lease succeeds.
 
 When optional Worker Serviceability is enabled, Assignment supplies its
-process-local HOT eligibility floor to both ordinary reads. The pre-epoch form
-returns only positive scores in `[MIN_BASE, base(floorTimeSlot,0,0))` and belongs
-exclusively to Serviceability discovery. `maximumScoreExclusive=0` starts at
-the floor; otherwise the opaque score returned at the end of the previous page
-is the next exclusive upper bound. Without Serviceability, ordinary reads
-receive no floor and retain the original `MIN_BASE` range.
+process-local HOT eligibility floor to both ordinary reads. The bounded
+Serviceability form returns only positive scores in
+`[MIN_BASE, base(hotCutoffTimeSlot,0,0))`. Its production caller supplies the
+later of that process floor and a stale-HOT compensation threshold.
+`maximumScoreExclusive=0` starts at the cutoff; otherwise the opaque score
+returned at the end of the previous page is the next exclusive upper bound.
+Without Serviceability, ordinary reads receive no floor and retain the original
+`MIN_BASE` range.
 
 Recovery recheck acquisition:
 
@@ -874,10 +876,10 @@ observe_due_hot_scores(homeBucketId, workerIds, hotEligibilityFloorMillis?)
   returns only currently due HOT_ACQUIRE scores at or above the optional floor
   does not mutate score
 
-acquire_pre_epoch_hot_candidates(
-  homeBucketId, hotEligibilityFloorMillis, maximumScoreExclusive, limit
+acquire_hot_candidates_before(
+  homeBucketId, hotCutoffMillis, maximumScoreExclusive, limit
 )
-  reads positive HOT_ACQUIRE scores strictly below the floor
+  reads positive HOT_ACQUIRE scores strictly below the supplied cutoff
   returns a descending opaque-score page for a scalar best-effort sweep
   belongs to Serviceability discovery, never ordinary Assignment
   does not mutate score

@@ -94,6 +94,11 @@ final class WorkerServiceabilityDispatchPolicy {
         }
 
         long nowMillis = currentTimeMillis.getAsLong();
+        long hotProbeCutoffMillis = hotProbeCutoffMillis(
+                nowMillis,
+                hotEligibilityFloorMillis,
+                config.probeRetryIntervalMillis()
+        );
         retainActiveGroupSweeps(workerGroupIds);
         Set<String> excludedEndpoints = Set.copyOf(
                 config.probeExcludedEndpointManagerIds()
@@ -108,7 +113,7 @@ final class WorkerServiceabilityDispatchPolicy {
             List<WorkerScoreObservation> hot = hotPage(
                     workerGroupId,
                     sweepState.hot,
-                    hotEligibilityFloorMillis,
+                    hotProbeCutoffMillis,
                     nowMillis,
                     config,
                     remainingProbeBudget
@@ -156,8 +161,8 @@ final class WorkerServiceabilityDispatchPolicy {
                         || !eligible(
                                 state,
                                 nowMillis,
-                                hotEligibilityFloorMillis,
-                                config.recoveryRetryIntervalMillis()
+                                hotProbeCutoffMillis,
+                                config.probeRetryIntervalMillis()
                         )) {
                     continue;
                 }
@@ -228,7 +233,7 @@ final class WorkerServiceabilityDispatchPolicy {
     private List<WorkerScoreObservation> hotPage(
             String workerGroupId,
             ProbeScoreSweep sweep,
-            long hotEligibilityFloorMillis,
+            long hotProbeCutoffMillis,
             long nowMillis,
             WorkerServiceabilityDispatchConfig config,
             int limit
@@ -237,9 +242,9 @@ final class WorkerServiceabilityDispatchPolicy {
             return List.of();
         }
         List<WorkerScoreObservation> page =
-                workerScores.acquirePreEpochHotCandidates(
+                workerScores.acquireHotCandidatesBefore(
                         workerGroupId,
-                        hotEligibilityFloorMillis,
+                        hotProbeCutoffMillis,
                         sweep.currentMaxWorkerScore,
                         limit
                 );
@@ -295,17 +300,17 @@ final class WorkerServiceabilityDispatchPolicy {
     private static boolean eligible(
             WorkerScoreState worker,
             long nowMillis,
-            long hotEligibilityFloorMillis,
-            long recoveryRetryIntervalMillis
+            long hotProbeCutoffMillis,
+            long probeRetryIntervalMillis
     ) {
         if (worker.polarity() == WorkerScorePolarity.HOT_ACQUIRE) {
-            return worker.timeMillis() < hotEligibilityFloorMillis;
+            return worker.timeMillis() < hotProbeCutoffMillis;
         }
         long multiplier = worker.laneRank() + 1L;
-        if (recoveryRetryIntervalMillis > Long.MAX_VALUE / multiplier) {
+        if (probeRetryIntervalMillis > Long.MAX_VALUE / multiplier) {
             return false;
         }
-        long delay = multiplier * recoveryRetryIntervalMillis;
+        long delay = multiplier * probeRetryIntervalMillis;
         return delay <= nowMillis
                 && worker.timeMillis() <= nowMillis - delay;
     }
@@ -369,6 +374,23 @@ final class WorkerServiceabilityDispatchPolicy {
             return Long.MAX_VALUE;
         }
         return left + right;
+    }
+
+    private static long hotProbeCutoffMillis(
+            long nowMillis,
+            long hotEligibilityFloorMillis,
+            long probeRetryIntervalMillis
+    ) {
+        long staleBeforeMillis = nowMillis <= probeRetryIntervalMillis
+                ? 0
+                : nowMillis - probeRetryIntervalMillis;
+        long alignedStaleBeforeMillis = staleBeforeMillis
+                / WorkerScoreCore.SLOT_MILLIS
+                * WorkerScoreCore.SLOT_MILLIS;
+        return Math.max(
+                hotEligibilityFloorMillis,
+                alignedStaleBeforeMillis
+        );
     }
 
     private static final class GroupSweepState {
