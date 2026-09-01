@@ -150,14 +150,14 @@ class JavaWorkerManagerTest {
         try {
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"workers\":["
+                    .body("["
                             + batchItem(
                             "worker-1",
                             "ws://127.0.0.1:1/one"
                     ) + "," + batchItem(
                             "worker-2",
                             "ws://127.0.0.1:1/two"
-                    ) + "]}")
+                    ) + "]")
                     .build());
             manager = JavaWorkerManager.builder(
                             URI.create(server.url("/").toString()),
@@ -227,10 +227,10 @@ class JavaWorkerManagerTest {
         try {
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"workers\":[" + batchItem(
+                    .body("[" + batchItem(
                             "worker-1",
                             "ws://127.0.0.1:1/one"
-                    ) + "]}")
+                    ) + "]")
                     .bodyDelay(250L, TimeUnit.MILLISECONDS)
                     .build());
             manager = JavaWorkerManager.builder(
@@ -288,18 +288,18 @@ class JavaWorkerManagerTest {
         try {
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"workers\":[" + batchItem(
+                    .body("[" + batchItem(
                             "worker-1",
                             "ws://127.0.0.1:1/one"
-                    ) + "]}")
+                    ) + "]")
                     .bodyDelay(500L, TimeUnit.MILLISECONDS)
                     .build());
             server.enqueue(new MockResponse.Builder()
                     .code(200)
-                    .body("{\"workers\":[" + batchItem(
+                    .body("[" + batchItem(
                             "worker-2",
                             "ws://127.0.0.1:1/two"
-                    ) + "]}")
+                    ) + "]")
                     .build());
             manager = batchManager(server);
 

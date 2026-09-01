@@ -179,6 +179,14 @@ below: HTTP is the coarse processing class, while the numeric business code is
 the detailed rejection reason. Successful DTOs remain use-case-specific and
 are not wrapped in a common envelope.
 
+Within `/api/v1`, a body containing only one scalar, one collection or one Map
+uses that JSON value directly. A dedicated Contract type is retained only when
+the body combines fields, represents an independently meaningful structured
+resource or enforces a cross-field invariant. Consequently finite Item append
+accepts a direct `TaskItemRequest[]`, Result load accepts a direct
+`messageId[]`, and both return their Message-ID-keyed outcome Map directly.
+The removed object envelopes are not compatibility formats.
+
 `results:export` supports only finite Tasks. It observes the Task score once
 and returns `400/12010` immediately unless the Task is already `TERMINAL`.
 Once terminal, Server iterates the Task-scoped unified Result HASH through
@@ -212,8 +220,9 @@ later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker; the Item allocation rule remains Kernel
 scheduling input.
 
-`results:load` returns one state object for every deduplicated requested
-Message ID: `succeeded`, `failed`, or `not_observed`. Only `succeeded` includes
+`results:load` accepts a direct JSON array and returns one state object for
+every deduplicated requested Message ID in a direct Map: `succeeded`, `failed`,
+or `not_observed`. Only `succeeded` includes
 `opaqueResultPayload`; failed carries no Worker payload or reason. A late
 success may replace an earlier failed snapshot, so each response is a read-time
 view rather than an immutable historical event. Server does not read TaskItem
@@ -297,8 +306,9 @@ omit it. `SCENARIO_LAB` derives its
 Server-owned registration coordinate from immutable
 `labInventoryKey + labInventoryLine` properties and strictly rejects
 `clientWorkerKey`; mutable fields such as `labSlot` do not participate in
-identity. A batch wraps `1..100` ordered Prepare items that must share one kind
-and transport type. Both HTTP routes enter the same Server `prepareAll` path;
+identity. A batch body is the direct array of `1..100` ordered Prepare items,
+all of which must share one kind and transport type. Both HTTP routes enter the
+same Server `prepareAll` path;
 the single route supplies a one-item list. Server validates the batch shape and
 every registration coordinate before side effects, then invokes the same
 identity, Binding, and Properties owners sequentially.
@@ -333,8 +343,9 @@ POST  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:resume-scheduling
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
 ```
 
-Pause returns `paused` or `already_paused`; resume returns `resumed` or
-`already_resumed`; a Properties patch returns `updated` or `unchanged`.
+Pause returns the JSON string `"paused"` or `"already_paused"`; resume returns
+`"resumed"` or `"already_resumed"`; a Properties patch accepts the direct JSON
+Properties object and returns `"updated"` or `"unchanged"`.
 Missing resources, invalid changes and state conflicts use the public
 `15008..15010` business codes and never expose the Kernel Owner reason.
 Properties Owner failure uses `503/15011`; scheduling Owner failure keeps
@@ -349,7 +360,7 @@ and Task execution evidence.
 ```text
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/
      workers:scheduling-observe
-body: {"workerIds":["worker-1","worker-2"]}
+body: ["worker-1","worker-2"]
 ```
 
 The response contains one shared `readAt` plus a complete
@@ -366,7 +377,7 @@ Runtime View also exposes one Adapter-scoped, bounded Network observation:
 ```text
 POST /api/v1/runtime-view/endpoint-managers/{endpointManagerId}/
      workers:network-observe
-body: {"workerIds":["worker-1","worker-2"]}
+body: ["worker-1","worker-2"]
 ```
 
 This use case sends the existing
@@ -398,6 +409,9 @@ Adapter `results:append` accepts one mixed batch of `1..100` encoded Reports.
 Server validates that outer bound before decoding any Report, then routes TASK,
 SYSTEM and KERNEL subsets to their existing Owners. Queue capacity remains an
 Adapter-local memory bound and is not an HTTP batch-size declaration.
+`commands:consume` accepts the JSON integer limit and returns the entry-keyed
+Command Map directly. `results:append` accepts the encoded Report string array
+directly; only its accepted/rejected count response remains structured.
 Exact route schemas are available from the running Server:
 
 ```text
@@ -460,7 +474,9 @@ outcomes share one response convention:
 | `503 + ApiErrorResponse` | An Owner or required dependency is temporarily unavailable |
 
 Business resource absence is `400` with its detailed numeric code. Successful
-responses keep their natural resource/use-case DTO; application rejection and
+responses keep their natural JSON value or resource/use-case DTO; a scalar,
+single collection or single Map is not wrapped merely to name that value.
+Application rejection and
 unavailability errors use `code`, the stable public default `message`, and
 `requestId`. Owner reasons, Redis data and internal exception messages are not
 returned.

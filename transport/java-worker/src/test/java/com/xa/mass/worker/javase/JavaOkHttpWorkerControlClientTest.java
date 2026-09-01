@@ -123,14 +123,14 @@ class JavaOkHttpWorkerControlClientTest {
             throws Exception {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workers\":["
+                .body("["
                         + "{\"workerId\":\"worker-a\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083/a\"},"
                         + "{\"workerId\":\"worker-b\","
                         + "\"transportType\":\"WEBSOCKET\","
                         + "\"endpointUri\":\"ws://127.0.0.1:18083/b\"}"
-                        + "]}")
+                        + "]")
                 .build());
 
         List<PreparedWorker> prepared = client.prepareBatch(
@@ -161,29 +161,27 @@ class JavaOkHttpWorkerControlClientTest {
                 request.getTarget()
         );
         assertEquals(
-                Map.of(
-                        "workers", List.of(
-                                Map.of(
-                                        "workerKind", "SCENARIO_LAB",
-                                        "transportType", "WEBSOCKET",
-                                        "workerProperties", Map.of(
-                                                "labInventoryKey", "worker-a.jsonl",
-                                                "labInventoryLine", 1L,
-                                                "labSlot", 1L
-                                        )
-                                ),
-                                Map.of(
-                                        "workerKind", "SCENARIO_LAB",
-                                        "transportType", "WEBSOCKET",
-                                        "workerProperties", Map.of(
-                                                "labInventoryKey", "worker-a.jsonl",
-                                                "labInventoryLine", 2L,
-                                                "labSlot", 2L
-                                        )
+                List.of(
+                        Map.of(
+                                "workerKind", "SCENARIO_LAB",
+                                "transportType", "WEBSOCKET",
+                                "workerProperties", Map.of(
+                                        "labInventoryKey", "worker-a.jsonl",
+                                        "labInventoryLine", 1L,
+                                        "labSlot", 1L
+                                )
+                        ),
+                        Map.of(
+                                "workerKind", "SCENARIO_LAB",
+                                "transportType", "WEBSOCKET",
+                                "workerProperties", Map.of(
+                                        "labInventoryKey", "worker-a.jsonl",
+                                        "labInventoryLine", 2L,
+                                        "labSlot", 2L
                                 )
                         )
                 ),
-                Jsons.parseObject(request.getBody().utf8())
+                Jsons.parseArray(request.getBody().utf8())
         );
     }
 
@@ -191,7 +189,7 @@ class JavaOkHttpWorkerControlClientTest {
     void rejectsIncompleteDuplicateOrExtraBatchResults() {
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workers\":[]}")
+                .body("[]")
                 .build());
         assertThrows(WorkerException.class, () -> client.prepareBatch(
                 "SCENARIO_LAB",
@@ -203,10 +201,10 @@ class JavaOkHttpWorkerControlClientTest {
 
         server.enqueue(new MockResponse.Builder()
                 .code(200)
-                .body("{\"workers\":[{\"clientWorkerKey\":\"legacy\","
+                .body("[{\"clientWorkerKey\":\"legacy\","
                         + "\"workerId\":\"worker-a\","
                         + "\"transportType\":\"WEBSOCKET\","
-                        + "\"endpointUri\":\"ws://127.0.0.1:18083\"}]}")
+                        + "\"endpointUri\":\"ws://127.0.0.1:18083\"}]")
                 .build());
         assertThrows(WorkerException.class, () -> client.prepareBatch(
                 "SCENARIO_LAB",

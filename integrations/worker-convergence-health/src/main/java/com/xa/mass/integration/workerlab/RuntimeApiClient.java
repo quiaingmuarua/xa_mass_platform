@@ -24,7 +24,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/worker-groups/"
                         + segment(workerGroupId)
                         + "/workers:preview",
-                Map.of("sampleLimit", 100)
+                100
         );
         requireStatus(response, 200, "preview workers");
         if (JsonValues.requiredLong(response.body(), "unreadableCount") != 0) {
@@ -85,7 +85,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/endpoint-managers/"
                         + segment(endpointManagerId)
                         + "/workers:network-observe",
-                Map.of("workerIds", workerIds),
+                workerIds,
                 "observe network"
         );
     }
@@ -98,7 +98,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/worker-groups/"
                         + segment(workerGroupId)
                         + "/workers:scheduling-observe",
-                Map.of("workerIds", workerIds),
+                workerIds,
                 "observe scheduling"
         );
     }
@@ -121,7 +121,7 @@ final class RuntimeApiClient {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/runtime-view/tasks:preview",
-                Map.of("sampleLimit", 100)
+                100
         );
         requireStatus(response, 200, "preview Tasks");
         Map<String, String> scoreBands = new LinkedHashMap<>();
@@ -179,10 +179,7 @@ final class RuntimeApiClient {
                 )
         );
         requireStatus(response, 200, "call Task Items");
-        Map<String, Object> results = JsonValues.object(
-                response.body().get("results"),
-                "call results"
-        );
+        Map<String, Object> results = response.body();
         if (!results.keySet().equals(items.stream()
                 .map(TaskItem::messageId)
                 .collect(java.util.stream.Collectors.toSet()))) {
@@ -217,13 +214,10 @@ final class RuntimeApiClient {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/results:load",
-                Map.of("messageIds", messageIds)
+                messageIds
         );
         requireStatus(response, 200, "load Task results");
-        Map<String, Object> results = JsonValues.object(
-                response.body().get("results"),
-                "loaded results"
-        );
+        Map<String, Object> results = response.body();
         var expected = java.util.Set.copyOf(messageIds);
         if (!results.keySet().equals(expected)) {
             throw JsonValues.invalid("Loaded result identities changed");
@@ -252,7 +246,7 @@ final class RuntimeApiClient {
 
     private Map<String, String> observeStates(
             String path,
-            Map<String, Object> body,
+            Object body,
             String operation
     ) {
         JsonHttpClient.Response response = http.send("POST", path, body);

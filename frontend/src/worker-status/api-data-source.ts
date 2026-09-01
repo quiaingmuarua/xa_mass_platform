@@ -67,7 +67,7 @@ export class ApiWorkerStatusDataSource implements WorkerStatusDataSource {
             `/v1/runtime-view/endpoint-managers/${encodeURIComponent(
               endpointManagerId
             )}/workers:network-observe`,
-            { workerIds },
+            workerIds,
             {
               signal,
               headers: { "X-Request-Id": createRequestId("worker-network") }
@@ -118,7 +118,7 @@ export class ApiWorkerStatusDataSource implements WorkerStatusDataSource {
         `/v1/runtime-view/worker-groups/${encodeURIComponent(
           workerGroupId
         )}/workers:scheduling-observe`,
-        { workerIds },
+        workerIds,
         {
           signal,
           headers: { "X-Request-Id": createRequestId() }

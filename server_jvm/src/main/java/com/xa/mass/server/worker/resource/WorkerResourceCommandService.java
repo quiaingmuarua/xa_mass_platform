@@ -1,5 +1,6 @@
 package com.xa.mass.server.worker.resource;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -89,6 +90,7 @@ public final class WorkerResourceCommandService {
             this.wireValue = wireValue;
         }
 
+        @JsonValue
         public String wireValue() {
             return wireValue;
         }

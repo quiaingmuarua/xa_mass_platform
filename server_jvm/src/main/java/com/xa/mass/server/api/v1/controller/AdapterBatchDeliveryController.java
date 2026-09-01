@@ -2,21 +2,23 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultBatchRequest;
 import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultBatchResponse;
-import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandConsumeRequest;
-import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandConsumeResponse;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,7 +26,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = ApiTags.WORKER_DELIVERY)
-@Validated
 @RestController
 @RequestMapping(
         "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}"
@@ -46,7 +47,9 @@ public class AdapterBatchDeliveryController {
                     responseCode = "200",
                     description = "Adapter command batch",
                     content = @Content(schema = @Schema(
-                            implementation = WorkerCommandConsumeResponse.class
+                            type = "object",
+                            additionalPropertiesSchema =
+                                    WorkerCommandResponse.class
                     ))
             ),
             @ApiResponse(
@@ -64,15 +67,23 @@ public class AdapterBatchDeliveryController {
                     ))
             )
     })
-    public WorkerCommandConsumeResponse consumeWorkerCommands(
+    public Map<String, WorkerCommandResponse> consumeWorkerCommands(
             @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody WorkerCommandConsumeRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(schema = @Schema(
+                            type = "integer",
+                            format = "int32",
+                            minimum = "1"
+                    ))
+            )
+            @RequestBody @NotNull @Positive Integer limit
     ) {
         var commands = workerDelivery.consumeWorkerCommands(
                 endpointManagerId,
-                request.limit()
+                limit
         );
-        return WorkerCommandConsumeResponse.from(commands);
+        return WorkerCommandResponse.fromCommands(commands);
     }
 
     @PostMapping("/results:append")
@@ -102,11 +113,25 @@ public class AdapterBatchDeliveryController {
     })
     public ResponseEntity<WorkerResultBatchResponse> appendAdapterResults(
             @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody WorkerResultBatchRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = WorkerDeliveryService
+                                    .MAX_ADAPTER_RESULT_BATCH_SIZE,
+                            schema = @Schema(type = "string", minLength = 1)
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(
+                    min = 1,
+                    max = WorkerDeliveryService.MAX_ADAPTER_RESULT_BATCH_SIZE
+            )
+            List<@NotBlank String> results
     ) {
         var counts = workerDelivery.appendAdapterResults(
                 endpointManagerId,
-                request.results()
+                List.copyOf(results)
         );
         return ResponseEntity.accepted().body(
                 new WorkerResultBatchResponse(

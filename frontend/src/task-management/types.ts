@@ -55,9 +55,7 @@ export interface TaskItemApiRequest {
   payload: Record<string, string>;
 }
 
-export interface TaskItemsAppendApiResponse {
-  results: Record<string, TaskItemAppendOutcome>;
-}
+export type TaskItemsAppendApiResponse = Record<string, TaskItemAppendOutcome>;
 
 export type TaskItemAppendOutcome =
   | { status: "succeeded" }

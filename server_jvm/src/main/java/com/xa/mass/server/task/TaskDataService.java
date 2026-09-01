@@ -9,12 +9,11 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.task.TaskItemAppendOutcome;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskItemResultsLoadResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskItemsAppendResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,17 +38,17 @@ public final class TaskDataService {
         this.taskItems = taskItems;
     }
 
-    public TaskItemsAppendResponse appendFiniteTaskItems(
+    public Map<String, TaskItemAppendOutcome> appendFiniteTaskItems(
             String taskId,
-            TaskItemsAppendRequest request
+            List<TaskItemRequest> requestedItems
     ) {
-        return appendResponse(appendFiniteTaskItems(
+        return appendResponse(appendItems(
                 taskId,
-                request.items()
+                requestedItems
         ));
     }
 
-    private Map<String, TaskItemAppendResult> appendFiniteTaskItems(
+    private Map<String, TaskItemAppendResult> appendItems(
             String taskId,
             List<TaskItemRequest> requestedItems
     ) {
@@ -115,7 +114,7 @@ public final class TaskDataService {
         }
     }
 
-    public TaskItemResultsLoadResponse loadTaskItemResults(
+    public Map<String, TaskItemResultResponse> loadTaskItemResults(
             String taskId,
             List<String> messageIds
     ) {
@@ -143,7 +142,7 @@ public final class TaskDataService {
                         null
                 );
             }
-            return TaskItemResultsLoadResponse.fromObservedResults(
+            return TaskItemResultResponse.fromObservedResults(
                     uniqueIds,
                     taskRuntime.loadTaskItemResults(taskId, uniqueIds)
             );
@@ -204,7 +203,7 @@ public final class TaskDataService {
         return ordered;
     }
 
-    private static TaskItemsAppendResponse appendResponse(
+    private static Map<String, TaskItemAppendOutcome> appendResponse(
             Map<String, TaskItemAppendResult> appended
     ) {
         var results = new LinkedHashMap<String, TaskItemAppendOutcome>();
@@ -231,6 +230,6 @@ public final class TaskDataService {
             };
             results.put(messageId, outcome);
         });
-        return new TaskItemsAppendResponse(results);
+        return Collections.unmodifiableMap(results);
     }
 }

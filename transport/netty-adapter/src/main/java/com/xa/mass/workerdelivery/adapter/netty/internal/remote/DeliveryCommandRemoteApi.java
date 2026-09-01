@@ -16,8 +16,6 @@ public final class DeliveryCommandRemoteApi {
     private static final String OPERATION = "deliveryCommand.consumeRemote";
     private static final String DECODE_OPERATION =
             "deliveryCommand.decodeRemoteResponse";
-    private static final String RESPONSE_FIELD = "commands";
-
     private final WorkerDeliveryHttpClient httpClient;
     private final WorkerDeliveryCodec codec;
 
@@ -57,23 +55,17 @@ public final class DeliveryCommandRemoteApi {
                     "consume limit must be positive"
             );
         }
-        return Jsons.toJson(Map.of("limit", limit));
+        return Jsons.toJson(limit);
     }
 
     private Map<String, DeliveryCommand> decodeConsumeResponse(
             String value
     ) {
         try {
-            Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(java.util.Set.of(RESPONSE_FIELD))
-                    || !(payload.get(RESPONSE_FIELD)
-                    instanceof Map<?, ?> commands)) {
-                throw malformed("Delivery Command consume response");
-            }
+            Map<String, Object> commands = Jsons.parseObject(value);
             Map<String, DeliveryCommand> decoded = new LinkedHashMap<>();
             commands.forEach((entryKey, encoded) -> {
-                if (!(entryKey instanceof String key) || key.isBlank()
-                        || !(encoded instanceof Map<?, ?>)) {
+                if (entryKey.isBlank() || !(encoded instanceof Map<?, ?>)) {
                     throw malformed("Delivery Command entry key");
                 }
                 DeliveryCommand command = codec.decodeDeliveryCommand(
@@ -82,7 +74,7 @@ public final class DeliveryCommandRemoteApi {
                 if (command == null) {
                     throw malformed("Delivery Command envelope");
                 }
-                decoded.put(key, command);
+                decoded.put(entryKey, command);
             });
             return Collections.unmodifiableMap(decoded);
         } catch (WorkerDeliveryAdapterException error) {

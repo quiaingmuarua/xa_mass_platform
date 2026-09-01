@@ -298,7 +298,6 @@ export function createRuntimeViewerStore(
         const nextSample = await dataSource.previewWorkers(
           workerGroupId,
           100,
-          null,
           controller.signal
         );
         if (sampleVersions.get(workerGroupId) !== version) {

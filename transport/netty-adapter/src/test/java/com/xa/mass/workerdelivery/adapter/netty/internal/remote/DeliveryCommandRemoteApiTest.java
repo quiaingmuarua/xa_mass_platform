@@ -31,11 +31,11 @@ class DeliveryCommandRemoteApiTest {
                 "{}",
                 "forward-1"
         );
-        String body = "{\"commands\":{\"worker-2\":"
+        String body = "{\"worker-2\":"
                 + CODEC.encodeDeliveryCommand(command)
                 + ",\"worker-1\":"
                 + CODEC.encodeDeliveryCommand(command)
-                + "}}";
+                + "}";
         try (ScriptedHttpServer server = new ScriptedHttpServer(
                 request -> new Response(200, body)
         )) {
@@ -52,7 +52,7 @@ class DeliveryCommandRemoteApiTest {
                             + "adapter%2Fone/commands:consume"
             );
             assertThat(server.requests().get(0).body())
-                    .isEqualTo("{\"limit\":3}");
+                    .isEqualTo("3");
         }
     }
 

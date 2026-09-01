@@ -2,7 +2,6 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.AcceptedResponse;
 import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultRequest;
 import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.delivery.application.WorkerDeliveryService;
@@ -88,9 +87,7 @@ public class WorkerPointDeliveryController {
             @ApiResponse(
                     responseCode = "202",
                     description = "Worker result was accepted",
-                    content = @Content(schema = @Schema(
-                            implementation = AcceptedResponse.class
-                    ))
+                    content = @Content
             ),
             @ApiResponse(
                     responseCode = "400",
@@ -107,7 +104,7 @@ public class WorkerPointDeliveryController {
                     ))
             )
     })
-    public ResponseEntity<AcceptedResponse> appendWorkerResult(
+    public ResponseEntity<Void> appendWorkerResult(
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId,
             @Valid @RequestBody WorkerResultRequest request
@@ -117,7 +114,7 @@ public class WorkerPointDeliveryController {
                 workerId,
                 request.toDeliveryReport()
         );
-        return ResponseEntity.accepted().body(new AcceptedResponse(true));
+        return ResponseEntity.accepted().build();
     }
 
     @PostMapping("/workers/{workerId}:verify-binding")

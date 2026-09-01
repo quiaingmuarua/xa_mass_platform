@@ -15,6 +15,7 @@ import type {
   TaskCreateApiResponse,
   TaskExportResult,
   TaskItemApiRequest,
+  TaskItemAppendOutcome,
   TaskItemsAppendApiResponse
 } from "@/task-management/types";
 import { createTaskManagementStore } from "@/stores/task-management";
@@ -57,7 +58,7 @@ describe("HttpFiniteTaskClient", () => {
       .fn()
       .mockResolvedValueOnce({ data: { taskId: "task-1" }, status: 200 })
       .mockResolvedValueOnce({
-        data: { results: { "task-1-00001": { status: "succeeded" } } },
+        data: { "task-1-00001": { status: "succeeded" } },
         status: 200
       })
       .mockResolvedValueOnce({ data: { status: "approved" }, status: 200 })
@@ -88,7 +89,7 @@ describe("HttpFiniteTaskClient", () => {
       "/v1/tasks/task-1/approve",
       "/v1/tasks/task-1/results:export"
     ]);
-    expect(post.mock.calls[1]?.[1].items[0]).not.toHaveProperty("allocationRule");
+    expect(post.mock.calls[1]?.[1][0]).not.toHaveProperty("allocationRule");
     expect(post.mock.calls[3]?.[1]).toBeUndefined();
     expect(post.mock.calls[3]?.[2]).not.toHaveProperty("timeout");
   });
@@ -181,12 +182,10 @@ describe("finite Task management store", () => {
           )
         )
         .mockResolvedValueOnce({
-          results: {
-            "task-1-00101": {
-              status: "failed",
-              code: 12003,
-              message: "Task data is temporarily unavailable."
-            }
+          "task-1-00101": {
+            status: "failed",
+            code: 12003,
+            message: "Task data is temporarily unavailable."
           }
         })
     });
@@ -252,11 +251,12 @@ function fakeClient(overrides: Partial<FiniteTaskClient> = {}): FiniteTaskClient
 }
 
 function appended(messageIds: string[]): TaskItemsAppendApiResponse {
-  return {
-    results: Object.fromEntries(
-      messageIds.map((messageId) => [messageId, { status: "succeeded" }])
-    )
-  };
+  return Object.fromEntries(
+    messageIds.map((messageId): [string, TaskItemAppendOutcome] => [
+      messageId,
+      { status: "succeeded" }
+    ])
+  );
 }
 
 function bytes(value: string): ArrayBuffer {

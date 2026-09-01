@@ -39,7 +39,6 @@ export class MockRuntimeViewerDataSource implements RuntimeViewerDataSource {
   async previewWorkers(
     workerGroupId: string,
     sampleLimit: number,
-    _filter: null,
     signal?: AbortSignal
   ): Promise<WorkerPreviewResponse> {
     throwIfAborted(signal);

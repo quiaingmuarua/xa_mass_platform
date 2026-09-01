@@ -820,9 +820,10 @@ class WorkerConnectionMechanismTest {
 
         private ScriptedHttpServer reportServer() {
             ScriptedHttpServer server = new ScriptedHttpServer(request -> {
-                Map<String, Object> body = Jsons.parseObject(request.body());
-                @SuppressWarnings("unchecked")
-                List<String> batch = (List<String>) body.get("results");
+                List<String> batch = Jsons.parseArray(request.body())
+                        .stream()
+                        .map(String.class::cast)
+                        .toList();
                 for (String encoded : batch) {
                     var report = codec.decodeDeliveryReport(encoded);
                     if (report.dst() == SYSTEM) {

@@ -51,9 +51,7 @@ describe("MockRuntimeViewerDataSource", () => {
   it("mirrors the Runtime View business-not-found response class", async () => {
     const source = new MockRuntimeViewerDataSource();
 
-    await expect(
-      source.previewWorkers("missing-group", 100, null)
-    ).rejects.toMatchObject({
+    await expect(source.previewWorkers("missing-group", 100)).rejects.toMatchObject({
       kind: "http",
       status: 400,
       code: 15001
@@ -75,7 +73,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     });
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0]?.[0]).toBe("/v1/runtime-view/tasks:preview");
-    expect(post.mock.calls[0]?.[1]).toEqual({ sampleLimit: 100 });
+    expect(post.mock.calls[0]?.[1]).toBe(100);
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 
@@ -87,7 +85,7 @@ describe("HttpRuntimeViewerDataSource", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(source.previewWorkers("group/a", 100, null)).resolves.toMatchObject({
+    await expect(source.previewWorkers("group/a", 100)).resolves.toMatchObject({
       workerGroupId: "group/a",
       returnedCount: 1
     });
@@ -95,10 +93,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     expect(post.mock.calls[0]?.[0]).toBe(
       "/v1/runtime-view/worker-groups/group%2Fa/workers:preview"
     );
-    expect(post.mock.calls[0]?.[1]).toEqual({
-      sampleLimit: 100,
-      filter: null
-    });
+    expect(post.mock.calls[0]?.[1]).toBe(100);
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 
@@ -116,7 +111,7 @@ describe("HttpRuntimeViewerDataSource", () => {
     });
     expect(post).toHaveBeenCalledTimes(1);
     expect(post.mock.calls[0]?.[0]).toBe("/v1/runtime-view/worker-groups:preview");
-    expect(post.mock.calls[0]?.[1]).toEqual({ sampleLimit: 100 });
+    expect(post.mock.calls[0]?.[1]).toBe(100);
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 
@@ -131,7 +126,7 @@ describe("HttpRuntimeViewerDataSource", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(source.previewWorkers("group-a", 100, null)).rejects.toMatchObject({
+    await expect(source.previewWorkers("group-a", 100)).rejects.toMatchObject({
       kind: "schema",
       message: "Runtime View 返回了无法识别的数据。"
     });
@@ -155,7 +150,7 @@ describe("HttpRuntimeViewerDataSource", () => {
       post
     } as unknown as AxiosInstance);
 
-    await expect(source.previewWorkers("group-a", 100, null)).rejects.toMatchObject({
+    await expect(source.previewWorkers("group-a", 100)).rejects.toMatchObject({
       kind: "http",
       status: 503,
       code: 15002,

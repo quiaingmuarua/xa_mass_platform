@@ -143,11 +143,11 @@ class DirectCallControllerTest {
 
         MvcResult consumed = mockMvc.perform(post(path("commands:consume"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limit\":100}"))
+                        .content("100"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.commands['worker-1'].src")
+                .andExpect(jsonPath("$['worker-1'].src")
                         .value("SYSTEM"))
-                .andExpect(jsonPath("$.commands['worker-2'].dst")
+                .andExpect(jsonPath("$['worker-2'].dst")
                         .value("WORKER"))
                 .andReturn();
         Map<String, Object> response = Jsons.parseObject(
@@ -155,7 +155,7 @@ class DirectCallControllerTest {
         );
         @SuppressWarnings("unchecked")
         Map<String, Map<String, Object>> commands =
-                (Map<String, Map<String, Object>>) response.get("commands");
+                (Map<String, Map<String, Object>>) (Map<?, ?>) response;
         List<String> reports = commands.entrySet().stream()
                 .map(entry -> codec.encodeDeliveryReport(DeliveryReport.create(
                         DeliveryEndpoint.WORKER,
@@ -169,7 +169,7 @@ class DirectCallControllerTest {
                 .toList();
         mockMvc.perform(post(path("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(Jsons.toJson(Map.of("results", reports))))
+                        .content(Jsons.toJson(reports)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.acceptedCount").value(2))
                 .andExpect(jsonPath("$.rejectedCount").value(0));

@@ -146,12 +146,12 @@ describe("Worker status data source selection", () => {
     expect(post).toHaveBeenCalledTimes(2);
     expect(post).toHaveBeenCalledWith(
       "/v1/runtime-view/endpoint-managers/adapter-b/workers:network-observe",
-      { workerIds: ["worker-3"] },
+      ["worker-3"],
       expect.objectContaining({ signal: undefined })
     );
     expect(post).toHaveBeenCalledWith(
       "/v1/runtime-view/endpoint-managers/adapter-a/workers:network-observe",
-      { workerIds: ["worker-2", "worker-1"] },
+      ["worker-2", "worker-1"],
       expect.objectContaining({ signal: undefined })
     );
   });
@@ -211,9 +211,7 @@ describe("Worker status data source selection", () => {
     expect(post.mock.calls[0]?.[0]).toBe(
       "/v1/runtime-view/worker-groups/group%2Fa/workers:scheduling-observe"
     );
-    expect(post.mock.calls[0]?.[1]).toEqual({
-      workerIds: ["worker-2", "worker-1"]
-    });
+    expect(post.mock.calls[0]?.[1]).toEqual(["worker-2", "worker-1"]);
     expect(post.mock.calls[0]?.[2].headers["X-Request-Id"]).toEqual(expect.any(String));
   });
 

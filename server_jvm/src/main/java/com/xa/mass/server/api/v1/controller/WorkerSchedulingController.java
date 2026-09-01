@@ -2,8 +2,6 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.worker.WorkerPauseResponse;
-import com.xa.mass.server.api.v1.contract.worker.WorkerResumeResponse;
 import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -41,7 +39,8 @@ public class WorkerSchedulingController {
                     responseCode = "200",
                     description = "Worker scheduling pause completed",
                     content = @Content(schema = @Schema(
-                            implementation = WorkerPauseResponse.class
+                            implementation =
+                                    WorkerSchedulingService.PauseStatus.class
                     ))
             ),
             @ApiResponse(
@@ -59,13 +58,11 @@ public class WorkerSchedulingController {
                     ))
             )
     })
-    public WorkerPauseResponse pauseScheduling(
+    public WorkerSchedulingService.PauseStatus pauseScheduling(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId
     ) {
-        return new WorkerPauseResponse(workerScheduling.pause(
-                workerGroupId, workerId
-        ).wireValue());
+        return workerScheduling.pause(workerGroupId, workerId);
     }
 
     @PostMapping(
@@ -77,7 +74,8 @@ public class WorkerSchedulingController {
                     responseCode = "200",
                     description = "Worker scheduling resume completed",
                     content = @Content(schema = @Schema(
-                            implementation = WorkerResumeResponse.class
+                            implementation =
+                                    WorkerSchedulingService.ResumeStatus.class
                     ))
             ),
             @ApiResponse(
@@ -95,12 +93,10 @@ public class WorkerSchedulingController {
                     ))
             )
     })
-    public WorkerResumeResponse resumeScheduling(
+    public WorkerSchedulingService.ResumeStatus resumeScheduling(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId
     ) {
-        return new WorkerResumeResponse(workerScheduling.resume(
-                workerGroupId, workerId
-        ).wireValue());
+        return workerScheduling.resume(workerGroupId, workerId);
     }
 }

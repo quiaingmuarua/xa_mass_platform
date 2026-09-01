@@ -20,15 +20,15 @@ class RuntimeApiClientTest {
 
     @Test
     void observesWorkersAndRunsFiniteTaskCalls() throws Exception {
-        List<Map<String, Object>> requests = new ArrayList<>();
+        List<Request> requests = new ArrayList<>();
         HttpServer server = HttpServer.create(
                 new InetSocketAddress("127.0.0.1", 0),
                 0
         );
         server.createContext("/api/v1", exchange -> {
             String path = exchange.getRequestURI().getPath();
-            Map<String, Object> body = requestBody(exchange);
-            requests.add(body);
+            String body = requestBody(exchange);
+            requests.add(new Request(path, body));
             if (path.endsWith("/workers:preview")) {
                 respondJson(exchange, 200, Map.of(
                         "unreadableCount", 0,
@@ -69,24 +69,20 @@ class RuntimeApiClientTest {
                 ));
             } else if (path.endsWith("/items:call")) {
                 respondJson(exchange, 200, Map.of(
-                        "results", Map.of(
-                                "message-1", Map.of("status", "succeeded"),
-                                "message-2", Map.of("status", "not_observed")
-                        )
+                        "message-1", Map.of("status", "succeeded"),
+                        "message-2", Map.of("status", "not_observed")
                 ));
             } else if (path.endsWith("/results:load")) {
                 respondJson(exchange, 200, Map.of(
-                        "results", Map.of(
-                                "message-1",
-                                Map.of(
-                                        "status", "succeeded",
-                                        "opaqueResultPayload", "result"
-                                ),
-                                "message-2",
-                                Map.of("status", "not_observed"),
-                                "message-3",
-                                Map.of("status", "failed")
-                        )
+                        "message-1",
+                        Map.of(
+                                "status", "succeeded",
+                                "opaqueResultPayload", "result"
+                        ),
+                        "message-2",
+                        Map.of("status", "not_observed"),
+                        "message-3",
+                        Map.of("status", "failed")
                 ));
             } else {
                 respondJson(exchange, 404, Map.of());
@@ -152,27 +148,43 @@ class RuntimeApiClientTest {
                     )
             );
 
-            assertThat(requests).anySatisfy(body -> {
+            assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).endsWith("/items:call");
+                Map<String, Object> body = Jsons.parseObject(request.body());
                 assertThat(body).containsEntry("waitTimeoutMillis", 250L);
                 assertThat(body.get("items")).asList().hasSize(2);
             });
-            assertThat(requests).anySatisfy(body ->
-                    assertThat(body).containsEntry("sampleLimit", 100L)
-            );
+            assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).endsWith("/tasks:preview");
+                assertThat(request.body()).isEqualTo("100");
+            });
+            assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).endsWith(
+                        "/workers:network-observe"
+                );
+                assertThat(Jsons.parseArray(request.body()))
+                        .containsExactly("worker-1");
+            });
+            assertThat(requests).anySatisfy(request -> {
+                assertThat(request.path()).endsWith("/results:load");
+                assertThat(Jsons.parseArray(request.body()))
+                        .containsExactly(
+                                "message-1",
+                                "message-2",
+                                "message-3"
+                        );
+            });
         } finally {
             server.stop(0);
         }
     }
 
-    private static Map<String, Object> requestBody(HttpExchange exchange)
+    private static String requestBody(HttpExchange exchange)
             throws IOException {
         byte[] encoded = exchange.getRequestBody().readAllBytes();
         return encoded.length == 0
-                ? Map.of()
-                : Jsons.parseObject(new String(
-                        encoded,
-                        StandardCharsets.UTF_8
-                ));
+                ? ""
+                : new String(encoded, StandardCharsets.UTF_8);
     }
 
     private static URI baseUri(HttpServer server) {
@@ -202,5 +214,8 @@ class RuntimeApiClientTest {
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
+    }
+
+    private record Request(String path, String body) {
     }
 }

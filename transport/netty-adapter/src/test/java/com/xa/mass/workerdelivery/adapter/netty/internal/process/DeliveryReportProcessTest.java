@@ -208,12 +208,13 @@ class DeliveryReportProcessTest {
         );
 
         private synchronized Response handle(
-                ScriptedHttpServer.Request request
+            ScriptedHttpServer.Request request
         ) {
             assertThat(request.rawPath()).endsWith("/results:append");
-            Map<String, Object> body = Jsons.parseObject(request.body());
-            @SuppressWarnings("unchecked")
-            List<String> results = (List<String>) body.get("results");
+            List<String> results = Jsons.parseArray(request.body())
+                    .stream()
+                    .map(String.class::cast)
+                    .toList();
             attempts.add(List.copyOf(results));
             Response scripted = responses.pollFirst();
             if (scripted != null) {

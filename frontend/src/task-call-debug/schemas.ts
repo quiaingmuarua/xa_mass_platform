@@ -14,17 +14,10 @@ export const taskCallDebugOutcomeSchema: z.ZodType<TaskCallDebugOutcome> =
     z.object({ status: z.literal("not_observed") }).strict()
   ]);
 
-export const taskCallDebugResponseSchema = z
-  .object({
-    results: z.record(z.string().min(1), taskCallDebugOutcomeSchema)
-  })
-  .strict();
-
-export const taskCallDebugResultLoadResponseSchema = z
-  .object({
-    results: z.record(z.string().min(1), taskCallDebugOutcomeSchema)
-  })
-  .strict();
+export const taskCallDebugResultsSchema = z.record(
+  z.string().min(1),
+  taskCallDebugOutcomeSchema
+);
 
 export const taskCallDebugApiErrorSchema = z
   .object({

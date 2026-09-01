@@ -164,12 +164,7 @@ describe("runtime viewer store", () => {
       .fn()
       .mockResolvedValueOnce(initial)
       .mockImplementation(
-        (
-          _workerGroupId: string,
-          _sampleLimit: number,
-          _filter: null,
-          signal?: AbortSignal
-        ) =>
+        (_workerGroupId: string, _sampleLimit: number, signal?: AbortSignal) =>
           new Promise<WorkerPreviewResponse>((resolve, reject) => {
             const call = { resolve, reject, signal };
             deferred.push(call);

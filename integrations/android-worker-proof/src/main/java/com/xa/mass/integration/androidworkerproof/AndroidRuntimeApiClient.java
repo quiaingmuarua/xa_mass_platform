@@ -160,10 +160,7 @@ final class AndroidRuntimeApiClient {
                 "androidWorker.items.call"
         );
         requireStatus(response, 200, "Task items:call");
-        Map<String, Object> results = JsonValues.object(
-                response.body().get("results"),
-                "Task call results"
-        );
+        Map<String, Object> results = response.body();
         Set<String> expectedIds = Set.copyOf(messageIds);
         if (!results.keySet().equals(expectedIds)) {
             throw new ProofFailure(
@@ -201,14 +198,11 @@ final class AndroidRuntimeApiClient {
                 "/api/v1/tasks/"
                         + segment(managedTaskId())
                         + "/results:load",
-                Map.of("messageIds", List.of(messageId)),
+                List.of(messageId),
                 "androidWorker.results.load"
         );
         requireStatus(response, 200, "Task results:load");
-        Map<String, Object> results = JsonValues.object(
-                response.body().get("results"),
-                "Task loaded results"
-        );
+        Map<String, Object> results = response.body();
         if (!results.keySet().equals(Set.of(messageId))) {
             throw identityFailure(
                     "task-result.identities",
@@ -319,7 +313,7 @@ final class AndroidRuntimeApiClient {
         JsonHttpClient.Response response = http.send(
                 "POST",
                 path,
-                Map.of("workerIds", List.of(workerId)),
+                List.of(workerId),
                 operation
         );
         requireStatus(response, 200, operation);

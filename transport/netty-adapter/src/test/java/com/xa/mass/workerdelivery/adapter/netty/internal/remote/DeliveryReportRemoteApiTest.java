@@ -35,7 +35,7 @@ class DeliveryReportRemoteApiTest {
                             + "adapter%2Fone/results:append"
             );
             assertThat(server.requests().get(0).body()).isEqualTo(
-                    "{\"results\":[\"report-1\",\"report-2\"]}"
+                    "[\"report-1\",\"report-2\"]"
             );
         }
     }

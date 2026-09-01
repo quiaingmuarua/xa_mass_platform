@@ -3,30 +3,28 @@ package com.xa.mass.server.api.v1.controller;
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.TaskPreviewRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.TaskPreviewResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.WorkerGroupBatchGetRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerGroupBatchGetResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.WorkerGroupPreviewRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerGroupPreviewResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.WorkerPreviewRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerPreviewResponse;
-import com.xa.mass.server.api.v1.contract.runtimeview.WorkerSchedulingObserveRequest;
 import com.xa.mass.server.api.v1.contract.runtimeview.WorkerSchedulingObserveResponse;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.runtimeview.WorkerNetworkObservationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,7 +33,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.request.async.DeferredResult;
 
 @Tag(name = ApiTags.RUNTIME_VIEW)
-@Validated
 @RestController
 @RequestMapping("/api/v1/runtime-view")
 public class RuntimeViewController {
@@ -77,11 +74,12 @@ public class RuntimeViewController {
             )
     })
     public TaskPreviewResponse previewTasks(
-            @Valid @RequestBody TaskPreviewRequest request,
+            @RequestBody
+            @NotNull @Min(1) @Max(100) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewTasks(
-                request.sampleLimit(),
+                sampleLimit,
                 requestId(httpRequest)
         );
     }
@@ -112,11 +110,21 @@ public class RuntimeViewController {
             )
     })
     public WorkerGroupBatchGetResponse batchGetWorkerGroups(
-            @Valid @RequestBody WorkerGroupBatchGetRequest request,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 20,
+                            schema = @Schema(type = "string", minLength = 1)
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 20)
+            List<@NotBlank String> workerGroupIds,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.batchGetWorkerGroups(
-                request.workerGroupIds(),
+                List.copyOf(workerGroupIds),
                 requestId(httpRequest)
         );
     }
@@ -147,11 +155,12 @@ public class RuntimeViewController {
             )
     })
     public WorkerGroupPreviewResponse previewWorkerGroups(
-            @Valid @RequestBody WorkerGroupPreviewRequest request,
+            @RequestBody
+            @NotNull @Min(1) @Max(100) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewWorkerGroups(
-                request.sampleLimit(),
+                sampleLimit,
                 requestId(httpRequest)
         );
     }
@@ -185,13 +194,13 @@ public class RuntimeViewController {
     })
     public WorkerPreviewResponse previewWorkers(
             @PathVariable @NotBlank String workerGroupId,
-            @Valid @RequestBody WorkerPreviewRequest request,
+            @RequestBody
+            @NotNull @Min(1) @Max(100) Integer sampleLimit,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.previewWorkers(
                 workerGroupId,
-                request.sampleLimit(),
-                request.filter(),
+                sampleLimit,
                 requestId(httpRequest)
         );
     }
@@ -225,12 +234,22 @@ public class RuntimeViewController {
     })
     public WorkerSchedulingObserveResponse observeWorkerScheduling(
             @PathVariable @NotBlank String workerGroupId,
-            @Valid @RequestBody WorkerSchedulingObserveRequest request,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 100,
+                            schema = @Schema(type = "string", minLength = 1)
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 100)
+            List<@NotBlank String> workerIds,
             HttpServletRequest httpRequest
     ) {
         return runtimeView.observeWorkerScheduling(
                 workerGroupId,
-                request.workerIds(),
+                List.copyOf(workerIds),
                 requestId(httpRequest)
         );
     }
@@ -264,12 +283,22 @@ public class RuntimeViewController {
     })
     public DeferredResult<WorkerNetworkObserveResponse> observeWorkerNetwork(
             @PathVariable @NotBlank String endpointManagerId,
-            @Valid @RequestBody WorkerNetworkObserveRequest request,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 100,
+                            schema = @Schema(type = "string", minLength = 1)
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 100)
+            List<@NotBlank String> workerIds,
             HttpServletRequest httpRequest
     ) {
         return workerNetwork.observe(
                 endpointManagerId,
-                request.workerIds(),
+                List.copyOf(workerIds),
                 requestId(httpRequest)
         );
     }

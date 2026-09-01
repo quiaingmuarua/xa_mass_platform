@@ -215,7 +215,7 @@ class RuntimeBoundaryIntegrationTest {
                     "/api/v1/worker-groups/" + workerGroupId
                             + "/workers/" + workerId
                             + "/platform-properties",
-                    "{\"properties\":{\"pool\":\"batch\"}}"
+                    "{\"pool\":\"batch\"}"
             ).statusCode()).isEqualTo(200);
             String firstMessageId = "property-message-1-" + suffix;
             String secondMessageId = "property-message-2-" + suffix;
@@ -548,10 +548,7 @@ class RuntimeBoundaryIntegrationTest {
                 "/api/v1/runtime-view/endpoint-managers/"
                         + WEBSOCKET_ENDPOINT_MANAGER_ID
                         + "/workers:network-observe",
-                JSON.writeValueAsString(Map.of(
-                        "workerIds",
-                        List.of(workerId)
-                ))
+                JSON.writeValueAsString(List.of(workerId))
         );
         assertThat(response.statusCode()).isEqualTo(200);
         var payload = JSON.readTree(response.body());
@@ -786,7 +783,7 @@ class RuntimeBoundaryIntegrationTest {
         HttpResponse<String> taskPreview = send(
                 "POST",
                 "/api/v1/runtime-view/tasks:preview",
-                "{\"sampleLimit\":100}"
+                "100"
         );
         assertThat(taskPreview.statusCode()).isEqualTo(200);
         var matchingManagedTaskIds = new ArrayList<String>();
@@ -848,11 +845,10 @@ class RuntimeBoundaryIntegrationTest {
             HttpResponse<String> loaded = send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/results:load",
-                    "{\"messageIds\":[\"" + firstMessageId + "\"]}"
+                    "[\"" + firstMessageId + "\"]"
             );
             assertThat(loaded.statusCode()).isEqualTo(200);
             var loadedResult = JSON.readTree(loaded.body())
-                    .get("results")
                     .get(firstMessageId);
             assertThat(loadedResult.get("status").asText())
                     .isEqualTo("succeeded");
@@ -914,7 +910,6 @@ class RuntimeBoundaryIntegrationTest {
         );
         assertThat(response.statusCode()).isEqualTo(200);
         var itemResult = JSON.readTree(response.body())
-                .get("results")
                 .get(messageId);
         assertThat(itemResult.get("status").asText())
                 .isEqualTo("succeeded");
@@ -992,13 +987,11 @@ class RuntimeBoundaryIntegrationTest {
                 "POST",
                 "/api/v1/tasks/" + taskId + "/items",
                 """
-                        {
-                          "items": [{
+                        [{
                             "messageId": "%s",
                             "eventCode": "%s",
                             "payload": {"value": "input"}
                           }]
-                        }
                         """.formatted(
                         messageId,
                         TEST_EVENT_CODE
@@ -1145,7 +1138,7 @@ class RuntimeBoundaryIntegrationTest {
                     "/api/v1/worker-groups/" + workerGroupId
                             + "/workers/" + workerId
                             + "/platform-properties",
-                    "{\"properties\":{}}"
+                    "{}"
             );
             if (response.statusCode() == 200) {
                 return;
@@ -1165,11 +1158,10 @@ class RuntimeBoundaryIntegrationTest {
             HttpResponse<String> response = send(
                     "POST",
                     "/api/v1/tasks/" + taskId + "/results:load",
-                    "{\"messageIds\":[\"" + messageId + "\"]}"
+                    "[\"" + messageId + "\"]"
             );
             if (response.statusCode() == 200) {
                 var result = JSON.readTree(response.body())
-                        .get("results")
                         .get(messageId);
                 if ("succeeded".equals(result.get("status").asText())
                         && TEST_RESULT.equals(result

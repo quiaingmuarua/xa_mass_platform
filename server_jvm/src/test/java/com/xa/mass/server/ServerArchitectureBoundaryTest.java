@@ -179,6 +179,26 @@ class ServerArchitectureBoundaryTest {
                 .isRegularFile();
         assertThat(readSources(CONTRACTS))
                 .doesNotContain("@RestController");
+        String contractSources = readSources(CONTRACTS);
+        assertThat(requestRecordNames(contractSources))
+                .containsExactlyInAnyOrder(
+                        "DirectCallRequest",
+                        "TaskCreateRequest",
+                        "TaskItemRequest",
+                        "TaskRpcCallRequest",
+                        "WorkerGroupRegisterRequest",
+                        "WorkerPreparationRequest",
+                        "WorkerResultRequest"
+                );
+        assertThat(contractSources)
+                .doesNotContain(
+                        "SimpleRequest",
+                        "StatusResponse",
+                        "TaskItemsAppendRequest",
+                        "TaskItemResultsLoadRequest",
+                        "WorkerCommandConsumeRequest",
+                        "WorkerResultBatchRequest"
+                );
         assertThat(readSourcesExcluding(API_V1, CONTROLLERS))
                 .doesNotContain("@RestController");
         assertThat(readProductionJavaSourcesOutsideServer())
@@ -690,5 +710,17 @@ class ServerArchitectureBoundaryTest {
                 java.util.regex.Pattern.quote(fragment),
                 -1
         ).length - 1;
+    }
+
+    private static java.util.List<String> requestRecordNames(
+            String sources
+    ) {
+        return java.util.regex.Pattern.compile(
+                        "\\brecord\\s+([A-Za-z0-9]+Request)\\s*\\("
+                )
+                .matcher(sources)
+                .results()
+                .map(result -> result.group(1))
+                .toList();
     }
 }

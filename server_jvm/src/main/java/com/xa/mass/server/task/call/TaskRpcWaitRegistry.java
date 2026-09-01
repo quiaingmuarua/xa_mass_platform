@@ -1,7 +1,7 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,7 +45,7 @@ public final class TaskRpcWaitRegistry {
             String taskId,
             List<String> messageIds,
             Map<String, TaskItemResult> observedResults,
-            DeferredResult<TaskRpcCallResponse> deferred
+            DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
         List<String> orderedIds = List.copyOf(messageIds);
         var observed = new LinkedHashMap<String, TaskItemResult>();
@@ -62,7 +62,7 @@ public final class TaskRpcWaitRegistry {
             }
         });
         if (pending.isEmpty()) {
-            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+            deferred.setResult(TaskItemResultResponse.fromObservedResults(
                     orderedIds,
                     observed
             ));
@@ -282,7 +282,8 @@ public final class TaskRpcWaitRegistry {
         private final List<String> orderedMessageIds;
         private final Map<String, TaskItemResult> observedResults;
         private final Set<ItemKey> pending;
-        private final DeferredResult<TaskRpcCallResponse> deferred;
+        private final DeferredResult<Map<String, TaskItemResultResponse>>
+                deferred;
         private final long registeredAtNanos;
         private boolean completed;
 
@@ -291,7 +292,7 @@ public final class TaskRpcWaitRegistry {
                 List<String> orderedMessageIds,
                 Map<String, TaskItemResult> observedResults,
                 Set<ItemKey> pending,
-                DeferredResult<TaskRpcCallResponse> deferred,
+                DeferredResult<Map<String, TaskItemResultResponse>> deferred,
                 long registeredAtNanos
         ) {
             this.registry = registry;
@@ -342,8 +343,8 @@ public final class TaskRpcWaitRegistry {
             registry.remove(this, remaining, true);
         }
 
-        private TaskRpcCallResponse response() {
-            return TaskRpcCallResponse.fromObservedResults(
+        private Map<String, TaskItemResultResponse> response() {
+            return TaskItemResultResponse.fromObservedResults(
                     orderedMessageIds,
                     observedResults
             );

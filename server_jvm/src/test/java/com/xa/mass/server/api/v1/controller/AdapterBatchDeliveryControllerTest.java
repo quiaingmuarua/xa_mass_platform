@@ -61,13 +61,13 @@ class AdapterBatchDeliveryControllerTest {
 
         mockMvc.perform(post(batchPath("commands:consume"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limit\":100}"))
+                        .content("100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.commands.worker-1.messageId"
+                        "$.worker-1.messageId"
                 ).doesNotExist())
                 .andExpect(jsonPath(
-                        "$.commands.worker-1.messageType"
+                        "$.worker-1.messageType"
                 ).value("test.event"));
     }
 
@@ -81,10 +81,9 @@ class AdapterBatchDeliveryControllerTest {
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(Jsons.toJson(Map.of(
-                                "results",
+                        .content(Jsons.toJson(
                                 java.util.List.of(encodedResult)
-                        ))))
+                        )))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.acceptedCount").value(1))
                 .andExpect(jsonPath("$.rejectedCount").value(0));
@@ -108,16 +107,14 @@ class AdapterBatchDeliveryControllerTest {
         mockMvc.perform(post(
                         "/api/v1/worker-delivery/endpoint-managers/"
                         + "system-polling/commands:consume"
-                )
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"limit\":100}"))
+                        .content("100"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(
-                                "{\"results\":[]}"
-                        ))
+                        .content("[]"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("results:append"))
@@ -130,7 +127,7 @@ class AdapterBatchDeliveryControllerTest {
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"results\":[null]}"))
+                        .content("[null]"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("commands:consume"))
@@ -151,10 +148,9 @@ class AdapterBatchDeliveryControllerTest {
             throws Exception {
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(Jsons.toJson(Map.of(
-                                "results",
+                        .content(Jsons.toJson(
                                 Collections.nCopies(101, successResult())
-                        ))))
+                        )))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(service);

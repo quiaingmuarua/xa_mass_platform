@@ -2,8 +2,8 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.worker.WorkerPlatformPropertiesPatchResponse;
-import com.xa.mass.server.api.v1.contract.worker.WorkerPropertiesPatchRequest;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -11,9 +11,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.NotNull;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = ApiTags.WORKER_RESOURCES)
-@Validated
 @RestController
 @RequestMapping("/api/v1/worker-groups")
 public class ResourceCommandController {
@@ -43,7 +45,8 @@ public class ResourceCommandController {
                     responseCode = "200",
                     description = "Worker platform properties patch completed",
                     content = @Content(schema = @Schema(
-                            implementation = WorkerPlatformPropertiesPatchResponse.class
+                            implementation =
+                                    WorkerResourceCommandService.PatchStatus.class
                     ))
             ),
             @ApiResponse(
@@ -61,17 +64,35 @@ public class ResourceCommandController {
                     ))
             )
     })
-    public WorkerPlatformPropertiesPatchResponse patchPlatformProperties(
+    public WorkerResourceCommandService.PatchStatus patchPlatformProperties(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody WorkerPropertiesPatchRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(schema = @Schema(
+                            type = "object",
+                            additionalProperties = Schema
+                                    .AdditionalPropertiesValue.TRUE
+                    ))
+            )
+            @RequestBody @NotNull
+            Map<String, @Nullable Object> properties
     ) {
-        return new WorkerPlatformPropertiesPatchResponse(
-                workerResources.patchPlatformProperties(
-                        workerGroupId,
-                        workerId,
-                        request.properties()
-                ).wireValue()
+        if (properties.size() == 1
+                && properties.get("properties") instanceof Map<?, ?>) {
+            throw new ServerException(
+                    ServerErrorCode.MALFORMED_REQUEST,
+                    "workerResource.patchPlatformProperties",
+                    "Legacy properties envelope is not supported",
+                    null
+            );
+        }
+        return workerResources.patchPlatformProperties(
+                workerGroupId,
+                workerId,
+                Collections.unmodifiableMap(
+                        new LinkedHashMap<>(properties)
+                )
         );
     }
 }

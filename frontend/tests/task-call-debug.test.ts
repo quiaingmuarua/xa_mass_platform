@@ -103,11 +103,9 @@ describe("HttpTaskCallDebugClient", () => {
     const post = vi.fn().mockResolvedValue({
       status: 200,
       data: {
-        results: {
-          "message-1": {
-            status: "succeeded",
-            opaqueResultPayload: '{"valid":true}'
-          }
+        "message-1": {
+          status: "succeeded",
+          opaqueResultPayload: '{"valid":true}'
         }
       }
     });
@@ -151,7 +149,7 @@ describe("HttpTaskCallDebugClient", () => {
       { status: "failed" },
       { status: "not_observed" }
     ] as const) {
-      const client = httpClient({ results: { "message-1": outcome } });
+      const client = httpClient({ "message-1": outcome });
       await expect(client.callTask(clientRequest())).resolves.toEqual(outcome);
     }
 
@@ -164,7 +162,7 @@ describe("HttpTaskCallDebugClient", () => {
       },
       { "message-1": { status: "not_observed", internal: true } }
     ]) {
-      const client = httpClient({ results });
+      const client = httpClient(results);
       await expect(client.callTask(clientRequest())).rejects.toMatchObject({
         kind: "schema"
       });
@@ -176,16 +174,14 @@ describe("HttpTaskCallDebugClient", () => {
       .fn()
       .mockResolvedValueOnce({
         status: 200,
-        data: { results: { "message-1": { status: "not_observed" } } }
+        data: { "message-1": { status: "not_observed" } }
       })
       .mockResolvedValueOnce({
         status: 200,
         data: {
-          results: {
-            "message-1": {
-              status: "succeeded",
-              opaqueResultPayload: '{"valid":true}'
-            }
+          "message-1": {
+            status: "succeeded",
+            opaqueResultPayload: '{"valid":true}'
           }
         }
       });
@@ -202,7 +198,7 @@ describe("HttpTaskCallDebugClient", () => {
     });
     expect(post).toHaveBeenLastCalledWith(
       "/v1/tasks/task%2Fa/results:load",
-      { messageIds: ["message-1"] },
+      ["message-1"],
       {
         headers: { "X-Request-Id": expect.any(String) },
         timeout: 5_000
@@ -210,7 +206,7 @@ describe("HttpTaskCallDebugClient", () => {
     );
 
     const wrongIdentity = httpClient({
-      results: { "message-2": { status: "failed" } }
+      "message-2": { status: "failed" }
     });
     await expect(wrongIdentity.loadResult("task-1", "message-1")).rejects.toMatchObject(
       { kind: "schema" }

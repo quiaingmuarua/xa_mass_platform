@@ -2,16 +2,15 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskItemResultsLoadRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskItemResultsLoadResponse;
-import com.xa.mass.server.api.v1.contract.task.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskItemsAppendResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemAppendOutcome;
+import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
 import com.xa.mass.server.task.TaskDataService;
 import com.xa.mass.server.task.call.TaskRpcCallService;
 import com.xa.mass.server.task.result.TaskResultsExportService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -19,11 +18,14 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,7 +35,6 @@ import org.springframework.web.context.request.async.DeferredResult;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @Tag(name = ApiTags.TASKS)
-@Validated
 @RestController
 @RequestMapping("/api/v1/tasks")
 public class TaskDataController {
@@ -66,7 +67,9 @@ public class TaskDataController {
                     description = "Submission was accepted; each Item is "
                             + "succeeded, failed, or not_observed",
                     content = @Content(schema = @Schema(
-                            implementation = TaskRpcCallResponse.class
+                            type = "object",
+                            additionalPropertiesSchema =
+                                    TaskItemResultResponse.class
                     ))
             ),
             @ApiResponse(
@@ -85,7 +88,7 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/items:call")
-    public DeferredResult<TaskRpcCallResponse> callTaskItems(
+    public DeferredResult<Map<String, TaskItemResultResponse>> callTaskItems(
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskRpcCallRequest request
     ) {
@@ -98,7 +101,9 @@ public class TaskDataController {
                     responseCode = "200",
                     description = "Item append outcomes",
                     content = @Content(schema = @Schema(
-                            implementation = TaskItemsAppendResponse.class
+                            type = "object",
+                            additionalPropertiesSchema =
+                                    TaskItemAppendOutcome.class
                     ))
             ),
             @ApiResponse(
@@ -117,13 +122,25 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/items")
-    public ResponseEntity<TaskItemsAppendResponse> appendTaskItems(
+    public ResponseEntity<Map<String, TaskItemAppendOutcome>> appendTaskItems(
             @PathVariable @NotBlank String taskId,
-            @Valid @RequestBody TaskItemsAppendRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 100,
+                            schema = @Schema(
+                                    implementation = TaskItemRequest.class
+                            )
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 100)
+            List<@NotNull @Valid TaskItemRequest> items
     ) {
         return ResponseEntity.ok(taskData.appendFiniteTaskItems(
                 taskId,
-                request
+                List.copyOf(items)
         ));
     }
 
@@ -138,7 +155,9 @@ public class TaskDataController {
                     responseCode = "200",
                     description = "Result states keyed by messageId",
                     content = @Content(schema = @Schema(
-                            implementation = TaskItemResultsLoadResponse.class
+                            type = "object",
+                            additionalPropertiesSchema =
+                                    TaskItemResultResponse.class
                     ))
             ),
             @ApiResponse(
@@ -157,13 +176,24 @@ public class TaskDataController {
             )
     })
     @PostMapping("/{taskId}/results:load")
-    public ResponseEntity<TaskItemResultsLoadResponse> loadTaskItemResults(
+    public ResponseEntity<Map<String, TaskItemResultResponse>>
+            loadTaskItemResults(
             @PathVariable @NotBlank String taskId,
-            @Valid @RequestBody TaskItemResultsLoadRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 1000,
+                            schema = @Schema(type = "string", minLength = 1)
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 1000)
+            List<@NotBlank String> messageIds
     ) {
         return ResponseEntity.ok(taskData.loadTaskItemResults(
                 taskId,
-                request.messageIds()
+                List.copyOf(messageIds)
         ));
     }
 

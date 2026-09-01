@@ -459,11 +459,10 @@ class DeliveryCommandProcessTest {
         private String responseBodyOverride;
 
         private synchronized Response handle(
-                ScriptedHttpServer.Request request
+            ScriptedHttpServer.Request request
         ) {
             if (request.rawPath().endsWith("/commands:consume")) {
-                Object limit = Jsons.parseObject(request.body()).get("limit");
-                requestedLimits.add(Math.toIntExact((Long) limit));
+                requestedLimits.add(Integer.parseInt(request.body()));
                 if (failures > 0) {
                     failures--;
                     return new Response(503, "{}");
@@ -472,13 +471,13 @@ class DeliveryCommandProcessTest {
                     return new Response(200, responseBodyOverride);
                 }
                 Map<String, DeliveryCommand> batch = batches.pollFirst();
-                return commandResponse("commands", batch);
+                return commandResponse(batch);
             }
             if (request.rawPath().endsWith("/results:append")) {
-                @SuppressWarnings("unchecked")
-                List<String> reports = (List<String>) Jsons.parseObject(
-                        request.body()
-                ).get("results");
+                List<String> reports = Jsons.parseArray(request.body())
+                        .stream()
+                        .map(String.class::cast)
+                        .toList();
                 for (String report : reports) {
                     try {
                         if (CODEC.decodeDeliveryReport(report).dst() == SYSTEM) {
@@ -496,7 +495,6 @@ class DeliveryCommandProcessTest {
         }
 
         private static Response commandResponse(
-                String field,
                 Map<String, DeliveryCommand> batch
         ) {
             Map<String, Object> encoded = new LinkedHashMap<>();
@@ -506,7 +504,7 @@ class DeliveryCommandProcessTest {
                         Jsons.parseObject(CODEC.encodeDeliveryCommand(command))
                 ));
             }
-            return new Response(200, Jsons.toJson(Map.of(field, encoded)));
+            return new Response(200, Jsons.toJson(encoded));
         }
 
         private static Response accepted(int count) {

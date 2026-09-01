@@ -2,14 +2,13 @@ package com.xa.mass.server.api.v1.controller;
 
 import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
-import com.xa.mass.server.api.v1.contract.worker.WorkerBatchPreparationRequest;
-import com.xa.mass.server.api.v1.contract.worker.WorkerBatchPreparationResponse;
 import com.xa.mass.server.api.v1.contract.worker.WorkerPreparationRequest;
 import com.xa.mass.server.api.v1.contract.worker.WorkerPreparationResponse;
 import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -17,7 +16,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 
 @Tag(name = ApiTags.WORKER_RESOURCES)
-@Validated
 @RestController
 @RequestMapping("/api/v1/worker-groups")
 public class WorkerPreparationController {
@@ -87,9 +86,11 @@ public class WorkerPreparationController {
             @ApiResponse(
                     responseCode = "200",
                     description = "Worker batch preparation completed",
-                    content = @Content(schema = @Schema(
-                            implementation =
-                                    WorkerBatchPreparationResponse.class
+                    content = @Content(array = @ArraySchema(
+                            schema = @Schema(
+                                    implementation =
+                                            WorkerPreparationResponse.class
+                            )
                     ))
             ),
             @ApiResponse(
@@ -107,13 +108,27 @@ public class WorkerPreparationController {
                     ))
             )
     })
-    public WorkerBatchPreparationResponse prepareWorkers(
+    public List<WorkerPreparationResponse> prepareWorkers(
             @PathVariable @NotBlank String workerGroupId,
-            @Valid @RequestBody WorkerBatchPreparationRequest request
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    content = @Content(array = @ArraySchema(
+                            minItems = 1,
+                            maxItems = 100,
+                            schema = @Schema(
+                                    implementation =
+                                            WorkerPreparationRequest.class
+                            )
+                    ))
+            )
+            @RequestBody
+            @NotNull @Size(min = 1, max = 100)
+            List<@NotNull @Valid WorkerPreparationRequest> workers
     ) {
-        var first = request.workers().get(0);
+        List<WorkerPreparationRequest> requested = List.copyOf(workers);
+        var first = requested.get(0);
         var workerProperties = new ArrayList<Map<String, Object>>();
-        request.workers().forEach(item -> {
+        requested.forEach(item -> {
             if (item.workerKind() != first.workerKind()
                     || item.transportType() != first.transportType()) {
                 throw new ServerException(
@@ -125,13 +140,13 @@ public class WorkerPreparationController {
             }
             workerProperties.add(item.workerProperties());
         });
-        return WorkerBatchPreparationResponse.from(
-                preparations.prepareAll(
+        return preparations.prepareAll(
                         workerGroupId,
                         first.workerKind(),
                         first.transportType(),
                         workerProperties
-                )
-        );
+                ).stream()
+                .map(WorkerPreparationResponse::from)
+                .toList();
     }
 }

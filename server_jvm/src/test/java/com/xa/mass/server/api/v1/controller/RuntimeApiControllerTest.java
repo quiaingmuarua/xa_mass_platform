@@ -376,8 +376,7 @@ class RuntimeApiControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {
-                                  "workers":[
+                                [
                                     {
                                       "workerKind":"SCENARIO_LAB",
                                       "transportType":"WEBSOCKET",
@@ -392,13 +391,12 @@ class RuntimeApiControllerTest {
                                       "labInventoryKey":"workers-a.jsonl",
                                       "labInventoryLine":2
                                     }}
-                                  ]
-                                }
+                                ]
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.workers.length()").value(2))
-                .andExpect(jsonPath("$.workers[0].workerId").exists())
-                .andExpect(jsonPath("$.workers[0].labWorkerKey")
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].workerId").exists())
+                .andExpect(jsonPath("$[0].labWorkerKey")
                         .doesNotExist());
 
         mockMvc.perform(post(
@@ -407,8 +405,7 @@ class RuntimeApiControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {
-                                  "workers":[
+                                [
                                     {
                                       "workerKind":"SCENARIO_LAB",
                                       "transportType":"WEBSOCKET",
@@ -423,8 +420,7 @@ class RuntimeApiControllerTest {
                                       "labInventoryKey":"workers-a.jsonl",
                                       "labInventoryLine":1
                                     }}
-                                  ]
-                                }
+                                ]
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(14001));
@@ -446,10 +442,10 @@ class RuntimeApiControllerTest {
                                         + "worker-1/platform-properties"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"properties\":{\"pool\":\"batch\","
-                                + "\"removed\":null}}"))
+                        .content("{\"pool\":\"batch\","
+                                + "\"removed\":null}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("updated"));
+                .andExpect(jsonPath("$").value("updated"));
 
         mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/"
@@ -502,7 +498,7 @@ class RuntimeApiControllerTest {
                                         + "missing-worker/platform-properties"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"properties\":{\"pool\":\"batch\"}}"))
+                        .content("{\"pool\":\"batch\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(15008))
                 .andExpect(jsonPath("$.message")
@@ -511,7 +507,7 @@ class RuntimeApiControllerTest {
     }
 
     @Test
-    void exposesVersionedTaskCommandsAndWrapsItemResults() throws Exception {
+    void exposesVersionedTaskCommandsAndDirectItemResults() throws Exception {
         mockMvc.perform(post("/api/v1/tasks")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -551,21 +547,19 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {
-                                  "items": [{
+                                [{
                                     "messageId": "message-1",
                                     "eventCode": "telecom.phone.inspect",
                                     "payload": {"phoneNumber": "+14155552671"},
                                     "ttlMillis": 30000
                                   }]
-                                }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1.status")
+                .andExpect(jsonPath("$.message-1.status")
                         .value("succeeded"))
-                .andExpect(jsonPath("$.results.message-1.code")
+                .andExpect(jsonPath("$.message-1.code")
                         .doesNotExist())
-                .andExpect(jsonPath("$.results.message-1.message")
+                .andExpect(jsonPath("$.message-1.message")
                         .doesNotExist());
 
         @SuppressWarnings("unchecked")
@@ -583,16 +577,14 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"messageIds":["message-1","message-2"]}
-                                """))
+                        .content("[\"message-1\",\"message-2\"]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1.status")
+                .andExpect(jsonPath("$.message-1.status")
                         .value("succeeded"))
                 .andExpect(jsonPath(
-                        "$.results.message-1.opaqueResultPayload"
+                        "$.message-1.opaqueResultPayload"
                 ).value("{\"valid\":true}"))
-                .andExpect(jsonPath("$.results.message-2.status")
+                .andExpect(jsonPath("$.message-2.status")
                         .value("not_observed"));
     }
 
@@ -621,24 +613,24 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[
+                                [
                                   {"messageId":"message-invalid","eventCode":"event","payload":{}},
                                   {"messageId":"message-missing","eventCode":"event","payload":{}},
                                   {"messageId":"message-retry","eventCode":"event","payload":{}}
-                                ]}
+                                ]
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-invalid.status")
+                .andExpect(jsonPath("$.message-invalid.status")
                         .value("failed"))
-                .andExpect(jsonPath("$.results.message-invalid.code")
+                .andExpect(jsonPath("$.message-invalid.code")
                         .value(12001))
-                .andExpect(jsonPath("$.results.message-missing.status")
+                .andExpect(jsonPath("$.message-missing.status")
                         .value("failed"))
-                .andExpect(jsonPath("$.results.message-missing.code")
+                .andExpect(jsonPath("$.message-missing.code")
                         .value(12002))
-                .andExpect(jsonPath("$.results.message-retry.status")
+                .andExpect(jsonPath("$.message-retry.status")
                         .value("failed"))
-                .andExpect(jsonPath("$.results.message-retry.code")
+                .andExpect(jsonPath("$.message-retry.code")
                         .value(12003))
                 .andExpect(jsonPath("$..reason").doesNotExist());
     }
@@ -762,21 +754,21 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{
+                                [{
                                   "messageId":"message-internal",
                                   "eventCode":"observe",
                                   "payload":{},
                                   "allocationRule":{}
-                                }]}
+                                }]
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12008));
         mockMvc.perform(post("/api/v1/tasks/{taskId}/results:load", taskId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"messageIds\":[\"message-internal\"]}"))
+                        .content("[\"message-internal\"]"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.results.message-internal.status"
+                        "$.message-internal.status"
                 ).value("not_observed"));
 
         verify(taskRuntime, org.mockito.Mockito.never())
@@ -831,14 +823,14 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(asyncDispatch(async))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1.status")
+                .andExpect(jsonPath("$.message-1.status")
                         .value("succeeded"))
                 .andExpect(jsonPath("$.taskId").doesNotExist())
                 .andExpect(jsonPath("$.workerId").doesNotExist())
                 .andExpect(jsonPath("$.batchId").doesNotExist())
                 .andExpect(jsonPath("$.messageId").doesNotExist())
                 .andExpect(jsonPath(
-                        "$.results.message-1.opaqueResultPayload"
+                        "$.message-1.opaqueResultPayload"
                 )
                         .value("{\"valid\":true}"));
 
@@ -848,12 +840,12 @@ class RuntimeApiControllerTest {
                                         + "results:load"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"messageIds\":[\"message-1\"]}"))
+                        .content("[\"message-1\"]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1.status")
+                .andExpect(jsonPath("$.message-1.status")
                         .value("succeeded"))
                 .andExpect(jsonPath(
-                        "$.results.message-1.opaqueResultPayload"
+                        "$.message-1.opaqueResultPayload"
                 ).value("{\"valid\":true}"));
 
         verify(taskRuntime, times(2)).loadTaskItemResults(
@@ -921,9 +913,9 @@ class RuntimeApiControllerTest {
         taskRpcRegistry.shutdown();
         mockMvc.perform(asyncDispatch(pending))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-2.status")
+                .andExpect(jsonPath("$.message-2.status")
                         .value("not_observed"))
-                .andExpect(jsonPath("$.results.message-2.code")
+                .andExpect(jsonPath("$.message-2.code")
                         .doesNotExist());
     }
 
@@ -967,13 +959,55 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"items\":[null]}"))
+                        .content("[null]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
 
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"items\":[]}"))
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-1",
+                                  "eventCode":"event",
+                                  "payload":{}
+                                }]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"messageIds\":[\"message-1\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:prepare-batch"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"workers":[{
+                                  "workerKind":"SCENARIO_LAB",
+                                  "transportType":"WEBSOCKET",
+                                  "workerProperties":{}
+                                }]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/platform-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"properties\":{\"pool\":\"batch\"}}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
 
@@ -988,7 +1022,7 @@ class RuntimeApiControllerTest {
                 .collect(Collectors.joining(",", "[", "]"));
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"items\":" + tooManyItems + "}"))
+                        .content(tooManyItems))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
     }
@@ -1018,21 +1052,19 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {
-                                  "messageIds": [
+                                [
                                     "message-2",
                                     "message-1",
                                     "message-2",
                                     "message-failed"
-                                  ]
-                                }
+                                ]
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1.status")
+                .andExpect(jsonPath("$.message-1.status")
                         .value("succeeded"))
-                .andExpect(jsonPath("$.results.message-failed.status")
+                .andExpect(jsonPath("$.message-failed.status")
                         .value("failed"))
-                .andExpect(jsonPath("$.results.message-2.status")
+                .andExpect(jsonPath("$.message-2.status")
                         .value("not_observed"));
 
         @SuppressWarnings("unchecked")
@@ -1051,7 +1083,7 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"messageIds\":[]}"))
+                        .content("[]"))
                 .andExpect(status().isBadRequest());
 
         String tooManyIds = IntStream.range(0, 1_001)
@@ -1059,7 +1091,7 @@ class RuntimeApiControllerTest {
                 .collect(Collectors.joining(",", "[", "]"));
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"messageIds\":" + tooManyIds + "}"))
+                        .content(tooManyIds))
                 .andExpect(status().isBadRequest());
     }
 
@@ -1072,17 +1104,17 @@ class RuntimeApiControllerTest {
 
         mockMvc.perform(post("/api/v1/tasks/missing/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"messageIds\":[\"message-1\"]}"))
+                        .content("[\"message-1\"]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));
         mockMvc.perform(post("/api/v1/tasks/missing/items")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"items":[{
+                                [{
                                   "messageId":"message-1",
                                   "eventCode":"event",
                                   "payload":{}
-                                }]}
+                                }]
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(12002));

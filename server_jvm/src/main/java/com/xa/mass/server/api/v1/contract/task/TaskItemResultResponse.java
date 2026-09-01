@@ -2,6 +2,9 @@ package com.xa.mass.server.api.v1.contract.task;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -37,6 +40,23 @@ public record TaskItemResultResponse(
                 result.opaqueResultPayload(),
                 "opaqueResultPayload"
         ));
+    }
+
+    public static Map<String, TaskItemResultResponse> fromObservedResults(
+            Iterable<String> messageIds,
+            Map<String, TaskItemResult> observedResults
+    ) {
+        Objects.requireNonNull(messageIds, "messageIds");
+        Objects.requireNonNull(observedResults, "observedResults");
+        var results = new LinkedHashMap<
+                String,
+                TaskItemResultResponse
+                >();
+        messageIds.forEach(messageId -> results.put(
+                messageId,
+                from(observedResults.get(messageId))
+        ));
+        return Collections.unmodifiableMap(results);
     }
 
     public static TaskItemResultResponse succeeded(String payload) {

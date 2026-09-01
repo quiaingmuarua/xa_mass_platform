@@ -40,6 +40,18 @@ class JsonsTest {
     }
 
     @Test
+    void parsesOnlyTopLevelArraysThroughTheArrayEntryPoint() {
+        assertEquals(
+                List.of("worker-1", 2L),
+                Jsons.parseArray("[\"worker-1\",2]")
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> Jsons.parseArray("{\"workerId\":\"worker-1\"}")
+        );
+    }
+
+    @Test
     void writesCompactJsonInMapOrderAndPreservesNull() {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("message", "<ok>");

@@ -39,7 +39,7 @@ class ConvergenceWorkloadTest {
                         Map.of("status", "not_observed")
                 );
             }
-            respondJson(exchange, Map.of("results", results));
+            respondJson(exchange, results);
         });
         server.start();
         try {

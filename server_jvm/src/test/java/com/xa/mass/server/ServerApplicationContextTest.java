@@ -356,7 +356,12 @@ class ServerApplicationContextTest {
                 for (String successCode : successCodes) {
                     var successContent = responses.path(successCode)
                             .path("content");
-                    if ("204".equals(successCode)) {
+                    boolean bodylessSuccess = "204".equals(successCode)
+                            || ("202".equals(successCode)
+                            && path.getKey().endsWith(
+                                    "/workers/{workerId}/results"
+                            ));
+                    if (bodylessSuccess) {
                         assertThat(successContent.isMissingNode()
                                 || successContent.size() == 0)
                                 .as("bodyless 204 response for %s %s",

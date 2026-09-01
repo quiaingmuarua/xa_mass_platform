@@ -129,7 +129,7 @@ class RuntimeViewControllerTest {
                         "/api/v1/runtime-view/tasks:preview"
                 ).contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "task-preview-request")
-                        .content("{\"sampleLimit\":100}"))
+                        .content("100"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
                         "X-Request-Id",
@@ -191,7 +191,7 @@ class RuntimeViewControllerTest {
         mockMvc.perform(post(
                         "/api/v1/runtime-view/tasks:preview"
                 ).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"sampleLimit\":25}"))
+                        .content("25"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entries").isEmpty());
 
@@ -215,7 +215,7 @@ class RuntimeViewControllerTest {
                         "/api/v1/runtime-view/tasks:preview"
                 ).contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "drift-request")
-                        .content("{\"sampleLimit\":100}"))
+                        .content("100"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
@@ -232,7 +232,7 @@ class RuntimeViewControllerTest {
                         "/api/v1/runtime-view/tasks:preview"
                 ).contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "owner-failure-request")
-                        .content("{\"sampleLimit\":100}"))
+                        .content("100"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
@@ -246,7 +246,7 @@ class RuntimeViewControllerTest {
             mockMvc.perform(post(
                             "/api/v1/runtime-view/tasks:preview"
                     ).contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"sampleLimit\":" + limit + "}"))
+                            .content(Integer.toString(limit)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(19001));
         }
@@ -290,13 +290,7 @@ class RuntimeViewControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "batch-request")
                         .content("""
-                                {
-                                  "workerGroupIds": [
-                                    "group-b",
-                                    "missing",
-                                    "group-a"
-                                  ]
-                                }
+                                ["group-b","missing","group-a"]
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
@@ -328,9 +322,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:batch-get"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"workerGroupIds":["group-a","group-a"]}
-                                """))
+                        .content("[\"group-a\",\"group-a\"]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
         verifyNoInteractions(workerCatalog);
@@ -340,9 +332,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:batch-get"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"workerGroupIds":[""]}
-                                """))
+                        .content("[\"\"]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
 
@@ -351,9 +341,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:batch-get"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"workerGroupIds":[]}
-                                """))
+                        .content("[]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
 
@@ -365,11 +353,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:batch-get"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(
-                                "{\"workerGroupIds\":"
-                                        + tooManyIds
-                                        + "}"
-                        ))
+                        .content(tooManyIds))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
     }
@@ -397,7 +381,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:preview"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"sampleLimit\":100}"))
+                        .content("100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sampleLimit").value(100))
                 .andExpect(jsonPath("$.sampledCount").value(3))
@@ -424,7 +408,7 @@ class RuntimeViewControllerTest {
                                         + "worker-groups:preview"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"sampleLimit\":101}"))
+                        .content("101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
         verifyNoInteractions(workerCatalog);
@@ -437,7 +421,7 @@ class RuntimeViewControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "group-preview-request")
-                        .content("{\"sampleLimit\":100}"))
+                        .content("100"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
@@ -464,9 +448,7 @@ class RuntimeViewControllerTest {
                                         + "group-a/workers:preview"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"sampleLimit":100,"filter":null}
-                                """))
+                        .content("100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workerGroupId")
                         .value("group-a"))
@@ -528,9 +510,7 @@ class RuntimeViewControllerTest {
                                         + "group-a/workers:preview"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"sampleLimit":25}
-                                """))
+                        .content("25"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sampledCount").value(0))
                 .andExpect(jsonPath("$.returnedCount").value(0))
@@ -539,36 +519,20 @@ class RuntimeViewControllerTest {
     }
 
     @Test
-    void previewValidatesGroupBeforeRejectingUnavailableFilter()
+    void directBodiesRejectRemovedRequestEnvelopesBeforeOwnerReads()
             throws Exception {
-        var missing =
-                new LinkedHashMap<String, WorkerGroupDescriptor>();
-        missing.put("missing", null);
-        when(workerCatalog.getWorkerGroupDescriptors(
-                List.of("missing")
-        )).thenReturn(missing);
-
-        mockMvc.perform(post(
-                                "/api/v1/runtime-view/worker-groups/"
-                                        + "missing/workers:preview"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "sampleLimit":100,
-                                  "filter":{"workerId":{"$eq":"worker-1"}}
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(15001));
-        verify(workerCatalog, never()).sampleWorkerDescriptors(
-                "missing",
-                100
+        assertMalformedEnvelope(
+                "/api/v1/runtime-view/tasks:preview",
+                "{\"sampleLimit\":100}"
         );
-
-        when(workerCatalog.getWorkerGroupDescriptors(
-                List.of("group-a")
-        )).thenReturn(groupLookup("group-a"));
+        assertMalformedEnvelope(
+                "/api/v1/runtime-view/worker-groups:batch-get",
+                "{\"workerGroupIds\":[\"group-a\"]}"
+        );
+        assertMalformedEnvelope(
+                "/api/v1/runtime-view/worker-groups:preview",
+                "{\"sampleLimit\":100}"
+        );
         mockMvc.perform(post(
                                 "/api/v1/runtime-view/worker-groups/"
                                         + "group-a/workers:preview"
@@ -581,11 +545,33 @@ class RuntimeViewControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(15003));
-        verify(workerCatalog, never()).sampleWorkerDescriptors(
-                "group-a",
-                100
+                .andExpect(jsonPath("$.code").value(19001));
+        assertMalformedEnvelope(
+                "/api/v1/runtime-view/worker-groups/group-a/"
+                        + "workers:scheduling-observe",
+                "{\"workerIds\":[\"worker-1\"]}"
         );
+        assertMalformedEnvelope(
+                "/api/v1/runtime-view/endpoint-managers/endpoint-a/"
+                        + "workers:network-observe",
+                "{\"workerIds\":[\"worker-1\"]}"
+        );
+        verifyNoInteractions(
+                taskScores,
+                taskCatalog,
+                workerCatalog,
+                workerScheduling,
+                workerNetwork
+        );
+    }
+
+    private void assertMalformedEnvelope(String path, String body)
+            throws Exception {
+        mockMvc.perform(post(path)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(19001));
     }
 
     @Test
@@ -605,9 +591,7 @@ class RuntimeViewControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "preview-request")
-                        .content("""
-                                {"sampleLimit":100,"filter":null}
-                                """))
+                        .content("100"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(header().string(
                         "X-Request-Id",
@@ -629,11 +613,7 @@ class RuntimeViewControllerTest {
                                             + "group-a/workers:preview"
                             )
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(
-                                    "{\"sampleLimit\":"
-                                            + limit
-                                            + ",\"filter\":null}"
-                            ))
+                            .content(Integer.toString(limit)))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(19001));
         }
@@ -661,9 +641,7 @@ class RuntimeViewControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "scheduling-request")
-                        .content("""
-                                {"workerIds":["worker-2","worker-1"]}
-                                """))
+                        .content("[\"worker-2\",\"worker-1\"]"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
                         "X-Request-Id",
@@ -695,9 +673,7 @@ class RuntimeViewControllerTest {
                                         + "group-a/workers:scheduling-observe"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"workerIds":["worker-1","worker-1"]}
-                                """))
+                        .content("[\"worker-1\",\"worker-1\"]"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(19001));
 
@@ -718,9 +694,7 @@ class RuntimeViewControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "scheduling-request")
-                        .content("""
-                                {"workerIds":["worker-1"]}
-                                """))
+                        .content("[\"worker-1\"]"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value(15002))
                 .andExpect(jsonPath("$.requestId")
@@ -752,9 +726,7 @@ class RuntimeViewControllerTest {
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Request-Id", "network-request")
-                        .content("""
-                                {"workerIds":["worker-2","worker-1"]}
-                                """))
+                        .content("[\"worker-2\",\"worker-1\"]"))
                 .andExpect(request().asyncStarted())
                 .andReturn();
 

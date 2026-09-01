@@ -627,10 +627,10 @@ class NettyAdapterContractTest {
                 return commandResponse(commandBatches.poll());
             }
             if (request.rawPath().endsWith("/results:append")) {
-                @SuppressWarnings("unchecked")
-                List<String> results = (List<String>) Jsons.parseObject(
-                        request.body()
-                ).get("results");
+                List<String> results = Jsons.parseArray(request.body())
+                        .stream()
+                        .map(String.class::cast)
+                        .toList();
                 appendedResults.add(List.copyOf(results));
                 return new Response(202, Jsons.toJson(Map.of(
                         "acceptedCount",
@@ -662,10 +662,7 @@ class NettyAdapterContractTest {
                         ))
                 ));
             }
-            return new Response(200, Jsons.toJson(Map.of(
-                    "commands",
-                    encoded
-            )));
+            return new Response(200, Jsons.toJson(encoded));
         }
 
         private String workerId(String path) {

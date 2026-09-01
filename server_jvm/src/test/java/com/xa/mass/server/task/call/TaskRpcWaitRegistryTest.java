@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import jakarta.validation.Validation;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,9 +26,9 @@ class TaskRpcWaitRegistryTest {
     @Test
     void coalescesSameItemAndCountsEachWaiterAssociation() throws Exception {
         TaskRpcWaitRegistry registry = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> first =
+        DeferredResult<Map<String, TaskItemResultResponse>> first =
                 deferred();
-        DeferredResult<TaskRpcCallResponse> second =
+        DeferredResult<Map<String, TaskItemResultResponse>> second =
                 deferred();
 
         assertThat(register(registry, "task-1", "message-1", first))
@@ -57,7 +57,7 @@ class TaskRpcWaitRegistryTest {
     @Test
     void failedResultCompletesTheWaiterWithoutPayload() throws Exception {
         TaskRpcWaitRegistry registry = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> deferred = deferred();
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred = deferred();
         assertThat(register(registry, "task-1", "message-1", deferred))
                 .isTrue();
         assertThat(registry.takeDueBatch(10)).containsExactly(
@@ -70,7 +70,7 @@ class TaskRpcWaitRegistryTest {
                 new TaskItemResult("3303", "private failure payload")
         );
 
-        var response = result(deferred).results().get("message-1");
+        var response = result(deferred).get("message-1");
         assertThat(response.status().wireValue()).isEqualTo("failed");
         assertThat(response.opaqueResultPayload()).isNull();
         assertEmpty(registry);
@@ -120,7 +120,7 @@ class TaskRpcWaitRegistryTest {
     @Test
     void timeoutErrorCompletionAndShutdownReleaseCapacity() throws Exception {
         TaskRpcWaitRegistry timedOut = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> timeoutResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> timeoutResult =
                 deferred();
         assertThat(register(
                 timedOut,
@@ -129,14 +129,14 @@ class TaskRpcWaitRegistryTest {
                 timeoutResult
         )).isTrue();
         lifecycle(timeoutResult).handleTimeout(null, timeoutResult);
-        assertThat(result(timeoutResult).results()
+        assertThat(result(timeoutResult)
                 .get("message-timeout").status().wireValue())
                 .isEqualTo("not_observed");
         lifecycle(timeoutResult).afterCompletion(null, timeoutResult);
         assertEmpty(timedOut);
 
         TaskRpcWaitRegistry errored = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> errorResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> errorResult =
                 deferred();
         assertThat(register(
                 errored,
@@ -152,7 +152,7 @@ class TaskRpcWaitRegistryTest {
         assertEmpty(errored);
 
         TaskRpcWaitRegistry completed = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> completionResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> completionResult =
                 deferred();
         assertThat(register(
                 completed,
@@ -164,7 +164,7 @@ class TaskRpcWaitRegistryTest {
         assertEmpty(completed);
 
         TaskRpcWaitRegistry stopped = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> shutdownResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> shutdownResult =
                 deferred();
         assertThat(stopped.tryRegister(
                 "task-shutdown",
@@ -173,10 +173,10 @@ class TaskRpcWaitRegistryTest {
                 shutdownResult
         )).isTrue();
         stopped.shutdown();
-        TaskRpcCallResponse shutdownResponse = result(shutdownResult);
-        assertThat(shutdownResponse.results().get("observed").status()
+        Map<String, TaskItemResultResponse> shutdownResponse = result(shutdownResult);
+        assertThat(shutdownResponse.get("observed").status()
                 .wireValue()).isEqualTo("succeeded");
-        assertThat(shutdownResponse.results().get("missing").status()
+        assertThat(shutdownResponse.get("missing").status()
                 .wireValue()).isEqualTo("not_observed");
         assertEmpty(stopped);
     }
@@ -185,7 +185,7 @@ class TaskRpcWaitRegistryTest {
     void dueBatchIsBoundedAndFiltersARecreatedItemsStaleGeneration()
             throws Exception {
         TaskRpcWaitRegistry staleRegistry = registry(10, 10, 256);
-        DeferredResult<TaskRpcCallResponse> oldResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> oldResult =
                 deferred();
         assertThat(register(
                 staleRegistry,
@@ -200,7 +200,7 @@ class TaskRpcWaitRegistryTest {
         );
         assertSucceeded(oldResult, "message-1");
 
-        DeferredResult<TaskRpcCallResponse> currentResult =
+        DeferredResult<Map<String, TaskItemResultResponse>> currentResult =
                 deferred();
         assertThat(register(
                 staleRegistry,
@@ -243,9 +243,9 @@ class TaskRpcWaitRegistryTest {
                 .mapToObj(index -> "message-" + index)
                 .toList();
         List<String> secondTaskIds = List.of("message-a", "message-b");
-        DeferredResult<TaskRpcCallResponse> first =
+        DeferredResult<Map<String, TaskItemResultResponse>> first =
                 deferred();
-        DeferredResult<TaskRpcCallResponse> second =
+        DeferredResult<Map<String, TaskItemResultResponse>> second =
                 deferred();
         assertThat(registry.tryRegister(
                 "task-1",
@@ -290,8 +290,8 @@ class TaskRpcWaitRegistryTest {
                 .containsExactlyInAnyOrderElementsOf(firstTaskIds);
         assertThat(secondIds.getValue())
                 .containsExactlyInAnyOrderElementsOf(secondTaskIds);
-        assertThat(result(first).results()).hasSize(100);
-        assertThat(result(second).results()).hasSize(2);
+        assertThat(result(first)).hasSize(100);
+        assertThat(result(second)).hasSize(2);
         assertEmpty(registry);
     }
 
@@ -306,7 +306,7 @@ class TaskRpcWaitRegistryTest {
                 registry,
                 properties
         );
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 deferred();
         assertThat(registry.tryRegister(
                 "task-1",
@@ -336,7 +336,7 @@ class TaskRpcWaitRegistryTest {
                 TaskItemResult.succeeded("two")
         );
         registry.finishProbe("task-1", "message-2", 0);
-        assertThat(result(deferred).results().keySet())
+        assertThat(result(deferred).keySet())
                 .containsExactly("message-1", "message-2");
         assertEmpty(registry);
     }
@@ -352,9 +352,9 @@ class TaskRpcWaitRegistryTest {
                 registry,
                 properties
         );
-        DeferredResult<TaskRpcCallResponse> failed =
+        DeferredResult<Map<String, TaskItemResultResponse>> failed =
                 deferred();
-        DeferredResult<TaskRpcCallResponse> succeeded =
+        DeferredResult<Map<String, TaskItemResultResponse>> succeeded =
                 deferred();
         assertThat(register(
                 registry,
@@ -418,7 +418,7 @@ class TaskRpcWaitRegistryTest {
             TaskRpcWaitRegistry registry,
             String taskId,
             String messageId,
-            DeferredResult<TaskRpcCallResponse> deferred
+            DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
         return registry.tryRegister(
                 taskId,
@@ -447,12 +447,12 @@ class TaskRpcWaitRegistryTest {
     }
 
     private static void assertSucceeded(
-            DeferredResult<TaskRpcCallResponse> deferred,
+            DeferredResult<Map<String, TaskItemResultResponse>> deferred,
             String messageId
     ) {
-        TaskRpcCallResponse response = result(deferred);
+        Map<String, TaskItemResultResponse> response = result(deferred);
         assertThat(response).isNotNull();
-        assertThat(response.results().get(messageId).status()
+        assertThat(response.get(messageId).status()
                 .wireValue()).isEqualTo("succeeded");
     }
 
@@ -462,10 +462,10 @@ class TaskRpcWaitRegistryTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static TaskRpcCallResponse result(
-            DeferredResult<TaskRpcCallResponse> deferred
+    private static Map<String, TaskItemResultResponse> result(
+            DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
-        return (TaskRpcCallResponse) deferred.getResult();
+        return (Map<String, TaskItemResultResponse>) deferred.getResult();
     }
 
     @SuppressWarnings("unchecked")
@@ -478,7 +478,7 @@ class TaskRpcWaitRegistryTest {
         );
     }
 
-    private static DeferredResult<TaskRpcCallResponse> deferred() {
+    private static DeferredResult<Map<String, TaskItemResultResponse>> deferred() {
         return new DeferredResult<>(2_000L);
     }
 

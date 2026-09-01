@@ -142,10 +142,10 @@ export function createTaskManagementStore(
         for (const chunk of chunkTaskItems(items)) {
           const response = await client.appendItems(task.taskId, chunk);
           const rejected = chunk.find(
-            (item) => response.results[item.messageId]?.status !== "succeeded"
+            (item) => response[item.messageId]?.status !== "succeeded"
           );
           if (rejected !== undefined) {
-            const outcome = response.results[rejected.messageId];
+            const outcome = response[rejected.messageId];
             throw new Error(
               (outcome?.status === "failed" ? outcome.message : undefined) ??
                 `Item ${rejected.messageId} was not appended.`

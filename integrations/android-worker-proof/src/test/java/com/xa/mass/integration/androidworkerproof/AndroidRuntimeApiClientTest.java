@@ -165,24 +165,33 @@ final class AndroidRuntimeApiClientTest {
 
     private void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        Map<String, Object> request = Jsons.parseObject(new String(
+        String encodedRequest = new String(
                 exchange.getRequestBody().readAllBytes(),
                 StandardCharsets.UTF_8
-        ));
+        );
         Map<String, Object> response;
         if (path.endsWith("workers:network-observe")) {
+            assertEquals(
+                    List.of("worker-1"),
+                    Jsons.parseArray(encodedRequest)
+            );
             response = Map.of(
                     "statesByWorkerId",
                     Map.of("worker-1", "connected")
             );
         } else if (path.endsWith("workers:scheduling-observe")) {
+            assertEquals(
+                    List.of("worker-1"),
+                    Jsons.parseArray(encodedRequest)
+            );
             response = Map.of(
                     "statesByWorkerId",
                     Map.of("worker-1", "hot-score-overdue")
             );
         } else if (path.endsWith("/direct-calls")) {
-            response = directCall(request);
+            response = directCall(Jsons.parseObject(encodedRequest));
         } else if (path.endsWith("/items:call")) {
+            Map<String, Object> request = Jsons.parseObject(encodedRequest);
             lastItemsCall.set(Map.copyOf(request));
             Map<String, Object> results = new LinkedHashMap<>();
             for (Object rawItem : JsonValues.array(request.get("items"), "items")) {
@@ -192,15 +201,10 @@ final class AndroidRuntimeApiClientTest {
                         Map.of("status", "succeeded")
                 );
             }
-            response = Map.of(
-                    "results",
-                    results
-            );
+            response = results;
         } else if (path.endsWith("/results:load")) {
-            String messageId = (String) JsonValues.array(
-                    request.get("messageIds"),
-                    "messageIds"
-            ).get(0);
+            String messageId = (String) Jsons.parseArray(encodedRequest)
+                    .get(0);
             String status = loadedResultStatus.getAndSet(
                     nextLoadedResultStatus.get()
             );
@@ -212,10 +216,10 @@ final class AndroidRuntimeApiClientTest {
                         "opaque-result"
                 );
             }
-            response = Map.of("results", Map.of(
+            response = Map.of(
                     messageId,
                     loadedResult
-            ));
+            );
         } else {
             throw new AssertionError("Unexpected path: " + path);
         }

@@ -1,14 +1,6 @@
 {
   "components" : {
     "schemas" : {
-      "AcceptedResponse" : {
-        "properties" : {
-          "accepted" : {
-            "type" : "boolean"
-          }
-        },
-        "type" : "object"
-      },
       "ApiErrorResponse" : {
         "properties" : {
           "code" : {
@@ -207,57 +199,6 @@
         },
         "type" : "object"
       },
-      "TaskItemResultsLoadRequest" : {
-        "properties" : {
-          "messageIds" : {
-            "items" : {
-              "minLength" : 1,
-              "type" : "string"
-            },
-            "maxItems" : 1000,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "messageIds" ],
-        "type" : "object"
-      },
-      "TaskItemResultsLoadResponse" : {
-        "properties" : {
-          "results" : {
-            "additionalProperties" : {
-              "$ref" : "#/components/schemas/TaskItemResultResponse"
-            },
-            "type" : "object"
-          }
-        },
-        "type" : "object"
-      },
-      "TaskItemsAppendRequest" : {
-        "properties" : {
-          "items" : {
-            "items" : {
-              "$ref" : "#/components/schemas/TaskItemRequest"
-            },
-            "maxItems" : 100,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "items" ],
-        "type" : "object"
-      },
-      "TaskItemsAppendResponse" : {
-        "properties" : {
-          "results" : {
-            "additionalProperties" : {
-              "$ref" : "#/components/schemas/TaskItemAppendOutcome"
-            },
-            "type" : "object"
-          }
-        },
-        "type" : "object"
-      },
       "TaskPreviewEntry" : {
         "properties" : {
           "scoreBand" : {
@@ -271,17 +212,6 @@
           },
           "workerGroup" : {
             "$ref" : "#/components/schemas/WorkerGroupView"
-          }
-        },
-        "type" : "object"
-      },
-      "TaskPreviewRequest" : {
-        "properties" : {
-          "sampleLimit" : {
-            "format" : "int32",
-            "maximum" : 100,
-            "minimum" : 1,
-            "type" : "integer"
           }
         },
         "type" : "object"
@@ -325,17 +255,6 @@
         "required" : [ "items" ],
         "type" : "object"
       },
-      "TaskRpcCallResponse" : {
-        "properties" : {
-          "results" : {
-            "additionalProperties" : {
-              "$ref" : "#/components/schemas/TaskItemResultResponse"
-            },
-            "type" : "object"
-          }
-        },
-        "type" : "object"
-      },
       "TaskView" : {
         "properties" : {
           "allocationRule" : {
@@ -359,52 +278,6 @@
           },
           "workerGroupId" : {
             "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerBatchPreparationRequest" : {
-        "properties" : {
-          "workers" : {
-            "items" : {
-              "$ref" : "#/components/schemas/WorkerPreparationRequest"
-            },
-            "maxItems" : 100,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "workers" ],
-        "type" : "object"
-      },
-      "WorkerBatchPreparationResponse" : {
-        "properties" : {
-          "workers" : {
-            "items" : {
-              "$ref" : "#/components/schemas/WorkerPreparationResponse"
-            },
-            "type" : "array"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerCommandConsumeRequest" : {
-        "properties" : {
-          "limit" : {
-            "format" : "int32",
-            "minimum" : 0,
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerCommandConsumeResponse" : {
-        "properties" : {
-          "commands" : {
-            "additionalProperties" : {
-              "$ref" : "#/components/schemas/WorkerCommandResponse"
-            },
-            "type" : "object"
           }
         },
         "type" : "object"
@@ -433,21 +306,6 @@
         },
         "type" : "object"
       },
-      "WorkerGroupBatchGetRequest" : {
-        "properties" : {
-          "workerGroupIds" : {
-            "items" : {
-              "minLength" : 1,
-              "type" : "string"
-            },
-            "maxItems" : 20,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "workerGroupIds" ],
-        "type" : "object"
-      },
       "WorkerGroupBatchGetResponse" : {
         "properties" : {
           "missingWorkerGroupIds" : {
@@ -461,17 +319,6 @@
               "$ref" : "#/components/schemas/WorkerGroupView"
             },
             "type" : "array"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerGroupPreviewRequest" : {
-        "properties" : {
-          "sampleLimit" : {
-            "format" : "int32",
-            "maximum" : 100,
-            "minimum" : 1,
-            "type" : "integer"
           }
         },
         "type" : "object"
@@ -554,21 +401,6 @@
         },
         "type" : "object"
       },
-      "WorkerNetworkObserveRequest" : {
-        "properties" : {
-          "workerIds" : {
-            "items" : {
-              "minLength" : 1,
-              "type" : "string"
-            },
-            "maxItems" : 100,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "workerIds" ],
-        "type" : "object"
-      },
       "WorkerNetworkObserveResponse" : {
         "properties" : {
           "endpointManagerId" : {
@@ -583,22 +415,6 @@
               "type" : "string"
             },
             "type" : "object"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerPauseResponse" : {
-        "properties" : {
-          "status" : {
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerPlatformPropertiesPatchResponse" : {
-        "properties" : {
-          "status" : {
-            "type" : "string"
           }
         },
         "type" : "object"
@@ -636,19 +452,6 @@
         },
         "type" : "object"
       },
-      "WorkerPreviewRequest" : {
-        "properties" : {
-          "filter" : { },
-          "sampleLimit" : {
-            "format" : "int32",
-            "maximum" : 100,
-            "minimum" : 1,
-            "type" : "integer"
-          }
-        },
-        "required" : [ "sampleLimit" ],
-        "type" : "object"
-      },
       "WorkerPreviewResponse" : {
         "properties" : {
           "generatedAt" : {
@@ -681,31 +484,6 @@
             "type" : "array"
           }
         },
-        "type" : "object"
-      },
-      "WorkerPropertiesPatchRequest" : {
-        "properties" : {
-          "properties" : {
-            "additionalProperties" : { },
-            "type" : "object"
-          }
-        },
-        "required" : [ "properties" ],
-        "type" : "object"
-      },
-      "WorkerResultBatchRequest" : {
-        "properties" : {
-          "results" : {
-            "items" : {
-              "minLength" : 1,
-              "type" : "string"
-            },
-            "maxItems" : 100,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "results" ],
         "type" : "object"
       },
       "WorkerResultBatchResponse" : {
@@ -751,29 +529,6 @@
           }
         },
         "required" : [ "dst", "forward", "messageType", "outcomeCode", "payload", "sourceId", "src" ],
-        "type" : "object"
-      },
-      "WorkerResumeResponse" : {
-        "properties" : {
-          "status" : {
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "WorkerSchedulingObserveRequest" : {
-        "properties" : {
-          "workerIds" : {
-            "items" : {
-              "minLength" : 1,
-              "type" : "string"
-            },
-            "maxItems" : 100,
-            "minItems" : 1,
-            "type" : "array"
-          }
-        },
-        "required" : [ "workerIds" ],
         "type" : "object"
       },
       "WorkerSchedulingObserveResponse" : {
@@ -841,7 +596,13 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerNetworkObserveRequest"
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -890,7 +651,10 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/TaskPreviewRequest"
+                "format" : "int32",
+                "maximum" : 100,
+                "minimum" : 1,
+                "type" : "integer"
               }
             }
           },
@@ -948,7 +712,10 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerPreviewRequest"
+                "format" : "int32",
+                "maximum" : 100,
+                "minimum" : 1,
+                "type" : "integer"
               }
             }
           },
@@ -1006,7 +773,13 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerSchedulingObserveRequest"
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -1055,7 +828,13 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerGroupBatchGetRequest"
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 20,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -1104,7 +883,10 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerGroupPreviewRequest"
+                "format" : "int32",
+                "maximum" : 100,
+                "minimum" : 1,
+                "type" : "integer"
               }
             }
           },
@@ -1307,7 +1089,12 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/TaskItemsAppendRequest"
+                "items" : {
+                  "$ref" : "#/components/schemas/TaskItemRequest"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -1318,7 +1105,10 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TaskItemsAppendResponse"
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemAppendOutcome"
+                  },
+                  "type" : "object"
                 }
               }
             },
@@ -1377,7 +1167,10 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TaskRpcCallResponse"
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemResultResponse"
+                  },
+                  "type" : "object"
                 }
               }
             },
@@ -1475,7 +1268,13 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/TaskItemResultsLoadRequest"
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 1000,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -1486,7 +1285,10 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/TaskItemResultsLoadResponse"
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/TaskItemResultResponse"
+                  },
+                  "type" : "object"
                 }
               }
             },
@@ -1533,7 +1335,9 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerCommandConsumeRequest"
+                "format" : "int32",
+                "minimum" : 1,
+                "type" : "integer"
               }
             }
           },
@@ -1544,7 +1348,10 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/WorkerCommandConsumeResponse"
+                  "additionalProperties" : {
+                    "$ref" : "#/components/schemas/WorkerCommandResponse"
+                  },
+                  "type" : "object"
                 }
               }
             },
@@ -1660,7 +1467,13 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerResultBatchRequest"
+                "items" : {
+                  "minLength" : 1,
+                  "type" : "string"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -1793,13 +1606,6 @@
         },
         "responses" : {
           "202" : {
-            "content" : {
-              "*/*" : {
-                "schema" : {
-                  "$ref" : "#/components/schemas/AcceptedResponse"
-                }
-              }
-            },
             "description" : "Worker result was accepted"
           },
           "400" : {
@@ -1900,7 +1706,8 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerPropertiesPatchRequest"
+                "additionalProperties" : true,
+                "type" : "object"
               }
             }
           },
@@ -1911,7 +1718,8 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/WorkerPlatformPropertiesPatchResponse"
+                  "enum" : [ "updated", "unchanged" ],
+                  "type" : "string"
                 }
               }
             },
@@ -1967,7 +1775,8 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/WorkerPauseResponse"
+                  "enum" : [ "paused", "already_paused" ],
+                  "type" : "string"
                 }
               }
             },
@@ -2023,7 +1832,8 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/WorkerResumeResponse"
+                  "enum" : [ "resumed", "already_resumed" ],
+                  "type" : "string"
                 }
               }
             },
@@ -2128,7 +1938,12 @@
           "content" : {
             "application/json" : {
               "schema" : {
-                "$ref" : "#/components/schemas/WorkerBatchPreparationRequest"
+                "items" : {
+                  "$ref" : "#/components/schemas/WorkerPreparationRequest"
+                },
+                "maxItems" : 100,
+                "minItems" : 1,
+                "type" : "array"
               }
             }
           },
@@ -2139,7 +1954,10 @@
             "content" : {
               "*/*" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/WorkerBatchPreparationResponse"
+                  "items" : {
+                    "$ref" : "#/components/schemas/WorkerPreparationResponse"
+                  },
+                  "type" : "array"
                 }
               }
             },

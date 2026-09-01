@@ -1,11 +1,7 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 
 import { TaskCallDebugError } from "./errors";
-import {
-  taskCallDebugApiErrorSchema,
-  taskCallDebugResponseSchema,
-  taskCallDebugResultLoadResponseSchema
-} from "./schemas";
+import { taskCallDebugApiErrorSchema, taskCallDebugResultsSchema } from "./schemas";
 import type {
   TaskCallDebugClient,
   TaskCallDebugClientRequest,
@@ -56,10 +52,10 @@ export class HttpTaskCallDebugClient implements TaskCallDebugClient {
         }
       );
       if (response.status !== 200) throw schemaError(requestId);
-      const parsed = taskCallDebugResponseSchema.safeParse(response.data);
+      const parsed = taskCallDebugResultsSchema.safeParse(response.data);
       if (!parsed.success) throw schemaError(requestId);
-      const resultIds = Object.keys(parsed.data.results);
-      const outcome = parsed.data.results[request.messageId];
+      const resultIds = Object.keys(parsed.data);
+      const outcome = parsed.data[request.messageId];
       if (
         resultIds.length !== 1 ||
         resultIds[0] !== request.messageId ||
@@ -78,17 +74,17 @@ export class HttpTaskCallDebugClient implements TaskCallDebugClient {
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/results:load`,
-        { messageIds: [messageId] },
+        [messageId],
         {
           headers: { "X-Request-Id": requestId },
           timeout: 5_000
         }
       );
       if (response.status !== 200) throw schemaError(requestId);
-      const parsed = taskCallDebugResultLoadResponseSchema.safeParse(response.data);
+      const parsed = taskCallDebugResultsSchema.safeParse(response.data);
       if (!parsed.success) throw schemaError(requestId);
-      const resultIds = Object.keys(parsed.data.results);
-      const outcome = parsed.data.results[messageId];
+      const resultIds = Object.keys(parsed.data);
+      const outcome = parsed.data[messageId];
       if (
         resultIds.length !== 1 ||
         resultIds[0] !== messageId ||

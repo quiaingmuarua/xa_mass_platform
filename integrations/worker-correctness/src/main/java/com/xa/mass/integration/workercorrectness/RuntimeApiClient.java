@@ -37,7 +37,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/worker-groups/"
                         + workerGroupId
                         + "/workers:preview",
-                Map.of("sampleLimit", 100),
+                100,
                 "workerRuntime.preview"
         );
         Object unreadable = response.get("unreadableCount");
@@ -99,7 +99,7 @@ final class RuntimeApiClient {
                 "/api/v1/runtime-view/endpoint-managers/"
                         + endpointManagerId
                         + "/workers:network-observe",
-                Map.of("workerIds", workerIds),
+                workerIds,
                 "workerNetwork.observe"
         );
         Map<String, Object> rawStates = objectMap(
@@ -188,10 +188,7 @@ final class RuntimeApiClient {
                 ),
                 "workerCorrectness.items.call"
         );
-        Map<String, Object> rawResults = objectMap(
-                response.get("results"),
-                "Task call results"
-        );
+        Map<String, Object> rawResults = response;
         Set<String> expectedIds = items.stream()
                 .map(TaskItem::messageId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());

@@ -11,8 +11,8 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
@@ -52,7 +52,7 @@ public final class TaskRpcCallService {
         this.maxWaitTimeoutMillis = properties.maxWaitTimeoutMillis();
     }
 
-    public DeferredResult<TaskRpcCallResponse> call(
+    public DeferredResult<Map<String, TaskItemResultResponse>> call(
             String taskId,
             TaskRpcCallRequest request
     ) {
@@ -102,10 +102,10 @@ public final class TaskRpcCallService {
                 taskId,
                 messageIds
         );
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 new DeferredResult<>(timeoutMillis);
         if (allObserved(messageIds, observed)) {
-            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+            deferred.setResult(TaskItemResultResponse.fromObservedResults(
                     messageIds,
                     observed
             ));
@@ -118,7 +118,7 @@ public final class TaskRpcCallService {
                 observed,
                 deferred
         )) {
-            deferred.setResult(TaskRpcCallResponse.fromObservedResults(
+            deferred.setResult(TaskItemResultResponse.fromObservedResults(
                     messageIds,
                     observed
             ));

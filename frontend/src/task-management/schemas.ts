@@ -8,23 +8,20 @@ export const taskCreateResponseSchema: z.ZodType<TaskCreateApiResponse> = z
   })
   .strict();
 
-export const taskItemsAppendResponseSchema: z.ZodType<TaskItemsAppendApiResponse> = z
-  .object({
-    results: z.record(
-      z.string().min(1),
-      z.discriminatedUnion("status", [
-        z.object({ status: z.literal("succeeded") }).strict(),
-        z
-          .object({
-            status: z.literal("failed"),
-            code: z.number().int(),
-            message: z.string().min(1)
-          })
-          .strict()
-      ])
-    )
-  })
-  .strict();
+export const taskItemsAppendResponseSchema: z.ZodType<TaskItemsAppendApiResponse> =
+  z.record(
+    z.string().min(1),
+    z.discriminatedUnion("status", [
+      z.object({ status: z.literal("succeeded") }).strict(),
+      z
+        .object({
+          status: z.literal("failed"),
+          code: z.number().int(),
+          message: z.string().min(1)
+        })
+        .strict()
+    ])
+  );
 
 export const taskApprovalResponseSchema = z
   .object({

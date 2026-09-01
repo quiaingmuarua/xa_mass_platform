@@ -221,6 +221,12 @@ Server may own:
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter and Scenario startup.
 
+Within the versioned HTTP Contract, use a direct JSON scalar, collection or
+Map when that is the complete body. Add a named DTO only for a combined
+contract, an independently meaningful structured resource, a status result
+item or a cross-field invariant. Do not add generic envelopes, `SimpleRequest`
+or one-field status wrappers.
+
 Task `items:call` and `results:load` expose the shared
 `succeeded | failed | not_observed` Result view; only succeeded carries an
 opaque payload. Export remains finite-Task, terminal-only and success-only: it

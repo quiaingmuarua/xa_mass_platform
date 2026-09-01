@@ -25,7 +25,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import com.xa.mass.server.api.v1.contract.task.TaskRpcCallRequest;
-import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskItemResultResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.task.TaskItemMapper;
@@ -62,7 +62,7 @@ class TaskRpcCallServiceTest {
                 List.of("message-1", "message-2", "message-3")
         )).thenReturn(loaded);
 
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -76,12 +76,12 @@ class TaskRpcCallServiceTest {
                 );
         registry.shutdown();
 
-        TaskRpcCallResponse response = result(deferred);
-        assertThat(response.results().get("message-1").status()
+        Map<String, TaskItemResultResponse> response = result(deferred);
+        assertThat(response.get("message-1").status()
                 .wireValue()).isEqualTo("succeeded");
-        assertThat(response.results().get("message-2").status()
+        assertThat(response.get("message-2").status()
                 .wireValue()).isEqualTo("failed");
-        assertThat(response.results().get("message-3").status()
+        assertThat(response.get("message-3").status()
                 .wireValue()).isEqualTo("not_observed");
         verify(taskRuntime, never()).loadTaskItems(anyString(), anyList());
     }
@@ -102,7 +102,7 @@ class TaskRpcCallServiceTest {
                 "message-2", TaskItemResult.succeeded("two")
         ));
 
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -114,7 +114,7 @@ class TaskRpcCallServiceTest {
                         )
                 );
 
-        assertThat(result(deferred).results()).hasSize(2);
+        assertThat(result(deferred)).hasSize(2);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<TaskItem>> items = ArgumentCaptor.forClass(
                 List.class
@@ -189,7 +189,7 @@ class TaskRpcCallServiceTest {
                 properties
         );
 
-        DeferredResult<TaskRpcCallResponse> first =
+        DeferredResult<Map<String, TaskItemResultResponse>> first =
                 service.call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -197,7 +197,7 @@ class TaskRpcCallServiceTest {
                                 1_000L
                         )
                 );
-        DeferredResult<TaskRpcCallResponse> second =
+        DeferredResult<Map<String, TaskItemResultResponse>> second =
                 service.call(
                         "task-2",
                         new TaskRpcCallRequest(
@@ -207,7 +207,7 @@ class TaskRpcCallServiceTest {
                 );
 
         assertThat(first.hasResult()).isFalse();
-        assertThat(result(second).results().get("message-2").status()
+        assertThat(result(second).get("message-2").status()
                 .wireValue()).isEqualTo("not_observed");
         assertThat(registry.waiterCount()).isOne();
         assertThat(registry.pendingObservationCount()).isOne();
@@ -237,7 +237,7 @@ class TaskRpcCallServiceTest {
                 List.of("message-1", "message-2")
         )).thenReturn(loaded);
 
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -249,10 +249,10 @@ class TaskRpcCallServiceTest {
                         )
                 );
 
-        TaskRpcCallResponse response = result(deferred);
-        assertThat(response.results().get("message-1").status()
+        Map<String, TaskItemResultResponse> response = result(deferred);
+        assertThat(response.get("message-1").status()
                 .wireValue()).isEqualTo("succeeded");
-        assertThat(response.results().get("message-2").status()
+        assertThat(response.get("message-2").status()
                 .wireValue()).isEqualTo("not_observed");
         assertThat(registry.waiterCount()).isOne();
         assertThat(registry.pendingObservationCount()).isOne();
@@ -273,7 +273,7 @@ class TaskRpcCallServiceTest {
                 List.of("message-1")
         )).thenReturn(Map.of());
 
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -282,7 +282,7 @@ class TaskRpcCallServiceTest {
                         )
                 );
 
-        assertThat(result(deferred).results().get("message-1").status()
+        assertThat(result(deferred).get("message-1").status()
                 .wireValue()).isEqualTo("not_observed");
         verify(submission).submit(eq("task-1"), anyList());
     }
@@ -309,7 +309,7 @@ class TaskRpcCallServiceTest {
                 TaskItemResult.succeeded("observed")
         ));
 
-        DeferredResult<TaskRpcCallResponse> deferred =
+        DeferredResult<Map<String, TaskItemResultResponse>> deferred =
                 service(submission, taskRuntime, registry, properties).call(
                         "task-1",
                         new TaskRpcCallRequest(
@@ -318,7 +318,7 @@ class TaskRpcCallServiceTest {
                         )
                 );
 
-        assertThat(result(deferred).results().get("message-1").status()
+        assertThat(result(deferred).get("message-1").status()
                 .wireValue()).isEqualTo("succeeded");
         assertThat(registry.waiterCount()).isOne();
         assertThat(registry.pendingObservationCount()).isOne();
@@ -458,10 +458,10 @@ class TaskRpcCallServiceTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static TaskRpcCallResponse result(
-            DeferredResult<TaskRpcCallResponse> deferred
+    private static Map<String, TaskItemResultResponse> result(
+            DeferredResult<Map<String, TaskItemResultResponse>> deferred
     ) {
-        return (TaskRpcCallResponse) deferred.getResult();
+        return (Map<String, TaskItemResultResponse>) deferred.getResult();
     }
 
     private static TaskRpcProperties properties(int maxWaiters) {

@@ -69,12 +69,12 @@ public final class DeliveryReportRemoteApi {
                 );
             }
         }
-        return Jsons.toJson(Map.of("results", encodedDeliveryReports));
+        return Jsons.toJson(encodedDeliveryReports);
     }
 
     private void requireCompleteResultResponse(
             String value,
-            int expectedCount
+        int expectedCount
     ) {
         try {
             Map<String, Object> payload = Jsons.parseObject(value);

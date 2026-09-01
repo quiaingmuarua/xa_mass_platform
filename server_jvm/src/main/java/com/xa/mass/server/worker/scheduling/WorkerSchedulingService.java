@@ -1,5 +1,6 @@
 package com.xa.mass.server.worker.scheduling;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.server.error.ServerErrorCode;
@@ -254,6 +255,7 @@ public final class WorkerSchedulingService {
             this.wireValue = wireValue;
         }
 
+        @JsonValue
         public String wireValue() {
             return wireValue;
         }
@@ -269,6 +271,7 @@ public final class WorkerSchedulingService {
             this.wireValue = wireValue;
         }
 
+        @JsonValue
         public String wireValue() {
             return wireValue;
         }
@@ -284,6 +287,7 @@ public final class WorkerSchedulingService {
             this.wireValue = wireValue;
         }
 
+        @JsonValue
         public String wireValue() {
             return wireValue;
         }

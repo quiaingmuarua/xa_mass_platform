@@ -276,25 +276,23 @@ Active Adapter batch access:
 
 ```text
 POST /api/v1/worker-delivery/endpoint-managers/{id}/commands:consume
-body: {"limit":100}
+body: 100
 
 POST /api/v1/worker-delivery/endpoint-managers/{id}/results:append
-body: {"results":["<encoded DeliveryReport>", "..."]}
+body: ["<encoded DeliveryReport>", "..."]
 ```
 
-Batch consume returns:
+Batch consume returns the entry-keyed Command Map directly:
 
 ```json
 {
-  "commands": {
-    "worker-1": {
-      "src": "TASK",
-      "dst": "WORKER",
-      "messageType": "extension.worker.telecom.phone.inspect",
-      "executeBeforeMillis": 1234567890,
-      "payload": "{\"phoneNumber\":\"+14155552671\"}",
-      "forward": "..."
-    }
+  "worker-1": {
+    "src": "TASK",
+    "dst": "WORKER",
+    "messageType": "extension.worker.telecom.phone.inspect",
+    "executeBeforeMillis": 1234567890,
+    "payload": "{\"phoneNumber\":\"+14155552671\"}",
+    "forward": "..."
   }
 }
 ```

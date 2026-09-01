@@ -44,7 +44,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
     try {
       const response = await this.client.post(
         "/v1/runtime-view/tasks:preview",
-        { sampleLimit },
+        sampleLimit,
         {
           signal,
           headers: { "X-Request-Id": requestId }
@@ -68,7 +68,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
     try {
       const response = await this.client.post(
         "/v1/runtime-view/worker-groups:preview",
-        { sampleLimit },
+        sampleLimit,
         {
           signal,
           headers: { "X-Request-Id": requestId }
@@ -91,7 +91,6 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
   async previewWorkers(
     workerGroupId: string,
     sampleLimit: number,
-    filter: null,
     signal?: AbortSignal
   ): Promise<WorkerPreviewResponse> {
     const requestId = createRequestId();
@@ -100,7 +99,7 @@ export class HttpRuntimeViewerDataSource implements RuntimeViewerDataSource {
         `/v1/runtime-view/worker-groups/${encodeURIComponent(
           workerGroupId
         )}/workers:preview`,
-        { sampleLimit, filter },
+        sampleLimit,
         {
           signal,
           headers: {

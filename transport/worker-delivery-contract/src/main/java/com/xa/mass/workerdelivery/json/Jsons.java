@@ -30,6 +30,26 @@ public final class Jsons {
     }
 
     public static Map<String, Object> parseObject(String json) {
+        JsonElement parsed = parse(json);
+        if (!parsed.isJsonObject()) {
+            throw new IllegalArgumentException(
+                    "json must contain an object"
+            );
+        }
+        return convertObject(parsed.getAsJsonObject());
+    }
+
+    public static List<Object> parseArray(String json) {
+        JsonElement parsed = parse(json);
+        if (!parsed.isJsonArray()) {
+            throw new IllegalArgumentException(
+                    "json must contain an array"
+            );
+        }
+        return convertArray(parsed.getAsJsonArray());
+    }
+
+    private static JsonElement parse(String json) {
         if (json == null) {
             throw new IllegalArgumentException("json must be present");
         }
@@ -42,12 +62,7 @@ public final class Jsons {
                         "json contains trailing content"
                 );
             }
-            if (!parsed.isJsonObject()) {
-                throw new IllegalArgumentException(
-                        "json must contain an object"
-                );
-            }
-            return convertObject(parsed.getAsJsonObject());
+            return parsed;
         } catch (JsonParseException | IOException error) {
             throw new IllegalArgumentException("json is malformed", error);
         }

@@ -56,7 +56,7 @@ export class HttpFiniteTaskClient implements FiniteTaskClient {
     try {
       const response = await this.client.post(
         `/v1/tasks/${encodeURIComponent(taskId)}/items`,
-        { items },
+        items,
         { headers: requestHeaders(requestId) }
       );
       if (response.status !== 200) throw schemaError(requestId);

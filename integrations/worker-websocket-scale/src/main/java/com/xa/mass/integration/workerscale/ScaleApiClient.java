@@ -106,13 +106,10 @@ final class ScaleApiClient {
         ScaleHttpClient.JsonResponse response = runtime.json(
                 "POST",
                 "/api/v1/tasks/" + segment(taskId) + "/items",
-                Map.of("items", encoded)
+                encoded
         );
         requireStatus(response.statusCode(), 200, "append Task Items");
-        Map<String, Object> results = ScaleJson.object(
-                response.body().get("results"),
-                "append results"
-        );
+        Map<String, Object> results = response.body();
         for (TaskItem item : items) {
             Map<String, Object> result = ScaleJson.object(
                     results.get(item.messageId()),
@@ -188,7 +185,7 @@ final class ScaleApiClient {
         ScaleHttpClient.JsonResponse response = runtime.json(
                 "POST",
                 path,
-                Map.of("workerIds", workerIds)
+                workerIds
         );
         requireStatus(response.statusCode(), 200, "observe " + owner);
         Map<String, Object> raw = ScaleJson.object(

@@ -74,11 +74,11 @@ class ScaleApiClientTest {
 
     private static void observation(HttpExchange exchange, String state)
             throws IOException {
-        Map<String, Object> request = Jsons.parseObject(new String(
+        List<Object> request = Jsons.parseArray(new String(
                 exchange.getRequestBody().readAllBytes(),
                 StandardCharsets.UTF_8
         ));
-        assertThat(request).containsEntry("workerIds", List.of("worker-a"));
+        assertThat(request).containsExactly("worker-a");
         respond(exchange, 200, Map.of(
                 "statesByWorkerId", Map.of("worker-a", state)
         ));

@@ -33,11 +33,9 @@ class RuntimeApiClientTest {
             path.set(exchange.getRequestURI().getPath());
             requestBody.set(readBody(exchange));
             respond(exchange, Map.of(
-                    "results", Map.of(
-                            "message-1", Map.of("status", "succeeded"),
-                            "message-2", Map.of("status", "failed"),
-                            "message-3", Map.of("status", "not_observed")
-                    )
+                    "message-1", Map.of("status", "succeeded"),
+                    "message-2", Map.of("status", "failed"),
+                    "message-3", Map.of("status", "not_observed")
             ));
         });
         server.start();

@@ -181,7 +181,6 @@ public final class RuntimeViewService {
     public WorkerPreviewResponse previewWorkers(
             String workerGroupId,
             int sampleLimit,
-            Object filter,
             String requestId
     ) {
         try {
@@ -198,15 +197,6 @@ public final class RuntimeViewService {
                         null
                 );
             }
-            if (filter != null) {
-                throw new ServerException(
-                        ServerErrorCode.RUNTIME_VIEW_FILTER_NOT_AVAILABLE,
-                        PREVIEW_OPERATION,
-                        null,
-                        null
-                );
-            }
-
             Map<String, WorkerDescriptor> sampled =
                     workerCatalog.sampleWorkerDescriptors(
                             workerGroupId,

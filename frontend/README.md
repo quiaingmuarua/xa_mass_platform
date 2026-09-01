@@ -140,6 +140,9 @@ load that Message ID later; there is no automatic polling. Both `items:call`
 and manual `results:load` may instead return `failed`, which is shown as a
 terminal Item Result without payload or failure reason. Browser refresh clears
 this history, and Mock mode never fabricates Task Call results.
+Both endpoints decode the direct Message-ID-keyed Result Map; manual
+`results:load` sends the direct Message-ID array. Finite Task append likewise
+sends a direct Item array and reads the direct outcome Map.
 
 `Finite Task Workbench` is a drawer layered over the preview and is available
 only in API mode:

@@ -114,20 +114,12 @@ final class JavaOkHttpWorkerControlClient
         HttpUrl url = workerGroupBase(group).newBuilder()
                 .addPathSegment("workers:prepare-batch")
                 .build();
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("workers", workers);
-        Map<String, Object> response = executeObject(
+        List<Object> responseWorkers = executeArray(
                 url,
-                body,
+                workers,
                 requestTimeout,
                 "workerControl.prepareBatch"
         );
-        if (!response.keySet().equals(Set.of("workers"))
-                || !(response.get("workers") instanceof List<?>)) {
-            throw invalidBatchResponse();
-        }
-
-        List<?> responseWorkers = (List<?>) response.get("workers");
         if (responseWorkers.size() != workerProperties.size()) {
             throw invalidBatchResponse();
         }
@@ -175,6 +167,42 @@ final class JavaOkHttpWorkerControlClient
             Duration requestTimeout,
             String operation
     ) throws IOException {
+        try {
+            return Jsons.parseObject(executeJson(
+                    url,
+                    body,
+                    requestTimeout,
+                    operation
+            ));
+        } catch (IllegalArgumentException error) {
+            throw invalidResponse(operation, error);
+        }
+    }
+
+    private List<Object> executeArray(
+            HttpUrl url,
+            List<?> body,
+            Duration requestTimeout,
+            String operation
+    ) throws IOException {
+        try {
+            return Jsons.parseArray(executeJson(
+                    url,
+                    body,
+                    requestTimeout,
+                    operation
+            ));
+        } catch (IllegalArgumentException error) {
+            throw invalidResponse(operation, error);
+        }
+    }
+
+    private String executeJson(
+            HttpUrl url,
+            Object body,
+            Duration requestTimeout,
+            String operation
+    ) throws IOException {
         Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(Jsons.toJson(body), JSON))
@@ -217,19 +245,22 @@ final class JavaOkHttpWorkerControlClient
                         null
                 );
             }
-            try {
-                return Jsons.parseObject(response.body().string());
-            } catch (IllegalArgumentException error) {
-                throw failure(
-                        WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
-                        operation,
-                        "Worker control response is invalid",
-                        error
-                );
-            }
+            return response.body().string();
         } finally {
             activeCalls.remove(call);
         }
+    }
+
+    private static WorkerException invalidResponse(
+            String operation,
+            IllegalArgumentException error
+    ) {
+        return failure(
+                WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
+                operation,
+                "Worker control response is invalid",
+                error
+        );
     }
 
     private HttpUrl workerGroupBase(String workerGroupId) {

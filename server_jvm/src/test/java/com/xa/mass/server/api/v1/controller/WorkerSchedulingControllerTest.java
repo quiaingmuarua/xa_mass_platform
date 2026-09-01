@@ -65,7 +65,7 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("paused"))
+                .andExpect(jsonPath("$").value("paused"))
                 .andExpect(jsonPath("$.score").doesNotExist());
     }
 
@@ -83,7 +83,7 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(PAUSE_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("already_paused"));
+                .andExpect(jsonPath("$").value("already_paused"));
     }
 
     @Test
@@ -141,7 +141,7 @@ class WorkerSchedulingControllerTest {
 
         mockMvc.perform(post(RESUME_PATH))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("already_resumed"))
+                .andExpect(jsonPath("$").value("already_resumed"))
                 .andExpect(jsonPath("$.score").doesNotExist());
     }
 

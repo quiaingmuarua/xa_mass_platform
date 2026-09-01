@@ -100,7 +100,6 @@ export interface RuntimeViewerDataSource {
   previewWorkers(
     workerGroupId: string,
     sampleLimit: number,
-    filter: null,
     signal?: AbortSignal
   ): Promise<WorkerPreviewResponse>;
 }
