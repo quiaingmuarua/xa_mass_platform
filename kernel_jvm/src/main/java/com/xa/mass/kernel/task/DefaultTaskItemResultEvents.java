@@ -3,7 +3,6 @@ package com.xa.mass.kernel.task;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore.TaskItemScoreBand;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,18 +48,6 @@ public final class DefaultTaskItemResultEvents
         );
     }
 
-    @Override
-    public void onItemsFailed(
-            String taskId,
-            List<String> messageIds,
-            long observedAtMillis
-    ) {
-        requireTaskId(taskId);
-        requireObservedAt(observedAtMillis);
-        copyMessageIds(messageIds);
-        // Claim expiry remains the current TaskItem failure retry mechanism.
-    }
-
     private static LinkedHashMap<String, String> copyPayloads(
             Map<String, String> source
     ) {
@@ -71,16 +58,6 @@ public final class DefaultTaskItemResultEvents
             copied.put(messageId, Objects.requireNonNull(payload, "payload"));
         });
         return copied;
-    }
-
-    private static List<String> copyMessageIds(List<String> source) {
-        Objects.requireNonNull(source, "messageIds");
-        LinkedHashSet<String> copied = new LinkedHashSet<>();
-        for (String messageId : source) {
-            requireNonBlank(messageId, "messageId");
-            copied.add(messageId);
-        }
-        return List.copyOf(copied);
     }
 
     private static void requireTaskId(String taskId) {

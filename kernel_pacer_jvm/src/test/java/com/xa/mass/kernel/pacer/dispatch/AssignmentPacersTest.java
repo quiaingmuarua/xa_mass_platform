@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,7 +24,9 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import org.mockito.InOrder;
 import org.junit.jupiter.api.Test;
 
 class AssignmentPacersTest {
@@ -227,6 +230,118 @@ class AssignmentPacersTest {
         verify(taskScores).parkObservedIdleTask(
                 "task-1",
                 777_777_777L
+        );
+    }
+
+    @Test
+    void dispatchStoresBudgetAndTtlFailuresBeforeFinalScorePromotion() {
+        TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
+        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        TaskIdleSettlement idle = mock(TaskIdleSettlement.class);
+        var observed = new LinkedHashMap<
+                String,
+                TaskItemScoreObservation
+                >();
+        observed.put(
+                "message-budget",
+                new TaskItemScoreObservation(101L, 0)
+        );
+        observed.put(
+                "message-expired",
+                new TaskItemScoreObservation(102L, 1)
+        );
+        when(itemScores.acquireItemScoreCandidates("task-1", 100))
+                .thenReturn(observed);
+        TaskItem expired = new TaskItem(
+                "message-expired",
+                "event.demo",
+                0,
+                Map.of(),
+                0,
+                999L,
+                Map.of()
+        );
+        when(taskRuntime.loadTaskItems(
+                "task-1",
+                List.of("message-expired")
+        )).thenReturn(Map.of("message-expired", expired));
+
+        assertEquals(0, new TaskDispatchPolicy(
+                taskScores,
+                itemScores,
+                taskRuntime,
+                mock(TaskAssignmentDispatcher.class),
+                idle,
+                mock(WorkerCandidateSelectionPolicy.class),
+                () -> 1_000L
+        ).dispatchTasks(
+                List.of(due(
+                        "task-1",
+                        WorkerAllocationMechanism.ON_DEMAND_ITEM_RULE,
+                        TaskIdleDisposition.PARK_WHEN_IDLE
+                )),
+                new TaskDispatchConfig(100, 5_000)
+        ));
+
+        InOrder terminalOrder = org.mockito.Mockito.inOrder(
+                taskRuntime,
+                itemScores
+        );
+        terminalOrder.verify(taskRuntime).storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-budget", "message-expired")
+        );
+        terminalOrder.verify(itemScores).promoteItemOutcomes(
+                "task-1",
+                List.of("message-budget", "message-expired"),
+                TaskItemScoreBandCore.TaskItemScoreBand.FINAL_FAILED,
+                1_000L
+        );
+    }
+
+    @Test
+    void failedResultWritePreventsFinalScorePromotion() {
+        TaskScoreBandCore taskScores = mock(TaskScoreBandCore.class);
+        TaskItemScoreBandCore itemScores = mock(TaskItemScoreBandCore.class);
+        TaskRuntime taskRuntime = mock(TaskRuntime.class);
+        when(itemScores.acquireItemScoreCandidates("task-1", 100))
+                .thenReturn(Map.of(
+                        "message-budget",
+                        new TaskItemScoreObservation(101L, 0)
+                ));
+        org.mockito.Mockito.doThrow(
+                new IllegalStateException("result owner unavailable")
+        ).when(taskRuntime).storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-budget")
+        );
+        TaskDispatchPolicy policy = new TaskDispatchPolicy(
+                taskScores,
+                itemScores,
+                taskRuntime,
+                mock(TaskAssignmentDispatcher.class),
+                mock(TaskIdleSettlement.class),
+                mock(WorkerCandidateSelectionPolicy.class),
+                () -> 1_000L
+        );
+
+        assertThrows(IllegalStateException.class, () ->
+                policy.dispatchTasks(
+                        List.of(due(
+                                "task-1",
+                                WorkerAllocationMechanism
+                                        .ON_DEMAND_ITEM_RULE,
+                                TaskIdleDisposition.PARK_WHEN_IDLE
+                        )),
+                        new TaskDispatchConfig(100, 5_000)
+                )
+        );
+        verify(itemScores, never()).promoteItemOutcomes(
+                eq("task-1"),
+                eq(List.of("message-budget")),
+                eq(TaskItemScoreBandCore.TaskItemScoreBand.FINAL_FAILED),
+                eq(1_000L)
         );
     }
 

@@ -15,7 +15,8 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
-import com.xa.mass.kernel.task.TaskRuntime.TaskItemSuccessResultPage;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResultPage;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -72,18 +73,31 @@ class TaskResultsExportServiceTest {
     @Test
     void terminalTaskExportsOpaqueResultsOnceAndDeletesAfterTransfer()
             throws Exception {
-        Map<String, String> firstPage = new LinkedHashMap<>();
-        firstPage.put("message-1", "{\"md5\":\"abc\"}");
-        firstPage.put("message-2", "plain-text");
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
-                .thenReturn(new TaskItemSuccessResultPage(
+        Map<String, TaskItemResult> firstPage = new LinkedHashMap<>();
+        firstPage.put(
+                "message-1",
+                TaskItemResult.succeeded("{\"md5\":\"abc\"}")
+        );
+        firstPage.put(
+                "message-failed",
+                TaskItemResult.failed()
+        );
+        firstPage.put(
+                "message-2",
+                TaskItemResult.succeeded("plain-text")
+        );
+        when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
+                .thenReturn(new TaskItemResultPage(
                         "7",
                         firstPage
                 ));
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "7", 1000))
-                .thenReturn(new TaskItemSuccessResultPage(
+        when(taskRuntime.scanTaskItemResults("task-1", "7", 1000))
+                .thenReturn(new TaskItemResultPage(
                         "0",
-                        Map.of("message-1", "newer-value")
+                        Map.of(
+                                "message-1",
+                                TaskItemResult.succeeded("newer-value")
+                        )
                 ));
 
         var export = service.export("task-1");
@@ -102,6 +116,7 @@ class TaskResultsExportServiceTest {
         assertThat(output.toString(StandardCharsets.UTF_8))
                 .contains("message-1")
                 .contains("message-2")
+                .doesNotContain("message-failed")
                 .doesNotContain("newer-value");
         assertThat(export.file()).doesNotExist();
     }
@@ -124,8 +139,8 @@ class TaskResultsExportServiceTest {
 
     @Test
     void emptyTerminalResultHashProducesAnEmptyDownload() throws Exception {
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
-                .thenReturn(new TaskItemSuccessResultPage("0", Map.of()));
+        when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
+                .thenReturn(new TaskItemResultPage("0", Map.of()));
 
         var export = service.export("task-1");
         var output = new ByteArrayOutputStream();
@@ -158,7 +173,7 @@ class TaskResultsExportServiceTest {
     @Test
     void resultOwnerFailureUsesTaskDataErrorAndCleansFiles()
             throws Exception {
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
+        when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
                 .thenThrow(new IllegalStateException("redis unavailable"));
 
         assertThatThrownBy(() -> service.export("task-1"))
@@ -207,10 +222,13 @@ class TaskResultsExportServiceTest {
     @Test
     void failedResponseTransferStillDeletesTheTemporaryFile()
             throws Exception {
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
-                .thenReturn(new TaskItemSuccessResultPage(
+        when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
+                .thenReturn(new TaskItemResultPage(
                         "0",
-                        Map.of("message-1", "result")
+                        Map.of(
+                                "message-1",
+                                TaskItemResult.succeeded("result")
+                        )
                 ));
         var export = service.export("task-1");
         OutputStream failingOutput = new OutputStream() {
@@ -245,8 +263,8 @@ class TaskResultsExportServiceTest {
                     return null;
                 }
         );
-        when(taskRuntime.scanTaskItemSuccessResults("task-1", "0", 1000))
-                .thenReturn(new TaskItemSuccessResultPage("0", Map.of()));
+        when(taskRuntime.scanTaskItemResults("task-1", "0", 1000))
+                .thenReturn(new TaskItemResultPage("0", Map.of()));
 
         var export = service.export("task-1");
 

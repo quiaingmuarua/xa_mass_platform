@@ -23,6 +23,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
@@ -111,7 +112,7 @@ class RedisTaskOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void appendAndSuccessLoadMatchTaskOwnerShape() {
+    void appendAndSuccessResultMatchTaskOwnerShape() {
         long createdAt = redisTimeMillis();
         storeTask("task-1", "PRECOMPUTED_TASK_RULE");
         TaskItem item = new TaskItem(
@@ -156,6 +157,14 @@ class RedisTaskOwnerRuntimeIntegrationTest {
                 "task-1",
                 Map.of("message-1", "{\"valid\":true}")
         );
+        assertThat(redis.hget(
+                keyspace.base() + ":task:task-1:results",
+                "message-1"
+        )).isEqualTo("{\"valid\":true}");
+        assertThat(redis.sismember(
+                keyspace.base() + ":task:task-1:results:success",
+                "message-1"
+        )).isTrue();
         assertThat(itemScoreCore.promoteItemOutcomes(
                 "task-1",
                 List.of("message-1"),
@@ -171,23 +180,91 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         ).longValue();
         assertThat(finalScore / TaskItemScoreBandCore.TAG_FACTOR)
                 .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
-        var loaded = runtime.loadTaskItemSuccessResults(
+        var loaded = runtime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1", "missing")
         );
         assertThat(loaded.get("message-1"))
-                .isEqualTo("{\"valid\":true}");
+                .isEqualTo(TaskItemResult.succeeded("{\"valid\":true}"));
         assertThat(loaded).containsEntry("missing", null);
 
-        var page = runtime.scanTaskItemSuccessResults(
+        var page = runtime.scanTaskItemResults(
                 "task-1",
                 "0",
                 1000
         );
         assertThat(page.nextCursor()).isEqualTo("0");
         assertThat(page.results()).containsExactly(
-                Map.entry("message-1", "{\"valid\":true}")
+                Map.entry(
+                        "message-1",
+                        TaskItemResult.succeeded("{\"valid\":true}")
+                )
         );
+    }
+
+    @Test
+    void failedResultsAreIdempotentAndSuccessIsAbsorbing() {
+        runtime.storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-failed", "message-late", "message-late")
+        );
+        runtime.storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-failed")
+        );
+
+        var initiallyLoaded = runtime.loadTaskItemResults(
+                "task-1",
+                List.of("message-failed", "message-late", "missing")
+        );
+        assertThat(initiallyLoaded)
+                .containsEntry("message-failed", TaskItemResult.failed())
+                .containsEntry("message-late", TaskItemResult.failed())
+                .containsEntry("missing", null);
+
+        runtime.storeTaskItemSuccessResults(
+                "task-1",
+                Map.of("message-late", "late-success")
+        );
+        runtime.storeTaskItemFailedResults(
+                "task-1",
+                List.of("message-late")
+        );
+
+        assertThat(runtime.loadTaskItemResults(
+                "task-1",
+                List.of("message-failed", "message-late")
+        )).containsExactly(
+                Map.entry("message-failed", TaskItemResult.failed()),
+                Map.entry(
+                        "message-late",
+                        TaskItemResult.succeeded("late-success")
+                )
+        );
+        assertThat(runtime.scanTaskItemResults("task-1", "0", 1000)
+                .results()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                        "message-failed", TaskItemResult.failed(),
+                        "message-late",
+                        TaskItemResult.succeeded("late-success")
+                ));
+    }
+
+    @Test
+    void successWriteTypeFailureDoesNotLeaveAResultWithoutClassification() {
+        String successKey = keyspace.base()
+                + ":task:task-1:results:success";
+        redis.set(successKey, "corrupt-type");
+
+        assertThatThrownBy(() -> runtime.storeTaskItemSuccessResults(
+                "task-1",
+                Map.of("message-1", "payload")
+        )).isInstanceOf(RuntimeException.class);
+
+        assertThat(redis.hget(
+                keyspace.base() + ":task:task-1:results",
+                "message-1"
+        )).isNull();
+        assertThat(redis.get(successKey)).isEqualTo("corrupt-type");
     }
 
     @Test

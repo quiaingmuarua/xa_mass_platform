@@ -1,6 +1,7 @@
 package com.xa.mass.server.api.v1.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.Objects;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskRpcCallResponse(
-        Map<String, TaskRpcCallItemResponse> results
+        Map<String, TaskItemResultResponse> results
 ) {
     public TaskRpcCallResponse {
         Objects.requireNonNull(results, "results");
@@ -18,16 +19,15 @@ public record TaskRpcCallResponse(
 
     public static TaskRpcCallResponse fromObservedResults(
             List<String> messageIds,
-            Map<String, String> observedResults
+            Map<String, TaskItemResult> observedResults
     ) {
-        var items = new LinkedHashMap<String, TaskRpcCallItemResponse>();
+        var items = new LinkedHashMap<String, TaskItemResultResponse>();
         messageIds.forEach(messageId -> {
-            String payload = observedResults.get(messageId);
             items.put(
                     messageId,
-                    payload == null
-                            ? TaskRpcCallItemResponse.notObserved()
-                            : TaskRpcCallItemResponse.succeeded(payload)
+                    TaskItemResultResponse.from(
+                            observedResults.get(messageId)
+                    )
             );
         });
         return new TaskRpcCallResponse(items);

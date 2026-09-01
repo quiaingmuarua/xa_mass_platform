@@ -351,11 +351,13 @@ final class RuntimeApiClient {
 
     enum CallStatus {
         SUCCEEDED,
+        FAILED,
         NOT_OBSERVED;
 
         private static CallStatus fromWire(String value) {
             return switch (value) {
                 case "succeeded" -> SUCCEEDED;
+                case "failed" -> FAILED;
                 case "not_observed" -> NOT_OBSERVED;
                 default -> throw new IllegalStateException(
                         "Task call status is invalid"

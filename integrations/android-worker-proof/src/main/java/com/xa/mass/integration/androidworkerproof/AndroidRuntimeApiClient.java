@@ -217,17 +217,14 @@ final class AndroidRuntimeApiClient {
                     results.keySet()
             );
         }
-        Object result = results.get(messageId);
-        if (result == null) {
-            return false;
-        }
-        if (!(result instanceof String)) {
-            throw new ProofFailure(
-                    "task-result.contract",
-                    "Task loaded result must be opaque text or null"
-            );
-        }
-        return true;
+        Map<String, Object> result = JsonValues.object(
+                results.get(messageId),
+                "Task loaded result"
+        );
+        return CallStatus.fromWire(JsonValues.requiredString(
+                result,
+                "status"
+        )) == CallStatus.SUCCEEDED;
     }
 
     void requirePropertiesRelation(
@@ -472,11 +469,13 @@ final class AndroidRuntimeApiClient {
 
     enum CallStatus {
         SUCCEEDED,
+        FAILED,
         NOT_OBSERVED;
 
         private static CallStatus fromWire(String value) {
             return switch (value) {
                 case "succeeded" -> SUCCEEDED;
+                case "failed" -> FAILED;
                 case "not_observed" -> NOT_OBSERVED;
                 default -> throw new ProofFailure(
                         "task-call.status",

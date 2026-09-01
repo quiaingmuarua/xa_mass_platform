@@ -216,8 +216,11 @@ async function scrollToLatest(): Promise<void> {
               <el-tag type="danger" effect="light" size="small">Failed</el-tag>
               <time>{{ formattedTime(item.completedAt) }}</time>
             </div>
-            <strong>{{ item.safeError?.title }}</strong>
-            <p>{{ item.safeError?.message }}</p>
+            <template v-if="item.safeError">
+              <strong>{{ item.safeError.title }}</strong>
+              <p>{{ item.safeError.message }}</p>
+            </template>
+            <p v-else>Kernel 已将该 Item 收敛为最终失败；没有成功 Result payload。</p>
             <small v-if="item.safeError?.requestId">
               Request ID: {{ item.safeError.requestId }}
             </small>

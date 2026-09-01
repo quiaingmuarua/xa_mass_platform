@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 public interface TaskRuntime {
 
-    int MAX_SUCCESS_RESULT_SCAN_COUNT_HINT = 1000;
+    int MAX_RESULT_SCAN_COUNT_HINT = 1000;
 
     Set<String> CONFIG_KEYS = Set.of(
             "priority",
@@ -36,12 +36,17 @@ public interface TaskRuntime {
             Map<String, String> results
     );
 
-    Map<String, @Nullable String> loadTaskItemSuccessResults(
+    void storeTaskItemFailedResults(
             String taskId,
             List<String> messageIds
     );
 
-    TaskItemSuccessResultPage scanTaskItemSuccessResults(
+    Map<String, @Nullable TaskItemResult> loadTaskItemResults(
+            String taskId,
+            List<String> messageIds
+    );
+
+    TaskItemResultPage scanTaskItemResults(
             String taskId,
             String cursor,
             int countHint
@@ -206,16 +211,42 @@ public interface TaskRuntime {
         }
     }
 
-    record TaskItemSuccessResultPage(
-            String nextCursor,
-            Map<String, String> results
+    record TaskItemResult(
+            boolean succeeded,
+            @Nullable String opaqueResultPayload
     ) {
-        public TaskItemSuccessResultPage {
+        public TaskItemResult {
+            if (succeeded) {
+                requireNonBlank(
+                        opaqueResultPayload,
+                        "opaqueResultPayload"
+                );
+            } else if (opaqueResultPayload != null) {
+                throw new IllegalArgumentException(
+                        "failed Result must not contain a payload"
+                );
+            }
+        }
+
+        public static TaskItemResult succeeded(String payload) {
+            return new TaskItemResult(true, payload);
+        }
+
+        public static TaskItemResult failed() {
+            return new TaskItemResult(false, null);
+        }
+    }
+
+    record TaskItemResultPage(
+            String nextCursor,
+            Map<String, TaskItemResult> results
+    ) {
+        public TaskItemResultPage {
             requireDecimal(nextCursor, "nextCursor");
             Objects.requireNonNull(results, "results");
-            results.forEach((messageId, payload) -> {
+            results.forEach((messageId, result) -> {
                 requireNonBlank(messageId, "result messageId");
-                requireNonBlank(payload, "result payload");
+                Objects.requireNonNull(result, "result");
             });
             results = Collections.unmodifiableMap(
                     new LinkedHashMap<>(results)

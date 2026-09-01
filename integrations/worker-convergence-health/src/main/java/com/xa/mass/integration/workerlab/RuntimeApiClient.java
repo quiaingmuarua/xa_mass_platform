@@ -175,9 +175,20 @@ final class RuntimeApiClient {
                 response.body().get("results"),
                 "loaded results"
         );
+        Set<String> expected = Set.copyOf(messageIds);
+        if (!results.keySet().equals(expected)) {
+            throw JsonValues.invalid("Loaded result identities changed");
+        }
         var observed = new java.util.LinkedHashSet<String>();
-        results.forEach((messageId, result) -> {
-            if (result != null) {
+        results.forEach((messageId, rawResult) -> {
+            Map<String, Object> result = JsonValues.object(
+                    rawResult,
+                    "loaded result"
+            );
+            CallStatus status = CallStatus.fromWire(
+                    JsonValues.requiredString(result, "status")
+            );
+            if (status == CallStatus.SUCCEEDED) {
                 observed.add(messageId);
             }
         });
@@ -256,11 +267,13 @@ final class RuntimeApiClient {
 
     enum CallStatus {
         SUCCEEDED,
+        FAILED,
         NOT_OBSERVED;
 
         private static CallStatus fromWire(String value) {
             return switch (value) {
                 case "succeeded" -> SUCCEEDED;
+                case "failed" -> FAILED;
                 case "not_observed" -> NOT_OBSERVED;
                 default -> throw JsonValues.invalid(
                         "Task call status is invalid"

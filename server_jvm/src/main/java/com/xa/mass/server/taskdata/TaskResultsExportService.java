@@ -207,15 +207,22 @@ public final class TaskResultsExportService {
                         "Task Result scan cursor repeated"
                 );
             }
-            var page = taskRuntime.scanTaskItemSuccessResults(
+            var page = taskRuntime.scanTaskItemResults(
                     taskId,
                     cursor,
-                    TaskRuntime.MAX_SUCCESS_RESULT_SCAN_COUNT_HINT
+                    TaskRuntime.MAX_RESULT_SCAN_COUNT_HINT
             );
             for (var entry : page.results().entrySet()) {
-                if (writtenMessageIds.add(entry.getKey())) {
+                if (entry.getValue().succeeded()
+                        && writtenMessageIds.add(entry.getKey())) {
                     writer.write(mapper.writeValueAsString(
-                            new ExportRow(entry.getKey(), entry.getValue())
+                            new ExportRow(
+                                    entry.getKey(),
+                                    java.util.Objects.requireNonNull(
+                                            entry.getValue()
+                                                    .opaqueResultPayload()
+                                    )
+                            )
                     ));
                     writer.newLine();
                 }

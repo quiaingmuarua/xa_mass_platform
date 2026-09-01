@@ -1,7 +1,7 @@
 {
   "constants": {
     "TaskRuntime": {
-      "MAX_SUCCESS_RESULT_SCAN_COUNT_HINT": 1000
+      "MAX_RESULT_SCAN_COUNT_HINT": 1000
     },
     "TaskItemScoreBandCore": {
       "ACTIVE_TAG": 1,
@@ -103,9 +103,10 @@
     "TaskRuntime": [
       "append_items",
       "create_task",
-      "load_task_item_success_results",
+      "load_task_item_results",
       "load_task_items",
-      "scan_task_item_success_results",
+      "scan_task_item_results",
+      "store_task_item_failed_results",
       "store_task_item_success_results"
     ],
     "TaskScoreBandCore": [
@@ -203,7 +204,11 @@
       "status",
       "reason"
     ],
-    "TaskItemSuccessResultPage": [
+    "TaskItemResult": [
+      "succeeded",
+      "opaque_result_payload"
+    ],
+    "TaskItemResultPage": [
       "next_cursor",
       "results"
     ],

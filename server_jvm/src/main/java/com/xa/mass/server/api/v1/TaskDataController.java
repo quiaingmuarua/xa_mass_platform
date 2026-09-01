@@ -64,7 +64,7 @@ public class TaskDataController {
             @ApiResponse(
                     responseCode = "200",
                     description = "Submission was accepted; each Item is "
-                            + "succeeded or not_observed",
+                            + "succeeded, failed, or not_observed",
                     content = @Content(schema = @Schema(
                             implementation = TaskRpcCallResponse.class
                     ))
@@ -127,11 +127,16 @@ public class TaskDataController {
         ));
     }
 
-    @Operation(summary = "Load successful Task results")
+    @Operation(
+            summary = "Load TaskItem result states",
+            description = "Returns succeeded, failed, or not_observed for "
+                    + "every requested messageId. Only succeeded contains "
+                    + "opaqueResultPayload."
+    )
     @ApiResponses({
             @ApiResponse(
                     responseCode = "200",
-                    description = "Successful Results keyed by messageId",
+                    description = "Result states keyed by messageId",
                     content = @Content(schema = @Schema(
                             implementation = TaskItemResultsLoadResponse.class
                     ))
@@ -156,7 +161,7 @@ public class TaskDataController {
             @PathVariable @NotBlank String taskId,
             @Valid @RequestBody TaskItemResultsLoadRequest request
     ) {
-        return ResponseEntity.ok(taskData.loadTaskItemSuccessResults(
+        return ResponseEntity.ok(taskData.loadTaskItemResults(
                 taskId,
                 request.messageIds()
         ));

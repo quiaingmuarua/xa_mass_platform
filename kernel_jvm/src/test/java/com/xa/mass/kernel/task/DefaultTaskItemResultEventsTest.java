@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class DefaultTaskItemResultEventsTest {
 
     @Test
-    void successStoresPayloadBeforePromotingAndFailureLeavesScoresAlone() {
+    void successStoresPayloadBeforePromoting() {
         List<String> calls = new ArrayList<>();
         TaskRuntime taskRuntime = proxy(
                 TaskRuntime.class,
@@ -51,11 +51,6 @@ class DefaultTaskItemResultEventsTest {
         payloads.put("message-2", "result-2");
 
         events.onItemsSucceeded("task-1", payloads, 1_000);
-        events.onItemsFailed(
-                "task-1",
-                List.of("message-1", "message-1"),
-                1_001
-        );
 
         assertEquals(List.of(
                 "store:task-1:{message-1=result-1, message-2=result-2}",

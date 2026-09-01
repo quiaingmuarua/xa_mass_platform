@@ -74,8 +74,9 @@ One round computes its dispatch time and Item claim deadline once:
 1. Consume the immutable verified RUNNING observation batch.
 2. Read bounded Item Score observations and canonical TaskItem records from
    their Owners.
-3. Policy identifies zero-budget and expired Items and promotes them directly
-   to `FINAL_FAILED` through the Item Score Owner.
+3. Policy identifies zero-budget and expired Items, stores failed Result
+   markers through TaskRuntime, then promotes the same IDs to `FINAL_FAILED`
+   through the Item Score Owner.
 4. Policy matches/selects Workers and pairs them with Items.
    `TaskAssignmentDispatcher` exact-renews Worker leases, exact-claims only
    Worker-backed Items, constructs DeliveryCommands, and publishes
@@ -89,6 +90,13 @@ claim. Item claim precedes command identity generation and mailbox publication.
 Expiry classification therefore cannot acquire a Worker, consume retry budget,
 or emit a Worker command. An already-claimed attempt is not revoked when its
 Item later expires.
+
+Failed Result storage is the precondition for `FINAL_FAILED` promotion. A
+storage exception fails the current Dispatch round before score mutation, so a
+later round can retry the same owner-local write and promotion. TaskRuntime
+does not replace a successful Result with failed; a late SUCCESS may replace a
+failed marker, and the Item Score Owner's existing ordering still lets
+`FINAL_SUCCESS` win over `FINAL_FAILED`.
 
 ## ACTIVE Item Truth
 

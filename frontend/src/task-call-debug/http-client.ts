@@ -73,7 +73,7 @@ export class HttpTaskCallDebugClient implements TaskCallDebugClient {
     }
   }
 
-  async loadResult(taskId: string, messageId: string): Promise<string | undefined> {
+  async loadResult(taskId: string, messageId: string): Promise<TaskCallDebugOutcome> {
     const requestId = createRequestId("task-result-load");
     try {
       const response = await this.client.post(
@@ -88,11 +88,15 @@ export class HttpTaskCallDebugClient implements TaskCallDebugClient {
       const parsed = taskCallDebugResultLoadResponseSchema.safeParse(response.data);
       if (!parsed.success) throw schemaError(requestId);
       const resultIds = Object.keys(parsed.data.results);
-      if (resultIds.length === 0) return undefined;
-      if (resultIds.length !== 1 || resultIds[0] !== messageId) {
+      const outcome = parsed.data.results[messageId];
+      if (
+        resultIds.length !== 1 ||
+        resultIds[0] !== messageId ||
+        outcome === undefined
+      ) {
         throw schemaError(requestId);
       }
-      return parsed.data.results[messageId];
+      return outcome;
     } catch (error) {
       throw mapHttpError(error, requestId);
     }

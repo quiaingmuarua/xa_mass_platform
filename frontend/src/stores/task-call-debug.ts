@@ -128,11 +128,14 @@ export function createTaskCallDebugStore(
       item.checkingResult = true;
       item.resultLoadError = undefined;
       try {
-        const payload = await client.loadResult(item.taskId, item.messageId);
+        const outcome = await client.loadResult(item.taskId, item.messageId);
         item.lastCheckedAt = now().toISOString();
-        if (payload !== undefined) {
-          item.opaqueResultPayload = payload;
+        if (outcome.status === "succeeded") {
+          item.opaqueResultPayload = outcome.opaqueResultPayload;
           item.state = "succeeded";
+          item.completedAt = item.lastCheckedAt;
+        } else if (outcome.status === "failed") {
+          item.state = "failed";
           item.completedAt = item.lastCheckedAt;
         }
       } catch (cause) {

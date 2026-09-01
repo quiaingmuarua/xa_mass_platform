@@ -21,15 +21,15 @@ SUCCESS
 
 FAILURE
   -> TaskResultBatchPolicy decode and bounded last-wins grouping
-  -> TaskItemResultEvents.onItemsFailed
   -> WorkerExecutionResultEvents.onTaskFailed
 ```
 
 It does not select Workers, claim Items, actively retry failed Items, refresh
 Task score, parse score internals, interpret endpoint error codes, or own
 Worker scheduling-serviceability truth. The finite event Mechanisms decide
-which mechanical Task, TaskItem, and Worker operations currently implement each
-semantic result event.
+which mechanical TaskItem and Worker operations currently implement each
+semantic result event. In particular, retryable FAILURE evidence does not
+decide TaskItem finality.
 
 ## Protocol Boundary And Queues
 
@@ -142,16 +142,19 @@ guard this Java production layering.
 
 ```text
 TaskItemResultEvents.onItemsSucceeded
-  -> store last payload per Task/messageId
+  -> atomically store payload and successful Message ID classification
   -> promote the same Item IDs to FINAL_SUCCESS
 
 WorkerExecutionResultEvents.onTaskSucceeded
   -> apply the correlated successful-execution event per WorkerGroup
 ```
 
-Payload storage precedes Item promotion, so a promoted success has stored
-result truth. A later success may replace an earlier payload and may promote
-an Item from `FINAL_FAILED` according to the existing Item owner contract.
+Result storage precedes Item promotion, so a promoted success has stored
+result truth. One TaskRuntime operation writes the payload HASH and Success SET
+classification. A later success may replace a failed marker or an earlier
+payload and may promote an Item from `FINAL_FAILED` according to the existing
+Item owner contract. Once the Success SET contains the Message ID, later
+failed-result storage cannot replace its payload.
 
 The current Worker event implementation uses
 `releaseCompletedHotScoreHolds`. It accepts only:
@@ -169,18 +172,18 @@ RECOVERY-to-HOT or connection-state API.
 ### FAILURE
 
 ```text
-TaskItemResultEvents.onItemsFailed
-  -> currently leaves Item retry/finality unchanged
-
 WorkerExecutionResultEvents.onTaskFailed
   -> currently exact-releases each correlated Worker lease
   -> does not change Worker polarity
 ```
 
 Worker handler failure and Adapter rejection are identical to Result Routing.
-The Item remains at its existing claim coordinate and normal claim expiry
-provides retry. Active connection evidence and delivery-expiry serviceability
-policy remain owned by the separate Adapter Evidence Pacer.
+The Result policy neither stores a TaskItem result nor changes its score. The
+Item remains at its existing claim coordinate and normal claim expiry provides
+retry. Only Task Dispatch writes the failed marker when existing retry budget
+is exhausted or TTL expires, before requesting `FINAL_FAILED`. Active
+connection evidence and delivery-expiry serviceability policy remain owned by
+the separate Adapter Evidence Pacer.
 
 ## Failure Semantics
 

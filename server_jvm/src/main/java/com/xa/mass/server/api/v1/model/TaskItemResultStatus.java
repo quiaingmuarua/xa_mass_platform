@@ -2,13 +2,14 @@ package com.xa.mass.server.api.v1.model;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 
-public enum TaskRpcCallStatus {
+public enum TaskItemResultStatus {
     SUCCEEDED("succeeded"),
+    FAILED("failed"),
     NOT_OBSERVED("not_observed");
 
     private final String wireValue;
 
-    TaskRpcCallStatus(String wireValue) {
+    TaskItemResultStatus(String wireValue) {
         this.wireValue = wireValue;
     }
 

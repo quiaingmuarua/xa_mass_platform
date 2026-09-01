@@ -35,7 +35,8 @@ class RuntimeApiClientTest {
             respond(exchange, Map.of(
                     "results", Map.of(
                             "message-1", Map.of("status", "succeeded"),
-                            "message-2", Map.of("status", "not_observed")
+                            "message-2", Map.of("status", "failed"),
+                            "message-3", Map.of("status", "not_observed")
                     )
             ));
         });
@@ -48,10 +49,12 @@ class RuntimeApiClientTest {
 
             assertEquals(Map.of(
                     "message-1", CallStatus.SUCCEEDED,
-                    "message-2", CallStatus.NOT_OBSERVED
+                    "message-2", CallStatus.FAILED,
+                    "message-3", CallStatus.NOT_OBSERVED
             ), client.callItems("group-1", List.of(
                     new TaskItem("message-1", "event.one", Map.of()),
-                    new TaskItem("message-2", "event.two", Map.of())
+                    new TaskItem("message-2", "event.two", Map.of()),
+                    new TaskItem("message-3", "event.three", Map.of())
             ), 500L));
             assertEquals(
                     "/api/v1/tasks/scenario-rpc-group-1/items:call"

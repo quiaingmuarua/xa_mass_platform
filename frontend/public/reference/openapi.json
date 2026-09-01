@@ -195,6 +195,18 @@
         "required" : [ "eventCode", "messageId", "payload" ],
         "type" : "object"
       },
+      "TaskItemResultResponse" : {
+        "properties" : {
+          "opaqueResultPayload" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [ "succeeded", "failed", "not_observed" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "TaskItemResultsLoadRequest" : {
         "properties" : {
           "messageIds" : {
@@ -214,7 +226,7 @@
         "properties" : {
           "results" : {
             "additionalProperties" : {
-              "type" : "string"
+              "$ref" : "#/components/schemas/TaskItemResultResponse"
             },
             "type" : "object"
           }
@@ -293,18 +305,6 @@
         },
         "type" : "object"
       },
-      "TaskRpcCallItemResponse" : {
-        "properties" : {
-          "opaqueResultPayload" : {
-            "type" : "string"
-          },
-          "status" : {
-            "enum" : [ "succeeded", "not_observed" ],
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
       "TaskRpcCallRequest" : {
         "properties" : {
           "items" : {
@@ -329,7 +329,7 @@
         "properties" : {
           "results" : {
             "additionalProperties" : {
-              "$ref" : "#/components/schemas/TaskRpcCallItemResponse"
+              "$ref" : "#/components/schemas/TaskItemResultResponse"
             },
             "type" : "object"
           }
@@ -1381,7 +1381,7 @@
                 }
               }
             },
-            "description" : "Submission was accepted; each Item is succeeded or not_observed"
+            "description" : "Submission was accepted; each Item is succeeded, failed, or not_observed"
           },
           "400" : {
             "content" : {
@@ -1460,6 +1460,7 @@
     },
     "/api/v1/tasks/{taskId}/results:load" : {
       "post" : {
+        "description" : "Returns succeeded, failed, or not_observed for every requested messageId. Only succeeded contains opaqueResultPayload.",
         "operationId" : "loadTaskItemResults",
         "parameters" : [ {
           "in" : "path",
@@ -1489,7 +1490,7 @@
                 }
               }
             },
-            "description" : "Successful Results keyed by messageId"
+            "description" : "Result states keyed by messageId"
           },
           "400" : {
             "content" : {
@@ -1512,7 +1513,7 @@
             "description" : "Task Owner is temporarily unavailable"
           }
         },
-        "summary" : "Load successful Task results",
+        "summary" : "Load TaskItem result states",
         "tags" : [ "Tasks" ]
       }
     },

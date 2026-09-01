@@ -29,10 +29,13 @@ export type TaskCallDebugOutcome =
       opaqueResultPayload: string;
     }
   | {
+      status: "failed";
+    }
+  | {
       status: "not_observed";
     };
 
 export interface TaskCallDebugClient {
   callTask(request: TaskCallDebugClientRequest): Promise<TaskCallDebugOutcome>;
-  loadResult(taskId: string, messageId: string): Promise<string | undefined>;
+  loadResult(taskId: string, messageId: string): Promise<TaskCallDebugOutcome>;
 }

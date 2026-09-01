@@ -11,7 +11,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol
         .DeliveryReport;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -88,18 +87,6 @@ final class TaskResultBatchPolicy {
         if (decoded.decodedCount() == 0) {
             return;
         }
-        long resultTimeMillis = currentTimeMillis.getAsLong();
-        decoded.resultsByTask().forEach((taskId, evidence) -> {
-            LinkedHashSet<String> messageIds = new LinkedHashSet<>();
-            for (TaskResultEvidence result : evidence) {
-                messageIds.add(result.messageId());
-            }
-            taskItemEvents.onItemsFailed(
-                    taskId,
-                    List.copyOf(messageIds),
-                    resultTimeMillis
-            );
-        });
         publishWorkerEvents(decoded.resultsByWorkerGroup(), false);
     }
 

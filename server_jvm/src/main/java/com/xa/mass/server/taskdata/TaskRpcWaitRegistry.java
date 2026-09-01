@@ -1,5 +1,6 @@
 package com.xa.mass.server.taskdata;
 
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,15 +44,15 @@ public final class TaskRpcWaitRegistry {
     public boolean tryRegister(
             String taskId,
             List<String> messageIds,
-            Map<String, String> observedResults,
+            Map<String, TaskItemResult> observedResults,
             DeferredResult<TaskRpcCallResponse> deferred
     ) {
         List<String> orderedIds = List.copyOf(messageIds);
-        var observed = new LinkedHashMap<String, String>();
+        var observed = new LinkedHashMap<String, TaskItemResult>();
         orderedIds.forEach(messageId -> {
-            String payload = observedResults.get(messageId);
-            if (payload != null) {
-                observed.put(messageId, payload);
+            TaskItemResult result = observedResults.get(messageId);
+            if (result != null) {
+                observed.put(messageId, result);
             }
         });
         var pending = new LinkedHashSet<ItemKey>();
@@ -123,11 +124,12 @@ public final class TaskRpcWaitRegistry {
         }
     }
 
-    public void completeSuccess(
+    public void completeResult(
             String taskId,
             String messageId,
-            String payload
+            TaskItemResult result
     ) {
+        java.util.Objects.requireNonNull(result, "result");
         ItemKey key = new ItemKey(taskId, messageId);
         List<BatchWaiter> waiters;
         synchronized (this) {
@@ -137,7 +139,7 @@ public final class TaskRpcWaitRegistry {
             }
             waiters = List.copyOf(group.waiters);
         }
-        waiters.forEach(waiter -> waiter.completeSuccess(key, payload));
+        waiters.forEach(waiter -> waiter.completeResult(key, result));
     }
 
     public synchronized void finishProbe(
@@ -278,7 +280,7 @@ public final class TaskRpcWaitRegistry {
 
         private final TaskRpcWaitRegistry registry;
         private final List<String> orderedMessageIds;
-        private final Map<String, String> observedResults;
+        private final Map<String, TaskItemResult> observedResults;
         private final Set<ItemKey> pending;
         private final DeferredResult<TaskRpcCallResponse> deferred;
         private final long registeredAtNanos;
@@ -287,7 +289,7 @@ public final class TaskRpcWaitRegistry {
         private BatchWaiter(
                 TaskRpcWaitRegistry registry,
                 List<String> orderedMessageIds,
-                Map<String, String> observedResults,
+                Map<String, TaskItemResult> observedResults,
                 Set<ItemKey> pending,
                 DeferredResult<TaskRpcCallResponse> deferred,
                 long registeredAtNanos
@@ -300,14 +302,14 @@ public final class TaskRpcWaitRegistry {
             this.registeredAtNanos = registeredAtNanos;
         }
 
-        private synchronized boolean completeSuccess(
+        private synchronized boolean completeResult(
                 ItemKey key,
-                String payload
+                TaskItemResult result
         ) {
             if (completed || !pending.remove(key)) {
                 return false;
             }
-            observedResults.put(key.messageId, payload);
+            observedResults.put(key.messageId, result);
             boolean finished = pending.isEmpty();
             if (finished) {
                 completed = true;

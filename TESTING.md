@@ -32,8 +32,9 @@ statuses while keeping capability Result payloads opaque. Worker Convergence
 Health is deliberately imperfect: it fixes offered and invalid-input counts,
 includes deterministic slow and failed Handler Items as background offered
 work, then asserts independent Network/Scheduling mutations and named witness
-convergence. `NOT_OBSERVED` is not treated as failure, and non-witness Items do
-not carry a success-count or execution-count oracle.
+convergence. `NOT_OBSERVED` is not treated as failure, `FAILED` is not counted
+as a successful witness, and non-witness Items do not carry a success-count or
+execution-count oracle.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. High-level Worker proofs use `results:load` only for named

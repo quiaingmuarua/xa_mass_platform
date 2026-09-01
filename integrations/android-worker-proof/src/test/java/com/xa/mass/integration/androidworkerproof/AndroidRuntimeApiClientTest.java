@@ -173,7 +173,13 @@ final class AndroidRuntimeApiClientTest {
                     request.get("messageIds"),
                     "messageIds"
             ).get(0);
-            response = Map.of("results", Map.of(messageId, "opaque-result"));
+            response = Map.of("results", Map.of(
+                    messageId,
+                    Map.of(
+                            "status", "succeeded",
+                            "opaqueResultPayload", "opaque-result"
+                    )
+            ));
         } else {
             throw new AssertionError("Unexpected path: " + path);
         }

@@ -29,6 +29,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
@@ -187,16 +188,20 @@ class RuntimeApiControllerTest {
                     ));
                     return results;
                 });
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 any(),
                 anyList()
         )).thenAnswer(invocation -> {
             List<String> ids = invocation.getArgument(1);
-            var results = new LinkedHashMap<String, String>();
+            var results = new LinkedHashMap<String, TaskItemResult>();
             ids.forEach(id -> results.put(
                     id,
                     "message-1".equals(id)
-                            ? "{\"valid\":true}"
+                            ? TaskItemResult.succeeded(
+                                    "{\"valid\":true}"
+                            )
+                            : "message-failed".equals(id)
+                                    ? TaskItemResult.failed()
                             : null
             ));
             return results;
@@ -582,9 +587,13 @@ class RuntimeApiControllerTest {
                                 {"messageIds":["message-1","message-2"]}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1")
-                        .value("{\"valid\":true}"))
-                .andExpect(jsonPath("$.results.message-2").isEmpty());
+                .andExpect(jsonPath("$.results.message-1.status")
+                        .value("succeeded"))
+                .andExpect(jsonPath(
+                        "$.results.message-1.opaqueResultPayload"
+                ).value("{\"valid\":true}"))
+                .andExpect(jsonPath("$.results.message-2.status")
+                        .value("not_observed"));
     }
 
     @Test
@@ -766,7 +775,9 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageIds\":[\"message-internal\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-internal").isEmpty());
+                .andExpect(jsonPath(
+                        "$.results.message-internal.status"
+                ).value("not_observed"));
 
         verify(taskRuntime, org.mockito.Mockito.never())
                 .appendItems(eq(taskId), anyList());
@@ -839,10 +850,13 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageIds\":[\"message-1\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.results.message-1")
-                        .value("{\"valid\":true}"));
+                .andExpect(jsonPath("$.results.message-1.status")
+                        .value("succeeded"))
+                .andExpect(jsonPath(
+                        "$.results.message-1.opaqueResultPayload"
+                ).value("{\"valid\":true}"));
 
-        verify(taskRuntime, times(2)).loadTaskItemSuccessResults(
+        verify(taskRuntime, times(2)).loadTaskItemResults(
                 "scenario-rpc-phone-tools",
                 List.of("message-1")
         );
@@ -1008,21 +1022,32 @@ class RuntimeApiControllerTest {
                                   "messageIds": [
                                     "message-2",
                                     "message-1",
-                                    "message-2"
+                                    "message-2",
+                                    "message-failed"
                                   ]
                                 }
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-1.status")
+                        .value("succeeded"))
+                .andExpect(jsonPath("$.results.message-failed.status")
+                        .value("failed"))
+                .andExpect(jsonPath("$.results.message-2.status")
+                        .value("not_observed"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> idsCaptor =
                 ArgumentCaptor.forClass(List.class);
-        verify(taskRuntime).loadTaskItemSuccessResults(
+        verify(taskRuntime).loadTaskItemResults(
                 eq("task-1"),
                 idsCaptor.capture()
         );
         assertThat(idsCaptor.getValue())
-                .containsExactly("message-2", "message-1");
+                .containsExactly(
+                        "message-2",
+                        "message-1",
+                        "message-failed"
+                );
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
                         .contentType(MediaType.APPLICATION_JSON)

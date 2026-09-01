@@ -34,16 +34,6 @@ class TaskResultBatchPolicyTest {
                 calls.add("items-succeeded:" + taskId + ":"
                         + payloadsByMessageId + ":" + observedAtMillis);
             }
-
-            @Override
-            public void onItemsFailed(
-                    String taskId,
-                    List<String> messageIds,
-                    long observedAtMillis
-            ) {
-                calls.add("items-failed:" + taskId + ":" + messageIds
-                        + ":" + observedAtMillis);
-            }
         };
         WorkerExecutionResultEvents workerEvents =
                 new WorkerExecutionResultEvents() {
@@ -89,8 +79,7 @@ class TaskResultBatchPolicyTest {
         assertEquals(List.of(
                 "items-succeeded:task-1:{message-1=last}:1000",
                 "workers-succeeded:group-1:1001",
-                "items-failed:task-1:[message-1]:1002",
-                "workers-failed:group-1:1003"
+                "workers-failed:group-1:1002"
         ), calls);
         assertEquals(List.of(
                 Map.of(
@@ -146,15 +135,6 @@ class TaskResultBatchPolicyTest {
             public void onItemsSucceeded(
                     String taskId,
                     Map<String, String> payloadsByMessageId,
-                    long observedAtMillis
-            ) {
-                calls.add("unexpected");
-            }
-
-            @Override
-            public void onItemsFailed(
-                    String taskId,
-                    List<String> messageIds,
                     long observedAtMillis
             ) {
                 calls.add("unexpected");

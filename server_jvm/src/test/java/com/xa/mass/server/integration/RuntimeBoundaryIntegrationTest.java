@@ -851,10 +851,13 @@ class RuntimeBoundaryIntegrationTest {
                     "{\"messageIds\":[\"" + firstMessageId + "\"]}"
             );
             assertThat(loaded.statusCode()).isEqualTo(200);
-            assertThat(JSON.readTree(loaded.body())
+            var loadedResult = JSON.readTree(loaded.body())
                     .get("results")
-                    .get(firstMessageId)
-                    .stringValue()).isEqualTo(TEST_RESULT);
+                    .get(firstMessageId);
+            assertThat(loadedResult.get("status").asText())
+                    .isEqualTo("succeeded");
+            assertThat(loadedResult.get("opaqueResultPayload").asText())
+                    .isEqualTo(TEST_RESULT);
 
             HttpResponse<String> repeatedRegistration = send(
                     "POST",
@@ -1165,11 +1168,13 @@ class RuntimeBoundaryIntegrationTest {
                     "{\"messageIds\":[\"" + messageId + "\"]}"
             );
             if (response.statusCode() == 200) {
-                String result = JSON.readTree(response.body())
+                var result = JSON.readTree(response.body())
                         .get("results")
-                        .get(messageId)
-                        .stringValue();
-                if (TEST_RESULT.equals(result)) {
+                        .get(messageId);
+                if ("succeeded".equals(result.get("status").asText())
+                        && TEST_RESULT.equals(result
+                                .get("opaqueResultPayload")
+                                .asText())) {
                     return;
                 }
             }

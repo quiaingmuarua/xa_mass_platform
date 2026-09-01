@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
 import jakarta.validation.Validation;
 import java.util.LinkedHashMap;
@@ -41,11 +42,38 @@ class TaskRpcWaitRegistryTest {
                 request("task-1", "message-1")
         );
 
-        registry.completeSuccess("task-1", "message-1", "{\"ok\":true}");
+        registry.completeResult(
+                "task-1",
+                "message-1",
+                TaskItemResult.succeeded("{\"ok\":true}")
+        );
         assertSucceeded(first, "message-1");
         assertSucceeded(second, "message-1");
         assertThat(registry.waiterCount()).isZero();
         assertThat(registry.pendingObservationCount()).isZero();
+        registry.finishProbe("task-1", "message-1", 0);
+    }
+
+    @Test
+    void failedResultCompletesTheWaiterWithoutPayload() throws Exception {
+        TaskRpcWaitRegistry registry = registry(10, 10, 256);
+        DeferredResult<TaskRpcCallResponse> deferred = deferred();
+        assertThat(register(registry, "task-1", "message-1", deferred))
+                .isTrue();
+        assertThat(registry.takeDueBatch(10)).containsExactly(
+                request("task-1", "message-1")
+        );
+
+        registry.completeResult(
+                "task-1",
+                "message-1",
+                TaskItemResult.failed()
+        );
+
+        var response = result(deferred).results().get("message-1");
+        assertThat(response.status().wireValue()).isEqualTo("failed");
+        assertThat(response.opaqueResultPayload()).isNull();
+        assertEmpty(registry);
         registry.finishProbe("task-1", "message-1", 0);
     }
 
@@ -141,7 +169,7 @@ class TaskRpcWaitRegistryTest {
         assertThat(stopped.tryRegister(
                 "task-shutdown",
                 List.of("observed", "missing"),
-                Map.of("observed", "done"),
+                Map.of("observed", TaskItemResult.succeeded("done")),
                 shutdownResult
         )).isTrue();
         stopped.shutdown();
@@ -165,7 +193,11 @@ class TaskRpcWaitRegistryTest {
                 "message-1",
                 oldResult
         )).isTrue();
-        staleRegistry.completeSuccess("task-1", "message-1", "first");
+        staleRegistry.completeResult(
+                "task-1",
+                "message-1",
+                TaskItemResult.succeeded("first")
+        );
         assertSucceeded(oldResult, "message-1");
 
         DeferredResult<TaskRpcCallResponse> currentResult =
@@ -227,11 +259,11 @@ class TaskRpcWaitRegistryTest {
                 Map.of(),
                 second
         )).isTrue();
-        when(taskRuntime.loadTaskItemSuccessResults(eq("task-1"), anyList()))
+        when(taskRuntime.loadTaskItemResults(eq("task-1"), anyList()))
                 .thenAnswer(invocation -> resultsFor(
                         invocation.getArgument(1)
                 ));
-        when(taskRuntime.loadTaskItemSuccessResults(eq("task-2"), anyList()))
+        when(taskRuntime.loadTaskItemResults(eq("task-2"), anyList()))
                 .thenAnswer(invocation -> resultsFor(
                         invocation.getArgument(1)
                 ));
@@ -246,11 +278,11 @@ class TaskRpcWaitRegistryTest {
         ArgumentCaptor<List<String>> secondIds = ArgumentCaptor.forClass(
                 List.class
         );
-        verify(taskRuntime).loadTaskItemSuccessResults(
+        verify(taskRuntime).loadTaskItemResults(
                 eq("task-1"),
                 firstIds.capture()
         );
-        verify(taskRuntime).loadTaskItemSuccessResults(
+        verify(taskRuntime).loadTaskItemResults(
                 eq("task-2"),
                 secondIds.capture()
         );
@@ -282,10 +314,13 @@ class TaskRpcWaitRegistryTest {
                 Map.of(),
                 deferred
         )).isTrue();
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 eq("task-1"),
                 anyList()
-        )).thenReturn(Map.of("message-1", "one"));
+        )).thenReturn(Map.of(
+                "message-1",
+                TaskItemResult.succeeded("one")
+        ));
 
         probe.probe(registry.takeDueBatch(10));
 
@@ -295,7 +330,11 @@ class TaskRpcWaitRegistryTest {
         assertThat(registry.takeDueBatch(10)).containsExactly(
                 request("task-1", "message-2")
         );
-        registry.completeSuccess("task-1", "message-2", "two");
+        registry.completeResult(
+                "task-1",
+                "message-2",
+                TaskItemResult.succeeded("two")
+        );
         registry.finishProbe("task-1", "message-2", 0);
         assertThat(result(deferred).results().keySet())
                 .containsExactly("message-1", "message-2");
@@ -329,14 +368,17 @@ class TaskRpcWaitRegistryTest {
                 "message-2",
                 succeeded
         )).isTrue();
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-failed",
                 List.of("message-1")
         )).thenThrow(new IllegalStateException("Redis unavailable"));
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-succeeded",
                 List.of("message-2")
-        )).thenReturn(Map.of("message-2", "done"));
+        )).thenReturn(Map.of(
+                "message-2",
+                TaskItemResult.succeeded("done")
+        ));
 
         probe.probe(registry.takeDueBatch(10));
 
@@ -393,11 +435,13 @@ class TaskRpcWaitRegistryTest {
         return new TaskRpcWaitRegistry.ProbeRequest(taskId, messageId);
     }
 
-    private static Map<String, String> resultsFor(List<String> messageIds) {
-        var results = new LinkedHashMap<String, String>();
+    private static Map<String, TaskItemResult> resultsFor(
+            List<String> messageIds
+    ) {
+        var results = new LinkedHashMap<String, TaskItemResult>();
         messageIds.forEach(messageId -> results.put(
                 messageId,
-                "result-" + messageId
+                TaskItemResult.succeeded("result-" + messageId)
         ));
         return results;
     }

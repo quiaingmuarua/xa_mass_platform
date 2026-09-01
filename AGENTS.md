@@ -86,7 +86,9 @@ lifecycle live in `kernel_pacer_jvm`.
 - Result Routing Policy owns evidence parsing, bounded grouping and semantic
   event publication; Transport only carries evidence. Finite TaskItem, Worker
   execution and Worker Serviceability Mechanism ports decide which legal
-  mechanical transitions implement each event.
+  mechanical transitions implement each event. SUCCESS stores the TaskItem
+  Result before `FINAL_SUCCESS`; retryable FAILURE does not write an Item
+  Result or decide Item finality.
 - DeliveryReport and raw Worker lease scores stop at Result Policy boundaries.
   Task execution events may exact-release the correlated opaque Worker lease
   but must not infer connection polarity. Adapter Route/delivery-expiry
@@ -153,6 +155,10 @@ architectures.
 - Task Owner enforces Task versus TaskItem rule location and JSON-safe finite
   persistence only. It must not interpret Match Property names or operators;
   stored rule semantics belong to the Pacer Matcher.
+- TaskRuntime owns the Task-scoped unified Result HASH and private Success SET.
+  Success atomically writes payload plus classification. Failed writes only
+  when success is absent; point/page reads expose succeeded or failed and use
+  missing as not observed. The SET is not scheduling or lifecycle truth.
 - Finite Result semantic event ports live with the Task/Worker owners; their
   default implementations may compose bounded mechanical operations but must
   not accept DeliveryReport, lane identity, JSON or Adapter Event Names.
@@ -172,6 +178,11 @@ kernel_jvm`.
   module outside `kernel_pacer_jvm` may import either bridge.
 - It owns fixed Assignment, Result Routing and Worker Serviceability policy,
   configuration interpretation, Pacer loops and their finite lifecycle.
+- Task Dispatch must store the failed Result marker before promoting an
+  exhausted or TTL-expired Item to `FINAL_FAILED`; a failed write leaves the
+  score unchanged for a later round. Result FAILURE only releases the
+  correlated Worker lease. Late SUCCESS may replace failed and promote the
+  existing score to `FINAL_SUCCESS`.
 - `WorkerCandidateSelectionPolicy` owns the three fixed source operations:
   shared HOT acquisition for Task-rule precomputation, cached candidate
   renewal, and Item-rule on-demand acquisition. It also owns Score eligibility,
@@ -207,6 +218,12 @@ Server may own:
 - DIRECT_CALL admission and request correlation;
 - bounded Worker Serviceability request/result routing without score policy;
 - configured Adapter and Scenario startup.
+
+Task `items:call` and `results:load` expose the shared
+`succeeded | failed | not_observed` Result view; only succeeded carries an
+opaque payload. Export remains finite-Task, terminal-only and success-only: it
+scans the unified owner pages and filters failed without reading Redis directly
+or adding failed/all modes.
 
 Server must not own:
 
@@ -480,8 +497,9 @@ Adapter connectivity, Kernel state or schedulability.
   actual observed local world instead of installing a preferred final world.
   It uses managed ON_DEMAND batch calls as offered load and `results:load` only
   for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
-  offered Items to succeed, poll `results:export`, or repeat PRECOMPUTED and
-  topology claims owned by Runtime Boundary.
+  offered Items to succeed, count `FAILED` as a successful witness, poll
+  `results:export`, or repeat PRECOMPUTED and topology claims owned by Runtime
+  Boundary.
 - Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
   It may generate one 10,000-record Scenario Group, observe existing Runtime
   APIs in 100-ID pages, restart Server once while retaining the Host, and record

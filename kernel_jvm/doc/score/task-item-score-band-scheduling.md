@@ -124,8 +124,9 @@ acquire range.
 `TaskItemScoreBandCore`. It is the latest time at which a new dispatch attempt
 may begin. TaskRuntime rejects an Item that is already expired when appended.
 Task dispatch rechecks the persisted value after score observation and, before
-Worker acquisition, promotes expired ACTIVE Items to `FINAL_FAILED` through the
-existing outcome primitive.
+Worker acquisition, stores the failed Item Result and then promotes expired
+ACTIVE Items to `FINAL_FAILED` through the existing outcome primitive. If
+Result storage fails, score promotion does not run.
 
 Expiry does not retract an attempt claimed before the cutoff. That attempt
 continues under its Item claim and Worker lease, and a later success may still
@@ -566,6 +567,7 @@ worker failure / adapter rejection
 
 final failure
   produced by exhausted scheduling budget
+  stores the failed Result before score promotion
   may be overwritten only by late success
 
 late success
@@ -586,6 +588,7 @@ For `TAG_ACTIVE`, suffix is remaining scheduling budget. A due active item with
 
 ```text
 ACTIVE due + suffix == 0
+  -> store failed Item Result unless success already exists
   -> write TAG_FINAL_FAILED
 ```
 

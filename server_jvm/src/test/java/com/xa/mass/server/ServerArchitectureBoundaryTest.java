@@ -317,7 +317,7 @@ class ServerArchitectureBoundaryTest {
             throws IOException {
         String taskData = readSources(TASK_DATA);
         assertThat(taskData)
-                .contains("scanTaskItemSuccessResults")
+                .contains("scanTaskItemResults")
                 .contains("getScoreStates")
                 .contains("TaskResourceCatalog")
                 .doesNotContain("io.lettuce")

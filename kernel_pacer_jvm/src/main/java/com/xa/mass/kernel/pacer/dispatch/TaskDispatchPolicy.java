@@ -111,6 +111,10 @@ final class TaskDispatchPolicy {
                     .map(Map.Entry::getKey)
                     .toList();
             if (!failedIds.isEmpty()) {
+                taskRuntime.storeTaskItemFailedResults(
+                        task.taskId(),
+                        failedIds
+                );
                 itemScores.promoteItemOutcomes(
                         task.taskId(),
                         failedIds,

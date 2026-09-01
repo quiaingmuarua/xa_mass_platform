@@ -64,10 +64,15 @@ Task score acquire
      -> accept Worker point results or Adapter result batches
      -> DeliveryReport queue
   -> Result Routing
-     -> 200: store last-success + FINAL_SUCCESS + completed-HOT exact release
+     -> 200: atomically store success Result + FINAL_SUCCESS + completed-HOT exact release
      -> Worker failure: keep Item claim coordinate + Worker exact release
      -> Adapter rejection: keep Item claim coordinate + Worker exact release
      -> no result: Item claim and Worker lease expire naturally
+
+Task Dispatch terminal closure
+  -> retry budget exhausted or Item TTL elapsed
+  -> store failed Result unless success already exists
+  -> promote the same Item to FINAL_FAILED
 
 Auxiliary Server direct path
   -> caller-selected Workers bound to one Adapter
@@ -122,8 +127,8 @@ TaskInitializationCheck
   Items once, and asks the Task Score Owner for one exact batch promotion
 
 TaskRuntime
-  owns Task descriptors, canonical TaskItem records, and Task-scoped
-  last-success result payloads
+  owns Task descriptors, canonical TaskItem records, the Task-scoped unified
+  Result HASH and private Success classification SET
 
 TaskItemScoreBandCore
   owns Item initialization, bounded ACTIVE acquisition, observed same-tag
@@ -220,9 +225,9 @@ Worker Delivery Dispatch
 | TaskItem score-band | Java Owner and Redis provider implement append, bounded ACTIVE observation, exact claim and final promotion | Initial retry budget and claim-duration values |
 | Task initialization | Implemented inside RUNNING with one fixed INITIAL time slot and an Owner-derived priority suffix, a best-effort 100-Task approval soft limit, due-Item check and exact INITIAL-to-NORMAL promotion | Additional explicit start conditions or strict capacity, if a future invariant proves either is needed |
 | Worker allocation | Implemented as a Main-planned PRECOMPUTED Task Resource Producer that fills candidate deficits through direct bounded Candidate Cache and Worker Score Owner calls; it does not discover or mutate Tasks | Candidate ranking beyond bounded due order and matcher priority |
-| Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item-rule on-demand acquisition including `{}` as Group-unrestricted, stable Item binding, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
+| Task dispatch | Implemented over the same verified RUNNING batch with cached Task-rule candidates or Item-rule on-demand acquisition including `{}` as Group-unrestricted, stable Item binding, failed-result-before-`FINAL_FAILED` exhaustion/TTL closure, RUNNING pacing, immediate idle close or private idle park, and DeliveryCommand append | Recent-first Redis Task acquisition |
 | Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, Server-owned persistent Endpoint Binding, complete multi-endpoint WebSocket/Socket Adapter instances with workerId-keyed bounded retained-verification caches, stateless bounded batch acquisition, fixed system-polling route, Java 11 Worker Core Polling/WebSocket/Socket state machines, caller-targeted DIRECT_CALL using a shared Worker Command Hash plus Server-memory Adapter FIFO/correlation, and the low-priority KERNEL Adapter-snapshot bridge | Authentication, distributed Direct Call waiter state, explicit unbind/cache invalidation, endpoint migration, same-endpoint Adapter HA, pending/ack, polling Serviceability evidence, and production protocol policy |
-| Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
+| Result routing | Fixed Java production policy implemented with unit, Redis and Runtime Boundary proof; SUCCESS stores the unified Item Result before `FINAL_SUCCESS`, while retryable FAILURE mutates only the correlated Worker lease | Failure reason/history and stronger queue reliability require separate owners and invariants |
 
 Both WorkerAllocationMechanisms also have Runtime Boundary Redis E2E proof from
 Java control and Task data APIs through Java scheduling and the Java Server
@@ -230,7 +235,7 @@ Worker Delivery API. `PRECOMPUTED_TASK_RULE` uses Worker Core's polling transpor
 `ON_DEMAND_ITEM_RULE` uses independent Netty WebSocket/Socket Adapter endpoints and
 the matching Worker transports. Tests install a local observable handler
 rather than a framework-owned business handler. All paths converge through
-Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
+Result-Routing, `FINAL_SUCCESS`, Java unified Result query, and exact Worker
 lease release. Java controllers and Pacers use the same stable Kernel Owner
 contracts. Task business commands use Java Redis providers, and production
 uses Java for every Pacer.
@@ -257,6 +262,9 @@ xa_mass:<scope>:task:<taskId>:item_score
 xa_mass:<scope>:task:<taskId>:items
 xa_mass:<scope>:task:<taskId>:results
   Task-local Item score and record/result HASHes
+
+xa_mass:<scope>:task:<taskId>:results:success
+  Task-local successful Message ID classification SET
 
 xa_mass:<scope>:delivery:commands:<endpointManagerId>
   one shared sparse DeliveryCommand HASH per Adapter route; TASK append may

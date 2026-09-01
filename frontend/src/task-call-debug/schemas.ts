@@ -10,6 +10,7 @@ export const taskCallDebugOutcomeSchema: z.ZodType<TaskCallDebugOutcome> =
         opaqueResultPayload: z.string()
       })
       .strict(),
+    z.object({ status: z.literal("failed") }).strict(),
     z.object({ status: z.literal("not_observed") }).strict()
   ]);
 
@@ -21,7 +22,7 @@ export const taskCallDebugResponseSchema = z
 
 export const taskCallDebugResultLoadResponseSchema = z
   .object({
-    results: z.record(z.string().min(1), z.string())
+    results: z.record(z.string().min(1), taskCallDebugOutcomeSchema)
   })
   .strict();
 

@@ -32,18 +32,39 @@ There is no endpoint-manager, Task, WorkerGroup or producer partition,
 pending/ack state, retry, replay, repair scan or cross-key Lua. `src`,
 `sourceId`, raw `outcomeCode` and `forward` remain encoded evidence fields.
 
-## Successful Result Truth
+## TaskItem Result Projection
 
-Ingress LISTs are transient evidence. Task success payload truth is owned by
+Ingress LISTs are transient evidence. TaskItem result projection is owned by
 `TaskRuntime`:
 
 ```text
 xa_mass:<scope>:task:<taskId>:results
-  HASH messageId -> payload
+  HASH messageId -> success payload | internal failed marker
+
+xa_mass:<scope>:task:<taskId>:results:success
+  SET messageId
 ```
 
-Only the SUCCESS strategy stores payload and promotes the TaskItem. FAILURE
-does not store payload or rewrite the Item retry coordinate.
+One owner-local Lua operation stores a success payload in the HASH and adds
+the same Message ID to the Success SET. Failed-result storage writes the fixed
+internal marker only when the Message ID is not in that SET. Therefore a late
+SUCCESS may replace failed, while a later failed write cannot replace success.
+The marker is never returned as an opaque payload.
+
+Point reads use bounded `HMGET` plus `SMISMEMBER`. Scan reads use bounded
+`HSCAN COUNT 1000` pages plus one page-local `SMISMEMBER`. Payloads classified
+as successful are re-read after classification so a concurrent failed-to-
+success replacement cannot expose the internal marker as a success payload. A
+present HASH field is `succeeded` or `failed` according to the SET; an absent
+field is not observed. The SET is a TaskRuntime-private classification index,
+not scheduling truth, a queue, or a second lifecycle Owner.
+
+The SUCCESS Result policy stores success then promotes the TaskItem to
+`FINAL_SUCCESS`. Ordinary retryable FAILURE evidence does not store an Item
+result or rewrite the Item coordinate. Task Dispatch stores failed only when
+the existing retry budget is exhausted or Item TTL has elapsed, and only then
+promotes the same IDs to `FINAL_FAILED`. A failed-result write exception leaves
+the Item score unchanged for a later idempotent Dispatch round.
 
 ## Owner Rules
 
@@ -65,20 +86,25 @@ TaskResultBatchPolicy
   SUCCESS/FAILURE semantic event publication
 
 TaskItemResultEvents
-  owns the TaskItem success/failure event meaning; its current success
-  implementation stores payload then promotes finality, while failure leaves
-  the existing claim coordinate unchanged
+  owns successful TaskItem Result meaning; it stores payload then promotes
+  finality
 
 WorkerExecutionResultEvents
   owns Worker execution success/failure event meaning and is the only Result
   layer allowed to unwrap WorkerLeaseReference into the score-owner fence
 
 TaskRuntime
-  owns Task-scoped last-success payload truth
+  owns the Task-scoped unified Result HASH and private Success SET
+
+TaskDispatchPolicy
+  owns exhaustion/TTL classification and orders failed-result storage before
+  FINAL_FAILED promotion
 
 TaskItemScoreBandCore / WorkerScoreCore
   own score validation and mutation
 ```
 
 The old `worker-failure` and `adapter-rejection` LISTs are not read or migrated.
-They were transient best-effort evidence and have no compatibility alias.
+They were transient best-effort evidence and have no compatibility alias. The
+unified Result shape is also a clean cut: a scope containing legacy HASH
+entries without the Success SET must be cleared or recreated before use.

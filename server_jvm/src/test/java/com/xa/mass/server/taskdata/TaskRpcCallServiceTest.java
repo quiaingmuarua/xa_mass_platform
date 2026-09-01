@@ -20,6 +20,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
@@ -39,19 +40,27 @@ import org.springframework.web.context.request.async.DeferredResult;
 class TaskRpcCallServiceTest {
 
     @Test
-    void batchReturnsObservedAndNotObservedResultsWithoutReadingItemState() {
+    void batchReturnsSucceededFailedAndNotObservedWithoutReadingItemState() {
         TaskCallItemSubmission submission = mock(TaskCallItemSubmission.class);
         TaskRuntime taskRuntime = mock(TaskRuntime.class);
         TaskRpcProperties properties = properties(10);
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
-                .thenReturn(submitted("message-1", "message-2"));
-        var loaded = new LinkedHashMap<String, String>();
-        loaded.put("message-1", "{\"valid\":true}");
-        loaded.put("message-2", null);
-        when(taskRuntime.loadTaskItemSuccessResults(
+                .thenReturn(submitted(
+                        "message-1",
+                        "message-2",
+                        "message-3"
+                ));
+        var loaded = new LinkedHashMap<String, TaskItemResult>();
+        loaded.put(
+                "message-1",
+                TaskItemResult.succeeded("{\"valid\":true}")
+        );
+        loaded.put("message-2", TaskItemResult.failed());
+        loaded.put("message-3", null);
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
-                List.of("message-1", "message-2")
+                List.of("message-1", "message-2", "message-3")
         )).thenReturn(loaded);
 
         DeferredResult<TaskRpcCallResponse> deferred =
@@ -60,7 +69,8 @@ class TaskRpcCallServiceTest {
                         new TaskRpcCallRequest(
                                 List.of(
                                         item("message-1", Map.of("n", 1)),
-                                        item("message-2", Map.of("n", 2))
+                                        item("message-2", Map.of("n", 2)),
+                                        item("message-3", Map.of("n", 3))
                                 ),
                                 1_000L
                         )
@@ -71,6 +81,8 @@ class TaskRpcCallServiceTest {
         assertThat(response.results().get("message-1").status()
                 .wireValue()).isEqualTo("succeeded");
         assertThat(response.results().get("message-2").status()
+                .wireValue()).isEqualTo("failed");
+        assertThat(response.results().get("message-3").status()
                 .wireValue()).isEqualTo("not_observed");
         verify(taskRuntime, never()).loadTaskItems(anyString(), anyList());
     }
@@ -83,12 +95,12 @@ class TaskRpcCallServiceTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1", "message-2"));
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1", "message-2")
         )).thenReturn(Map.of(
-                "message-1", "one",
-                "message-2", "two"
+                "message-1", TaskItemResult.succeeded("one"),
+                "message-2", TaskItemResult.succeeded("two")
         ));
 
         DeferredResult<TaskRpcCallResponse> deferred =
@@ -126,10 +138,13 @@ class TaskRpcCallServiceTest {
         TaskRpcWaitRegistry registry = new TaskRpcWaitRegistry(properties);
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1")
-        )).thenReturn(Map.of("message-1", "done"));
+        )).thenReturn(Map.of(
+                "message-1",
+                TaskItemResult.succeeded("done")
+        ));
 
         service(submission, taskRuntime, registry, properties).call(
                 "task-1",
@@ -164,7 +179,7 @@ class TaskRpcCallServiceTest {
                     List<TaskItem> items = invocation.getArgument(1);
                     return submitted(items.get(0).messageId());
                 });
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 anyString(),
                 anyList()
         )).thenReturn(Map.of());
@@ -215,10 +230,10 @@ class TaskRpcCallServiceTest {
         )).isTrue();
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1", "message-2"));
-        var loaded = new LinkedHashMap<String, String>();
-        loaded.put("message-1", "observed");
+        var loaded = new LinkedHashMap<String, TaskItemResult>();
+        loaded.put("message-1", TaskItemResult.succeeded("observed"));
         loaded.put("message-2", null);
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1", "message-2")
         )).thenReturn(loaded);
@@ -254,7 +269,7 @@ class TaskRpcCallServiceTest {
         registry.shutdown();
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1")
         )).thenReturn(Map.of());
@@ -287,10 +302,13 @@ class TaskRpcCallServiceTest {
         )).isTrue();
         when(submission.submit(eq("task-1"), anyList()))
                 .thenReturn(submitted("message-1"));
-        when(taskRuntime.loadTaskItemSuccessResults(
+        when(taskRuntime.loadTaskItemResults(
                 "task-1",
                 List.of("message-1")
-        )).thenReturn(Map.of("message-1", "observed"));
+        )).thenReturn(Map.of(
+                "message-1",
+                TaskItemResult.succeeded("observed")
+        ));
 
         DeferredResult<TaskRpcCallResponse> deferred =
                 service(submission, taskRuntime, registry, properties).call(
@@ -351,7 +369,7 @@ class TaskRpcCallServiceTest {
             )).isInstanceOfSatisfying(ServerException.class, error ->
                     assertThat(error.errorCode()).isEqualTo(entry.getValue())
             );
-            verify(taskRuntime, never()).loadTaskItemSuccessResults(
+            verify(taskRuntime, never()).loadTaskItemResults(
                     anyString(),
                     anyList()
             );

@@ -66,7 +66,8 @@ Host loss must not revoke the checkpoint Result.
 Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,
 non-witness outcome or capability payload. `NOT_OBSERVED` is an immediate
-observation, not a Worker failure. Witnesses are observed with
+observation, not a Worker failure; `FAILED` is a Result state but not a
+successful witness. Witnesses are observed with
 `results:load`; this lane does not poll `results:export`. In-flight loss also
 offers three delay and three fail background Items. There is no assertion that
 these background Items execute once, produce a terminal Result or determine a

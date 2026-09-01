@@ -62,11 +62,18 @@ class RuntimeApiClientTest {
                         )
                 ));
             } else if (path.endsWith("/results:load")) {
-                Map<String, Object> results = new java.util.LinkedHashMap<>();
-                results.put("message-1", Map.of("outcomeCode", "200"));
-                results.put("message-2", null);
                 respondJson(exchange, 200, Map.of(
-                        "results", results
+                        "results", Map.of(
+                                "message-1",
+                                Map.of(
+                                        "status", "succeeded",
+                                        "opaqueResultPayload", "result"
+                                ),
+                                "message-2",
+                                Map.of("status", "not_observed"),
+                                "message-3",
+                                Map.of("status", "failed")
+                        )
                 ));
             } else {
                 respondJson(exchange, 404, Map.of());
@@ -114,7 +121,7 @@ class RuntimeApiClientTest {
             );
             assertThat(client.loadResults(
                     "task-1",
-                    List.of("message-1", "message-2")
+                    List.of("message-1", "message-2", "message-3")
             )).containsExactly("message-1");
 
             assertThat(requests).anySatisfy(body -> {

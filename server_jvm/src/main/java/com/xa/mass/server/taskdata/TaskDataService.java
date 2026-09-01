@@ -115,14 +115,7 @@ public final class TaskDataService {
         }
     }
 
-    public TaskItemResultsLoadResponse loadTaskItemSuccessResults(
-            String taskId,
-            List<String> messageIds
-    ) {
-        return loadTaskItemSuccessResultsInternal(taskId, messageIds);
-    }
-
-    private TaskItemResultsLoadResponse loadTaskItemSuccessResultsInternal(
+    public TaskItemResultsLoadResponse loadTaskItemResults(
             String taskId,
             List<String> messageIds
     ) {
@@ -136,7 +129,7 @@ public final class TaskDataService {
             if (descriptor == null) {
                 throw new ServerException(
                         ServerErrorCode.TASK_NOT_FOUND,
-                        "taskData.loadSuccessResults",
+                        "taskData.loadResults",
                         null,
                         null
                 );
@@ -145,23 +138,21 @@ public final class TaskDataService {
                     && !isManagedCallTask(descriptor)) {
                 throw new ServerException(
                         ServerErrorCode.TASK_OPERATION_NOT_SUPPORTED,
-                        "taskData.loadSuccessResults",
+                        "taskData.loadResults",
                         "Task does not support Result load",
                         null
                 );
             }
-            return new TaskItemResultsLoadResponse(
-                    taskRuntime.loadTaskItemSuccessResults(
-                            taskId,
-                            uniqueIds
-                    )
+            return TaskItemResultsLoadResponse.fromObservedResults(
+                    uniqueIds,
+                    taskRuntime.loadTaskItemResults(taskId, uniqueIds)
             );
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
             throw new ServerException(
                     ServerErrorCode.TASK_DATA_UNAVAILABLE,
-                    "taskData.loadSuccessResults",
+                    "taskData.loadResults",
                     null,
                     error
             );

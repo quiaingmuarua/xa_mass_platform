@@ -74,7 +74,9 @@ WorkerGroup registration creates no Server mapping or second Task catalog. In
 addition to the create-only Group declaration, it derives one internal Task
 coordinate, creates the fixed `ON_DEMAND_ITEM_RULE + PARK_WHEN_IDLE` descriptor
 through Kernel owners, and approves it. Calls submit one Item through the
-Kernel Task Call command and observe last success through one shared probe;
+Kernel Task Call command and observe its unified terminal Result through one
+shared probe; both `succeeded` and `failed` complete the bounded wait, while
+only an absent Result remains `not_observed`.
 Finite Task input remains caller-owned and is appended through the ordinary
 Task data API in chunks of at most 100. Result export waits only for a finite
 Task's `TERMINAL` score, scans the existing Result owner Hash, and streams a
@@ -166,8 +168,8 @@ POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/tasks/{taskId}/results:export
 ```
 
-Finite Tasks support explicit approval, close, ordinary Item append and result
-load. Managed Tasks support synchronous Item Call and result load; their
+Finite Tasks support explicit approval, close, ordinary Item append and Result
+load. Managed Tasks support synchronous Item Call and Result load; their
 lifecycle and ordinary append remain non-public. Calling an operation with the
 wrong public Task type returns `400/12008`; a missing Task returns
 `400/12002`.
@@ -179,9 +181,10 @@ are not wrapped in a common envelope.
 
 `results:export` supports only finite Tasks. It observes the Task score once
 and returns `400/12010` immediately unless the Task is already `TERMINAL`.
-Once terminal, Server iterates the Task-scoped success Result Hash through
-bounded owner `HSCAN COUNT 1000` pages, deduplicates Redis cursor observations
-by caller-owned `messageId`, and streams `application/x-ndjson`. Only one
+Once terminal, Server iterates the Task-scoped unified Result HASH through
+bounded owner `HSCAN COUNT 1000` pages, ignores entries
+classified as failed, deduplicates Redis cursor observations by caller-owned
+`messageId`, and streams `application/x-ndjson`. Only one
 Result scan and temporary-file generation may run per Task in one Server
 process; an overlapping request returns `400/12009`. The guard is released
 after file generation, so independent response transfers may overlap. Each
@@ -198,14 +201,23 @@ Worker restriction inside the Group.
 `items:call` accepts `1..100` Items, submits the bounded batch once and
 synchronously waits within the caller's `waitTimeoutMillis`. The response is a
 Message-ID-keyed result map. Once submission is accepted it returns HTTP `200`;
-each observed entry is `succeeded`, while timeout, saturated observation
-capacity, or Registry shutdown marks only the remainder `not_observed` without
-inferring their runtime state. It preserves immediately observed successes.
+each observed entry is `succeeded` or `failed`, while timeout, saturated
+observation capacity, or Registry shutdown marks only the remainder
+`not_observed` without inferring their runtime state. A Dispatch-terminal
+failed Result completes that Item's waiter without a payload. It preserves all
+immediately observed succeeded or failed entries.
 Observation saturation does not return `429`. Duplicate Message IDs in one
 request use the latest Item and produce one response entry. The caller can
 later read the same Message IDs through the same Task-ID-scoped result route.
 Neither route selects a Worker; the Item allocation rule remains Kernel
 scheduling input.
+
+`results:load` returns one state object for every deduplicated requested
+Message ID: `succeeded`, `failed`, or `not_observed`. Only `succeeded` includes
+`opaqueResultPayload`; failed carries no Worker payload or reason. A late
+success may replace an earlier failed snapshot, so each response is a read-time
+view rather than an immutable historical event. Server does not read TaskItem
+score or Task score to derive these states.
 
 Task Call remains at-least-once. Submission spans existing owner operations,
 so an Item write followed by an unconfirmed idle-park release repair can still return `503`.

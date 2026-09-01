@@ -136,8 +136,10 @@ go through Kernel scheduling; the browser does not interpret the rule or infer
 which Worker matched. Each Task retains at most 20 diagnostic exchanges in the
 current Pinia/browser memory. A `not_observed` response means submission was
 accepted without a Result in the bounded wait window, so the user may manually
-load that Message ID later; there is no automatic polling. Browser refresh
-clears this history, and Mock mode never fabricates Task Call results.
+load that Message ID later; there is no automatic polling. Both `items:call`
+and manual `results:load` may instead return `failed`, which is shown as a
+terminal Item Result without payload or failure reason. Browser refresh clears
+this history, and Mock mode never fabricates Task Call results.
 
 `Finite Task Workbench` is a drawer layered over the preview and is available
 only in API mode:

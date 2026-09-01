@@ -1,6 +1,7 @@
 package com.xa.mass.server.taskdata;
 
 import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.server.error.ServerErrorCode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -92,18 +93,18 @@ public final class TaskRpcResultProbe implements SmartLifecycle {
             List<String> messageIds = requests.stream()
                     .map(TaskRpcWaitRegistry.ProbeRequest::messageId)
                     .toList();
-            Map<String, String> results =
-                    taskRuntime.loadTaskItemSuccessResults(
+            Map<String, TaskItemResult> results =
+                    taskRuntime.loadTaskItemResults(
                             taskId,
                             messageIds
                     );
             for (TaskRpcWaitRegistry.ProbeRequest request : requests) {
-                String payload = results.get(request.messageId());
-                if (payload != null) {
-                    registry.completeSuccess(
+                TaskItemResult result = results.get(request.messageId());
+                if (result != null) {
+                    registry.completeResult(
                             taskId,
                             request.messageId(),
-                            payload
+                            result
                     );
                 }
                 registry.finishProbe(taskId, request.messageId(), 0);

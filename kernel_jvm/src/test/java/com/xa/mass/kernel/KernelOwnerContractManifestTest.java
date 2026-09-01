@@ -83,8 +83,12 @@ class KernelOwnerContractManifestTest {
                     TaskRuntime.TaskItemAppendResult.class
             ),
             Map.entry(
-                    "TaskItemSuccessResultPage",
-                    TaskRuntime.TaskItemSuccessResultPage.class
+                    "TaskItemResult",
+                    TaskRuntime.TaskItemResult.class
+            ),
+            Map.entry(
+                    "TaskItemResultPage",
+                    TaskRuntime.TaskItemResultPage.class
             ),
             Map.entry(
                     "TaskItemScoreState",

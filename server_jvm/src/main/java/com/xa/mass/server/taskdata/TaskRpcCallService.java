@@ -8,6 +8,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskIdleDisposition;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskRpcCallRequest;
@@ -96,7 +97,7 @@ public final class TaskRpcCallService {
         }
         requireAcceptedSubmission(submission, messageIds);
 
-        Map<String, String> observed = loadImmediateResults(
+        Map<String, TaskItemResult> observed = loadImmediateResults(
                 taskId,
                 messageIds
         );
@@ -174,21 +175,21 @@ public final class TaskRpcCallService {
         return timeout;
     }
 
-    private Map<String, String> loadImmediateResults(
+    private Map<String, TaskItemResult> loadImmediateResults(
             String taskId,
             List<String> messageIds
     ) {
         try {
-            Map<String, String> loaded =
-                    taskRuntime.loadTaskItemSuccessResults(
+            Map<String, TaskItemResult> loaded =
+                    taskRuntime.loadTaskItemResults(
                             taskId,
                             messageIds
                     );
-            var observed = new LinkedHashMap<String, String>();
+            var observed = new LinkedHashMap<String, TaskItemResult>();
             messageIds.forEach(messageId -> {
-                String payload = loaded.get(messageId);
-                if (payload != null) {
-                    observed.put(messageId, payload);
+                TaskItemResult result = loaded.get(messageId);
+                if (result != null) {
+                    observed.put(messageId, result);
                 }
             });
             return observed;
@@ -225,7 +226,7 @@ public final class TaskRpcCallService {
 
     private static boolean allObserved(
             List<String> messageIds,
-            Map<String, String> observed
+            Map<String, TaskItemResult> observed
     ) {
         return messageIds.stream().allMatch(messageId ->
                 observed.get(messageId) != null);

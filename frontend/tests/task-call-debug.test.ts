@@ -145,9 +145,10 @@ describe("HttpTaskCallDebugClient", () => {
     expect(body.items[0]).not.toHaveProperty("taskAllocationRule");
   });
 
-  it("accepts succeeded and not_observed but rejects the wrong Result identity", async () => {
+  it("accepts all Result states but rejects the wrong Result identity", async () => {
     for (const outcome of [
       { status: "succeeded", opaqueResultPayload: "" },
+      { status: "failed" },
       { status: "not_observed" }
     ] as const) {
       const client = httpClient({ results: { "message-1": outcome } });
@@ -170,22 +171,35 @@ describe("HttpTaskCallDebugClient", () => {
     }
   });
 
-  it("loads only the requested Message ID and accepts an absent Result", async () => {
+  it("loads exactly one state for the requested Message ID", async () => {
     const post = vi
       .fn()
-      .mockResolvedValueOnce({ status: 200, data: { results: {} } })
       .mockResolvedValueOnce({
         status: 200,
-        data: { results: { "message-1": '{"valid":true}' } }
+        data: { results: { "message-1": { status: "not_observed" } } }
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          results: {
+            "message-1": {
+              status: "succeeded",
+              opaqueResultPayload: '{"valid":true}'
+            }
+          }
+        }
       });
     const client = new HttpTaskCallDebugClient("/api", {
       post
     } as unknown as AxiosInstance);
 
-    await expect(client.loadResult("task/a", "message-1")).resolves.toBeUndefined();
-    await expect(client.loadResult("task/a", "message-1")).resolves.toBe(
-      '{"valid":true}'
-    );
+    await expect(client.loadResult("task/a", "message-1")).resolves.toEqual({
+      status: "not_observed"
+    });
+    await expect(client.loadResult("task/a", "message-1")).resolves.toEqual({
+      status: "succeeded",
+      opaqueResultPayload: '{"valid":true}'
+    });
     expect(post).toHaveBeenLastCalledWith(
       "/v1/tasks/task%2Fa/results:load",
       { messageIds: ["message-1"] },
@@ -196,7 +210,7 @@ describe("HttpTaskCallDebugClient", () => {
     );
 
     const wrongIdentity = httpClient({
-      results: { "message-2": '{"valid":true}' }
+      results: { "message-2": { status: "failed" } }
     });
     await expect(wrongIdentity.loadResult("task-1", "message-1")).rejects.toMatchObject(
       { kind: "schema" }
@@ -274,7 +288,10 @@ describe("Task Call Debug browser-memory store", () => {
   it("keeps not_observed as accepted evidence and loads its Result manually", async () => {
     const client: TaskCallDebugClient = {
       callTask: vi.fn().mockResolvedValue({ status: "not_observed" }),
-      loadResult: vi.fn().mockResolvedValue('{"valid":true}')
+      loadResult: vi.fn().mockResolvedValue({
+        status: "succeeded",
+        opaqueResultPayload: '{"valid":true}'
+      })
     };
     const store = createTaskCallDebugStore(client, "api");
 
@@ -291,12 +308,12 @@ describe("Task Call Debug browser-memory store", () => {
     });
   });
 
-  it("keeps not_observed when a manual load is absent or fails", async () => {
+  it("keeps not_observed when a manual load has no observation or errors", async () => {
     const client: TaskCallDebugClient = {
       callTask: vi.fn().mockResolvedValue({ status: "not_observed" }),
       loadResult: vi
         .fn()
-        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce({ status: "not_observed" })
         .mockRejectedValueOnce(
           new TaskCallDebugError({
             kind: "http",
@@ -321,6 +338,31 @@ describe("Task Call Debug browser-memory store", () => {
         requestId: "request-1"
       }
     });
+  });
+
+  it("records a terminal failed Result from call and manual load", async () => {
+    const callFailed: TaskCallDebugClient = {
+      callTask: vi.fn().mockResolvedValue({ status: "failed" }),
+      loadResult: vi.fn()
+    };
+    const firstStore = createTaskCallDebugStore(callFailed, "api");
+    const failedFromCall = await firstStore.send(draft());
+    expect(failedFromCall.state).toBe("failed");
+    expect(failedFromCall.safeError).toBeUndefined();
+
+    setActivePinia(createPinia());
+    const loadFailed: TaskCallDebugClient = {
+      callTask: vi.fn().mockResolvedValue({ status: "not_observed" }),
+      loadResult: vi.fn().mockResolvedValue({ status: "failed" })
+    };
+    const secondStore = createTaskCallDebugStore(loadFailed, "api");
+    const accepted = await secondStore.send(draft());
+    await secondStore.loadResult("task-1", accepted.localId);
+    expect(accepted).toMatchObject({
+      state: "failed",
+      lastCheckedAt: expect.any(String)
+    });
+    expect(accepted.safeError).toBeUndefined();
   });
 
   it("isolates Tasks, permits different Task calls, and limits each history", async () => {

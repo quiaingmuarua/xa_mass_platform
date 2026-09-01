@@ -498,7 +498,7 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public Map<String, String> loadTaskItemSuccessResults(
+        public void storeTaskItemFailedResults(
                 String taskId,
                 List<String> messageIds
         ) {
@@ -506,7 +506,15 @@ class DefaultTaskCommandsTest {
         }
 
         @Override
-        public TaskItemSuccessResultPage scanTaskItemSuccessResults(
+        public Map<String, TaskItemResult> loadTaskItemResults(
+                String taskId,
+                List<String> messageIds
+        ) {
+            throw unsupported();
+        }
+
+        @Override
+        public TaskItemResultPage scanTaskItemResults(
                 String taskId,
                 String cursor,
                 int countHint

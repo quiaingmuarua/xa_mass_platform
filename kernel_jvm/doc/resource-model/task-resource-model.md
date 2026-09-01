@@ -245,10 +245,10 @@ allocation without creating general `get/list/query/update/delete Task` APIs.
 Missing or corrupt descriptor rows map to `None` and fail that Task closed for
 the bounded round.
 
-## TaskItem And Success Result
+## TaskItem And Unified Result
 
-`TaskRuntime` also owns canonical TaskItem records and Task-scoped last-success
-payloads:
+`TaskRuntime` also owns canonical TaskItem records and a Task-scoped Result
+projection:
 
 ```text
 TaskItem
@@ -265,8 +265,9 @@ TaskItem
 append_items(task_id, items)
 load_task_items(task_id, message_ids)
 store_task_item_success_results(task_id, results)
-load_task_item_success_results(task_id, message_ids)
-scan_task_item_success_results(task_id, cursor, count_hint)
+store_task_item_failed_results(task_id, message_ids)
+load_task_item_results(task_id, message_ids)
+scan_task_item_results(task_id, cursor, count_hint)
 ```
 
 `messageId` is unique only inside a Task. Re-append replaces the canonical
@@ -274,12 +275,13 @@ record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
 
-The scan operation exposes one Task's existing success-result HASH in bounded
-owner pages. One call performs one Redis `HSCAN` with a `1..1000` COUNT hint
-and returns the next cursor plus opaque `messageId -> payload` entries. COUNT
-is not a strict page-size contract, ordering is undefined, and callers must
-deduplicate across pages. This supports caller-owned export without adding a
-second result store or allowing Server to read Redis directly.
+The scan operation exposes one Task's existing Result HASH in bounded owner
+pages. One call performs one Redis `HSCAN` with a `1..1000` COUNT hint and one
+page-local Success SET classification query. It returns the next cursor plus
+`messageId -> TaskItemResult` entries. COUNT is not a strict page-size
+contract, ordering is undefined, and callers must deduplicate across pages.
+This supports caller-owned success-only export without adding a second result
+store or allowing Server to read Redis directly.
 
 `eventCode` stores the full opaque Event Name and is passed through to the
 selected Worker's local handler dispatch. Kernel Task initialization, matching, and
@@ -321,21 +323,29 @@ Score-eligible bounded candidate IDs. TaskRuntime owns canonical persistence,
 while Matcher owns DSL syntax, rule-derived identity range and canonical
 evaluation.
 
-The success-result HASH is last-success truth. It is separate from TaskItem
-score outcome and does not store failure history. The owner exposes one
-bounded, Task-scoped read of requested `messageId` values. One call maps to
-one Task result HASH and one `HMGET`; cross-Task batching remains caller
-orchestration rather than a TaskRuntime contract. The read returns each opaque
-last-success payload or `null` and does not infer pending or failure state.
+The Result HASH stores either an opaque success payload or the fixed internal
+failed marker. The companion `results:success` SET classifies successful
+Message IDs. Success atomically writes both structures; failed writes the HASH
+only when the SET does not contain the ID. This makes success absorbing
+relative to later failure writes while allowing a late success to replace an
+earlier failed snapshot. The marker never leaves TaskRuntime as payload.
 
-The Server RPC wait path uses only this result truth. It does not read the
-TaskItem record, Item score, or Task score while waiting. A missing success
-payload means only "not observed in this wait window"; Worker failure,
-FINAL_FAILED, pending execution, and a delayed result intentionally remain
-indistinguishable to RPC v1. TaskItem records are not deleted by this path.
-RPC v1 observes exactly one TaskItem. Batch append does not create a
-multi-Item waiter or completion aggregate; callers use the existing
-Task-scoped result read for later polling.
+The owner exposes one bounded, Task-scoped point read of requested
+`messageId` values. It uses bounded `HMGET` and `SMISMEMBER`, then re-observes
+payloads classified successful to close the concurrent late-success window;
+cross-Task batching remains caller orchestration rather than a TaskRuntime
+contract. The read returns `succeeded`, `failed`, or a missing value. The
+Success SET is classification infrastructure, not Item finality or scheduling
+truth. This shape is a clean cut and does not classify legacy HASH-only success
+rows.
+
+The Server RPC wait path uses only this projection. It does not read the
+TaskItem record, Item score, or Task score while waiting. Both succeeded and
+failed complete the corresponding waiter; only a missing HASH field remains
+`not_observed` until the bounded wait ends. One batch waiter completes when all
+requested Message IDs are observed or its window closes. TaskItem records are
+not deleted by this path, and a caller may later load the same IDs without
+automatic polling.
 
 ## Scheduling Read Paths
 
@@ -486,8 +496,9 @@ descriptor keys.
 Bounded descriptor reads pipeline one `HMGET` per requested Task key. They do
 not use `SCAN`, `HGETALL`, or a second descriptor index.
 
-TaskItem records and success results use Task-scoped HASH keys; Item scheduling
-identity remains in the separate TaskItem score ZSET.
+TaskItem records and unified Results use Task-scoped HASH keys; successful IDs
+also use the Task-scoped private classification SET. Item scheduling identity
+remains in the separate TaskItem score ZSET.
 
 Each canonical Item JSON stores `allocationRule` as either an object or null.
 It is resource metadata, never encoded into Item score.
@@ -497,8 +508,8 @@ It is resource metadata, never encoded into Item score.
 The public contracts live in
 [`kernel_jvm/task`](../../src/main/java/com/xa/mass/kernel/task),
 [`kernel_jvm/score`](../../src/main/java/com/xa/mass/kernel/score), and their
-owner-local `redis` packages. Task create, lifecycle, Item append and
-last-success reads use the shapes above. Create fixes the owner-internal initial
+owner-local `redis` packages. Task create, lifecycle, Item append and unified
+Result reads use the shapes above. Create fixes the owner-internal initial
 PRE_REVIEW suffix to `1`; no caller supplies score structure.
 
 ## Explicit Non-Owners
