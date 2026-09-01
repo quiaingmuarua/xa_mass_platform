@@ -19,6 +19,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path SERVER_PACKAGE = SERVER_SOURCE.resolve(
             "com/xa/mass/server"
     );
+    private static final Path API_V1 = SERVER_PACKAGE.resolve("api/v1");
+    private static final Path CONTROLLERS = API_V1.resolve("controller");
+    private static final Path CONTRACTS = API_V1.resolve("contract");
     private static final Path SHARED_REDIS = SERVER_SOURCE.resolve(
             "com/xa/mass/server/assembly/redis"
     );
@@ -66,9 +69,7 @@ class ServerArchitectureBoundaryTest {
     private static final Path SERVICEABILITY = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/serviceability"
     );
-    private static final Path HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/api/v1/workerdelivery"
-    );
+    private static final Path HTTP = CONTROLLERS;
     private static final Path DELIVERY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/delivery"
     );
@@ -110,8 +111,8 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW = SERVER_SOURCE.resolve(
             "com/xa/mass/server/runtimeview"
     );
-    private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/api/v1/runtimeview"
+    private static final Path RUNTIME_VIEW_HTTP = CONTROLLERS.resolve(
+            "RuntimeViewController.java"
     );
     private static final Path TASK = SERVER_SOURCE.resolve(
             "com/xa/mass/server/task"
@@ -152,8 +153,40 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".worker.preparation");
     }
 
-    private static final Path WORKER_SCHEDULING_HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/api/v1/WorkerSchedulingController.java"
+    @Test
+    void apiV1SeparatesControllersFromVersionedContracts()
+            throws IOException {
+        try (var paths = Files.list(API_V1)) {
+            assertThat(paths.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .toList())
+                    .containsExactlyInAnyOrder("controller", "contract");
+        }
+        try (var paths = Files.list(CONTRACTS)) {
+            assertThat(paths.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .toList())
+                    .containsExactlyInAnyOrder(
+                            "delivery",
+                            "runtimeview",
+                            "task",
+                            "worker"
+                    );
+        }
+
+        assertThat(countJavaSources(CONTROLLERS)).isEqualTo(10L);
+        assertThat(CONTRACTS.resolve("ApiErrorResponse.java"))
+                .isRegularFile();
+        assertThat(readSources(CONTRACTS))
+                .doesNotContain("@RestController");
+        assertThat(readSourcesExcluding(API_V1, CONTROLLERS))
+                .doesNotContain("@RestController");
+        assertThat(readProductionJavaSourcesOutsideServer())
+                .doesNotContain("com.xa.mass.server.api.v1");
+    }
+
+    private static final Path WORKER_SCHEDULING_HTTP = CONTROLLERS.resolve(
+            "WorkerSchedulingController.java"
     );
     @Test
     void serverUsesKernelContractsAndKeepsRedisInNamedOwners()
@@ -417,7 +450,7 @@ class ServerArchitectureBoundaryTest {
         )))
                 .doesNotContain("DeferredResult")
                 .doesNotContain("ResponseEntity")
-                .doesNotContain("server.api.v1.directcall");
+                .doesNotContain("server.api.v1.contract");
     }
 
     @Test
@@ -612,6 +645,36 @@ class ServerArchitectureBoundaryTest {
                     .forEach(path -> appendSource(sources, path));
         }
         return sources.toString();
+    }
+
+    private static long countJavaSources(Path root) throws IOException {
+        try (var paths = Files.walk(root)) {
+            return paths.filter(path -> path.toString().endsWith(".java"))
+                    .count();
+        }
+    }
+
+    private static String readProductionJavaSourcesOutsideServer()
+            throws IOException {
+        Path repositoryRoot = Path.of("..").toAbsolutePath().normalize();
+        Path serverModule = Path.of(".").toAbsolutePath().normalize();
+        StringBuilder sources = new StringBuilder();
+        try (var paths = Files.walk(repositoryRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> isProductionJavaSource(path.toString()))
+                    .filter(path -> !path.toAbsolutePath()
+                            .normalize()
+                            .startsWith(serverModule))
+                    .forEach(path -> appendSource(sources, path));
+        }
+        return sources.toString();
+    }
+
+    private static boolean isProductionJavaSource(String path) {
+        String normalized = path.replace('\\', '/');
+        return normalized.endsWith(".java")
+                && normalized.contains("/src/main/java/")
+                && !normalized.contains("/build/");
     }
 
     private static void appendSource(StringBuilder sources, Path path) {

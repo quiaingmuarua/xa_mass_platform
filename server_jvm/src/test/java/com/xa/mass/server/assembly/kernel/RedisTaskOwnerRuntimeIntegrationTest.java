@@ -27,7 +27,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
 import com.xa.mass.kernel.task.TaskRuntime.WorkerAllocationMechanism;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
-import com.xa.mass.server.api.v1.TaskControlController;
+import com.xa.mass.server.api.v1.controller.TaskControlController;
 import com.xa.mass.server.task.TaskCreationService;
 import com.xa.mass.server.task.TaskLifecycleService;
 import com.xa.mass.server.testsupport.RedisTestScope;

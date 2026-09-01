@@ -480,8 +480,10 @@ Adapter Command consume returns `200`. Delivery rejection still uses the same
 
 ## Assembly Boundaries
 
-Production packages use stable functional roots. HTTP contracts remain under
-`api`; Task use cases under `task` (`call` and `result`); Worker responsibilities
+Production packages use stable functional roots. The versioned HTTP surface
+centralizes route adapters under `api.v1.controller` and groups wire types under
+`api.v1.contract` by Task, Worker, Runtime View and Delivery vocabulary. Task
+use cases remain under `task` (`call` and `result`); Worker responsibilities
 under `worker` (`group`, `preparation`, `identity`, `binding`, `resource` and
 `scheduling`); delivery services under `delivery`; and process-wide provider or
 lifecycle wiring under `assembly` (`redis`, `kernel`, `pacer` and `runtime`).

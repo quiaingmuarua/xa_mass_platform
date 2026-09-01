@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
+import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveResponse;
 import com.xa.mass.server.delivery.directcall.DirectCallProperties;
 import com.xa.mass.server.delivery.directcall.DirectCallRegistry;
 import com.xa.mass.server.delivery.directcall.DirectCallService;

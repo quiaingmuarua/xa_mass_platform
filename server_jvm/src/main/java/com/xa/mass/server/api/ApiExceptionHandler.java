@@ -1,6 +1,6 @@
 package com.xa.mass.server.api;
 
-import com.xa.mass.server.api.v1.model.ApiErrorResponse;
+import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import jakarta.servlet.http.HttpServletRequest;

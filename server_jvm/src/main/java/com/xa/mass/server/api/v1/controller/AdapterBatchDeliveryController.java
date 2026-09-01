@@ -1,0 +1,118 @@
+package com.xa.mass.server.api.v1.controller;
+
+import com.xa.mass.server.api.ApiTags;
+import com.xa.mass.server.api.v1.contract.ApiErrorResponse;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultBatchRequest;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerResultBatchResponse;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandConsumeRequest;
+import com.xa.mass.server.api.v1.contract.delivery.WorkerDeliveryHttpContract.WorkerCommandConsumeResponse;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = ApiTags.WORKER_DELIVERY)
+@Validated
+@RestController
+@RequestMapping(
+        "/api/v1/worker-delivery/endpoint-managers/{endpointManagerId}"
+)
+public class AdapterBatchDeliveryController {
+
+    private final WorkerDeliveryService workerDelivery;
+
+    public AdapterBatchDeliveryController(
+            WorkerDeliveryService workerDelivery
+    ) {
+        this.workerDelivery = workerDelivery;
+    }
+
+    @PostMapping("/commands:consume")
+    @Operation(summary = "Consume an Adapter command batch")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Adapter command batch",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerCommandConsumeResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Worker Delivery request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Worker Delivery Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
+    public WorkerCommandConsumeResponse consumeWorkerCommands(
+            @PathVariable @NotBlank String endpointManagerId,
+            @Valid @RequestBody WorkerCommandConsumeRequest request
+    ) {
+        var commands = workerDelivery.consumeWorkerCommands(
+                endpointManagerId,
+                request.limit()
+        );
+        return WorkerCommandConsumeResponse.from(commands);
+    }
+
+    @PostMapping("/results:append")
+    @Operation(summary = "Append an Adapter result batch")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "202",
+                    description = "Adapter result batch was accepted",
+                    content = @Content(schema = @Schema(
+                            implementation = WorkerResultBatchResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Worker Delivery request was rejected",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            ),
+            @ApiResponse(
+                    responseCode = "503",
+                    description = "Worker Delivery Owner is unavailable",
+                    content = @Content(schema = @Schema(
+                            implementation = ApiErrorResponse.class
+                    ))
+            )
+    })
+    public ResponseEntity<WorkerResultBatchResponse> appendAdapterResults(
+            @PathVariable @NotBlank String endpointManagerId,
+            @Valid @RequestBody WorkerResultBatchRequest request
+    ) {
+        var counts = workerDelivery.appendAdapterResults(
+                endpointManagerId,
+                request.results()
+        );
+        return ResponseEntity.accepted().body(
+                new WorkerResultBatchResponse(
+                        counts.acceptedCount(),
+                        counts.rejectedCount()
+                )
+        );
+    }
+}

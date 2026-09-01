@@ -1,7 +1,7 @@
 package com.xa.mass.server.task;
 
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
-import com.xa.mass.server.api.v1.model.TaskItemRequest;
+import com.xa.mass.server.api.v1.contract.task.TaskItemRequest;
 import java.time.Clock;
 import java.util.Objects;
 import org.springframework.stereotype.Component;

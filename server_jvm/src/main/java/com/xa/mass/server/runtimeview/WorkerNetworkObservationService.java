@@ -1,6 +1,6 @@
 package com.xa.mass.server.runtimeview;
 
-import com.xa.mass.server.api.v1.runtimeview.model.WorkerNetworkObserveResponse;
+import com.xa.mass.server.api.v1.contract.runtimeview.WorkerNetworkObserveResponse;
 import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.delivery.directcall.DirectCallService.AdapterCallHandle;
 import com.xa.mass.server.delivery.directcall.DirectCallService.AdapterCallOutcome;

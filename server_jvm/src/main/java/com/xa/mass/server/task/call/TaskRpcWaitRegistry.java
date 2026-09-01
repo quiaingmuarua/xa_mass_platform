@@ -1,7 +1,7 @@
 package com.xa.mass.server.task.call;
 
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemResult;
-import com.xa.mass.server.api.v1.model.TaskRpcCallResponse;
+import com.xa.mass.server.api.v1.contract.task.TaskRpcCallResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
