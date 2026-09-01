@@ -248,9 +248,22 @@ class DeviceApiClient:
 
 
 class RuntimeApiClient:
-    def __init__(self, base_url: str, timeout_millis: int) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_millis: int,
+        result_wait_millis: int = 30_000,
+        *,
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if result_wait_millis <= 0:
+            raise ValueError("result wait must be positive")
         self._http = JsonHttpClient(base_url, timeout_millis)
         self._managed_task_id: str | None = None
+        self._result_wait_seconds = result_wait_millis / 1_000
+        self._monotonic = monotonic
+        self._sleep = sleep
 
     def network_state(self, endpoint_manager_id: str, worker_id: str) -> str | None:
         response = self._http.request(
@@ -412,15 +425,72 @@ class RuntimeApiClient:
             results.get(message_id),
             "WorkerGroup Task Call result",
         )
-        encoded_result = item_result.get("opaqueResultPayload")
-        if (
-            item_result.get("status") != "succeeded"
-            or not isinstance(encoded_result, str)
-        ):
+        status = item_result.get("status")
+        if status == "succeeded":
+            encoded_result = item_result.get("opaqueResultPayload")
+            if not isinstance(encoded_result, str):
+                raise ProofFailure(
+                    "task-call.outcome",
+                    "Android WorkerGroup call returned an invalid result",
+                )
+        elif status == "not_observed":
+            encoded_result = self._await_task_result(
+                task_id,
+                message_id,
+                event_name,
+            )
+        else:
             raise ProofFailure(
                 "task-call.outcome",
-                "Android WorkerGroup call did not close the requested item",
+                "Android WorkerGroup call returned an invalid outcome",
             )
+        self._require_json_object_result(encoded_result)
+        return message_id
+
+    def _await_task_result(
+        self,
+        task_id: str,
+        message_id: str,
+        event_name: str,
+    ) -> str:
+        deadline = self._monotonic() + self._result_wait_seconds
+        while True:
+            response = self._http.request(
+                "POST",
+                f"/api/v1/tasks/{quote(task_id, safe='')}/results:load",
+                {"messageIds": [message_id]},
+                f"taskItem.resultLoad[{event_name}]",
+            )
+            results = require_object(
+                response.get("results"),
+                "WorkerGroup Task loaded results",
+            )
+            unexpected = sorted(set(results) - {message_id})
+            if unexpected:
+                raise ProofFailure(
+                    "task-call.result-identities",
+                    "Task Result Load returned unexpected message IDs",
+                    unexpected_ids=tuple(unexpected),
+                )
+            encoded_result = results.get(message_id)
+            if isinstance(encoded_result, str):
+                return encoded_result
+            if encoded_result is not None:
+                raise ProofFailure(
+                    "task-call.result-shape",
+                    "Task Result Load returned an invalid result",
+                )
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise ProofFailure(
+                    "task-call.outcome",
+                    "Android WorkerGroup result was not observed within the "
+                    "proof budget",
+                )
+            self._sleep(min(0.1, remaining))
+
+    @staticmethod
+    def _require_json_object_result(encoded_result: str) -> None:
         try:
             decoded = json.loads(encoded_result)
         except json.JSONDecodeError as error:
@@ -429,7 +499,6 @@ class RuntimeApiClient:
                 "Android WorkerGroup result is not valid JSON",
             ) from error
         require_object(decoded, "Android WorkerGroup result")
-        return message_id
 
     def _task_id(self) -> str:
         if self._managed_task_id is not None:
@@ -977,7 +1046,9 @@ def execute(options: Options) -> None:
         options.device_base_url, options.request_timeout_millis
     )
     runtime = RuntimeApiClient(
-        options.server_base_url, options.request_timeout_millis
+        options.server_base_url,
+        options.request_timeout_millis,
+        options.maximum_wait_millis,
     )
     acceptance = AndroidWorkerAcceptance(options, device, runtime)
     failure: BaseException | None = None

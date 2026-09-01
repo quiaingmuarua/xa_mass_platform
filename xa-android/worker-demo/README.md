@@ -160,7 +160,10 @@ Because an empty allocation rule may select any schedulable Worker in the
 Group, this acceptance assumes `android-demo-workers` contains only active Lab
 devices. If a success is not observed before the bounded wait ends, the batch
 request still returns HTTP `200` and the entry is `not_observed`; the driver
-does not retry or silently switch to a targeted Worker.
+does not resubmit or silently switch to a targeted Worker. The hosted proof
+may use the same Task ID and caller-owned Message ID to observe that one
+accepted Item through the public `results:load` API for one additional bounded
+wait.
 
 ## Hosted Emulator acceptance
 

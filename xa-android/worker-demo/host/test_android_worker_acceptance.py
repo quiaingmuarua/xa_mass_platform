@@ -611,6 +611,136 @@ class AndroidWorkerAcceptanceTest(unittest.TestCase):
             requests[1].full_url,
         )
 
+    def test_runtime_client_loads_one_not_observed_result_without_resubmit(
+        self,
+    ) -> None:
+        configured = FakeHttpResponse(
+            {
+                "entries": [{
+                    "taskId": "managed-task",
+                    "task": {
+                        "taskId": "managed-task",
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                        "workerAllocationMechanism": "ON_DEMAND_ITEM_RULE",
+                        "idleDisposition": "PARK_WHEN_IDLE",
+                    },
+                    "workerGroup": {
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                    },
+                }]
+            }
+        )
+        call = FakeHttpResponse(
+            {"results": {"message-1": {"status": "not_observed"}}}
+        )
+        missing = FakeHttpResponse({"results": {}})
+        loaded = FakeHttpResponse({"results": {"message-1": "{}"}})
+        clock = FakeClock()
+        with patch.object(
+            acceptance,
+            "urlopen",
+            side_effect=[configured, call, missing, loaded],
+        ) as urlopen, patch.object(
+            acceptance.uuid,
+            "uuid4",
+            return_value="message-1",
+        ):
+            client = acceptance.RuntimeApiClient(
+                acceptance.DEFAULT_SERVER_BASE_URL,
+                1_000,
+                1_000,
+                monotonic=clock.monotonic,
+                sleep=clock.sleep,
+            )
+
+            message_id = client.task_call(
+                acceptance.STRING_DIGEST_EVENT,
+                {"value": "hello"},
+            )
+
+        self.assertEqual("message-1", message_id)
+        requests = [call.args[0] for call in urlopen.call_args_list]
+        item_calls = [
+            request
+            for request in requests
+            if request.full_url.endswith("/items:call")
+        ]
+        result_loads = [
+            request
+            for request in requests
+            if request.full_url.endswith("/results:load")
+        ]
+        self.assertEqual(1, len(item_calls))
+        self.assertEqual(2, len(result_loads))
+        self.assertEqual(
+            {"messageIds": ["message-1"]},
+            json.loads(result_loads[0].data),
+        )
+
+    def test_runtime_client_bounds_not_observed_result_loading(self) -> None:
+        configured = FakeHttpResponse(
+            {
+                "entries": [{
+                    "taskId": "managed-task",
+                    "task": {
+                        "taskId": "managed-task",
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                        "workerAllocationMechanism": "ON_DEMAND_ITEM_RULE",
+                        "idleDisposition": "PARK_WHEN_IDLE",
+                    },
+                    "workerGroup": {
+                        "workerGroupId": acceptance.WORKER_GROUP_ID,
+                    },
+                }]
+            }
+        )
+        call = FakeHttpResponse(
+            {"results": {"message-1": {"status": "not_observed"}}}
+        )
+        missing_first = FakeHttpResponse({"results": {}})
+        missing_at_deadline = FakeHttpResponse({"results": {}})
+        clock = FakeClock()
+        with patch.object(
+            acceptance,
+            "urlopen",
+            side_effect=[
+                configured,
+                call,
+                missing_first,
+                missing_at_deadline,
+            ],
+        ) as urlopen, patch.object(
+            acceptance.uuid,
+            "uuid4",
+            return_value="message-1",
+        ):
+            client = acceptance.RuntimeApiClient(
+                acceptance.DEFAULT_SERVER_BASE_URL,
+                1_000,
+                1,
+                monotonic=clock.monotonic,
+                sleep=clock.sleep,
+            )
+
+            with self.assertRaisesRegex(
+                acceptance.ProofFailure,
+                "not observed within the proof budget",
+            ):
+                client.task_call(acceptance.STRING_DIGEST_EVENT, {})
+
+        requests = [call.args[0] for call in urlopen.call_args_list]
+        self.assertEqual(
+            1,
+            sum(request.full_url.endswith("/items:call") for request in requests),
+        )
+        self.assertEqual(
+            2,
+            sum(
+                request.full_url.endswith("/results:load")
+                for request in requests
+            ),
+        )
+
     def test_driver_has_no_repository_implementation_imports(self) -> None:
         source = Path(acceptance.__file__).read_text()
         for forbidden in (
