@@ -18,7 +18,7 @@ import com.xa.mass.server.api.v1.runtimeview.model.WorkerSchedulingObserveRespon
 import com.xa.mass.server.api.v1.runtimeview.model.WorkerView;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;

@@ -711,7 +711,7 @@ append -> acquire -> claim -> load -> retry -> final promotion
 ```
 
 The public append and last-success query are exposed by
-[`server_jvm/taskdata`](../../../server_jvm/src/main/java/com/xa/mass/server/taskdata).
+[`server_jvm/task`](../../../server_jvm/src/main/java/com/xa/mass/server/task).
 Real-Redis Owner tests lock record JSON, due-score encoding, retry convergence,
 `ZADD NX` behavior, and opaque result reads.
 

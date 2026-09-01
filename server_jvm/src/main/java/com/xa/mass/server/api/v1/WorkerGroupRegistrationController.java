@@ -4,7 +4,7 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterRequest;
 import com.xa.mass.server.api.v1.model.WorkerGroupRegisterResponse;
-import com.xa.mass.server.workergroup.WorkerGroupRegistrationService;
+import com.xa.mass.server.worker.group.WorkerGroupRegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

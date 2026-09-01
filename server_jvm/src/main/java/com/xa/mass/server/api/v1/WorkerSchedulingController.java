@@ -4,7 +4,7 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.model.WorkerPauseResponse;
 import com.xa.mass.server.api.v1.model.WorkerResumeResponse;
-import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

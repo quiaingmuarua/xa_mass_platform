@@ -6,7 +6,7 @@ import com.xa.mass.server.api.v1.model.WorkerBatchPreparationRequest;
 import com.xa.mass.server.api.v1.model.WorkerBatchPreparationResponse;
 import com.xa.mass.server.api.v1.model.WorkerPreparationRequest;
 import com.xa.mass.server.api.v1.model.WorkerPreparationResponse;
-import com.xa.mass.server.workerpreparation.WorkerPreparationService;
+import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import io.swagger.v3.oas.annotations.Operation;

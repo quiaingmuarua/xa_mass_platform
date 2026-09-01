@@ -1,6 +1,6 @@
 package com.xa.mass.server.api.v1.model;
 
-import com.xa.mass.server.workerpreparation.WorkerPreparationService;
+import com.xa.mass.server.worker.preparation.WorkerPreparationService;
 
 public record WorkerPreparationResponse(
         String workerId,

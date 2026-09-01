@@ -4,7 +4,7 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectCallRequest;
 import com.xa.mass.server.api.v1.directcall.DirectCallHttpContract.DirectCallResponse;
-import com.xa.mass.server.directcall.DirectCallService;
+import com.xa.mass.server.delivery.directcall.DirectCallService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

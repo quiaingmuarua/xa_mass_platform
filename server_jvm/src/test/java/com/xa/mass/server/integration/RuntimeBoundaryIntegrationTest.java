@@ -13,10 +13,10 @@ import com.xa.mass.kernel.redis.RedisKeyspace;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
-import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
-import com.xa.mass.server.taskdata.TaskRpcResultProbe;
+import com.xa.mass.server.assembly.pacer.KernelPacerAssembly;
+import com.xa.mass.server.task.call.TaskRpcResultProbe;
 import com.xa.mass.server.testsupport.RedisTestScope;
-import com.xa.mass.server.workerassembly
+import com.xa.mass.server.assembly.runtime
         .ServerConfiguredRuntimeLifecycleHost;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.runtime.WorkerConnectionOptions;

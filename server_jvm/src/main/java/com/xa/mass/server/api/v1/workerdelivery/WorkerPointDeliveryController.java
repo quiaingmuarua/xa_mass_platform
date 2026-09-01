@@ -5,7 +5,7 @@ import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerResultRequest;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;

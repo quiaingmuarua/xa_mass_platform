@@ -4,7 +4,7 @@ import com.xa.mass.server.api.ApiTags;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.api.v1.model.WorkerPlatformPropertiesPatchResponse;
 import com.xa.mass.server.api.v1.model.WorkerPropertiesPatchRequest;
-import com.xa.mass.server.workerresource.WorkerResourceCommandService;
+import com.xa.mass.server.worker.resource.WorkerResourceCommandService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

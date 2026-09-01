@@ -13,7 +13,7 @@ import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
 import org.junit.jupiter.api.BeforeEach;

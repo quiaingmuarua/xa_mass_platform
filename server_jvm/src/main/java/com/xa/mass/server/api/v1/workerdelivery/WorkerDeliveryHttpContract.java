@@ -3,7 +3,7 @@ package com.xa.mass.server.api.v1.workerdelivery;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;

@@ -16,23 +16,27 @@ class ServerArchitectureBoundaryTest {
     private static final Path PACER_SOURCE = Path.of(
             "../kernel_pacer_jvm/src/main/java"
     );
+    private static final Path SERVER_PACKAGE = SERVER_SOURCE.resolve(
+            "com/xa/mass/server"
+    );
     private static final Path SHARED_REDIS = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/kernelredis"
+            "com/xa/mass/server/assembly/redis"
     );
     private static final Path KERNEL_ASSEMBLY = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/kernelbinding/KernelOwnerAssemblyConfiguration.java"
+            "com/xa/mass/server/assembly/kernel/"
+                    + "KernelOwnerAssemblyConfiguration.java"
     );
     private static final Path KERNEL_BINDING = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/kernelbinding"
+            "com/xa/mass/server/assembly/kernel"
     );
     private static final Path KERNEL_PACER = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/kernelpacer"
+            "com/xa/mass/server/assembly/pacer"
     );
     private static final Path KERNEL_PACER_ASSEMBLY = KERNEL_PACER.resolve(
             "KernelPacerAssembly.java"
     );
     private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery/"
+            "com/xa/mass/server/delivery/"
                     + "WorkerDeliveryOwnerAssemblyConfiguration.java"
     );
     private static final Path TASK_REDIS = KERNEL_SOURCE.resolve(
@@ -66,13 +70,13 @@ class ServerArchitectureBoundaryTest {
             "com/xa/mass/server/api/v1/workerdelivery"
     );
     private static final Path DELIVERY = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery"
+            "com/xa/mass/server/delivery"
     );
     private static final Path DELIVERY_APPLICATION = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery/application"
+            "com/xa/mass/server/delivery/application"
     );
     private static final Path DELIVERY_ADAPTER_HOST = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery/adapter"
+            "com/xa/mass/server/delivery/adapter"
     );
 
     @Test
@@ -92,13 +96,16 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("/workers/direct-calls");
     }
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerassembly"
+            "com/xa/mass/server/assembly/runtime"
     );
     private static final Path WORKER_IDENTITY = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workeridentity"
+            "com/xa/mass/server/worker/identity"
     );
     private static final Path WORKER_BINDING = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerbinding"
+            "com/xa/mass/server/worker/binding"
+    );
+    private static final Path WORKER_PREPARATION = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/worker/preparation"
     );
     private static final Path RUNTIME_VIEW = SERVER_SOURCE.resolve(
             "com/xa/mass/server/runtimeview"
@@ -106,15 +113,45 @@ class ServerArchitectureBoundaryTest {
     private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/runtimeview"
     );
-    private static final Path TASK_DATA = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/taskdata"
+    private static final Path TASK = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/task"
     );
     private static final Path DIRECT_CALL = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/directcall"
+            "com/xa/mass/server/delivery/directcall"
     );
     private static final Path WORKER_SCHEDULING = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerscheduling"
+            "com/xa/mass/server/worker/scheduling"
     );
+
+    @Test
+    void serverSourceUsesStableFunctionalRoots() throws IOException {
+        try (var paths = Files.list(SERVER_PACKAGE)) {
+            assertThat(paths.filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .toList())
+                    .containsExactlyInAnyOrder(
+                            "api",
+                            "assembly",
+                            "delivery",
+                            "error",
+                            "frontend",
+                            "operation",
+                            "runtimeview",
+                            "task",
+                            "worker"
+                    );
+        }
+
+        assertThat(WORKER_PREPARATION).isDirectory();
+        assertThat(DIRECT_CALL).isDirectory();
+        assertThat(readSources(WORKER_PREPARATION))
+                .contains(".worker.identity")
+                .contains(".worker.binding");
+        assertThat(readSources(WORKER_IDENTITY)
+                + readSources(WORKER_BINDING))
+                .doesNotContain(".worker.preparation");
+    }
+
     private static final Path WORKER_SCHEDULING_HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/api/v1/WorkerSchedulingController.java"
     );
@@ -315,8 +352,8 @@ class ServerArchitectureBoundaryTest {
     @Test
     void taskResultExportUsesOnlyTaskOwnerContracts()
             throws IOException {
-        String taskData = readSources(TASK_DATA);
-        assertThat(taskData)
+        String task = readSources(TASK);
+        assertThat(task)
                 .contains("scanTaskItemResults")
                 .contains("getScoreStates")
                 .contains("TaskResourceCatalog")

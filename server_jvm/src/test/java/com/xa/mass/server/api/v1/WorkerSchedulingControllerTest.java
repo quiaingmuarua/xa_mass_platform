@@ -11,7 +11,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerscheduling.WorkerSchedulingService;
+import com.xa.mass.server.worker.scheduling.WorkerSchedulingService;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;

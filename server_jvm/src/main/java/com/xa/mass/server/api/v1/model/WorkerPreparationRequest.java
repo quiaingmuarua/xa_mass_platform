@@ -1,7 +1,7 @@
 package com.xa.mass.server.api.v1.model;
 
-import com.xa.mass.server.workerbinding.WorkerTransportType;
-import com.xa.mass.server.workerpreparation.WorkerRegistrationKind;
+import com.xa.mass.server.worker.binding.WorkerTransportType;
+import com.xa.mass.server.worker.identity.WorkerRegistrationKind;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import java.util.Map;

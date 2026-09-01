@@ -480,12 +480,21 @@ Adapter Command consume returns `200`. Delivery rejection still uses the same
 
 ## Assembly Boundaries
 
+Production packages use stable functional roots. HTTP contracts remain under
+`api`; Task use cases under `task` (`call` and `result`); Worker responsibilities
+under `worker` (`group`, `preparation`, `identity`, `binding`, `resource` and
+`scheduling`); delivery services under `delivery`; and process-wide provider or
+lifecycle wiring under `assembly` (`redis`, `kernel`, `pacer` and `runtime`).
+`runtimeview`, `operation`, `error` and `frontend` remain separate Server
+surfaces. These packages express ownership and composition boundaries; they do
+not add alternate Runtime owners.
+
 ### Kernel Providers
 
 Controllers and use-case services depend only on `kernel_jvm` owner contracts.
-Provider selection stays in Server assembly. The shared `kernelredis` package
-owns connection and health only; Redis key operations live in owner-local
-provider packages.
+Provider selection stays in Server assembly. The shared `assembly.redis`
+package owns connection and health only; Redis key operations live in
+owner-local provider packages.
 
 Worker Prepare composes Server-owned identity resolution and Endpoint Binding
 with the Kernel Worker upsert. The owners and registries remain separate.

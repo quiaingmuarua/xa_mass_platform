@@ -27,18 +27,18 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
-import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
-import com.xa.mass.server.kernelpacer.KernelPacerAssembly;
-import com.xa.mass.server.kernelpacer.KernelPacerProperties;
+import com.xa.mass.server.assembly.kernel.KernelOwnerAssemblyConfiguration;
+import com.xa.mass.server.assembly.pacer.KernelPacerAssembly;
+import com.xa.mass.server.assembly.pacer.KernelPacerProperties;
 import com.xa.mass.server.openapi.OpenApiSnapshotSupport;
-import com.xa.mass.server.directcall.DirectCallService;
+import com.xa.mass.server.delivery.directcall.DirectCallService;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
-import com.xa.mass.server.taskdata.WorkerGroupTaskCallRegistrationService;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerassembly
+import com.xa.mass.server.task.call.WorkerGroupTaskCallRegistrationService;
+import com.xa.mass.server.delivery.WorkerDeliveryOwnerAssemblyConfiguration;
+import com.xa.mass.server.delivery.application.WorkerDeliveryService;
+import com.xa.mass.server.assembly.runtime
         .ServerConfiguredRuntimeLifecycleHost;
-import com.xa.mass.server.workerdelivery.adapter
+import com.xa.mass.server.delivery.adapter
         .ServerWorkerDeliveryAdapterProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
