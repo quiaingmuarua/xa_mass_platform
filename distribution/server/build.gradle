@@ -20,11 +20,6 @@ def generatedDirectory = layout.buildDirectory.dir('generated/runtime')
 def runtimeBaseName = 'xa-mass-server-runtime'
 def runtimeRootName = "${runtimeBaseName}-${runtimeVersion}"
 def serverBootJar = project(':server_jvm').tasks.named('bootJar')
-def scenarioWorkerInstall = project(':scenario_workers_jvm').tasks.named(
-        'installDist'
-)
-def scenarioWorkerInstallDirectory = project(':scenario_workers_jvm')
-        .layout.buildDirectory.dir('install/xa-mass-scenario-workers')
 def gitCommit = providers.exec {
     workingDir repositoryRoot
     commandLine 'git', 'rev-parse', 'HEAD'
@@ -91,10 +86,7 @@ tasks.register('buildFrontend', Exec) {
 tasks.register('generateRuntimeManifest') {
     group = 'distribution'
     description = 'Generates the checked runtime archive manifest.'
-    dependsOn(
-            serverBootJar,
-            scenarioWorkerInstall
-    )
+    dependsOn serverBootJar
     inputs.property('runtimeVersion', runtimeVersion)
     inputs.property('gitCommit', gitCommit)
     inputs.file(serverBootJar.flatMap { it.archiveFile })
@@ -108,7 +100,7 @@ tasks.register('generateRuntimeManifest') {
         output.parentFile.mkdirs()
         output.setText(
                 JsonOutput.prettyPrint(JsonOutput.toJson([
-                        schemaVersion   : 4,
+                        schemaVersion   : 5,
                         version         : runtimeVersion,
                         gitCommit       : resolvedGitCommit,
                         serverJar       : "lib/xa-mass-server-jvm-${runtimeVersion}.jar",
@@ -118,12 +110,7 @@ tasks.register('generateRuntimeManifest') {
                                 'scenario-workers',
                                 'agentforge'
                         ],
-                        frontendIncluded: true,
-                        scenarioWorkerHost: [
-                                posixLauncher: 'scenario-workers/bin/xa-mass-scenario-workers',
-                                windowsLauncher: 'scenario-workers/bin/xa-mass-scenario-workers.bat',
-                                autoStart: false
-                        ]
+                        frontendIncluded: true
                 ])) + System.lineSeparator(),
                 'UTF-8'
         )
@@ -136,7 +123,6 @@ tasks.register('stageRuntime', Sync) {
     dependsOn(
             tasks.named('validateRuntimeVersion'),
             serverBootJar,
-            scenarioWorkerInstall,
             tasks.named('buildFrontend'),
             tasks.named('generateRuntimeManifest'),
             tasks.named('generatePlatformDiagnosticCodes')
@@ -144,9 +130,6 @@ tasks.register('stageRuntime', Sync) {
     into stagedDirectory
     from(serverBootJar.flatMap { it.archiveFile }) {
         into 'lib'
-    }
-    from(scenarioWorkerInstallDirectory) {
-        into 'scenario-workers'
     }
     from(rootProject.file('frontend/dist')) {
         into 'frontend/dist'

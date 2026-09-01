@@ -189,13 +189,13 @@ stable repository-wide identity.
 - **Failure model:** missing artifact, dependency/POM drift, private runtime
   leakage or packaged profile failure.
 - **World:** extracted distribution, Redis and external Android consumer build.
-- **Workload:** finite packaged Server/Host and SDK consumption calls.
+- **Workload:** finite packaged Server/Profile and SDK consumption calls.
 - **Mutation:** process start/stop from extracted archives.
 - **Oracle:** archive contents, public endpoints and external build result.
 - **Prerequisites:** Java, Redis, Android SDK, Node and pnpm.
 - **Deliberate nonclaims:** OCI deployment and Redis lifecycle.
 - **Command:** distribution integration tests with
-  `-PxaMassVersion=0.4.0`.
+  `-PxaMassVersion=0.5.0`.
 - **CI cost:** high.
 
 ## docs_contract

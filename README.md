@@ -184,11 +184,11 @@ tag `legacy-java-platform-final-2026-07-24` and carries no compatibility
 obligation.
 
 The Server deployment boundary is publishable independently from Worker SDKs:
-`xa-mass-server-runtime-<version>.zip` contains the Spring Boot Server, the
-compiled frontend and the optional Scenario Worker Host. Start the Boot JAR
-directly with Java 21, an explicit Spring Profile and the frontend path; the
-Profile selects its checked Pacer preset. The packaged Gradle start scripts
-launch only the finite JVM Lab Host; they are independent from Server.
+`xa-mass-server-runtime-<version>.zip` contains only the Spring Boot Server and
+compiled frontend. Start the Boot JAR directly with Java 21, an explicit Spring
+Profile and the frontend path; the Profile selects its checked Pacer preset.
+The repository-local Scenario Worker Host remains an independent source-checkout
+Lab and is not part of the publishable Server Runtime.
 AgentForge uses the clean Profile plus public APIs and consumes the matching
 Worker SDK Release instead of copying XA Mass source modules.
 

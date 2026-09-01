@@ -43,10 +43,6 @@ def verify(archive: Path, version: str) -> None:
         )
         required = {
             f"{root}/lib/xa-mass-server-jvm-{version}.jar",
-            f"{root}/scenario-workers/bin/xa-mass-scenario-workers",
-            f"{root}/scenario-workers/bin/xa-mass-scenario-workers.bat",
-            f"{root}/scenario-workers/lib/"
-            f"xa-mass-scenario-workers-jvm-{version}.jar",
             f"{root}/frontend/dist/index.html",
             f"{root}/frontend/dist/reference/"
             "platform-diagnostic-codes.json",
@@ -58,12 +54,19 @@ def verify(archive: Path, version: str) -> None:
         missing = required - set(names)
         _require(not missing, f"runtime archive is missing: {sorted(missing)}")
         _require(
+            not any(
+                name.startswith(f"{root}/scenario-workers/")
+                for name in names
+            ),
+            "runtime archive contains the repository-local Scenario Worker Host",
+        )
+        _require(
             not any(name.startswith(f"{root}/config/") for name in names),
             "runtime archive retains a Java Pacer config directory",
         )
 
         manifest = json.loads(runtime.read(f"{root}/manifest.json"))
-        _require(manifest.get("schemaVersion") == 4, "manifest schema mismatch")
+        _require(manifest.get("schemaVersion") == 5, "manifest schema mismatch")
         _require(manifest.get("version") == version, "manifest version mismatch")
         _require(
             re.fullmatch(r"[0-9a-f]{40}", manifest.get("gitCommit", ""))
@@ -91,17 +94,8 @@ def verify(archive: Path, version: str) -> None:
         )
         _require(manifest.get("frontendIncluded") is True, "Frontend mismatch")
         _require(
-            manifest.get("scenarioWorkerHost")
-            == {
-                "posixLauncher": (
-                    "scenario-workers/bin/xa-mass-scenario-workers"
-                ),
-                "windowsLauncher": (
-                    "scenario-workers/bin/xa-mass-scenario-workers.bat"
-                ),
-                "autoStart": False,
-            },
-            "Scenario Worker Host manifest mismatch",
+            "scenarioWorkerHost" not in manifest,
+            "manifest retains the repository-local Scenario Worker Host",
         )
 
         diagnostic_codes = json.loads(

@@ -485,11 +485,10 @@ controls.
   It must not create scheduling, Worker identity or lifecycle truth.
 - `frontend/public/overview.htm` is a human projection. Current truth remains
   in executable and owner documents.
-- `distribution/server` is a packaging owner only. It may assemble the current
-  Server, production Pacer, frontend, configuration and optional standalone
-  Scenario Worker Host. The Boot JAR and packaged Scenario Host launchers remain
-  independent. Distribution must not add a fallback runtime owner, a second
-  Spring Profile, or scheduling behavior.
+- `distribution/server` is a packaging owner only. It assembles the current
+  Server, production Pacer, frontend and configuration. It must not package the
+  repository-local Scenario Worker Host, add a fallback runtime owner, add a
+  second production mechanism or introduce scheduling behavior.
 
 ## Verification
 

@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import signal
 import socket
 import stat
@@ -157,34 +156,6 @@ def _managed_task_id(base_url: str, worker_group_id: str) -> str:
     return task_id
 
 
-def _wait_for_worker_fleet(
-    base_url: str,
-    host_process: subprocess.Popen[Any],
-) -> None:
-    expected = {
-        "scenario-phone-number-workers": 10,
-        "scenario-string-utils-workers": 10,
-    }
-    deadline = time.monotonic() + 90
-    observed: dict[str, int] = {}
-    while time.monotonic() < deadline:
-        if host_process.poll() is not None:
-            raise RuntimeError(
-                "Scenario Worker Host exited before fleet readiness: "
-                f"{host_process.returncode}"
-            )
-        observed = {
-            group: _preview_worker_count(base_url, group)
-            for group in expected
-        }
-        if observed == expected:
-            return
-        time.sleep(0.5)
-    raise RuntimeError(
-        f"Scenario Worker fleet readiness timed out: {observed}"
-    )
-
-
 def _stop_process(process: subprocess.Popen[Any]) -> None:
     if process.poll() is not None:
         return
@@ -251,27 +222,6 @@ def _server_command(
     ]
 
 
-def _scenario_worker_command(
-    runtime_root: Path,
-    base_url: str,
-    sandbox_root: Path,
-) -> list[str]:
-    relative = (
-        "scenario-workers/bin/xa-mass-scenario-workers.bat"
-        if os.name == "nt"
-        else "scenario-workers/bin/xa-mass-scenario-workers"
-    )
-    launcher = (runtime_root / relative).resolve()
-    arguments = [
-        f"--runtime-api-base-url={base_url}",
-        f"--sandbox-root={sandbox_root.resolve()}",
-    ]
-    if os.name == "nt":
-        return ["cmd.exe", "/d", "/c", str(launcher), *arguments]
-    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
-    return [str(launcher), *arguments]
-
-
 def _prove_runtime(
     runtime_root: Path,
     repository_root: Path,
@@ -285,7 +235,6 @@ def _prove_runtime(
         adapter_port = _free_port()
     base_url = f"http://127.0.0.1:{server_port}"
     server_log_path = proof_root / "runtime-server.log"
-    worker_log_path = proof_root / "scenario-worker-host.log"
     environment = os.environ.copy()
     environment["XA_MASS_REDIS_URL"] = redis_url
     environment["XA_MASS_REDIS_SCOPE"] = scope
@@ -305,10 +254,7 @@ def _prove_runtime(
         flags["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         flags["start_new_session"] = True
-    worker_process: subprocess.Popen[Any] | None = None
-    with server_log_path.open("wb") as server_log, worker_log_path.open(
-        "wb"
-    ) as worker_log:
+    with server_log_path.open("wb") as server_log:
         server_process = subprocess.Popen(
             command,
             cwd=runtime_root,
@@ -326,22 +272,9 @@ def _prove_runtime(
             ):
                 if _preview_worker_count(base_url, worker_group_id) != 0:
                     raise RuntimeError(
-                        "Server launcher implicitly started Scenario Workers"
+                        "Packaged Server implicitly started Scenario Workers"
                     )
-
-            worker_process = subprocess.Popen(
-                _scenario_worker_command(
-                    runtime_root,
-                    base_url,
-                    proof_root / "data/scenario-workers",
-                ),
-                cwd=runtime_root,
-                env=environment,
-                stdout=worker_log,
-                stderr=subprocess.STDOUT,
-                **flags,
-            )
-            _wait_for_worker_fleet(base_url, worker_process)
+                _managed_task_id(base_url, worker_group_id)
 
             status, scalar, scalar_type = _request("GET", f"{base_url}/scalar")
             if status != 200 or scalar_type != "text/html":
@@ -428,47 +361,13 @@ def _prove_runtime(
                     "Packaged Diagnostic Code Dictionary metadata is invalid"
                 )
 
-            task_id = _managed_task_id(
-                base_url,
-                "scenario-string-utils-workers",
-            )
-
-            message_id = f"distribution-proof-{uuid.uuid4().hex}"
-            status, call_payload, _ = _request(
-                "POST",
-                f"{base_url}/api/v1/tasks/{task_id}/items:call",
-                {
-                    "items": [
-                        {
-                            "messageId": message_id,
-                            "eventCode": "extension.worker.string.md5",
-                            "payload": {"value": "distribution-proof"},
-                            "allocationRule": {},
-                        }
-                    ],
-                    "waitTimeoutMillis": 60_000,
-                },
-                timeout=70,
-            )
-            if status != 200:
-                raise RuntimeError(f"Packaged Task Call returned HTTP {status}")
-            result = json.loads(call_payload).get("results", {}).get(message_id)
-            if not isinstance(result, dict) or result.get("status") != "succeeded":
-                raise RuntimeError("Packaged Task Call was not observed")
-
             if (runtime_root / ".runtime/python-venv").exists():
                 raise RuntimeError("Java-only Runtime created a Python venv")
             print(
                 "Runtime distribution proof succeeded: "
-                f"scope={scope}, taskId={task_id}, messageId={message_id}"
+                f"scope={scope}, profile=scenario-workers, workers=0"
             )
-
-            _stop_process(worker_process)
-            worker_process = None
-            _wait_for_readiness(base_url, server_process)
         finally:
-            if worker_process is not None:
-                _stop_process(worker_process)
             _stop_process(server_process)
 
 
@@ -568,10 +467,6 @@ def main() -> int:
         except Exception:
             for label, log_path in (
                 ("Runtime Server", proof_root / "runtime-server.log"),
-                (
-                    "Scenario Worker Host",
-                    proof_root / "scenario-worker-host.log",
-                ),
                 (
                     "AgentForge Server",
                     proof_root / "agentforge-server.log",

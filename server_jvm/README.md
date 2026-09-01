@@ -635,10 +635,11 @@ Worker Host. Unknown Profiles are rejected.
 For a repository-independent deployment, extract the
 [`distribution/server`](../distribution/server/) Runtime ZIP and start its Boot
 JAR directly from the Runtime root with Java 21, external Redis and explicit
-Profile and frontend arguments. The schema-v4 manifest lists the supported
-`scenario-workers` and `agentforge` Profiles. The optional Scenario Worker Host
-has independent Gradle-generated scripts under `scenario-workers/bin`; Server
-never starts it. Source `bootRun` remains available for repository development.
+Profile and frontend arguments. The schema-v5 manifest lists the supported
+`scenario-workers` and `agentforge` Profiles. The Runtime ZIP does not contain
+the repository-local Scenario Worker Host; use `run_local_runtime.py` or the
+module's Gradle task when that Lab is required. Source `bootRun` remains
+available for repository development.
 
 Health endpoints:
 

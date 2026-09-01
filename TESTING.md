@@ -82,7 +82,7 @@ python .github/scripts/check_proof_selection.py
 | Android Host | Android Debug tasks plus host Python tests | Robolectric, MockWebServer |
 | Android Emulator Worker | `Android Emulator Worker` in Proof CI | Redis, KVM Emulator |
 | Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
-| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.4.0` | Redis, Java, Android SDK, Node |
+| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.5.0` | Redis, Java, Android SDK, Node |
 | Docs Contract | `python .github/scripts/check_docs.py` | None |
 
 Worker one-shot runners support Python 3.11 or newer. Install their small
