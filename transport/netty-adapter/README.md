@@ -386,8 +386,8 @@ dropped together.
 
 ```text
 pending batch exists -> retry it first
-otherwise            -> drain the queue once
-submit one mixed encoded-result batch to results:append
+otherwise            -> drain at most 100 Reports from the queue
+submit one 1..100 mixed encoded-result batch to results:append
 ```
 
 Server selects the receiving owner by Report `dst`: TASK enters Kernel Task
@@ -399,6 +399,12 @@ best-effort final submit. Command and Report rounds remain independent. The
 destinations do not have separate retry policies inside the Adapter: a late
 DIRECT_CALL Report may be retried with the mixed batch and is then rejected by
 Server after its waiter has ended.
+
+The fixed remote batch limit is independent of Result queue capacity. A queue
+may retain more than 100 Reports, but each scheduler round submits at most 100;
+later rounds continue draining it. Normal close retries an existing pending
+batch and may perform one additional at-most-100 best-effort submit. It does
+not unboundedly drain the remaining queue.
 
 Both queues are finite, soft-capacity, and private to their Process.
 `estimatedSize` is advisory. Adapter failure can lose queued commands or

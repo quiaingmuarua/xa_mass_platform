@@ -25,6 +25,8 @@ import java.util.Set;
 
 public final class WorkerDeliveryService {
 
+    public static final int MAX_ADAPTER_RESULT_BATCH_SIZE = 100;
+
     private static final String OPAQUE_COMMAND_ENTRY_PREFIX = "entry:";
     private static final String SERVICEABILITY_EVENT =
             "platform.adapter.worker-connections.snapshot";
@@ -135,9 +137,11 @@ public final class WorkerDeliveryService {
                 }
                 throw unavailable(operation, workerSourceFailure);
             }
-            logLowerPrioritySourceFailure(
+            logLowerPriorityFailure(
+                    "workerDelivery.consumeWorkerCommands",
                     endpointManagerId,
-                    workerSourceFailure
+                    workerSourceFailure,
+                    "Continuing with already-consumed higher-priority Commands"
             );
         }
         return combineCommands(
@@ -157,7 +161,12 @@ public final class WorkerDeliveryService {
                     SERVICEABILITY_PROBE_LIMIT
             );
         } catch (RuntimeException error) {
-            logLowerPrioritySourceFailure(endpointManagerId, error);
+            logLowerPriorityFailure(
+                    "workerDelivery.consumeServiceabilityCommand",
+                    endpointManagerId,
+                    error,
+                    "Continuing without a Serviceability Command"
+            );
             return null;
         }
         if (workerIds.isEmpty()) {
@@ -217,18 +226,20 @@ public final class WorkerDeliveryService {
         return Collections.unmodifiableMap(combined);
     }
 
-    private static void logLowerPrioritySourceFailure(
+    private static void logLowerPriorityFailure(
+            String operation,
             String endpointManagerId,
-            RuntimeException error
+            RuntimeException error,
+            String disposition
     ) {
         LOGGER.log(
                 System.Logger.Level.WARNING,
                 "operation={0} endpointManagerId={1} failureType={2} "
-                        + "message={3}",
-                "workerDelivery.consumeWorkerSource",
+                        + "disposition={3}",
+                operation,
                 endpointManagerId,
                 error.getClass().getName(),
-                "Returning already-consumed Adapter Commands"
+                disposition
         );
     }
 
@@ -268,10 +279,13 @@ public final class WorkerDeliveryService {
     ) {
         String operation = "workerDelivery.appendAdapterResults";
         requireAdapterBatchIdentity(endpointManagerId, operation);
-        if (encodedWorkerResults == null || encodedWorkerResults.isEmpty()) {
+        if (encodedWorkerResults == null
+                || encodedWorkerResults.isEmpty()
+                || encodedWorkerResults.size()
+                > MAX_ADAPTER_RESULT_BATCH_SIZE) {
             throw invalid(
                     operation,
-                    "Adapter result batch must not be empty"
+                    "Adapter result batch must contain 1..100 Reports"
             );
         }
 
@@ -351,7 +365,13 @@ public final class WorkerDeliveryService {
                 rejectedCount += kernelResults.size() - accepted;
             } catch (RuntimeException error) {
                 rejectedCount += kernelResults.size();
-                logLowerPrioritySourceFailure(endpointManagerId, error);
+                logLowerPriorityFailure(
+                        "workerDelivery.appendAdapterEvidenceResults",
+                        endpointManagerId,
+                        error,
+                        "Rejecting Adapter evidence Report count="
+                                + kernelResults.size()
+                );
             }
         }
         if (rejectedCount > 0) {

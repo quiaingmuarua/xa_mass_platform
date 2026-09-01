@@ -3,14 +3,15 @@ package com.xa.mass.server.api.v1.workerdelivery;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,7 +106,12 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerResultBatchRequest(
-            @NotEmpty List<@NotBlank String> results
+            @NotNull
+            @Size(
+                    min = 1,
+                    max = WorkerDeliveryService.MAX_ADAPTER_RESULT_BATCH_SIZE
+            )
+            List<@NotBlank String> results
     ) {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {

@@ -378,6 +378,11 @@ bounded consume from the shared Worker Command Hash. If capacity still remains,
 Server may consume up to 100 coalesced Kernel Serviceability requests and add
 one Adapter snapshot Command. Only a Worker Command map key is its workerId;
 Adapter and Kernel Command keys are response-local and opaque.
+
+Adapter `results:append` accepts one mixed batch of `1..100` encoded Reports.
+Server validates that outer bound before decoding any Report, then routes TASK,
+SYSTEM and KERNEL subsets to their existing Owners. Queue capacity remains an
+Adapter-local memory bound and is not an HTTP batch-size declaration.
 Exact route schemas are available from the running Server:
 
 ```text

@@ -11,7 +11,11 @@ import java.util.Set;
 /** Remote Result ingress used by one Adapter's Report process. */
 public final class DeliveryReportRemoteApi {
 
+    public static final int MAX_RESULTS_PER_APPEND = 100;
+
     private static final String OPERATION = "deliveryReport.submitRemote";
+    private static final String ENCODE_OPERATION =
+            "deliveryReport.encodeRemoteRequest";
     private static final String DECODE_OPERATION =
             "deliveryReport.decodeRemoteResponse";
     private static final Set<String> APPEND_FIELDS = Set.of(
@@ -48,14 +52,20 @@ public final class DeliveryReportRemoteApi {
     }
 
     private String encodeResultBatch(List<String> encodedDeliveryReports) {
-        if (encodedDeliveryReports == null || encodedDeliveryReports.isEmpty()) {
-            throw new IllegalArgumentException("results must not be empty");
+        if (encodedDeliveryReports == null
+                || encodedDeliveryReports.isEmpty()
+                || encodedDeliveryReports.size() > MAX_RESULTS_PER_APPEND) {
+            throw protocolFailure(
+                    ENCODE_OPERATION,
+                    "DeliveryReport batch must contain 1..100 results"
+            );
         }
         for (String encodedDeliveryReport : encodedDeliveryReports) {
             if (encodedDeliveryReport == null
                     || encodedDeliveryReport.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "encoded DeliveryReport must be non-empty"
+                throw protocolFailure(
+                        ENCODE_OPERATION,
+                        "Encoded DeliveryReport must be non-empty"
                 );
             }
         }
@@ -91,10 +101,20 @@ public final class DeliveryReportRemoteApi {
     }
 
     private static WorkerDeliveryAdapterException malformed(String type) {
+        return protocolFailure(
+                DECODE_OPERATION,
+                type + " is malformed"
+        );
+    }
+
+    private static WorkerDeliveryAdapterException protocolFailure(
+            String operation,
+            String message
+    ) {
         return new WorkerDeliveryAdapterException(
                 WorkerDeliveryAdapterErrorCode.REMOTE_API_PROTOCOL_ERROR,
-                DECODE_OPERATION,
-                type + " is malformed",
+                operation,
+                message,
                 null
         );
     }

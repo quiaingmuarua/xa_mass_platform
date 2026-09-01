@@ -54,9 +54,10 @@ excluding the original target. The original checkpoint witness must finish on
 the recovered world, and the recovery-wave witnesses must succeed. A second
 Host loss must not revoke the checkpoint Result.
 
-Neither scenario fixes intermediate score order, retry count, exact latency,
-executing Worker, non-witness outcome or capability payload. `NOT_OBSERVED` is
-an immediate observation, not a Worker failure. Witnesses are observed with
+Neither scenario fixes intermediate score order, absence of transient
+serviceability regression, retry count, exact latency, executing Worker,
+non-witness outcome or capability payload. `NOT_OBSERVED` is an immediate
+observation, not a Worker failure. Witnesses are observed with
 `results:load`; this lane does not poll `results:export`. There is no random campaign, seed,
 round count, fault DSL or automatic compensation.
 

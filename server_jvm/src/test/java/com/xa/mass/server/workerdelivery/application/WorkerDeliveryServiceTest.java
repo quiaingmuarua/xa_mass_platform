@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.TaskResultRuntime;
@@ -23,6 +24,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryReport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -582,6 +584,45 @@ class WorkerDeliveryServiceTest {
                 kernel,
                 routeChange
         ));
+    }
+
+    @Test
+    void adapterBatchAcceptsOneHundredKernelReports() {
+        DeliveryReport kernel = DeliveryReport.create(
+                DeliveryEndpoint.ADAPTER,
+                "endpoint-1",
+                DeliveryEndpoint.KERNEL,
+                "platform.adapter.worker-connection.changed",
+                "200",
+                "{\"workerId\":\"worker-1\",\"state\":\"CONNECTED\","
+                        + "\"observedAtMillis\":123}",
+                "worker-serviceability-evidence:v1"
+        );
+        List<DeliveryReport> reports = Collections.nCopies(100, kernel);
+        when(serviceability.appendAdapterEvidenceResults(reports))
+                .thenReturn(100);
+
+        var counts = service.appendAdapterResults(
+                "endpoint-1",
+                Collections.nCopies(100, codec.encodeDeliveryReport(kernel))
+        );
+
+        assertThat(counts.acceptedCount()).isEqualTo(100);
+        assertThat(counts.rejectedCount()).isZero();
+        verify(serviceability).appendAdapterEvidenceResults(reports);
+    }
+
+    @Test
+    void oversizedAdapterBatchFailsBeforeOwnerSideEffects() {
+        assertThatThrownBy(() -> service.appendAdapterResults(
+                "endpoint-1",
+                Collections.nCopies(101, "not-json")
+        ))
+                .isInstanceOf(ServerException.class)
+                .extracting(error -> ((ServerException) error).errorCode())
+                .isEqualTo(ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST);
+
+        verifyNoInteractions(resultRuntime, directCalls, serviceability);
     }
 
     @Test

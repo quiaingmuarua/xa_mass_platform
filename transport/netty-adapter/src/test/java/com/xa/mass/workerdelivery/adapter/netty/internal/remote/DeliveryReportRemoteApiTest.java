@@ -10,6 +10,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer;
 import com.xa.mass.workerdelivery.adapter.support.ScriptedHttpServer.Response;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -71,6 +72,30 @@ class DeliveryReportRemoteApiTest {
                     ),
                     REMOTE_API_PROTOCOL_ERROR
             );
+        }
+    }
+
+    @Test
+    void rejectsEmptyAndOversizedBatchesBeforeHttpSubmission() {
+        try (ScriptedHttpServer server = new ScriptedHttpServer(
+                request -> new Response(202,
+                        "{\"acceptedCount\":0,\"rejectedCount\":0}")
+        )) {
+            DeliveryReportRemoteApi remoteApi = remoteApi(server);
+
+            assertFailure(
+                    () -> remoteApi.append("adapter-1", List.of()),
+                    REMOTE_API_PROTOCOL_ERROR
+            );
+            assertFailure(
+                    () -> remoteApi.append(
+                            "adapter-1",
+                            Collections.nCopies(101, "report")
+                    ),
+                    REMOTE_API_PROTOCOL_ERROR
+            );
+
+            assertThat(server.requests()).isEmpty();
         }
     }
 

@@ -105,7 +105,8 @@ stable repository-wide identity.
 - **Prerequisites:** Redis 7, Server and Scenario Host; each scenario owns an
   isolated scope and Lab root.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
-  all-offered success, executing Worker, random coverage, throughput and soak.
+  absence of transient serviceability regression, all-offered success,
+  executing Worker, random coverage, throughput and soak.
 - **Command:** `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** high.
 

@@ -273,6 +273,9 @@ Rules:
   owner boundaries.
 - Owner-local Remote APIs own their paths, wire JSON and status semantics. One
   private HTTP client owns raw HTTP mechanics only.
+- Result queue capacity is only a local soft memory bound. The Report Process
+  submits fixed `1..100` remote batches; retries retain that exact batch and
+  shutdown must not unboundedly drain the queue.
 - Connection mechanism owns identity interpretation, first verification,
   current route use and valid Result ingress. Registry owns route truth.
 - Registry keeps one atomic pending, connected or disconnected Route entry per

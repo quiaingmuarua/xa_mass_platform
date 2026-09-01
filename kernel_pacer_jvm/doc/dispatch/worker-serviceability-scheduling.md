@@ -169,6 +169,11 @@ Evidence in the future or older than `evidenceMaxAgeMillis` (default 30s) is
 dropped. Within one consumed round, the latest timestamp wins per Worker; equal
 timestamps use the later Report. The policy publishes only three bounded
 semantic facts: connected, route unavailable, and probe unavailable.
+Across consumed rounds there is no retained evidence timestamp or strict
+monotonic fence: Reports apply in arrival order and an older late Report may
+temporarily reverse a newer observation. A later connection transition or
+Probe supplies fresh evidence and drives eventual convergence. This mechanism
+does not claim an uninterrupted monotonic state history.
 `DeliveryReport`, JSON, forward values and Adapter Event Names stop at that
 policy. `WorkerServiceabilityEvents` resolves global workerId to WorkerGroup in
 bounded catalog reads and owns current-score interpretation. Missing owners,

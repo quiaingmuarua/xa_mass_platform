@@ -114,6 +114,22 @@ class DeliveryReportProcessTest {
     }
 
     @Test
+    void remoteSubmissionUsesFixedBatchesIndependentOfQueueCapacity() {
+        try (ReportPeer peer = new ReportPeer()) {
+            DeliveryReportProcess process = process(peer, 1_000);
+
+            assertThat(process.ingress(reports(205))).isEqualTo(ACCEPTED);
+            process.round();
+            process.round();
+            process.round();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100, 100, 5);
+        }
+    }
+
+    @Test
     void completedCloseRejectsLateReportsAndFlushesOnce() {
         try (ReportPeer peer = new ReportPeer()) {
             DeliveryReportProcess process = process(peer, 2);
@@ -131,6 +147,36 @@ class DeliveryReportProcessTest {
         }
     }
 
+    @Test
+    void closePerformsOnlyOneBoundedFinalSubmission() {
+        try (ReportPeer peer = new ReportPeer()) {
+            DeliveryReportProcess process = process(peer, 1_000);
+            process.ingress(reports(205));
+
+            process.finishAfterSchedulerStop();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100);
+        }
+    }
+
+    @Test
+    void closeRetriesPendingBatchBeforeOneBoundedFinalSubmission() {
+        try (ReportPeer peer = new ReportPeer()) {
+            peer.responses.add(new Response(503, "{}"));
+            DeliveryReportProcess process = process(peer, 1_000);
+            process.ingress(reports(150));
+            process.round();
+
+            process.finishAfterSchedulerStop();
+
+            assertThat(peer.attempts)
+                    .extracting(List::size)
+                    .containsExactly(100, 100, 50);
+        }
+    }
+
     private static DeliveryReportProcess process(
             ReportPeer peer,
             int capacity
@@ -143,6 +189,14 @@ class DeliveryReportProcessTest {
                 "adapter-1",
                 capacity
         );
+    }
+
+    private static List<String> reports(int count) {
+        List<String> reports = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            reports.add("report-" + index);
+        }
+        return List.copyOf(reports);
     }
 
     private static final class ReportPeer implements AutoCloseable {

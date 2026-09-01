@@ -3,6 +3,7 @@ package com.xa.mass.server.api.v1.workerdelivery;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -17,6 +18,7 @@ import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService.Worke
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliveryEndpoint;
+import java.util.Collections;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -142,6 +144,20 @@ class AdapterBatchDeliveryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"cursor\":null,\"scanCount\":100}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void oversizedResultBatchIsRejectedBeforeCallingTheService()
+            throws Exception {
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(Jsons.toJson(Map.of(
+                                "results",
+                                Collections.nCopies(101, successResult())
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
     }
 
     private static DeliveryCommand command() {

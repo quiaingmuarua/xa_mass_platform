@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.netty.internal.process;
 
 import static com.xa.mass.workerdelivery.adapter.netty.internal.process.FiniteQueue.QueueIngressStatus.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.netty.internal.remote.DeliveryReportRemoteApi.MAX_RESULTS_PER_APPEND;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
@@ -69,7 +70,7 @@ public final class DeliveryReportProcess implements AdapterProcess {
         }
         if (pendingBatch == null) {
             List<String> remaining = reportQueue.consume(
-                    reportQueue.capacity()
+                    maximumRemoteBatchSize()
             );
             if (!remaining.isEmpty()
                     && submit(remaining) == SubmissionOutcome.RETRY) {
@@ -93,13 +94,17 @@ public final class DeliveryReportProcess implements AdapterProcess {
     private void submitAtMostOneBatch() {
         List<String> batch = pendingBatch;
         if (batch == null) {
-            batch = reportQueue.consume(reportQueue.capacity());
+            batch = reportQueue.consume(maximumRemoteBatchSize());
         }
         if (batch.isEmpty()) {
             return;
         }
         SubmissionOutcome outcome = submit(batch);
         pendingBatch = outcome == SubmissionOutcome.RETRY ? batch : null;
+    }
+
+    private int maximumRemoteBatchSize() {
+        return Math.min(reportQueue.capacity(), MAX_RESULTS_PER_APPEND);
     }
 
     private SubmissionOutcome submit(List<String> batch) {
