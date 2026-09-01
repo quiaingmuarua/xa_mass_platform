@@ -17,8 +17,25 @@ final class JsonHttpClient {
     private final URI baseUrl;
     private final Duration requestTimeout;
     private final HttpClient http;
+    private final long requestStartDeadlineNanos;
 
     JsonHttpClient(URI baseUrl, Duration requestTimeout) {
+        this(baseUrl, requestTimeout, Long.MAX_VALUE);
+    }
+
+    JsonHttpClient(URI baseUrl, AndroidWorkerProofOptions options) {
+        this(
+                baseUrl,
+                options.requestTimeout(),
+                options.phaseDeadlineNanos()
+        );
+    }
+
+    private JsonHttpClient(
+            URI baseUrl,
+            Duration requestTimeout,
+            long requestStartDeadlineNanos
+    ) {
         this.baseUrl = requireHttpBase(baseUrl);
         if (requestTimeout == null
                 || requestTimeout.isZero()
@@ -28,6 +45,7 @@ final class JsonHttpClient {
             );
         }
         this.requestTimeout = requestTimeout;
+        this.requestStartDeadlineNanos = requestStartDeadlineNanos;
         http = HttpClient.newBuilder()
                 .connectTimeout(requestTimeout)
                 .version(HttpClient.Version.HTTP_1_1)
@@ -35,6 +53,12 @@ final class JsonHttpClient {
     }
 
     Response send(String method, String path, Object body, String operation) {
+        if (System.nanoTime() >= requestStartDeadlineNanos) {
+            throw new ProofFailure(
+                    "proof.phase-time-budget",
+                    "Android Worker proof phase exhausted its time budget"
+            );
+        }
         HttpRequest.Builder request = HttpRequest.newBuilder()
                 .uri(endpoint(path))
                 .timeout(requestTimeout);
@@ -74,8 +98,7 @@ final class JsonHttpClient {
                     error
             );
         } catch (IOException error) {
-            throw new ProofFailure(
-                    operation + ".request",
+            throw new TransientObservationFailure(
                     operation + " request failed",
                     error
             );

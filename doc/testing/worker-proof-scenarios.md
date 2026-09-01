@@ -112,14 +112,18 @@ phase rather than retrying or constructing a preferred world.
 ```text
 World       one API 33 Emulator; one Debug App plus three Lab application IDs
 Topology    one Android Worker per App, one Group, one WebSocket Adapter
-Workload    10 single-App DELAY Items plus 3 Triad-targeted DELAY Items
-Mutation    single-App lifecycle faults plus one lab2 process outage
+Workload    10 exact DELAY Items, one process-loss DELAY, 3 Triad DELAY Items
+Mutation    route loss, Handler-time process death, endpoint loss, lab2 outage
 Oracle      local mutation evidence, Network, Scheduling, Direct Call and Task
 ```
 
 The Debug App remains the Primary Proof for one Android Worker lifecycle:
 explicit stop/start, App restart, Handler failure isolation, Adapter physical
-route loss, endpoint retry exhaustion, Server restart and explicit recovery.
+route loss, process death while a DELAY Handler is active, Task recovery,
+endpoint retry exhaustion, Server restart and explicit recovery. Local
+`activeDelayCount` establishes only that the process-loss mutation reached the
+Handler; Adapter Network and Kernel Scheduling APIs independently prove the
+resulting outage and recovery.
 
 The fixed Triad adds only the multi-process claim. Three application IDs create
 three independent Android sandboxes and worker identities in the same Group.
@@ -130,6 +134,11 @@ restarts `lab2` and requires its original worker ID. It does not generalize N,
 repeat Server restart, or claim Android background survival. The disposable
 Emulator disables cached-app freezing so platform process policy does not
 invalidate this fixed topology.
+
+The Android lane does not yet claim dynamic Properties re-Prepare across the
+real Runtime boundary, Doze/OEM policy, multiple devices, Handler throughput or
+an arbitrary number of Apps. Those are separate claims rather than missing
+iterations of the fixed single-Worker and Triad scenarios.
 
 ## Capacity: 10,000 Workers
 

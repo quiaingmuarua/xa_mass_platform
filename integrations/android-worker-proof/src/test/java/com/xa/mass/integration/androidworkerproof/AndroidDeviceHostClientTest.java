@@ -2,6 +2,7 @@ package com.xa.mass.integration.androidworkerproof;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -23,6 +24,7 @@ final class AndroidDeviceHostClientTest {
 
     private HttpServer server;
     private AndroidDeviceHostClient client;
+    private boolean invalidHealthJson;
 
     @BeforeEach
     void startServer() throws IOException {
@@ -64,8 +66,39 @@ final class AndroidDeviceHostClientTest {
         assertTrue(client.isUnavailable());
     }
 
+    @Test
+    void doesNotTreatInvalidHealthJsonAsHostUnavailability() {
+        invalidHealthJson = true;
+
+        ProofFailure failure = assertThrows(
+                ProofFailure.class,
+                client::isUnavailable
+        );
+
+        assertEquals("androidDevice.health.json", failure.invariant());
+    }
+
+    @Test
+    void rejectsIdentityDriftWithoutPollingUntilTimeout() {
+        ProofFailure failure = assertThrows(ProofFailure.class, () ->
+                AndroidWorkerProofAssertions.awaitRunning(
+                        client,
+                        Duration.ofSeconds(1L),
+                        "worker-2"
+                ));
+
+        assertEquals("device.lifecycle.identity", failure.invariant());
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
+        if ("/health".equals(path) && invalidHealthJson) {
+            byte[] body = "{".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+            return;
+        }
         Map<String, Object> response;
         if ("/health".equals(path)) {
             response = Map.of("status", "ok");

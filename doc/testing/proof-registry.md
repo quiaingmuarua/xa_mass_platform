@@ -155,28 +155,32 @@ stable repository-wide identity.
 
 - **Primary owner:** `:integrations:android-worker-proof`; the shell owns only
   external process choreography.
-- **Claim:** one API 33 Debug App proves exact ten-Item lifecycle Correctness and
-  bounded Convergence; three fixed Lab application IDs additionally prove
-  same-Group identity isolation, identity-bounded Property matching, partial
-  process outage and identity-stable recovery.
-- **Failure model:** Handler failure terminates a run, in-flight route loss cannot
-  recover, endpoint loss auto-restarts, one App loss degrades its peers, stale
-  serviceability, identity drift, or Task finality loss.
+- **Claim:** one API 33 Debug App proves exact ten-Item lifecycle Correctness,
+  physical-route recovery, in-flight Handler process loss, endpoint exhaustion
+  and explicit identity-stable recovery; three fixed Lab application IDs add
+  same-Group identity isolation, identity-bounded Property matching and partial
+  process outage.
+- **Failure model:** Handler failure terminates a run, physical route loss or
+  Android process death loses Task finality, endpoint loss auto-restarts, one
+  App loss degrades its peers, serviceability remains stale, or identity drifts.
 - **World:** one KVM Android Emulator with cached-app freezing disabled, Redis,
   Server, one Debug APK and three Debug-derived Lab APKs in the same
   WorkerGroup.
-- **Workload:** ten sequential single-App DELAY Items, three Triad-targeted DELAY
-  Items, plus named FAIL, in-flight DELAY, Probe and recovery witnesses.
-- **Mutation:** explicit stop/start, Adapter close-current, Server loss, Debug
-  App process restart and one `lab2` force-stop/restart.
+- **Workload:** ten sequential single-App DELAY Items, one process-loss DELAY,
+  three Triad-targeted DELAY Items, plus named FAIL, Probe and recovery
+  witnesses.
+- **Mutation:** explicit stop/start, Adapter close-current, force-stop during an
+  active DELAY, Server loss, Debug App process restart and one `lab2`
+  force-stop/restart.
 - **Oracle:** device-local state only establishes local mutations; independent
   Network, Scheduling, Direct Call, `items:call`, and `results:load` APIs prove
   system behavior. Result payloads remain opaque.
 - **Prerequisites:** Linux KVM and Android artifacts.
 - **Deliberate nonclaims:** throughput, Handler concurrency, exact connection
   attempts, transient Score sequence, UI behavior, arbitrary replica counts,
-  multi-device compatibility, cached-process survival, and physical-device
-  background policy.
+  dynamic Properties re-Prepare end to end, multi-device compatibility,
+  cached-process survival, Doze/OEM policy and physical-device background
+  behavior.
 - **Command:** `Android Worker Proof` in Proof CI.
 - **CI cost:** high.
 

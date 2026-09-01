@@ -132,9 +132,11 @@ not part of the pull-request Proof Gate.
 
 Android Host is the deterministic SDK and Demo Owner lane. Android Worker Proof
 is a separate single-emulator platform lane: its Java Harness owns Correctness
-and Convergence assertions, while its shell owns only ADB, Server, App, and
-Redis-scope process choreography. Android is not a secondary witness for the
-Java Worker proof.
+and Convergence assertions, including one DELAY Handler process-loss recovery,
+while its shell owns only ADB, Server, App, and Redis-scope process
+choreography. Contract-invalid observations fail immediately; only temporary
+HTTP transport failures remain eligible for bounded polling. Android is not a
+secondary witness for the Java Worker proof.
 
 ## CI Gate
 

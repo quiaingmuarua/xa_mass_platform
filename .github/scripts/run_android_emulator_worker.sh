@@ -237,7 +237,7 @@ run_proof_phase() {
         "--endpoint-manager-id=$endpoint_manager_id"
         "--evidence-file=$evidence_file"
         "--maximum-wait-millis=$maximum_wait_millis"
-        "--request-timeout-millis=120000"
+        "--request-timeout-millis=5000"
         "--android-api-level=33"
     )
     if [ -n "$baseline_file" ]; then
@@ -248,14 +248,13 @@ run_proof_phase() {
         "--args=${arguments[*]}"
 }
 
-await_process_stop_marker() {
+await_proof_marker() {
     local output_file=$1
+    local marker=$2
     local wait_seconds=$(( (maximum_wait_millis + 999) / 1000 + 10 ))
     local deadline=$((SECONDS + wait_seconds))
     while (( SECONDS < deadline )); do
-        if grep -Fxq \
-            ANDROID_WORKER_PROCESS_STOP_OBSERVED \
-            "$output_file"; then
+        if grep -Fxq "$marker" "$output_file"; then
             return 0
         fi
         if ! kill -0 "$proof_pid" 2>/dev/null; then
@@ -303,7 +302,9 @@ run_proof_phase \
     "$correctness_restart" \
     "$correctness_initial" > "$process_output" 2>&1 &
 proof_pid=$!
-if ! await_process_stop_marker "$process_output"; then
+if ! await_proof_marker \
+    "$process_output" \
+    ANDROID_WORKER_PROCESS_STOP_OBSERVED; then
     cat "$process_output"
     echo "Correctness proof did not observe the stopped App route"
     exit 1
@@ -318,6 +319,8 @@ clear_scope "$correctness_scope"
 
 convergence_id=ci-android-worker-convergence-health
 convergence_active="$evidence_root/convergence-active.json"
+convergence_process_loss="$evidence_root/convergence-process-loss.json"
+convergence_process_loss_recovery="$evidence_root/convergence-process-loss-recovery.json"
 convergence_terminal="$evidence_root/convergence-terminal.json"
 convergence_restart="$evidence_root/convergence-server-restart.json"
 
@@ -328,6 +331,33 @@ run_proof_phase \
     "$convergence_id" \
     active \
     "$convergence_active"
+
+process_loss_output="$proof_root/convergence-process-loss.out"
+run_proof_phase \
+    runAndroidWorkerConvergenceHealth \
+    "$convergence_id" \
+    process-loss \
+    "$convergence_process_loss" \
+    "$convergence_active" > "$process_loss_output" 2>&1 &
+proof_pid=$!
+if ! await_proof_marker \
+    "$process_loss_output" \
+    ANDROID_WORKER_IN_FLIGHT_PROCESS_LOSS_READY; then
+    cat "$process_loss_output"
+    echo "Convergence proof did not establish the in-flight DELAY"
+    exit 1
+fi
+adb shell am force-stop "$application_id"
+wait "$proof_pid"
+proof_pid=
+
+start_application
+run_proof_phase \
+    runAndroidWorkerConvergenceHealth \
+    "$convergence_id" \
+    process-loss-recovery \
+    "$convergence_process_loss_recovery" \
+    "$convergence_process_loss"
 
 stop_server_gracefully
 run_proof_phase \

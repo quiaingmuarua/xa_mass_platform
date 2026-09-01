@@ -16,7 +16,7 @@ final class AndroidWorkerProofOptionsTest {
                         "--proof-id=proof-1",
                         "--evidence-file=build/evidence.json",
                         "--maximum-wait-millis=5000",
-                        "--request-timeout-millis=6000",
+                        "--request-timeout-millis=4000",
                         "--android-api-level=33"
                 }
         );
@@ -24,7 +24,7 @@ final class AndroidWorkerProofOptionsTest {
         assertEquals("initial", options.phase());
         assertEquals("proof-1", options.proofId());
         assertEquals(5_000L, options.maximumWait().toMillis());
-        assertEquals(6_000L, options.requestTimeout().toMillis());
+        assertEquals(4_000L, options.requestTimeout().toMillis());
         assertEquals(33, options.androidApiLevel());
         assertEquals(
                 "scenario-websocket",
@@ -52,15 +52,34 @@ final class AndroidWorkerProofOptionsTest {
                         "--proof-id=p",
                         "--evidence-file=e.json"
                 }));
-        AndroidWorkerProofOptions invalid = AndroidWorkerProofOptions.parse(
-                new String[]{
+        assertThrows(IllegalArgumentException.class, () ->
+                AndroidWorkerProofOptions.parse(new String[]{
                         "--phase=initial",
                         "--proof-id=p",
                         "--evidence-file=e.json",
                         "--maximum-wait-millis=0"
+                }));
+    }
+
+    @Test
+    void defaultsToFiveSecondRequestsAndRejectsAnOversizedRequestTimeout() {
+        AndroidWorkerProofOptions defaults = AndroidWorkerProofOptions.parse(
+                new String[]{
+                        "--phase=initial",
+                        "--proof-id=p",
+                        "--evidence-file=e.json"
                 }
         );
-        assertThrows(IllegalArgumentException.class, invalid::maximumWait);
+        assertEquals(5_000L, defaults.requestTimeout().toMillis());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                AndroidWorkerProofOptions.parse(new String[]{
+                        "--phase=initial",
+                        "--proof-id=p",
+                        "--evidence-file=e.json",
+                        "--maximum-wait-millis=4999",
+                        "--request-timeout-millis=5000"
+                }));
     }
 
     @Test

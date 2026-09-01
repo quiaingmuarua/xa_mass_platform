@@ -34,11 +34,8 @@ final class AndroidDeviceHostClient {
         try {
             requireHealth();
             return false;
-        } catch (ProofFailure failure) {
-            if ("androidDevice.health.request".equals(failure.invariant())) {
-                return true;
-            }
-            throw failure;
+        } catch (TransientObservationFailure failure) {
+            return true;
         }
     }
 

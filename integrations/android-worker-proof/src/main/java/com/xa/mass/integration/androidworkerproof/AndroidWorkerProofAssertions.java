@@ -52,7 +52,10 @@ final class AndroidWorkerProofAssertions {
     ) {
         return ProofWait.until(
                 maximumWait,
-                device::snapshot,
+                () -> requireExpectedWorkerId(
+                        device.snapshot(),
+                        expectedWorkerId
+                ),
                 snapshot -> "RUNNING".equals(snapshot.state())
                         && snapshot.workerId() != null
                         && !snapshot.workerId().isBlank()
@@ -71,7 +74,10 @@ final class AndroidWorkerProofAssertions {
     ) {
         return ProofWait.until(
                 maximumWait,
-                device::snapshot,
+                () -> requireExpectedWorkerId(
+                        device.snapshot(),
+                        expectedWorkerId
+                ),
                 snapshot -> "STOPPED".equals(snapshot.state())
                         && (snapshot.workerId() == null
                         || expectedWorkerId.equals(snapshot.workerId())),
@@ -97,18 +103,33 @@ final class AndroidWorkerProofAssertions {
         );
     }
 
-    static void awaitDisconnected(
+    static String awaitDisconnected(
             AndroidRuntimeApiClient runtime,
             String endpointManagerId,
             String workerId,
             Duration maximumWait
     ) {
-        ProofWait.until(
+        return ProofWait.until(
                 maximumWait,
                 () -> runtime.networkState(endpointManagerId, workerId),
-                state -> !"connected".equals(state),
+                "disconnected"::equals,
                 "network.disconnected",
-                "Android Worker remained connected",
+                "Android Worker did not become disconnected",
+                workerId
+        );
+    }
+
+    static void awaitDeviceUnavailable(
+            AndroidDeviceHostClient device,
+            Duration maximumWait,
+            String workerId
+    ) {
+        ProofWait.until(
+                maximumWait,
+                device::isUnavailable,
+                Boolean.TRUE::equals,
+                "device.host.unavailable",
+                "Android device HTTP remained reachable",
                 workerId
         );
     }
@@ -175,5 +196,23 @@ final class AndroidWorkerProofAssertions {
                 "Android Worker Task result was not observed",
                 messageId
         );
+    }
+
+    private static AndroidDeviceHostClient.Snapshot requireExpectedWorkerId(
+            AndroidDeviceHostClient.Snapshot snapshot,
+            String expectedWorkerId
+    ) {
+        if (expectedWorkerId != null
+                && snapshot.workerId() != null
+                && !expectedWorkerId.equals(snapshot.workerId())) {
+            throw new ProofFailure(
+                    "device.lifecycle.identity",
+                    "Android Worker local identity changed",
+                    List.of(),
+                    List.of(),
+                    List.of(expectedWorkerId, snapshot.workerId())
+            );
+        }
+        return snapshot;
     }
 }

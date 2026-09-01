@@ -27,6 +27,8 @@ final class AndroidWorkerProofConstants {
 
     static final String PROCESS_STOP_OBSERVED_MARKER =
             "ANDROID_WORKER_PROCESS_STOP_OBSERVED";
+    static final String PROCESS_LOSS_READY_MARKER =
+            "ANDROID_WORKER_IN_FLIGHT_PROCESS_LOSS_READY";
 
     static final Set<String> DEVICE_EVENTS = Set.of(
             HOST_SNAPSHOT_EVENT,

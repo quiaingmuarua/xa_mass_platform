@@ -9,6 +9,9 @@ final class AndroidWorkerConvergenceHealth {
 
     static final String SCENARIO = "convergence-health";
     static final String ACTIVE_PHASE = "active";
+    static final String PROCESS_LOSS_PHASE = "process-loss";
+    static final String PROCESS_LOSS_RECOVERY_PHASE =
+            "process-loss-recovery";
     static final String TERMINAL_PHASE = "terminal";
     static final String SERVER_RESTART_PHASE = "server-restart";
 
@@ -21,11 +24,11 @@ final class AndroidWorkerConvergenceHealth {
         this.options = options;
         device = new AndroidDeviceHostClient(new JsonHttpClient(
                 options.deviceBaseUrl(),
-                options.requestTimeout()
+                options
         ));
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
-                options.requestTimeout()
+                options
         ));
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
     }
@@ -63,10 +66,13 @@ final class AndroidWorkerConvergenceHealth {
     private void run() {
         switch (options.phase()) {
             case ACTIVE_PHASE -> runActive();
+            case PROCESS_LOSS_PHASE -> runProcessLoss();
+            case PROCESS_LOSS_RECOVERY_PHASE -> runProcessLossRecovery();
             case TERMINAL_PHASE -> runTerminal();
             case SERVER_RESTART_PHASE -> runServerRestart();
             default -> throw new IllegalArgumentException(
-                    "Convergence phase must be active, terminal, or server-restart"
+                    "Convergence phase must be active, process-loss, "
+                            + "process-loss-recovery, terminal, or server-restart"
             );
         }
     }
@@ -172,6 +178,126 @@ final class AndroidWorkerConvergenceHealth {
         evidence.check("closeCurrentOutcome", closeOutcome);
         evidence.check("longDelayResultObserved", true);
         evidence.check("postMutationConnected", true);
+    }
+
+    private void runProcessLoss() {
+        ProofEvidence.Baseline baseline = activeBaseline();
+        String workerId = baseline.workerId();
+        Duration maximumWait = options.maximumWait();
+        evidence.workerId(workerId);
+        evidence.baselineIdentityMatched(true);
+
+        AndroidWorkerProofAssertions.awaitDeviceHealth(device, maximumWait);
+        AndroidWorkerProofAssertions.awaitRunning(
+                device,
+                maximumWait,
+                workerId
+        );
+        AndroidWorkerProofAssertions.awaitConnected(
+                runtime,
+                options.endpointManagerId(),
+                workerId,
+                maximumWait
+        );
+        AndroidWorkerProofAssertions.awaitHot(runtime, workerId, maximumWait);
+
+        AndroidRuntimeApiClient.TaskCall delayed = runtime.callItem(
+                AndroidWorkerProofConstants.DELAY_EVENT,
+                Map.of("delayMillis", 30_000L),
+                250L
+        );
+        if (delayed.status()
+                != AndroidRuntimeApiClient.CallStatus.NOT_OBSERVED) {
+            throw new ProofFailure(
+                    "process-loss.delay.in-flight",
+                    "Process-loss DELAY completed before the Handler checkpoint"
+            );
+        }
+        ProofWait.until(
+                maximumWait,
+                device::snapshot,
+                snapshot -> snapshot.activeDelayCount() == 1L
+                        && workerId.equals(snapshot.workerId()),
+                "process-loss.delay.active",
+                "Process-loss DELAY did not enter the expected Worker Handler",
+                workerId
+        );
+        evidence.check("processLossMessageId", delayed.messageId());
+        evidence.check("activeDelayObserved", true);
+        System.out.println(AndroidWorkerProofConstants.PROCESS_LOSS_READY_MARKER);
+        System.out.flush();
+
+        AndroidWorkerProofAssertions.awaitDeviceUnavailable(
+                device,
+                maximumWait,
+                workerId
+        );
+        String network = AndroidWorkerProofAssertions.awaitDisconnected(
+                runtime,
+                options.endpointManagerId(),
+                workerId,
+                maximumWait
+        );
+        String scheduling = AndroidWorkerProofAssertions.awaitUnavailable(
+                runtime,
+                workerId,
+                maximumWait
+        );
+        evidence.check("processLossMutationEstablished", true);
+        evidence.check("processLossNetworkState", network);
+        evidence.check("processLossSchedulingState", scheduling);
+    }
+
+    private void runProcessLossRecovery() {
+        ProofEvidence.Baseline baseline = ProofEvidence.readBaseline(
+                options.baselineFile(true),
+                options,
+                SCENARIO,
+                PROCESS_LOSS_PHASE
+        );
+        String workerId = baseline.workerId();
+        String messageId = baseline.requiredCheck("processLossMessageId");
+        if (!baseline.requiredBooleanCheck("processLossMutationEstablished")) {
+            throw new ProofFailure(
+                    "process-loss-recovery.baseline",
+                    "Process-loss mutation was not established"
+            );
+        }
+        Duration maximumWait = options.maximumWait();
+        evidence.workerId(workerId);
+        evidence.baselineIdentityMatched(true);
+
+        AndroidWorkerProofAssertions.awaitDeviceHealth(device, maximumWait);
+        AndroidWorkerProofAssertions.awaitRunning(
+                device,
+                maximumWait,
+                workerId
+        );
+        AndroidWorkerProofAssertions.awaitConnected(
+                runtime,
+                options.endpointManagerId(),
+                workerId,
+                maximumWait
+        );
+        String scheduling = AndroidWorkerProofAssertions.awaitHot(
+                runtime,
+                workerId,
+                maximumWait
+        );
+        AndroidWorkerProofAssertions.awaitResult(
+                runtime,
+                messageId,
+                maximumWait
+        );
+        AndroidWorkerProofAssertions.requireProbe(
+                runtime,
+                options.endpointManagerId(),
+                workerId
+        );
+        evidence.check("processLossMessageId", messageId);
+        evidence.check("processLossResultObserved", true);
+        evidence.check("recoverySchedulingState", scheduling);
+        evidence.check("recoveryProbeObserved", true);
     }
 
     private void runTerminal() {

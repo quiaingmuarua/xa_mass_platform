@@ -23,9 +23,16 @@ final class AndroidWorkerProofOptions {
     );
 
     private final Map<String, String> values;
+    private final long phaseDeadlineNanos;
 
     private AndroidWorkerProofOptions(Map<String, String> values) {
         this.values = Map.copyOf(values);
+        phaseDeadlineNanos = System.nanoTime()
+                + Duration.ofMillis(boundedLong(
+                        "maximum-wait-millis",
+                        60_000L,
+                        300_000L
+                )).toNanos();
     }
 
     static AndroidWorkerProofOptions parse(String[] arguments) {
@@ -57,7 +64,14 @@ final class AndroidWorkerProofOptions {
                 );
             }
         }
-        return new AndroidWorkerProofOptions(values);
+        AndroidWorkerProofOptions options = new AndroidWorkerProofOptions(values);
+        if (options.requestTimeout().compareTo(options.maximumWait()) > 0) {
+            throw new IllegalArgumentException(
+                    "--request-timeout-millis must not exceed "
+                            + "--maximum-wait-millis"
+            );
+        }
+        return options;
     }
 
     String phase() {
@@ -119,7 +133,7 @@ final class AndroidWorkerProofOptions {
     Duration requestTimeout() {
         return Duration.ofMillis(boundedLong(
                 "request-timeout-millis",
-                120_000L,
+                5_000L,
                 300_000L
         ));
     }
@@ -133,6 +147,10 @@ final class AndroidWorkerProofOptions {
             );
         }
         return parsed;
+    }
+
+    long phaseDeadlineNanos() {
+        return phaseDeadlineNanos;
     }
 
     private long boundedLong(String name, long defaultValue, long maximum) {

@@ -18,7 +18,7 @@ final class AndroidWorkerTriad {
         this.options = java.util.Objects.requireNonNull(options, "options");
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
-                options.requestTimeout()
+                options
         ));
         Map<AndroidWorkerTriadTopology.WorkerAddress,
                 AndroidDeviceHostClient> assembled = new LinkedHashMap<>();
@@ -27,7 +27,7 @@ final class AndroidWorkerTriad {
             assembled.put(worker, new AndroidDeviceHostClient(
                     new JsonHttpClient(
                             worker.deviceBaseUrl(),
-                            options.requestTimeout()
+                            options
                     )
             ));
         }

@@ -454,14 +454,19 @@ Adapter connectivity, Kernel state or schedulability.
   Adapter or Worker implementations.
 - `:integrations:android-worker-proof` is the Java 21 assertion Owner for the
   API 33 Android Worker lane. The Debug App owns single-Worker lifecycle claims;
-  three fixed Lab application IDs add same-Group process isolation and partial
-  outage claims without repeating endpoint or Server restart proofs. Its
+  it also proves one Task recovery after the App process dies inside a DELAY
+  Handler. Three fixed Lab application IDs add same-Group process isolation and
+  partial outage claims without repeating endpoint or Server restart proofs. Its
   shell owns only Emulator, ADB, Server, App and Redis-scope processes, and
   disables cached-app freezing on that disposable Emulator. This is not
   background-survival evidence. The Java
   Harness uses device-local state to establish mutations, then independently
   observes public Network, Scheduling, Direct Call and finite Task APIs. It
-  never asserts business Result payloads and is not a Java Worker witness.
+  retries only temporary HTTP observation failures; invalid contracts and
+  identity drift fail immediately. It never asserts business Result payloads
+  and is not a Java Worker witness. Dynamic Properties re-Prepare, Doze/OEM
+  policy, device matrices, throughput and arbitrary App counts are separate
+  claims.
 - One-shot Python proof runners may own process orchestration, but not database
   protocols. Redis scope cleanup uses
   `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a

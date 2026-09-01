@@ -21,11 +21,11 @@ final class AndroidWorkerCorrectness {
         this.options = options;
         device = new AndroidDeviceHostClient(new JsonHttpClient(
                 options.deviceBaseUrl(),
-                options.requestTimeout()
+                options
         ));
         runtime = new AndroidRuntimeApiClient(new JsonHttpClient(
                 options.serverBaseUrl(),
-                options.requestTimeout()
+                options
         ));
         evidence = new ProofEvidence(options, SCENARIO, options.phase());
     }

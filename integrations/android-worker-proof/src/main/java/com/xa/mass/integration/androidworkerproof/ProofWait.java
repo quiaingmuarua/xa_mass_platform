@@ -19,7 +19,7 @@ final class ProofWait {
             String identity
     ) {
         long deadline = System.nanoTime() + maximumWait.toNanos();
-        RuntimeException lastFailure = null;
+        TransientObservationFailure lastFailure = null;
         T latest = null;
         while (System.nanoTime() < deadline) {
             try {
@@ -27,7 +27,7 @@ final class ProofWait {
                 if (accepted.test(latest)) {
                     return latest;
                 }
-            } catch (RuntimeException error) {
+            } catch (TransientObservationFailure error) {
                 lastFailure = error;
             }
             sleep();

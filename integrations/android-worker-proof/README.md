@@ -34,19 +34,48 @@ device-matrix compatibility.
 
 ## Convergence Health
 
-The convergence proof establishes three separate mutations:
+The convergence proof establishes four separate mutations:
 
 1. `extension.worker.lab.fail` returns a Worker `3xxx` outcome while the run and
    subsequent Probe remain usable.
 2. A ten-second DELAY enters the Handler, then Adapter close-current closes the
    physical route. The same Worker ID reconnects and the accepted Task Item
    eventually has one visible success result.
-3. Runtime Server absence exhausts the Client endpoint budget. The Worker stays
+3. A thirty-second DELAY enters the Handler, then the Android process is
+   force-stopped. Network and Scheduling evidence leave their serviceable
+   states; one explicit App start restores the same Worker ID and the original
+   Task Item eventually has one visible success result.
+4. Runtime Server absence exhausts the Client endpoint budget. The Worker stays
    `STOPPED` after Server restart until the device Host explicitly starts it,
    after which route and scheduling evidence converge again.
 
 The local `activeDelayCount` proves only that the Demo Handler was entered. It
 is not Adapter connectivity, Kernel state, or schedulability evidence.
+
+## Phase ownership
+
+| Scenario | Phase | External mutation | Baseline | Oracle |
+| --- | --- | --- | --- | --- |
+| Correctness | `initial` | none | none | 10/10 success and explicit stop/start |
+| Correctness | `process-restart` | force-stop/start | `initial` | identity, Route and HOT recovery |
+| Convergence | `active` | Adapter close-current | none | FAIL isolation and transparent reconnect |
+| Convergence | `process-loss` | force-stop | `active` | Host, Network and Scheduling become unavailable |
+| Convergence | `process-loss-recovery` | start App | `process-loss` | original Task and identity recover |
+| Convergence | `terminal` | stop Server | `active` | endpoint exhaustion and local STOPPED |
+| Convergence | `server-restart` | restart Server, then explicit Host start | `active` | no automatic start and explicit recovery |
+| Triad | `baseline` / `outage` / `recovery` | force-stop/start `lab2` | `baseline` | partial outage isolation |
+
+Java phases own Runtime calls, observations, assertions and Evidence. The shell
+performs each ADB or process mutation once after the phase emits its stable
+checkpoint marker. A device-local state establishes that a local mutation
+happened; Network and Scheduling projections remain independent oracles.
+
+Temporary HTTP connection, read and request-timeout failures may be observed
+again until the phase deadline. Invalid JSON, unexpected HTTP status, invalid
+state or identity drift fails immediately. Defaults are 60 seconds for the
+phase wait and 5 seconds for one request, with `requestTimeout <= maximumWait`.
+A phase can therefore exit at most one in-progress request timeout after its
+maximum wait budget.
 
 ## Three-application isolation
 
@@ -85,6 +114,26 @@ The complete API 33 proof is owned by:
 Evidence contains identities, states, outcome classes, established mutations,
 and relation checks. It excludes Worker Properties, Task payloads, business
 Results, screenshots, and video.
+
+## Adding a claim
+
+Before extending this lane:
+
+1. Identify the Primary Owner and keep local mechanism behavior in its Owner
+   test.
+2. Add Emulator Proof only when the claim requires a physical Android process,
+   data sandbox or network fact.
+3. Keep API calls, oracle decisions and Evidence in Java.
+4. Keep Shell limited to ADB, port mapping and process mutation.
+5. Use local Host state only to establish the mutation, never as Adapter or
+   Kernel truth.
+6. Update the Proof Registry, Worker scenario document and proof-path selection
+   when the claim boundary changes.
+
+This lane deliberately does not prove dynamic Properties re-Prepare,
+Doze/OEM background policy, a device matrix, Handler throughput or arbitrary
+application counts. A future Properties proof must use a real owning surface;
+it must not add a test-only Properties control API to the Demo Host.
 
 ## Verification
 

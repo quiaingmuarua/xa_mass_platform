@@ -153,6 +153,17 @@ final class ProofEvidence {
         String requiredCheck(String name) {
             return JsonValues.requiredString(checks, name);
         }
+
+        boolean requiredBooleanCheck(String name) {
+            Object value = checks.get(name);
+            if (!(value instanceof Boolean result)) {
+                throw new ProofFailure(
+                        "baseline.check",
+                        "Android Worker proof baseline check is invalid"
+                );
+            }
+            return result;
+        }
     }
 
     private static String requireText(String value, String name) {
