@@ -63,6 +63,8 @@ class ConvergenceWorkloadTest {
             assertThat(wave).hasSize(2);
             assertThat(workload.offeredItemCount()).isEqualTo(100);
             assertThat(workload.invalidInputCount()).isEqualTo(10);
+            assertThat(workload.offeredDelayItemCount()).isEqualTo(1);
+            assertThat(workload.offeredFailItemCount()).isEqualTo(1);
             assertThat(workload.witnessMessageIds()).hasSize(2);
             assertThat(wave).allSatisfy(batch -> assertThat(
                     workload.immediateWitnessStatus(batch)
@@ -85,11 +87,26 @@ class ConvergenceWorkloadTest {
                     items.get(index - 1),
                     "item"
             );
+            String eventCode = JsonValues.requiredString(
+                    item,
+                    "eventCode"
+            );
             Map<String, Object> payload = JsonValues.object(
                     item.get("payload"),
                     "payload"
             );
-            if (index % 10 == 0) {
+            if (stringGroup && index == 2) {
+                assertThat(eventCode)
+                        .isEqualTo(WorkerLabConvergenceSupport.DELAY_EVENT);
+                assertThat(payload).containsExactlyEntriesOf(Map.of(
+                        "delayMillis",
+                        ConvergenceWorkload.BACKGROUND_DELAY_MILLIS
+                ));
+            } else if (stringGroup && index == 3) {
+                assertThat(eventCode)
+                        .isEqualTo(WorkerLabConvergenceSupport.FAIL_EVENT);
+                assertThat(payload).isEmpty();
+            } else if (index % 10 == 0) {
                 if (stringGroup) {
                     assertThat(payload).containsEntry("unexpected", "invalid");
                 } else {

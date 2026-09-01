@@ -21,6 +21,7 @@ import uuid
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MODULE_TASK = ":integrations:worker-convergence-health"
+SERVER_CONFIG_DIRECTORY = Path(__file__).with_name("server-config").resolve()
 RUNTIME_API = "http://127.0.0.1:18082"
 LAB_CONTROL = "http://127.0.0.1:18086"
 ENDPOINT_MANAGER = "scenario-websocket"
@@ -321,6 +322,8 @@ def _start_server(
             "-jar",
             str(boot_jar),
             "--spring.profiles.active=scenario-workers",
+            "--spring.config.additional-location="
+            f"{SERVER_CONFIG_DIRECTORY.as_uri()}/",
         ],
         scenario_root / log_name,
         environment,
@@ -376,6 +379,8 @@ def _capability_assembly() -> dict[str, object]:
             "eventCodes": [
                 "extension.worker.string.md5",
                 "extension.worker.lab.checkpoint",
+                "extension.worker.lab.delay",
+                "extension.worker.lab.fail",
             ],
             "requestTimeoutMillis": 10_000,
             "reconnectPolicy": reconnect_policy,

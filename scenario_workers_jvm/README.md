@@ -208,7 +208,24 @@ The command checkpoint is a String-Worker-only reliability fixture for
 `extension.worker.lab.checkpoint`. One opaque token can hold one target Handler
 for at most 120 seconds; release, timeout, or Host close opens the gate. It is
 not a Core hook, generic fault DSL, Worker identity context, or production
-control event. These endpoints expose Lab desired/runtime state only. They do not claim
+control event.
+
+The Host also makes two finite background-fault Definitions available to an
+explicit capability assembly:
+
+```text
+extension.worker.lab.delay  {"delayMillis":1..30000}
+extension.worker.lab.fail   {}
+```
+
+Delay occupies the current synchronous Handler path and returns one successful
+Report after the requested interval. Fail produces the ordinary Worker `3303`
+execution-failure Report without stopping the Worker or its connection. They
+have no probability, scheduler, mutable fault state or HTTP control surface and
+are not selected by the default capability assembly. Worker Convergence Health
+selects them only for its String Group background workload.
+
+These endpoints expose Lab desired/runtime state only. They do not claim
 Adapter connectivity, Kernel score, or schedulability. The stable ready line is:
 
 ```text

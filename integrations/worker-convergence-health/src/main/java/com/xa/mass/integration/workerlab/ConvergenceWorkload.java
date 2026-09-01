@@ -15,6 +15,7 @@ final class ConvergenceWorkload {
 
     static final int ITEMS_PER_GROUP_PER_WAVE = 50;
     static final int INVALID_ITEMS_PER_GROUP_PER_WAVE = 5;
+    static final long BACKGROUND_DELAY_MILLIS = 10_000L;
     private static final long CALL_WAIT_MILLIS = 250L;
 
     private static final List<GroupWorkload> GROUPS = List.of(
@@ -167,6 +168,14 @@ final class ConvergenceWorkload {
         return batches.stream().mapToInt(Batch::invalidInputCount).sum();
     }
 
+    int offeredDelayItemCount() {
+        return stringBatchCount();
+    }
+
+    int offeredFailItemCount() {
+        return stringBatchCount();
+    }
+
     Set<String> witnessMessageIds() {
         return batches.stream()
                 .map(Batch::witnessMessageId)
@@ -183,7 +192,18 @@ final class ConvergenceWorkload {
         for (int index = 1; index <= ITEMS_PER_GROUP_PER_WAVE; index++) {
             String eventCode = group.eventCode();
             Map<String, Object> payload;
-            if (index % 10 == 0) {
+            if (WorkerLabConvergenceSupport.STRING_GROUP.equals(group.groupId())
+                    && index == 2) {
+                eventCode = WorkerLabConvergenceSupport.DELAY_EVENT;
+                payload = Map.of(
+                        "delayMillis",
+                        BACKGROUND_DELAY_MILLIS
+                );
+            } else if (WorkerLabConvergenceSupport.STRING_GROUP.equals(
+                    group.groupId()) && index == 3) {
+                eventCode = WorkerLabConvergenceSupport.FAIL_EVENT;
+                payload = Map.of();
+            } else if (index % 10 == 0) {
                 payload = invalidPayload(group);
             } else {
                 payload = Map.of(
@@ -207,6 +227,13 @@ final class ConvergenceWorkload {
             ));
         }
         return List.copyOf(items);
+    }
+
+    private int stringBatchCount() {
+        return Math.toIntExact(batches.stream()
+                .filter(batch -> WorkerLabConvergenceSupport.STRING_GROUP
+                        .equals(batch.workerGroupId()))
+                .count());
     }
 
     private static Map<String, Object> invalidPayload(GroupWorkload group) {

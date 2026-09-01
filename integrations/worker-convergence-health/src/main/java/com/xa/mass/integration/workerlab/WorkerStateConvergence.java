@@ -323,10 +323,20 @@ final class WorkerStateConvergence {
                     workload.invalidInputCount() == 70,
                     "State convergence workload did not contain 70 invalid inputs"
             );
+            require(
+                    workload.offeredDelayItemCount() == 7,
+                    "State convergence workload did not offer 7 delay Items"
+            );
+            require(
+                    workload.offeredFailItemCount() == 7,
+                    "State convergence workload did not offer 7 fail Items"
+            );
             evidence.record("complete", "named-witnesses-converged", Map.of(
                     "workerCount", reconnected.size(),
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
+                    "offeredDelayItemCount", workload.offeredDelayItemCount(),
+                    "offeredFailItemCount", workload.offeredFailItemCount(),
                     "witnessCount", workload.witnessMessageIds().size(),
                     "waveCount", 7
             ));
@@ -334,6 +344,8 @@ final class WorkerStateConvergence {
                     "workerCount", reconnected.size(),
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
+                    "offeredDelayItemCount", workload.offeredDelayItemCount(),
+                    "offeredFailItemCount", workload.offeredFailItemCount(),
                     "convergedWitnessCount", workload.witnessMessageIds().size(),
                     "serverRestartObserved", true,
                     "workerIdentityStable", true

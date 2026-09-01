@@ -95,8 +95,10 @@ stable repository-wide identity.
 - **World:** two isolated scenarios, each 2 Groups x 50 Workers and one
   WebSocket Adapter.
 - **Workload:** ON_DEMAND managed batch calls only. State/server offers 700
-  Items with 70 deterministic invalid inputs; in-flight loss offers 300 with
-  30 deterministic invalid inputs.
+  Items with 70 deterministic invalid inputs plus seven offered DELAY and FAIL
+  Items each; in-flight loss offers 300 with 30 invalid inputs plus three
+  offered DELAY and FAIL Items each. Fault Item counts are offered load, not
+  observed execution counts.
 - **Mutation:** deterministic stop/start, stopped-state Properties replacement,
   full Group outage, Server restart and Scenario Host kill.
 - **Oracle:** established Lab local state followed by independent Network and
@@ -106,7 +108,8 @@ stable repository-wide identity.
   isolated scope and Lab root.
 - **Deliberate nonclaims:** exact intermediate order, latency SLA, retry count,
   absence of transient serviceability regression, all-offered success,
-  executing Worker, random coverage, throughput and soak.
+  background fault Result status or execution count, executing Worker, random
+  coverage, throughput and soak.
 - **Command:** `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15`.
 - **CI cost:** high.
 

@@ -535,6 +535,10 @@ public final class ScenarioWorkers implements AutoCloseable {
         );
         addDefinitionExtensions(
                 definitions,
+                ScenarioWorkerLabEvents.backgroundFaults()
+        );
+        addDefinitionExtensions(
+                definitions,
                 List.of(ScenarioWorkerLabEvents.checkpoint(checkpoints))
         );
         return Collections.unmodifiableMap(definitions);

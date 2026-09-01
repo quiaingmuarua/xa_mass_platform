@@ -30,9 +30,10 @@ Worker Correctness is the deliberately perfect world: its two managed
 `items:call` batches require exact response identities and 100 `SUCCEEDED`
 statuses while keeping capability Result payloads opaque. Worker Convergence
 Health is deliberately imperfect: it fixes offered and invalid-input counts,
-then asserts independent Network/Scheduling mutations and named witness
+includes deterministic slow and failed Handler Items as background offered
+work, then asserts independent Network/Scheduling mutations and named witness
 convergence. `NOT_OBSERVED` is not treated as failure, and non-witness Items do
-not carry a success-count oracle.
+not carry a success-count or execution-count oracle.
 
 PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
 Boundary claims. High-level Worker proofs use `results:load` only for named

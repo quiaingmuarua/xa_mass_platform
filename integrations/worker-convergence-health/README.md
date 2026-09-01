@@ -17,6 +17,13 @@ ON_DEMAND_ITEM_RULE through managed batch items:call
 independent Lab, Network, Scheduling and Task observations
 ```
 
+The Integration owns a Server catalog override and Scenario capability
+assembly that add `extension.worker.lab.delay` and
+`extension.worker.lab.fail` only to the existing String Group. Every String
+batch offers one 10-second delay Item and one immediate Handler-failure Item as
+non-witness background work. Phone batches and the 100-Worker topology remain
+unchanged.
+
 The Lab is a mutation source and local witness, not a reconcile coordinator.
 Every action is sent once. A failed or ambiguous local operation fails that
 phase and is not treated as downstream convergence evidence.
@@ -40,7 +47,9 @@ oracle. The scenario proves:
   matching Worker appears.
 
 Acceptance fixes `700 offered / 70 invalid` and convergence of all named
-witnesses. It does not require every offered Item to succeed.
+witnesses. The workload also offers seven delay and seven fail Items. These are
+submission counts, not Handler invocation or observed Result counts, and the
+scenario does not require every offered Item to succeed.
 
 ## In-Flight Loss Convergence
 
@@ -58,8 +67,11 @@ Neither scenario fixes intermediate score order, absence of transient
 serviceability regression, retry count, exact latency, executing Worker,
 non-witness outcome or capability payload. `NOT_OBSERVED` is an immediate
 observation, not a Worker failure. Witnesses are observed with
-`results:load`; this lane does not poll `results:export`. There is no random campaign, seed,
-round count, fault DSL or automatic compensation.
+`results:load`; this lane does not poll `results:export`. In-flight loss also
+offers three delay and three fail background Items. There is no assertion that
+these background Items execute once, produce a terminal Result or determine a
+specific Worker state. There is no random campaign, seed, round count, fault
+DSL or automatic compensation.
 
 ## Run
 

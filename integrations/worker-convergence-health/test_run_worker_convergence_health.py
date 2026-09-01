@@ -62,6 +62,33 @@ class WorkerConvergenceHealthRunnerTest(unittest.TestCase):
             "extension.worker.lab.checkpoint",
             assembly[PROOF.STRING_GROUP]["eventCodes"],
         )
+        self.assertIn(
+            "extension.worker.lab.delay",
+            assembly[PROOF.STRING_GROUP]["eventCodes"],
+        )
+        self.assertIn(
+            "extension.worker.lab.fail",
+            assembly[PROOF.STRING_GROUP]["eventCodes"],
+        )
+        self.assertNotIn(
+            "extension.worker.lab.delay",
+            assembly[PROOF.PHONE_GROUP]["eventCodes"],
+        )
+
+    def test_server_catalog_matches_convergence_capability_assembly(self):
+        config = (
+            PROOF.SERVER_CONFIG_DIRECTORY
+            / "application-scenario-workers.yaml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"extension.worker.lab.delay"', config)
+        self.assertIn('"extension.worker.lab.fail"', config)
+        phone, string = config.split(
+            '"scenario-string-utils-workers"',
+            maxsplit=1,
+        )
+        self.assertNotIn('"extension.worker.lab.delay"', phone)
+        self.assertIn('"extension.worker.lab.delay"', string)
 
     def test_offline_property_replace_preserves_state_document(self):
         with tempfile.TemporaryDirectory() as temporary:

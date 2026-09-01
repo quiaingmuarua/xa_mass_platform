@@ -250,6 +250,14 @@ final class WorkerTaskFaultConvergence {
                     workload.invalidInputCount() == 30,
                     "Task-fault workload did not contain 30 invalid inputs"
             );
+            require(
+                    workload.offeredDelayItemCount() == 3,
+                    "Task-fault workload did not offer 3 delay Items"
+            );
+            require(
+                    workload.offeredFailItemCount() == 3,
+                    "Task-fault workload did not offer 3 fail Items"
+            );
             state.recoveredBy(
                     backupWorkerId,
                     workload.batches()
@@ -258,6 +266,8 @@ final class WorkerTaskFaultConvergence {
                     "backupWorkerId", backupWorkerId,
                     "offeredItemCount", workload.offeredItemCount(),
                     "invalidInputCount", workload.invalidInputCount(),
+                    "offeredDelayItemCount", workload.offeredDelayItemCount(),
+                    "offeredFailItemCount", workload.offeredFailItemCount(),
                     "checkpointMessageId", state.checkpointMessageId(),
                     "activeWorkerCount", active.size()
             ));
@@ -308,6 +318,8 @@ final class WorkerTaskFaultConvergence {
                     "recoveredWorkerId", state.recoveredWorkerId(),
                     "offeredItemCount", 300,
                     "invalidInputCount", 30,
+                    "offeredDelayItemCount", 3,
+                    "offeredFailItemCount", 3,
                     "convergedWitnessCount", 5,
                     "checkpointMessageId", state.checkpointMessageId(),
                     "executionFaultObserved", true,

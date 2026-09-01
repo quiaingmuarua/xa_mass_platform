@@ -56,6 +56,10 @@ String x ON_DEMAND_ITEM_RULE
 Seven waves submit 50 Items per Group with `items:call`. Item one is the named
 valid witness and every tenth Item is deterministically invalid. Calls wait 250
 milliseconds; `SUCCEEDED/NOT_OBSERVED` are immediate observations only.
+String Item two is a deterministic 10-second `extension.worker.lab.delay` and
+Item three is `extension.worker.lab.fail`; Phone Items are unchanged. These
+seven DELAY and seven FAIL Items are background offered load, not additional
+per-Item or Result assertions.
 Directed witnesses use an explicit finite candidate identity set together with
 their mutable Property condition. The other 49 Items keep empty rules, so this
 scenario does not turn bounded candidate discovery into part of its oracle.
@@ -76,6 +80,10 @@ scenario does not turn bounded candidate discovery into part of its oracle.
    700 successful Results.
 
 ### In-Flight Loss Convergence: 300 Items
+
+Each of its three String batches uses the same Item-two DELAY and Item-three
+FAIL background pattern, for three offered Items of each kind. The checkpoint
+remains Item one and is the only execution Item promoted to a named oracle.
 
 1. Baseline 100 connected/HOT Workers and complete both wave-one witnesses.
 2. Arm one Scenario-only String checkpoint. Its witness rule names target and

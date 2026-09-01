@@ -21,6 +21,8 @@ final class WorkerLabConvergenceSupport {
     static final String STRING_EVENT = "extension.worker.string.md5";
     static final String CHECKPOINT_EVENT =
             "extension.worker.lab.checkpoint";
+    static final String DELAY_EVENT = "extension.worker.lab.delay";
+    static final String FAIL_EVENT = "extension.worker.lab.fail";
 
     static final List<WorkerRef> PHONE_WORKERS = workers(
             PHONE_GROUP,

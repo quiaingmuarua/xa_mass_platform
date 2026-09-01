@@ -1,0 +1,21 @@
+xa:
+  mass:
+    worker-assembly:
+      group-config-json: |
+        {
+          "scenario-phone-number-workers": {
+            "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "extension.worker.phonenumber.e164"
+            ]
+          },
+          "scenario-string-utils-workers": {
+            "attributes": {"capability":"string-utils"},
+            "eventCodes": [
+              "extension.worker.string.md5",
+              "extension.worker.lab.checkpoint",
+              "extension.worker.lab.delay",
+              "extension.worker.lab.fail"
+            ]
+          }
+        }
