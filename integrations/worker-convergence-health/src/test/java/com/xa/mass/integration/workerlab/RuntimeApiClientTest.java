@@ -1,0 +1,168 @@
+package com.xa.mass.integration.workerlab;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import com.xa.mass.integration.workerlab.RuntimeApiClient.TaskItem;
+import com.xa.mass.workerdelivery.json.Jsons;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class RuntimeApiClientTest {
+
+    @Test
+    void observesWorkersAndRunsFiniteTaskCalls() throws Exception {
+        List<Map<String, Object>> requests = new ArrayList<>();
+        HttpServer server = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", 0),
+                0
+        );
+        server.createContext("/api/v1", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            Map<String, Object> body = requestBody(exchange);
+            requests.add(body);
+            if (path.endsWith("/workers:preview")) {
+                respondJson(exchange, 200, Map.of(
+                        "unreadableCount", 0,
+                        "workers", List.of(Map.of(
+                                "workerGroupId", "group-1",
+                                "workerId", "worker-1",
+                                "workerProperties", Map.of(
+                                        "labInventoryKey", "workers.jsonl",
+                                        "labInventoryLine", 1,
+                                        "labSlot", 901
+                                )
+                        ))
+                ));
+            } else if (path.endsWith("/workers:network-observe")) {
+                respondJson(exchange, 200, Map.of(
+                        "statesByWorkerId", Map.of(
+                                "worker-1", "connected"
+                        )
+                ));
+            } else if (path.endsWith("/workers:scheduling-observe")) {
+                respondJson(exchange, 200, Map.of(
+                        "statesByWorkerId", Map.of(
+                                "worker-1", "recovery"
+                        )
+                ));
+            } else if (path.endsWith("/items:call")) {
+                respondJson(exchange, 200, Map.of(
+                        "results", Map.of(
+                                "message-1", Map.of("status", "succeeded"),
+                                "message-2", Map.of("status", "not_observed")
+                        )
+                ));
+            } else if (path.endsWith("/results:load")) {
+                Map<String, Object> results = new java.util.LinkedHashMap<>();
+                results.put("message-1", Map.of("outcomeCode", "200"));
+                results.put("message-2", null);
+                respondJson(exchange, 200, Map.of(
+                        "results", results
+                ));
+            } else {
+                respondJson(exchange, 404, Map.of());
+            }
+        });
+        server.start();
+        try {
+            RuntimeApiClient client = new RuntimeApiClient(
+                    new JsonHttpClient(baseUri(server), Duration.ofSeconds(2))
+            );
+
+            assertThat(client.previewWorkers("group-1")
+                    .get("workers.jsonl:1")
+                    .workerProperties()).containsEntry("labSlot", 901L);
+            assertThat(client.observeNetwork(
+                    "adapter-1",
+                    List.of("worker-1")
+            )).containsEntry("worker-1", "connected");
+            assertThat(client.observeScheduling(
+                    "group-1",
+                    List.of("worker-1")
+            )).containsEntry("worker-1", "recovery");
+            assertThat(client.callItems("task-1", List.of(
+                    new TaskItem(
+                            "message-1",
+                            "event.one",
+                            Map.of(),
+                            Map.of()
+                    ),
+                    new TaskItem(
+                            "message-2",
+                            "event.one",
+                            Map.of(),
+                            Map.of("worker.slot", Map.of("$eq", "B"))
+                    )
+            ), 250L)).containsExactly(
+                    Map.entry(
+                            "message-1",
+                            RuntimeApiClient.CallStatus.SUCCEEDED
+                    ),
+                    Map.entry(
+                            "message-2",
+                            RuntimeApiClient.CallStatus.NOT_OBSERVED
+                    )
+            );
+            assertThat(client.loadResults(
+                    "task-1",
+                    List.of("message-1", "message-2")
+            )).containsExactly("message-1");
+
+            assertThat(requests).anySatisfy(body -> {
+                assertThat(body).containsEntry("waitTimeoutMillis", 250L);
+                assertThat(body.get("items")).asList().hasSize(2);
+            });
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static Map<String, Object> requestBody(HttpExchange exchange)
+            throws IOException {
+        byte[] encoded = exchange.getRequestBody().readAllBytes();
+        return encoded.length == 0
+                ? Map.of()
+                : Jsons.parseObject(new String(
+                        encoded,
+                        StandardCharsets.UTF_8
+                ));
+    }
+
+    private static URI baseUri(HttpServer server) {
+        return URI.create(
+                "http://127.0.0.1:" + server.getAddress().getPort()
+        );
+    }
+
+    private static void respondJson(
+            HttpExchange exchange,
+            int status,
+            Map<String, ?> value
+    ) throws IOException {
+        respondBinary(exchange, status, Jsons.toJson(value));
+    }
+
+    private static void respondBinary(
+            HttpExchange exchange,
+            int status,
+            String value
+    ) throws IOException {
+        byte[] body = value.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set(
+                "Content-Type",
+                "application/json"
+        );
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
+    }
+}

@@ -538,9 +538,9 @@ Scenario WorkerGroup declarations and the advisory external Android demo
 Group. Registering those three declarations automatically provisions all three
 Task Calls. Server readiness does not depend on a Worker Host. The root
 `run_local_runtime.py` defaults to this Profile, starts Server first and starts
-the standalone JVM Host only after readiness. Its finite Capability Task proof
+the standalone JVM Host only after readiness. Its finite vertical Worker proof
 is owned by
-[`integrations/worker-capability-task`](../integrations/worker-capability-task/README.md).
+[`integrations/worker-correctness`](../integrations/worker-correctness/README.md).
 
 The checked `agentforge` profile is a separate downstream deployment preset.
 It starts exactly one `agentforge-websocket` Adapter at 18183, exposes Server

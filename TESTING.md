@@ -1,435 +1,149 @@
-# Proof Lanes
+# XA Mass Proof Selection
 
-Status: current repository verification contract.
+Status: current repository proof-lane registry entrypoint.
 
-Tests in this repository are organized by the invariant they prove, not by a
-coverage target. Deterministic owner tests run separately from real Redis and
-cross-process acceptance proofs. A green lane is meaningful only for the
-boundary named below.
+Tests are organized by mechanism claim, not by coverage percentage. A test is
+valuable when it is the cheapest credible proof of one named invariant or
+boundary. Repeating the same success path at another scale does not create a
+new claim.
 
-## Proof Registry
+Detailed lane ownership is in
+[`doc/testing/proof-registry.md`](doc/testing/proof-registry.md). The fixed
+Worker worlds are in
+[`doc/testing/worker-proof-scenarios.md`](doc/testing/worker-proof-scenarios.md).
 
-| Lane | Invariant | External dependencies | Primary command |
-| --- | --- | --- | --- |
-| JVM Contracts | Java Kernel and other JVM modules compile; mechanical Owner, opaque ResultContext codec, semantic Result event, direct bounded Dispatch Owner calls, exact assignment/idle closures, Pacer policy/lifecycle, architecture, unit, and deterministic OpenAPI snapshot proofs pass | None | Explicit non-Android Gradle module `build` tasks |
-| Redis Owner | Java Redis providers plus Server-owned Identity and Binding preserve their real Redis contracts; Task create/lifecycle/Call submission, due Task scan, TaskItem final promotion, Result LIST consume and completed-HOT release prove the Java Result/Dispatch closure, while Serviceability Probe offer/consume, HOT and RECOVERY range cursors, exact pre-Probe hold/advance, multi-Group 100-attempt round budgeting, time-fenced polarity Evidence and exact cold park prove the Java Serviceability closure | Redis 7 | `./gradlew :server_jvm:redisOwnerIntegrationTest` |
-| Runtime Boundary | One Java Server context starts Result and Dispatch Convergence without an auxiliary Kernel process; a finite polling Task closes and exports success Results, managed Task Calls return through WebSocket and Socket, canonical Properties matching works, DIRECT_CALL remains separate, and Adapter evidence closes the Java Serviceability loop | Redis 7 | `./gradlew :server_jvm:runtimeBoundaryIntegrationTest` |
-| Worker Fleet | The standalone Scenario Host creates two fixed ten-replica Groups whose Lab Worker keys, Runtime Preview identities, Adapter routes, probe execution, Properties observation, and Host-restart mapping close over the same 20 Worker IDs while Server/Pacers stay up | Redis 7, Java Server and Scenario Worker Host; Python is only the checked test driver | `./gradlew :integrations:worker-fleet-acceptance:runFleetAcceptance` twice |
-| Worker Lab Convergence | Three isolated lanes relate established local Worker mutations to independent Adapter, Kernel and Task observations: state propagation, execution-time Host loss with recovery/finality, and a finite seeded multi-round world evaluated after mutation injection stops | Redis 7, Java Server and Scenario Worker Host; Python owns one-shot process orchestration | `python integrations/worker-lab-reliability/run_worker_lab_proof.py --lane all --redis-url redis://127.0.0.1:6379/15` |
-| Worker WebSocket Scale | One Java 21 Host prepares exactly 10,000 identities and offers 10,000 WebSockets; at least 9,900 must remain both connected and HOT through a stable window, finite Task samples, and one Server restart without Host restart or Prepare | Linux, Redis 7.4, Java 21, Server and Scenario Worker Host; nightly/manual only | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` |
-| Capability Task | An external Java client creates two finite Tasks, turns two local ten-line fixtures into 60 ordinary Items across six WorkerGroup/Event combinations, approves the Tasks, and correlates 60 exported success Results | Redis 7, Java Server and Scenario Worker Host | `./gradlew :integrations:worker-capability-task:runCapabilityTaskScenario` |
-| Android Host | Android assembly, concrete capability Definitions, loopback Capability HTTP, Prepare, local WebSocket protocol, demo host, and host RPC driver remain compatible | Robolectric and MockWebServer | Android Debug tasks plus host Python tests |
-| Android Emulator Worker | One API 33 Demo App closes local Host control, Worker identity, Adapter route, Direct Call, Properties observation, WorkerGroup execution, endpoint terminal, explicit restart, and process-restart identity relations | Redis 7, Java Server, API 33 x86_64 Emulator; Python is only the checked acceptance driver | `Android Emulator Worker` in `.github/workflows/proof-ci.yml` |
-| Frontend | The bounded Runtime previews, Task/Worker diagnostic calls, finite Task workbench, and lazy read-only Scalar snapshot page remain lint-clean, type-safe, unit-tested, and buildable in API and public-demo modes | Node and pnpm | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` |
-| Runtime Distribution | The schema-v4 Java-only Server Runtime proves both built-in Profiles and its static OpenAPI Reference outside the checkout; the matching Worker SDK ZIP proves four Maven publications, sources, POM dependencies and external Android consumption | Redis 7, Java 21, Android SDK 36, Node 22.19 and pnpm 11.9; Python is only the archive proof driver | `./gradlew :distribution:server:runtimeDistributionTest :distribution:worker-sdk:workerSdkDistributionTest -PxaMassVersion=0.4.0` |
-| Docs Contract | Current documentation entrypoints, relative links, stable overview sections, and retired contract vocabulary remain converged | None | `python .github/scripts/check_docs.py` |
+## Proof Model
 
-The deterministic Server proof owns the public response classification. Its
-OpenAPI guard requires the exact permitted success set for every public
-operation: ordinary Runtime use cases expose one `200`, while Worker Command
-Poll may expose `200/204` and the other Delivery operations retain their
-declared `200`, `202` or `204`. Every body-bearing success declares content
-whose media types each contain a schema distinct from `ApiErrorResponse`, while
-`204` remains bodyless. The same guard requires
-`400/503 + ApiErrorResponse` for application rejection and unavailability, and
-the Direct Call-only `429`. It also rejects declared business `404/409/422`
-responses; framework routing or protocol failures remain outside the XA
-business-code contract, and unknown routes retain framework `404` behavior.
-The same proof canonicalizes the real `/v3/api-docs`, removes only its
-request-derived `servers` field, and compares it byte-for-byte with
-`frontend/public/reference/openapi.json`. Object fields are recursively sorted,
-arrays retain declaration order, and only `/api/v1/**` paths are accepted. API
-changes therefore fail JVM Contracts until the snapshot is deliberately
-regenerated with `:server_jvm:exportOpenApiSnapshot`.
+| Level | Typical scale | Primary purpose |
+| --- | ---: | --- |
+| Owner Test | minimal | One Owner algorithm, legal transition, strict contract or concurrency fence |
+| Boundary Proof | minimal | Encoding and behavior between two adjacent Owners or processes |
+| Worker Correctness | 2 Groups x 10 Workers, 100 Items | Exact vertical identity, route, extension, Result and restart closure |
+| Worker Convergence Health | 2 Groups x 50 Workers, 1000 Items | Finite-time convergence after deterministic state, process and Server faults |
+| Worker Capacity | 10,000 Workers | Connection, thread, file-descriptor, memory and reconnect capacity |
 
-The `Capability Task` command reads two local text fixtures, creates two
-finite Tasks, appends 30 Items to each, approves them, downloads two successful
-JSONL exports, and validates exactly 60 results, ten per expected Group/Event
-combination, with globally unique Message IDs. It does not attribute a result to a
-particular Worker or freeze capability-specific Result fields and values.
+Every mechanism claim has one **Primary Proof**. A check repeated elsewhere is
+only a prerequisite or Boundary Witness. It must not be described as a second
+proof of the same invariant.
 
-Owner and capability unit tests remain the strict place for DTO shape,
-validation rules, and exact business values such as phone parsing, digest, and
-Base64 semantics. Cross-process acceptance instead fixes stable relationships:
-identity sets, counts, Group/Event ownership, correlation, protocol outcomes,
-and restart continuity. This lets compatible payload or Properties evolution
-proceed without weakening the mechanism proof.
+Worker Correctness is the deliberately perfect world: its two managed
+`items:call` batches require exact response identities and 100 `SUCCEEDED`
+statuses while keeping capability Result payloads opaque. Worker Convergence
+Health is deliberately imperfect: it fixes offered and invalid-input counts,
+then asserts independent Network/Scheduling mutations and named witness
+convergence. `NOT_OBSERVED` is not treated as failure, and non-witness Items do
+not carry a success-count oracle.
 
-## Proof Quality Contract
+PRECOMPUTED task-rule and protocol-topology combinations remain Runtime
+Boundary claims. High-level Worker proofs use `results:load` only for named
+witnesses; `results:export` remains an Owner/boundary and bulk-transfer surface.
 
-Compilation, formatting, simple codec examples and local success cases are the
-repository hygiene floor. They remain cheap and useful, but their count does
-not widen a lane's proof claim. A mechanism proof must reject at least one
-locally plausible but systemically invalid implementation:
+## Selection Decision
 
-- architecture proofs reject authority migration, forbidden dependencies,
-  widened public APIs, duplicate state owners and hidden execution resources;
-- concurrency proofs control a named interleaving such as stop during prepare,
-  terminal during command execution, stale callback after replacement, or
-  concurrent Route replacement;
-- owner proofs exercise the canonical state operation and, for Redis atomicity
-  claims, use real Redis rather than a mirrored in-memory implementation;
-- boundary and acceptance proofs relate independently observed identities,
-  routes, commands, results and lifecycle transitions without freezing opaque
-  payloads or repeating a success case as a load claim.
+Use the lowest-cost proof that owns the changed claim:
 
-Every new proof must name its invariant, failure model and deliberate
-non-goals. Repeating Probe, Event or Task success does not add evidence unless
-the repetition introduces a distinct owner, process boundary, interleaving or
-capacity invariant.
+1. A local algorithm, state transition, validation rule or race changes: run
+   the focused Owner test.
+2. A DTO, codec, HTTP, Redis or adjacent-owner contract changes: run the
+   corresponding Boundary Proof in addition to focused Owner tests.
+3. Worker identity, Prepare, long-lived delivery, extensions, Scenario Host or
+   Worker-facing Server behavior changes: run Worker Correctness.
+4. Kernel/Pacer scheduling, serviceability, finality, Runtime projections or
+   Worker fault convergence changes: run Worker Convergence Health.
+5. Java Worker connection resource ownership changes: run focused Java Worker
+   tests; the 10k lane remains nightly/manual unless the capacity claim itself
+   must be re-established.
+6. Documentation-only changes run Docs Contract. They do not select runtime
+   proofs.
 
-| Mechanism | Static owner guard | Controlled race/failure proof | Real boundary proof | Not claimed |
-| --- | --- | --- | --- | --- |
-| Worker run and text protocol | Core dependency, API and zero-resource architecture tests | prepare/stop/close, terminal/result, executor rejection and stale-Transport suppression | Runtime Boundary and Android Emulator | reliable Result delivery after endpoint loss |
-| Adapter Route and Properties observation | Netty owner/package and projection separation tests | duplicate Bind, stale Channel callback, replacement Route and bounded retention | Runtime Boundary, Worker Fleet and Android Emulator | distributed Route truth |
-| Worker Identity and Binding | Server owner boundaries and Redis provider contracts | duplicate/invalid registration and binding owner cases | Redis Owner plus Fleet/Android identity continuity | multi-Server Binding generation fencing |
-| Java Group replicas | fixed-topology Manager and Host-resource architecture tests | desired/actual divergence, per-replica start/stop, partial failure and reverse close | Worker Fleet and Worker Lab Convergence | dynamic scaling or automatic reconcile |
-| Java WebSocket connection scale | Java 21 Platform/Dispatcher/TaskRunner architecture and 128-connection focused test | Server restart with retained Host and bounded Client reconnect | Worker WebSocket Scale | exact 10,000 online, throughput, concurrent Handler load or soak |
-| Task and Result correlation | Java Kernel Owner, Pacer and Server boundary tests | owner-local retry, finality, scan, correlation and repeated eligible-round convergence | Runtime Boundary, Capability Task and Worker Lab Convergence | throughput SLA, per-Task fairness, soak or crash recovery |
-| Android process lifecycle | Android Worker/Host architecture and deterministic Host tests | Client callback, stop and terminal cases | Android Emulator | vendor background policy, Doze or physical-device behavior |
-
-The separate `Worker Fleet` lane first starts Server and proves both JVM Group
-previews are empty, then starts the real standalone Scenario Host on an
-isolated, initially absent Lab root. Its initial phase relates the exact configured
-client keys to 20 unique Worker IDs read through Runtime Preview, connected
-Adapter routes, one probe
-Result per target, and same-round Worker/Adapter Properties observations. CI
-then terminates the Host, requires Server and its Java Pacers to remain ready,
-restarts the same Host with Redis, Kernel, Server and Lab retained, and requires
-the complete client-key-to-Worker-ID mapping and all live relationships to
-close again.
-
-The separate `Worker Lab Convergence` proof gives each lane an isolated Redis
-scope, Lab root, Server, Host and evidence directory. State Convergence relates
-startup-plan actions and Lab state to independent Runtime Preview, Adapter
-Network, Kernel Scheduling and finite Task observations. Task Fault
-Convergence enters a Scenario-only Handler checkpoint, hard-kills the Host,
-waits for the Worker to leave serviceability, and requires one stopped backup
-Worker to complete the original Item; a second Host loss cannot revoke the
-final Result. The seeded Campaign executes a reproducible finite action list,
-records rejected or conflicting actions without retrying them, then
-stops injection and evaluates the actual observed local world. Stable stopped
-and running Workers create Network and Scheduling assertions; Tasks are
-required to become final only when that final observation contains compatible
-serviceable capacity. A mutation that was not established is not evidence
-against Adapter or Kernel behavior. None of these lanes freezes claim count,
-retry count, intermediate score order, exact latency, executing Worker,
-capability payload or Worker outcome code. In particular, State Convergence
-does not require the Harness to observe all startup Workers connected before a
-startup-planned stop fires; stable identity and the resulting independent
-projections are the proof boundary. Exact Fleet 2x10 and Capability 60-Result
-proofs remain fault-free and independent.
-
-The separate `Worker WebSocket Scale` lane generates 100 strict JSONL files of
-100 Workers for one Group and retains that single Host process across one
-Runtime Server restart. The Java Harness reads the complete identity set from
-Lab, pages existing Network and Scheduling observations in groups of 100,
-requires three consecutive scans with at least 9,900 Workers in their
-intersection, and rejects HOT-without-connection evidence in the converged
-scan. The initial phase holds the threshold for 60 seconds and each phase
-closes 100 finite TaskItems. Linux sampling requires fewer than 512 native Host
-threads. This proves offered connection scale and finite reconnect recovery,
-not an exact 10,000-online invariant, Task throughput, Handler concurrency,
-latency SLA or soak stability.
-
-The `Android Emulator Worker` lane installs the Demo APK on one API 33
-Emulator. ADB is limited to installation, process lifecycle, and loopback port
-mapping. Device-local lifecycle control and observation use the Demo's fixed
-NanoHTTP Events; Worker and Adapter observations use public Runtime APIs. The
-proof checks initial execution and Properties observation, explicit
-stop/start, retry exhaustion while the Server is down, absence of automatic
-restart, explicit recovery, and Worker ID continuity after App process
-restart. During process restart it first observes the old Adapter route become
-disconnected and the Worker scheduling projection reach `recovery` or `cold`.
-Only then does it relaunch the App, observe the new route, and require a fresh
-`hot-score-overdue` projection before the final Task call. Network reachability
-or stale pre-restart HOT evidence alone is not treated as schedulability. It
-fixes relationship and count invariants without storing Battery, device
-Properties, opaque Results, or business Payloads.
-
-## Local Commands
-
-Server integration proofs use the checked `integration-test` profile:
-
-```text
-Java readiness  http://127.0.0.1:<test-port>/actuator/health/readiness
-Redis           redis://127.0.0.1:6379/15
-Redis scope     test_runtime_boundary_<unique run token>
-```
-
-The test starts one Java Spring context. Its `KernelPacerAssembly` delegates to
-the `kernel_pacer_jvm` Runtime, which starts Java Result Convergence and Java
-Dispatch Convergence from the fixed `RUNTIME_BOUNDARY_PROOF` preset. Scenario,
-Capability Task, Worker Fleet, Worker Lab Convergence and Android Emulator
-proofs use `SCENARIO_LAB`; default and AgentForge runtime assembly use
-`DEFAULT`. No Java proof reads a Pacer policy file. The proof-only preset is
-rejected unless the Server Redis scope starts with `test_`. Redis remains an
-external dependency;
-failure to start any required application or connect to Redis fails the proof.
-Each run generates one
-unique `test_*` scope. It plants a sentinel in a different scope and proves the
-sentinel survives. After the Spring context and its Pacers stop, cleanup uses
-cursor `SCAN` plus bounded `UNLINK` only
-for the exact run-owned scope; it never clears Redis DB 15.
-
-Redis Owner tests generate the same kind of exact scope inside their fixtures.
-Worker Fleet, Worker Lab Convergence, Capability Task, and Android Emulator CI set
-`XA_MASS_REDIS_SCOPE=test_<lane>_<runId>_<attempt>` on the complete Server/Pacer
-process trees, retain that scope across an intentional restart, then clean only
-that scope after all writers stop. A proof may share the URL and DB with a
-running `profile_*` environment; neither side can see or delete the other's
-data.
-
-Deterministic `kernel_pacer_jvm` lifecycle tests prove three-stage startup,
-reverse rollback, thread-death failure, idempotent stop and one shared bounded
-shutdown deadline. Result convergence tests additionally prove the global
-Batch cap, weighted fair `4/3/3` allocation, production `6/3/1` fair share,
-Task-lane capacity borrowing, Adapter Evidence single-flight and JVM virtual
-thread use. Result policy tests use recording semantic event ports rather than
-mocking Score owners; architecture guards reject direct mechanical-owner calls
-from Result policies and reject DeliveryReport or raw score leakage into event
-ports. Server tests prove Spring delegation and Health projection.
-The configured Group/Task and Adapter assembly has an explicit higher
-lifecycle phase, so it starts after all Pacers and closes before them. The
-standalone Scenario Worker Host is outside the Spring lifecycle.
-
-Non-Android JVM contracts:
+Inspect selection for a branch without running a proof:
 
 ```powershell
-.\gradlew.bat --continue `
-  :transport:worker-delivery-contract:build `
-  :kernel_jvm:build `
-  :kernel_pacer_jvm:build `
-  :transport:worker-core:build `
-  :transport:java-worker:build `
-  :transport:netty-adapter:build `
-  :scenario_workers_jvm:build `
-  :server_jvm:build `
-  :integrations:worker-capability-task:build `
-  :integrations:worker-fleet-acceptance:build `
-  :integrations:worker-lab-reliability:build `
-  :integrations:worker-websocket-scale:build `
-  :distribution:server:verifyPlatformDiagnosticCodes
+python .github/scripts/explain_proof_selection.py --base origin/main
 ```
 
-Redis Owner:
+The checked representative-path contract is:
 
 ```powershell
-.\gradlew.bat :server_jvm:redisOwnerIntegrationTest
-```
-
-Runtime Boundary starts only the Java test context. Java consumes the two
-Task Result LISTs and Adapter Evidence, while one Dispatch Main Scheduler reads
-the due Task Source and plans Task Initialization, Allocation, Task Dispatch
-and Serviceability Resource Producer inputs. Task business calls remain
-Java-to-Redis:
-
-```powershell
-.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest
-```
-
-The deterministic Server Task Call proof separately checks that accepted
-submission remains HTTP `200` and reports `not_observed` when observation
-waiters, pending associations or Registry lifecycle cannot accept more
-synchronous work. It also proves one
-shared Item probe for coalesced waiters, bounded due batches, one Result-owner
-load per Task in a round, and exact capacity release. This observation proof
-does not reinterpret a submission-owner `503` as evidence that no Item was
-written.
-
-The same proof invokes an unpaused real WebSocket Worker through DIRECT_CALL,
-exercises a custom SYSTEM handler and the default probe/properties/events
-handlers, observes the current Adapter Channel through the public Runtime View,
-closes it through DIRECT_CALL, and proves transparent reconnect. Finite Tasks
-prove the generic create/approve/close surface through Polling and the
-terminal-only success Result export route.
-Separate WebSocket and Socket Workers each prove WorkerGroup registration with
-its returned managed Task ID, idempotent aggregate re-registration, two
-consecutive bounded Task-ID-addressed calls, the shared Task result read, and
-generic lifecycle isolation of the managed Task.
-A dedicated Worker also proves the full current Serviceability behavior:
-
-The checked Runtime Boundary config uses a deliberately short recovery retry
-interval so periodic compensation remains a bounded test; it is not a
-production policy default.
-
-```text
-physical WebSocket connect
-  -> CONNECTED evidence -> Kernel Result Pacer -> target HOT polarity
-explicit Worker shutdown
-  -> DISCONNECTED evidence -> Kernel Result Pacer -> target RECOVERY polarity
-same Worker identity reconnect
-  -> CONNECTED evidence -> Kernel Result Pacer -> target HOT polarity
-due RUNNING_VISIBLE Task demand
-  -> Dispatch Main Scheduler supplies its WorkerGroup -> exact pre-Probe Score hold
-  -> periodic Adapter snapshot evidence -> polarity-only compensation
-expired TASK delivery
-  -> 23002 Task Result and separate KERNEL evidence use independent Pacers
-```
-
-This is both cross-boundary mechanism proof and behavior proof for the current
-policy. It deliberately does not freeze evidence age, discovery cadence,
-retry/cold policy, or the final meaning of positive and negative evidence. It
-also does not prove distributed Direct Call waiter correlation, Binding
-generation fencing, clock synchronization, or reliable evidence delivery.
-
-Worker Fleet, Worker Lab Convergence, Capability Task process startup, and
-Android Emulator/real-device acceptance are documented by their owning modules:
-
-- [`integrations/worker-fleet-acceptance`](integrations/worker-fleet-acceptance/README.md)
-- [`integrations/worker-lab-reliability`](integrations/worker-lab-reliability/README.md)
-- [`integrations/worker-websocket-scale`](integrations/worker-websocket-scale/README.md)
-- [`integrations/worker-capability-task`](integrations/worker-capability-task/README.md)
-- [`xa-android/worker-demo`](xa-android/worker-demo/README.md)
-
-Android Host CI-equivalent proof:
-
-```powershell
-.\gradlew.bat --continue `
-  :transport:android-worker:testDebugUnitTest `
-  :transport:android-worker:assembleDebug `
-  :xa-android:capabilities:testDebugUnitTest `
-  :xa-android:capabilities:assembleDebug `
-  :xa-android:capability-http:testDebugUnitTest `
-  :xa-android:capability-http:assembleDebug `
-  :xa-android:worker-demo:testDebugUnitTest `
-  :xa-android:worker-demo:assembleDebug
-python -m unittest discover `
-  -s xa-android/worker-demo/host `
-  -p "test_*.py"
-```
-
-The hosted Emulator proof is intentionally workflow-owned because it requires
-KVM, an APK artifact from `Android Host`, Redis, Kernel and Server process
-orchestration, and ADB port mapping. Its checked orchestration is
-`.github/scripts/run_android_emulator_worker.sh`; its standard-library
-acceptance driver is
-`xa-android/worker-demo/host/android_worker_acceptance.py`.
-
-Frontend:
-
-```powershell
-.\gradlew.bat :distribution:server:generatePlatformDiagnosticCodes
-.\gradlew.bat :server_jvm:exportOpenApiSnapshot
-Set-Location frontend
-corepack pnpm install --frozen-lockfile
-corepack pnpm lint
-corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm build
-corepack pnpm build:demo
-```
-
-Runtime Distribution builds every publishable component and checks the
-schema-v4 Java-only Runtime archive ABI. Its real proof extracts the ZIP to a
-temporary directory outside the checkout, starts the Boot JAR against one
-unique `test_*` scope, loads Scalar, Frontend and
-the diagnostic dictionary UI/JSON, loads the static API Reference and validates
-its OpenAPI snapshot, checks the diagnostic JSON build coordinates and
-three-owner allowlist,
-proves no Python artifact or private runtime environment is present, proves
-both JVM Worker previews are empty, starts the packaged Host separately,
-and closes one managed String Task Call. It then stops only the Host, proves
-Server readiness remains UP. It separately launches the clean `agentforge`
-Profile, proves its empty Group catalog and one Adapter listener, stops both
-Servers, and cleans only the two exact test scopes. The Worker SDK proof checks
-the four JAR/AAR publications, sources and POM relationships, then consumes the
-extracted Maven repository from an external Android build:
-
-```powershell
-.\gradlew.bat "-PxaMassVersion=0.4.0" `
-  :distribution:server:runtimeDistributionTest `
-  :distribution:worker-sdk:workerSdkDistributionTest
-```
-
-This lane proves the deployable Server and Worker SDK publication boundaries,
-not an OCI image, Redis lifecycle, or an Android device.
-
-Documentation contract:
-
-```powershell
-python .github/scripts/check_docs.py
-git diff --check
-```
-
-The documentation checker uses only the Python standard library. It validates
-current tracked Markdown and the source `frontend/public/overview.htm`; it
-excludes historical `doc/archive` content and does not generate documentation
-or access the network.
-
-The frontend proof keeps UI testing deliberately small. It validates Runtime
-schemas and stores plus the strict diagnostic dictionary v1 schema, owner and
-text filtering, duplicate-number preservation, missing/incompatible JSON
-handling, TXT validation, stable message IDs, 100-Item chunks, the public
-create/append/approve/export sequence, `400/12010` export retry behavior, and
-the Mock-mode no-call boundary. It also fixes the Scalar snapshot URL and
-read-only configuration without browser automation. It does not run visual
-regression or browser compatibility suites.
-
-## CI Selection and Gate
-
-`.github/workflows/proof-ci.yml` runs for every pull request, every main push,
-and manual dispatch. Its first job selects proof lanes from changed paths.
-Manual dispatch selects every lane. The final `Proof Gate` succeeds only when
-every selected lane succeeds and every unselected lane is explicitly skipped.
-
-`.github/workflows/worker-websocket-scale.yml` is deliberately separate. It
-runs nightly and by manual dispatch on Linux with Java 21 and Redis 7.4; it is
-not selected by pull requests and does not participate in `Proof Gate`.
-
-Selection rules live in `.github/proof-paths.yml`, separate from Workflow
-orchestration. Before selecting a lane, CI runs the standard-library
-`check_proof_selection.py` contract. It requires every positive pattern to
-match a repository file and verifies representative owner paths against their
-exact expected lane sets. The selector uses `some-with-excludes`, so the shared
-negative Markdown rule actually overrides matching implementation directories.
-A selection-contract or Workflow change selects every implementation lane.
-
-```powershell
-python -m unittest discover `
-  -s .github/scripts `
-  -p "test_check_proof_selection.py"
 python .github/scripts/check_proof_selection.py
 ```
 
-Representative selection rules:
+## Lane Index
 
-- Docs Contract runs on every workflow invocation; documentation-only changes
-  otherwise reach only `Proof Gate`;
-- the human overview additionally runs the Frontend lane;
-- Netty Adapter changes run JVM Contracts, Runtime Boundary, Worker Fleet,
-  Worker Lab Convergence, and Capability Task; WebSocket/Route production
-  changes also run Android Emulator Worker;
-- Capability-Task-only changes run JVM Contracts and Capability Task;
-- Worker-Fleet-only changes run JVM Contracts and Worker Fleet;
-- Worker-Lab-Reliability-only changes run JVM Contracts and Worker Lab
-  Reliability;
-- Android test-only changes run Android Host; Android production, Manifest,
-  build, or Emulator driver changes also run Android Emulator Worker;
-- Worker Core or Delivery contract changes also run their downstream Runtime,
-  Worker Fleet, Worker Lab Convergence, Capability Task, Android Host, and
-  Android Emulator proofs;
-- Kernel mechanical Owner changes run JVM Contracts, Redis Owner and their
-  downstream Runtime proofs; Pacer changes additionally select every
-  Java-hosted scheduling acceptance lane;
-- production inputs embedded in the Server archive run Runtime Distribution;
-  test-only changes in those modules do not select it.
-- the committed OpenAPI snapshot selects JVM Contracts for drift, Frontend for
-  the static Reference build, and Runtime Distribution because the snapshot is
-  part of the archive ABI.
+| Lane | Primary command | External dependency |
+| --- | --- | --- |
+| JVM Contracts | Explicit non-Android Gradle module `build` tasks | None |
+| Redis Owner | `.\gradlew.bat :server_jvm:redisOwnerIntegrationTest` | Redis 7 |
+| Runtime Boundary | `.\gradlew.bat :server_jvm:runtimeBoundaryIntegrationTest` | Redis 7 |
+| Worker Correctness | `python integrations/worker-correctness/run_worker_correctness.py --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
+| Worker Convergence Health | `python integrations/worker-convergence-health/run_worker_convergence_health.py --scenario all --redis-url redis://127.0.0.1:6379/15` | Redis, Server, Scenario Host |
+| Worker WebSocket Scale | `python integrations/worker-websocket-scale/run_worker_websocket_scale.py --workers 10000 --minimum-converged 9900 --redis-url redis://127.0.0.1:6379/15` | Linux, Redis, Java 21 |
+| Android Host | Android Debug tasks plus host Python tests | Robolectric, MockWebServer |
+| Android Emulator Worker | `Android Emulator Worker` in Proof CI | Redis, KVM Emulator |
+| Frontend | `pnpm lint`, `typecheck`, `test`, `build`, `build:demo` | Node, pnpm |
+| Runtime Distribution | Distribution integration tests with `-PxaMassVersion=0.4.0` | Redis, Java, Android SDK, Node |
+| Docs Contract | `python .github/scripts/check_docs.py` | None |
 
-CI uploads failed JUnit reports and process logs for seven days. Worker Fleet,
-Worker Lab Convergence, Capability Task, and Android Emulator upload only safe
-evidence: IDs, relation sets, state timelines, run summaries, counts, and
-differences. Android adds filtered logs but no screenshot or video. These lanes
-do not upload full Worker Result, Task output, Properties content, or business
-Payload. Failures are not automatically retried.
+Worker one-shot runners support Python 3.11 or newer. Install their small
+shared dependency set once before running them locally:
 
-## Deliberate Non-Goals
+```powershell
+python -m pip install -r .github/scripts/requirements.txt
+```
 
-There is no coverage threshold, multi-JDK or multi-OS matrix, flaky-test retry,
-browser visual regression, Android API matrix, UI automation, throughput
-benchmark, or soak lane. The nightly/manual WebSocket lane is an offered
-connection-scale proof only. The Android real-device managed Task Call remains a separate
-manual proof for vendor systems, physical Battery behavior, and background
-execution limits; the hosted Emulator lane does not claim those properties.
+Redis protocol, authentication, TLS and URL handling belong to `redis-py`.
+Proof runners must not maintain a private RESP client. Each high-level lane
+retains one orchestration entrypoint because its process topology and failure
+sequence are part of that lane's evidence.
+
+## Proof Quality
+
+A mechanism proof must reject at least one locally plausible but systemically
+invalid implementation:
+
+- architecture guards reject authority migration, forbidden dependencies,
+  duplicate Owners and widened public APIs;
+- race tests control one named interleaving rather than sleeping and hoping;
+- Redis atomicity claims use real Redis and an exact `test_*` scope;
+- boundary proofs relate independently observed identities, commands, reports
+  and transitions without freezing opaque payloads;
+- convergence proofs issue each Lab mutation once, first establish its local
+  effect, then compare Adapter, Kernel and Task projections;
+- capacity proofs record resource evidence and thresholds without claiming
+  functional correctness for every offered connection.
+
+Delete or merge a test only when Owner, claim, failure model, evidence boundary
+and failure diagnostics are all the same. Keep unique architecture guards,
+strict DTO contracts, concurrency races, Redis atomicity and real process
+boundaries even if their happy paths overlap.
+
+## Shared Infrastructure
+
+Real Redis proofs use unique `test_*` scopes. Cleanup uses bounded `SCAN` and
+`UNLINK` for only that exact scope; it never uses `KEYS`, `FLUSHDB` or
+`FLUSHALL`. A proof that needs a Server or Scenario Host owns those process
+lifecycles and stops all writers before cleanup.
+
+The Runtime Boundary starts one Java Server context. Worker Correctness and
+Worker Convergence Health start Server and Scenario Host as independent
+processes. Worker WebSocket Scale is a separate nightly/manual workflow and is
+not part of the pull-request Proof Gate.
+
+## CI Gate
+
+`.github/workflows/proof-ci.yml` runs on pull requests, `main` pushes and
+manual dispatch. `.github/proof-paths.yml` selects claim-driven lanes. Manual
+dispatch selects every required lane. The final Proof Gate requires each
+selected lane to succeed and each unselected lane to be skipped.
+
+CI does not retry failed proofs. Evidence artifacts contain IDs, relation sets,
+counts, state timelines and process logs, never full Worker payloads,
+Properties or Task results.
+
+## Deliberate Nonclaims
+
+There is no coverage threshold, flaky-test retry, browser visual matrix,
+multi-JDK matrix, Android API matrix, general topology Cartesian product,
+throughput benchmark or soak lane. WebSocket, Socket and Polling combinations
+remain protocol/Runtime Boundary claims; the 100-Worker health world does not
+repeat them. Physical Android device behavior remains a separate manual proof.

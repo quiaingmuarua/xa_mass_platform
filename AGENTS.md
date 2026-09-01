@@ -427,8 +427,8 @@ system.
   launcher and proof lanes own the two independent process lifecycles.
 - Existing Group directories are not seeded or repaired; missing configured
   directories may receive checked defaults.
-- State, task-fault and seeded-campaign convergence are independent Integration
-  lanes. Their runner owns process failure and phase progression; the Host must
+- State/server and in-flight-loss convergence are independent Integration
+  scenarios. Their runner owns process failure and phase progression; the Host must
   not infer Adapter connectivity or Kernel serviceability from local state.
 - The Lab is a mutation source and local witness, not a reconcile robot or
   distributed consistency Owner. Each Harness action is issued once; the
@@ -446,21 +446,32 @@ controls.
 
 - Integrations call public Runtime APIs and must not import Server, Kernel,
   Adapter or Worker implementations.
-- Worker Lab Convergence may combine the loopback Lab API with independent
+- One-shot Python proof runners may own process orchestration, but not database
+  protocols. Redis scope cleanup uses
+  `.github/scripts/cleanup_redis_test_scope.py` and `redis-py`; do not add a
+  lane-local RESP client. Keep one runner entrypoint per high-level proof lane
+  rather than hiding distinct failure sequences in a generic scenario runner.
+- Worker Convergence Health may combine the loopback Lab API with independent
   Runtime Preview, Network, Scheduling, and finite Task APIs. Its evidence may
   record identities and projected states but never business payload. Failed or
   ambiguous Lab operations are non-evidence, not Adapter or Kernel failures;
-  seeded campaigns stop mutation injection and evaluate the actual observed
-  local world instead of installing a preferred final world.
+  each deterministic scenario stops mutation injection and evaluates the
+  actual observed local world instead of installing a preferred final world.
+  It uses managed ON_DEMAND batch calls as offered load and `results:load` only
+  for named witnesses. It must not turn `NOT_OBSERVED` into failure, require all
+  offered Items to succeed, poll `results:export`, or repeat PRECOMPUTED and
+  topology claims owned by Runtime Boundary.
 - Worker WebSocket Scale is a separate nightly/manual Linux offered-load lane.
   It may generate one 10,000-record Scenario Group, observe existing Runtime
   APIs in 100-ID pages, restart Server once while retaining the Host, and record
   `/proc` resource evidence. Its fixed claim is 10,000 prepared identities and
   at least 9,900 connected-and-HOT Workers, not exact online convergence,
   Handler concurrency, throughput, latency, or soak behavior.
-- Capability Task inputs are caller-owned local files. Integrations and the
-  frontend turn lines into ordinary finite TaskItems through public Task APIs;
-  Server owns no Lab input/output directory.
+- Worker Correctness inputs are caller-owned local files. Its perfect-world
+  proof uses managed batch `items:call`, fixes exact Item statuses and treats
+  Result payload as opaque. The frontend separately turns lines into ordinary
+  finite TaskItems through public Task APIs; Server owns no Lab input/output
+  directory.
 - Frontend is read only for Runtime truth. Its finite Task file flow may create,
   append, approve, and export only through public Task APIs and must not infer
   scheduling state from elapsed time.

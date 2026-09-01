@@ -67,7 +67,14 @@ python -m unittest discover `
 ```
 
 Run the real proof on Linux with Java 21, Redis 7.4, `nofile >= 65536`, and an
-ephemeral port range containing at least 20,000 ports:
+ephemeral port range containing at least 20,000 ports. Python 3.11 or newer and
+the shared proof dependencies are required:
+
+```bash
+python -m pip install -r .github/scripts/requirements.txt
+```
+
+Then run:
 
 ```bash
 python integrations/worker-websocket-scale/run_worker_websocket_scale.py \

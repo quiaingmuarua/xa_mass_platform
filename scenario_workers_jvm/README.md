@@ -251,31 +251,25 @@ Server, Adapter implementation, Redis, score, Pacer, reflection, or
 ./gradlew :scenario_workers_jvm:installDist
 ```
 
-Repository-level acceptance starts Redis, one Java Server and one independent
+Repository-level proofs start Redis, one Java Server and one independent
 Scenario Worker Host. Server owns the Java Kernel Pacer applications and its
-configured Adapter; the proof launcher owns the Worker Host process. Three
-independent clients then prove the boundary:
+configured Adapter; each proof runner owns the Worker Host process:
 
-- [`worker-fleet-acceptance`](../integrations/worker-fleet-acceptance/) proves
-  the exact two-by-ten replica topology, schema-v2 Lab files, Runtime Preview
-  Lab-coordinate identity mapping, Adapter routes, probe execution, Properties
-  observation, and identity reuse across a real standalone Host restart while
-  Server, Pacer, Redis and Lab remain available;
-- [`worker-capability-task`](../integrations/worker-capability-task/) proves two
-  finite Tasks close 60 submitted Items across six Group/Event combinations to
-  60 uniquely correlated exported success Results;
-- [`worker-lab-reliability`](../integrations/worker-lab-reliability/) owns three
-  isolated convergence lanes: Worker state propagation, execution-time Host
-  loss with Task recovery, and a finite seeded multi-round campaign. The Lab is
-  only the mutation source and local witness; the Harness compares established
-  local facts with independent Adapter, Kernel, and Task observations without
-  repairing the Lab into an expected final world.
+- [`worker-correctness`](../integrations/worker-correctness/) proves the exact
+  two-by-ten topology, Lab-coordinate identity mapping, Adapter routes,
+  extension reachability, 100 final Results and identity reuse across a real
+  Host restart;
+- [`worker-convergence-health`](../integrations/worker-convergence-health/)
+  owns two isolated 2x50 scenarios: deterministic Worker/Server state
+  convergence and execution-time Host loss with Task recovery/finality. The
+  Lab remains only the mutation source and local witness; the Harness compares
+  established local facts with independent Adapter, Kernel and Task
+  observations.
 - [`worker-websocket-scale`](../integrations/worker-websocket-scale/) generates
   one 10,000-record Group and proves at least 9,900 Workers converge to both
   connected and HOT before and after one Server restart while the Host stays
   alive. It is a nightly/manual connection-scale lane, not part of the fixed
   default Lab inventory.
 
-Capability Task evidence deliberately does not claim which Worker executed an
-Item. Fleet acceptance does not freeze dynamic Properties or business Result
-payloads.
+Worker Correctness deliberately does not claim which Worker executed an Item
+or freeze capability-specific Result values.

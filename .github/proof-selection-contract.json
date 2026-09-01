@@ -14,7 +14,7 @@
     {
       "path": "transport/worker-core/README.md",
       "lanes": [],
-      "reason": "A module document remains Docs-only even though its directory selects downstream implementation lanes."
+      "reason": "Module documentation remains Docs-only even when production files select downstream proofs."
     },
     {
       "path": "kernel_jvm/src/main/java/com/xa/mass/kernel/worker/WorkerRuntime.java",
@@ -22,12 +22,10 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_convergence_health",
         "runtime_distribution"
       ],
-      "reason": "Kernel mechanical-owner changes require deterministic JVM, Redis, and every Java runtime consumer proof."
+      "reason": "Kernel mechanical changes require Owner, Redis, runtime, convergence and distribution proofs, but not the Worker correctness primary claim."
     },
     {
       "path": "kernel_pacer_jvm/src/main/java/com/xa/mass/kernel/pacer/KernelPacerRuntime.java",
@@ -35,52 +33,45 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_convergence_health",
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Kernel Pacer policy or lifecycle changes reach every Java-hosted runtime proof."
+      "reason": "Pacer policy reaches convergence, the Android runtime route and packaged runtime."
     },
     {
       "path": "transport/worker-core/src/main/java/com/xa/mass/worker/runtime/WorkerRunController.java",
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_correctness",
+        "worker_convergence_health",
         "android_host",
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Worker Core production behavior reaches Java, Android and all long-lived runtime proofs."
+      "reason": "Worker Core production behavior reaches deterministic Java and Android proofs plus both Worker system claims."
     },
     {
       "path": "transport/worker-core/src/test/java/com/xa/mass/worker/runtime/WorkerRunControllerTest.java",
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
         "android_host"
       ],
-      "reason": "Core test changes run deterministic hosts but do not claim an Emulator production change."
+      "reason": "Core test changes stay on deterministic contract consumers and do not rerun production Worker worlds."
     },
     {
       "path": "transport/netty-adapter/src/main/java/com/xa/mass/workerdelivery/adapter/netty/internal/connection/WorkerRouteRegistry.java",
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_correctness",
+        "worker_convergence_health",
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Adapter Route production changes reach every long-lived Worker implementation."
+      "reason": "Adapter route production changes reach boundary, Worker correctness, convergence and deployed runtime proofs."
     },
     {
       "path": "transport/android-worker/src/main/java/com/xa/mass/worker/android/AndroidWorker.java",
@@ -89,7 +80,7 @@
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Android production assembly requires deterministic and real-process proofs."
+      "reason": "Android production assembly requires deterministic, emulator and packaged SDK proofs."
     },
     {
       "path": "transport/android-worker/src/test/java/com/xa/mass/worker/android/AndroidWorkerTest.java",
@@ -97,46 +88,30 @@
         "android_host",
         "runtime_distribution"
       ],
-      "reason": "Android-only test changes do not consume the Emulator gate."
+      "reason": "Android test-only changes stay on the deterministic Android Host lane."
     },
     {
-      "path": "xa-android/worker-demo/host/android_worker_acceptance.py",
-      "lanes": [
-        "android_host",
-        "android_emulator"
-      ],
-      "reason": "The real-device acceptance driver is both unit-tested and exercised on the Emulator."
-    },
-    {
-      "path": "xa-android/worker-demo/host/test_android_worker_acceptance.py",
-      "lanes": [
-        "android_host"
-      ],
-      "reason": "Driver-test-only changes stay on the deterministic Host lane."
-    },
-    {
-      "path": "integrations/worker-capability-task/src/main/java/com/xa/mass/integration/workercapability/WorkerCapabilityTaskMain.java",
+      "path": "integrations/worker-correctness/src/main/java/com/xa/mass/integration/workercorrectness/WorkerCorrectnessMain.java",
       "lanes": [
         "jvm_contracts",
-        "capability_task"
+        "worker_correctness"
       ],
-      "reason": "Capability Task acceptance code owns no Fleet identity proof."
+      "reason": "Worker correctness owns the 20-Worker identity, extension reachability and 100-Item exact closure claim."
     },
     {
-      "path": "integrations/worker-fleet-acceptance/src/main/java/com/xa/mass/integration/workerfleet/WorkerFleetAcceptanceMain.java",
+      "path": "integrations/worker-convergence-health/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",
       "lanes": [
         "jvm_contracts",
-        "worker_fleet"
+        "worker_convergence_health"
       ],
-      "reason": "Fleet acceptance code owns no Capability Task business proof."
+      "reason": "Convergence code owns state/server and in-flight-loss claims through public observations."
     },
     {
-      "path": "integrations/worker-lab-reliability/src/main/java/com/xa/mass/integration/workerlab/WorkerStateConvergenceMain.java",
+      "path": "integrations/worker-websocket-scale/src/main/java/com/xa/mass/integration/workerscale/WorkerWebSocketScaleMain.java",
       "lanes": [
-        "jvm_contracts",
-        "worker_lab_reliability"
+        "jvm_contracts"
       ],
-      "reason": "Worker Lab convergence code owns public-observation state, task-fault and seeded campaign proof without Worker or Server implementation access."
+      "reason": "The 10k implementation remains a separately scheduled capacity proof while compiling in JVM Contracts."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/error/ServerException.java",
@@ -144,12 +119,10 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_convergence_health",
         "runtime_distribution"
       ],
-      "reason": "The current conservative Server boundary reaches every JVM runtime proof."
+      "reason": "Generic Server error handling reaches Server-wide proofs but does not re-prove the Worker correctness primary claim."
     },
     {
       "path": "server_jvm/src/main/java/com/xa/mass/server/kernelpacer/KernelPacerAssembly.java",
@@ -157,27 +130,32 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_convergence_health",
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "The supervised Pacer lifecycle reaches every Java-hosted runtime proof, including the Android production route."
+      "reason": "Pacer assembly reaches convergence and runtime boundaries, not the fixed Worker correctness claim."
     },
     {
-      "path": "server_jvm/src/main/java/com/xa/mass/server/workerbinding/WorkerBindingService.java",
+      "path": "server_jvm/src/main/java/com/xa/mass/server/api/v1/WorkerPreparationController.java",
       "lanes": [
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_correctness",
+        "worker_convergence_health",
         "android_emulator",
         "runtime_distribution"
       ],
-      "reason": "Worker Binding additionally reaches the real Android production route."
+      "reason": "Worker Prepare is a production boundary consumed by ordinary, batched, Android and convergence Worker worlds."
+    },
+    {
+      "path": "xa-android/worker-demo/host/android_worker_acceptance.py",
+      "lanes": [
+        "android_host",
+        "android_emulator"
+      ],
+      "reason": "The Android acceptance driver is unit-tested and exercised in the emulator."
     },
     {
       "path": "frontend/src/views/WorkerRuntimeView.vue",
@@ -185,25 +163,16 @@
         "frontend",
         "runtime_distribution"
       ],
-      "reason": "Frontend production changes remain isolated from runtime owners."
-    },
-    {
-      "path": ".github/scripts/run_android_emulator_worker.sh",
-      "lanes": [
-        "android_emulator"
-      ],
-      "reason": "Emulator orchestration changes select the Emulator; its job dependency selects Android Host."
+      "reason": "Frontend production changes remain isolated from runtime mechanism proofs."
     },
     {
       "path": "run_local_runtime.py",
       "lanes": [
         "jvm_contracts",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
         "frontend"
       ],
-      "reason": "The local composition driver builds the Frontend and launches one checked Server Profile; scenario-workers additionally owns the standalone JVM Lab Host lifecycle."
+      "reason": "The local composition driver is a developer boundary, while one-shot Worker proofs own their own process runners."
     },
     {
       "path": ".github/workflows/proof-ci.yml",
@@ -211,15 +180,14 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_correctness",
+        "worker_convergence_health",
         "android_host",
         "android_emulator",
         "frontend",
         "runtime_distribution"
       ],
-      "reason": "Workflow changes re-prove the complete gate."
+      "reason": "Workflow changes re-prove the complete required gate."
     },
     {
       "path": ".github/proof-paths.yml",
@@ -227,36 +195,21 @@
         "jvm_contracts",
         "redis_owner",
         "runtime_boundary",
-        "capability_task",
-        "worker_fleet",
-        "worker_lab_reliability",
+        "worker_correctness",
+        "worker_convergence_health",
         "android_host",
         "android_emulator",
         "frontend",
         "runtime_distribution"
       ],
-      "reason": "Selection-contract changes re-prove the complete gate."
+      "reason": "Selection-contract changes re-prove the complete required gate."
     },
     {
       "path": "distribution/server/build.gradle",
       "lanes": [
         "runtime_distribution"
       ],
-      "reason": "Distribution assembly changes are proved from the unpacked publishable archive."
-    },
-    {
-      "path": "distribution/worker-sdk/build.gradle",
-      "lanes": [
-        "runtime_distribution"
-      ],
-      "reason": "Worker SDK assembly changes are proved from the published Maven Repository archive."
-    },
-    {
-      "path": ".github/workflows/release-server-runtime.yml",
-      "lanes": [
-        "runtime_distribution"
-      ],
-      "reason": "Release orchestration must reproduce the unpacked Runtime proof before publication."
+      "reason": "Distribution assembly changes are proved from the unpacked archive."
     }
   ]
 }

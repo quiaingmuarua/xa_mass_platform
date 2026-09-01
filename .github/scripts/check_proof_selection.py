@@ -18,9 +18,8 @@ EXPECTED_LANES = {
     "jvm_contracts",
     "redis_owner",
     "runtime_boundary",
-    "capability_task",
-    "worker_fleet",
-    "worker_lab_reliability",
+    "worker_correctness",
+    "worker_convergence_health",
     "android_host",
     "android_emulator",
     "frontend",
@@ -155,6 +154,15 @@ def validate() -> list[str]:
         errors.append(
             "proof-ci.yml must verify selection before invoking paths-filter"
         )
+    if "explain_proof_selection.py --base HEAD" in workflow:
+        errors.append(
+            "proof-ci.yml must explain the event diff, not the empty HEAD...HEAD diff"
+        )
+    for event_base in ("PR_BASE_SHA", "PUSH_BEFORE_SHA"):
+        if event_base not in workflow:
+            errors.append(
+                f"proof-ci.yml must provide {event_base} to the proof explainer"
+            )
 
     files = repository_files()
     for lane, rules in filters.items():

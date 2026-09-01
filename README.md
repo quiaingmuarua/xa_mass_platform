@@ -143,11 +143,13 @@ those owners.
 - [`xa-android/`](xa-android/) owns reusable Android capabilities, a loopback
   capability/Host control surface, the demo Worker host, and its Emulator
   acceptance driver.
-- [`integrations/`](integrations/) contains external acceptance clients; it
-  owns no Kernel, Server or Transport mechanism. Worker Fleet and Capability
-  Task retain exact topology/result proofs; Worker Lab Convergence relates
-  controlled local mutations to Adapter, Kernel and Task observations through
-  public HTTP boundaries. The independent Worker WebSocket Scale lane offers
+- [`integrations/`](integrations/) contains external proof clients; it owns no
+  Kernel, Server or Transport mechanism. Worker Correctness owns the exact
+  2x10 identity, extension, 100-call success and Host-restart closure. Worker
+  Convergence Health relates deterministic 2x50 mutations and named Task
+  witnesses to Adapter and Kernel convergence through public HTTP boundaries;
+  its 1000 Items are offered load rather than an all-success claim. The independent Worker
+  WebSocket Scale lane offers
   10,000 Java Worker connections and checks a 9,900 connected-and-HOT threshold
   across one Server restart without claiming Task throughput.
 - [`frontend/`](frontend/) is the read-only Runtime viewer plus a thin finite
@@ -222,13 +224,13 @@ Commands, prerequisites and CI selection rules live in
   :transport:netty-adapter:build \
   :scenario_workers_jvm:build \
   :server_jvm:build \
-  :integrations:worker-capability-task:build \
-  :integrations:worker-fleet-acceptance:build \
-  :integrations:worker-lab-reliability:build
+  :integrations:worker-correctness:build \
+  :integrations:worker-convergence-health:build \
+  :integrations:worker-websocket-scale:build
 ```
 
-Real Redis, cross-process Runtime Boundary, Worker Fleet, Worker Lab
-Reliability, Capability Task, Android Emulator, real-device Android, and
+Real Redis, cross-process Runtime Boundary, Worker Correctness, Worker
+Convergence Health, Worker Capacity, Android Emulator, real-device Android and
 frontend proofs have separate prerequisites and commands in the proof
 registry. Strict owner/capability tests fix
 structures and business values; cross-process acceptance fixes stable

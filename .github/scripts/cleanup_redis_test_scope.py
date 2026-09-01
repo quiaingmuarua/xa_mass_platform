@@ -18,12 +18,12 @@ def cleanup(redis_url: str, scope: str) -> tuple[int, int]:
 
     import redis
 
-    client = redis.Redis.from_url(redis_url, decode_responses=True)
     pattern = f"xa_mass:{scope}:*"
-    keys = tuple(client.scan_iter(match=pattern, count=100))
-    removed = 0
-    for offset in range(0, len(keys), 100):
-        removed += int(client.unlink(*keys[offset:offset + 100]))
+    with redis.Redis.from_url(redis_url, decode_responses=True) as client:
+        keys = tuple(client.scan_iter(match=pattern, count=100))
+        removed = 0
+        for offset in range(0, len(keys), 100):
+            removed += int(client.unlink(*keys[offset:offset + 100]))
     print(
         "cleaned Redis test scope "
         f"scope={scope} observedKeys={len(keys)} removedKeys={removed}"

@@ -10,14 +10,11 @@ from pathlib import Path
 import re
 import shutil
 import signal
-import socket
-import ssl
 import subprocess
 import sys
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 
@@ -29,7 +26,6 @@ LAB_CONTROL = "http://127.0.0.1:18086"
 WORKER_GROUP = "scenario-string-utils-workers"
 ENDPOINT_MANAGER = "scenario-websocket"
 TEST_SCOPE = re.compile(r"test_[a-z0-9_]+")
-REDIS_BATCH_SIZE = 100
 
 
 def main() -> int:
@@ -230,6 +226,7 @@ def _validate_options(parser: argparse.ArgumentParser, options: argparse.Namespa
 
 def _preflight(redis_url: str) -> None:
     import resource
+    import redis
 
     soft_nofile, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
     if soft_nofile != resource.RLIM_INFINITY and soft_nofile < 65_536:
@@ -253,8 +250,8 @@ def _preflight(redis_url: str) -> None:
     ).stdout
     if re.search(r'version "21(?:[.\"]|$)', version) is None:
         raise RuntimeError("Java 21 is required")
-    with _RedisConnection(redis_url) as redis:
-        if redis.command("PING") != "PONG":
+    with redis.Redis.from_url(redis_url) as client:
+        if client.ping() is not True:
             raise RuntimeError("Redis did not answer PONG")
 
 
@@ -584,129 +581,17 @@ def _require_running(process: subprocess.Popen[str], log_path: Path) -> None:
 def _cleanup_scope(redis_url: str, scope: str) -> None:
     if TEST_SCOPE.fullmatch(scope) is None:
         raise ValueError("cleanup scope must be an exact test_* scope")
-    observed: set[bytes] = set()
-    with _RedisConnection(redis_url) as redis:
-        cursor = 0
-        while True:
-            response = redis.command(
-                "SCAN",
-                str(cursor),
-                "MATCH",
-                f"xa_mass:{scope}:*",
-                "COUNT",
-                str(REDIS_BATCH_SIZE),
-            )
-            if not isinstance(response, list) or len(response) != 2:
-                raise RuntimeError("Redis SCAN returned an invalid response")
-            cursor = int(_redis_text(response[0], "SCAN cursor"))
-            keys = response[1]
-            if not isinstance(keys, list) or any(
-                not isinstance(key, bytes) for key in keys
-            ):
-                raise RuntimeError("Redis SCAN keys are invalid")
-            observed.update(keys)
-            if cursor == 0:
-                break
-        ordered = sorted(observed)
-        for offset in range(0, len(ordered), REDIS_BATCH_SIZE):
-            redis.command("UNLINK", *ordered[offset:offset + REDIS_BATCH_SIZE])
-
-
-class _RedisConnection:
-
-    def __init__(self, redis_url: str) -> None:
-        parsed = urllib.parse.urlsplit(redis_url)
-        if parsed.scheme not in {"redis", "rediss"} or parsed.hostname is None:
-            raise ValueError("Redis URL must use redis or rediss and contain a host")
-        if parsed.query or parsed.fragment:
-            raise ValueError("Redis URL must not contain query or fragment")
-        database_text = parsed.path.removeprefix("/")
-        if "/" in database_text or (database_text and not database_text.isdigit()):
-            raise ValueError("Redis URL database must be a non-negative integer")
-        raw = socket.create_connection((parsed.hostname, parsed.port or 6379), timeout=10)
-        try:
-            self._socket = (
-                ssl.create_default_context().wrap_socket(
-                    raw, server_hostname=parsed.hostname
-                )
-                if parsed.scheme == "rediss"
-                else raw
-            )
-            self._reader = self._socket.makefile("rb")
-            password = (
-                urllib.parse.unquote(parsed.password)
-                if parsed.password is not None
-                else None
-            )
-            username = (
-                urllib.parse.unquote(parsed.username)
-                if parsed.username is not None
-                else None
-            )
-            if username is not None and password is None:
-                raise ValueError("Redis URL username requires a password")
-            if password is not None:
-                self.command("AUTH", username, password) if username else self.command(
-                    "AUTH", password
-                )
-            database = int(database_text or "0")
-            if database:
-                self.command("SELECT", str(database))
-        except BaseException:
-            getattr(self, "_reader", None) and self._reader.close()
-            getattr(self, "_socket", raw).close()
-            raise
-
-    def __enter__(self) -> "_RedisConnection":
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self._reader.close()
-        self._socket.close()
-
-    def command(self, *parts: str | bytes) -> object:
-        encoded = [part if isinstance(part, bytes) else part.encode() for part in parts]
-        request = [f"*{len(encoded)}\r\n".encode()]
-        for part in encoded:
-            request.extend((f"${len(part)}\r\n".encode(), part, b"\r\n"))
-        self._socket.sendall(b"".join(request))
-        return _read_redis_response(self._reader)
-
-
-def _read_redis_response(reader: object) -> object:
-    marker = reader.read(1)
-    if not marker:
-        raise RuntimeError("Redis closed the connection")
-    line = reader.readline()
-    if not line.endswith(b"\r\n"):
-        raise RuntimeError("Redis returned a malformed response")
-    value = line[:-2]
-    if marker == b"+":
-        return value.decode()
-    if marker == b"-":
-        raise RuntimeError("Redis command failed: " + value.decode(errors="replace"))
-    if marker == b":":
-        return int(value)
-    if marker == b"$":
-        length = int(value)
-        if length == -1:
-            return None
-        payload = reader.read(length)
-        if len(payload) != length or reader.read(2) != b"\r\n":
-            raise RuntimeError("Redis returned a truncated bulk response")
-        return payload
-    if marker == b"*":
-        length = int(value)
-        return None if length == -1 else [
-            _read_redis_response(reader) for _ in range(length)
-        ]
-    raise RuntimeError("Redis returned an unsupported response type")
-
-
-def _redis_text(value: object, owner: str) -> str:
-    if not isinstance(value, bytes):
-        raise RuntimeError(f"Redis {owner} is invalid")
-    return value.decode("ascii")
+    _run(
+        [
+            sys.executable,
+            str(REPOSITORY_ROOT / ".github/scripts/cleanup_redis_test_scope.py"),
+            "--redis-url",
+            redis_url,
+            "--scope",
+            scope,
+        ],
+        cwd=REPOSITORY_ROOT,
+    )
 
 
 def _reset_output_root(output_root: Path) -> None:
